@@ -77,7 +77,7 @@ module CategoryEditorWindowTests =
     /// The guid suffix of the freshly-added, still-blank category row's name box — `BeginAddCategory`
     /// mints the id, so the headless Add proof locates the new row by its empty name box.
     let private newRowGuid (window : Window) : string =
-        let prefix = UiIds.Category.nameBox + "_"
+        let prefix = ConstructorUiId.categoryNameBox.value + "_"
         let found =
             window.GetVisualDescendants()
             |> Seq.tryPick (function
@@ -139,7 +139,7 @@ module CategoryEditorWindowTests =
 
     [<Fact>]
     let ``the Category editor window id is the stable CategoryEditorWindow id`` () =
-        Assert.Equal("CategoryEditorWindow", UiIds.CategoryEditor.window)
+        Assert.Equal("CategoryEditorWindow", ConstructorUiId.categoryEditorWindow.value)
 
     [<Fact>]
     let ``init seeds the editor over the proxy's listCategories with nothing armed`` () =
@@ -277,11 +277,11 @@ module CategoryEditorWindowTests =
             let window = CategoryEditorWindow(proxy)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(matchesId UiIds.CategoryEditor.window window, "the window itself carries the CategoryEditorWindow id")
-            Assert.True(isPresent window UiIds.Category.list, "the categories list is missing")
-            Assert.True(isPresent window UiIds.Category.addButton, "the Add verb is missing")
-            Assert.True(isPresent window UiIds.Category.saveButton, "the window Save is missing")
-            Assert.True(isPresent window UiIds.Category.cancelButton, "the window Cancel is missing")
+            Assert.True(matchesId ConstructorUiId.categoryEditorWindow.value window, "the window itself carries the CategoryEditorWindow id")
+            Assert.True(isPresent window ConstructorUiId.categoriesList.value, "the categories list is missing")
+            Assert.True(isPresent window ConstructorUiId.addCategoryButton.value, "the Add verb is missing")
+            Assert.True(isPresent window ConstructorUiId.categorySaveButton.value, "the window Save is missing")
+            Assert.True(isPresent window ConstructorUiId.categoryCancelButton.value, "the window Cancel is missing")
             window.Close())
 
     [<Fact>]
@@ -296,10 +296,10 @@ module CategoryEditorWindowTests =
             let window = CategoryEditorWindow(proxy)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickOn window UiIds.Category.addButton
+            clickOn window ConstructorUiId.addCategoryButton.value
             let guid = newRowGuid window
-            setText window (UiIds.Category.rowNameBox guid) "Polymer"
-            clickOn window (UiIds.Category.rowSaveButton guid)
+            setText window (ConstructorUiId.categoryRowNameBox (ConstructorUiKey guid)).value "Polymer"
+            clickOn window (ConstructorUiId.categoryRowSaveButton (ConstructorUiKey guid)).value
             match proxy.listCategories () with
             | Ok l ->
                 Assert.Equal(before + 1, List.length l)
@@ -317,8 +317,8 @@ module CategoryEditorWindowTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let guid = string userId.value
-            setText window (UiIds.Category.rowNameBox guid) "Renamed"
-            clickOn window (UiIds.Category.rowSaveButton guid)
+            setText window (ConstructorUiId.categoryRowNameBox (ConstructorUiKey guid)).value "Renamed"
+            clickOn window (ConstructorUiId.categoryRowSaveButton (ConstructorUiKey guid)).value
             match proxy.listCategories () with
             | Ok l ->
                 match l |> List.tryFind (fun c -> c.id = userId) with
@@ -338,14 +338,14 @@ module CategoryEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
             let guid = string userId.value
             // First Remove click ARMS the confirm — the block slot shows the prompt.
-            clickOn window (UiIds.Category.rowRemoveButton guid)
-            Assert.True(isPresent window UiIds.Category.blockMessage, "the confirm prompt must show")
+            clickOn window (ConstructorUiId.categoryRowRemoveButton (ConstructorUiKey guid)).value
+            Assert.True(isPresent window ConstructorUiId.categoryBlockMessage.value, "the confirm prompt must show")
             // The confirming second click surfaces the store's typed refusal.
-            clickOn window (UiIds.Category.rowRemoveButton guid)
-            Assert.True(isPresent window UiIds.Category.blockMessage, "the typed block must show")
-            Assert.Contains("referenced", textOf window UiIds.Category.blockMessage)
+            clickOn window (ConstructorUiId.categoryRowRemoveButton (ConstructorUiKey guid)).value
+            Assert.True(isPresent window ConstructorUiId.categoryBlockMessage.value, "the typed block must show")
+            Assert.Contains("referenced", textOf window ConstructorUiId.categoryBlockMessage.value)
             // The category — and its row — survive unchanged.
-            Assert.True(isPresent window (UiIds.Category.rowNameBox guid), "the referenced row must still render")
+            Assert.True(isPresent window (ConstructorUiId.categoryRowNameBox (ConstructorUiKey guid)).value, "the referenced row must still render")
             match proxy.listCategories () with
             | Ok l -> Assert.True(l |> List.exists (fun c -> c.id = userId), "the referenced category must survive")
             | Error e -> Assert.Fail($"listCategories failed: %A{e}")

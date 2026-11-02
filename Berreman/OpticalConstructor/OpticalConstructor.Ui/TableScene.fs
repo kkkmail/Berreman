@@ -53,9 +53,6 @@ module TableScene =
     let panViewBy (dx : float) (dy : float) (view : TableViewState) : TableViewState =
         { view with panX = view.panX + dx; panY = view.panY + dy }
 
-    /// Reset the table view to straight top-down (no pan / zoom / rotation).
-    let resetView (view : TableViewState) : TableViewState = Table.resetView view
-
     // ----- drawing -----
 
     let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)

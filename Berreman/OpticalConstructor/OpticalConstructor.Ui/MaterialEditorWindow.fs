@@ -31,8 +31,8 @@ type MaterialEditorWindow(materials : MaterialProxy, intent : MaterialEditorView
             match intent with
             | MaterialEditorView.EditMaterial e -> $"Material Editor — %s{e.name}"
             | MaterialEditorView.NewMaterial _ -> "Material Editor — new material"
-        this.Name <- UiIds.MaterialEditor.window
-        AutomationProperties.SetAutomationId(this, UiIds.MaterialEditor.window)
+        this.Name <- ConstructorUiId.materialEditorWindow.value
+        AutomationProperties.SetAutomationId(this, ConstructorUiId.materialEditorWindow.value)
         // Spec 0038 (032): the editor is now a two-pane split (identity + ladder | tabbed preview).
         // Sized so the left ladder pane, narrower than the former full width, still fits its
         // ScrollViewer viewport for a single-aspect ladder without scrolling.

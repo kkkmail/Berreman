@@ -278,7 +278,7 @@ let private nameRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             labelBlock "Name:"
             TextBox.create [
-                TextBox.name UiIds.SourceEditor.nameBox
+                TextBox.name ConstructorUiId.sourceNameBox.value
                 TextBox.width 320.0
                 TextBox.text m.name
                 TextBox.onTextChanged (SetName >> dispatch)
@@ -295,8 +295,8 @@ let private tuningRows (m : Model) (dispatch : Msg -> unit) : IView list =
           StackPanel.spacing 6.0
           StackPanel.children [
               labelBlock "Tuning:"
-              clickBox UiIds.SourceEditor.tuningFixed "Fixed line" (if tunable then idleBackground else chosenBackground) (fun () -> dispatch (SetTuning FixedChoice))
-              clickBox UiIds.SourceEditor.tuningTunable "Tunable" (if tunable then chosenBackground else idleBackground) (fun () -> dispatch (SetTuning TunableChoice))
+              clickBox ConstructorUiId.sourceTuningFixed.value "Fixed line" (if tunable then idleBackground else chosenBackground) (fun () -> dispatch (SetTuning FixedChoice))
+              clickBox ConstructorUiId.sourceTuningTunable.value "Tunable" (if tunable then chosenBackground else idleBackground) (fun () -> dispatch (SetTuning TunableChoice))
           ]
       ] :> IView
       StackPanel.create [
@@ -306,14 +306,14 @@ let private tuningRows (m : Model) (dispatch : Msg -> unit) : IView list =
           StackPanel.children [
               labelBlock "Limits:"
               TextBox.create [
-                  TextBox.name UiIds.SourceEditor.minimumBox
+                  TextBox.name ConstructorUiId.sourceTunableMinimumBox.value
                   TextBox.width 110.0
                   TextBox.text m.minimumText
                   TextBox.onTextChanged (SetMinimumText >> dispatch)
               ] :> IView
               TextBlock.create [ TextBlock.text "to"; TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
               TextBox.create [
-                  TextBox.name UiIds.SourceEditor.maximumBox
+                  TextBox.name ConstructorUiId.sourceTunableMaximumBox.value
                   TextBox.width 110.0
                   TextBox.text m.maximumText
                   TextBox.onTextChanged (SetMaximumText >> dispatch)
@@ -329,14 +329,14 @@ let private waveLengthRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children (
             [ labelBlock (if m.tuning = TunableChoice then "Setting:" else "Wavelength:")
               TextBox.create [
-                  TextBox.name UiIds.SourceEditor.waveLengthBox
+                  TextBox.name ConstructorUiId.sourceWaveLengthBox.value
                   TextBox.width 110.0
                   TextBox.text m.waveLengthText
                   TextBox.onTextChanged (SetWaveLengthText >> dispatch)
               ] :> IView ]
             @ (waveLengthUnits
                |> List.map (fun u ->
-                   clickBox (UiIds.SourceEditor.unitButton (unitCode u)) (unitAbbrev u) (if u = m.unit then chosenBackground else idleBackground) (fun () -> dispatch (SetUnit u)))))
+                   clickBox (ConstructorUiId.sourceWaveLengthUnit (ConstructorUiKey (unitCode u))).value (unitAbbrev u) (if u = m.unit then chosenBackground else idleBackground) (fun () -> dispatch (SetUnit u)))))
     ] :> IView
 
 /// The wavelength restated in nm and eV (the units visible-light and EUV work read), or the parse hint.
@@ -350,7 +350,7 @@ let readoutText (m : Model) : string =
 
 let private readoutRow (m : Model) : IView =
     TextBlock.create [
-        TextBlock.name UiIds.SourceEditor.waveLengthReadout
+        TextBlock.name ConstructorUiId.sourceWaveLengthReadout.value
         TextBlock.margin (Thickness(96.0, 0.0, 0.0, 0.0))
         TextBlock.text (readoutText m)
     ] :> IView
@@ -366,7 +366,7 @@ let private noteRow () : IView =
 
 let private statusRow (m : Model) : IView =
     TextBlock.create [
-        TextBlock.name UiIds.SourceEditor.statusText
+        TextBlock.name ConstructorUiId.sourceEditorStatus.value
         TextBlock.foreground (brush errorColor)
         TextBlock.text (m.status |> Option.defaultValue "")
     ] :> IView
@@ -377,13 +377,13 @@ let private actionsRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [
-                actionButton UiIds.SourceEditor.saveButton "Save" saveBackground (fun () -> dispatch SaveClicked)
-                actionButton UiIds.SourceEditor.cancelButton "Cancel" cancelBackground (fun () -> dispatch CancelClicked)
+                actionButton ConstructorUiId.sourceSaveButton.value "Save" saveBackground (fun () -> dispatch SaveClicked)
+                actionButton ConstructorUiId.sourceCancelButton.value "Cancel" cancelBackground (fun () -> dispatch CancelClicked)
             ]
         ] :> IView
     | ConfirmingDiscard ->
         StackPanel.create [
-            automationId<StackPanel> UiIds.SourceEditor.exitConfirm
+            automationId<StackPanel> ConstructorUiId.sourceExitConfirm.value
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [
                 TextBlock.create [
@@ -392,8 +392,8 @@ let private actionsRow (m : Model) (dispatch : Msg -> unit) : IView =
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(0.0, 0.0, 12.0, 0.0))
                 ] :> IView
-                actionButton UiIds.SourceEditor.discardButton "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
-                actionButton UiIds.SourceEditor.keepEditingButton "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
+                actionButton ConstructorUiId.sourceDiscardButton.value "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
+                actionButton ConstructorUiId.sourceKeepEditingButton.value "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
             ]
         ] :> IView
 

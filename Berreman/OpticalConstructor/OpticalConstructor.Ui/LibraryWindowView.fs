@@ -617,9 +617,9 @@ let entryIdOfNodeCode (code : string) : string option =
 /// Spec 0038 (044): the Domain-typed id helpers that outlived the per-view `UiIds` module —
 /// `OpticalConstructor.Controls` is domain-free, so `versionRow` (VersionNumber) and `entryNode`
 /// (over the view-local `entryNodeCode`) stay beside the view; every fixed Library-window id literal
-/// moved to `UiIds.LibraryWindow`.
+/// moved to `UiIds.LibraryWindow`, now `ConstructorUiId` members (spec 0048 R1).
 let versionRow (version : VersionNumber) : string = "LibraryVersionRow_" + string version.value
-let entryNode (entryId : string) : string = UiIds.FacetedTree.treeNode (entryNodeCode entryId)
+let entryNode (entryId : string) : string = (ConstructorUiId.facetTreeNode (ConstructorUiKey (entryNodeCode entryId))).value
 
 /// Spec 0046: a Select session opens with the entry its target is bound to now shown as CHOSEN — selected,
 /// highlighted, and the entries group expanded so its row is visible. Nothing to show (no binding, or one
@@ -1188,25 +1188,25 @@ let private selectModeRows (m : Model) (dispatch : Msg -> unit) : IView list =
         [ WrapPanel.create [
               WrapPanel.orientation Orientation.Horizontal
               WrapPanel.children [
-                  actionButton UiIds.LibraryWindow.selectButton "Select" positiveBackground (fun () -> dispatch ConfirmSelect)
-                  actionButton UiIds.LibraryWindow.selectCloseButton "Close" negativeBackground (fun () -> dispatch CancelSelect)
+                  actionButton ConstructorUiId.librarySelectButton.value "Select" positiveBackground (fun () -> dispatch ConfirmSelect)
+                  actionButton ConstructorUiId.librarySelectCloseButton.value "Close" negativeBackground (fun () -> dispatch CancelSelect)
               ]
           ] :> IView
           (TextBlock.create [
-              automationId<TextBlock> UiIds.LibraryWindow.selectConstraint
+              automationId<TextBlock> ConstructorUiId.librarySelectConstraint.value
               TextBlock.fontWeight FontWeight.SemiBold
               TextBlock.textWrapping TextWrapping.Wrap
               TextBlock.maxWidth 380.0
               TextBlock.text $"Choose a %s{Catalogue.kindName context.kindConstraint.value} for %s{targetText context.target} — the kind constraint is fixed and cannot be removed."
           ]
-          |> Avalonia.FuncUI.DSL.View.withKey UiIds.LibraryWindow.selectConstraint) :> IView ]
+          |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.librarySelectConstraint.value) :> IView ]
 
 /// One lifecycle verb box (spec 0038 step 023), by its action.
 let private lifecycleButton (dispatch : Msg -> unit) (action : LifecycleAction) : IView =
     match action with
-    | MarkInactiveAction -> verbButton UiIds.LibraryWindow.markInactiveButton "Mark inactive" (fun () -> dispatch RequestMarkInactive)
-    | MarkActiveAction -> verbButton UiIds.LibraryWindow.markActiveButton "Mark active" (fun () -> dispatch RequestMarkActive)
-    | SupersedeAction -> verbButton UiIds.LibraryWindow.supersedeButton "Supersede…" (fun () -> dispatch RequestSupersede)
+    | MarkInactiveAction -> verbButton ConstructorUiId.libraryMarkInactiveButton.value "Mark inactive" (fun () -> dispatch RequestMarkInactive)
+    | MarkActiveAction -> verbButton ConstructorUiId.libraryMarkActiveButton.value "Mark active" (fun () -> dispatch RequestMarkActive)
+    | SupersedeAction -> verbButton ConstructorUiId.librarySupersedeButton.value "Supersede…" (fun () -> dispatch RequestSupersede)
 
 /// The verbs row: Add sample, Make multilayer and (spec 0046) Add source always; Edit only for a
 /// SAMPLE or USER-SOURCE selection (a preset has no editor — the verb is removed, not greyed); Remove
@@ -1219,15 +1219,15 @@ let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children (
             [
-                verbButton UiIds.LibraryWindow.addSampleButton "Add sample" (fun () -> dispatch AddSample)
-                verbButton UiIds.LibraryWindow.makeMultilayerButton "Make multilayer" (fun () -> dispatch MakeMultilayer)
-                verbButton UiIds.LibraryWindow.addSourceButton "Add source" (fun () -> dispatch AddSource)
+                verbButton ConstructorUiId.libraryAddSampleButton.value "Add sample" (fun () -> dispatch AddSample)
+                verbButton ConstructorUiId.libraryMakeMultilayerButton.value "Make multilayer" (fun () -> dispatch MakeMultilayer)
+                verbButton ConstructorUiId.libraryAddSourceButton.value "Add source" (fun () -> dispatch AddSource)
             ]
             @ (match editableSample m, editableSource m with
-               | Some _, _ | None, Some _ -> [ verbButton UiIds.LibraryWindow.editButton "Edit" (fun () -> dispatch EditSelected) ]
+               | Some _, _ | None, Some _ -> [ verbButton ConstructorUiId.libraryEditButton.value "Edit" (fun () -> dispatch EditSelected) ]
                | None, None -> [])
             @ (match selectedEntry m with
-               | Some _ -> [ verbButton UiIds.LibraryWindow.removeButton "Remove" (fun () -> dispatch RequestRemoveSelected) ]
+               | Some _ -> [ verbButton ConstructorUiId.libraryRemoveButton.value "Remove" (fun () -> dispatch RequestRemoveSelected) ]
                | None -> [])
             @ (offeredLifecycleActions m |> List.map (lifecycleButton dispatch)))
     ] :> IView
@@ -1244,7 +1244,7 @@ let private toggleRow (m : Model) (dispatch : Msg -> unit) : IView list =
             match m.showInactive with
             | ActiveOnly -> $"Show inactive (%d{n})"
             | IncludeInactive -> $"Hide inactive (%d{n})"
-        [ verbButton UiIds.LibraryWindow.showInactiveToggle label (fun () -> dispatch ToggleShowInactive) ]
+        [ verbButton ConstructorUiId.libraryShowInactiveToggle.value label (fun () -> dispatch ToggleShowInactive) ]
 
 /// The inline remove confirmation — present only while a sample remove is armed.
 let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
@@ -1270,8 +1270,8 @@ let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  verbButton UiIds.LibraryWindow.removeConfirmButton "Remove" (fun () -> dispatch ConfirmRemove)
-                  verbButton UiIds.LibraryWindow.removeCancelButton "Cancel" (fun () -> dispatch CancelRemove)
+                  verbButton ConstructorUiId.libraryRemoveConfirmButton.value "Remove" (fun () -> dispatch ConfirmRemove)
+                  verbButton ConstructorUiId.libraryRemoveCancelButton.value "Cancel" (fun () -> dispatch CancelRemove)
               ]
           ] :> IView ]
 
@@ -1299,8 +1299,8 @@ let private lifecycleConfirmRow (m : Model) (dispatch : Msg -> unit) : IView lis
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  verbButton UiIds.LibraryWindow.lifecycleConfirmButton "Confirm" (fun () -> dispatch ConfirmLifecycle)
-                  verbButton UiIds.LibraryWindow.lifecycleCancelButton "Cancel" (fun () -> dispatch CancelLifecycle)
+                  verbButton ConstructorUiId.libraryLifecycleConfirmButton.value "Confirm" (fun () -> dispatch ConfirmLifecycle)
+                  verbButton ConstructorUiId.libraryLifecycleCancelButton.value "Cancel" (fun () -> dispatch CancelLifecycle)
               ]
           ] :> IView ]
 
@@ -1323,7 +1323,7 @@ let private messageRow (m : Model) : IView list =
                 | InvalidSample reason -> reason
             | SourceRemoveRefused sourceError -> sourceError.reason
         [ TextBlock.create [
-              automationId<TextBlock> UiIds.LibraryWindow.message
+              automationId<TextBlock> ConstructorUiId.libraryWindowMessage.value
               TextBlock.foreground (brush messageColor)
               TextBlock.textWrapping TextWrapping.Wrap
               TextBlock.maxWidth 380.0
@@ -1339,7 +1339,7 @@ let private versionsRow (versions : (VersionNumber * Sample) list) (latest : Ver
     | [] | [ _ ] -> []
     | _ ->
         [ StackPanel.create [
-              automationId<StackPanel> UiIds.LibraryWindow.versionsPanel
+              automationId<StackPanel> ConstructorUiId.libraryVersionsPanel.value
               StackPanel.orientation Orientation.Horizontal
               StackPanel.spacing 0.0
               StackPanel.children (
@@ -1392,7 +1392,7 @@ let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
         let viewOnlyNote : IView list =
             if viewingOlder then
                 [ TextBlock.create [
-                      automationId<TextBlock> UiIds.LibraryWindow.viewOnlyNote
+                      automationId<TextBlock> ConstructorUiId.libraryViewOnlyNote.value
                       TextBlock.foreground (brush idleBorder)
                       TextBlock.textWrapping TextWrapping.Wrap
                       TextBlock.maxWidth 380.0
@@ -1400,7 +1400,7 @@ let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
                   ] :> IView ]
             else []
         [ Border.create [
-              automationId<Border> UiIds.LibraryWindow.viewPanel
+              automationId<Border> ConstructorUiId.libraryViewPanel.value
               Border.child (
                   StackPanel.create [
                       StackPanel.orientation Orientation.Vertical
@@ -1452,7 +1452,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                     ])
             ]
             Border.create [
-                automationId<Border> UiIds.LibraryWindow.treeHost
+                automationId<Border> ConstructorUiId.libraryFacetTreeHost.value
                 Border.padding (Thickness 8.0)
                 Border.child (FacetedTreeControls.view (facetedState m) (facetedHandlers dispatch))
             ]

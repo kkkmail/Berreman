@@ -148,7 +148,7 @@ module LibraryControls =
                 if state.pendingEntryId = Some r.entryId then RowPending
                 elif r.isBound then RowBound
                 else RowPlain
-            leafRow (UiIds.Library.entry r.entryId) r.label r.depth highlight state.enabled (fun () -> handlers.selectEntry r.entryId)
+            leafRow (ConstructorUiId.libraryEntry (ConstructorUiKey r.entryId)).value r.label r.depth highlight state.enabled (fun () -> handlers.selectEntry r.entryId)
 
     // -- The Confirm / Cancel action buttons of the pending bind. The panel they live in comes and
     // goes with the pending choice, so they are regenerable: a reuse-safe AutomationId (never a
@@ -190,7 +190,7 @@ module LibraryControls =
                             StackPanel.children [
                                 TextBlock.create [ TextBlock.text $"Selected: %s{name}"; TextBlock.fontWeight FontWeight.SemiBold ]
                                 TextBlock.create [
-                                    TextBlock.name UiIds.Library.description
+                                    TextBlock.name ConstructorUiId.libraryEntryDescription.value
                                     TextBlock.text state.pendingDescription
                                     TextBlock.textWrapping TextWrapping.Wrap
                                     TextBlock.maxWidth 360.0
@@ -199,8 +199,8 @@ module LibraryControls =
                                     StackPanel.orientation Orientation.Horizontal
                                     StackPanel.spacing 0.0
                                     StackPanel.children [
-                                        actionButton UiIds.Library.confirm "Confirm" true handlers.confirmEntry
-                                        actionButton UiIds.Library.cancel "Cancel" false handlers.cancelEntry
+                                        actionButton ConstructorUiId.libraryConfirmButton.value "Confirm" true handlers.confirmEntry
+                                        actionButton ConstructorUiId.libraryCancelButton.value "Cancel" false handlers.cancelEntry
                                     ]
                                 ]
                             ]
@@ -222,13 +222,13 @@ module LibraryControls =
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    TextBlock.create [ TextBlock.name UiIds.Library.kindLabel; TextBlock.text kindText ] :> IView
-                    TextBlock.create [ TextBlock.name UiIds.Library.readout; TextBlock.text boundText ] :> IView
+                    TextBlock.create [ TextBlock.name ConstructorUiId.libraryKindLabel.value; TextBlock.text kindText ] :> IView
+                    TextBlock.create [ TextBlock.name ConstructorUiId.libraryBoundReadout.value; TextBlock.text boundText ] :> IView
                     ScrollViewer.create [
                         ScrollViewer.maxHeight 220.0
                         ScrollViewer.content (
                             StackPanel.create [
-                                StackPanel.name UiIds.Library.tree
+                                StackPanel.name ConstructorUiId.libraryTree.value
                                 StackPanel.orientation Orientation.Vertical
                                 StackPanel.children (state.rows |> List.map (rowView state handlers))
                             ])

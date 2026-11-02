@@ -79,17 +79,17 @@ module SampleLibraryControlsTests =
 
     [<Fact>]
     let ``the Samples UiIds are the stable intent-named ids`` () =
-        Assert.Equal("SampleSearchBox", UiIds.SampleLibrary.searchBox)
-        Assert.Equal("SampleSubstrateFilter", UiIds.SampleLibrary.substrateFilter)
-        Assert.Equal("SamplesList", UiIds.SampleLibrary.list)
-        Assert.Equal("AddSampleButton", UiIds.SampleLibrary.addButton)
-        Assert.Equal("EditSampleButton", UiIds.SampleLibrary.editButton)
-        Assert.Equal("RemoveSampleButton", UiIds.SampleLibrary.removeButton)
-        Assert.Equal("ViewSampleButton", UiIds.SampleLibrary.viewButton)
-        Assert.Equal("MakeMultilayerButton", UiIds.SampleLibrary.makeMultilayerButton)
+        Assert.Equal("SampleSearchBox", ConstructorUiId.sampleSearchBox.value)
+        Assert.Equal("SampleSubstrateFilter", ConstructorUiId.sampleSubstrateFilter.value)
+        Assert.Equal("SamplesList", ConstructorUiId.samplesList.value)
+        Assert.Equal("AddSampleButton", ConstructorUiId.addSampleButton.value)
+        Assert.Equal("EditSampleButton", ConstructorUiId.editSampleButton.value)
+        Assert.Equal("RemoveSampleButton", ConstructorUiId.removeSampleButton.value)
+        Assert.Equal("ViewSampleButton", ConstructorUiId.viewSampleButton.value)
+        Assert.Equal("MakeMultilayerButton", ConstructorUiId.makeMultilayerButton.value)
         // The derived per-row / per-facet-option ids are prefixed so they cannot collide.
-        Assert.Equal("SampleRow_abc", UiIds.SampleLibrary.row "abc")
-        Assert.Equal("SampleSubstrateOption_plate", UiIds.SampleLibrary.substrateOption "plate")
+        Assert.Equal("SampleRow_abc", (ConstructorUiId.sampleRow (ConstructorUiKey "abc")).value)
+        Assert.Equal("SampleSubstrateOption_plate", (ConstructorUiId.sampleSubstrateOption (ConstructorUiKey "plate")).value)
 
     [<Fact>]
     let ``selectedRow resolves the selected id to its listed row, and None otherwise`` () =
@@ -106,14 +106,14 @@ module SampleLibraryControlsTests =
     /// through the clicks below).
     let private allFixedIds : string list =
         [
-            UiIds.SampleLibrary.searchBox
-            UiIds.SampleLibrary.substrateFilter
-            UiIds.SampleLibrary.list
-            UiIds.SampleLibrary.addButton
-            UiIds.SampleLibrary.editButton
-            UiIds.SampleLibrary.removeButton
-            UiIds.SampleLibrary.viewButton
-            UiIds.SampleLibrary.makeMultilayerButton
+            ConstructorUiId.sampleSearchBox.value
+            ConstructorUiId.sampleSubstrateFilter.value
+            ConstructorUiId.samplesList.value
+            ConstructorUiId.addSampleButton.value
+            ConstructorUiId.editSampleButton.value
+            ConstructorUiId.removeSampleButton.value
+            ConstructorUiId.viewSampleButton.value
+            ConstructorUiId.makeMultilayerButton.value
         ]
 
     let private isPresent (window : Window) (id : string) : bool =
@@ -150,25 +150,25 @@ module SampleLibraryControlsTests =
                 Assert.True(isPresent window id, $"%s{id} is missing from the mounted view")
             let count (tag : string) : int = calls |> Seq.filter ((=) tag) |> Seq.length
             // The acceptance click: Add invokes the ADD handler — and no other verb handler.
-            clickOn window UiIds.SampleLibrary.addButton
+            clickOn window ConstructorUiId.addSampleButton.value
             Assert.Equal(1, count "add")
             Assert.Equal(0, count "edit")
             Assert.Equal(0, count "remove")
             Assert.Equal(0, count "view")
             Assert.Equal(0, count "make-multilayer")
             // Each remaining verb dispatches ITS handler (a row is selected, so all are live).
-            clickOn window UiIds.SampleLibrary.editButton
+            clickOn window ConstructorUiId.editSampleButton.value
             Assert.Equal(1, count "edit")
-            clickOn window UiIds.SampleLibrary.removeButton
+            clickOn window ConstructorUiId.removeSampleButton.value
             Assert.Equal(1, count "remove")
-            clickOn window UiIds.SampleLibrary.viewButton
+            clickOn window ConstructorUiId.viewSampleButton.value
             Assert.Equal(1, count "view")
-            clickOn window UiIds.SampleLibrary.makeMultilayerButton
+            clickOn window ConstructorUiId.makeMultilayerButton.value
             Assert.Equal(1, count "make-multilayer")
             // A row click selects THAT sample; a facet-option click selects THAT substrate code.
-            clickOn window (UiIds.SampleLibrary.row "multilayer-qw")
+            clickOn window (ConstructorUiId.sampleRow (ConstructorUiKey "multilayer-qw")).value
             Assert.Contains("select:multilayer-qw", calls)
-            clickOn window (UiIds.SampleLibrary.substrateOption "plate")
+            clickOn window (ConstructorUiId.sampleSubstrateOption (ConstructorUiKey "plate")).value
             Assert.Contains("substrate:plate", calls)
             window.Close())
 
@@ -184,15 +184,15 @@ module SampleLibraryControlsTests =
             Dispatcher.UIThread.RunJobs()
             let count (tag : string) : int = calls |> Seq.filter ((=) tag) |> Seq.length
             // The row-targeted verbs are present but DISABLED — a click dispatches nothing.
-            clickOn window UiIds.SampleLibrary.editButton
-            clickOn window UiIds.SampleLibrary.removeButton
-            clickOn window UiIds.SampleLibrary.viewButton
+            clickOn window ConstructorUiId.editSampleButton.value
+            clickOn window ConstructorUiId.removeSampleButton.value
+            clickOn window ConstructorUiId.viewSampleButton.value
             Assert.Equal(0, count "edit")
             Assert.Equal(0, count "remove")
             Assert.Equal(0, count "view")
             // The two creation entry points need no selection.
-            clickOn window UiIds.SampleLibrary.addButton
+            clickOn window ConstructorUiId.addSampleButton.value
             Assert.Equal(1, count "add")
-            clickOn window UiIds.SampleLibrary.makeMultilayerButton
+            clickOn window ConstructorUiId.makeMultilayerButton.value
             Assert.Equal(1, count "make-multilayer")
             window.Close())

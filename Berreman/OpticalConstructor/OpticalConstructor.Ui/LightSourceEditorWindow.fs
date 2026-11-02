@@ -24,8 +24,8 @@ type LightSourceEditorWindow(sources : SourceProxy, intent : LightSourceEditorVi
             match intent with
             | LightSourceEditorView.EditSource s -> $"Source Editor — %s{s.name}"
             | LightSourceEditorView.NewSource _ -> "Source Editor — new source"
-        this.Name <- UiIds.SourceEditor.window
-        AutomationProperties.SetAutomationId(this, UiIds.SourceEditor.window)
+        this.Name <- ConstructorUiId.sourceEditorWindow.value
+        AutomationProperties.SetAutomationId(this, ConstructorUiId.sourceEditorWindow.value)
         this.Width <- 620.0
         this.Height <- 280.0
         // Spec 0046: never larger than the screen it opens on (its content scrolls).

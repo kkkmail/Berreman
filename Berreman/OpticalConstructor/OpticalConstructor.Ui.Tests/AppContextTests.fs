@@ -156,14 +156,14 @@ module AppContextTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let libraryOfFirst = opened.[0]
-            Assert.True(matchesId UiIds.LibraryWindow.window libraryOfFirst, "the strip button must open the Library window")
-            clickOn libraryOfFirst UiIds.LibraryWindow.makeMultilayerButton
+            Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryOfFirst, "the strip button must open the Library window")
+            clickOn libraryOfFirst ConstructorUiId.libraryMakeMultilayerButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             let editor = opened.[1]
-            Assert.True(matchesId UiIds.SampleEditor.window editor, "the opened window must be the Sample editor")
-            setText editor UiIds.SampleEditor.nameBox "Shared-scope sample"
-            clickOn editor UiIds.SampleEditor.saveButton
+            Assert.True(matchesId ConstructorUiId.sampleEditorWindow.value editor, "the opened window must be the Sample editor")
+            setText editor ConstructorUiId.sampleNameBox.value "Shared-scope sample"
+            clickOn editor ConstructorUiId.sampleEditorSaveButton.value
             Assert.False(editor.IsVisible, "Save must persist the entry and close the editor")
             // The id was minted at the verb dispatch — recover it through the SHARED app-scope store.
             let savedId =
@@ -184,9 +184,9 @@ module AppContextTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(3, opened.Count)
             let libraryOfSecond = opened.[2]
-            Assert.True(matchesId UiIds.LibraryWindow.window libraryOfSecond, "the strip button must open the Library window")
+            Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryOfSecond, "the strip button must open the Library window")
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
-            clickOn libraryOfSecond (UiIds.FacetedTree.treeNodeChevron "entries")
+            clickOn libraryOfSecond (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
             Assert.True(isPresent libraryOfSecond (LibraryWindowView.entryNode (string savedId.value)),
                         "the second Main window's Library window must list the sample added through the first")
             libraryOfSecond.Close()

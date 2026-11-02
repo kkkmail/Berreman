@@ -196,9 +196,9 @@ module MainWorkbenchTests =
             let window = mountMain (mainWith materials samples)
             // Spec 0038 steps 013/015: NO Materials and NO Library ribbon tab any more — the
             // tab-strip row carries the two right-aligned window buttons instead.
-            Assert.False(isPresent window (UiIds.Ribbon.tab "Materials"),
+            Assert.False(isPresent window (ConstructorUiId.ribbonTab (ConstructorUiKey "Materials")).value,
                          "the Materials bay tab must be gone from the ribbon")
-            Assert.False(isPresent window (UiIds.Ribbon.tab "Library"),
+            Assert.False(isPresent window (ConstructorUiId.ribbonTab (ConstructorUiKey "Library")).value,
                          "the Library bay tab must be gone from the ribbon")
             Assert.True(isPresent window WorkbenchIds.openMaterialsButton,
                         "the ribbon strip row must carry the right-aligned Materials… button")
@@ -206,9 +206,9 @@ module MainWorkbenchTests =
                         "the ribbon strip row must carry the right-aligned Library… button")
             // With no full-surface bay left, every bay keeps the shared table canvas below the
             // strip — switching to the LAST bay (Details) and back never drops it.
-            Assert.True(isPresent window UiIds.TableAndElementRotation.canvas, "the default bay keeps the table canvas below the ribbon strip")
-            clickOn window (UiIds.Ribbon.tab BayNames.details)
-            Assert.True(isPresent window UiIds.TableAndElementRotation.canvas, "an in-pane bay keeps the table canvas below the strip")
-            clickOn window (UiIds.Ribbon.tab BayNames.rotation)
-            Assert.True(isPresent window UiIds.TableAndElementRotation.canvas, "returning to a table bay keeps the table canvas")
+            Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "the default bay keeps the table canvas below the ribbon strip")
+            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.details)).value
+            Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "an in-pane bay keeps the table canvas below the strip")
+            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.rotation)).value
+            Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "returning to a table bay keeps the table canvas")
             window.Close())

@@ -181,7 +181,7 @@ module LauncherTests =
         withLauncher (fun launcher ->
             match clickAndObserve launcher LauncherIds.openMaterialsButton with
             | [ opened ] ->
-                Assert.True(matchesId UiIds.MaterialsWindow.window opened, "'OpenMaterialsButton' must open the Materials window")
+                Assert.True(matchesId ConstructorUiId.materialsWindow.value opened, "'OpenMaterialsButton' must open the Materials window")
                 Assert.True(opened.IsVisible, "the Materials window must be shown")
                 // Close it so the shared WindowRegistry does not leak the MaterialsWindowKey registration.
                 opened.Close()
@@ -194,7 +194,7 @@ module LauncherTests =
         withLauncher (fun launcher ->
             match clickAndObserve launcher LauncherIds.openLibraryButton with
             | [ opened ] ->
-                Assert.True(matchesId UiIds.LibraryWindow.window opened, "'OpenLibraryButton' must open the Library window")
+                Assert.True(matchesId ConstructorUiId.libraryWindow.value opened, "'OpenLibraryButton' must open the Library window")
                 Assert.True(opened.IsVisible, "the Library window must be shown")
                 // Close it so the shared WindowRegistry does not leak the LibraryWindowKey registration.
                 opened.Close()
@@ -222,7 +222,7 @@ module LauncherTests =
                     Window.WindowOpenedEvent.Raised
                     |> Observable.subscribe (fun (struct (sender, _args)) ->
                         match sender with
-                        | :? Window as w when matchesId UiIds.MaterialsWindow.window w -> materialsOpens.Add w
+                        | :? Window as w when matchesId ConstructorUiId.materialsWindow.value w -> materialsOpens.Add w
                         | _ -> ())
                 // 1) launcher Materials button → CREATES the single instance.
                 (match tryFindButton LauncherIds.openMaterialsButton launcher with

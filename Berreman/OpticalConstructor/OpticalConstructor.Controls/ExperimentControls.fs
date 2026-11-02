@@ -358,7 +358,7 @@ module ExperimentControls =
     let private seriesPolyline (xr : float * float) (yr : float * float) (index : int) (s : ChartSeries) : IView =
         let pts = s.points |> List.map (fun (x, y) -> toPlot xr yr x y)
         Polyline.create [
-            Polyline.name UiIds.Experiment.chart
+            Polyline.name ConstructorUiId.experimentChart.value
             Polyline.points pts
             Polyline.stroke (brush seriesColors.[index % seriesColors.Length])
             Polyline.strokeThickness 1.5
@@ -415,10 +415,10 @@ module ExperimentControls =
             | Some (psiDeg, deltaDeg) ->
                 let psiText =
                     TextBlock.create [
-                        TextBlock.name UiIds.Experiment.psiDelta
+                        TextBlock.name ConstructorUiId.ellipsometerReadout.value
                         TextBlock.text $"Ψ = %.2f{psiDeg}°   Δ = %.2f{deltaDeg}°"
                     ]
-                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.Experiment.psiDelta
+                    |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.ellipsometerReadout.value
                 [ psiText :> IView ]
             | None -> []
         let chartBlock =
@@ -441,26 +441,26 @@ module ExperimentControls =
                     |> Avalonia.FuncUI.DSL.View.withKey "ExperimentChartBox"
                 let descriptionText =
                     TextBlock.create [
-                        TextBlock.name UiIds.Experiment.description
+                        TextBlock.name ConstructorUiId.experimentChartDescription.value
                         TextBlock.text state.description
                         TextBlock.fontSize 11.0
                         TextBlock.textWrapping TextWrapping.Wrap
                         TextBlock.maxWidth 360.0
                     ]
-                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.Experiment.description
+                    |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.experimentChartDescription.value
                 [ chartBox :> IView; descriptionText :> IView ]
         psiBlock @ chartBlock
 
     /// The element-selection row (step 1 of the editor).
     let private elementRow (state : State) (handlers : Handlers) : IView =
         WrapPanel.create [
-            WrapPanel.name UiIds.Experiment.candidates
+            WrapPanel.name ConstructorUiId.experimentCandidates.value
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children (
                 state.candidates
                 |> List.map (fun c ->
                     idOptionBox
-                        (UiIds.Experiment.candidate c.elementId)
+                        (ConstructorUiId.experimentCandidate (ConstructorUiKey c.elementId)).value
                         c.label
                         (state.chosenId = Some c.elementId)
                         state.enabled
@@ -491,7 +491,7 @@ module ExperimentControls =
                         |> List.map (fun v ->
                             let allowed = List.contains v state.variableChoices
                             optionBoxV
-                                (UiIds.Experiment.variable (variableCode v))
+                                (ConstructorUiId.experimentVariable (ConstructorUiKey (variableCode v))).value
                                 (variableLabel v)
                                 (state.chosenVariable = Some v)
                                 (state.enabled && allowed)
@@ -513,7 +513,7 @@ module ExperimentControls =
             let offer = offerOf m
             let offered = Option.isSome offer
             optionBoxV
-                (UiIds.Experiment.measurement (measurementCode m))
+                (ConstructorUiId.experimentMeasurement (ConstructorUiKey (measurementCode m))).value
                 (offer |> Option.map (fun o -> o.label) |> Option.defaultValue (measurementLabel m))
                 (state.measurement = m)
                 (state.enabled && offered)
@@ -524,7 +524,7 @@ module ExperimentControls =
             StackPanel.isVisible hasVariable
             StackPanel.children [
                 TextBlock.create [
-                    TextBlock.name UiIds.Experiment.noCapture
+                    TextBlock.name ConstructorUiId.experimentNoCapture.value
                     TextBlock.text "(no detector captures this element's light — put a detector on its transmitted beam or on its reflected ray: right-click an element for its rays)"
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.maxWidth 420.0
@@ -580,11 +580,11 @@ module ExperimentControls =
             StackPanel.isVisible hasVariable
             StackPanel.children [
                 TextBlock.create [ TextBlock.text $"min (%s{state.rangeUnitLabel}):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.Experiment.rangeMin $"%g{state.rangeMin}" state.enabled (commitFloat handlers.setRangeMin)
+                numberField ConstructorUiId.experimentRangeMin.value $"%g{state.rangeMin}" state.enabled (commitFloat handlers.setRangeMin)
                 TextBlock.create [ TextBlock.text $"max (%s{state.rangeUnitLabel}):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.Experiment.rangeMax $"%g{state.rangeMax}" state.enabled (commitFloat handlers.setRangeMax)
+                numberField ConstructorUiId.experimentRangeMax.value $"%g{state.rangeMax}" state.enabled (commitFloat handlers.setRangeMax)
                 TextBlock.create [ TextBlock.text "points:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.Experiment.rangePoints $"%d{state.rangePoints}" state.enabled (commitInt handlers.setRangePoints)
+                numberField ConstructorUiId.experimentRangePoints.value $"%d{state.rangePoints}" state.enabled (commitInt handlers.setRangePoints)
             ]
         ] :> IView
 
@@ -607,8 +607,8 @@ module ExperimentControls =
             StackPanel.isVisible shown
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Source wavelength:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.Experiment.sourceWaveLength valueText (state.enabled && editable) commit
-                TextBlock.create [ TextBlock.name UiIds.Experiment.sourceWaveLengthNote; TextBlock.text note; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField ConstructorUiId.experimentSourceWaveLength.value valueText (state.enabled && editable) commit
+                TextBlock.create [ TextBlock.name ConstructorUiId.experimentSourceWaveLengthNote.value; TextBlock.text note; TextBlock.verticalAlignment VerticalAlignment.Center ]
             ]
         ] :> IView
 
@@ -639,8 +639,8 @@ module ExperimentControls =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [
-                actionButton UiIds.Experiment.addButton (if state.isEditing then "Update experiment" else "Add experiment") true state.canAdd handlers.addOrUpdate
-                actionButton UiIds.Experiment.newButton "New" false state.enabled handlers.newExperiment
+                actionButton ConstructorUiId.experimentAddButton.value (if state.isEditing then "Update experiment" else "Add experiment") true state.canAdd handlers.addOrUpdate
+                actionButton ConstructorUiId.experimentNewButton.value "New" false state.enabled handlers.newExperiment
             ]
         ] :> IView
 
@@ -671,7 +671,7 @@ module ExperimentControls =
                 StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
                 StackPanel.children [
                     Border.create [
-                        automationId (UiIds.Experiment.editButton r.id)
+                        automationId (ConstructorUiId.experimentEditButton (ConstructorUiKey r.id)).value
                         Border.background (brush (if r.isEditing then editingBackground else idleBackground))
                         Border.borderBrush (brush idleBorder)
                         Border.borderThickness 1.0
@@ -685,8 +685,8 @@ module ExperimentControls =
                         Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.isEditing)))
                         Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id))
                     ] :> IView
-                    rowActionButton (UiIds.Experiment.viewButton r.id) "View ↗" true (fun () -> handlers.viewExperiment r.id)
-                    rowActionButton (UiIds.Experiment.removeButton r.id) "Remove" false (fun () -> handlers.removeExperiment r.id)
+                    rowActionButton (ConstructorUiId.experimentViewButton (ConstructorUiKey r.id)).value "View ↗" true (fun () -> handlers.viewExperiment r.id)
+                    rowActionButton (ConstructorUiId.experimentRemoveButton (ConstructorUiKey r.id)).value "Remove" false (fun () -> handlers.removeExperiment r.id)
                 ]
             ]
             |> Avalonia.FuncUI.DSL.View.withKey r.id
@@ -700,7 +700,7 @@ module ExperimentControls =
              | [] -> TextBlock.create [ TextBlock.text "(none added yet — build one above and click Add)"; TextBlock.foreground (brush (color 120 120 120)) ] :> IView
              | rows ->
                  StackPanel.create [
-                     StackPanel.name UiIds.Experiment.collection
+                     StackPanel.name ConstructorUiId.experimentCollection.value
                      StackPanel.orientation Orientation.Vertical
                      StackPanel.children (rows |> List.map (collectionRow handlers))
                  ] :> IView)
@@ -718,7 +718,7 @@ module ExperimentControls =
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    TextBlock.create [ TextBlock.name UiIds.Experiment.readout; TextBlock.text readoutText ] :> IView
+                    TextBlock.create [ TextBlock.name ConstructorUiId.experimentReadout.value; TextBlock.text readoutText ] :> IView
                     heading "1. Element to vary:"
                     elementRow state handlers
                     heading "2. Vary:"

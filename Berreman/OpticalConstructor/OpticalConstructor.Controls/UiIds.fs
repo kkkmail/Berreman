@@ -1,947 +1,579 @@
 namespace OpticalConstructor.Controls
 
-/// Spec 0038 (step 044): the ONE home for every automation-id literal. Before this step each
-/// control / view / window carried its own nested `UiIds` module; those are all retired and their
-/// constants gathered here, unchanged in value, under one `[<RequireQualifiedAccess>] module UiIds`
-/// with a nested per-surface sub-module. Control sites and tests address an id as
-/// `UiIds.<Surface>.<member>`. Fixed ids are `[<Literal>]` (so a test may cite them in an
-/// `InlineData` attribute); parametric, host-code-derived ids stay functions.
+open Avalonia.Automation
+open Avalonia.Controls
+open Avalonia.FuncUI.Builder
+open Avalonia.FuncUI.Types
+
+/// Where a repeated control sits in its surface (a band, a layer row, a dispersion segment, a principal
+/// axis): what tells it apart from its siblings when that is a position.
+type ConstructorUiPosition =
+    | ConstructorUiPosition of int
+
+    member this.value = let (ConstructorUiPosition v) = this in v
+
+/// What tells a repeated control apart from its siblings when that is a name: the host's stable id or
+/// code of the entry, element, experiment or option the control stands for.
+type ConstructorUiKey =
+    | ConstructorUiKey of string
+
+    member this.value = let (ConstructorUiKey v) = this in v
+
+/// The stable automation id of one Optical Constructor control (spec 0048 R1, the shape of STL's `VncUiId`).
 ///
-/// This module is compiled FIRST in `OpticalConstructor.Controls` so every downstream control,
-/// view and window (and every test) resolves it. It is deliberately DOMAIN-FREE — the Controls
-/// project references no Domain types — so the two window views' Domain-typed id helpers
-/// (`LibraryWindowView.versionRow`/`entryNode`, `MaterialsWindowView.versionRow`/`entryNode`) stay
-/// as plain functions beside their views rather than moving here; every literal they carried does.
-[<RequireQualifiedAccess>]
-module UiIds =
+/// The views and the tests share an id, so it is a domain value: one member per control, its text
+/// unchanged from spec 0038's `UiIds` literals. An id derived from a Domain value is an extension
+/// member in the Ui project (`ConstructorUiIdOfDomain`), because Controls references no Domain type.
+type ConstructorUiId =
+    | ConstructorUiId of string
 
-    // ---- Controls surfaces -------------------------------------------------------------------
+    member this.value = let (ConstructorUiId v) = this in v
 
-    /// The reusable rotation-controls bar (`RotationControls`).
-    module Rotation =
-        [<Literal>]
-        let r1Minus = "RotationR1MinusButton"
-        [<Literal>]
-        let r1Plus = "RotationR1PlusButton"
-        [<Literal>]
-        let r2Minus = "RotationR2MinusButton"
-        [<Literal>]
-        let r2Plus = "RotationR2PlusButton"
-        [<Literal>]
-        let r3Minus = "RotationR3MinusButton"
-        [<Literal>]
-        let r3Plus = "RotationR3PlusButton"
-        [<Literal>]
-        let r1Field = "RotationR1Field"
-        [<Literal>]
-        let r2Field = "RotationR2Field"
-        [<Literal>]
-        let r3Field = "RotationR3Field"
-        [<Literal>]
-        let lockR3 = "RotationLockR3Button"
-        /// Spec 0046: the R1 / R2 lock toggles (offered for elements; the light source starts locked).
-        [<Literal>]
-        let lockR1 = "RotationLockR1Button"
-        [<Literal>]
-        let lockR2 = "RotationLockR2Button"
-        // The two reset buttons keep these stable ids in BOTH modes: "Reset"/"Reset All" when idle,
-        // and the confirmation "Yes"/"No" when a reset is armed (the label/action changes, not the id).
-        [<Literal>]
-        let reset = "RotationResetButton"
-        [<Literal>]
-        let resetAll = "RotationResetAllButton"
+    /// The id as the control's `AutomationProperties.AutomationId`.
+    member this.automationAttribute<'Control when 'Control :> Control> () : IAttr<'Control> =
+        AttrBuilder<'Control>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, this.value, ValueNone)
 
-    /// The element-palette bar (`ElementPaletteControls`).
-    module ElementPalette =
-        [<Literal>]
-        let removeSelected = "PaletteRemoveSelectedButton"
-        /// The add button id for an entry — the entry id, prefixed so it cannot collide with other ids.
-        let addButton (entryId : string) : string = "PaletteAdd_" + entryId
+    // --- The reusable rotation-controls bar (`RotationControls`). ---
+    static member rotationR1MinusButton : ConstructorUiId = ConstructorUiId "RotationR1MinusButton"
+    static member rotationR1PlusButton : ConstructorUiId = ConstructorUiId "RotationR1PlusButton"
+    static member rotationR2MinusButton : ConstructorUiId = ConstructorUiId "RotationR2MinusButton"
+    static member rotationR2PlusButton : ConstructorUiId = ConstructorUiId "RotationR2PlusButton"
+    static member rotationR3MinusButton : ConstructorUiId = ConstructorUiId "RotationR3MinusButton"
+    static member rotationR3PlusButton : ConstructorUiId = ConstructorUiId "RotationR3PlusButton"
+    static member rotationR1Field : ConstructorUiId = ConstructorUiId "RotationR1Field"
+    static member rotationR2Field : ConstructorUiId = ConstructorUiId "RotationR2Field"
+    static member rotationR3Field : ConstructorUiId = ConstructorUiId "RotationR3Field"
+    static member rotationLockR3Button : ConstructorUiId = ConstructorUiId "RotationLockR3Button"
+    /// Spec 0046: the R1 / R2 lock toggles (offered for elements; the light source starts locked).
+    static member rotationLockR1Button : ConstructorUiId = ConstructorUiId "RotationLockR1Button"
+    static member rotationLockR2Button : ConstructorUiId = ConstructorUiId "RotationLockR2Button"
+    // The two reset buttons keep these stable ids in BOTH modes: "Reset"/"Reset All" when idle,
+    // and the confirmation "Yes"/"No" when a reset is armed (the label/action changes, not the id).
+    static member rotationResetButton : ConstructorUiId = ConstructorUiId "RotationResetButton"
+    static member rotationResetAllButton : ConstructorUiId = ConstructorUiId "RotationResetAllButton"
 
-    /// The position-on-the-ray bar (`RayPositionControls`).
-    module RayPosition =
-        [<Literal>]
-        let minus = "RayPositionMinusButton"
-        [<Literal>]
-        let plus = "RayPositionPlusButton"
-        [<Literal>]
-        let field = "RayPositionField"
-        [<Literal>]
-        let reset = "RayPositionResetButton"
-        [<Literal>]
-        let readout = "RayPositionReadout"
+    // --- The element-palette bar (`ElementPaletteControls`). ---
+    static member paletteRemoveSelectedButton : ConstructorUiId = ConstructorUiId "PaletteRemoveSelectedButton"
+    /// The add button of a palette entry.
+    static member paletteAddButton (entry : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"PaletteAdd_{entry.value}"
 
-    /// Spec 0046: the free table-position bar (`TablePositionControls`) — the light source's x / y / z,
-    /// each with − / + steps, a metres field and a Lock / Unlock toggle, plus one Reset.
-    module TablePosition =
-        [<Literal>]
-        let xMinus = "TablePositionXMinusButton"
-        [<Literal>]
-        let xPlus = "TablePositionXPlusButton"
-        [<Literal>]
-        let xField = "TablePositionXField"
-        [<Literal>]
-        let xLock = "TablePositionXLockButton"
-        [<Literal>]
-        let yMinus = "TablePositionYMinusButton"
-        [<Literal>]
-        let yPlus = "TablePositionYPlusButton"
-        [<Literal>]
-        let yField = "TablePositionYField"
-        [<Literal>]
-        let yLock = "TablePositionYLockButton"
-        [<Literal>]
-        let zMinus = "TablePositionZMinusButton"
-        [<Literal>]
-        let zPlus = "TablePositionZPlusButton"
-        [<Literal>]
-        let zField = "TablePositionZField"
-        [<Literal>]
-        let zLock = "TablePositionZLockButton"
-        [<Literal>]
-        let reset = "TablePositionResetButton"
-        [<Literal>]
-        let readout = "TablePositionReadout"
+    // --- The position-on-the-ray bar (`RayPositionControls`). ---
+    static member rayPositionMinusButton : ConstructorUiId = ConstructorUiId "RayPositionMinusButton"
+    static member rayPositionPlusButton : ConstructorUiId = ConstructorUiId "RayPositionPlusButton"
+    static member rayPositionField : ConstructorUiId = ConstructorUiId "RayPositionField"
+    static member rayPositionResetButton : ConstructorUiId = ConstructorUiId "RayPositionResetButton"
+    static member rayPositionReadout : ConstructorUiId = ConstructorUiId "RayPositionReadout"
 
-    /// The renderer "large control" (`RendererControls`).
-    module Renderer =
-        [<Literal>]
-        let swapRenderer = "RendererSwapButton"
-        [<Literal>]
-        let readout = "RendererReadout"
-        [<Literal>]
-        let railsSlider = "RendererRailsSlider"
-        [<Literal>]
-        let capCirclesSlider = "RendererCapCirclesSlider"
-        [<Literal>]
-        let capRadialsSlider = "RendererCapRadialsSlider"
-        [<Literal>]
-        let railOpacitySlider = "RendererRailOpacitySlider"
-        [<Literal>]
-        let faceOpacitySlider = "RendererFaceOpacitySlider"
-        [<Literal>]
-        let lineOpacitySlider = "RendererLineOpacitySlider"
+    // --- The light source's free x / y / z bar (`TablePositionControls`, spec 0046). ---
+    static member tablePositionXMinusButton : ConstructorUiId = ConstructorUiId "TablePositionXMinusButton"
+    static member tablePositionXPlusButton : ConstructorUiId = ConstructorUiId "TablePositionXPlusButton"
+    static member tablePositionXField : ConstructorUiId = ConstructorUiId "TablePositionXField"
+    static member tablePositionXLockButton : ConstructorUiId = ConstructorUiId "TablePositionXLockButton"
+    static member tablePositionYMinusButton : ConstructorUiId = ConstructorUiId "TablePositionYMinusButton"
+    static member tablePositionYPlusButton : ConstructorUiId = ConstructorUiId "TablePositionYPlusButton"
+    static member tablePositionYField : ConstructorUiId = ConstructorUiId "TablePositionYField"
+    static member tablePositionYLockButton : ConstructorUiId = ConstructorUiId "TablePositionYLockButton"
+    static member tablePositionZMinusButton : ConstructorUiId = ConstructorUiId "TablePositionZMinusButton"
+    static member tablePositionZPlusButton : ConstructorUiId = ConstructorUiId "TablePositionZPlusButton"
+    static member tablePositionZField : ConstructorUiId = ConstructorUiId "TablePositionZField"
+    static member tablePositionZLockButton : ConstructorUiId = ConstructorUiId "TablePositionZLockButton"
+    static member tablePositionResetButton : ConstructorUiId = ConstructorUiId "TablePositionResetButton"
+    static member tablePositionReadout : ConstructorUiId = ConstructorUiId "TablePositionReadout"
 
-    /// The main-screen ribbon of bays (`Ribbon`).
-    module Ribbon =
-        /// The selectable tab for a bay — its name, prefixed so it cannot collide with other ids.
-        let tab (name : string) : string = "RibbonTab_" + name
-        /// The single active content slot — named by the bay currently shown.
-        let pane (name : string) : string = "RibbonPane_" + name
+    // --- The renderer "large control" (`RendererControls`). ---
+    static member rendererSwapButton : ConstructorUiId = ConstructorUiId "RendererSwapButton"
+    static member rendererReadout : ConstructorUiId = ConstructorUiId "RendererReadout"
+    static member rendererRailsSlider : ConstructorUiId = ConstructorUiId "RendererRailsSlider"
+    static member rendererCapCirclesSlider : ConstructorUiId = ConstructorUiId "RendererCapCirclesSlider"
+    static member rendererCapRadialsSlider : ConstructorUiId = ConstructorUiId "RendererCapRadialsSlider"
+    static member rendererRailOpacitySlider : ConstructorUiId = ConstructorUiId "RendererRailOpacitySlider"
+    static member rendererFaceOpacitySlider : ConstructorUiId = ConstructorUiId "RendererFaceOpacitySlider"
+    static member rendererLineOpacitySlider : ConstructorUiId = ConstructorUiId "RendererLineOpacitySlider"
 
-    /// The kind-constrained Library bay list/tree (`LibraryControls`).
-    module Library =
-        [<Literal>]
-        let readout = "LibraryBoundReadout"
-        [<Literal>]
-        let kindLabel = "LibraryKindLabel"
-        [<Literal>]
-        let tree = "LibraryTree"
-        /// A leaf row's clickable id — the entry id, prefixed so it cannot collide with other ids.
-        let entry (entryId : string) : string = "LibraryEntry_" + entryId
-        /// The pending-entry full-description text (shown before confirm).
-        [<Literal>]
-        let description = "LibraryEntryDescription"
-        /// The Confirm / Cancel actions of the pending bind.
-        [<Literal>]
-        let confirm = "LibraryConfirmButton"
-        [<Literal>]
-        let cancel = "LibraryCancelButton"
+    // --- The main-screen ribbon of bays (`Ribbon`). ---
+    /// The selectable tab of a bay, by the bay's name.
+    static member ribbonTab (bay : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"RibbonTab_{bay.value}"
+    /// The single active content slot, named by the bay it shows.
+    static member ribbonPane (bay : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"RibbonPane_{bay.value}"
 
-    /// The layer-stack band view / Details bay (`LayerBandsControls`).
-    module LayerBands =
-        [<Literal>]
-        let stack = "LayerBandsStack"
-        [<Literal>]
-        let title = "LayerBandsTitle"
-        /// The i-th band's drawn rectangle (0-based, top-to-bottom in band order).
-        let band (i : int) : string = "LayerBand_" + string i
+    // --- The kind-constrained Library bay list/tree (`LibraryControls`). ---
+    static member libraryBoundReadout : ConstructorUiId = ConstructorUiId "LibraryBoundReadout"
+    static member libraryKindLabel : ConstructorUiId = ConstructorUiId "LibraryKindLabel"
+    static member libraryTree : ConstructorUiId = ConstructorUiId "LibraryTree"
+    /// A leaf row's clickable box, by the entry's id.
+    static member libraryEntry (entry : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"LibraryEntry_{entry.value}"
+    /// The pending-entry full-description text (shown before confirm).
+    static member libraryEntryDescription : ConstructorUiId = ConstructorUiId "LibraryEntryDescription"
+    /// The Confirm / Cancel actions of the pending bind.
+    static member libraryConfirmButton : ConstructorUiId = ConstructorUiId "LibraryConfirmButton"
+    static member libraryCancelButton : ConstructorUiId = ConstructorUiId "LibraryCancelButton"
 
-    /// The Experiments bay (`ExperimentControls`).
-    module Experiment =
-        [<Literal>]
-        let readout = "ExperimentReadout"
-        [<Literal>]
-        let candidates = "ExperimentCandidates"
-        /// A candidate element's clickable id — the element id, prefixed so it cannot collide.
-        let candidate (elementId : string) : string = "ExperimentCandidate_" + elementId
-        /// A variable-choice selector, by its code ("wavelength" / "r1" / "r2").
-        let variable (code : string) : string = "ExperimentVariable_" + code
-        /// A measurement-choice selector, by its code ("t" / "r" / "both").
-        let measurement (code : string) : string = "ExperimentMeasurement_" + code
-        /// Spec 0046: the hint shown instead of the capture choices while no detector captures the chosen
-        /// element's light.
-        [<Literal>]
-        let noCapture = "ExperimentNoCapture"
-        /// Spec 0046: the source-wavelength field (a tunable source's setting while something else varies).
-        [<Literal>]
-        let sourceWaveLength = "ExperimentSourceWaveLength"
-        [<Literal>]
-        let sourceWaveLengthNote = "ExperimentSourceWaveLengthNote"
-        /// Spec 0046: Export data (the draft's computed run through the export seam) and its status line.
-        [<Literal>]
-        let exportButton = "ExperimentExportButton"
-        [<Literal>]
-        let exportStatus = "ExperimentExportStatus"
-        /// The range inputs.
-        [<Literal>]
-        let rangeMin = "ExperimentRangeMin"
-        [<Literal>]
-        let rangeMax = "ExperimentRangeMax"
-        [<Literal>]
-        let rangePoints = "ExperimentRangePoints"
-        /// The Add / Update and New actions.
-        [<Literal>]
-        let addButton = "ExperimentAddButton"
-        [<Literal>]
-        let newButton = "ExperimentNewButton"
-        /// The collection list and a row's Edit / Remove actions.
-        [<Literal>]
-        let collection = "ExperimentCollection"
-        let editButton (id : string) : string = "ExperimentEdit_" + id
-        let removeButton (id : string) : string = "ExperimentRemove_" + id
-        /// A row's "View" action — open the pop-out chart window for that experiment.
-        let viewButton (id : string) : string = "ExperimentView_" + id
-        /// The inline result polyline (the first series — the intensity / Ψ curve).
-        [<Literal>]
-        let chart = "ExperimentChart"
-        /// The ellipsometer Ψ/Δ single-point readout text.
-        [<Literal>]
-        let psiDelta = "EllipsometerReadout"
-        /// The chart description text shown under the inline chart.
-        [<Literal>]
-        let description = "ExperimentChartDescription"
+    // --- The layer-stack band view / Details bay (`LayerBandsControls`). ---
+    static member layerBandsStack : ConstructorUiId = ConstructorUiId "LayerBandsStack"
+    static member layerBandsTitle : ConstructorUiId = ConstructorUiId "LayerBandsTitle"
+    /// A band's drawn rectangle, top to bottom in band order from 0.
+    static member layerBand (band : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"LayerBand_{band.value}"
 
-    /// The materials workbench list surface (`MaterialsControls`).
-    module Materials =
-        [<Literal>]
-        let searchBox = "MaterialSearchBox"
-        [<Literal>]
-        let categoryFilter = "MaterialCategoryFilter"
-        [<Literal>]
-        let dispersionFilter = "MaterialDispersionFilter"
-        [<Literal>]
-        let list = "MaterialsList"
-        [<Literal>]
-        let addButton = "AddMaterialButton"
-        [<Literal>]
-        let editButton = "EditMaterialButton"
-        [<Literal>]
-        let removeButton = "RemoveMaterialButton"
-        [<Literal>]
-        let viewButton = "ViewMaterialButton"
-        /// A listed row's clickable id — the material id, prefixed so it cannot collide.
-        let row (materialId : string) : string = "MaterialRow_" + materialId
-        /// A category facet option's clickable id, by its host-supplied code.
-        let categoryOption (code : string) : string = "MaterialCategoryOption_" + code
-        /// A dispersion facet option's clickable id, by its host-supplied code.
-        let dispersionOption (code : string) : string = "MaterialDispersionOption_" + code
+    // --- The Experiments bay (`ExperimentControls`). ---
+    static member experimentReadout : ConstructorUiId = ConstructorUiId "ExperimentReadout"
+    static member experimentCandidates : ConstructorUiId = ConstructorUiId "ExperimentCandidates"
+    /// A candidate element's clickable box, by the element's id.
+    static member experimentCandidate (element : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentCandidate_{element.value}"
+    /// A variable choice, by its code ("wavelength" / "r1" / "r2").
+    static member experimentVariable (variable : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentVariable_{variable.value}"
+    /// A measurement choice, by its code ("t" / "r" / "both").
+    static member experimentMeasurement (measurement : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentMeasurement_{measurement.value}"
+    /// Spec 0046: the hint shown instead of the capture choices while no detector captures the chosen
+    /// element's light.
+    static member experimentNoCapture : ConstructorUiId = ConstructorUiId "ExperimentNoCapture"
+    /// Spec 0046: the source-wavelength field (a tunable source's setting while something else varies).
+    static member experimentSourceWaveLength : ConstructorUiId = ConstructorUiId "ExperimentSourceWaveLength"
+    static member experimentSourceWaveLengthNote : ConstructorUiId = ConstructorUiId "ExperimentSourceWaveLengthNote"
+    /// Spec 0046: Export data (the draft's computed run through the export seam) and its status line.
+    static member experimentExportButton : ConstructorUiId = ConstructorUiId "ExperimentExportButton"
+    static member experimentExportStatus : ConstructorUiId = ConstructorUiId "ExperimentExportStatus"
+    /// The range inputs.
+    static member experimentRangeMin : ConstructorUiId = ConstructorUiId "ExperimentRangeMin"
+    static member experimentRangeMax : ConstructorUiId = ConstructorUiId "ExperimentRangeMax"
+    static member experimentRangePoints : ConstructorUiId = ConstructorUiId "ExperimentRangePoints"
+    /// The Add / Update and New actions.
+    static member experimentAddButton : ConstructorUiId = ConstructorUiId "ExperimentAddButton"
+    static member experimentNewButton : ConstructorUiId = ConstructorUiId "ExperimentNewButton"
+    /// The collection list and a row's Edit / Remove actions.
+    static member experimentCollection : ConstructorUiId = ConstructorUiId "ExperimentCollection"
+    /// A collected experiment's Edit, Remove and View (open its chart window) actions.
+    static member experimentEditButton (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentEdit_{experiment.value}"
+    static member experimentRemoveButton (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentRemove_{experiment.value}"
+    static member experimentViewButton (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentView_{experiment.value}"
+    /// The inline result polyline (the first series — the intensity / Ψ curve).
+    static member experimentChart : ConstructorUiId = ConstructorUiId "ExperimentChart"
+    /// The ellipsometer Ψ/Δ single-point readout text.
+    static member ellipsometerReadout : ConstructorUiId = ConstructorUiId "EllipsometerReadout"
+    /// The chart description text shown under the inline chart.
+    static member experimentChartDescription : ConstructorUiId = ConstructorUiId "ExperimentChartDescription"
 
-    /// The samples workbench list surface (`SampleLibraryControls`).
-    module SampleLibrary =
-        [<Literal>]
-        let searchBox = "SampleSearchBox"
-        [<Literal>]
-        let substrateFilter = "SampleSubstrateFilter"
-        [<Literal>]
-        let list = "SamplesList"
-        [<Literal>]
-        let addButton = "AddSampleButton"
-        [<Literal>]
-        let editButton = "EditSampleButton"
-        [<Literal>]
-        let removeButton = "RemoveSampleButton"
-        [<Literal>]
-        let viewButton = "ViewSampleButton"
-        [<Literal>]
-        let makeMultilayerButton = "MakeMultilayerButton"
-        /// A listed row's clickable id — the sample id, prefixed so it cannot collide.
-        let row (sampleId : string) : string = "SampleRow_" + sampleId
-        /// A substrate facet option's clickable id, by its host-supplied code.
-        let substrateOption (code : string) : string = "SampleSubstrateOption_" + code
+    // --- The materials workbench list surface (`MaterialsControls`). ---
+    static member materialSearchBox : ConstructorUiId = ConstructorUiId "MaterialSearchBox"
+    static member materialCategoryFilter : ConstructorUiId = ConstructorUiId "MaterialCategoryFilter"
+    static member materialDispersionFilter : ConstructorUiId = ConstructorUiId "MaterialDispersionFilter"
+    static member materialsList : ConstructorUiId = ConstructorUiId "MaterialsList"
+    static member addMaterialButton : ConstructorUiId = ConstructorUiId "AddMaterialButton"
+    static member editMaterialButton : ConstructorUiId = ConstructorUiId "EditMaterialButton"
+    static member removeMaterialButton : ConstructorUiId = ConstructorUiId "RemoveMaterialButton"
+    static member viewMaterialButton : ConstructorUiId = ConstructorUiId "ViewMaterialButton"
+    /// A listed material's clickable row, by the material's id.
+    static member materialRow (material : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"MaterialRow_{material.value}"
+    /// A category or dispersion facet option, by its host-supplied code.
+    static member materialCategoryOption (category : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"MaterialCategoryOption_{category.value}"
+    static member materialDispersionOption (dispersion : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"MaterialDispersionOption_{dispersion.value}"
 
-    /// The Category-manager list surface (`CategoryControls`).
-    module Category =
-        [<Literal>]
-        let list = "CategoriesList"
-        [<Literal>]
-        let addButton = "AddCategoryButton"
-        [<Literal>]
-        let nameBox = "CategoryNameBox"
-        [<Literal>]
-        let removeButton = "RemoveCategoryButton"
-        [<Literal>]
-        let saveButton = "CategorySaveButton"
-        [<Literal>]
-        let cancelButton = "CategoryCancelButton"
-        [<Literal>]
-        let blockMessage = "CategoryBlockMessage"
-        /// A row's inline name box id — the base id prefixed with the row's category id.
-        let rowNameBox (categoryId : string) : string = nameBox + "_" + categoryId
-        /// A row's Save (rename) button id.
-        let rowSaveButton (categoryId : string) : string = saveButton + "_" + categoryId
-        /// A row's Remove button id (present only for a non-built-in row).
-        let rowRemoveButton (categoryId : string) : string = removeButton + "_" + categoryId
-        /// A row's Cancel button id.
-        let rowCancelButton (categoryId : string) : string = cancelButton + "_" + categoryId
+    // --- The samples workbench list surface (`SampleLibraryControls`). ---
+    static member sampleSearchBox : ConstructorUiId = ConstructorUiId "SampleSearchBox"
+    static member sampleSubstrateFilter : ConstructorUiId = ConstructorUiId "SampleSubstrateFilter"
+    static member samplesList : ConstructorUiId = ConstructorUiId "SamplesList"
+    static member addSampleButton : ConstructorUiId = ConstructorUiId "AddSampleButton"
+    static member editSampleButton : ConstructorUiId = ConstructorUiId "EditSampleButton"
+    static member removeSampleButton : ConstructorUiId = ConstructorUiId "RemoveSampleButton"
+    static member viewSampleButton : ConstructorUiId = ConstructorUiId "ViewSampleButton"
+    static member makeMultilayerButton : ConstructorUiId = ConstructorUiId "MakeMultilayerButton"
+    /// A listed sample's clickable row, by the sample's id.
+    static member sampleRow (sample : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"SampleRow_{sample.value}"
+    /// A substrate facet option, by its host-supplied code.
+    static member sampleSubstrateOption (substrate : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"SampleSubstrateOption_{substrate.value}"
 
-    /// The domain-free faceted, filterable tree (`FacetedTreeControls`).
-    module FacetedTree =
-        [<Literal>]
-        let filterBox = "FacetFilterBox"
-        [<Literal>]
-        let representationPicker = "FacetRepresentationPicker"
-        [<Literal>]
-        let breadcrumbStrip = "FacetBreadcrumbStrip"
-        [<Literal>]
-        let resultCount = "FacetResultCount"
-        [<Literal>]
-        let offersPanel = "FacetOffersPanel"
-        [<Literal>]
-        let showTreeButton = "FacetShowTreeButton"
-        [<Literal>]
-        let tree = "FacetTree"
-        [<Literal>]
-        let scrollViewer = "FacetScroll"
-        /// A representation option's clickable id, by its code.
-        let representationOption (code : string) : string = "FacetRepresentationOption_" + code
-        /// A breadcrumb chip's clickable id, by its code.
-        let breadcrumbChip (code : string) : string = "FacetBreadcrumbChip_" + code
-        /// An offer group's container id, by its code.
-        let offerGroup (code : string) : string = "FacetOfferGroup_" + code
-        /// An offered value's clickable id: group code THEN value code (the same discrete key can
-        /// appear under two facets, so the group is part of the identity).
-        let offeredValue (groupCode : string) (valueCode : string) : string =
-            "FacetOfferedValue_" + groupCode + "_" + valueCode
-        /// A numeric offer group's manual min–max box id, by the group's code.
-        let manualRangeBox (groupCode : string) : string = "FacetManualRangeBox_" + groupCode
-        /// A tree node row's clickable id, by the node's (tree-unique) code.
-        let treeNode (code : string) : string = "FacetTreeNode_" + code
-        /// A tree node's disclosure-chevron id (spec 0040 step 002) — present ONLY for a parent
-        /// (a node with children); a leaf renders none. A distinct prefix from `treeNode` so the
-        /// chevron is never miscounted as a label row.
-        let treeNodeChevron (code : string) : string = "FacetTreeChevron_" + code
+    // --- The Category-manager list surface (`CategoryControls`). ---
+    static member categoriesList : ConstructorUiId = ConstructorUiId "CategoriesList"
+    static member addCategoryButton : ConstructorUiId = ConstructorUiId "AddCategoryButton"
+    static member categoryNameBox : ConstructorUiId = ConstructorUiId "CategoryNameBox"
+    static member removeCategoryButton : ConstructorUiId = ConstructorUiId "RemoveCategoryButton"
+    static member categorySaveButton : ConstructorUiId = ConstructorUiId "CategorySaveButton"
+    static member categoryCancelButton : ConstructorUiId = ConstructorUiId "CategoryCancelButton"
+    static member categoryBlockMessage : ConstructorUiId = ConstructorUiId "CategoryBlockMessage"
+    /// A row's inline name box, Save, Remove (a non-built-in row only) and Cancel, by the row's category id.
+    static member categoryRowNameBox (category : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"CategoryNameBox_{category.value}"
+    static member categoryRowSaveButton (category : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"CategorySaveButton_{category.value}"
+    static member categoryRowRemoveButton (category : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"RemoveCategoryButton_{category.value}"
+    static member categoryRowCancelButton (category : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"CategoryCancelButton_{category.value}"
 
-    /// The pop-out ScottPlot chart window's controls (`ChartWindow`, formerly `ChartWindowIds`).
-    module ChartWindow =
-        [<Literal>]
-        let plot = "ChartWindowPlot"
-        /// Spec 030: the element picker (which part of the chart is being formatted) and the properties panel.
-        [<Literal>]
-        let elementSelector = "ChartWindowElement"
-        [<Literal>]
-        let propertiesPanel = "ChartWindowProperties"
-        /// The selected element's font stepper + readout (shown for the header / axes / legend).
-        [<Literal>]
-        let fontMinus = "ChartWindowFontMinus"
-        [<Literal>]
-        let fontPlus = "ChartWindowFontPlus"
-        [<Literal>]
-        let fontSize = "ChartWindowFontSize"
-        /// Axis property controls.
-        [<Literal>]
-        let axisAuto = "ChartWindowAxisAuto"
-        [<Literal>]
-        let axisMin = "ChartWindowAxisMin"
-        [<Literal>]
-        let axisMax = "ChartWindowAxisMax"
-        [<Literal>]
-        let axisFormat = "ChartWindowAxisFormat"
-        [<Literal>]
-        let axisDecimalsMinus = "ChartWindowAxisDecimalsMinus"
-        [<Literal>]
-        let axisDecimalsPlus = "ChartWindowAxisDecimalsPlus"
-        [<Literal>]
-        let axisDecimals = "ChartWindowAxisDecimals"
-        /// Legend property controls.
-        [<Literal>]
-        let legendVisible = "ChartWindowLegendVisible"
-        [<Literal>]
-        let legendPlacement = "ChartWindowLegendPlacement"
-        /// Series (chart line) property controls.
-        [<Literal>]
-        let seriesVisible = "ChartWindowSeriesVisible"
-        [<Literal>]
-        let seriesThicknessMinus = "ChartWindowSeriesThickMinus"
-        [<Literal>]
-        let seriesThicknessPlus = "ChartWindowSeriesThickPlus"
-        [<Literal>]
-        let seriesThickness = "ChartWindowSeriesThick"
-        [<Literal>]
-        let seriesColor = "ChartWindowSeriesColor"
-        [<Literal>]
-        let seriesMarkers = "ChartWindowSeriesMarkers"
-        /// The series' Y-axis side picker (left / right — spec 0033/018).
-        [<Literal>]
-        let seriesAxis = "ChartWindowSeriesAxis"
-        /// The polar ⇄ XY toggle (only for angular charts).
-        [<Literal>]
-        let polarToggle = "ChartWindowPolar"
-        [<Literal>]
-        let majorGrid = "ChartWindowMajorGrid"
-        [<Literal>]
-        let minorGrid = "ChartWindowMinorGrid"
-        [<Literal>]
-        let exportPng = "ChartWindowExportPng"
-        [<Literal>]
-        let exportCsv = "ChartWindowExportCsv"
-        [<Literal>]
-        let description = "ChartWindowDescription"
+    // --- The domain-free faceted, filterable tree (`FacetedTreeControls`). ---
+    static member facetFilterBox : ConstructorUiId = ConstructorUiId "FacetFilterBox"
+    static member facetRepresentationPicker : ConstructorUiId = ConstructorUiId "FacetRepresentationPicker"
+    static member facetBreadcrumbStrip : ConstructorUiId = ConstructorUiId "FacetBreadcrumbStrip"
+    static member facetResultCount : ConstructorUiId = ConstructorUiId "FacetResultCount"
+    static member facetOffersPanel : ConstructorUiId = ConstructorUiId "FacetOffersPanel"
+    static member facetShowTreeButton : ConstructorUiId = ConstructorUiId "FacetShowTreeButton"
+    static member facetTree : ConstructorUiId = ConstructorUiId "FacetTree"
+    static member facetScroll : ConstructorUiId = ConstructorUiId "FacetScroll"
+    /// A representation option, a breadcrumb chip and an offer group, each by its code.
+    static member facetRepresentationOption (representation : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"FacetRepresentationOption_{representation.value}"
+    static member facetBreadcrumbChip (chip : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"FacetBreadcrumbChip_{chip.value}"
+    static member facetOfferGroup (group : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"FacetOfferGroup_{group.value}"
+    /// An offered value, by its group's code THEN its own: the same discrete key can appear under two facets.
+    static member facetOfferedValue (group : ConstructorUiKey) (offered : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"FacetOfferedValue_{group.value}_{offered.value}"
+    /// A numeric offer group's manual min–max box, by the group's code.
+    static member facetManualRangeBox (group : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"FacetManualRangeBox_{group.value}"
+    /// A tree node's clickable row, by the node's tree-unique code.
+    static member facetTreeNode (node : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"FacetTreeNode_{node.value}"
+    /// A parent node's disclosure chevron (spec 0040 step 002); a leaf renders none. Its own prefix, so a
+    /// chevron is never counted as a label row.
+    static member facetTreeChevron (node : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"FacetTreeChevron_{node.value}"
 
-    // ---- Ui view / window surfaces -----------------------------------------------------------
+    // --- The pop-out ScottPlot chart window (`ChartWindow`). ---
+    static member chartWindowPlot : ConstructorUiId = ConstructorUiId "ChartWindowPlot"
+    /// Spec 030: the element picker (which part of the chart is being formatted) and the properties panel.
+    static member chartWindowElement : ConstructorUiId = ConstructorUiId "ChartWindowElement"
+    static member chartWindowProperties : ConstructorUiId = ConstructorUiId "ChartWindowProperties"
+    /// The selected element's font stepper + readout (shown for the header / axes / legend).
+    static member chartWindowFontMinus : ConstructorUiId = ConstructorUiId "ChartWindowFontMinus"
+    static member chartWindowFontPlus : ConstructorUiId = ConstructorUiId "ChartWindowFontPlus"
+    static member chartWindowFontSize : ConstructorUiId = ConstructorUiId "ChartWindowFontSize"
+    /// Axis property controls.
+    static member chartWindowAxisAuto : ConstructorUiId = ConstructorUiId "ChartWindowAxisAuto"
+    static member chartWindowAxisMin : ConstructorUiId = ConstructorUiId "ChartWindowAxisMin"
+    static member chartWindowAxisMax : ConstructorUiId = ConstructorUiId "ChartWindowAxisMax"
+    static member chartWindowAxisFormat : ConstructorUiId = ConstructorUiId "ChartWindowAxisFormat"
+    static member chartWindowAxisDecimalsMinus : ConstructorUiId = ConstructorUiId "ChartWindowAxisDecimalsMinus"
+    static member chartWindowAxisDecimalsPlus : ConstructorUiId = ConstructorUiId "ChartWindowAxisDecimalsPlus"
+    static member chartWindowAxisDecimals : ConstructorUiId = ConstructorUiId "ChartWindowAxisDecimals"
+    /// Legend property controls.
+    static member chartWindowLegendVisible : ConstructorUiId = ConstructorUiId "ChartWindowLegendVisible"
+    static member chartWindowLegendPlacement : ConstructorUiId = ConstructorUiId "ChartWindowLegendPlacement"
+    /// Series (chart line) property controls.
+    static member chartWindowSeriesVisible : ConstructorUiId = ConstructorUiId "ChartWindowSeriesVisible"
+    static member chartWindowSeriesThickMinus : ConstructorUiId = ConstructorUiId "ChartWindowSeriesThickMinus"
+    static member chartWindowSeriesThickPlus : ConstructorUiId = ConstructorUiId "ChartWindowSeriesThickPlus"
+    static member chartWindowSeriesThick : ConstructorUiId = ConstructorUiId "ChartWindowSeriesThick"
+    static member chartWindowSeriesColor : ConstructorUiId = ConstructorUiId "ChartWindowSeriesColor"
+    static member chartWindowSeriesMarkers : ConstructorUiId = ConstructorUiId "ChartWindowSeriesMarkers"
+    /// The series' Y-axis side picker (left / right — spec 0033/018).
+    static member chartWindowSeriesAxis : ConstructorUiId = ConstructorUiId "ChartWindowSeriesAxis"
+    /// The polar ⇄ XY toggle (only for angular charts).
+    static member chartWindowPolar : ConstructorUiId = ConstructorUiId "ChartWindowPolar"
+    static member chartWindowMajorGrid : ConstructorUiId = ConstructorUiId "ChartWindowMajorGrid"
+    static member chartWindowMinorGrid : ConstructorUiId = ConstructorUiId "ChartWindowMinorGrid"
+    static member chartWindowExportPng : ConstructorUiId = ConstructorUiId "ChartWindowExportPng"
+    static member chartWindowExportCsv : ConstructorUiId = ConstructorUiId "ChartWindowExportCsv"
+    static member chartWindowDescription : ConstructorUiId = ConstructorUiId "ChartWindowDescription"
 
-    /// The SolverHandoffWindow terminal summary (`SolverHandoffView`).
-    module Handoff =
-        [<Literal>]
-        let window = "SolverHandoffWindow"
-        [<Literal>]
-        let collectionName = "SolverHandoffCollectionName"
-        [<Literal>]
-        let solverMessage = "SolverHandoffSolverMessage"
-        [<Literal>]
-        let summaryList = "SolverHandoffSummaryList"
-        [<Literal>]
-        let closeButton = "SolverHandoffCloseButton"
-        /// A collected experiment's summary block, by its id (prefixed so it cannot collide).
-        let summaryRow (experimentId : int) : string = "SolverHandoffRow_" + string experimentId
-        /// A collected experiment's TYPED validation-status line, by its id.
-        let statusRow (experimentId : int) : string = "SolverHandoffStatus_" + string experimentId
+    // --- The SolverHandoffWindow terminal summary (`SolverHandoffView`). ---
+    static member solverHandoffWindow : ConstructorUiId = ConstructorUiId "SolverHandoffWindow"
+    static member solverHandoffCollectionName : ConstructorUiId = ConstructorUiId "SolverHandoffCollectionName"
+    static member solverHandoffSolverMessage : ConstructorUiId = ConstructorUiId "SolverHandoffSolverMessage"
+    static member solverHandoffSummaryList : ConstructorUiId = ConstructorUiId "SolverHandoffSummaryList"
+    static member solverHandoffCloseButton : ConstructorUiId = ConstructorUiId "SolverHandoffCloseButton"
 
-    /// The combined table + element rotation scene (`TableAndElementRotationView`).
-    module TableAndElementRotation =
-        [<Literal>]
-        let canvas = "TableElementCanvas"
-        /// Spec 0046: an element's invisible hover target on the table (it carries the "what is it"
-        /// tooltip), by the element's id.
-        let elementHover (elementId : string) : string = "ElementHover_" + elementId
-        [<Literal>]
-        let rotateR1Minus = "TeRotateR1MinusButton"
-        [<Literal>]
-        let rotateR1Plus = "TeRotateR1PlusButton"
-        [<Literal>]
-        let rotateR2Minus = "TeRotateR2MinusButton"
-        [<Literal>]
-        let rotateR2Plus = "TeRotateR2PlusButton"
-        [<Literal>]
-        let rotateR3Minus = "TeRotateR3MinusButton"
-        [<Literal>]
-        let rotateR3Plus = "TeRotateR3PlusButton"
-        [<Literal>]
-        let unlockR3 = "TeUnlockR3Button"
-        [<Literal>]
-        let reset = "TeResetButton"
-        [<Literal>]
-        let readout = "TeReadout"
-        /// Spec 0046: the Main view's page-level scroll viewer (a tall bay never pushes content out of reach).
-        [<Literal>]
-        let scrollViewer = "TableElementScrollViewer"
-        /// Spec 0046: the Rotation bay's global option — rotate every element about the middle of its incident
-        /// face (checked) instead of its centre.
-        [<Literal>]
-        let pivotAtIncidentFace = "RotateAboutIncidentFaceCheck"
-        /// Spec 0038 (031): the out-of-band dispersion warning badge on scene element index `i` — an
-        /// indexed id so a headless test addresses the per-element badge.
-        [<Literal>]
-        let badgePrefix = "OutOfBandBadge_"
-        let outOfBandBadge (i : int) : string = $"%s{badgePrefix}%d{i}"
+    // --- The combined table + element rotation scene (`TableAndElementRotationView`). ---
+    static member tableElementCanvas : ConstructorUiId = ConstructorUiId "TableElementCanvas"
+    static member teRotateR1MinusButton : ConstructorUiId = ConstructorUiId "TeRotateR1MinusButton"
+    static member teRotateR1PlusButton : ConstructorUiId = ConstructorUiId "TeRotateR1PlusButton"
+    static member teRotateR2MinusButton : ConstructorUiId = ConstructorUiId "TeRotateR2MinusButton"
+    static member teRotateR2PlusButton : ConstructorUiId = ConstructorUiId "TeRotateR2PlusButton"
+    static member teRotateR3MinusButton : ConstructorUiId = ConstructorUiId "TeRotateR3MinusButton"
+    static member teRotateR3PlusButton : ConstructorUiId = ConstructorUiId "TeRotateR3PlusButton"
+    static member teUnlockR3Button : ConstructorUiId = ConstructorUiId "TeUnlockR3Button"
+    static member teResetButton : ConstructorUiId = ConstructorUiId "TeResetButton"
+    static member teReadout : ConstructorUiId = ConstructorUiId "TeReadout"
+    /// Spec 0046: the Main view's page-level scroll viewer (a tall bay never pushes content out of reach).
+    static member tableElementScrollViewer : ConstructorUiId = ConstructorUiId "TableElementScrollViewer"
+    /// Spec 0046: the Rotation bay's global option — rotate every element about the middle of its incident
+    /// face (checked) instead of its centre.
+    static member rotateAboutIncidentFaceCheck : ConstructorUiId = ConstructorUiId "RotateAboutIncidentFaceCheck"
+    /// Spec 0038 (031): the out-of-band dispersion badge of the scene element at this position.
+    static member outOfBandBadge (element : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"OutOfBandBadge_{element.value}"
 
-    /// Spec 0046: the Main canvas's right-click ELEMENT MENU — switch the element's reflected /
-    /// transmitted rays, choose the beam it sits on, remove it. Intent-named, so they survive restyling.
-    module ElementMenu =
-        [<Literal>]
-        let menu = "ElementMenu"
-        [<Literal>]
-        let toggleReflected = "ElementMenuToggleReflected"
-        [<Literal>]
-        let toggleTransmitted = "ElementMenuToggleTransmitted"
-        [<Literal>]
-        let placeOnMainBeam = "ElementMenuPlaceOnMainBeam"
-        /// "Place on the reflected ray of" the element with this id (prefixed so it cannot collide).
-        let placeOnReflectedOf (elementId : string) : string = "ElementMenuPlaceOnReflectedOf_" + elementId
-        /// Spec 0046: the menu's Choose… — the Select bay's Choose… verb for the element the menu serves.
-        [<Literal>]
-        let choose = "ElementMenuChoose"
-        /// Spec 0046: the menu's "what is it" lines — the bound entry's name and description.
-        [<Literal>]
-        let info = "ElementMenuInfo"
-        [<Literal>]
-        let remove = "ElementMenuRemove"
-        [<Literal>]
-        let close = "ElementMenuClose"
+    // --- The Main canvas's right-click element menu (spec 0046). ---
+    static member elementMenu : ConstructorUiId = ConstructorUiId "ElementMenu"
+    static member elementMenuToggleReflected : ConstructorUiId = ConstructorUiId "ElementMenuToggleReflected"
+    static member elementMenuToggleTransmitted : ConstructorUiId = ConstructorUiId "ElementMenuToggleTransmitted"
+    static member elementMenuPlaceOnMainBeam : ConstructorUiId = ConstructorUiId "ElementMenuPlaceOnMainBeam"
+    /// Spec 0046: the menu's Choose… — the Select bay's Choose… verb for the element the menu serves.
+    static member elementMenuChoose : ConstructorUiId = ConstructorUiId "ElementMenuChoose"
+    /// Spec 0046: the menu's "what is it" lines — the bound entry's name and description.
+    static member elementMenuInfo : ConstructorUiId = ConstructorUiId "ElementMenuInfo"
+    static member elementMenuRemove : ConstructorUiId = ConstructorUiId "ElementMenuRemove"
+    static member elementMenuClose : ConstructorUiId = ConstructorUiId "ElementMenuClose"
 
-    /// Spec 0046: the Library's light-source editor (`LightSourceEditorView`).
-    module SourceEditor =
-        [<Literal>]
-        let window = "SourceEditorWindow"
-        [<Literal>]
-        let nameBox = "SourceNameBox"
-        [<Literal>]
-        let waveLengthBox = "SourceWaveLengthBox"
-        /// One wavelength-unit choice box, by the unit's short code (prefixed so it cannot collide).
-        let unitButton (code : string) : string = "SourceWaveLengthUnit_" + code
-        [<Literal>]
-        let waveLengthReadout = "SourceWaveLengthReadout"
-        /// Spec 0046: the fixed-line / tunable choice and a tunable source's limits.
-        [<Literal>]
-        let tuningFixed = "SourceTuningFixed"
-        [<Literal>]
-        let tuningTunable = "SourceTuningTunable"
-        [<Literal>]
-        let minimumBox = "SourceTunableMinimumBox"
-        [<Literal>]
-        let maximumBox = "SourceTunableMaximumBox"
-        [<Literal>]
-        let statusText = "SourceEditorStatus"
-        [<Literal>]
-        let saveButton = "SourceSaveButton"
-        [<Literal>]
-        let cancelButton = "SourceCancelButton"
-        [<Literal>]
-        let exitConfirm = "SourceExitConfirm"
-        [<Literal>]
-        let discardButton = "SourceDiscardButton"
-        [<Literal>]
-        let keepEditingButton = "SourceKeepEditingButton"
+    // --- The Library's light-source editor (`LightSourceEditorView`). ---
+    static member sourceEditorWindow : ConstructorUiId = ConstructorUiId "SourceEditorWindow"
+    static member sourceNameBox : ConstructorUiId = ConstructorUiId "SourceNameBox"
+    static member sourceWaveLengthBox : ConstructorUiId = ConstructorUiId "SourceWaveLengthBox"
+    /// One wavelength-unit choice box, by the unit's short code.
+    static member sourceWaveLengthUnit (waveLengthUnit : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"SourceWaveLengthUnit_{waveLengthUnit.value}"
+    static member sourceWaveLengthReadout : ConstructorUiId = ConstructorUiId "SourceWaveLengthReadout"
+    /// Spec 0046: the fixed-line / tunable choice and a tunable source's limits.
+    static member sourceTuningFixed : ConstructorUiId = ConstructorUiId "SourceTuningFixed"
+    static member sourceTuningTunable : ConstructorUiId = ConstructorUiId "SourceTuningTunable"
+    static member sourceTunableMinimumBox : ConstructorUiId = ConstructorUiId "SourceTunableMinimumBox"
+    static member sourceTunableMaximumBox : ConstructorUiId = ConstructorUiId "SourceTunableMaximumBox"
+    static member sourceEditorStatus : ConstructorUiId = ConstructorUiId "SourceEditorStatus"
+    static member sourceSaveButton : ConstructorUiId = ConstructorUiId "SourceSaveButton"
+    static member sourceCancelButton : ConstructorUiId = ConstructorUiId "SourceCancelButton"
+    static member sourceExitConfirm : ConstructorUiId = ConstructorUiId "SourceExitConfirm"
+    static member sourceDiscardButton : ConstructorUiId = ConstructorUiId "SourceDiscardButton"
+    static member sourceKeepEditingButton : ConstructorUiId = ConstructorUiId "SourceKeepEditingButton"
 
-    /// The Sample editor (`SampleEditorView`).
-    module SampleEditor =
-        [<Literal>]
-        let window = "SampleEditorWindow"
-        [<Literal>]
-        let nameBox = "SampleNameBox"
-        [<Literal>]
-        let addLayerButton = "AddLayerButton"
-        [<Literal>]
-        let makeRepeatBlockButton = "MakeRepeatBlockButton"
-        [<Literal>]
-        let selectByMaterialButton = "SelectByMaterialButton"
-        [<Literal>]
-        let setLayerHeightButton = "SetLayerHeightButton"
-        [<Literal>]
-        let setLayerMaterialButton = "SetLayerMaterialButton"
-        [<Literal>]
-        let setOrientationOfSelectedButton = "SetOrientationOfSelectedButton"
-        [<Literal>]
-        let removeSelectedLayersButton = "RemoveSelectedLayersButton"
-        [<Literal>]
-        let repeatCountStepper = "RepeatCountStepper"
-        [<Literal>]
-        let qwotEntryBox = "QwotEntryBox"
-        [<Literal>]
-        let saveButton = "SampleEditorSaveButton"
-        [<Literal>]
-        let cancelButton = "SampleEditorCancelButton"
-        /// Spec 0038 (033): the unsaved-edit exit confirm surface — the prompt row and its two
-        /// actions (Discard changes / Keep editing).
-        [<Literal>]
-        let exitConfirm = "SampleEditorExitConfirm"
-        [<Literal>]
-        let discardButton = "SampleEditorDiscardButton"
-        [<Literal>]
-        let keepEditingButton = "SampleEditorKeepEditingButton"
-        // Supporting fixed ids (not slice-mandated, same naming discipline).
-        [<Literal>]
-        let descriptionBox = "SampleDescriptionBox"
-        [<Literal>]
-        let layerHeightBox = "SampleLayerHeightBox"
-        [<Literal>]
-        let phiBox = "SampleOrientationPhiBox"
-        [<Literal>]
-        let thetaBox = "SampleOrientationThetaBox"
-        [<Literal>]
-        let psiBox = "SampleOrientationPsiBox"
-        [<Literal>]
-        let clearSelectionButton = "ClearSelectionButton"
-        [<Literal>]
-        let moveUpButton = "MoveSelectedUpButton"
-        [<Literal>]
-        let moveDownButton = "MoveSelectedDownButton"
-        [<Literal>]
-        let qwotDerivedText = "QwotDerivedText"
-        [<Literal>]
-        let filmsCount = "SampleFilmsCount"
-        // Substrate / lower half-space surfaces (spec 0033 gap G12).
-        [<Literal>]
-        let substrateSummary = "SampleSubstrateSummary"
-        [<Literal>]
-        let lowerSummary = "SampleLowerSummary"
-        [<Literal>]
-        let setSubstrateButton = "SetSubstrateButton"
-        [<Literal>]
-        let clearSubstrateButton = "ClearSubstrateButton"
-        [<Literal>]
-        let setLowerButton = "SetLowerButton"
-        [<Literal>]
-        let clearLowerButton = "ClearLowerButton"
-        [<Literal>]
-        let statusText = "SampleEditorStatus"
-        // The supported-emission R / T checkboxes (spec 0040 Part D.2 step 010): a Plate exposes
-        // both, as does a ThinFilm; a Mirror (spec 0046) shows R fixed on + disabled and renders no T box.
-        [<Literal>]
-        let emitReflectedCheck = "SampleEmitReflectedCheck"
-        [<Literal>]
-        let emitTransmittedCheck = "SampleEmitTransmittedCheck"
-        [<Literal>]
-        let stackTable = "SampleStackTable"
-        [<Literal>]
-        let repeatCountStepperPlus = "RepeatCountStepperPlus"
-        [<Literal>]
-        let repeatCountStepperMinus = "RepeatCountStepperMinus"
-        /// The toolbar fold stepper carries the mandated literal; each period group's INLINE
-        /// stepper carries the group-indexed member of the same family.
-        let groupStepper (groupIndex : int) : string = $"RepeatCountStepper_%d{groupIndex}"
-        let groupStepperPlus (groupIndex : int) : string = $"RepeatCountStepperPlus_%d{groupIndex}"
-        let groupStepperMinus (groupIndex : int) : string = $"RepeatCountStepperMinus_%d{groupIndex}"
-        /// A top-level single layer's row / a period group's nested cell-layer row.
-        let layerRow (itemIndex : int) : string = $"SampleLayerRow_%d{itemIndex}"
-        let cellLayerRow (itemIndex : int) (cellIndex : int) : string = $"SampleLayerRow_%d{itemIndex}_%d{cellIndex}"
-        /// A period group's collapsible super-row and its rotating-triangle expander.
-        let groupRow (itemIndex : int) : string = $"SampleGroupRow_%d{itemIndex}"
-        let groupExpander (itemIndex : int) : string = $"SampleGroupExpander_%d{itemIndex}"
-        /// A row's thickness readout cell (what the bulk set-thickness acceptance observes).
-        let layerThickness (itemIndex : int) : string = $"SampleLayerThickness_%d{itemIndex}"
-        let cellLayerThickness (itemIndex : int) (cellIndex : int) : string = $"SampleLayerThickness_%d{itemIndex}_%d{cellIndex}"
-        /// A row's per-layer orientation editor (present ONLY for anisotropic materials).
-        let layerOrientation (itemIndex : int) : string = $"SampleLayerOrientation_%d{itemIndex}"
-        let cellLayerOrientation (itemIndex : int) (cellIndex : int) : string = $"SampleLayerOrientation_%d{itemIndex}_%d{cellIndex}"
-        /// A SubstrateKind facet option's clickable id, by its stable code.
-        let substrateOption (code : string) : string = "SampleSubstrateKind_" + code
-        /// A layer row's Choose material… verb (spec 0038 step 019): a top-level single layer's
-        /// slot / a period group's nested cell-layer slot — opens the Materials window in Select
-        /// state targeted at that row's `LayerPosition`.
-        let chooseMaterialButton (itemIndex : int) : string = $"ChooseMaterialButton_%d{itemIndex}"
-        let cellChooseMaterialButton (itemIndex : int) (cellIndex : int) : string = $"ChooseMaterialButton_%d{itemIndex}_%d{cellIndex}"
+    // --- The Sample editor (`SampleEditorView`). ---
+    static member sampleEditorWindow : ConstructorUiId = ConstructorUiId "SampleEditorWindow"
+    static member sampleNameBox : ConstructorUiId = ConstructorUiId "SampleNameBox"
+    static member addLayerButton : ConstructorUiId = ConstructorUiId "AddLayerButton"
+    static member makeRepeatBlockButton : ConstructorUiId = ConstructorUiId "MakeRepeatBlockButton"
+    static member selectByMaterialButton : ConstructorUiId = ConstructorUiId "SelectByMaterialButton"
+    static member setLayerHeightButton : ConstructorUiId = ConstructorUiId "SetLayerHeightButton"
+    static member setLayerMaterialButton : ConstructorUiId = ConstructorUiId "SetLayerMaterialButton"
+    static member setOrientationOfSelectedButton : ConstructorUiId = ConstructorUiId "SetOrientationOfSelectedButton"
+    static member removeSelectedLayersButton : ConstructorUiId = ConstructorUiId "RemoveSelectedLayersButton"
+    static member repeatCountStepper : ConstructorUiId = ConstructorUiId "RepeatCountStepper"
+    static member qwotEntryBox : ConstructorUiId = ConstructorUiId "QwotEntryBox"
+    static member sampleEditorSaveButton : ConstructorUiId = ConstructorUiId "SampleEditorSaveButton"
+    static member sampleEditorCancelButton : ConstructorUiId = ConstructorUiId "SampleEditorCancelButton"
+    /// Spec 0038 (033): the unsaved-edit exit confirm surface — the prompt row and its two
+    /// actions (Discard changes / Keep editing).
+    static member sampleEditorExitConfirm : ConstructorUiId = ConstructorUiId "SampleEditorExitConfirm"
+    static member sampleEditorDiscardButton : ConstructorUiId = ConstructorUiId "SampleEditorDiscardButton"
+    static member sampleEditorKeepEditingButton : ConstructorUiId = ConstructorUiId "SampleEditorKeepEditingButton"
+    // Supporting fixed ids (not slice-mandated, same naming discipline).
+    static member sampleDescriptionBox : ConstructorUiId = ConstructorUiId "SampleDescriptionBox"
+    static member sampleLayerHeightBox : ConstructorUiId = ConstructorUiId "SampleLayerHeightBox"
+    static member sampleOrientationPhiBox : ConstructorUiId = ConstructorUiId "SampleOrientationPhiBox"
+    static member sampleOrientationThetaBox : ConstructorUiId = ConstructorUiId "SampleOrientationThetaBox"
+    static member sampleOrientationPsiBox : ConstructorUiId = ConstructorUiId "SampleOrientationPsiBox"
+    static member clearSelectionButton : ConstructorUiId = ConstructorUiId "ClearSelectionButton"
+    static member moveSelectedUpButton : ConstructorUiId = ConstructorUiId "MoveSelectedUpButton"
+    static member moveSelectedDownButton : ConstructorUiId = ConstructorUiId "MoveSelectedDownButton"
+    static member qwotDerivedText : ConstructorUiId = ConstructorUiId "QwotDerivedText"
+    static member sampleFilmsCount : ConstructorUiId = ConstructorUiId "SampleFilmsCount"
+    // Substrate / lower half-space surfaces (spec 0033 gap G12).
+    static member sampleSubstrateSummary : ConstructorUiId = ConstructorUiId "SampleSubstrateSummary"
+    static member sampleLowerSummary : ConstructorUiId = ConstructorUiId "SampleLowerSummary"
+    static member setSubstrateButton : ConstructorUiId = ConstructorUiId "SetSubstrateButton"
+    static member clearSubstrateButton : ConstructorUiId = ConstructorUiId "ClearSubstrateButton"
+    static member setLowerButton : ConstructorUiId = ConstructorUiId "SetLowerButton"
+    static member clearLowerButton : ConstructorUiId = ConstructorUiId "ClearLowerButton"
+    static member sampleEditorStatus : ConstructorUiId = ConstructorUiId "SampleEditorStatus"
+    // The supported-emission R / T checkboxes (spec 0040 Part D.2 step 010): a Plate exposes
+    // both, as does a ThinFilm; a Mirror (spec 0046) shows R fixed on + disabled and renders no T box.
+    static member sampleEmitReflectedCheck : ConstructorUiId = ConstructorUiId "SampleEmitReflectedCheck"
+    static member sampleEmitTransmittedCheck : ConstructorUiId = ConstructorUiId "SampleEmitTransmittedCheck"
+    static member sampleStackTable : ConstructorUiId = ConstructorUiId "SampleStackTable"
+    static member repeatCountStepperPlus : ConstructorUiId = ConstructorUiId "RepeatCountStepperPlus"
+    static member repeatCountStepperMinus : ConstructorUiId = ConstructorUiId "RepeatCountStepperMinus"
+    /// A period group's inline repeat-count stepper and its + / −; the toolbar stepper carries the fixed ids.
+    static member repeatCountStepperOfGroup (group : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"RepeatCountStepper_{group.value}"
+    static member repeatCountStepperPlusOfGroup (group : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"RepeatCountStepperPlus_{group.value}"
+    static member repeatCountStepperMinusOfGroup (group : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"RepeatCountStepperMinus_{group.value}"
+    /// A top-level single layer's row, and a period group's nested cell-layer row.
+    static member sampleLayerRow (item : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SampleLayerRow_{item.value}"
+    static member sampleCellLayerRow (item : ConstructorUiPosition) (cell : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SampleLayerRow_{item.value}_{cell.value}"
+    /// A period group's collapsible super-row and its rotating-triangle expander.
+    static member sampleGroupRow (item : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SampleGroupRow_{item.value}"
+    static member sampleGroupExpander (item : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SampleGroupExpander_{item.value}"
+    /// A row's thickness readout cell (what the bulk set-thickness acceptance observes).
+    static member sampleLayerThickness (item : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SampleLayerThickness_{item.value}"
+    static member sampleCellLayerThickness (item : ConstructorUiPosition) (cell : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SampleLayerThickness_{item.value}_{cell.value}"
+    /// A row's per-layer orientation editor (present ONLY for anisotropic materials).
+    static member sampleLayerOrientation (item : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SampleLayerOrientation_{item.value}"
+    static member sampleCellLayerOrientation (item : ConstructorUiPosition) (cell : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SampleLayerOrientation_{item.value}_{cell.value}"
+    /// A SubstrateKind facet option, by its stable code.
+    static member sampleSubstrateKind (substrate : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"SampleSubstrateKind_{substrate.value}"
+    /// A layer row's Choose material… verb (spec 0038 step 019): a single layer's, and a period group's
+    /// nested cell layer's.
+    static member chooseMaterialButton (item : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"ChooseMaterialButton_{item.value}"
+    static member cellChooseMaterialButton (item : ConstructorUiPosition) (cell : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"ChooseMaterialButton_{item.value}_{cell.value}"
 
-    /// The Material editor (`MaterialEditorView`).
-    module MaterialEditor =
-        [<Literal>]
-        let window = "MaterialEditorWindow"
-        [<Literal>]
-        let nameBox = "MaterialNameBox"
-        [<Literal>]
-        let anisotropyToggle = "AnisotropyToggle"
-        [<Literal>]
-        let absorbingToggle = "AbsorbingToggle"
-        /// Spec 0035 (017): the eps branch is two mutually-exclusive options — Constant / Dispersive.
-        [<Literal>]
-        let constantToggle = "ConstantToggle"
-        [<Literal>]
-        let dispersiveToggle = "DispersiveToggle"
-        [<Literal>]
-        let activeToggle = "ActiveToggle"
-        [<Literal>]
-        let magneticToggle = "MagneticToggle"
-        /// Spec 0035 (011) — the per-rung Constant/Dispersive sub-toggles.
-        [<Literal>]
-        let activityDispersiveToggle = "ActivityDispersiveToggle"
-        [<Literal>]
-        let magneticDispersiveToggle = "MagneticDispersiveToggle"
-        [<Literal>]
-        let gyrationClassPicker = "GyrationClassPicker"
-        [<Literal>]
-        let handednessSwitch = "HandednessSwitch"
-        [<Literal>]
-        let dispersionModelPicker = "DispersionModelPicker"
-        [<Literal>]
-        let addSegmentButton = "AddSegmentButton"
-        [<Literal>]
-        let saveButton = "MaterialEditorSaveButton"
-        [<Literal>]
-        let cancelButton = "MaterialEditorCancelButton"
-        /// Spec 0038 (033): the unsaved-edit exit confirm surface.
-        [<Literal>]
-        let exitConfirm = "MaterialEditorExitConfirm"
-        [<Literal>]
-        let discardButton = "MaterialEditorDiscardButton"
-        [<Literal>]
-        let keepEditingButton = "MaterialEditorKeepEditingButton"
-        // Supporting fixed ids (not slice-mandated, same naming discipline).
-        [<Literal>]
-        let descriptionBox = "MaterialDescriptionBox"
-        [<Literal>]
-        let categoryPicker = "MaterialCategoryPicker"
-        [<Literal>]
-        let gyrationAxisPicker = "GyrationAxisPicker"
-        [<Literal>]
-        let muDiagonalBox = "MuDiagonalBox"
-        [<Literal>]
-        let muParallelBox = "MuParallelBox"
-        [<Literal>]
-        let muGyrationBox = "MuGyrationBox"
-        [<Literal>]
-        let statusText = "MaterialEditorStatus"
-        [<Literal>]
-        let summaryText = "MaterialComplexitySummary"
-        [<Literal>]
-        let previewChart = "MaterialPreviewChart"
-        [<Literal>]
-        let gainWarning = "MaterialGainWarning"
-        [<Literal>]
-        let viewOnlyNote = "MaterialViewOnlyNote"
-        /// Spec 0038 (032): the two-pane split's vertical GridSplitter, the tabbed preview's TabControl,
-        /// its three tabs, and the gyration / μ tab chart hosts (the n/k tab reuses `previewChart`).
-        [<Literal>]
-        let splitter = "MaterialEditorSplitter"
-        [<Literal>]
-        let previewTabs = "MaterialPreviewTabs"
-        [<Literal>]
-        let nkTab = "MaterialPreviewNkTab"
-        [<Literal>]
-        let gyrationTab = "MaterialPreviewGyrationTab"
-        [<Literal>]
-        let muTab = "MaterialPreviewMuTab"
-        [<Literal>]
-        let gyrationChart = "MaterialGyrationChart"
-        [<Literal>]
-        let muChart = "MaterialMuChart"
-        /// A per-series show/hide toggle in a preview tab, by the tab's stable code and the series name.
-        let seriesToggle (tabCode : string) (seriesName : string) : string = $"PreviewSeriesToggle_%s{tabCode}_%s{seriesName}"
-        /// An anisotropy option, by the choice's stable code.
-        let anisotropyOption (code : string) : string = "AnisotropyOption_" + code
-        /// A material-category option, by the category's stable code.
-        let categoryOption (code : string) : string = "MaterialCategoryOption_" + code
-        /// A principal-index entry (1-based axis slot; present per the anisotropy choice).
-        let indexBox (axisNumber : int) : string = $"PrincipalIndexBox_%d{axisNumber}"
-        /// A principal absorption (k) entry (present only while the absorbing rung is unlocked).
-        let absorptionBox (axisNumber : int) : string = $"AbsorptionIndexBox_%d{axisNumber}"
-        /// Segment 0's model picker carries the mandated literal; later segments carry the
-        /// indexed member of the same family (the 022 RepeatCountStepper precedent).
-        let segmentModelPicker (segmentIndex : int) : string =
-            if segmentIndex = 0 then dispersionModelPicker else $"DispersionModelPicker_%d{segmentIndex}"
-        let segmentLowerBox (segmentIndex : int) : string = $"SegmentLowerBox_%d{segmentIndex}"
-        let segmentUpperBox (segmentIndex : int) : string = $"SegmentUpperBox_%d{segmentIndex}"
-        let segmentRemoveButton (segmentIndex : int) : string = $"SegmentRemoveButton_%d{segmentIndex}"
-        /// A segment's dispersion-model option, by segment index and the model kind's code.
-        let modelOption (segmentIndex : int) (code : string) : string = $"DispersionModelOption_%d{segmentIndex}_%s{code}"
-        /// A gyration-class option, by the class's stable code.
-        let gyrationClassOption (code : string) : string = "GyrationClassOption_" + code
-        /// A handedness option ("Right" / "Left").
-        let handednessOption (code : string) : string = "HandednessOption_" + code
-        /// A magnetization-axis option ("X" / "Y" / "Z").
-        let gyrationAxisOption (code : string) : string = "GyrationAxisOption_" + code
-        /// A Polder-mu kind option ("Scalar" / "Gyromagnetic").
-        let muKindOption (code : string) : string = "MuKindOption_" + code
-        /// A per-segment dispersion-model COEFFICIENT entry (spec 0033 gap G7), by
-        /// segment index and the parameter's stable key.
-        let segmentParamBox (segmentIndex : int) (key : string) : string = $"SegmentParamBox_{segmentIndex}_{key}"
-        /// Per-principal-axis id families (spec 0033 comment 009 — uniaxial / biaxial
-        /// dispersive media carry one formula per axis). The FIRST axis reduces to the
-        /// single-axis ids above, so the slice-mandated literals and existing tests stay
-        /// valid; the extraordinary / y / z axes get an axis-suffixed member.
-        let axisModelPickerOf (segmentIndex : int) (isFirst : bool) (axisCode : string) : string =
-            if isFirst then segmentModelPicker segmentIndex else $"{segmentModelPicker segmentIndex}_ax{axisCode}"
-        let axisModelOptionOf (segmentIndex : int) (isFirst : bool) (axisCode : string) (code : string) : string =
-            if isFirst then modelOption segmentIndex code else $"{modelOption segmentIndex code}_ax{axisCode}"
-        let axisParamBoxOf (segmentIndex : int) (isFirst : bool) (axisCode : string) (key : string) : string =
-            if isFirst then segmentParamBox segmentIndex key else $"{segmentParamBox segmentIndex key}_ax{axisCode}"
-        /// A gyration-tensor COMPONENT entry (spec 0033 gap G9), by the component's
-        /// stable code (`g11` / `g33` / …).
-        let gyrationComponentBox (code : string) : string = "GyrationComponentBox_" + code
-        /// Spec 0035 (011): a gyration component's DISPERSION-FORMULA editor container (the
-        /// activity Dispersive sub-branch), by the component's stable code — the id the
-        /// headless proof probes for a per-component formula editor.
-        let gyrationComponentFormulaEditor (code : string) : string = "GyrationFormulaEditor_" + code
-        /// One coefficient entry inside a gyration component's dispersion-formula editor, by
-        /// the component code and the wrapped model parameter's key (the raw `SumOfTerms`
-        /// coefficient surface the segments already use).
-        let gyrationComponentFormulaBox (code : string) (key : string) : string = $"GyrationFormulaBox_{code}_{key}"
-        /// Spec 0035 (011): a Polder component's DISPERSION-FORMULA editor container (the
-        /// magnetic Dispersive sub-branch), by the component's stable code
-        /// (`muDiagonal` / `muParallel` / `muGyration`).
-        let polderComponentFormulaEditor (code : string) : string = "PolderFormulaEditor_" + code
-        /// One coefficient entry inside a Polder component's dispersion-formula editor.
-        let polderComponentFormulaBox (code : string) (key : string) : string = $"PolderFormulaBox_{code}_{key}"
+    // --- The Material editor (`MaterialEditorView`). ---
+    static member materialEditorWindow : ConstructorUiId = ConstructorUiId "MaterialEditorWindow"
+    static member materialNameBox : ConstructorUiId = ConstructorUiId "MaterialNameBox"
+    static member anisotropyToggle : ConstructorUiId = ConstructorUiId "AnisotropyToggle"
+    static member absorbingToggle : ConstructorUiId = ConstructorUiId "AbsorbingToggle"
+    /// Spec 0035 (017): the eps branch is two mutually-exclusive options — Constant / Dispersive.
+    static member constantToggle : ConstructorUiId = ConstructorUiId "ConstantToggle"
+    static member dispersiveToggle : ConstructorUiId = ConstructorUiId "DispersiveToggle"
+    static member activeToggle : ConstructorUiId = ConstructorUiId "ActiveToggle"
+    static member magneticToggle : ConstructorUiId = ConstructorUiId "MagneticToggle"
+    /// Spec 0035 (011) — the per-rung Constant/Dispersive sub-toggles.
+    static member activityDispersiveToggle : ConstructorUiId = ConstructorUiId "ActivityDispersiveToggle"
+    static member magneticDispersiveToggle : ConstructorUiId = ConstructorUiId "MagneticDispersiveToggle"
+    static member gyrationClassPicker : ConstructorUiId = ConstructorUiId "GyrationClassPicker"
+    static member handednessSwitch : ConstructorUiId = ConstructorUiId "HandednessSwitch"
+    static member dispersionModelPicker : ConstructorUiId = ConstructorUiId "DispersionModelPicker"
+    static member addSegmentButton : ConstructorUiId = ConstructorUiId "AddSegmentButton"
+    static member materialEditorSaveButton : ConstructorUiId = ConstructorUiId "MaterialEditorSaveButton"
+    static member materialEditorCancelButton : ConstructorUiId = ConstructorUiId "MaterialEditorCancelButton"
+    /// Spec 0038 (033): the unsaved-edit exit confirm surface.
+    static member materialEditorExitConfirm : ConstructorUiId = ConstructorUiId "MaterialEditorExitConfirm"
+    static member materialEditorDiscardButton : ConstructorUiId = ConstructorUiId "MaterialEditorDiscardButton"
+    static member materialEditorKeepEditingButton : ConstructorUiId = ConstructorUiId "MaterialEditorKeepEditingButton"
+    // Supporting fixed ids (not slice-mandated, same naming discipline).
+    static member materialDescriptionBox : ConstructorUiId = ConstructorUiId "MaterialDescriptionBox"
+    static member materialCategoryPicker : ConstructorUiId = ConstructorUiId "MaterialCategoryPicker"
+    static member gyrationAxisPicker : ConstructorUiId = ConstructorUiId "GyrationAxisPicker"
+    static member muDiagonalBox : ConstructorUiId = ConstructorUiId "MuDiagonalBox"
+    static member muParallelBox : ConstructorUiId = ConstructorUiId "MuParallelBox"
+    static member muGyrationBox : ConstructorUiId = ConstructorUiId "MuGyrationBox"
+    static member materialEditorStatus : ConstructorUiId = ConstructorUiId "MaterialEditorStatus"
+    static member materialComplexitySummary : ConstructorUiId = ConstructorUiId "MaterialComplexitySummary"
+    static member materialPreviewChart : ConstructorUiId = ConstructorUiId "MaterialPreviewChart"
+    static member materialGainWarning : ConstructorUiId = ConstructorUiId "MaterialGainWarning"
+    static member materialViewOnlyNote : ConstructorUiId = ConstructorUiId "MaterialViewOnlyNote"
+    /// Spec 0038 (032): the two-pane split's vertical GridSplitter, the tabbed preview's TabControl,
+    /// its three tabs, and the gyration / μ tab chart hosts (the n/k tab reuses `previewChart`).
+    static member materialEditorSplitter : ConstructorUiId = ConstructorUiId "MaterialEditorSplitter"
+    static member materialPreviewTabs : ConstructorUiId = ConstructorUiId "MaterialPreviewTabs"
+    static member materialPreviewNkTab : ConstructorUiId = ConstructorUiId "MaterialPreviewNkTab"
+    static member materialPreviewGyrationTab : ConstructorUiId = ConstructorUiId "MaterialPreviewGyrationTab"
+    static member materialPreviewMuTab : ConstructorUiId = ConstructorUiId "MaterialPreviewMuTab"
+    static member materialGyrationChart : ConstructorUiId = ConstructorUiId "MaterialGyrationChart"
+    static member materialMuChart : ConstructorUiId = ConstructorUiId "MaterialMuChart"
+    /// A preview curve's show / hide toggle, by its tab's code and the series name.
+    static member previewSeriesToggle (tab : ConstructorUiKey) (series : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"PreviewSeriesToggle_{tab.value}_{series.value}"
+    /// An anisotropy option, by the choice's stable code.
+    static member anisotropyOption (anisotropy : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"AnisotropyOption_{anisotropy.value}"
+    /// A principal-index (n) entry and a principal absorption (k) entry, by the 1-based axis slot.
+    static member principalIndexBox (axis : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"PrincipalIndexBox_{axis.value}"
+    static member absorptionIndexBox (axis : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"AbsorptionIndexBox_{axis.value}"
+    /// A segment's model picker: segment 0 carries the fixed `dispersionModelPicker`, a later one its index.
+    static member dispersionModelPickerOfSegment (segment : ConstructorUiPosition) : ConstructorUiId =
+        match segment.value with
+        | 0 -> ConstructorUiId.dispersionModelPicker
+        | index -> ConstructorUiId $"DispersionModelPicker_{index}"
+    /// A segment's wavelength bounds and its Remove.
+    static member segmentLowerBox (segment : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SegmentLowerBox_{segment.value}"
+    static member segmentUpperBox (segment : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SegmentUpperBox_{segment.value}"
+    static member segmentRemoveButton (segment : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SegmentRemoveButton_{segment.value}"
+    /// A segment's dispersion-model option, by the model kind's code.
+    static member dispersionModelOption (segment : ConstructorUiPosition) (model : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"DispersionModelOption_{segment.value}_{model.value}"
+    /// A gyration-class, handedness ("Right" / "Left"), magnetization-axis ("X" / "Y" / "Z") and Polder-mu
+    /// kind ("Scalar" / "Gyromagnetic") option, each by its stable code.
+    static member gyrationClassOption (gyrationClass : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"GyrationClassOption_{gyrationClass.value}"
+    static member handednessOption (hand : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"HandednessOption_{hand.value}"
+    static member gyrationAxisOption (axis : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"GyrationAxisOption_{axis.value}"
+    static member muKindOption (kind : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"MuKindOption_{kind.value}"
+    /// A segment's dispersion-model coefficient entry (spec 0033 gap G7), by the parameter's stable key.
+    static member segmentParamBox (segment : ConstructorUiPosition) (parameter : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"SegmentParamBox_{segment.value}_{parameter.value}"
+    /// The per-principal-axis ids (spec 0033 comment 009). The first axis has no `laterAxisOpt` and takes the
+    /// single-axis id; the extraordinary / y / z axis appends its code.
+    static member dispersionModelPickerOfAxis (segment : ConstructorUiPosition) (laterAxisOpt : ConstructorUiKey option) : ConstructorUiId =
+        let single = ConstructorUiId.dispersionModelPickerOfSegment segment
+        match laterAxisOpt with
+        | None -> single
+        | Some axis -> ConstructorUiId $"{single.value}_ax{axis.value}"
+    static member dispersionModelOptionOfAxis (segment : ConstructorUiPosition) (laterAxisOpt : ConstructorUiKey option) (model : ConstructorUiKey) : ConstructorUiId =
+        let single = ConstructorUiId.dispersionModelOption segment model
+        match laterAxisOpt with
+        | None -> single
+        | Some axis -> ConstructorUiId $"{single.value}_ax{axis.value}"
+    static member segmentParamBoxOfAxis (segment : ConstructorUiPosition) (laterAxisOpt : ConstructorUiKey option) (parameter : ConstructorUiKey) : ConstructorUiId =
+        let single = ConstructorUiId.segmentParamBox segment parameter
+        match laterAxisOpt with
+        | None -> single
+        | Some axis -> ConstructorUiId $"{single.value}_ax{axis.value}"
+    /// A gyration-tensor component entry (spec 0033 gap G9), by the component's code (`g11` / `g33` / …).
+    static member gyrationComponentBox (tensorComponent : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"GyrationComponentBox_{tensorComponent.value}"
+    /// Spec 0035 (011): a gyration or Polder component's dispersion-formula editor, and one coefficient entry
+    /// inside it, by the wrapped model parameter's key.
+    static member gyrationFormulaEditor (tensorComponent : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"GyrationFormulaEditor_{tensorComponent.value}"
+    static member gyrationFormulaBox (tensorComponent : ConstructorUiKey) (parameter : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"GyrationFormulaBox_{tensorComponent.value}_{parameter.value}"
+    static member polderFormulaEditor (tensorComponent : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"PolderFormulaEditor_{tensorComponent.value}"
+    static member polderFormulaBox (tensorComponent : ConstructorUiKey) (parameter : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"PolderFormulaBox_{tensorComponent.value}_{parameter.value}"
 
-    /// The Category editor window (`CategoryEditorView`) — every list/row/verb id is reused from
-    /// `UiIds.Category`; only the window-level id lives here.
-    module CategoryEditor =
-        [<Literal>]
-        let window = "CategoryEditorWindow"
+    // --- The Category editor window (`CategoryEditorView`): its rows and verbs are the Category list's. ---
+    static member categoryEditorWindow : ConstructorUiId = ConstructorUiId "CategoryEditorWindow"
 
-    /// The single-instance Library window (`LibraryWindowView`). The Domain-typed `versionRow` /
-    /// `entryNode` id helpers stay beside the view (Controls is domain-free); every literal is here.
-    module LibraryWindow =
-        [<Literal>]
-        let window = "LibraryWindow"
-        [<Literal>]
-        let treeHost = "LibraryFacetTreeHost"
-        [<Literal>]
-        let viewPanel = "LibraryViewPanel"
-        [<Literal>]
-        let addSampleButton = "LibraryAddSampleButton"
-        [<Literal>]
-        let makeMultilayerButton = "LibraryMakeMultilayerButton"
-        /// Spec 0046: open the source editor on a NEW user light source.
-        [<Literal>]
-        let addSourceButton = "LibraryAddSourceButton"
-        [<Literal>]
-        let editButton = "LibraryEditButton"
-        [<Literal>]
-        let removeButton = "LibraryRemoveButton"
-        [<Literal>]
-        let removeConfirmButton = "LibraryRemoveConfirmButton"
-        [<Literal>]
-        let removeCancelButton = "LibraryRemoveCancelButton"
-        [<Literal>]
-        let message = "LibraryWindowMessage"
-        /// The lifecycle surface (spec 0038 step 023).
-        [<Literal>]
-        let showInactiveToggle = "LibraryShowInactiveToggle"
-        [<Literal>]
-        let markInactiveButton = "LibraryMarkInactiveButton"
-        [<Literal>]
-        let markActiveButton = "LibraryMarkActiveButton"
-        [<Literal>]
-        let supersedeButton = "LibrarySupersedeButton"
-        [<Literal>]
-        let lifecycleConfirmButton = "LibraryLifecycleConfirmButton"
-        [<Literal>]
-        let lifecycleCancelButton = "LibraryLifecycleCancelButton"
-        [<Literal>]
-        let versionsPanel = "LibraryVersionsPanel"
-        [<Literal>]
-        let viewOnlyNote = "LibraryViewOnlyNote"
-        /// The Select-state pair and the fixed-constraint banner (spec 0038 step 016).
-        [<Literal>]
-        let selectButton = "LibrarySelectButton"
-        [<Literal>]
-        let selectCloseButton = "LibrarySelectCloseButton"
-        [<Literal>]
-        let selectConstraint = "LibrarySelectConstraint"
+    // --- The single-instance Library window (`LibraryWindowView`). ---
+    static member libraryWindow : ConstructorUiId = ConstructorUiId "LibraryWindow"
+    static member libraryFacetTreeHost : ConstructorUiId = ConstructorUiId "LibraryFacetTreeHost"
+    static member libraryViewPanel : ConstructorUiId = ConstructorUiId "LibraryViewPanel"
+    static member libraryAddSampleButton : ConstructorUiId = ConstructorUiId "LibraryAddSampleButton"
+    static member libraryMakeMultilayerButton : ConstructorUiId = ConstructorUiId "LibraryMakeMultilayerButton"
+    /// Spec 0046: open the source editor on a NEW user light source.
+    static member libraryAddSourceButton : ConstructorUiId = ConstructorUiId "LibraryAddSourceButton"
+    static member libraryEditButton : ConstructorUiId = ConstructorUiId "LibraryEditButton"
+    static member libraryRemoveButton : ConstructorUiId = ConstructorUiId "LibraryRemoveButton"
+    static member libraryRemoveConfirmButton : ConstructorUiId = ConstructorUiId "LibraryRemoveConfirmButton"
+    static member libraryRemoveCancelButton : ConstructorUiId = ConstructorUiId "LibraryRemoveCancelButton"
+    static member libraryWindowMessage : ConstructorUiId = ConstructorUiId "LibraryWindowMessage"
+    /// The lifecycle surface (spec 0038 step 023).
+    static member libraryShowInactiveToggle : ConstructorUiId = ConstructorUiId "LibraryShowInactiveToggle"
+    static member libraryMarkInactiveButton : ConstructorUiId = ConstructorUiId "LibraryMarkInactiveButton"
+    static member libraryMarkActiveButton : ConstructorUiId = ConstructorUiId "LibraryMarkActiveButton"
+    static member librarySupersedeButton : ConstructorUiId = ConstructorUiId "LibrarySupersedeButton"
+    static member libraryLifecycleConfirmButton : ConstructorUiId = ConstructorUiId "LibraryLifecycleConfirmButton"
+    static member libraryLifecycleCancelButton : ConstructorUiId = ConstructorUiId "LibraryLifecycleCancelButton"
+    static member libraryVersionsPanel : ConstructorUiId = ConstructorUiId "LibraryVersionsPanel"
+    static member libraryViewOnlyNote : ConstructorUiId = ConstructorUiId "LibraryViewOnlyNote"
+    /// The Select-state pair and the fixed-constraint banner (spec 0038 step 016).
+    static member librarySelectButton : ConstructorUiId = ConstructorUiId "LibrarySelectButton"
+    static member librarySelectCloseButton : ConstructorUiId = ConstructorUiId "LibrarySelectCloseButton"
+    static member librarySelectConstraint : ConstructorUiId = ConstructorUiId "LibrarySelectConstraint"
 
-    /// The single-instance Materials window (`MaterialsWindowView`). As with `LibraryWindow`, the
-    /// Domain-typed `versionRow` / `entryNode` helpers stay beside the view; every literal is here.
-    module MaterialsWindow =
-        [<Literal>]
-        let window = "MaterialsWindow"
-        [<Literal>]
-        let treeHost = "MaterialsFacetTreeHost"
-        [<Literal>]
-        let viewPanel = "MaterialsViewPanel"
-        [<Literal>]
-        let viewPanelChart = "MaterialsViewPanelNkChart"
-        [<Literal>]
-        let addButton = "MaterialsAddButton"
-        [<Literal>]
-        let editButton = "MaterialsEditButton"
-        [<Literal>]
-        let removeButton = "MaterialsRemoveButton"
-        [<Literal>]
-        let categoriesButton = "MaterialsCategoriesButton"
-        [<Literal>]
-        let removeConfirmButton = "MaterialsRemoveConfirmButton"
-        [<Literal>]
-        let removeCancelButton = "MaterialsRemoveCancelButton"
-        [<Literal>]
-        let message = "MaterialsWindowMessage"
-        /// The lifecycle surface (spec 0038 step 023).
-        [<Literal>]
-        let showInactiveToggle = "MaterialsShowInactiveToggle"
-        [<Literal>]
-        let markInactiveButton = "MaterialsMarkInactiveButton"
-        [<Literal>]
-        let markActiveButton = "MaterialsMarkActiveButton"
-        [<Literal>]
-        let supersedeButton = "MaterialsSupersedeButton"
-        [<Literal>]
-        let lifecycleConfirmButton = "MaterialsLifecycleConfirmButton"
-        [<Literal>]
-        let lifecycleCancelButton = "MaterialsLifecycleCancelButton"
-        [<Literal>]
-        let versionsPanel = "MaterialsVersionsPanel"
-        [<Literal>]
-        let viewOnlyNote = "MaterialsViewOnlyNote"
-        /// The Select-state pair and the fixed-constraint banner (spec 0038 step 016).
-        [<Literal>]
-        let selectButton = "MaterialsSelectButton"
-        [<Literal>]
-        let selectCloseButton = "MaterialsSelectCloseButton"
-        [<Literal>]
-        let selectConstraint = "MaterialsSelectConstraint"
+    // --- The single-instance Materials window (`MaterialsWindowView`). ---
+    static member materialsWindow : ConstructorUiId = ConstructorUiId "MaterialsWindow"
+    static member materialsFacetTreeHost : ConstructorUiId = ConstructorUiId "MaterialsFacetTreeHost"
+    static member materialsViewPanel : ConstructorUiId = ConstructorUiId "MaterialsViewPanel"
+    static member materialsViewPanelNkChart : ConstructorUiId = ConstructorUiId "MaterialsViewPanelNkChart"
+    static member materialsAddButton : ConstructorUiId = ConstructorUiId "MaterialsAddButton"
+    static member materialsEditButton : ConstructorUiId = ConstructorUiId "MaterialsEditButton"
+    static member materialsRemoveButton : ConstructorUiId = ConstructorUiId "MaterialsRemoveButton"
+    static member materialsCategoriesButton : ConstructorUiId = ConstructorUiId "MaterialsCategoriesButton"
+    static member materialsRemoveConfirmButton : ConstructorUiId = ConstructorUiId "MaterialsRemoveConfirmButton"
+    static member materialsRemoveCancelButton : ConstructorUiId = ConstructorUiId "MaterialsRemoveCancelButton"
+    static member materialsWindowMessage : ConstructorUiId = ConstructorUiId "MaterialsWindowMessage"
+    /// The lifecycle surface (spec 0038 step 023).
+    static member materialsShowInactiveToggle : ConstructorUiId = ConstructorUiId "MaterialsShowInactiveToggle"
+    static member materialsMarkInactiveButton : ConstructorUiId = ConstructorUiId "MaterialsMarkInactiveButton"
+    static member materialsMarkActiveButton : ConstructorUiId = ConstructorUiId "MaterialsMarkActiveButton"
+    static member materialsSupersedeButton : ConstructorUiId = ConstructorUiId "MaterialsSupersedeButton"
+    static member materialsLifecycleConfirmButton : ConstructorUiId = ConstructorUiId "MaterialsLifecycleConfirmButton"
+    static member materialsLifecycleCancelButton : ConstructorUiId = ConstructorUiId "MaterialsLifecycleCancelButton"
+    static member materialsVersionsPanel : ConstructorUiId = ConstructorUiId "MaterialsVersionsPanel"
+    static member materialsViewOnlyNote : ConstructorUiId = ConstructorUiId "MaterialsViewOnlyNote"
+    /// The Select-state pair and the fixed-constraint banner (spec 0038 step 016).
+    static member materialsSelectButton : ConstructorUiId = ConstructorUiId "MaterialsSelectButton"
+    static member materialsSelectCloseButton : ConstructorUiId = ConstructorUiId "MaterialsSelectCloseButton"
+    static member materialsSelectConstraint : ConstructorUiId = ConstructorUiId "MaterialsSelectConstraint"
 
-    // ---- TestWindows diagnostic scene surfaces -----------------------------------------------
+    // --- The renderer test scene (`RendererTestView`). ---
+    static member rendererTestCanvas : ConstructorUiId = ConstructorUiId "RendererTestCanvas"
 
-    /// The renderer test scene (`RendererTestView`).
-    module RendererTest =
-        [<Literal>]
-        let canvas = "RendererTestCanvas"
+    // --- The snap-to-reflected-light test scene (`SnapToReflectedView`). ---
+    static member snapReflectedCanvas : ConstructorUiId = ConstructorUiId "SnapReflectedCanvas"
+    static member snapReflectedReadout : ConstructorUiId = ConstructorUiId "SnapReflectedReadout"
 
-    /// The snap-to-reflected-light test scene (`SnapToReflectedView`).
-    module SnapToReflected =
-        [<Literal>]
-        let canvas = "SnapReflectedCanvas"
-        [<Literal>]
-        let readout = "SnapReflectedReadout"
+    // --- The snap-to-beam test scene (`SnapToBeamView`). ---
+    static member snapToBeamCanvas : ConstructorUiId = ConstructorUiId "SnapToBeamCanvas"
+    static member snapToBeamReadout : ConstructorUiId = ConstructorUiId "SnapToBeamReadout"
 
-    /// The snap-to-beam test scene (`SnapToBeamView`).
-    module SnapToBeam =
-        [<Literal>]
-        let canvas = "SnapToBeamCanvas"
-        [<Literal>]
-        let readout = "SnapToBeamReadout"
+    // --- The element-movement test scene (`ElementMovementView`). ---
+    static member elementMovementCanvas : ConstructorUiId = ConstructorUiId "ElementMovementCanvas"
 
-    /// The element-movement test scene (`ElementMovementView`).
-    module ElementMovement =
-        [<Literal>]
-        let canvas = "ElementMovementCanvas"
+    // --- The element-rotation test scene (`ElementRotationView`). ---
+    static member elementRotationCanvas : ConstructorUiId = ConstructorUiId "ElementRotationCanvas"
+    static member elemRotateR1MinusButton : ConstructorUiId = ConstructorUiId "ElemRotateR1MinusButton"
+    static member elemRotateR1PlusButton : ConstructorUiId = ConstructorUiId "ElemRotateR1PlusButton"
+    static member elemRotateR2MinusButton : ConstructorUiId = ConstructorUiId "ElemRotateR2MinusButton"
+    static member elemRotateR2PlusButton : ConstructorUiId = ConstructorUiId "ElemRotateR2PlusButton"
+    static member elemRotateR3MinusButton : ConstructorUiId = ConstructorUiId "ElemRotateR3MinusButton"
+    static member elemRotateR3PlusButton : ConstructorUiId = ConstructorUiId "ElemRotateR3PlusButton"
+    static member elemUnlockR3Button : ConstructorUiId = ConstructorUiId "ElemUnlockR3Button"
+    static member elemResetButton : ConstructorUiId = ConstructorUiId "ElemResetButton"
+    static member elemRotationReadout : ConstructorUiId = ConstructorUiId "ElemRotationReadout"
 
-    /// The element-rotation test scene (`ElementRotationView`).
-    module ElementRotation =
-        [<Literal>]
-        let canvas = "ElementRotationCanvas"
-        [<Literal>]
-        let rotateR1Minus = "ElemRotateR1MinusButton"
-        [<Literal>]
-        let rotateR1Plus = "ElemRotateR1PlusButton"
-        [<Literal>]
-        let rotateR2Minus = "ElemRotateR2MinusButton"
-        [<Literal>]
-        let rotateR2Plus = "ElemRotateR2PlusButton"
-        [<Literal>]
-        let rotateR3Minus = "ElemRotateR3MinusButton"
-        [<Literal>]
-        let rotateR3Plus = "ElemRotateR3PlusButton"
-        [<Literal>]
-        let unlockR3 = "ElemUnlockR3Button"
-        [<Literal>]
-        let reset = "ElemResetButton"
-        [<Literal>]
-        let readout = "ElemRotationReadout"
+    // --- The table-rotation test scene (`TableRotationView`). ---
+    static member tableRotationCanvas : ConstructorUiId = ConstructorUiId "TableRotationCanvas"
+    static member rotateR1MinusButton : ConstructorUiId = ConstructorUiId "RotateR1MinusButton"
+    static member rotateR1PlusButton : ConstructorUiId = ConstructorUiId "RotateR1PlusButton"
+    static member rotateR2MinusButton : ConstructorUiId = ConstructorUiId "RotateR2MinusButton"
+    static member rotateR2PlusButton : ConstructorUiId = ConstructorUiId "RotateR2PlusButton"
+    static member rotateR3MinusButton : ConstructorUiId = ConstructorUiId "RotateR3MinusButton"
+    static member rotateR3PlusButton : ConstructorUiId = ConstructorUiId "RotateR3PlusButton"
+    static member resetViewButton : ConstructorUiId = ConstructorUiId "ResetViewButton"
+    static member tableRotationReadout : ConstructorUiId = ConstructorUiId "TableRotationReadout"
 
-    /// The table-rotation test scene (`TableRotationView`).
-    module TableRotation =
-        [<Literal>]
-        let canvas = "TableRotationCanvas"
-        [<Literal>]
-        let rotateR1Minus = "RotateR1MinusButton"
-        [<Literal>]
-        let rotateR1Plus = "RotateR1PlusButton"
-        [<Literal>]
-        let rotateR2Minus = "RotateR2MinusButton"
-        [<Literal>]
-        let rotateR2Plus = "RotateR2PlusButton"
-        [<Literal>]
-        let rotateR3Minus = "RotateR3MinusButton"
-        [<Literal>]
-        let rotateR3Plus = "RotateR3PlusButton"
-        [<Literal>]
-        let resetView = "ResetViewButton"
-        [<Literal>]
-        let readout = "TableRotationReadout"
-
-    /// The diagnostic test launcher window (`TestLauncherWindow`, project TestWindows.App).
-    module TestLauncher =
-        [<Literal>]
-        let openTableRotationTestButton = "OpenTableRotationTestButton"
-        [<Literal>]
-        let openElementRotationTestButton = "OpenElementRotationTestButton"
-        [<Literal>]
-        let openTableAndElementRotationTestButton = "OpenTableAndElementRotationTestButton"
-        [<Literal>]
-        let openElementMovementTestButton = "OpenElementMovementTestButton"
-        [<Literal>]
-        let openRendererTestButton = "OpenRendererTestButton"
-        [<Literal>]
-        let openSnapToBeamTestButton = "OpenSnapToBeamTestButton"
-        [<Literal>]
-        let openSnapToReflectedTestButton = "OpenSnapToReflectedTestButton"
+    // --- The diagnostic test launcher window (`TestLauncherWindow`, project TestWindows.App). ---
+    static member openTableRotationTestButton : ConstructorUiId = ConstructorUiId "OpenTableRotationTestButton"
+    static member openElementRotationTestButton : ConstructorUiId = ConstructorUiId "OpenElementRotationTestButton"
+    static member openTableAndElementRotationTestButton : ConstructorUiId = ConstructorUiId "OpenTableAndElementRotationTestButton"
+    static member openElementMovementTestButton : ConstructorUiId = ConstructorUiId "OpenElementMovementTestButton"
+    static member openRendererTestButton : ConstructorUiId = ConstructorUiId "OpenRendererTestButton"
+    static member openSnapToBeamTestButton : ConstructorUiId = ConstructorUiId "OpenSnapToBeamTestButton"
+    static member openSnapToReflectedTestButton : ConstructorUiId = ConstructorUiId "OpenSnapToReflectedTestButton"

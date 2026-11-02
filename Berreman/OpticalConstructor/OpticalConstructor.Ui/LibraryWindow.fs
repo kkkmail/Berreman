@@ -41,8 +41,8 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
 
     do
         this.Title <- "Library"
-        this.Name <- UiIds.LibraryWindow.window
-        AutomationProperties.SetAutomationId(this, UiIds.LibraryWindow.window)
+        this.Name <- ConstructorUiId.libraryWindow.value
+        AutomationProperties.SetAutomationId(this, ConstructorUiId.libraryWindow.value)
         this.Width <- 1150.0
         this.Height <- 800.0
         // Spec 0046: never larger than the screen it opens on (its content scrolls).

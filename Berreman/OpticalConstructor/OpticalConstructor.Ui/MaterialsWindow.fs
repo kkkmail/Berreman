@@ -36,8 +36,8 @@ type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, ?mod
 
     do
         this.Title <- "Materials"
-        this.Name <- UiIds.MaterialsWindow.window
-        AutomationProperties.SetAutomationId(this, UiIds.MaterialsWindow.window)
+        this.Name <- ConstructorUiId.materialsWindow.value
+        AutomationProperties.SetAutomationId(this, ConstructorUiId.materialsWindow.value)
         this.Width <- 1150.0
         this.Height <- 800.0
         // Spec 0046: never larger than the screen it opens on (its content scrolls).

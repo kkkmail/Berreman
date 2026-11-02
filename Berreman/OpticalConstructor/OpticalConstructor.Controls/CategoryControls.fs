@@ -109,14 +109,14 @@ module CategoryControls =
     let private rowView (handlers : Handlers) (r : Row) : IView =
         let nameBox =
             TextBox.create [
-                textBoxAutoId (UiIds.Category.rowNameBox r.categoryId)
+                textBoxAutoId (ConstructorUiId.categoryRowNameBox (ConstructorUiKey r.categoryId)).value
                 TextBox.width 200.0
                 TextBox.text r.name
                 TextBox.onTextChanged (handlers.setCategoryName r.categoryId)
             ] :> IView
         let removeVerb =
             if r.isBuiltIn then []
-            else [ button (UiIds.Category.rowRemoveButton r.categoryId) "Remove" false (fun () -> handlers.removeCategory r.categoryId) ]
+            else [ button (ConstructorUiId.categoryRowRemoveButton (ConstructorUiKey r.categoryId)).value "Remove" false (fun () -> handlers.removeCategory r.categoryId) ]
         let row =
             StackPanel.create [
                 StackPanel.orientation Orientation.Horizontal
@@ -125,8 +125,8 @@ module CategoryControls =
                 StackPanel.children (
                     [
                         nameBox
-                        button (UiIds.Category.rowSaveButton r.categoryId) "Save" false (fun () -> handlers.saveCategory r.categoryId)
-                        button (UiIds.Category.rowCancelButton r.categoryId) "Cancel" false (fun () -> handlers.cancelCategory r.categoryId)
+                        button (ConstructorUiId.categoryRowSaveButton (ConstructorUiKey r.categoryId)).value "Save" false (fun () -> handlers.saveCategory r.categoryId)
+                        button (ConstructorUiId.categoryRowCancelButton (ConstructorUiKey r.categoryId)).value "Cancel" false (fun () -> handlers.cancelCategory r.categoryId)
                     ]
                     @ removeVerb)
             ]
@@ -143,7 +143,7 @@ module CategoryControls =
             ScrollViewer.maxHeight 260.0
             ScrollViewer.content (
                 StackPanel.create [
-                    StackPanel.name UiIds.Category.list
+                    StackPanel.name ConstructorUiId.categoriesList.value
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.rows |> List.map (rowView handlers))
                 ])
@@ -165,7 +165,7 @@ module CategoryControls =
                     Border.margin (Thickness(0.0, 2.0, 0.0, 2.0))
                     Border.child (
                         TextBlock.create [
-                            TextBlock.name UiIds.Category.blockMessage
+                            TextBlock.name ConstructorUiId.categoryBlockMessage.value
                             TextBlock.text state.blockMessage
                             TextBlock.textWrapping TextWrapping.Wrap
                             TextBlock.maxWidth 360.0
@@ -181,7 +181,7 @@ module CategoryControls =
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    button UiIds.Category.addButton "Add category" true (fun () -> handlers.addCategory ())
+                    button ConstructorUiId.addCategoryButton.value "Add category" true (fun () -> handlers.addCategory ())
                     listView state handlers
                 ]
                 @ blockMessagePanel state)

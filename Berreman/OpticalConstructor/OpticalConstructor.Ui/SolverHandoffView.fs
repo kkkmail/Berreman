@@ -228,7 +228,7 @@ let private summaryEntry (row : HandoffRow) : IView =
     let e = row.experiment
     let idStr = string e.id.value
     StackPanel.create [
-        automationId (UiIds.Handoff.summaryRow e.id.value)
+        automationId (ConstructorUiId.solverHandoffRow e.id).value
         StackPanel.orientation Orientation.Vertical
         StackPanel.margin (Thickness(0.0, 0.0, 0.0, 12.0))
         StackPanel.children [
@@ -241,7 +241,7 @@ let private summaryEntry (row : HandoffRow) : IView =
             infoLine $"Detector: %s{detectorLabel row.detector}"
             infoLine $"Data file: %s{fileText e}"
             TextBlock.create [
-                automationId (UiIds.Handoff.statusRow e.id.value)
+                automationId (ConstructorUiId.solverHandoffStatus e.id).value
                 TextBlock.text row.status.text
                 TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.fontWeight FontWeight.SemiBold
@@ -259,14 +259,14 @@ let private summaryList (m : Model) : IView =
         | [] -> [ TextBlock.create [ TextBlock.text "(the received collection holds no experiments)"; TextBlock.foreground (brush mutedColor) ] :> IView ]
         | rows -> rows |> List.map summaryEntry
     StackPanel.create [
-        StackPanel.name UiIds.Handoff.summaryList
+        StackPanel.name ConstructorUiId.solverHandoffSummaryList.value
         StackPanel.orientation Orientation.Vertical
         StackPanel.children children
     ] :> IView
 
 let private closeButton (dispatch : Msg -> unit) : IView =
     Border.create [
-        automationId UiIds.Handoff.closeButton
+        automationId ConstructorUiId.solverHandoffCloseButton.value
         Border.background (brush (color 226 226 226))
         Border.borderBrush (brush (color 120 120 120))
         Border.borderThickness 1.0
@@ -274,7 +274,7 @@ let private closeButton (dispatch : Msg -> unit) : IView =
         Border.padding (Thickness(22.0, 6.0))
         Border.horizontalAlignment HorizontalAlignment.Right
         Border.child (TextBlock.create [ TextBlock.text "Close" ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; dispatch RequestClose), SubPatchOptions.OnChangeOf (box UiIds.Handoff.closeButton))
+        Border.onPointerPressed ((fun e -> e.Handled <- true; dispatch RequestClose), SubPatchOptions.OnChangeOf (box ConstructorUiId.solverHandoffCloseButton.value))
     ] :> IView
 
 /// The whole terminal screen: a header naming the received collection, the fixed solver-comes-later
@@ -291,13 +291,13 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                         StackPanel.spacing 2.0
                         StackPanel.children [
                             TextBlock.create [
-                                automationId UiIds.Handoff.collectionName
+                                automationId ConstructorUiId.solverHandoffCollectionName.value
                                 TextBlock.text $"Solver handoff — collection '%s{m.collectionName.value}'"
                                 TextBlock.fontWeight FontWeight.Bold
                                 TextBlock.fontSize 16.0
                             ]
                             TextBlock.create [
-                                automationId UiIds.Handoff.solverMessage
+                                automationId ConstructorUiId.solverHandoffSolverMessage.value
                                 TextBlock.text solverComesLaterMessage
                                 TextBlock.textWrapping TextWrapping.Wrap
                                 TextBlock.foreground (brush mutedColor)

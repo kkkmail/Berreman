@@ -198,19 +198,19 @@ module TableAndElementRotationTests =
             // Every bay has a (visible) ribbon tab.
             // Main opens on Add (spec 0046): the palette shows, the rotation buttons do not.
             let addView = visibleNames (initMain ())
-            Assert.DoesNotContain(UiIds.Rotation.r2Plus, addView)
+            Assert.DoesNotContain(ConstructorUiId.rotationR2PlusButton.value, addView)
             let rotationView = visibleNames (update (SelectBay BayNames.rotation) (initMain ()))
             for bay in BayNames.all do
-                Assert.Contains(UiIds.Ribbon.tab bay, rotationView)
+                Assert.Contains((ConstructorUiId.ribbonTab (ConstructorUiKey bay)).value, rotationView)
             // The Rotate bay shows the rotation buttons; the Move bay's controls are hidden.
-            Assert.Contains(UiIds.Rotation.r2Plus, rotationView)
-            Assert.DoesNotContain(UiIds.RayPosition.minus, rotationView)
+            Assert.Contains(ConstructorUiId.rotationR2PlusButton.value, rotationView)
+            Assert.DoesNotContain(ConstructorUiId.rayPositionMinusButton.value, rotationView)
             // Selecting the Render bay reveals the renderer sliders (and hides the rotation buttons).
             let renderView = visibleNames (update (SelectBay BayNames.render) (initMain ()))
-            Assert.Contains(UiIds.Renderer.railsSlider, renderView)
-            Assert.DoesNotContain(UiIds.Rotation.r2Plus, renderView)
+            Assert.Contains(ConstructorUiId.rendererRailsSlider.value, renderView)
+            Assert.DoesNotContain(ConstructorUiId.rotationR2PlusButton.value, renderView)
             // Selecting the Move bay reveals the along-beam controls.
-            Assert.Contains(UiIds.RayPosition.minus, visibleNames (update (SelectBay BayNames.move) (initMain ()))))
+            Assert.Contains(ConstructorUiId.rayPositionMinusButton.value, visibleNames (update (SelectBay BayNames.move) (initMain ()))))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -235,9 +235,9 @@ module TableAndElementRotationTests =
                         Dispatcher.UIThread.RunJobs()
                     else Assert.Fail($"%s{name} has no on-screen position")
                 | None -> Assert.Fail($"%s{name} not found")
-            click (UiIds.Ribbon.tab BayNames.render)     // show the Render bay
-            click UiIds.Renderer.swapRenderer     // swap the renderer (wireframe → shapes)
-            click (UiIds.Ribbon.tab BayNames.rotation)    // back to Rotation — must NOT throw
+            click (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.render)).value     // show the Render bay
+            click ConstructorUiId.rendererSwapButton.value     // swap the renderer (wireframe → shapes)
+            click (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.rotation)).value    // back to Rotation — must NOT throw
             Assert.True(window.IsVisible)
             window.Close())
 
@@ -447,7 +447,7 @@ module TableAndElementRotationTests =
                 withMouseHarness (fun w ->
                     let button =
                         w.GetVisualDescendants()
-                        |> Seq.choose (fun v -> match v with | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = UiIds.Rotation.r2Plus -> Some b | _ -> None)
+                        |> Seq.choose (fun v -> match v with | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = ConstructorUiId.rotationR2PlusButton.value -> Some b | _ -> None)
                         |> Seq.tryHead
                     match button with
                     | Some b ->
@@ -485,7 +485,7 @@ module TableAndElementRotationTests =
             // stable id); the static test scene (empty palette) renders none.
             let removeButtons =
                 window.GetVisualDescendants()
-                |> Seq.choose (function :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = UiIds.ElementPalette.removeSelected -> Some b | _ -> None)
+                |> Seq.choose (function :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = ConstructorUiId.paletteRemoveSelectedButton.value -> Some b | _ -> None)
                 |> Seq.toList
             Assert.Equal(1, List.length removeButtons)
             window.Close())
@@ -504,7 +504,7 @@ module TableAndElementRotationTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let clickAdd (code : string) : unit =
-                let id = UiIds.ElementPalette.addButton code
+                let id = (ConstructorUiId.paletteAddButton (ConstructorUiKey code)).value
                 let button =
                     window.GetVisualDescendants()
                     |> Seq.tryPick (function

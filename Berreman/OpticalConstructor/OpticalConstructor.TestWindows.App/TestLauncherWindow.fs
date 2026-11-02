@@ -48,13 +48,13 @@ type TestLauncherWindow() as this =
             button.Click.Add(fun _ -> (openScene ()).Show())
             button
         let scenes : (string * string * (unit -> Window)) list =
-            [ UiIds.TestLauncher.openTableRotationTestButton, "Test Optical Table Rotations", fun () -> TableRotationWindow() :> Window
-              UiIds.TestLauncher.openElementRotationTestButton, "Test Optical Element Rotations", fun () -> ElementRotationWindow() :> Window
-              UiIds.TestLauncher.openTableAndElementRotationTestButton, "Test Table + Element Rotations", fun () -> TableAndElementRotationWindow() :> Window
-              UiIds.TestLauncher.openElementMovementTestButton, "Test Element Movement", fun () -> ElementMovementWindow() :> Window
-              UiIds.TestLauncher.openRendererTestButton, "Test Renderers", fun () -> RendererTestWindow() :> Window
-              UiIds.TestLauncher.openSnapToBeamTestButton, "Test Snap to Beam", fun () -> SnapToBeamWindow() :> Window
-              UiIds.TestLauncher.openSnapToReflectedTestButton, "Test Snap to Reflected Light", fun () -> SnapToReflectedWindow() :> Window ]
+            [ ConstructorUiId.openTableRotationTestButton.value, "Test Optical Table Rotations", fun () -> TableRotationWindow() :> Window
+              ConstructorUiId.openElementRotationTestButton.value, "Test Optical Element Rotations", fun () -> ElementRotationWindow() :> Window
+              ConstructorUiId.openTableAndElementRotationTestButton.value, "Test Table + Element Rotations", fun () -> TableAndElementRotationWindow() :> Window
+              ConstructorUiId.openElementMovementTestButton.value, "Test Element Movement", fun () -> ElementMovementWindow() :> Window
+              ConstructorUiId.openRendererTestButton.value, "Test Renderers", fun () -> RendererTestWindow() :> Window
+              ConstructorUiId.openSnapToBeamTestButton.value, "Test Snap to Beam", fun () -> SnapToBeamWindow() :> Window
+              ConstructorUiId.openSnapToReflectedTestButton.value, "Test Snap to Reflected Light", fun () -> SnapToReflectedWindow() :> Window ]
         let panel = StackPanel(Margin = Thickness 20.0)
         panel.Children.Add title
         for (id, label, openScene) in scenes do

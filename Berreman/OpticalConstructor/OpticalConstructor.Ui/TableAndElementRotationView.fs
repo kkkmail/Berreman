@@ -2002,7 +2002,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children
             (addRemoveBar model dispatch
              @ [ RotationControls.view (rotationState model) (rotationHandlers dispatch)
-                 TextBlock.create [ TextBlock.name UiIds.TableAndElementRotation.readout; TextBlock.text (readoutText model) ]
+                 TextBlock.create [ TextBlock.name ConstructorUiId.teReadout.value; TextBlock.text (readoutText model) ]
                  TextBlock.create [
                      TextBlock.foreground (brush (color 100 100 100))
                      TextBlock.text "click TABLE or an element to select it (rotation acts on the selection) · drag = pan · wheel = zoom table · Shift/Ctrl+Shift/Alt+wheel = R1/R2/R3 of the selection · Ctrl+Alt+wheel = zoom element · Ctrl+Alt+Shift+wheel = zoom all · Shift+button = 5°"
@@ -2017,7 +2017,7 @@ let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.TableAndElementRotation.canvas
+        Canvas.name ConstructorUiId.tableElementCanvas.value
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -2026,7 +2026,7 @@ let private tableCanvas (model : Model) : IView =
     ] :> IView
 
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.TableAndElementRotation.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.tableElementCanvas.value e
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]
@@ -2431,7 +2431,7 @@ let outOfBandBadge (i : int) (c : ScreenPoint) (text : string) : IView =
         TextBlock.text "⚠"
         TextBlock.fontWeight FontWeight.Bold
         TextBlock.foreground (brush (color 200 60 40))
-        badgeAutomationId (UiIds.TableAndElementRotation.outOfBandBadge i)
+        badgeAutomationId (ConstructorUiId.outOfBandBadge (ConstructorUiPosition i)).value
         badgeToolTip text
     ] :> IView
 
@@ -3443,9 +3443,9 @@ let private experimentsBayContent (model : Model) (dispatch : Msg -> unit) : IVi
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 8.0
             StackPanel.children [
-                workbenchButton UiIds.Experiment.exportButton "Export data" (fun () -> dispatch ExportExperimentData)
+                workbenchButton ConstructorUiId.experimentExportButton.value "Export data" (fun () -> dispatch ExportExperimentData)
                 TextBlock.create [
-                    TextBlock.name UiIds.Experiment.exportStatus
+                    TextBlock.name ConstructorUiId.experimentExportStatus.value
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.text (model.exportStatus |> Option.defaultValue "")
                 ]
@@ -3471,7 +3471,7 @@ let private pivotCheckBox (model : Model) (dispatch : Msg -> unit) : IView =
         | BeamLayout.PivotAtIncidentFace -> true
         | BeamLayout.PivotAtCentre -> false
     CheckBox.create [
-        AttrBuilder<CheckBox>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, UiIds.TableAndElementRotation.pivotAtIncidentFace, ValueNone)
+        AttrBuilder<CheckBox>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, ConstructorUiId.rotateAboutIncidentFaceCheck.value, ValueNone)
         CheckBox.isChecked isOn
         CheckBox.content "Rotate elements about the middle of their incident face"
         CheckBox.margin (Thickness(8.0, 0.0, 0.0, 0.0))
@@ -3529,7 +3529,7 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : 
                         Ribbon.view { bays = bays; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
                     ]
                 ] :> IView
-                TextBlock.create [ TextBlock.name UiIds.TableAndElementRotation.readout; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text (readoutText model) ] :> IView
+                TextBlock.create [ TextBlock.name ConstructorUiId.teReadout.value; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text (readoutText model) ] :> IView
             ]
             // Spec 0038 (016): the staleness status line — present only while a status is set.
             @ selectStatusRow model)
@@ -3540,7 +3540,7 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : 
 // sibling of the table surface, so its rows receive their own clicks): the element's reflected /
 // transmitted ray switches, the beam it sits on (the main beam or the reflected ray of a partially-
 // reflecting element), Remove, and Close. Every row carries an intent-named AutomationId
-// (`UiIds.ElementMenu`), and every verb is a plain `Msg`, so the behaviour is provable through `update`.
+// (`ConstructorUiId.elementMenu…`), and every verb is a plain `Msg`, so the behaviour is provable through `update`.
 // ---------------------------------------------------------------------------
 
 /// Spec 0046: the menu grows with its text up to `elementMenuMaxWidth` (then the lines wrap), never below
@@ -3569,7 +3569,7 @@ let private elementMenuItem (autoId : string) (label : string) (enabled : bool) 
 /// element's id (the closure's only render-varying capture).
 let private elementMenuChooseItem (model : Model) (dispatch : Msg -> unit) (element : TestElement) : IView =
     Border.create [
-        workbenchAutomationId UiIds.ElementMenu.choose
+        workbenchAutomationId ConstructorUiId.elementMenuChoose.value
         Border.background (brush (color 255 255 255))
         Border.padding (Thickness(10.0, 4.0))
         Border.child (TextBlock.create [ TextBlock.text "Choose…" ])
@@ -3586,7 +3586,7 @@ let private elementMenuChooseItem (model : Model) (dispatch : Msg -> unit) (elem
             dispatch CloseElementMenu
             ownerOpt |> Option.iter (chooseFromLibrary model dispatch element)), SubPatchOptions.OnChangeOf element.id.value)
     ]
-    |> Avalonia.FuncUI.DSL.View.withKey UiIds.ElementMenu.choose
+    |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.elementMenuChoose.value
     :> IView
 
 /// A non-clickable element-menu line — a section heading, or a greyed explanatory note.
@@ -3627,8 +3627,8 @@ let elementMenuRows (model : Model) (dispatch : Msg -> unit) (menu : ElementMenu
             | LightSource | Detector -> fixedNote
             | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror ->
                 [ elementMenuNote "Rays" true
-                  elementMenuItem UiIds.ElementMenu.toggleReflected $"%s{check (List.contains RayModel.Reflected groups)} Reflected ray" switchable (fun () -> dispatch (ToggleElementRay (e.id, BeamTree.Reflected)))
-                  elementMenuItem UiIds.ElementMenu.toggleTransmitted $"%s{check (List.contains RayModel.Transmitted groups)} Transmitted ray" switchable (fun () -> dispatch (ToggleElementRay (e.id, BeamTree.Transmitted))) ]
+                  elementMenuItem ConstructorUiId.elementMenuToggleReflected.value $"%s{check (List.contains RayModel.Reflected groups)} Reflected ray" switchable (fun () -> dispatch (ToggleElementRay (e.id, BeamTree.Reflected)))
+                  elementMenuItem ConstructorUiId.elementMenuToggleTransmitted.value $"%s{check (List.contains RayModel.Transmitted groups)} Transmitted ray" switchable (fun () -> dispatch (ToggleElementRay (e.id, BeamTree.Transmitted))) ]
                 @ fixedNote
         let beamRows =
             match i with
@@ -3642,15 +3642,15 @@ let elementMenuRows (model : Model) (dispatch : Msg -> unit) (menu : ElementMenu
                         |> List.tryFindIndex (fun x -> x.id = hostId)
                         |> Option.map (fun j ->
                             let host = BeamLayout.OnReflectedBeamOf hostId
-                            elementMenuItem (UiIds.ElementMenu.placeOnReflectedOf hostId.value) $"%s{radio (current = host)} Reflected ray of %s{nameOf j}" true (fun () -> dispatch (PlaceOnBeam (e.id, host)))))
+                            elementMenuItem (ConstructorUiId.elementMenuPlaceOnReflectedOf hostId).value $"%s{radio (current = host)} Reflected ray of %s{nameOf j}" true (fun () -> dispatch (PlaceOnBeam (e.id, host)))))
                 [ elementMenuNote "Sits on" true
-                  elementMenuItem UiIds.ElementMenu.placeOnMainBeam $"%s{radio (current = BeamLayout.OnMainBeam)} Main beam" true (fun () -> dispatch (PlaceOnBeam (e.id, BeamLayout.OnMainBeam))) ]
+                  elementMenuItem ConstructorUiId.elementMenuPlaceOnMainBeam.value $"%s{radio (current = BeamLayout.OnMainBeam)} Main beam" true (fun () -> dispatch (PlaceOnBeam (e.id, BeamLayout.OnMainBeam))) ]
                 @ reflectedRows
         // Spec 0046: what the element is — the bound entry's name and description — under its title.
         let _, detail = elementInfo model i
         let info =
             TextBlock.create [
-                AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, UiIds.ElementMenu.info, ValueNone)
+                AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, ConstructorUiId.elementMenuInfo.value, ValueNone)
                 TextBlock.text detail
                 TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.margin (Thickness(10.0, 0.0, 10.0, 4.0))
@@ -3661,8 +3661,8 @@ let elementMenuRows (model : Model) (dispatch : Msg -> unit) (menu : ElementMenu
           elementMenuChooseItem model dispatch e ]
         @ rayRows
         @ beamRows
-        @ [ elementMenuItem UiIds.ElementMenu.remove "Remove element" true (fun () -> dispatch RemoveSelected)
-            elementMenuItem UiIds.ElementMenu.close "Close" true (fun () -> dispatch CloseElementMenu) ]
+        @ [ elementMenuItem ConstructorUiId.elementMenuRemove.value "Remove element" true (fun () -> dispatch RemoveSelected)
+            elementMenuItem ConstructorUiId.elementMenuClose.value "Close" true (fun () -> dispatch CloseElementMenu) ]
 
 /// The element-menu overlay layer — a background-less canvas the size of the table canvas (so clicks
 /// off the menu fall through to the table), holding the open menu at its click point, kept on the canvas.
@@ -3678,7 +3678,7 @@ let private elementMenuOverlay (model : Model) (dispatch : Msg -> unit) : IView 
                 let left = max 0.0 (min (canvasWidth - elementMenuMaxWidth) (menu.at.sx + 6.0))
                 let top = max 0.0 (min (canvasHeight - estimatedHeight) (menu.at.sy + 6.0))
                 [ Border.create [
-                      workbenchAutomationId UiIds.ElementMenu.menu
+                      workbenchAutomationId ConstructorUiId.elementMenu.value
                       Canvas.left left
                       Canvas.top top
                       Border.minWidth elementMenuMinWidth
@@ -3690,7 +3690,7 @@ let private elementMenuOverlay (model : Model) (dispatch : Msg -> unit) : IView 
                       Border.padding (Thickness(0.0, 4.0))
                       Border.child (StackPanel.create [ StackPanel.orientation Orientation.Vertical; StackPanel.children rows ])
                   ]
-                  |> Avalonia.FuncUI.DSL.View.withKey UiIds.ElementMenu.menu
+                  |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.elementMenu.value
                   :> IView ]
     Canvas.create [
         Canvas.width canvasWidth
@@ -3715,7 +3715,7 @@ let private elementHoverTargets (model : Model) : IView list =
             let c = projectPt model.view centre
             let heading, detail = elementInfo model i
             [ Ellipse.create [
-                  AttrBuilder<Ellipse>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, UiIds.TableAndElementRotation.elementHover e.id.value, ValueNone)
+                  (ConstructorUiId.elementHover e.id).automationAttribute<Ellipse> ()
                   AttrBuilder<Ellipse>.CreateProperty<obj>(ToolTip.TipProperty, box $"%s{heading}\n%s{detail}", ValueNone)
                   Ellipse.left (c.sx - elementHoverRadiusPx)
                   Ellipse.top (c.sy - elementHoverRadiusPx)
@@ -3723,7 +3723,7 @@ let private elementHoverTargets (model : Model) : IView list =
                   Ellipse.height (2.0 * elementHoverRadiusPx)
                   Ellipse.fill Brushes.Transparent
               ]
-              |> Avalonia.FuncUI.DSL.View.withKey (UiIds.TableAndElementRotation.elementHover e.id.value)
+              |> Avalonia.FuncUI.DSL.View.withKey (ConstructorUiId.elementHover e.id).value
               :> IView ]
         | None -> [])
     |> List.concat
@@ -3767,13 +3767,13 @@ let private pageScrollOf (source : obj) : PageScroll option =
         let viewerOpt =
             Avalonia.VisualTree.VisualExtensions.GetVisualAncestors v
             |> Seq.tryPick (function
-                | :? ScrollViewer as s when s.Name = UiIds.TableAndElementRotation.scrollViewer -> Some s
+                | :? ScrollViewer as s when s.Name = ConstructorUiId.tableElementScrollViewer.value -> Some s
                 | _ -> None)
         match viewerOpt with
         | Some viewer ->
             Avalonia.VisualTree.VisualExtensions.GetVisualDescendants viewer
             |> Seq.tryPick (function
-                | :? Canvas as c when c.Name = UiIds.TableAndElementRotation.canvas -> Some c
+                | :? Canvas as c when c.Name = ConstructorUiId.tableElementCanvas.value -> Some c
                 | _ -> None)
             |> Option.bind (fun canvas ->
                 canvas.TranslatePoint(Point(0.0, 0.0), viewer)
@@ -3791,7 +3791,7 @@ let private pageScrollOf (source : obj) : PageScroll option =
 
 let private mainTableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.TableAndElementRotation.canvas
+        Canvas.name ConstructorUiId.tableElementCanvas.value
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -3810,7 +3810,7 @@ let private mainTableCanvas (model : Model) : IView =
 /// The bays are built once and shared: the ribbon hosts the in-pane bays' content and shows only a
 /// tab for a full-surface bay, whose content is placed here below.
 let mainView (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.TableAndElementRotation.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.tableElementCanvas.value e
     // The shared table surface + its pointer / wheel gestures. A thunk, so it is only built for a table bay:
     // a full-surface bay never realizes the canvas and must not wire the table gestures.
     // Spec 0046: a RIGHT click opens the element menu on release (its press starts no drag); the menu
@@ -3874,7 +3874,7 @@ let mainView (model : Model) (dispatch : Msg -> unit) : IView =
     // height at that width, so the extent is exactly bars + table. A plain wheel over the table scrolls
     // the page until the table is fully in view (`wheelTarget`), then zooms it.
     ScrollViewer.create [
-        ScrollViewer.name UiIds.TableAndElementRotation.scrollViewer
+        ScrollViewer.name ConstructorUiId.tableElementScrollViewer.value
         ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
         ScrollViewer.verticalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
         ScrollViewer.content (

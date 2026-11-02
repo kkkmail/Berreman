@@ -145,9 +145,9 @@ module TablePositionControls =
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.spacing 4.0
                     StackPanel.children [
-                        axisRow handlers state.enabled (UiIds.TablePosition.xMinus, UiIds.TablePosition.xPlus, UiIds.TablePosition.xField, UiIds.TablePosition.xLock) "X" AxisX state.x
-                        axisRow handlers state.enabled (UiIds.TablePosition.yMinus, UiIds.TablePosition.yPlus, UiIds.TablePosition.yField, UiIds.TablePosition.yLock) "Y" AxisY state.y
-                        axisRow handlers state.enabled (UiIds.TablePosition.zMinus, UiIds.TablePosition.zPlus, UiIds.TablePosition.zField, UiIds.TablePosition.zLock) "Z" AxisZ state.z
+                        axisRow handlers state.enabled (ConstructorUiId.tablePositionXMinusButton.value, ConstructorUiId.tablePositionXPlusButton.value, ConstructorUiId.tablePositionXField.value, ConstructorUiId.tablePositionXLockButton.value) "X" AxisX state.x
+                        axisRow handlers state.enabled (ConstructorUiId.tablePositionYMinusButton.value, ConstructorUiId.tablePositionYPlusButton.value, ConstructorUiId.tablePositionYField.value, ConstructorUiId.tablePositionYLockButton.value) "Y" AxisY state.y
+                        axisRow handlers state.enabled (ConstructorUiId.tablePositionZMinusButton.value, ConstructorUiId.tablePositionZPlusButton.value, ConstructorUiId.tablePositionZField.value, ConstructorUiId.tablePositionZLockButton.value) "Z" AxisZ state.z
                     ]
                 ]
                 StackPanel.create [
@@ -157,9 +157,9 @@ module TablePositionControls =
                     StackPanel.children [
                         Border.create [
                             Border.horizontalAlignment HorizontalAlignment.Left
-                            Border.child (clickBox UiIds.TablePosition.reset "Reset position" state.enabled (fun _ -> handlers.reset ()))
+                            Border.child (clickBox ConstructorUiId.tablePositionResetButton.value "Reset position" state.enabled (fun _ -> handlers.reset ()))
                         ]
-                        TextBlock.create [ TextBlock.name UiIds.TablePosition.readout; TextBlock.textWrapping TextWrapping.Wrap; TextBlock.text (readoutText state) ]
+                        TextBlock.create [ TextBlock.name ConstructorUiId.tablePositionReadout.value; TextBlock.textWrapping TextWrapping.Wrap; TextBlock.text (readoutText state) ]
                     ]
                 ]
             ]

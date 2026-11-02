@@ -92,7 +92,7 @@ module WireUiCompositionTests =
     /// Commit `text` through the REAL faceted filter box (the Materials window's box commits on
     /// Enter/LostFocus only — never per keystroke — so `setText` alone dispatches nothing).
     let private commitFilter (window : Window) (text : string) : unit =
-        match tryFindControl window UiIds.FacetedTree.filterBox with
+        match tryFindControl window ConstructorUiId.facetFilterBox.value with
         | Some (:? TextBox as tb) ->
             tb.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
@@ -138,7 +138,7 @@ module WireUiCompositionTests =
         clickOn root WorkbenchIds.openMaterialsButton
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
-        Assert.True(matchesId UiIds.MaterialsWindow.window opened.[0], "the strip button must open the Materials window")
+        Assert.True(matchesId ConstructorUiId.materialsWindow.value opened.[0], "the strip button must open the Materials window")
         Assert.True(opened.[0].IsVisible, "the Materials window must be shown")
         opened.[0]
 
@@ -152,7 +152,7 @@ module WireUiCompositionTests =
         clickOn root WorkbenchIds.openLibraryButton
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
-        Assert.True(matchesId UiIds.LibraryWindow.window opened.[0], "the strip button must open the Library window")
+        Assert.True(matchesId ConstructorUiId.libraryWindow.value opened.[0], "the strip button must open the Library window")
         Assert.True(opened.[0].IsVisible, "the Library window must be shown")
         opened.[0]
 
@@ -168,18 +168,18 @@ module WireUiCompositionTests =
             Assert.DoesNotContain("Materials", BayNames.all)
             Assert.DoesNotContain("Library", BayNames.all)
             for bay in BayNames.all do
-                clickOn window (UiIds.Ribbon.tab bay)
+                clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey bay)).value
                 Assert.True(window.IsVisible, $"the %s{bay} bay must render one frame without throwing")
             // Selector: the kind-constrained binding surface mounts (its ids are unconditional).
-            clickOn window (UiIds.Ribbon.tab BayNames.selector)
-            for id in [ UiIds.Library.kindLabel; UiIds.Library.readout; UiIds.Library.tree ] do
+            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.selector)).value
+            for id in [ ConstructorUiId.libraryKindLabel.value; ConstructorUiId.libraryBoundReadout.value; ConstructorUiId.libraryTree.value ] do
                 Assert.True(isPresent window id, $"the Select bay must mount %s{id}")
             // Materials: the strip button opens the REAL single-instance Materials window,
             // whose faceted tree lists the SEEDED store — the root wired a live MaterialProxy,
             // not an empty stand-in.
             let materialsWindow = openMaterialsWindow window
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaves.
-            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
+            clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
             Assert.True(isPresent materialsWindow (MW.entryNode MaterialIds.glass152),
                         "the Materials window must list the seeded glass152 entry from the root-wired store")
             Assert.True(isPresent materialsWindow (MW.entryNode MaterialIds.silicon),
@@ -191,7 +191,7 @@ module WireUiCompositionTests =
             // preset entries — the root wired live proxies, not empty stand-ins.
             let libraryWindow = openLibraryWindow window
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaves.
-            clickOn libraryWindow (UiIds.FacetedTree.treeNodeChevron "entries")
+            clickOn libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
             Assert.True(isPresent libraryWindow (LW.entryNode (string SeedSamples.glassFilm600.id.value)),
                         "the Library window must list the seeded glassFilm600 sample from the root-wired store")
             Assert.True(isPresent libraryWindow (LW.entryNode "src-600"),
@@ -213,11 +213,11 @@ module WireUiCompositionTests =
             let opened, sub = trackOpened ()
             use _sub = sub
             // Materials window → Add: the REAL step-023 Material editor mounts headless.
-            clickOn materialsWindow UiIds.MaterialsWindow.addButton
+            clickOn materialsWindow ConstructorUiId.materialsAddButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             Assert.True(opened.[0].IsVisible, "the Material editor window must be shown")
-            Assert.True(matchesId UiIds.MaterialEditor.window opened.[0], "the opened window must be the Material editor")
+            Assert.True(matchesId ConstructorUiId.materialEditorWindow.value opened.[0], "the opened window must be the Material editor")
             opened.[0].Close()
             // Library window (spec 0038 step 015) → narrow, select the leaf, Edit: the REAL
             // step-022 Sample editor mounts, seeded with the picked sample.
@@ -225,15 +225,15 @@ module WireUiCompositionTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             let libraryWindow = opened.[1]
-            Assert.True(matchesId UiIds.LibraryWindow.window libraryWindow, "the strip button must open the Library window")
+            Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryWindow, "the strip button must open the Library window")
             commitFilter libraryWindow "n=1.75"
-            clickOn libraryWindow (UiIds.FacetedTree.treeNodeChevron "entries")
+            clickOn libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
             clickOn libraryWindow (LW.entryNode (string SeedSamples.glassFilm600.id.value))
-            clickOn libraryWindow UiIds.LibraryWindow.editButton
+            clickOn libraryWindow ConstructorUiId.libraryEditButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(3, opened.Count)
             Assert.True(opened.[2].IsVisible, "the Sample editor window must be shown")
-            Assert.True(matchesId UiIds.SampleEditor.window opened.[2], "the opened window must be the Sample editor")
+            Assert.True(matchesId ConstructorUiId.sampleEditorWindow.value opened.[2], "the opened window must be the Sample editor")
             Assert.Contains("Glass thin film", opened.[2].Title)
             opened.[2].Close()
             libraryWindow.Close()
@@ -243,11 +243,11 @@ module WireUiCompositionTests =
             // materials store's remove-block consults the LIVE samples store
             // (`samplesReferencing`) composed at the root, not a detached lookup.
             commitFilter materialsWindow "1.52"
-            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
+            clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
             clickOn materialsWindow (MW.entryNode MaterialIds.glass152)
-            clickOn materialsWindow UiIds.MaterialsWindow.removeButton
-            clickOn materialsWindow UiIds.MaterialsWindow.removeConfirmButton
-            let message = textOf materialsWindow UiIds.MaterialsWindow.message
+            clickOn materialsWindow ConstructorUiId.materialsRemoveButton.value
+            clickOn materialsWindow ConstructorUiId.materialsRemoveConfirmButton.value
+            let message = textOf materialsWindow ConstructorUiId.materialsWindowMessage.value
             Assert.Contains("still referenced", message)
             Assert.Contains("Glass plate", message)
             Assert.True(isPresent materialsWindow (MW.entryNode MaterialIds.glass152),
@@ -270,11 +270,11 @@ module WireUiCompositionTests =
             let materialsWindow = openMaterialsWindow window
             let opened, sub = trackOpened ()
             use _sub = sub
-            clickOn materialsWindow UiIds.MaterialsWindow.categoriesButton
+            clickOn materialsWindow ConstructorUiId.materialsCategoriesButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             Assert.True(opened.[0].IsVisible, "the Category editor window must be shown")
-            Assert.True(matchesId UiIds.CategoryEditor.window opened.[0], "the opened window must be the Category editor")
+            Assert.True(matchesId ConstructorUiId.categoryEditorWindow.value opened.[0], "the opened window must be the Category editor")
             opened.[0].Close()
             materialsWindow.Close()
             Dispatcher.UIThread.RunJobs()

@@ -430,7 +430,7 @@ module WindowLauncherTests =
     /// Commit `text` through the REAL faceted filter box (Enter is the commit gesture — the box
     /// has no text-change subscription, spec 0038 §0.4).
     let private commitFilter (window : Window) (text : string) : unit =
-        match tryFindControl window UiIds.FacetedTree.filterBox with
+        match tryFindControl window ConstructorUiId.facetFilterBox.value with
         | Some (:? TextBox as tb) ->
             tb.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
@@ -455,7 +455,7 @@ module WindowLauncherTests =
             Dispatcher.UIThread.RunJobs()
             commitFilter materialsWindow "1.52"
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
-            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
+            clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
             clickOn materialsWindow (MaterialsWindowView.entryNode MaterialLibrary.MaterialIds.glass152)
             // Observe the editors the real launcher opens (the WireUiComposition seam).
             let opened = ResizeArray<Window>()
@@ -465,9 +465,9 @@ module WindowLauncherTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            clickOn materialsWindow UiIds.MaterialsWindow.editButton
+            clickOn materialsWindow ConstructorUiId.materialsEditButton.value
             Dispatcher.UIThread.RunJobs()
-            clickOn materialsWindow UiIds.MaterialsWindow.editButton
+            clickOn materialsWindow ConstructorUiId.materialsEditButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             Assert.True(opened.[0].IsVisible, "the one editor window must be live")
@@ -497,17 +497,17 @@ module WindowLauncherTests =
                     | _ -> ())
             // Each Add mints its own upfront id AT the verb dispatch (spec 0038 step 008), so
             // two Adds meet two DISTINCT registry keys: two NewUnsaved editor windows.
-            clickOn materialsWindow UiIds.MaterialsWindow.addButton
+            clickOn materialsWindow ConstructorUiId.materialsAddButton.value
             Dispatcher.UIThread.RunJobs()
-            clickOn materialsWindow UiIds.MaterialsWindow.addButton
+            clickOn materialsWindow ConstructorUiId.materialsAddButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             Assert.False(obj.ReferenceEquals(opened.[0], opened.[1]), "two Adds must open two windows")
             // Save each: the NewUnsaved freshness routes addMaterial under the id minted AT OPEN.
-            setText opened.[0] UiIds.MaterialEditor.nameBox "Launcher add A"
-            clickOn opened.[0] UiIds.MaterialEditor.saveButton
-            setText opened.[1] UiIds.MaterialEditor.nameBox "Launcher add B"
-            clickOn opened.[1] UiIds.MaterialEditor.saveButton
+            setText opened.[0] ConstructorUiId.materialNameBox.value "Launcher add A"
+            clickOn opened.[0] ConstructorUiId.materialEditorSaveButton.value
+            setText opened.[1] ConstructorUiId.materialNameBox.value "Launcher add B"
+            clickOn opened.[1] ConstructorUiId.materialEditorSaveButton.value
             Assert.False(opened.[0].IsVisible)
             Assert.False(opened.[1].IsVisible)
             // Both persisted, under two DISTINCT non-seeded ids.
@@ -552,9 +552,9 @@ module WindowLauncherTests =
             // Name it and give it one layer (a valid stack — Add layer takes the first listed
             // material now that the inline picker is gone, step 019), then Save — NewUnsaved
             // → addSample.
-            setText editor UiIds.SampleEditor.nameBox "Launcher sample"
-            clickOn editor UiIds.SampleEditor.addLayerButton
-            clickOn editor UiIds.SampleEditor.saveButton
+            setText editor ConstructorUiId.sampleNameBox.value "Launcher sample"
+            clickOn editor ConstructorUiId.addLayerButton.value
+            clickOn editor ConstructorUiId.sampleEditorSaveButton.value
             Assert.False(editor.IsVisible)
             match samples.tryGetSample minted with
             | Ok (Some s) -> Assert.Equal("Launcher sample", s.name)

@@ -49,7 +49,7 @@ module RayPositionControlsTests =
                     | _ -> Seq.empty)
                 |> Set.ofSeq
             window.Close()
-            Assert.Contains(UiIds.RayPosition.minus, ids)
-            Assert.Contains(UiIds.RayPosition.plus, ids)
-            Assert.Contains(UiIds.RayPosition.field, ids)
-            Assert.Contains(UiIds.RayPosition.reset, ids))
+            Assert.Contains(ConstructorUiId.rayPositionMinusButton.value, ids)
+            Assert.Contains(ConstructorUiId.rayPositionPlusButton.value, ids)
+            Assert.Contains(ConstructorUiId.rayPositionField.value, ids)
+            Assert.Contains(ConstructorUiId.rayPositionResetButton.value, ids))

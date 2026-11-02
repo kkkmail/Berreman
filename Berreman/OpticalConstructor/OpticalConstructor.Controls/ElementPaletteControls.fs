@@ -82,9 +82,9 @@ module ElementPaletteControls =
     let view (state : State) (handlers : Handlers) : IView =
         let addButtons =
             state.addItems
-            |> List.map (fun item -> clickBox (UiIds.ElementPalette.addButton item.id) ("+ " + item.label) true (fun () -> handlers.add item.id))
+            |> List.map (fun item -> clickBox (ConstructorUiId.paletteAddButton (ConstructorUiKey item.id)).value ("+ " + item.label) true (fun () -> handlers.add item.id))
         let removeButton =
-            clickBox UiIds.ElementPalette.removeSelected "Remove selected" state.canRemove (fun () -> handlers.removeSelected ())
+            clickBox ConstructorUiId.paletteRemoveSelectedButton.value "Remove selected" state.canRemove (fun () -> handlers.removeSelected ())
         WrapPanel.create [
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children (addButtons @ [ removeButton ])

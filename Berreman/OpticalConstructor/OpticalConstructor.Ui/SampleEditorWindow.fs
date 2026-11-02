@@ -44,8 +44,8 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
             | SampleEditorView.EditSample s -> $"Sample Editor — %s{s.name}"
             | SampleEditorView.NewSeededMultilayer _ -> "Sample Editor — new multilayer"
             | SampleEditorView.NewBlankSample _ -> "Sample Editor — new sample"
-        this.Name <- UiIds.SampleEditor.window
-        AutomationProperties.SetAutomationId(this, UiIds.SampleEditor.window)
+        this.Name <- ConstructorUiId.sampleEditorWindow.value
+        AutomationProperties.SetAutomationId(this, ConstructorUiId.sampleEditorWindow.value)
         this.Width <- 1080.0
         this.Height <- 900.0
         // Spec 0046: never larger than the screen it opens on (its content scrolls).

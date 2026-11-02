@@ -318,7 +318,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             RotationControls.view (rotationState model) (rotationHandlers dispatch)
             TextBlock.create [
-                TextBlock.name UiIds.TableRotation.readout
+                TextBlock.name ConstructorUiId.tableRotationReadout.value
                 TextBlock.text readout
             ]
             TextBlock.create [
@@ -330,7 +330,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.TableRotation.canvas
+        Canvas.name ConstructorUiId.tableRotationCanvas.value
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -348,7 +348,7 @@ let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
 /// the content origin, a top-level pointer position equals a canvas coordinate. `e.Handled <-
 /// true` drops FuncUI's duplicate Tunnel|Bubble pass, so a wheel notch is exactly one step.
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.TableRotation.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.tableRotationCanvas.value e
     DockPanel.create [
         DockPanel.children [
             Border.create [

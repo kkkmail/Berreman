@@ -176,7 +176,7 @@ type ChartWindow(chart : ExperimentChart) as this =
         // Spec 0046: never larger than the screen it opens on (its content scrolls).
         WindowFit.keepOnScreen this
 
-        let ava = new ScottPlot.Avalonia.AvaPlot(Name = UiIds.ChartWindow.plot)
+        let ava = new ScottPlot.Avalonia.AvaPlot(Name = ConstructorUiId.chartWindowPlot.value)
         let plot = ava.Plot
 
         let mutable scatters : ScottPlot.Plottables.Scatter list = []
@@ -288,7 +288,7 @@ type ChartWindow(chart : ExperimentChart) as this =
             sp
 
         let propertiesHost =
-            StackPanel(Name = UiIds.ChartWindow.propertiesPanel, Orientation = Orientation.Vertical, Margin = Thickness(8.0), Spacing = 2.0)
+            StackPanel(Name = ConstructorUiId.chartWindowProperties.value, Orientation = Orientation.Vertical, Margin = Thickness(8.0), Spacing = 2.0)
 
         // A number text field committing a float on Enter / blur.
         let numberField (id : string) (value : float) (enabled : bool) (onCommit : float -> unit) : TextBox =
@@ -306,11 +306,11 @@ type ChartWindow(chart : ExperimentChart) as this =
 
         /// A font stepper (−/+) + readout for the given font target.
         let fontRow (target : ChartFont.ChartFontTarget) (bump : float -> unit) : StackPanel =
-            let minus = Button(Name = UiIds.ChartWindow.fontMinus, Content = "A−")
+            let minus = Button(Name = ConstructorUiId.chartWindowFontMinus.value, Content = "A−")
             minus.Click.Add(fun _ -> bump -1.0; applyStyle (); rebuildProperties ())
-            let plus = Button(Name = UiIds.ChartWindow.fontPlus, Content = "A+", Margin = Thickness(4.0, 0.0, 0.0, 0.0))
+            let plus = Button(Name = ConstructorUiId.chartWindowFontPlus.value, Content = "A+", Margin = Thickness(4.0, 0.0, 0.0, 0.0))
             plus.Click.Add(fun _ -> bump 1.0; applyStyle (); rebuildProperties ())
-            let sz = TextBlock(Name = UiIds.ChartWindow.fontSize, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%g{ChartFont.sizeOf target style.font} pt")
+            let sz = TextBlock(Name = ConstructorUiId.chartWindowFontSize.value, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%g{ChartFont.sizeOf target style.font} pt")
             row [ smallLabel "Font:"; minus; plus; sz ]
 
         let axisPanel (axis : ChartStyle.ChartAxis) : Control list =
@@ -320,13 +320,13 @@ type ChartWindow(chart : ExperimentChart) as this =
                 | ChartStyle.AxisX -> "X axis"
                 | ChartStyle.AxisY ChartStyle.LeftAxis -> "Y axis (left)"
                 | ChartStyle.AxisY ChartStyle.RightAxis -> "Y axis (right)"
-            let autoBox = CheckBox(Name = UiIds.ChartWindow.axisAuto, Content = "Auto (fit data)", IsChecked = axisStyle.auto)
+            let autoBox = CheckBox(Name = ConstructorUiId.chartWindowAxisAuto.value, Content = "Auto (fit data)", IsChecked = axisStyle.auto)
             autoBox.IsCheckedChanged.Add(fun _ ->
                 style <- ChartStyle.setAxisAuto axis (autoBox.IsChecked.GetValueOrDefault true) style
                 applyStyle (); rebuildProperties ())
-            let minF = numberField UiIds.ChartWindow.axisMin axisStyle.min (not axisStyle.auto) (fun v -> style <- ChartStyle.setAxisMin axis v style; applyStyle (); rebuildProperties ())
-            let maxF = numberField UiIds.ChartWindow.axisMax axisStyle.max (not axisStyle.auto) (fun v -> style <- ChartStyle.setAxisMax axis v style; applyStyle (); rebuildProperties ())
-            let fmtBox = ComboBox(Name = UiIds.ChartWindow.axisFormat)
+            let minF = numberField ConstructorUiId.chartWindowAxisMin.value axisStyle.min (not axisStyle.auto) (fun v -> style <- ChartStyle.setAxisMin axis v style; applyStyle (); rebuildProperties ())
+            let maxF = numberField ConstructorUiId.chartWindowAxisMax.value axisStyle.max (not axisStyle.auto) (fun v -> style <- ChartStyle.setAxisMax axis v style; applyStyle (); rebuildProperties ())
+            let fmtBox = ComboBox(Name = ConstructorUiId.chartWindowAxisFormat.value)
             for f in [ ChartStyle.GeneralFormat; ChartStyle.FixedFormat 2; ChartStyle.ScientificFormat 2 ] do
                 fmtBox.Items.Add(ComboBoxItem(Content = f.label)) |> ignore
             fmtBox.SelectedIndex <- (match axisStyle.format with ChartStyle.GeneralFormat -> 0 | ChartStyle.FixedFormat _ -> 1 | ChartStyle.ScientificFormat _ -> 2)
@@ -339,11 +339,11 @@ type ChartWindow(chart : ExperimentChart) as this =
                     | _ -> ChartStyle.GeneralFormat
                 style <- ChartStyle.setAxisFormat axis fmt style; applyStyle (); rebuildProperties ())
             let decEnabled = (match axisStyle.format with ChartStyle.GeneralFormat -> false | _ -> true)
-            let decMinus = Button(Name = UiIds.ChartWindow.axisDecimalsMinus, Content = "−", IsEnabled = decEnabled)
+            let decMinus = Button(Name = ConstructorUiId.chartWindowAxisDecimalsMinus.value, Content = "−", IsEnabled = decEnabled)
             decMinus.Click.Add(fun _ -> style <- ChartStyle.bumpAxisDecimals axis -1 style; applyStyle (); rebuildProperties ())
-            let decPlus = Button(Name = UiIds.ChartWindow.axisDecimalsPlus, Content = "+", IsEnabled = decEnabled, Margin = Thickness(4.0, 0.0, 0.0, 0.0))
+            let decPlus = Button(Name = ConstructorUiId.chartWindowAxisDecimalsPlus.value, Content = "+", IsEnabled = decEnabled, Margin = Thickness(4.0, 0.0, 0.0, 0.0))
             decPlus.Click.Add(fun _ -> style <- ChartStyle.bumpAxisDecimals axis 1 style; applyStyle (); rebuildProperties ())
-            let decReadout = TextBlock(Name = UiIds.ChartWindow.axisDecimals, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%d{axisStyle.format.decimals} digits")
+            let decReadout = TextBlock(Name = ConstructorUiId.chartWindowAxisDecimals.value, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%d{axisStyle.format.decimals} digits")
             let bumpAxisFont (delta : float) : unit =
                 style <- ChartStyle.bumpFont ChartFont.AxisLabels delta (ChartStyle.bumpFont ChartFont.TickLabels delta style)
             [
@@ -357,9 +357,9 @@ type ChartWindow(chart : ExperimentChart) as this =
             ]
 
         let legendPanel () : Control list =
-            let visBox = CheckBox(Name = UiIds.ChartWindow.legendVisible, Content = "Show legend", IsChecked = style.legend.visible)
+            let visBox = CheckBox(Name = ConstructorUiId.chartWindowLegendVisible.value, Content = "Show legend", IsChecked = style.legend.visible)
             visBox.IsCheckedChanged.Add(fun _ -> style <- ChartStyle.setLegendVisible (visBox.IsChecked.GetValueOrDefault true) style; applyStyle (); rebuildProperties ())
-            let placeBox = ComboBox(Name = UiIds.ChartWindow.legendPlacement)
+            let placeBox = ComboBox(Name = ConstructorUiId.chartWindowLegendPlacement.value)
             for p in ChartStyle.allPlacements do placeBox.Items.Add(ComboBoxItem(Content = p.label)) |> ignore
             placeBox.SelectedIndex <- List.findIndex (fun p -> p = style.legend.placement) ChartStyle.allPlacements
             placeBox.SelectionChanged.Add(fun _ ->
@@ -375,25 +375,25 @@ type ChartWindow(chart : ExperimentChart) as this =
 
         let seriesPanel (i : int) : Control list =
             let st = ChartStyle.seriesStyleOf i style
-            let visBox = CheckBox(Name = UiIds.ChartWindow.seriesVisible, Content = "Show line", IsChecked = st.visible)
+            let visBox = CheckBox(Name = ConstructorUiId.chartWindowSeriesVisible.value, Content = "Show line", IsChecked = st.visible)
             visBox.IsCheckedChanged.Add(fun _ -> style <- ChartStyle.setSeriesVisible i (visBox.IsChecked.GetValueOrDefault true) style; applyStyle (); rebuildProperties ())
-            let thickMinus = Button(Name = UiIds.ChartWindow.seriesThicknessMinus, Content = "−")
+            let thickMinus = Button(Name = ConstructorUiId.chartWindowSeriesThickMinus.value, Content = "−")
             thickMinus.Click.Add(fun _ -> style <- ChartStyle.bumpSeriesThickness i -0.5 style; applyStyle (); rebuildProperties ())
-            let thickPlus = Button(Name = UiIds.ChartWindow.seriesThicknessPlus, Content = "+", Margin = Thickness(4.0, 0.0, 0.0, 0.0))
+            let thickPlus = Button(Name = ConstructorUiId.chartWindowSeriesThickPlus.value, Content = "+", Margin = Thickness(4.0, 0.0, 0.0, 0.0))
             thickPlus.Click.Add(fun _ -> style <- ChartStyle.bumpSeriesThickness i 0.5 style; applyStyle (); rebuildProperties ())
-            let thickReadout = TextBlock(Name = UiIds.ChartWindow.seriesThickness, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%g{st.thickness} px")
-            let colorBox = ComboBox(Name = UiIds.ChartWindow.seriesColor)
+            let thickReadout = TextBlock(Name = ConstructorUiId.chartWindowSeriesThick.value, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%g{st.thickness} px")
+            let colorBox = ComboBox(Name = ConstructorUiId.chartWindowSeriesColor.value)
             for c in ChartStyle.colorChoices do colorBox.Items.Add(ComboBoxItem(Content = c)) |> ignore
             colorBox.SelectedIndex <- (match List.tryFindIndex (fun c -> c = st.colorHex) ChartStyle.colorChoices with Some idx -> idx | None -> 0)
             colorBox.SelectionChanged.Add(fun _ ->
                 let idx = colorBox.SelectedIndex
                 if idx >= 0 && idx < List.length ChartStyle.colorChoices then
                     style <- ChartStyle.setSeriesColor i (List.item idx ChartStyle.colorChoices) style; applyStyle ())
-            let dotsBox = CheckBox(Name = UiIds.ChartWindow.seriesMarkers, Content = "Show dots", IsChecked = st.showMarkers)
+            let dotsBox = CheckBox(Name = ConstructorUiId.chartWindowSeriesMarkers.value, Content = "Show dots", IsChecked = st.showMarkers)
             dotsBox.IsCheckedChanged.Add(fun _ -> style <- ChartStyle.setSeriesMarkers i (dotsBox.IsChecked.GetValueOrDefault false) style; applyStyle (); rebuildProperties ())
             // Which Y axis the series plots against (spec 0033/018) — applying the style re-asserts each
             // scatter's Axes.YAxis, so the flip takes effect without a full rebuild.
-            let axisBox = ComboBox(Name = UiIds.ChartWindow.seriesAxis)
+            let axisBox = ComboBox(Name = ConstructorUiId.chartWindowSeriesAxis.value)
             for side in ChartStyle.allSides do axisBox.Items.Add(ComboBoxItem(Content = side.label)) |> ignore
             axisBox.SelectedIndex <- List.findIndex (fun a -> a = st.axisSide) ChartStyle.allSides
             axisBox.SelectionChanged.Add(fun _ ->
@@ -411,7 +411,7 @@ type ChartWindow(chart : ExperimentChart) as this =
 
         // The element picker (Header / X axis / Y axis / Legend / each series).
         let elementOptions = ChartStyle.elements seriesCount
-        let elementSelector = ComboBox(Name = UiIds.ChartWindow.elementSelector, Margin = Thickness(0.0, 0.0, 0.0, 8.0), HorizontalAlignment = HorizontalAlignment.Stretch)
+        let elementSelector = ComboBox(Name = ConstructorUiId.chartWindowElement.value, Margin = Thickness(0.0, 0.0, 0.0, 8.0), HorizontalAlignment = HorizontalAlignment.Stretch)
         for e in elementOptions do elementSelector.Items.Add(ComboBoxItem(Content = ChartStyle.elementLabel seriesName e)) |> ignore
 
         rebuildProperties <-
@@ -454,7 +454,7 @@ type ChartWindow(chart : ExperimentChart) as this =
         let toolbar = WrapPanel(Orientation = Orientation.Horizontal, Margin = Thickness(8.0))
 
         if chart.angular then
-            let polarBtn = Button(Name = UiIds.ChartWindow.polarToggle, Content = "Polar view", Margin = Thickness(0.0, 0.0, 16.0, 0.0))
+            let polarBtn = Button(Name = ConstructorUiId.chartWindowPolar.value, Content = "Polar view", Margin = Thickness(0.0, 0.0, 16.0, 0.0))
             polarBtn.Click.Add(fun _ ->
                 polar <- not polar
                 polarBtn.Content <- (if polar then "XY view" else "Polar view")
@@ -469,15 +469,15 @@ type ChartWindow(chart : ExperimentChart) as this =
             plot.Grid.IsVisible <- majorOn || minorOn
             ava.Refresh()
 
-        let majorGrid = CheckBox(Name = UiIds.ChartWindow.majorGrid, Content = "Major grid", IsChecked = true)
+        let majorGrid = CheckBox(Name = ConstructorUiId.chartWindowMajorGrid.value, Content = "Major grid", IsChecked = true)
         majorGrid.IsCheckedChanged.Add(fun _ -> majorOn <- majorGrid.IsChecked.GetValueOrDefault true; applyGrid ())
-        let minorGrid = CheckBox(Name = UiIds.ChartWindow.minorGrid, Content = "Minor grid", IsChecked = false, Margin = Thickness(8.0, 0.0, 0.0, 0.0))
+        let minorGrid = CheckBox(Name = ConstructorUiId.chartWindowMinorGrid.value, Content = "Minor grid", IsChecked = false, Margin = Thickness(8.0, 0.0, 0.0, 0.0))
         minorGrid.IsCheckedChanged.Add(fun _ -> minorOn <- minorGrid.IsChecked.GetValueOrDefault false; applyGrid ())
 
-        let exportPng = Button(Name = UiIds.ChartWindow.exportPng, Content = "Export PNG", Margin = Thickness(16.0, 0.0, 0.0, 0.0))
+        let exportPng = Button(Name = ConstructorUiId.chartWindowExportPng.value, Content = "Export PNG", Margin = Thickness(16.0, 0.0, 0.0, 0.0))
         exportPng.Click.Add(fun _ ->
             try plot.SavePng(Path.Combine(Path.GetTempPath(), "experiment-chart.png"), 1200, 800) |> ignore with _ -> ())
-        let exportCsv = Button(Name = UiIds.ChartWindow.exportCsv, Content = "Export CSV", Margin = Thickness(8.0, 0.0, 0.0, 0.0))
+        let exportCsv = Button(Name = ConstructorUiId.chartWindowExportCsv.value, Content = "Export CSV", Margin = Thickness(8.0, 0.0, 0.0, 0.0))
         exportCsv.Click.Add(fun _ ->
             try File.WriteAllText(Path.Combine(Path.GetTempPath(), "experiment-chart.csv"), toCsv chart) with _ -> ())
 
@@ -488,7 +488,7 @@ type ChartWindow(chart : ExperimentChart) as this =
 
         let descriptionBox =
             TextBox(
-                Name = UiIds.ChartWindow.description,
+                Name = ConstructorUiId.chartWindowDescription.value,
                 Text = chart.description,
                 IsReadOnly = true,
                 AcceptsReturn = true,

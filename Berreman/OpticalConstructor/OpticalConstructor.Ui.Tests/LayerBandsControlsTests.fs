@@ -37,10 +37,10 @@ module LayerBandsControlsTests =
 
     [<Fact>]
     let ``the LayerBands UiIds prefix band ids and are stable`` () =
-        Assert.Equal("LayerBandsStack", UiIds.LayerBands.stack)
-        Assert.Equal("LayerBandsTitle", UiIds.LayerBands.title)
-        Assert.Equal("LayerBand_0", UiIds.LayerBands.band 0)
-        Assert.Equal("LayerBand_3", UiIds.LayerBands.band 3)
+        Assert.Equal("LayerBandsStack", ConstructorUiId.layerBandsStack.value)
+        Assert.Equal("LayerBandsTitle", ConstructorUiId.layerBandsTitle.value)
+        Assert.Equal("LayerBand_0", (ConstructorUiId.layerBand (ConstructorUiPosition 0)).value)
+        Assert.Equal("LayerBand_3", (ConstructorUiId.layerBand (ConstructorUiPosition 3)).value)
 
     // ============================ the Details bay in the ribbon ============================
 
@@ -112,11 +112,11 @@ module LayerBandsControlsTests =
             let named (name : string) : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function :? Control as c -> c.Name = name && c.IsEffectivelyVisible | _ -> false)
-            Assert.True(named UiIds.LayerBands.stack, "the band stack was not present")
-            Assert.True(named UiIds.LayerBands.title, "the band title was not present")
-            Assert.True(named (UiIds.LayerBands.band 0), "band 0 was not present")
-            Assert.True(named (UiIds.LayerBands.band 1), "band 1 was not present")
-            Assert.True(named (UiIds.LayerBands.band 2), "band 2 was not present")
+            Assert.True(named ConstructorUiId.layerBandsStack.value, "the band stack was not present")
+            Assert.True(named ConstructorUiId.layerBandsTitle.value, "the band title was not present")
+            Assert.True(named (ConstructorUiId.layerBand (ConstructorUiPosition 0)).value, "band 0 was not present")
+            Assert.True(named (ConstructorUiId.layerBand (ConstructorUiPosition 1)).value, "band 1 was not present")
+            Assert.True(named (ConstructorUiId.layerBand (ConstructorUiPosition 2)).value, "band 2 was not present")
             window.Close())
 
     [<Fact>]
@@ -129,7 +129,7 @@ module LayerBandsControlsTests =
             Dispatcher.UIThread.RunJobs()
             let bandPresent () : bool =
                 window.GetVisualDescendants()
-                |> Seq.exists (function :? Control as c -> c.Name = UiIds.LayerBands.band 0 | _ -> false)
+                |> Seq.exists (function :? Control as c -> c.Name = (ConstructorUiId.layerBand (ConstructorUiPosition 0)).value | _ -> false)
             Assert.False(bandPresent (), "an empty state must draw no bands")
             window.Close())
 
@@ -152,7 +152,7 @@ module LayerBandsControlsTests =
             let named (name : string) : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function :? Control as c -> c.Name = name && c.IsEffectivelyVisible | _ -> false)
-            Assert.True(named UiIds.LayerBands.stack, "the Details band stack was not visible")
-            Assert.True(named (UiIds.LayerBands.band 0), "the first collapsed band was not visible")
-            Assert.True(named (UiIds.LayerBands.band 1), "the second collapsed band was not visible")
+            Assert.True(named ConstructorUiId.layerBandsStack.value, "the Details band stack was not visible")
+            Assert.True(named (ConstructorUiId.layerBand (ConstructorUiPosition 0)).value, "the first collapsed band was not visible")
+            Assert.True(named (ConstructorUiId.layerBand (ConstructorUiPosition 1)).value, "the second collapsed band was not visible")
             window.Close())

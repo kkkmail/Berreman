@@ -277,26 +277,26 @@ module ElementMenuTests =
             let model0 = initMain () |> update (AddElement Sample)
             let window = mount model0
             try
-                match tryFind window UiIds.TableAndElementRotation.canvas with
+                match tryFind window ConstructorUiId.tableElementCanvas.value with
                 | Some canvas ->
                     let p = canvasPointOf 2 model0
                     match canvas.TranslatePoint(Point(p.sx, p.sy), window) |> Option.ofNullable with
                     | Some at -> click window MouseButton.Right at
                     | None -> Assert.Fail("the canvas has no on-screen position")
                 | None -> Assert.Fail("the table canvas was not found")
-                Assert.True(isShown window UiIds.ElementMenu.menu, "the right click must open the element menu")
-                match tryFind window UiIds.ElementMenu.toggleReflected with
+                Assert.True(isShown window ConstructorUiId.elementMenu.value, "the right click must open the element menu")
+                match tryFind window ConstructorUiId.elementMenuToggleReflected.value with
                 | Some row ->
                     Assert.StartsWith("☑", textUnder row)
                     click window MouseButton.Left (centreOf window row)
-                    match tryFind window UiIds.ElementMenu.toggleReflected with
+                    match tryFind window ConstructorUiId.elementMenuToggleReflected.value with
                     | Some flipped -> Assert.StartsWith("☐", textUnder flipped)
                     | None -> Assert.Fail("the ray row must stay in the open menu")
                 | None -> Assert.Fail("the menu must offer the reflected-ray switch")
-                match tryFind window UiIds.ElementMenu.close with
+                match tryFind window ConstructorUiId.elementMenuClose.value with
                 | Some close -> click window MouseButton.Left (centreOf window close)
                 | None -> Assert.Fail("the menu must offer Close")
-                Assert.False(isShown window UiIds.ElementMenu.menu, "Close must dismiss the menu")
+                Assert.False(isShown window ConstructorUiId.elementMenu.value, "Close must dismiss the menu")
             finally
                 window.Close())
 
@@ -308,7 +308,7 @@ module ElementMenuTests =
             try
                 let checkBox () : CheckBox option =
                     window.GetVisualDescendants()
-                    |> Seq.tryPick (function :? CheckBox as c when matchesId UiIds.TableAndElementRotation.pivotAtIncidentFace c -> Some c | _ -> None)
+                    |> Seq.tryPick (function :? CheckBox as c when matchesId ConstructorUiId.rotateAboutIncidentFaceCheck.value c -> Some c | _ -> None)
                 match checkBox () with
                 | Some box ->
                     Assert.False(box.IsChecked.GetValueOrDefault true, "unchecked by default: elements rotate about their centre")
@@ -351,9 +351,9 @@ module ElementMenuTests =
                 |> update (SelectBay BayNames.experiments)
             let window = mount model0
             try
-                Assert.True(isShown window UiIds.TableAndElementRotation.scrollViewer, "the Main view must sit in a scroll viewer")
-                Assert.True(isShown window (UiIds.Experiment.measurement "t"), "T is offered")
-                Assert.False(isShown window (UiIds.Experiment.measurement "r"), "R is not offered without a reflected detector")
-                Assert.False(isShown window (UiIds.Experiment.measurement "both"), "Both is not offered without a reflected detector")
+                Assert.True(isShown window ConstructorUiId.tableElementScrollViewer.value, "the Main view must sit in a scroll viewer")
+                Assert.True(isShown window (ConstructorUiId.experimentMeasurement (ConstructorUiKey "t")).value, "T is offered")
+                Assert.False(isShown window (ConstructorUiId.experimentMeasurement (ConstructorUiKey "r")).value, "R is not offered without a reflected detector")
+                Assert.False(isShown window (ConstructorUiId.experimentMeasurement (ConstructorUiKey "both")).value, "Both is not offered without a reflected detector")
             finally
                 window.Close())

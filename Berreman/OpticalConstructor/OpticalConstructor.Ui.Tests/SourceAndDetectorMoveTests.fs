@@ -266,18 +266,18 @@ module SourceAndDetectorMoveTests =
         HeadlessSession.run (fun () ->
             let window, dispatch, getModel = mount { sourceSelected () with ribbon = BayNames.move }
             let sourceIds = visibleIds window
-            Assert.Contains(UiIds.TablePosition.xLock, sourceIds)
-            Assert.Contains(UiIds.TablePosition.zField, sourceIds)
-            Assert.DoesNotContain(UiIds.RayPosition.minus, sourceIds)
+            Assert.Contains(ConstructorUiId.tablePositionXLockButton.value, sourceIds)
+            Assert.Contains(ConstructorUiId.tablePositionZField.value, sourceIds)
+            Assert.DoesNotContain(ConstructorUiId.rayPositionMinusButton.value, sourceIds)
             // Switching the selection swaps the bar (keyed, so no named field is patched across).
             select dispatch getModel 1
             Assert.Equal(ElementSelected 1, (getModel ()).selection)
             let detectorIds = visibleIds window
-            Assert.Contains(UiIds.RayPosition.minus, detectorIds)
-            Assert.DoesNotContain(UiIds.TablePosition.xLock, detectorIds)
-            Assert.Contains("uncapped", textNamed window UiIds.RayPosition.readout)
+            Assert.Contains(ConstructorUiId.rayPositionMinusButton.value, detectorIds)
+            Assert.DoesNotContain(ConstructorUiId.tablePositionXLockButton.value, detectorIds)
+            Assert.Contains("uncapped", textNamed window ConstructorUiId.rayPositionReadout.value)
             select dispatch getModel 0
-            Assert.Contains(UiIds.TablePosition.xLock, visibleIds window)
+            Assert.Contains(ConstructorUiId.tablePositionXLockButton.value, visibleIds window)
             window.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -288,17 +288,17 @@ module SourceAndDetectorMoveTests =
             // Main opens on Add (spec 0046) — open the Rotate bay.
             let window, dispatch, getModel = mount { sourceSelected () with ribbon = BayNames.rotation }
             let elementIds = visibleIds window
-            Assert.Contains(UiIds.Rotation.lockR1, elementIds)
-            Assert.Contains(UiIds.Rotation.lockR2, elementIds)
+            Assert.Contains(ConstructorUiId.rotationLockR1Button.value, elementIds)
+            Assert.Contains(ConstructorUiId.rotationLockR2Button.value, elementIds)
             // A click on the empty plate selects the table: the R1 / R2 locks hide, R3's stays.
             dispatch (PointerDown { sx = center.sx; sy = center.sy + 60.0 })
             dispatch (PointerUp { sx = center.sx; sy = center.sy + 60.0 })
             Assert.Equal(TableSelected, (getModel ()).selection)
             let tableIds = visibleIds window
-            Assert.DoesNotContain(UiIds.Rotation.lockR1, tableIds)
-            Assert.DoesNotContain(UiIds.Rotation.lockR2, tableIds)
-            Assert.Contains(UiIds.Rotation.lockR3, tableIds)
+            Assert.DoesNotContain(ConstructorUiId.rotationLockR1Button.value, tableIds)
+            Assert.DoesNotContain(ConstructorUiId.rotationLockR2Button.value, tableIds)
+            Assert.Contains(ConstructorUiId.rotationLockR3Button.value, tableIds)
             select dispatch getModel 1
-            Assert.Contains(UiIds.Rotation.lockR1, visibleIds window)
+            Assert.Contains(ConstructorUiId.rotationLockR1Button.value, visibleIds window)
             window.Close()
             Dispatcher.UIThread.RunJobs())

@@ -171,9 +171,9 @@ module OutOfBandBadgeTests =
             window.Content <- Component(fun _ -> Canvas.create [ Canvas.children badges ] :> IView)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            match tryFindByPrefix window UiIds.TableAndElementRotation.badgePrefix with
+            match tryFindByPrefix window "OutOfBandBadge_" with
             | Some badge ->
-                Assert.Equal(UiIds.TableAndElementRotation.outOfBandBadge sampleIndex, Avalonia.Automation.AutomationProperties.GetAutomationId(badge))
+                Assert.Equal((ConstructorUiId.outOfBandBadge (ConstructorUiPosition sampleIndex)).value, Avalonia.Automation.AutomationProperties.GetAutomationId(badge))
                 // Its hover tooltip carries the SAME warning text the Details bay shows.
                 match ToolTip.GetTip badge with
                 | :? string as tip -> Assert.Equal(expected, tip)

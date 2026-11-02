@@ -84,7 +84,7 @@ module MaterialsWindowTests =
     /// The tree is collapsed by default, so a node's children (entry leaves, facet branches) render
     /// only after this — and the expansion PERSISTS across the window's later re-renders.
     let private expandNode (window : Window) (code : string) : unit =
-        clickOn window (UiIds.FacetedTree.treeNodeChevron code)
+        clickOn window (ConstructorUiId.facetTreeChevron (ConstructorUiKey code)).value
 
     /// Expand the "entries" group so its entry-leaf children render (the common precondition for the
     /// leaf-clicking headless proofs, which pre-date the collapsed-by-default tree).
@@ -114,7 +114,7 @@ module MaterialsWindowTests =
     /// Commit `text` through the REAL faceted filter box: set the box text (no dispatch — the
     /// control has no text-change subscription) and press Enter, the control's commit gesture.
     let private commitFilter (window : Window) (text : string) : unit =
-        match tryFindControl window UiIds.FacetedTree.filterBox with
+        match tryFindControl window ConstructorUiId.facetFilterBox.value with
         | Some (:? TextBox as tb) ->
             tb.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
@@ -228,17 +228,17 @@ module MaterialsWindowTests =
 
     [<Fact>]
     let ``the MaterialsWindow UiIds are the stable intent-named ids`` () =
-        Assert.Equal("MaterialsWindow", UiIds.MaterialsWindow.window)
-        Assert.Equal("MaterialsFacetTreeHost", UiIds.MaterialsWindow.treeHost)
-        Assert.Equal("MaterialsViewPanel", UiIds.MaterialsWindow.viewPanel)
-        Assert.Equal("MaterialsViewPanelNkChart", UiIds.MaterialsWindow.viewPanelChart)
-        Assert.Equal("MaterialsAddButton", UiIds.MaterialsWindow.addButton)
-        Assert.Equal("MaterialsEditButton", UiIds.MaterialsWindow.editButton)
-        Assert.Equal("MaterialsRemoveButton", UiIds.MaterialsWindow.removeButton)
-        Assert.Equal("MaterialsCategoriesButton", UiIds.MaterialsWindow.categoriesButton)
-        Assert.Equal("MaterialsRemoveConfirmButton", UiIds.MaterialsWindow.removeConfirmButton)
-        Assert.Equal("MaterialsRemoveCancelButton", UiIds.MaterialsWindow.removeCancelButton)
-        Assert.Equal("MaterialsWindowMessage", UiIds.MaterialsWindow.message)
+        Assert.Equal("MaterialsWindow", ConstructorUiId.materialsWindow.value)
+        Assert.Equal("MaterialsFacetTreeHost", ConstructorUiId.materialsFacetTreeHost.value)
+        Assert.Equal("MaterialsViewPanel", ConstructorUiId.materialsViewPanel.value)
+        Assert.Equal("MaterialsViewPanelNkChart", ConstructorUiId.materialsViewPanelNkChart.value)
+        Assert.Equal("MaterialsAddButton", ConstructorUiId.materialsAddButton.value)
+        Assert.Equal("MaterialsEditButton", ConstructorUiId.materialsEditButton.value)
+        Assert.Equal("MaterialsRemoveButton", ConstructorUiId.materialsRemoveButton.value)
+        Assert.Equal("MaterialsCategoriesButton", ConstructorUiId.materialsCategoriesButton.value)
+        Assert.Equal("MaterialsRemoveConfirmButton", ConstructorUiId.materialsRemoveConfirmButton.value)
+        Assert.Equal("MaterialsRemoveCancelButton", ConstructorUiId.materialsRemoveCancelButton.value)
+        Assert.Equal("MaterialsWindowMessage", ConstructorUiId.materialsWindowMessage.value)
         // The entry-leaf id derives from the tree-node code family, prefixed so it cannot collide.
         Assert.Equal(
             "FacetTreeNode_entry:" + string MaterialIds.glass152.value,
@@ -728,7 +728,7 @@ module MaterialsWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let materialsWindow = opened.[0]
-            Assert.True(matchesId UiIds.MaterialsWindow.window materialsWindow, "the opened window must be the Materials window")
+            Assert.True(matchesId ConstructorUiId.materialsWindow.value materialsWindow, "the opened window must be the Materials window")
             Assert.True(materialsWindow.IsVisible)
             // The single-instance acceptance: a second click ACTIVATES the live window — the
             // shared registry under MaterialsWindowKey creates nothing new.
@@ -754,20 +754,20 @@ module MaterialsWindowTests =
             let window = mountMaterialsWindow materials categories
             Assert.True(isPresent window (MW.entryNode MaterialIds.glass152))
             Assert.True(isPresent window (MW.entryNode MaterialIds.silicon))
-            Assert.Equal("12 results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.Equal("12 results", textOf window ConstructorUiId.facetResultCount.value)
             // Click the Dispersion facet's "Dispersive" offer: the corpus narrows to the two
             // wavelength-dependent presets IN THE SAME RENDER PASS.
-            clickOn window (UiIds.FacetedTree.offeredValue materialDispersionKey.value "Dispersive")
+            clickOn window (ConstructorUiId.facetOfferedValue (ConstructorUiKey materialDispersionKey.value) (ConstructorUiKey "Dispersive")).value
             Assert.True(isPresent window (MW.entryNode MaterialIds.silicon),
                         "the matching entry must stay listed")
             Assert.False(isPresent window (MW.entryNode MaterialIds.glass152),
                          "the non-matching entry must leave the tree in the same render pass")
-            Assert.Equal("2 results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.Equal("2 results", textOf window ConstructorUiId.facetResultCount.value)
             // The removable chip carries the after-count; clicking it restores the corpus.
-            Assert.True(isPresent window (UiIds.FacetedTree.breadcrumbChip materialDispersionKey.value))
-            clickOn window (UiIds.FacetedTree.breadcrumbChip materialDispersionKey.value)
+            Assert.True(isPresent window (ConstructorUiId.facetBreadcrumbChip (ConstructorUiKey materialDispersionKey.value)).value)
+            clickOn window (ConstructorUiId.facetBreadcrumbChip (ConstructorUiKey materialDispersionKey.value)).value
             Assert.True(isPresent window (MW.entryNode MaterialIds.glass152))
-            Assert.Equal("12 results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.Equal("12 results", textOf window ConstructorUiId.facetResultCount.value)
             window.Close())
 
     [<Fact>]
@@ -787,13 +787,13 @@ module MaterialsWindowTests =
                     | _ -> ())
             // Add → the REAL Material editor over the SHARED stores (through the real launcher
             // under the Add-minted MaterialEditorKey).
-            clickOn window UiIds.MaterialsWindow.addButton
+            clickOn window ConstructorUiId.materialsAddButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let editor = opened.[0]
-            Assert.True(matchesId UiIds.MaterialEditor.window editor, "the opened window must be the Material editor")
-            setText editor UiIds.MaterialEditor.nameBox "Faceted window material"
-            clickOn editor UiIds.MaterialEditor.saveButton
+            Assert.True(matchesId ConstructorUiId.materialEditorWindow.value editor, "the opened window must be the Material editor")
+            setText editor ConstructorUiId.materialNameBox.value "Faceted window material"
+            clickOn editor ConstructorUiId.materialEditorSaveButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(editor.IsVisible, "Save must close the editor")
             // The save landed in the SHARED store…
@@ -803,14 +803,14 @@ module MaterialsWindowTests =
             // …and the window's next dispatch-driven render re-queries it: committing the
             // matching filter narrows the tree to the just-saved entry.
             commitFilter window "Faceted window"
-            Assert.Equal("1 results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.Equal("1 results", textOf window ConstructorUiId.facetResultCount.value)
             // The referenced remove: narrow to the seeded glass, select its leaf, Remove →
             // Confirm → the typed refusal NAMES the referencing sample and the store keeps it.
             commitFilter window "1.52"
             clickOn window (MW.entryNode MaterialIds.glass152)
-            clickOn window UiIds.MaterialsWindow.removeButton
-            clickOn window UiIds.MaterialsWindow.removeConfirmButton
-            let message = textOf window UiIds.MaterialsWindow.message
+            clickOn window ConstructorUiId.materialsRemoveButton.value
+            clickOn window ConstructorUiId.materialsRemoveConfirmButton.value
+            let message = textOf window ConstructorUiId.materialsWindowMessage.value
             Assert.Contains("still referenced", message)
             Assert.Contains("Glass plate", message)
             Assert.True(isPresent window (MW.entryNode MaterialIds.glass152),
@@ -827,22 +827,22 @@ module MaterialsWindowTests =
             let materials, _, categories = freshStores ()
             let window = mountMaterialsWindow materials categories
             // Before: the category facet offers "Glass" (the value key IS the label).
-            Assert.True(isPresent window (UiIds.FacetedTree.offeredValue materialCategoryKey.value "Glass"))
+            Assert.True(isPresent window (ConstructorUiId.facetOfferedValue (ConstructorUiKey materialCategoryKey.value) (ConstructorUiKey "Glass")).value)
             // Rename through the shared proxy, then dispatch a MODEL-CHANGING re-render (a text
             // commit — an unchanged model is structurally equal and the Elmish host skips it).
             renameGlass categories "Glazing"
             commitFilter window "glass"
-            Assert.True(isPresent window (UiIds.FacetedTree.offeredValue materialCategoryKey.value "Glazing"),
+            Assert.True(isPresent window (ConstructorUiId.facetOfferedValue (ConstructorUiKey materialCategoryKey.value) (ConstructorUiKey "Glazing")).value,
                         "the category facet must re-label to the renamed catalogue name")
-            Assert.False(isPresent window (UiIds.FacetedTree.offeredValue materialCategoryKey.value "Glass"),
+            Assert.False(isPresent window (ConstructorUiId.facetOfferedValue (ConstructorUiKey materialCategoryKey.value) (ConstructorUiKey "Glass")).value,
                          "the stale label must be gone")
-            Assert.StartsWith("Glazing (", textOf window (UiIds.FacetedTree.offeredValue materialCategoryKey.value "Glazing"))
+            Assert.StartsWith("Glazing (", textOf window (ConstructorUiId.facetOfferedValue (ConstructorUiKey materialCategoryKey.value) (ConstructorUiKey "Glazing")).value)
             // The create picker re-labels too: the editor over the SAME proxy shows "Glazing"
             // for the same stable Guid id.
             let editor = MaterialEditorWindow(materials, MaterialEditorView.NewMaterial (newMaterialId ()), categories = categories)
             editor.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal("Glazing", labelInside editor (UiIds.MaterialEditor.categoryOption (string CategoryIds.glass.value)))
+            Assert.Equal("Glazing", labelInside editor (ConstructorUiId.materialEditorCategoryOption CategoryIds.glass).value)
             editor.Close()
             Dispatcher.UIThread.RunJobs()
             window.Close())
@@ -862,17 +862,17 @@ module MaterialsWindowTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            clickOn window UiIds.MaterialsWindow.editButton
+            clickOn window ConstructorUiId.materialsEditButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
-            Assert.True(matchesId UiIds.MaterialEditor.window opened.[0], "the opened window must be the Material editor")
+            Assert.True(matchesId ConstructorUiId.materialEditorWindow.value opened.[0], "the opened window must be the Material editor")
             Assert.Contains("Transparent glass", opened.[0].Title)
             opened.[0].Close()
             Dispatcher.UIThread.RunJobs()
-            clickOn window UiIds.MaterialsWindow.categoriesButton
+            clickOn window ConstructorUiId.materialsCategoriesButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
-            Assert.True(matchesId UiIds.CategoryEditor.window opened.[1], "the opened window must be the Category editor")
+            Assert.True(matchesId ConstructorUiId.categoryEditorWindow.value opened.[1], "the opened window must be the Category editor")
             opened.[1].Close()
             Dispatcher.UIThread.RunJobs()
             window.Close())
@@ -883,12 +883,12 @@ module MaterialsWindowTests =
         HeadlessSession.run (fun () ->
             let materials, _, categories = freshStores ()
             let window = mountMaterialsWindow materials categories
-            Assert.False(isPresent window UiIds.MaterialsWindow.viewPanel, "no selection → no view panel")
+            Assert.False(isPresent window ConstructorUiId.materialsViewPanel.value, "no selection → no view panel")
             commitFilter window "1.52"
             clickOn window (MW.entryNode MaterialIds.glass152)
-            Assert.True(isPresent window UiIds.MaterialsWindow.viewPanel, "the view panel must render for the selected entry")
-            Assert.True(isPresent window UiIds.MaterialsWindow.viewPanelChart, "the view panel must embed the shared n/k chart host")
-            Assert.Contains("Transparent glass", textOf window UiIds.MaterialsWindow.viewPanel)
+            Assert.True(isPresent window ConstructorUiId.materialsViewPanel.value, "the view panel must render for the selected entry")
+            Assert.True(isPresent window ConstructorUiId.materialsViewPanelNkChart.value, "the view panel must embed the shared n/k chart host")
+            Assert.Contains("Transparent glass", textOf window ConstructorUiId.materialsViewPanel.value)
             window.Close())
 
     [<Fact>]
@@ -908,10 +908,10 @@ module MaterialsWindowTests =
             |> Program.run
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(isPresent window UiIds.FacetedTree.showTreeButton, "the Show/Search button must gate the tree")
+            Assert.True(isPresent window ConstructorUiId.facetShowTreeButton.value, "the Show/Search button must gate the tree")
             Assert.Equal(0, treeRowCount window)
-            Assert.Equal("12 results", textOf window UiIds.FacetedTree.resultCount)
-            clickOn window UiIds.FacetedTree.showTreeButton
+            Assert.Equal("12 results", textOf window ConstructorUiId.facetResultCount.value)
+            clickOn window ConstructorUiId.facetShowTreeButton.value
             Assert.True(treeRowCount window > 0, "the explicit build must materialize the tree")
             // The materialized tree opens collapsed (spec 0040 step 002) — expand entries to reach
             // the leaves.
@@ -935,8 +935,8 @@ module MaterialsWindowTests =
             Dispatcher.UIThread.RunJobs()
             // First open: the entries group renders a collapsed row WITH a chevron, but its leaves
             // do NOT render.
-            Assert.True(isPresent window (UiIds.FacetedTree.treeNode "entries"), "the entries group row must render")
-            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "entries"), "the entries group must carry a disclosure chevron")
+            Assert.True(isPresent window (ConstructorUiId.facetTreeNode (ConstructorUiKey "entries")).value, "the entries group row must render")
+            Assert.True(isPresent window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value, "the entries group must carry a disclosure chevron")
             Assert.False(isPresent window (MW.entryNode MaterialIds.glass152), "a collapsed tree must hide its entry leaves on first open")
             // Clicking the chevron expands the group — the leaves render in the same pass.
             expandEntries window
@@ -972,9 +972,9 @@ module MaterialsWindowTests =
 
     [<Fact>]
     let ``the step-016 UiIds are the stable intent-named ids`` () =
-        Assert.Equal("MaterialsSelectButton", UiIds.MaterialsWindow.selectButton)
-        Assert.Equal("MaterialsSelectCloseButton", UiIds.MaterialsWindow.selectCloseButton)
-        Assert.Equal("MaterialsSelectConstraint", UiIds.MaterialsWindow.selectConstraint)
+        Assert.Equal("MaterialsSelectButton", ConstructorUiId.materialsSelectButton.value)
+        Assert.Equal("MaterialsSelectCloseButton", ConstructorUiId.materialsSelectCloseButton.value)
+        Assert.Equal("MaterialsSelectConstraint", ConstructorUiId.materialsSelectConstraint.value)
 
     /// A fresh SELECT-state model over recording stubs (targeting one sample-layer slot —
     /// the step-019 picking shape).
@@ -1083,15 +1083,15 @@ module MaterialsWindowTests =
             let materials, _, categories = freshStores ()
             let _, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer 0))
             let window = mountSelectMaterialsWindow materials categories selectCtx
-            Assert.True(isPresent window UiIds.MaterialsWindow.selectButton, "the Select button must render")
-            Assert.True(isPresent window UiIds.MaterialsWindow.selectCloseButton, "the Close button must render")
-            Assert.Equal("Select", textOf window UiIds.MaterialsWindow.selectButton)
-            Assert.Equal("Close", textOf window UiIds.MaterialsWindow.selectCloseButton)
-            let banner = textOf window UiIds.MaterialsWindow.selectConstraint
+            Assert.True(isPresent window ConstructorUiId.materialsSelectButton.value, "the Select button must render")
+            Assert.True(isPresent window ConstructorUiId.materialsSelectCloseButton.value, "the Close button must render")
+            Assert.Equal("Select", textOf window ConstructorUiId.materialsSelectButton.value)
+            Assert.Equal("Close", textOf window ConstructorUiId.materialsSelectCloseButton.value)
+            let banner = textOf window ConstructorUiId.materialsSelectConstraint.value
             Assert.Contains("Sample", banner)
             Assert.Contains("fixed", banner)
             // No chip — the constraint is structural, and the whole material corpus stays.
-            Assert.Equal("12 results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.Equal("12 results", textOf window ConstructorUiId.facetResultCount.value)
             let chipCount =
                 window.GetVisualDescendants()
                 |> Seq.filter (fun v ->
@@ -1103,8 +1103,8 @@ module MaterialsWindowTests =
                 |> Seq.length
             Assert.Equal(0, chipCount)
             // Everything else IS the ordinary window: Add / Categories… (add-on-the-fly) stay.
-            Assert.True(isPresent window UiIds.MaterialsWindow.addButton, "Add must survive Select state")
-            Assert.True(isPresent window UiIds.MaterialsWindow.categoriesButton, "Categories… must survive Select state")
+            Assert.True(isPresent window ConstructorUiId.materialsAddButton.value, "Add must survive Select state")
+            Assert.True(isPresent window ConstructorUiId.materialsCategoriesButton.value, "Categories… must survive Select state")
             window.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -1127,13 +1127,13 @@ module MaterialsWindowTests =
             let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
             commitFilter selectWindow "1.52"
             clickOn selectWindow (MW.entryNode MaterialIds.glass152)
-            clickOn selectWindow UiIds.MaterialsWindow.selectButton
+            clickOn selectWindow ConstructorUiId.materialsSelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "Select must close the window after onSelected")
             Assert.Empty(cancels)
             // The TARGETED return re-materialed row 0 in the same pass.
-            Assert.Contains("Transparent glass (n = 1.52)", textOf editor (UiIds.SampleEditor.layerRow 0))
-            Assert.Equal("", textOf editor UiIds.SampleEditor.statusText)
+            Assert.Contains("Transparent glass (n = 1.52)", textOf editor (ConstructorUiId.sampleLayerRow (ConstructorUiPosition 0)).value)
+            Assert.Equal("", textOf editor ConstructorUiId.sampleEditorStatus.value)
             editor.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -1168,7 +1168,7 @@ module MaterialsWindowTests =
             Assert.True(selectWindow.IsVisible)
             // A REAL canvas click on the empty table changes the selection: the staleness rule
             // closes the Materials Select window and its session cancels — exactly once.
-            match tryFindControl mainWindow UiIds.TableAndElementRotation.canvas with
+            match tryFindControl mainWindow ConstructorUiId.tableElementCanvas.value with
             | Some canvas ->
                 let p = canvas.TranslatePoint(Point(Scene.center.sx, Scene.center.sy), mainWindow)
                 Assert.True(p.HasValue, "the canvas must have an on-screen position")
@@ -1201,12 +1201,12 @@ module MaterialsWindowTests =
             let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
             commitFilter selectWindow "1.52"
             clickOn selectWindow (MW.entryNode MaterialIds.glass152)
-            clickOn selectWindow UiIds.MaterialsWindow.selectButton
+            clickOn selectWindow ConstructorUiId.materialsSelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "the Select window still closes after its return")
             // The editor no-opped and reports the vanished row on its status line.
-            Assert.Contains("no longer in the stack", textOf editor UiIds.SampleEditor.statusText)
-            Assert.False(isPresent editor (UiIds.SampleEditor.layerRow 0), "no layer row may appear from a vanished-target return")
+            Assert.Contains("no longer in the stack", textOf editor ConstructorUiId.sampleEditorStatus.value)
+            Assert.False(isPresent editor (ConstructorUiId.sampleLayerRow (ConstructorUiPosition 0)).value, "no layer row may appear from a vanished-target return")
             editor.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -1243,14 +1243,14 @@ module MaterialsWindowTests =
 
     [<Fact>]
     let ``the step-023 lifecycle UiIds are the stable intent-named ids`` () =
-        Assert.Equal("MaterialsShowInactiveToggle", UiIds.MaterialsWindow.showInactiveToggle)
-        Assert.Equal("MaterialsMarkInactiveButton", UiIds.MaterialsWindow.markInactiveButton)
-        Assert.Equal("MaterialsMarkActiveButton", UiIds.MaterialsWindow.markActiveButton)
-        Assert.Equal("MaterialsSupersedeButton", UiIds.MaterialsWindow.supersedeButton)
-        Assert.Equal("MaterialsLifecycleConfirmButton", UiIds.MaterialsWindow.lifecycleConfirmButton)
-        Assert.Equal("MaterialsLifecycleCancelButton", UiIds.MaterialsWindow.lifecycleCancelButton)
-        Assert.Equal("MaterialsVersionsPanel", UiIds.MaterialsWindow.versionsPanel)
-        Assert.Equal("MaterialsViewOnlyNote", UiIds.MaterialsWindow.viewOnlyNote)
+        Assert.Equal("MaterialsShowInactiveToggle", ConstructorUiId.materialsShowInactiveToggle.value)
+        Assert.Equal("MaterialsMarkInactiveButton", ConstructorUiId.materialsMarkInactiveButton.value)
+        Assert.Equal("MaterialsMarkActiveButton", ConstructorUiId.materialsMarkActiveButton.value)
+        Assert.Equal("MaterialsSupersedeButton", ConstructorUiId.materialsSupersedeButton.value)
+        Assert.Equal("MaterialsLifecycleConfirmButton", ConstructorUiId.materialsLifecycleConfirmButton.value)
+        Assert.Equal("MaterialsLifecycleCancelButton", ConstructorUiId.materialsLifecycleCancelButton.value)
+        Assert.Equal("MaterialsVersionsPanel", ConstructorUiId.materialsVersionsPanel.value)
+        Assert.Equal("MaterialsViewOnlyNote", ConstructorUiId.materialsViewOnlyNote.value)
         Assert.Equal("MaterialsVersionRow_2", MW.versionRow (VersionNumber 2))
 
     [<Fact>]
@@ -1384,8 +1384,8 @@ module MaterialsWindowTests =
             // Select the unreferenced glass200 and mark it inactive through the confirm gate.
             commitFilter window "2.00"
             clickOn window (MW.entryNode MaterialIds.glass200)
-            clickOn window UiIds.MaterialsWindow.markInactiveButton
-            clickOn window UiIds.MaterialsWindow.lifecycleConfirmButton
+            clickOn window ConstructorUiId.materialsMarkInactiveButton.value
+            clickOn window ConstructorUiId.materialsLifecycleConfirmButton.value
             // Its row is gone from the default (ActiveOnly) tree…
             Assert.False(isPresent window (MW.entryNode MaterialIds.glass200),
                          "the retired material must leave the default tree in the same render pass")
@@ -1394,8 +1394,8 @@ module MaterialsWindowTests =
             | Ok (Some _) -> ()
             | other -> Assert.Fail($"the retired material's version must still resolve, got %A{other}")
             // The show-inactive toggle carries the count badge and reveals the entry, badged.
-            Assert.Contains("(1)", textOf window UiIds.MaterialsWindow.showInactiveToggle)
-            clickOn window UiIds.MaterialsWindow.showInactiveToggle
+            Assert.Contains("(1)", textOf window ConstructorUiId.materialsShowInactiveToggle.value)
+            clickOn window ConstructorUiId.materialsShowInactiveToggle.value
             Assert.True(isPresent window (MW.entryNode MaterialIds.glass200),
                         "the toggle must reveal the retired entry in the tree")
             Assert.Contains("inactive", textOf window (MW.entryNode MaterialIds.glass200))
@@ -1420,15 +1420,15 @@ module MaterialsWindowTests =
             expandEntries window
             clickOn window (MW.entryNode id)
             // The version list renders both versions; the latest view carries NO view-only note.
-            Assert.True(isPresent window UiIds.MaterialsWindow.versionsPanel, "the view panel must list the entry's versions")
+            Assert.True(isPresent window ConstructorUiId.materialsVersionsPanel.value, "the view panel must list the entry's versions")
             Assert.True(isPresent window (MW.versionRow (VersionNumber 1)))
             Assert.True(isPresent window (MW.versionRow (VersionNumber 2)))
-            Assert.False(isPresent window UiIds.MaterialsWindow.viewOnlyNote, "the latest version is editable — no view-only note")
-            Assert.True(isPresent window UiIds.MaterialsWindow.editButton, "the latest version keeps the Edit verb")
+            Assert.False(isPresent window ConstructorUiId.materialsViewOnlyNote.value, "the latest version is editable — no view-only note")
+            Assert.True(isPresent window ConstructorUiId.materialsEditButton.value, "the latest version keeps the Edit verb")
             // Clicking the OLDER version opens it view-only inline (no Save path).
             clickOn window (MW.versionRow (VersionNumber 1))
-            Assert.True(isPresent window UiIds.MaterialsWindow.viewOnlyNote, "an older version must render the view-only note")
-            Assert.Contains("view-only", textOf window UiIds.MaterialsWindow.viewOnlyNote)
+            Assert.True(isPresent window ConstructorUiId.materialsViewOnlyNote.value, "an older version must render the view-only note")
+            Assert.Contains("view-only", textOf window ConstructorUiId.materialsViewOnlyNote.value)
             // The library still edits the LATEST — the Edit verb is unchanged by viewing an older version.
-            Assert.True(isPresent window UiIds.MaterialsWindow.editButton, "the Edit verb still targets the latest version")
+            Assert.True(isPresent window ConstructorUiId.materialsEditButton.value, "the Edit verb still targets the latest version")
             window.Close())

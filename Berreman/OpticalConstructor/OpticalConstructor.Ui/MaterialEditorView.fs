@@ -118,7 +118,7 @@ type Model =
         /// gyration / μ preview to the components its symmetry class / μ kind admits. `None` for a
         /// coded preset with no stored tree — which keeps the all-components rendering.
         viewOnlyComplexity : MaterialComplexity option
-        /// Spec 0038 (032): the preview curves the user hid, keyed by `UiIds.MaterialEditor.seriesToggle`'s tab code
+        /// Spec 0038 (032): the preview curves the user hid, keyed by `ConstructorUiId.previewSeriesToggle`'s tab code
         /// + series name (so a toggle in one tab never hides a same-named curve in another).
         hiddenSeries : Set<string>
         /// Spec 0038 (033): the edit snapshot captured at load — dirtiness is `initialEdit`
@@ -136,7 +136,7 @@ type Msg =
     | ChooseCategory of CategoryId
     /// One ladder edit, routed through the pure Domain apply.
     | EditorMsg of MaterialComplexityMsg
-    /// Spec 0038 (032): flip one preview curve's visibility, by its `UiIds.MaterialEditor.seriesToggle` key.
+    /// Spec 0038 (032): flip one preview curve's visibility, by its `ConstructorUiId.previewSeriesToggle` key.
     | ToggleSeriesVisibility of key : string
     | SaveClicked
     /// Requested exit (the Cancel button, or the window chrome routed through `OnClosing`):
@@ -573,7 +573,7 @@ let private nameRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             labelBlock "Name:"
             TextBox.create [
-                TextBox.name UiIds.MaterialEditor.nameBox
+                TextBox.name ConstructorUiId.materialNameBox.value
                 TextBox.width 340.0
                 TextBox.text m.name
                 TextBox.onTextChanged (SetName >> dispatch)
@@ -588,7 +588,7 @@ let private descriptionRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             labelBlock "Description:"
             TextBox.create [
-                TextBox.name UiIds.MaterialEditor.descriptionBox
+                TextBox.name ConstructorUiId.materialDescriptionBox.value
                 // Spec 0040 (007), Part C.2: wrap instead of clip. A MinWidth (not a fixed width that
                 // exceeds the left pane and meets the splitter) lets the box grow multiline within the
                 // pane; AcceptsReturn + Wrap turn a long description into extra lines rather than a
@@ -609,7 +609,7 @@ let private categoryRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             labelBlock "Category:"
             WrapPanel.create [
-                automationId UiIds.MaterialEditor.categoryPicker
+                automationId ConstructorUiId.materialCategoryPicker.value
                 WrapPanel.orientation Orientation.Horizontal
                 // Spec 0035 (009): the create picker offers the LIVE catalogue minus every
                 // HiddenOnCreate category (Vacuum is removed, not greyed). Each option's id is the
@@ -619,7 +619,7 @@ let private categoryRow (m : Model) (dispatch : Msg -> unit) : IView =
                 WrapPanel.children (
                     selectableCategories m
                     |> List.map (fun category ->
-                        clickBox (UiIds.MaterialEditor.categoryOption (string category.id.value)) category.name (m.category = category.id) (fun () -> dispatch (ChooseCategory category.id))))
+                        clickBox (ConstructorUiId.materialEditorCategoryOption category.id).value category.name (m.category = category.id) (fun () -> dispatch (ChooseCategory category.id))))
             ] :> IView
         ]
     ] :> IView
@@ -633,12 +633,12 @@ let private anisotropyRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             labelBlock "Anisotropy:"
             WrapPanel.create [
-                automationId UiIds.MaterialEditor.anisotropyToggle
+                automationId ConstructorUiId.anisotropyToggle.value
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children (
                     [ Isotropic; Uniaxial; Biaxial ]
                     |> List.map (fun choice ->
-                        clickBox (UiIds.MaterialEditor.anisotropyOption (anisotropyCode choice)) (anisotropyLabel choice) (m.editor.anisotropy = choice) (fun () -> dispatch (EditorMsg (ChooseAnisotropy choice)))))
+                        clickBox (ConstructorUiId.anisotropyOption (ConstructorUiKey (anisotropyCode choice))).value (anisotropyLabel choice) (m.editor.anisotropy = choice) (fun () -> dispatch (EditorMsg (ChooseAnisotropy choice)))))
             ] :> IView
         ]
     ] :> IView
@@ -668,21 +668,21 @@ let private togglesRow (m : Model) (dispatch : Msg -> unit) : IView =
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children (
                     [
-                        clickBox UiIds.MaterialEditor.constantToggle "Constant" (not dispersive) (fun () ->
+                        clickBox ConstructorUiId.constantToggle.value "Constant" (not dispersive) (fun () ->
                             dispatch (EditorMsg (SetDispersion NonDispersive)))
-                        clickBox UiIds.MaterialEditor.dispersiveToggle "Dispersive" dispersive (fun () ->
+                        clickBox ConstructorUiId.dispersiveToggle.value "Dispersive" dispersive (fun () ->
                             dispatch (EditorMsg (SetDispersion DispersiveSegments)))
                     ]
                     @ (if dispersive then []
                        else
-                           [ clickBox UiIds.MaterialEditor.absorbingToggle "Absorbing" absorbing (fun () ->
+                           [ clickBox ConstructorUiId.absorbingToggle.value "Absorbing" absorbing (fun () ->
                                  dispatch (EditorMsg (SetTransparency (if absorbing then Transparent else Absorbing)))) ])
                     @ (if activityOffered then
-                           [ clickBox UiIds.MaterialEditor.activeToggle "Optically active" active (fun () ->
+                           [ clickBox ConstructorUiId.activeToggle.value "Optically active" active (fun () ->
                                  dispatch (EditorMsg (SetActivity (if active then ActivityOff else ActivityOn)))) ]
                        else [])
                     @ [
-                        clickBox UiIds.MaterialEditor.magneticToggle "Magnetic (Polder μ)" magnetic (fun () ->
+                        clickBox ConstructorUiId.magneticToggle.value "Magnetic (Polder μ)" magnetic (fun () ->
                             dispatch (EditorMsg (SetMagnetic (if magnetic then MagneticOff else MagneticOn))))
                     ])
             ] :> IView
@@ -703,13 +703,13 @@ let private indexFieldsRow (m : Model) (dispatch : Msg -> unit) : IView =
             let re = index.value.Real
             let im = index.value.Imaginary
             [
-                labelled label (numberBox (UiIds.MaterialEditor.indexBox number) 70.0 re (fun v ->
+                labelled label (numberBox (ConstructorUiId.principalIndexBox (ConstructorUiPosition number)).value 70.0 re (fun v ->
                     dispatch (EditorMsg (SetPrincipalIndex (slot, ComplexRefractionIndex (System.Numerics.Complex.create v im))))))
             ]
             @ (match m.editor.transparency with
                | Absorbing ->
                    [
-                       labelled $"k%d{number}:" (numberBox (UiIds.MaterialEditor.absorptionBox number) 70.0 im (fun v ->
+                       labelled $"k%d{number}:" (numberBox (ConstructorUiId.absorptionIndexBox (ConstructorUiPosition number)).value 70.0 im (fun v ->
                            dispatch (EditorMsg (SetPrincipalIndex (slot, ComplexRefractionIndex (System.Numerics.Complex.create re v))))))
                    ]
                | Transparent -> []))
@@ -771,10 +771,11 @@ let private componentFormulaView (editorId : string) (boxId : string -> string) 
 /// which now covers the raw `SumOfTerms` term data too), each edit rebuilding that axis's model
 /// through `SetSegmentAxisModel`.
 let private segmentParamsView (dispatch : Msg -> unit) (segmentIndex : int) (slot : PrincipalAxisSlot) (isFirst : bool) (axisCode : string) (model : DispersionModel) : IView =
+    let laterAxisOpt = if isFirst then None else Some (ConstructorUiKey axisCode)
     let boxes =
         modelParameters model
         |> List.map (fun p ->
-            paramBoxWithUnit (UiIds.MaterialEditor.axisParamBoxOf segmentIndex isFirst axisCode p.key) p (fun v ->
+            paramBoxWithUnit (ConstructorUiId.segmentParamBoxOfAxis (ConstructorUiPosition segmentIndex) laterAxisOpt (ConstructorUiKey p.key)).value p (fun v ->
                 dispatch (EditorMsg (SetSegmentAxisModel (segmentIndex, slot, p.update v)))))
     match boxes with
     | [] -> TextBlock.create [ TextBlock.text "(no editable coefficients)"; TextBlock.foreground (brush hintColor) ] :> IView
@@ -796,6 +797,7 @@ let private axisSlotsOf (anisotropy : Anisotropy) : (PrincipalAxisSlot * string 
 /// One principal axis's model picker + coefficient boxes within a segment (spec 0033 comment 009).
 let private segmentAxisView (dispatch : Msg -> unit) (segmentIndex : int) (slot : PrincipalAxisSlot) (axisLabel : string) (axisCode : string) (model : DispersionModel) : IView =
     let isFirst = (slot = FirstAxis)
+    let laterAxisOpt = if isFirst then None else Some (ConstructorUiKey axisCode)
     let currentCode = modelKindCode model
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
@@ -804,13 +806,13 @@ let private segmentAxisView (dispatch : Msg -> unit) (segmentIndex : int) (slot 
             (if axisLabel = "" then [] else [ labelBlock axisLabel ])
             @ [
                 WrapPanel.create [
-                    automationId (UiIds.MaterialEditor.axisModelPickerOf segmentIndex isFirst axisCode)
+                    automationId (ConstructorUiId.dispersionModelPickerOfAxis (ConstructorUiPosition segmentIndex) laterAxisOpt).value
                     WrapPanel.orientation Orientation.Horizontal
                     WrapPanel.children (
                         defaultModelChoices
                         |> List.map (fun candidate ->
                             let code = modelKindCode candidate
-                            clickBox (UiIds.MaterialEditor.axisModelOptionOf segmentIndex isFirst axisCode code) (modelKindLabel candidate) (currentCode = code) (fun () ->
+                            clickBox (ConstructorUiId.dispersionModelOptionOfAxis (ConstructorUiPosition segmentIndex) laterAxisOpt (ConstructorUiKey code)).value (modelKindLabel candidate) (currentCode = code) (fun () ->
                                 dispatch (EditorMsg (ChooseSegmentAxisModel (segmentIndex, slot, candidate))))))
                 ] :> IView
                 segmentParamsView dispatch segmentIndex slot isFirst axisCode model
@@ -832,11 +834,11 @@ let private segmentView (m : Model) (dispatch : Msg -> unit) (segmentIndex : int
                     WrapPanel.orientation Orientation.Horizontal
                     WrapPanel.children [
                         labelBlock $"Segment {segmentIndex} —"
-                        labelled "λ from (nm):" (numberBox (UiIds.MaterialEditor.segmentLowerBox segmentIndex) 70.0 lowerNm (fun v ->
+                        labelled "λ from (nm):" (numberBox (ConstructorUiId.segmentLowerBox (ConstructorUiPosition segmentIndex)).value 70.0 lowerNm (fun v ->
                             dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = toWaveLength Nanometer v; upper = segment.interval.upper })))))
-                        labelled "to (nm):" (numberBox (UiIds.MaterialEditor.segmentUpperBox segmentIndex) 70.0 upperNm (fun v ->
+                        labelled "to (nm):" (numberBox (ConstructorUiId.segmentUpperBox (ConstructorUiPosition segmentIndex)).value 70.0 upperNm (fun v ->
                             dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = segment.interval.lower; upper = toWaveLength Nanometer v })))))
-                        verbButton (UiIds.MaterialEditor.segmentRemoveButton segmentIndex) "Remove" (List.length m.editor.segments > 1) (fun () ->
+                        verbButton (ConstructorUiId.segmentRemoveButton (ConstructorUiPosition segmentIndex)).value "Remove" (List.length m.editor.segments > 1) (fun () ->
                             dispatch (EditorMsg (RemoveSegment segmentIndex)))
                     ]
                 ] :> IView
@@ -855,7 +857,7 @@ let private segmentsPanel (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children (
             [ labelBlock "Dispersion segments (first covering segment wins; the topmost extrapolates):" ]
             @ (m.editor.segments |> List.mapi (fun i seg -> segmentView m dispatch i seg))
-            @ [ verbButton UiIds.MaterialEditor.addSegmentButton "Add segment" true (fun () -> dispatch (EditorMsg AddSegment)) ])
+            @ [ verbButton ConstructorUiId.addSegmentButton.value "Add segment" true (fun () -> dispatch (EditorMsg AddSegment)) ])
     ] :> IView
 
 /// The gyration-component entry surface (the activity rung's Constant vs Dispersive
@@ -871,7 +873,7 @@ let private gyrationComponentsSection (m : Model) (dispatch : Msg -> unit) : IVi
             WrapPanel.children (
                 gyrationComponents m.editor.gyration
                 |> List.map (fun (comp, RhoValue value) ->
-                    labelled (gyrationComponentLabel comp + ":") (coeffNumberBox (UiIds.MaterialEditor.gyrationComponentBox (gyrationComponentCode comp)) 100.0 value (fun v ->
+                    labelled (gyrationComponentLabel comp + ":") (coeffNumberBox (ConstructorUiId.gyrationComponentBox (ConstructorUiKey (gyrationComponentCode comp))).value 100.0 value (fun v ->
                         dispatch (EditorMsg (SetGyrationComponent (comp, RhoValue v)))))))
         ] :> IView
     | DispersiveComponents ->
@@ -887,7 +889,7 @@ let private gyrationComponentsSection (m : Model) (dispatch : Msg -> unit) : IVi
                         StackPanel.spacing 2.0
                         StackPanel.children [
                             labelBlock (gyrationComponentLabel comp + " (dispersion formula):")
-                            componentFormulaView (UiIds.MaterialEditor.gyrationComponentFormulaEditor code) (UiIds.MaterialEditor.gyrationComponentFormulaBox code) formula (fun f ->
+                            componentFormulaView (ConstructorUiId.gyrationFormulaEditor (ConstructorUiKey code)).value (fun key -> (ConstructorUiId.gyrationFormulaBox (ConstructorUiKey code) (ConstructorUiKey key)).value) formula (fun f ->
                                 dispatch (EditorMsg (SetGyrationComponentDispersion (comp, f))))
                         ]
                     ] :> IView))
@@ -904,20 +906,20 @@ let private gyrationPanel (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             labelBlock "Gyration symmetry class:"
             WrapPanel.create [
-                automationId UiIds.MaterialEditor.gyrationClassPicker
+                automationId ConstructorUiId.gyrationClassPicker.value
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children (
                     availableGyrationClasses m.editor.anisotropy
                     |> List.map (fun offered ->
                         let code = gyrationClassCode offered
-                        clickBox (UiIds.MaterialEditor.gyrationClassOption code) (gyrationClassLabel offered) (currentCode = code) (fun () ->
+                        clickBox (ConstructorUiId.gyrationClassOption (ConstructorUiKey code)).value (gyrationClassLabel offered) (currentCode = code) (fun () ->
                             dispatch (EditorMsg (ChooseGyrationClass offered)))))
             ] :> IView
             labelBlock "Gyration component model (off = constant g):"
             WrapPanel.create [
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children [
-                    clickBox UiIds.MaterialEditor.activityDispersiveToggle "Dispersive components" dispersive (fun () ->
+                    clickBox ConstructorUiId.activityDispersiveToggle.value "Dispersive components" dispersive (fun () ->
                         dispatch (EditorMsg (SetActivityDispersion (if dispersive then ConstantComponents else DispersiveComponents))))
                 ]
             ] :> IView
@@ -925,12 +927,12 @@ let private gyrationPanel (m : Model) (dispatch : Msg -> unit) : IView =
             gyrationComponentsSection m dispatch
             labelBlock "Handedness (the enantiomorph — one overall sign):"
             WrapPanel.create [
-                automationId UiIds.MaterialEditor.handednessSwitch
+                automationId ConstructorUiId.handednessSwitch.value
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children (
                     [ RightHanded; LeftHanded ]
                     |> List.map (fun hand ->
-                        clickBox (UiIds.MaterialEditor.handednessOption (handednessCode hand)) (handednessCode hand) (m.editor.hand = hand) (fun () ->
+                        clickBox (ConstructorUiId.handednessOption (ConstructorUiKey (handednessCode hand))).value (handednessCode hand) (m.editor.hand = hand) (fun () ->
                             dispatch (EditorMsg (SetHandedness hand)))))
             ] :> IView
         ]
@@ -955,12 +957,12 @@ let private muPanel (m : Model) (dispatch : Msg -> unit) : IView =
             [
                 labelBlock "Magnetization axis (Z = Faraday; X/Y = Voigt):"
                 WrapPanel.create [
-                    automationId UiIds.MaterialEditor.gyrationAxisPicker
+                    automationId ConstructorUiId.gyrationAxisPicker.value
                     WrapPanel.orientation Orientation.Horizontal
                     WrapPanel.children (
                         [ AlongX; AlongY; AlongZ ]
                         |> List.map (fun axis ->
-                            clickBox (UiIds.MaterialEditor.gyrationAxisOption (gyrationAxisCode axis)) (gyrationAxisCode axis) (m.editor.polder.axis = axis) (fun () ->
+                            clickBox (ConstructorUiId.gyrationAxisOption (ConstructorUiKey (gyrationAxisCode axis))).value (gyrationAxisCode axis) (m.editor.polder.axis = axis) (fun () ->
                                 dispatch (EditorMsg (ChooseGyrationAxis axis)))))
                 ] :> IView
             ]
@@ -968,7 +970,7 @@ let private muPanel (m : Model) (dispatch : Msg -> unit) : IView =
         WrapPanel.create [
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children [
-                clickBox UiIds.MaterialEditor.magneticDispersiveToggle "Dispersive components" dispersive (fun () ->
+                clickBox ConstructorUiId.magneticDispersiveToggle.value "Dispersive components" dispersive (fun () ->
                     dispatch (EditorMsg (SetMagneticDispersion (if dispersive then ConstantComponents else DispersiveComponents))))
             ]
         ] :> IView
@@ -976,15 +978,15 @@ let private muPanel (m : Model) (dispatch : Msg -> unit) : IView =
         let kindOptions =
             [ ScalarMuKind; GyromagneticMuKind ]
             |> List.map (fun candidate ->
-                clickBox (UiIds.MaterialEditor.muKindOption (muKindCode candidate)) (muKindCode candidate) (kind = candidate) (fun () ->
+                clickBox (ConstructorUiId.muKindOption (ConstructorUiKey (muKindCode candidate))).value (muKindCode candidate) (kind = candidate) (fun () ->
                     dispatch (EditorMsg (SetMuKind candidate))))
         let componentBoxes =
-            [ labelled "μ (diagonal):" (numberBox UiIds.MaterialEditor.muDiagonalBox 70.0 muDiagonal (fun v -> dispatch (EditorMsg (SetMuDiagonal (MuValue v))))) ]
+            [ labelled "μ (diagonal):" (numberBox ConstructorUiId.muDiagonalBox.value 70.0 muDiagonal (fun v -> dispatch (EditorMsg (SetMuDiagonal (MuValue v))))) ]
             @ (match kind with
                | GyromagneticMuKind ->
                    [
-                       labelled "μ (parallel):" (numberBox UiIds.MaterialEditor.muParallelBox 70.0 muParallel (fun v -> dispatch (EditorMsg (SetMuParallel (MuValue v)))))
-                       labelled "g (gyration):" (numberBox UiIds.MaterialEditor.muGyrationBox 70.0 muGyration (fun v -> dispatch (EditorMsg (SetMuGyration (MuValue v)))))
+                       labelled "μ (parallel):" (numberBox ConstructorUiId.muParallelBox.value 70.0 muParallel (fun v -> dispatch (EditorMsg (SetMuParallel (MuValue v)))))
+                       labelled "g (gyration):" (numberBox ConstructorUiId.muGyrationBox.value 70.0 muGyration (fun v -> dispatch (EditorMsg (SetMuGyration (MuValue v)))))
                    ]
                | ScalarMuKind -> [])
         [ WrapPanel.create [ WrapPanel.orientation Orientation.Horizontal; WrapPanel.children (kindOptions @ componentBoxes) ] :> IView ]
@@ -1004,7 +1006,7 @@ let private muPanel (m : Model) (dispatch : Msg -> unit) : IView =
                     StackPanel.spacing 2.0
                     StackPanel.children [
                         labelBlock label
-                        componentFormulaView (UiIds.MaterialEditor.polderComponentFormulaEditor code) (UiIds.MaterialEditor.polderComponentFormulaBox code) formula (fun f -> dispatch (EditorMsg (toMsg f)))
+                        componentFormulaView (ConstructorUiId.polderFormulaEditor (ConstructorUiKey code)).value (fun key -> (ConstructorUiId.polderFormulaBox (ConstructorUiKey code) (ConstructorUiKey key)).value) formula (fun f -> dispatch (EditorMsg (toMsg f)))
                     ]
                 ] :> IView)
         editors @ axisRow true
@@ -1026,7 +1028,7 @@ let private muPanel (m : Model) (dispatch : Msg -> unit) : IView =
 /// a test asserts `applyHidden` flips the toggled curve's exact index, rather than re-deriving it.
 let applyHidden (hidden : Set<string>) (tabCode : string) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : ChartStyle.ChartStyleState =
     chart.series
-    |> List.mapi (fun i s -> i, UiIds.MaterialEditor.seriesToggle tabCode s.name)
+    |> List.mapi (fun i s -> i, (ConstructorUiId.previewSeriesToggle (ConstructorUiKey tabCode) (ConstructorUiKey s.name)).value)
     |> List.fold (fun st (i, key) -> if Set.contains key hidden then ChartStyle.setSeriesVisible i false st else st) style
 
 /// One preview tab: a row of per-series show/hide toggles pinned above the embedded dual-axis chart,
@@ -1041,7 +1043,7 @@ let private chartTab (tabId : string) (tabCode : string) (header : string) (host
             WrapPanel.children (
                 chart.series
                 |> List.map (fun s ->
-                    let key = UiIds.MaterialEditor.seriesToggle tabCode s.name
+                    let key = (ConstructorUiId.previewSeriesToggle (ConstructorUiKey tabCode) (ConstructorUiKey s.name)).value
                     clickBox key s.name (not (Set.contains key m.hiddenSeries)) (fun () ->
                         dispatch (ToggleSeriesVisibility key))))
         ] :> IView
@@ -1085,18 +1087,18 @@ let private previewPane (m : Model) (dispatch : Msg -> unit) : IView * string =
             | EditableMaterial -> m.editor.magnetic = MagneticOn
             | ViewOnlyMaterial _ -> NkDispersionChart.hasMagnetic o
         let tabs =
-            [ chartTab UiIds.MaterialEditor.nkTab "nk" "n, k" UiIds.MaterialEditor.previewChart m dispatch nkChart (NkDispersionChart.nkDispersionStyle m.editor.anisotropy nkChart) ]
+            [ chartTab ConstructorUiId.materialPreviewNkTab.value "nk" "n, k" ConstructorUiId.materialPreviewChart.value m dispatch nkChart (NkDispersionChart.nkDispersionStyle m.editor.anisotropy nkChart) ]
             @ (if showGyration then
                    let g = NkDispersionChart.gyrationChart (previewGyrationComponents m) o Nanometer previewRange
-                   [ chartTab UiIds.MaterialEditor.gyrationTab "gyration" "Gyration" UiIds.MaterialEditor.gyrationChart m dispatch g (NkDispersionChart.gyrationStyle g) ]
+                   [ chartTab ConstructorUiId.materialPreviewGyrationTab.value "gyration" "Gyration" ConstructorUiId.materialGyrationChart.value m dispatch g (NkDispersionChart.gyrationStyle g) ]
                else [])
             @ (if showMu then
                    let mu = NkDispersionChart.muChart (previewMuKind m) o Nanometer previewRange
-                   [ chartTab UiIds.MaterialEditor.muTab "mu" "μ (Polder)" UiIds.MaterialEditor.muChart m dispatch mu (NkDispersionChart.muStyle mu) ]
+                   [ chartTab ConstructorUiId.materialPreviewMuTab.value "mu" "μ (Polder)" ConstructorUiId.materialMuChart.value m dispatch mu (NkDispersionChart.muStyle mu) ]
                else [])
         let pane =
             TabControl.create [
-                automationId<TabControl> UiIds.MaterialEditor.previewTabs
+                automationId<TabControl> ConstructorUiId.materialPreviewTabs.value
                 TabControl.viewItems tabs
             ] :> IView
         pane, gainWarningOf (Some nkChart)
@@ -1125,7 +1127,7 @@ let private twoPane (leftPane : IView) (rightPane : IView) : IView =
                         Grid.children [
                             Border.create [ Border.column 0; Border.minWidth leftPaneMinWidth; Border.child leftPane ]
                             GridSplitter.create [
-                                automationId<GridSplitter> UiIds.MaterialEditor.splitter
+                                automationId<GridSplitter> ConstructorUiId.materialEditorSplitter.value
                                 GridSplitter.column 1
                                 GridSplitter.width splitterWidth
                                 GridSplitter.resizeDirection GridResizeDirection.Columns
@@ -1145,7 +1147,7 @@ let private summaryRow (m : Model) : IView =
         DockPanel.children [
             Border.create [ Border.dock Dock.Left; Border.margin (thickOf 0.0 0.0 6.0 0.0); Border.child (labelBlock "Derived model:") ]
             TextBlock.create [
-                TextBlock.name UiIds.MaterialEditor.summaryText
+                TextBlock.name ConstructorUiId.materialComplexitySummary.value
                 TextBlock.text (complexitySummary m)
                 TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.verticalAlignment VerticalAlignment.Center
@@ -1155,14 +1157,14 @@ let private summaryRow (m : Model) : IView =
 
 let private gainWarningRow (warning : string) : IView =
     TextBlock.create [
-        TextBlock.name UiIds.MaterialEditor.gainWarning
+        TextBlock.name ConstructorUiId.materialGainWarning.value
         TextBlock.foreground (brush warningColor)
         TextBlock.text warning
     ] :> IView
 
 let private statusRow (m : Model) : IView =
     TextBlock.create [
-        TextBlock.name UiIds.MaterialEditor.statusText
+        TextBlock.name ConstructorUiId.materialEditorStatus.value
         TextBlock.foreground (brush errorColor)
         TextBlock.text (
             match m.status with
@@ -1175,8 +1177,8 @@ let private saveCancelRow (dispatch : Msg -> unit) (withSave : bool) : IView =
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children (
-            (if withSave then [ actionButton UiIds.MaterialEditor.saveButton "Save" saveBackground (fun () -> dispatch SaveClicked) ] else [])
-            @ [ actionButton UiIds.MaterialEditor.cancelButton (if withSave then "Cancel" else "Close") cancelBackground (fun () -> dispatch CancelClicked) ])
+            (if withSave then [ actionButton ConstructorUiId.materialEditorSaveButton.value "Save" saveBackground (fun () -> dispatch SaveClicked) ] else [])
+            @ [ actionButton ConstructorUiId.materialEditorCancelButton.value (if withSave then "Cancel" else "Close") cancelBackground (fun () -> dispatch CancelClicked) ])
     ] :> IView
 
 /// The unsaved-edit exit confirm surface (spec 0038 step 033): shown in place of the Save/Cancel
@@ -1184,7 +1186,7 @@ let private saveCancelRow (dispatch : Msg -> unit) (withSave : bool) : IView =
 /// saving; Keep editing (positive styling) returns to the editor — one row, distinct styling.
 let private exitConfirmRow (dispatch : Msg -> unit) : IView =
     StackPanel.create [
-        automationId UiIds.MaterialEditor.exitConfirm
+        automationId ConstructorUiId.materialEditorExitConfirm.value
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children [
@@ -1194,8 +1196,8 @@ let private exitConfirmRow (dispatch : Msg -> unit) : IView =
                 TextBlock.verticalAlignment VerticalAlignment.Center
                 TextBlock.margin (thickOf 0.0 0.0 12.0 0.0)
             ] :> IView
-            actionButton UiIds.MaterialEditor.discardButton "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
-            actionButton UiIds.MaterialEditor.keepEditingButton "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
+            actionButton ConstructorUiId.materialEditorDiscardButton.value "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
+            actionButton ConstructorUiId.materialEditorKeepEditingButton.value "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
         ]
     ] :> IView
 
@@ -1233,7 +1235,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                                 labelBlock $"%s{m.name} — %s{categoryCode m.category}"
                                 TextBlock.create [ TextBlock.text m.description; TextBlock.foreground (brush hintColor) ] :> IView
                                 TextBlock.create [
-                                    TextBlock.name UiIds.MaterialEditor.viewOnlyNote
+                                    TextBlock.name ConstructorUiId.materialViewOnlyNote.value
                                     TextBlock.text reason
                                     TextBlock.foreground (brush errorColor)
                                 ] :> IView

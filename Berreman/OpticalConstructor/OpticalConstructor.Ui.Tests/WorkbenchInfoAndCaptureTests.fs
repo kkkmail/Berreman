@@ -78,13 +78,13 @@ module WorkbenchInfoAndCaptureTests =
         HeadlessSession.run (fun () ->
             let m = initMain () |> bind 0 "src-arf-193"
             let window = mountView m ignore
-            match findControl window (UiIds.TableAndElementRotation.elementHover "src") with
+            match findControl window (ConstructorUiId.elementHover (ElementId "src")).value with
             | Some target -> Assert.Contains("ArF excimer 193 nm", string (ToolTip.GetTip target))
             | None -> Assert.Fail "the source must carry a hover target"
             window.Close()
             let opened = update (OpenElementMenuAt (canvasPointOf 0 m)) m
             let menuWindow = mountView opened ignore
-            match findBorder menuWindow UiIds.ElementMenu.menu, (findControl menuWindow UiIds.ElementMenu.info |> Option.bind (fun c -> match c with :? TextBlock as t -> Some t | _ -> None)) with
+            match findBorder menuWindow ConstructorUiId.elementMenu.value, (findControl menuWindow ConstructorUiId.elementMenuInfo.value |> Option.bind (fun c -> match c with :? TextBlock as t -> Some t | _ -> None)) with
             | Some menu, Some info ->
                 Assert.Equal(460.0, menu.MaxWidth)
                 Assert.True(menu.MinWidth >= 260.0)
@@ -138,7 +138,7 @@ module WorkbenchInfoAndCaptureTests =
             let opened = update (OpenElementMenuAt (canvasPointOf 0 m0)) m0
             let mutable model = opened
             let window = mountView opened (fun msg -> model <- update msg model)
-            match findBorder window UiIds.ElementMenu.choose with
+            match findBorder window ConstructorUiId.elementMenuChoose.value with
             | Some row ->
                 match Option.ofNullable (row.TranslatePoint(Point(row.Bounds.Width / 2.0, row.Bounds.Height / 2.0), window)) with
                 | Some c ->
@@ -229,7 +229,7 @@ module WorkbenchInfoAndCaptureTests =
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
                 let shown =
-                    match findBorder window (UiIds.Experiment.measurement "t") with
+                    match findBorder window (ConstructorUiId.experimentMeasurement (ConstructorUiKey "t")).value with
                     | Some box -> box.IsEffectivelyVisible
                     | None -> false
                 window.Close()

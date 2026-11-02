@@ -74,25 +74,25 @@ module RotationControlsTests =
             Dispatcher.UIThread.RunJobs()
 
             // Idle: no axis is armed.
-            Assert.NotEqual(Some accent, backgroundColor window UiIds.Rotation.r1Plus)
+            Assert.NotEqual(Some accent, backgroundColor window ConstructorUiId.rotationR1PlusButton.value)
 
             // Hold Shift → R1 arms (R1−/R1+ both accent), R3 stays idle.
             window.KeyPressQwerty(PhysicalKey.ShiftLeft, RawInputModifiers.Shift)
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal(Some accent, backgroundColor window UiIds.Rotation.r1Plus)
-            Assert.Equal(Some accent, backgroundColor window UiIds.Rotation.r1Minus)
-            Assert.NotEqual(Some accent, backgroundColor window UiIds.Rotation.r3Plus)
+            Assert.Equal(Some accent, backgroundColor window ConstructorUiId.rotationR1PlusButton.value)
+            Assert.Equal(Some accent, backgroundColor window ConstructorUiId.rotationR1MinusButton.value)
+            Assert.NotEqual(Some accent, backgroundColor window ConstructorUiId.rotationR3PlusButton.value)
 
             // Release Shift → back to idle.
             window.KeyReleaseQwerty(PhysicalKey.ShiftLeft, RawInputModifiers.None)
             Dispatcher.UIThread.RunJobs()
-            Assert.NotEqual(Some accent, backgroundColor window UiIds.Rotation.r1Plus)
+            Assert.NotEqual(Some accent, backgroundColor window ConstructorUiId.rotationR1PlusButton.value)
 
             window.Close())
 
     /// The "Lock R3" / "Unlock R3" button's current label.
     let private lockLabel (window : Window) : string =
-        match borderWithId window UiIds.Rotation.lockR3 with
+        match borderWithId window ConstructorUiId.rotationLockR3Button.value with
         | Some b -> (match b.Child with | :? TextBlock as t -> t.Text | _ -> "<no text>")
         | None -> "<not found>"
 
@@ -150,17 +150,17 @@ module RotationControlsTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
 
-            Assert.Equal("Reset", buttonLabel window UiIds.Rotation.reset)
-            Assert.Equal("Reset All", buttonLabel window UiIds.Rotation.resetAll)
+            Assert.Equal("Reset", buttonLabel window ConstructorUiId.rotationResetButton.value)
+            Assert.Equal("Reset All", buttonLabel window ConstructorUiId.rotationResetAllButton.value)
             // Arm the confirmation — must not throw, and the same buttons become Yes / No.
             setConfirm.Value RotationControls.ConfirmReset
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal("Yes", buttonLabel window UiIds.Rotation.reset)
-            Assert.Equal("No", buttonLabel window UiIds.Rotation.resetAll)
+            Assert.Equal("Yes", buttonLabel window ConstructorUiId.rotationResetButton.value)
+            Assert.Equal("No", buttonLabel window ConstructorUiId.rotationResetAllButton.value)
             // Cancelling back returns them to Reset / Reset All.
             setConfirm.Value RotationControls.NoConfirm
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal("Reset", buttonLabel window UiIds.Rotation.reset)
+            Assert.Equal("Reset", buttonLabel window ConstructorUiId.rotationResetButton.value)
 
             window.Close())
 
@@ -204,19 +204,19 @@ module RotationControlsTests =
                 | None -> Assert.Fail($"%s{id} not found")
 
             // Reset → arms; the SAME button now reads "Yes" and clicking it CONFIRMS (one reset, no cancel).
-            click UiIds.Rotation.reset
-            Assert.Equal("Yes", buttonLabel window UiIds.Rotation.reset)
-            click UiIds.Rotation.reset
+            click ConstructorUiId.rotationResetButton.value
+            Assert.Equal("Yes", buttonLabel window ConstructorUiId.rotationResetButton.value)
+            click ConstructorUiId.rotationResetButton.value
             Assert.Equal(1, resets)
             Assert.Equal(0, cancels)
-            Assert.Equal("Reset", buttonLabel window UiIds.Rotation.reset)
+            Assert.Equal("Reset", buttonLabel window ConstructorUiId.rotationResetButton.value)
 
             // Reset All → arms; the OTHER button now reads "No" and clicking it CANCELS (no extra reset).
-            click UiIds.Rotation.resetAll
-            Assert.Equal("No", buttonLabel window UiIds.Rotation.resetAll)
-            click UiIds.Rotation.resetAll
+            click ConstructorUiId.rotationResetAllButton.value
+            Assert.Equal("No", buttonLabel window ConstructorUiId.rotationResetAllButton.value)
+            click ConstructorUiId.rotationResetAllButton.value
             Assert.Equal(1, cancels)
             Assert.Equal(1, resets)
-            Assert.Equal("Reset All", buttonLabel window UiIds.Rotation.resetAll)
+            Assert.Equal("Reset All", buttonLabel window ConstructorUiId.rotationResetAllButton.value)
 
             window.Close())

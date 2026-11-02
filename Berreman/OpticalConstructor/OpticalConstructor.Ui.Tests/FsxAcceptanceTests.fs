@@ -205,7 +205,7 @@ module FsxAcceptanceTests =
         let mutable exported : ExperimentExport.ExportedRun list = []
         HeadlessSession.run (fun () ->
             let window, _, _ = mount experiment
-            clickOn window UiIds.Experiment.exportButton
+            clickOn window ConstructorUiId.experimentExportButton.value
             exported <- b.export.exported ()
             window.Close()
             Dispatcher.UIThread.RunJobs())

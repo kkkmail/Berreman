@@ -107,7 +107,7 @@ module RayPositionControls =
             | :? TextBox as tb when not (isNull tb.Text) -> parseMeters tb.Text |> Option.iter handlers.setPosition
             | _ -> ()
         TextBox.create [
-            TextBox.name UiIds.RayPosition.field
+            TextBox.name ConstructorUiId.rayPositionField.value
             TextBox.width 80.0
             TextBox.isEnabled enabled
             TextBox.text (formatMeters value)
@@ -126,13 +126,13 @@ module RayPositionControls =
             StackPanel.opacity (if state.enabled then 1.0 else 0.5)
             StackPanel.children [
                 TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text "Along beam:" ]
-                stepButton handlers UiIds.RayPosition.minus "−" -1.0 state.enabled
-                stepButton handlers UiIds.RayPosition.plus "+" 1.0 state.enabled
+                stepButton handlers ConstructorUiId.rayPositionMinusButton.value "−" -1.0 state.enabled
+                stepButton handlers ConstructorUiId.rayPositionPlusButton.value "+" 1.0 state.enabled
                 field handlers state.position state.enabled
                 TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text "m" ]
-                clickBox UiIds.RayPosition.reset "Reset position" state.enabled (fun _ -> handlers.reset ())
+                clickBox ConstructorUiId.rayPositionResetButton.value "Reset position" state.enabled (fun _ -> handlers.reset ())
                 TextBlock.create [
-                    TextBlock.name UiIds.RayPosition.readout
+                    TextBlock.name ConstructorUiId.rayPositionReadout.value
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(10.0, 0.0, 0.0, 0.0))
                     TextBlock.text (readoutText state)

@@ -59,7 +59,7 @@ module Ribbon =
     /// One ribbon tab — a clickable, button-styled Border that lights up when it is the selected bay.
     let private tab (name : string) (active : bool) (onSelect : string -> unit) : IView =
         Border.create [
-            Border.name (UiIds.Ribbon.tab name)
+            Border.name (ConstructorUiId.ribbonTab (ConstructorUiKey name)).value
             Border.background (brush (if active then activeBackground else idleBackground))
             Border.borderBrush (brush (if active then activeBorder else idleBorder))
             Border.borderThickness 1.0
@@ -103,7 +103,7 @@ module Ribbon =
             |> List.map (fun b -> tab b.name (b.name = activeName) onSelect)
         // The active-bay content region. An IN-PANE bay renders its content in ONE keyed slot, KEYED by the
         // active bay name so a bay change recreates the pane instead of recycling a styled, named control
-        // across two DIFFERENT bays (`UiIds.Ribbon.pane` names this slot). A FULL-SURFACE bay renders no pane here —
+        // across two DIFFERENT bays (`ConstructorUiId.ribbonPane` names this slot). A FULL-SURFACE bay renders no pane here —
         // the host places its content below the whole strip — so the content region stays empty for it (and
         // for the no-bays case, keeping exactly one realized pane, never two).
         let paneChildren : IView list =
@@ -113,7 +113,7 @@ module Ribbon =
                 | InRibbonPane ->
                     let pane =
                         Border.create [
-                            Border.name (UiIds.Ribbon.pane b.name)
+                            Border.name (ConstructorUiId.ribbonPane (ConstructorUiKey b.name)).value
                             Border.padding (Thickness(0.0, 4.0, 0.0, 0.0))
                             Border.child b.content
                         ]

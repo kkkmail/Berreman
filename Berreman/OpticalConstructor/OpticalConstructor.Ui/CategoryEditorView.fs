@@ -254,8 +254,8 @@ let private saveCancelRow (dispatch : Msg -> unit) : IView =
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children [
-            actionButton UiIds.Category.saveButton "Save" saveBackground (fun () -> dispatch CommitAll)
-            actionButton UiIds.Category.cancelButton "Cancel" cancelBackground (fun () -> dispatch CancelWindow)
+            actionButton ConstructorUiId.categorySaveButton.value "Save" saveBackground (fun () -> dispatch CommitAll)
+            actionButton ConstructorUiId.categoryCancelButton.value "Cancel" cancelBackground (fun () -> dispatch CancelWindow)
         ]
     ] :> IView
 

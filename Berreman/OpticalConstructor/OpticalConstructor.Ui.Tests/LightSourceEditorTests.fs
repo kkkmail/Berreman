@@ -190,7 +190,7 @@ module LightSourceEditorTests =
             window.GetVisualDescendants()
             |> Seq.tryPick (fun v ->
                 match v with
-                | :? TextBlock as t when t.Name = UiIds.TableAndElementRotation.readout -> Some t.Text
+                | :? TextBlock as t when t.Name = ConstructorUiId.teReadout.value -> Some t.Text
                 | _ -> None)
             |> Option.defaultValue ""
         window.Close()
@@ -246,10 +246,10 @@ module LightSourceEditorTests =
             let window = LightSourceEditorWindow(sources, SE.NewSource "src-typed")
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            typeInto window UiIds.SourceEditor.nameBox "Typed KrF"
-            clickOn window (UiIds.SourceEditor.unitButton (SE.unitCode Nanometer))
-            typeInto window UiIds.SourceEditor.waveLengthBox "248.4"
-            clickOn window UiIds.SourceEditor.saveButton
+            typeInto window ConstructorUiId.sourceNameBox.value "Typed KrF"
+            clickOn window (ConstructorUiId.sourceWaveLengthUnit (ConstructorUiKey (SE.unitCode Nanometer))).value
+            typeInto window ConstructorUiId.sourceWaveLengthBox.value "248.4"
+            clickOn window ConstructorUiId.sourceSaveButton.value
             Assert.False(window.IsVisible, "Save closes the editor")
             match sources.tryGetSource "src-typed" with
             | Ok (Some s) ->

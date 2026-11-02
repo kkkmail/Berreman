@@ -212,7 +212,7 @@ let private elementsViews (model : Model) : IView list =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.RendererTest.canvas
+        Canvas.name ConstructorUiId.rendererTestCanvas.value
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -246,7 +246,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     ] :> IView
 
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.RendererTest.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.rendererTestCanvas.value e
     let wheelMods (km : KeyModifiers) : Set<WheelModifier> =
         [ if km.HasFlag KeyModifiers.Control then ModCtrl
           if km.HasFlag KeyModifiers.Shift then ModShift

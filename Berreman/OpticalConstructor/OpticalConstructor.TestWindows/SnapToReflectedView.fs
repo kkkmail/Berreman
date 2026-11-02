@@ -358,7 +358,7 @@ let private sceneViews (m : Model) : IView list =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.SnapToReflected.canvas
+        Canvas.name ConstructorUiId.snapReflectedCanvas.value
         Canvas.width TableScene.canvasWidth
         Canvas.height TableScene.canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -402,7 +402,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.margin (Thickness 8.0)
         StackPanel.children [
             RotationControls.view (rotationState model) (rotationHandlers dispatch)
-            TextBlock.create [ TextBlock.name UiIds.SnapToReflected.readout; TextBlock.text (readoutText model) ]
+            TextBlock.create [ TextBlock.name ConstructorUiId.snapReflectedReadout.value; TextBlock.text (readoutText model) ]
             TextBlock.create [
                 TextBlock.foreground (brush (color 100 100 100))
                 TextBlock.text "click the mirror (or source/detector) to select it · the bar / wheel rotate the selection · drag = pan · wheel = zoom table"
@@ -417,7 +417,7 @@ let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
     |> Set.ofList
 
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.SnapToReflected.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.snapReflectedCanvas.value e
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]

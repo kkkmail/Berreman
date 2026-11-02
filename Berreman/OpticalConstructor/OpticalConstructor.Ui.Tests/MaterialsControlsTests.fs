@@ -87,18 +87,18 @@ module MaterialsControlsTests =
 
     [<Fact>]
     let ``the Materials UiIds are the stable intent-named ids`` () =
-        Assert.Equal("MaterialSearchBox", UiIds.Materials.searchBox)
-        Assert.Equal("MaterialCategoryFilter", UiIds.Materials.categoryFilter)
-        Assert.Equal("MaterialDispersionFilter", UiIds.Materials.dispersionFilter)
-        Assert.Equal("MaterialsList", UiIds.Materials.list)
-        Assert.Equal("AddMaterialButton", UiIds.Materials.addButton)
-        Assert.Equal("EditMaterialButton", UiIds.Materials.editButton)
-        Assert.Equal("RemoveMaterialButton", UiIds.Materials.removeButton)
-        Assert.Equal("ViewMaterialButton", UiIds.Materials.viewButton)
+        Assert.Equal("MaterialSearchBox", ConstructorUiId.materialSearchBox.value)
+        Assert.Equal("MaterialCategoryFilter", ConstructorUiId.materialCategoryFilter.value)
+        Assert.Equal("MaterialDispersionFilter", ConstructorUiId.materialDispersionFilter.value)
+        Assert.Equal("MaterialsList", ConstructorUiId.materialsList.value)
+        Assert.Equal("AddMaterialButton", ConstructorUiId.addMaterialButton.value)
+        Assert.Equal("EditMaterialButton", ConstructorUiId.editMaterialButton.value)
+        Assert.Equal("RemoveMaterialButton", ConstructorUiId.removeMaterialButton.value)
+        Assert.Equal("ViewMaterialButton", ConstructorUiId.viewMaterialButton.value)
         // The derived per-row / per-facet-option ids are prefixed so they cannot collide.
-        Assert.Equal("MaterialRow_abc", UiIds.Materials.row "abc")
-        Assert.Equal("MaterialCategoryOption_glass", UiIds.Materials.categoryOption "glass")
-        Assert.Equal("MaterialDispersionOption_any", UiIds.Materials.dispersionOption "any")
+        Assert.Equal("MaterialRow_abc", (ConstructorUiId.materialRow (ConstructorUiKey "abc")).value)
+        Assert.Equal("MaterialCategoryOption_glass", (ConstructorUiId.materialCategoryOption (ConstructorUiKey "glass")).value)
+        Assert.Equal("MaterialDispersionOption_any", (ConstructorUiId.materialDispersionOption (ConstructorUiKey "any")).value)
 
     [<Fact>]
     let ``selectedRow resolves the selected id to its listed row, and None otherwise`` () =
@@ -115,14 +115,14 @@ module MaterialsControlsTests =
     /// through the clicks below).
     let private allFixedIds : string list =
         [
-            UiIds.Materials.searchBox
-            UiIds.Materials.categoryFilter
-            UiIds.Materials.dispersionFilter
-            UiIds.Materials.list
-            UiIds.Materials.addButton
-            UiIds.Materials.editButton
-            UiIds.Materials.removeButton
-            UiIds.Materials.viewButton
+            ConstructorUiId.materialSearchBox.value
+            ConstructorUiId.materialCategoryFilter.value
+            ConstructorUiId.materialDispersionFilter.value
+            ConstructorUiId.materialsList.value
+            ConstructorUiId.addMaterialButton.value
+            ConstructorUiId.editMaterialButton.value
+            ConstructorUiId.removeMaterialButton.value
+            ConstructorUiId.viewMaterialButton.value
         ]
 
     let private isPresent (window : Window) (id : string) : bool =
@@ -159,24 +159,24 @@ module MaterialsControlsTests =
                 Assert.True(isPresent window id, $"%s{id} is missing from the mounted view")
             let count (tag : string) : int = calls |> Seq.filter ((=) tag) |> Seq.length
             // The acceptance click: Add invokes the ADD handler — and no other verb handler.
-            clickOn window UiIds.Materials.addButton
+            clickOn window ConstructorUiId.addMaterialButton.value
             Assert.Equal(1, count "add")
             Assert.Equal(0, count "edit")
             Assert.Equal(0, count "remove")
             Assert.Equal(0, count "view")
             // Each remaining verb dispatches ITS handler (the selected row is editable, so Edit is live).
-            clickOn window UiIds.Materials.editButton
+            clickOn window ConstructorUiId.editMaterialButton.value
             Assert.Equal(1, count "edit")
-            clickOn window UiIds.Materials.removeButton
+            clickOn window ConstructorUiId.removeMaterialButton.value
             Assert.Equal(1, count "remove")
-            clickOn window UiIds.Materials.viewButton
+            clickOn window ConstructorUiId.viewMaterialButton.value
             Assert.Equal(1, count "view")
             // A row click selects THAT material; a facet-option click selects THAT facet code.
-            clickOn window (UiIds.Materials.row "gold")
+            clickOn window (ConstructorUiId.materialRow (ConstructorUiKey "gold")).value
             Assert.Contains("select:gold", calls)
-            clickOn window (UiIds.Materials.categoryOption "metal")
+            clickOn window (ConstructorUiId.materialCategoryOption (ConstructorUiKey "metal")).value
             Assert.Contains("category:metal", calls)
-            clickOn window (UiIds.Materials.dispersionOption "dispersive")
+            clickOn window (ConstructorUiId.materialDispersionOption (ConstructorUiKey "dispersive")).value
             Assert.Contains("dispersion:dispersive", calls)
             window.Close())
 
@@ -192,10 +192,10 @@ module MaterialsControlsTests =
             Dispatcher.UIThread.RunJobs()
             // REMOVED means absent from the tree entirely — a greyed/hidden button would still be found.
             Assert.False(
-                isPresent window UiIds.Materials.editButton,
+                isPresent window ConstructorUiId.editMaterialButton.value,
                 "the Edit verb must be REMOVED (not greyed) for a view-only selection")
             // The other verbs remain for the view-only entry.
-            Assert.True(isPresent window UiIds.Materials.addButton)
-            Assert.True(isPresent window UiIds.Materials.removeButton)
-            Assert.True(isPresent window UiIds.Materials.viewButton)
+            Assert.True(isPresent window ConstructorUiId.addMaterialButton.value)
+            Assert.True(isPresent window ConstructorUiId.removeMaterialButton.value)
+            Assert.True(isPresent window ConstructorUiId.viewMaterialButton.value)
             window.Close())

@@ -159,7 +159,7 @@ module SampleLibraryControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Search:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 TextBox.create [
-                    TextBox.name UiIds.SampleLibrary.searchBox
+                    TextBox.name ConstructorUiId.sampleSearchBox.value
                     TextBox.width 220.0
                     TextBox.text state.searchText
                     TextBox.onTextChanged handlers.setSearchText
@@ -176,19 +176,19 @@ module SampleLibraryControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Substrate:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 WrapPanel.create [
-                    WrapPanel.name UiIds.SampleLibrary.substrateFilter
+                    WrapPanel.name ConstructorUiId.sampleSubstrateFilter.value
                     WrapPanel.orientation Orientation.Horizontal
                     WrapPanel.children (
                         state.substrateOptions
                         |> List.map (fun o ->
-                            clickBox (UiIds.SampleLibrary.substrateOption o.code) o.label (state.selectedSubstrate = o.code) (fun () -> handlers.selectSubstrate o.code)))
+                            clickBox (ConstructorUiId.sampleSubstrateOption (ConstructorUiKey o.code)).value o.label (state.selectedSubstrate = o.code) (fun () -> handlers.selectSubstrate o.code)))
                 ]
             ]
         ] :> IView
 
     /// One listed sample row — clickable (selects it), highlighted when it is the selection.
     let private rowView (state : State) (handlers : Handlers) (r : Row) : IView =
-        clickBox (UiIds.SampleLibrary.row r.sampleId) r.label (state.selectedId = Some r.sampleId) (fun () -> handlers.selectSample r.sampleId)
+        clickBox (ConstructorUiId.sampleRow (ConstructorUiKey r.sampleId)).value r.label (state.selectedId = Some r.sampleId) (fun () -> handlers.selectSample r.sampleId)
 
     /// The samples list: a NAMED vertical stack of the host's rows, rendered as given.
     let private listView (state : State) (handlers : Handlers) : IView =
@@ -196,7 +196,7 @@ module SampleLibraryControls =
             ScrollViewer.maxHeight 220.0
             ScrollViewer.content (
                 StackPanel.create [
-                    StackPanel.name UiIds.SampleLibrary.list
+                    StackPanel.name ConstructorUiId.samplesList.value
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.rows |> List.map (rowView state handlers))
                 ])
@@ -213,11 +213,11 @@ module SampleLibraryControls =
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 0.0
             StackPanel.children [
-                verbButton UiIds.SampleLibrary.addButton "Add" true true (fun () -> handlers.addSample ())
-                verbButton UiIds.SampleLibrary.editButton "Edit" false hasSelection (fun () -> handlers.editSample ())
-                verbButton UiIds.SampleLibrary.removeButton "Remove" false hasSelection (fun () -> handlers.removeSample ())
-                verbButton UiIds.SampleLibrary.viewButton "View" false hasSelection (fun () -> handlers.viewSample ())
-                verbButton UiIds.SampleLibrary.makeMultilayerButton "Make multilayer" false true (fun () -> handlers.makeMultilayer ())
+                verbButton ConstructorUiId.addSampleButton.value "Add" true true (fun () -> handlers.addSample ())
+                verbButton ConstructorUiId.editSampleButton.value "Edit" false hasSelection (fun () -> handlers.editSample ())
+                verbButton ConstructorUiId.removeSampleButton.value "Remove" false hasSelection (fun () -> handlers.removeSample ())
+                verbButton ConstructorUiId.viewSampleButton.value "View" false hasSelection (fun () -> handlers.viewSample ())
+                verbButton ConstructorUiId.makeMultilayerButton.value "Make multilayer" false true (fun () -> handlers.makeMultilayer ())
             ]
         ] :> IView
 

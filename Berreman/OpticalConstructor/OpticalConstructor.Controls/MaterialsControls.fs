@@ -174,7 +174,7 @@ module MaterialsControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Search:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 TextBox.create [
-                    TextBox.name UiIds.Materials.searchBox
+                    TextBox.name ConstructorUiId.materialSearchBox.value
                     TextBox.width 220.0
                     TextBox.text state.searchText
                     TextBox.onTextChanged handlers.setSearchText
@@ -202,7 +202,7 @@ module MaterialsControls =
 
     /// One listed material row — clickable (selects it), highlighted when it is the selection.
     let private rowView (state : State) (handlers : Handlers) (r : Row) : IView =
-        clickBox (UiIds.Materials.row r.materialId) r.label (state.selectedId = Some r.materialId) (fun () -> handlers.selectMaterial r.materialId)
+        clickBox (ConstructorUiId.materialRow (ConstructorUiKey r.materialId)).value r.label (state.selectedId = Some r.materialId) (fun () -> handlers.selectMaterial r.materialId)
 
     /// The materials list: a NAMED vertical stack of the host's rows, rendered as given.
     let private listView (state : State) (handlers : Handlers) : IView =
@@ -210,7 +210,7 @@ module MaterialsControls =
             ScrollViewer.maxHeight 220.0
             ScrollViewer.content (
                 StackPanel.create [
-                    StackPanel.name UiIds.Materials.list
+                    StackPanel.name ConstructorUiId.materialsList.value
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.rows |> List.map (rowView state handlers))
                 ])
@@ -228,17 +228,17 @@ module MaterialsControls =
         let editVerb =
             match selected with
             | Some { editability = ViewOnly } -> []
-            | Some { editability = Editable } -> [ verbButton UiIds.Materials.editButton "Edit" false true (fun () -> handlers.editMaterial ()) ]
-            | None -> [ verbButton UiIds.Materials.editButton "Edit" false false (fun () -> handlers.editMaterial ()) ]
+            | Some { editability = Editable } -> [ verbButton ConstructorUiId.editMaterialButton.value "Edit" false true (fun () -> handlers.editMaterial ()) ]
+            | None -> [ verbButton ConstructorUiId.editMaterialButton.value "Edit" false false (fun () -> handlers.editMaterial ()) ]
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 0.0
             StackPanel.children (
-                [ verbButton UiIds.Materials.addButton "Add" true true (fun () -> handlers.addMaterial ()) ]
+                [ verbButton ConstructorUiId.addMaterialButton.value "Add" true true (fun () -> handlers.addMaterial ()) ]
                 @ editVerb
                 @ [
-                    verbButton UiIds.Materials.removeButton "Remove" false hasSelection (fun () -> handlers.removeMaterial ())
-                    verbButton UiIds.Materials.viewButton "View" false hasSelection (fun () -> handlers.viewMaterial ())
+                    verbButton ConstructorUiId.removeMaterialButton.value "Remove" false hasSelection (fun () -> handlers.removeMaterial ())
+                    verbButton ConstructorUiId.viewMaterialButton.value "View" false hasSelection (fun () -> handlers.viewMaterial ())
                 ])
         ] :> IView
 
@@ -250,8 +250,8 @@ module MaterialsControls =
             StackPanel.spacing 4.0
             StackPanel.children [
                 searchRow state handlers
-                facetRow UiIds.Materials.categoryFilter "Category:" state.categoryOptions state.selectedCategory UiIds.Materials.categoryOption handlers.selectCategory
-                facetRow UiIds.Materials.dispersionFilter "Dispersion:" state.dispersionOptions state.selectedDispersion UiIds.Materials.dispersionOption handlers.selectDispersion
+                facetRow ConstructorUiId.materialCategoryFilter.value "Category:" state.categoryOptions state.selectedCategory (fun code -> (ConstructorUiId.materialCategoryOption (ConstructorUiKey code)).value) handlers.selectCategory
+                facetRow ConstructorUiId.materialDispersionFilter.value "Dispersion:" state.dispersionOptions state.selectedDispersion (fun code -> (ConstructorUiId.materialDispersionOption (ConstructorUiKey code)).value) handlers.selectDispersion
                 listView state handlers
                 verbRow state handlers
             ]

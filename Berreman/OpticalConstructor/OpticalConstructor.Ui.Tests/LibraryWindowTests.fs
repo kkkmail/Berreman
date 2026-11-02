@@ -90,7 +90,7 @@ module LibraryWindowTests =
     /// The tree is collapsed by default, so a node's children (entry leaves, facet branches) render
     /// only after this — and the expansion PERSISTS across the window's later re-renders.
     let private expandNode (window : Window) (code : string) : unit =
-        clickOn window (UiIds.FacetedTree.treeNodeChevron code)
+        clickOn window (ConstructorUiId.facetTreeChevron (ConstructorUiKey code)).value
 
     /// Expand the "entries" group so its entry-leaf children render (the common precondition for the
     /// leaf-clicking headless proofs, which pre-date the collapsed-by-default tree).
@@ -120,7 +120,7 @@ module LibraryWindowTests =
     /// Commit `text` through the REAL faceted filter box: set the box text (no dispatch — the
     /// control has no text-change subscription) and press Enter, the control's commit gesture.
     let private commitFilter (window : Window) (text : string) : unit =
-        match tryFindControl window UiIds.FacetedTree.filterBox with
+        match tryFindControl window ConstructorUiId.facetFilterBox.value with
         | Some (:? TextBox as tb) ->
             tb.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
@@ -237,16 +237,16 @@ module LibraryWindowTests =
 
     [<Fact>]
     let ``the LibraryWindow UiIds are the stable intent-named ids`` () =
-        Assert.Equal("LibraryWindow", UiIds.LibraryWindow.window)
-        Assert.Equal("LibraryFacetTreeHost", UiIds.LibraryWindow.treeHost)
-        Assert.Equal("LibraryViewPanel", UiIds.LibraryWindow.viewPanel)
-        Assert.Equal("LibraryAddSampleButton", UiIds.LibraryWindow.addSampleButton)
-        Assert.Equal("LibraryMakeMultilayerButton", UiIds.LibraryWindow.makeMultilayerButton)
-        Assert.Equal("LibraryEditButton", UiIds.LibraryWindow.editButton)
-        Assert.Equal("LibraryRemoveButton", UiIds.LibraryWindow.removeButton)
-        Assert.Equal("LibraryRemoveConfirmButton", UiIds.LibraryWindow.removeConfirmButton)
-        Assert.Equal("LibraryRemoveCancelButton", UiIds.LibraryWindow.removeCancelButton)
-        Assert.Equal("LibraryWindowMessage", UiIds.LibraryWindow.message)
+        Assert.Equal("LibraryWindow", ConstructorUiId.libraryWindow.value)
+        Assert.Equal("LibraryFacetTreeHost", ConstructorUiId.libraryFacetTreeHost.value)
+        Assert.Equal("LibraryViewPanel", ConstructorUiId.libraryViewPanel.value)
+        Assert.Equal("LibraryAddSampleButton", ConstructorUiId.libraryAddSampleButton.value)
+        Assert.Equal("LibraryMakeMultilayerButton", ConstructorUiId.libraryMakeMultilayerButton.value)
+        Assert.Equal("LibraryEditButton", ConstructorUiId.libraryEditButton.value)
+        Assert.Equal("LibraryRemoveButton", ConstructorUiId.libraryRemoveButton.value)
+        Assert.Equal("LibraryRemoveConfirmButton", ConstructorUiId.libraryRemoveConfirmButton.value)
+        Assert.Equal("LibraryRemoveCancelButton", ConstructorUiId.libraryRemoveCancelButton.value)
+        Assert.Equal("LibraryWindowMessage", ConstructorUiId.libraryWindowMessage.value)
         // The entry-leaf id derives from the tree-node code family, prefixed so it cannot collide.
         Assert.Equal("FacetTreeNode_entry:src-600", LW.entryNode "src-600")
         // The constructor-side entry point: the ribbon strip's right-aligned button.
@@ -795,7 +795,7 @@ module LibraryWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let libraryWindow = opened.[0]
-            Assert.True(matchesId UiIds.LibraryWindow.window libraryWindow, "the opened window must be the Library window")
+            Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryWindow, "the opened window must be the Library window")
             Assert.True(libraryWindow.IsVisible)
             // The single-instance acceptance: a second click ACTIVATES the live window — the
             // shared registry under LibraryWindowKey creates nothing new.
@@ -819,7 +819,7 @@ module LibraryWindowTests =
         HeadlessSession.run (fun () ->
             let library, samples, materials = freshStores ()
             let window = mountLibraryWindow library samples materials
-            Assert.Equal($"%d{seededCorpus} results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.Equal($"%d{seededCorpus} results", textOf window ConstructorUiId.facetResultCount.value)
             // Sample and preset leaves both render (entries is auto-expanded by the mount helper).
             Assert.True(isPresent window (LW.entryNode glassFilm600EntryId))
             Assert.True(isPresent window (LW.entryNode "src-600"))
@@ -830,7 +830,7 @@ module LibraryWindowTests =
             expandEntries window
             expandNode window ("facet:" + entryKindFacetKey.value)
             for kind, count in [ "Sample", 11; "Source", List.length SeedSources.all; "Detector", 2; "Polarizer", 3 ] do
-                let branchId = UiIds.FacetedTree.treeNode ("branch:" + entryKindFacetKey.value + ":" + kind)
+                let branchId = (ConstructorUiId.facetTreeNode (ConstructorUiKey ("branch:" + entryKindFacetKey.value + ":" + kind))).value
                 Assert.True(isPresent window branchId, $"the by-kind tree must list the %s{kind} branch")
                 Assert.Equal($"%s{kind} (%d{count})", textOf window branchId)
             window.Close())
@@ -850,17 +850,17 @@ module LibraryWindowTests =
                     | _ -> ())
             // Add sample → the REAL Sample editor over the SHARED stores (through the real
             // launcher under the Add-minted SampleEditorKey).
-            clickOn window UiIds.LibraryWindow.addSampleButton
+            clickOn window ConstructorUiId.libraryAddSampleButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let editor = opened.[0]
-            Assert.True(matchesId UiIds.SampleEditor.window editor, "the opened window must be the Sample editor")
+            Assert.True(matchesId ConstructorUiId.sampleEditorWindow.value editor, "the opened window must be the Sample editor")
             // Name it and give it one layer (a valid stack — Add layer takes the first listed
             // material now that the inline picker is gone, step 019), then Save — NewUnsaved
             // → addSample.
-            setText editor UiIds.SampleEditor.nameBox "Library window sample"
-            clickOn editor UiIds.SampleEditor.addLayerButton
-            clickOn editor UiIds.SampleEditor.saveButton
+            setText editor ConstructorUiId.sampleNameBox.value "Library window sample"
+            clickOn editor ConstructorUiId.addLayerButton.value
+            clickOn editor ConstructorUiId.sampleEditorSaveButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(editor.IsVisible, "Save must close the editor")
             // The save landed in the SHARED store…
@@ -870,7 +870,7 @@ module LibraryWindowTests =
             // …and the window's next dispatch-driven render re-queries it: committing the
             // matching filter narrows the tree to the just-saved entry.
             commitFilter window "Library window sample"
-            Assert.Equal("1 results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.Equal("1 results", textOf window ConstructorUiId.facetResultCount.value)
             window.Close())
 
     [<Fact>]
@@ -882,16 +882,16 @@ module LibraryWindowTests =
             // Narrow to the protected source and select its leaf.
             commitFilter window "Monochromatic"
             clickOn window (LW.entryNode "src-600")
-            clickOn window UiIds.LibraryWindow.removeButton
+            clickOn window ConstructorUiId.libraryRemoveButton.value
             // The typed refusal renders inline; the confirm gate never armed.
-            let message = textOf window UiIds.LibraryWindow.message
+            let message = textOf window ConstructorUiId.libraryWindowMessage.value
             Assert.Contains("Monochromatic 600 nm", message)
             Assert.Contains("protected built-in", message)
-            Assert.False(isPresent window UiIds.LibraryWindow.removeConfirmButton,
+            Assert.False(isPresent window ConstructorUiId.libraryRemoveConfirmButton.value,
                          "the confirm gate must never arm for a protected entry")
             // Nothing changed: the entry is still listed and the samples store untouched.
             Assert.True(isPresent window (LW.entryNode "src-600"))
-            Assert.Equal("1 results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.Equal("1 results", textOf window ConstructorUiId.facetResultCount.value)
             match samples.listSamples ActiveOnly with
             | Ok all -> Assert.Equal(11, List.length all)
             | Error e -> Assert.Fail($"listSamples failed: %A{e}")
@@ -905,8 +905,8 @@ module LibraryWindowTests =
             let window = mountLibraryWindow library samples materials
             commitFilter window "n=1.75"
             clickOn window (LW.entryNode glassFilm600EntryId)
-            clickOn window UiIds.LibraryWindow.removeButton
-            clickOn window UiIds.LibraryWindow.removeConfirmButton
+            clickOn window ConstructorUiId.libraryRemoveButton.value
+            clickOn window ConstructorUiId.libraryRemoveConfirmButton.value
             Assert.False(isPresent window (LW.entryNode glassFilm600EntryId),
                          "the removed sample's row must leave the tree in the same render pass")
             match samples.listSamples ActiveOnly with
@@ -929,24 +929,24 @@ module LibraryWindowTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            clickOn window UiIds.LibraryWindow.editButton
+            clickOn window ConstructorUiId.libraryEditButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
-            Assert.True(matchesId UiIds.SampleEditor.window opened.[0], "the opened window must be the Sample editor")
+            Assert.True(matchesId ConstructorUiId.sampleEditorWindow.value opened.[0], "the opened window must be the Sample editor")
             Assert.Contains("Glass thin film", opened.[0].Title)
             opened.[0].Close()
             Dispatcher.UIThread.RunJobs()
             // Make multilayer: a NEW editor seeded with the foldable 2-layer period — one
             // super-row plus its two cell rows (spec 0035 step 014), and Save persists it.
-            clickOn window UiIds.LibraryWindow.makeMultilayerButton
+            clickOn window ConstructorUiId.libraryMakeMultilayerButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             let editor = opened.[1]
-            Assert.True(isPresent editor (UiIds.SampleEditor.groupRow 0), "the seeded period super-row must render")
-            Assert.True(isPresent editor (UiIds.SampleEditor.cellLayerRow 0 0), "seeded cell layer 0 must render")
-            Assert.True(isPresent editor (UiIds.SampleEditor.cellLayerRow 0 1), "seeded cell layer 1 must render")
-            setText editor UiIds.SampleEditor.nameBox "Window multilayer"
-            clickOn editor UiIds.SampleEditor.saveButton
+            Assert.True(isPresent editor (ConstructorUiId.sampleGroupRow (ConstructorUiPosition 0)).value, "the seeded period super-row must render")
+            Assert.True(isPresent editor (ConstructorUiId.sampleCellLayerRow (ConstructorUiPosition 0) (ConstructorUiPosition 0)).value, "seeded cell layer 0 must render")
+            Assert.True(isPresent editor (ConstructorUiId.sampleCellLayerRow (ConstructorUiPosition 0) (ConstructorUiPosition 1)).value, "seeded cell layer 1 must render")
+            setText editor ConstructorUiId.sampleNameBox.value "Window multilayer"
+            clickOn editor ConstructorUiId.sampleEditorSaveButton.value
             Assert.False(editor.IsVisible)
             match samples.listSamples ActiveOnly with
             | Ok all -> Assert.Contains(all, fun (s : Sample) -> s.name = "Window multilayer")
@@ -959,11 +959,11 @@ module LibraryWindowTests =
         HeadlessSession.run (fun () ->
             let library, samples, materials = freshStores ()
             let window = mountLibraryWindow library samples materials
-            Assert.False(isPresent window UiIds.LibraryWindow.viewPanel, "no selection → no view panel")
+            Assert.False(isPresent window ConstructorUiId.libraryViewPanel.value, "no selection → no view panel")
             commitFilter window "Monochromatic"
             clickOn window (LW.entryNode "src-600")
-            Assert.True(isPresent window UiIds.LibraryWindow.viewPanel, "the view panel must render for the selected entry")
-            let panelText = textOf window UiIds.LibraryWindow.viewPanel
+            Assert.True(isPresent window ConstructorUiId.libraryViewPanel.value, "the view panel must render for the selected entry")
+            let panelText = textOf window ConstructorUiId.libraryViewPanel.value
             Assert.Contains("Monochromatic 600 nm", panelText)
             window.Close())
 
@@ -984,7 +984,7 @@ module LibraryWindowTests =
             |> Program.run
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(isPresent window UiIds.FacetedTree.showTreeButton, "the Show/Search button must gate the tree")
+            Assert.True(isPresent window ConstructorUiId.facetShowTreeButton.value, "the Show/Search button must gate the tree")
             let treeRowCount () =
                 window.GetVisualDescendants()
                 |> Seq.filter (fun v ->
@@ -995,8 +995,8 @@ module LibraryWindowTests =
                     | _ -> false)
                 |> Seq.length
             Assert.Equal(0, treeRowCount ())
-            Assert.Equal($"%d{seededCorpus} results", textOf window UiIds.FacetedTree.resultCount)
-            clickOn window UiIds.FacetedTree.showTreeButton
+            Assert.Equal($"%d{seededCorpus} results", textOf window ConstructorUiId.facetResultCount.value)
+            clickOn window ConstructorUiId.facetShowTreeButton.value
             Assert.True(treeRowCount () > 0, "the explicit build must materialize the tree")
             // The materialized tree opens collapsed (spec 0040 step 002) — expand entries to reach
             // the leaves.
@@ -1020,8 +1020,8 @@ module LibraryWindowTests =
             Dispatcher.UIThread.RunJobs()
             // First open: the entries group renders a collapsed row WITH a chevron, but its leaves
             // do NOT render.
-            Assert.True(isPresent window (UiIds.FacetedTree.treeNode "entries"), "the entries group row must render")
-            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "entries"), "the entries group must carry a disclosure chevron")
+            Assert.True(isPresent window (ConstructorUiId.facetTreeNode (ConstructorUiKey "entries")).value, "the entries group row must render")
+            Assert.True(isPresent window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value, "the entries group must carry a disclosure chevron")
             Assert.False(isPresent window (LW.entryNode "src-600"), "a collapsed tree must hide its entry leaves on first open")
             // Clicking the chevron expands the group — the leaves render in the same pass.
             expandEntries window
@@ -1057,9 +1057,9 @@ module LibraryWindowTests =
 
     [<Fact>]
     let ``the step-016 UiIds are the stable intent-named ids`` () =
-        Assert.Equal("LibrarySelectButton", UiIds.LibraryWindow.selectButton)
-        Assert.Equal("LibrarySelectCloseButton", UiIds.LibraryWindow.selectCloseButton)
-        Assert.Equal("LibrarySelectConstraint", UiIds.LibraryWindow.selectConstraint)
+        Assert.Equal("LibrarySelectButton", ConstructorUiId.librarySelectButton.value)
+        Assert.Equal("LibrarySelectCloseButton", ConstructorUiId.librarySelectCloseButton.value)
+        Assert.Equal("LibrarySelectConstraint", ConstructorUiId.librarySelectConstraint.value)
         Assert.Equal("WorkbenchSelectStatus", Scene.WorkbenchIds.selectStatus)
 
     [<Fact>]
@@ -1185,7 +1185,7 @@ module LibraryWindowTests =
     /// Click the shared table canvas at canvas-local coordinates (the pointer gestures live on
     /// the wrapping Border and read positions relative to the NAMED canvas).
     let private clickCanvasAt (window : Window) (sx : float) (sy : float) : unit =
-        match tryFindControl window UiIds.TableAndElementRotation.canvas with
+        match tryFindControl window ConstructorUiId.tableElementCanvas.value with
         | Some canvas ->
             let p = canvas.TranslatePoint(Point(sx, sy), window)
             if p.HasValue then
@@ -1204,24 +1204,24 @@ module LibraryWindowTests =
             let _, selectCtx = selectContext CircularPolarizer (TableElementTarget (elementId "el-1"))
             let window = mountSelectLibraryWindow library samples materials selectCtx
             // Exactly the TWO buttons, one row, distinct positive/negative styling.
-            Assert.True(isPresent window UiIds.LibraryWindow.selectButton, "the Select button must render")
-            Assert.True(isPresent window UiIds.LibraryWindow.selectCloseButton, "the Close button must render")
-            Assert.Equal("Select", textOf window UiIds.LibraryWindow.selectButton)
-            Assert.Equal("Close", textOf window UiIds.LibraryWindow.selectCloseButton)
+            Assert.True(isPresent window ConstructorUiId.librarySelectButton.value, "the Select button must render")
+            Assert.True(isPresent window ConstructorUiId.librarySelectCloseButton.value, "the Close button must render")
+            Assert.Equal("Select", textOf window ConstructorUiId.librarySelectButton.value)
+            Assert.Equal("Close", textOf window ConstructorUiId.librarySelectCloseButton.value)
             // The pre-applied constraint: the banner NAMES the fixed kind, the corpus is
             // narrowed to it, and NO breadcrumb chip exists (nothing to remove).
-            let banner = textOf window UiIds.LibraryWindow.selectConstraint
+            let banner = textOf window ConstructorUiId.librarySelectConstraint.value
             Assert.Contains("Circular polarizer", banner)
             Assert.Contains("fixed", banner)
-            Assert.Equal("2 results", textOf window UiIds.FacetedTree.resultCount)
-            Assert.False(isPresent window (UiIds.FacetedTree.breadcrumbChip entryKindFacetKey.value),
+            Assert.Equal("2 results", textOf window ConstructorUiId.facetResultCount.value)
+            Assert.False(isPresent window (ConstructorUiId.facetBreadcrumbChip (ConstructorUiKey entryKindFacetKey.value)).value,
                          "the pre-applied constraint must take NO removable breadcrumb chip")
             Assert.True(isPresent window (LW.entryNode "pol-cp-left"))
             Assert.False(isPresent window (LW.entryNode "src-600"), "an out-of-kind entry must not be listed")
             // Everything else IS the ordinary window: the add-on-the-fly verbs are all there.
-            Assert.True(isPresent window UiIds.LibraryWindow.addSampleButton, "Add sample must survive Select state")
-            Assert.True(isPresent window UiIds.LibraryWindow.makeMultilayerButton, "Make multilayer must survive Select state")
-            Assert.True(isPresent window (UiIds.FacetedTree.filterBox), "the filter box must survive Select state")
+            Assert.True(isPresent window ConstructorUiId.libraryAddSampleButton.value, "Add sample must survive Select state")
+            Assert.True(isPresent window ConstructorUiId.libraryMakeMultilayerButton.value, "Make multilayer must survive Select state")
+            Assert.True(isPresent window (ConstructorUiId.facetFilterBox.value), "the filter box must survive Select state")
             window.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -1246,14 +1246,14 @@ module LibraryWindowTests =
                 }
             let selectWindow = mountSelectLibraryWindow library samples materials selectCtx
             clickOn selectWindow (LW.entryNode "det-intensity")
-            clickOn selectWindow UiIds.LibraryWindow.selectButton
+            clickOn selectWindow ConstructorUiId.librarySelectButton.value
             Dispatcher.UIThread.RunJobs()
             // The window closed itself after onSelected — and never cancelled.
             Assert.False(selectWindow.IsVisible, "Select must close the window after onSelected")
             Assert.Empty(cancels)
             // The TARGETED bind landed on the detector element: the workbench readout renders
             // the bound entry's display name in the same pass.
-            Assert.Contains("bound: Intensity detector", textOf mainWindow UiIds.TableAndElementRotation.readout)
+            Assert.Contains("bound: Intensity detector", textOf mainWindow ConstructorUiId.teReadout.value)
             Assert.False(isPresent mainWindow Scene.WorkbenchIds.selectStatus, "a successful bind reports no staleness status")
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())
@@ -1308,12 +1308,12 @@ module LibraryWindowTests =
             Dispatcher.UIThread.RunJobs()
             // The return is a NO-OP plus the status line, never a throw.
             clickOn selectWindow (LW.entryNode "det-intensity")
-            clickOn selectWindow UiIds.LibraryWindow.selectButton
+            clickOn selectWindow ConstructorUiId.librarySelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "the Select window still closes after its return")
             Assert.True(isPresent mainWindow Scene.WorkbenchIds.selectStatus, "the vanished target must surface the status line")
             Assert.Contains("no longer on the table", textOf mainWindow Scene.WorkbenchIds.selectStatus)
-            Assert.DoesNotContain("bound: Intensity detector", textOf mainWindow UiIds.TableAndElementRotation.readout)
+            Assert.DoesNotContain("bound: Intensity detector", textOf mainWindow ConstructorUiId.teReadout.value)
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -1356,8 +1356,8 @@ module LibraryWindowTests =
             Assert.Equal<Scene.SelectorOffer>(Scene.ChooseAlone, Scene.selectorOffer (getModel ()))
             Assert.True(isPresent window Scene.WorkbenchIds.chooseButton, "Choose… must be offered for the over-threshold kind")
             Assert.False(isPresent window Scene.WorkbenchIds.quickPickStrip, "the quick-pick strip must NOT render at/above the threshold")
-            Assert.False(isPresent window UiIds.Library.tree, "the strip's row tree must be gone with it")
-            Assert.False(isPresent window (UiIds.Library.entry glassFilm600EntryId), "no inline sample row may remain")
+            Assert.False(isPresent window ConstructorUiId.libraryTree.value, "the strip's row tree must be gone with it")
+            Assert.False(isPresent window (ConstructorUiId.libraryEntry (ConstructorUiKey glassFilm600EntryId)).value, "no inline sample row may remain")
             window.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -1368,7 +1368,7 @@ module LibraryWindowTests =
             let window, _, getModel = mountMainExposed (detectorSelectorModel ())
             Assert.Equal<Scene.SelectorOffer>(Scene.QuickPickAndChoose, Scene.selectorOffer (getModel ()))
             Assert.True(isPresent window Scene.WorkbenchIds.quickPickStrip, "the strip must render below the threshold")
-            Assert.True(isPresent window (UiIds.Library.entry "det-intensity"), "the kind-constrained rows render inline")
+            Assert.True(isPresent window (ConstructorUiId.libraryEntry (ConstructorUiKey "det-intensity")).value, "the kind-constrained rows render inline")
             Assert.True(isPresent window Scene.WorkbenchIds.chooseButton, "Choose… is offered beside the strip")
             window.Close()
             Dispatcher.UIThread.RunJobs())
@@ -1379,8 +1379,8 @@ module LibraryWindowTests =
         HeadlessSession.run (fun () ->
             // ---- Path 1: the inline quick-pick strip (under threshold). ----
             let stripWindow, _, stripModel = mountMainExposed (detectorSelectorModel ())
-            clickOn stripWindow (UiIds.Library.entry "det-intensity")   // pending
-            clickOn stripWindow UiIds.Library.confirm                   // ConfirmBindValueId → the targeted bind
+            clickOn stripWindow (ConstructorUiId.libraryEntry (ConstructorUiKey "det-intensity")).value   // pending
+            clickOn stripWindow ConstructorUiId.libraryConfirmButton.value                   // ConfirmBindValueId → the targeted bind
             let stripBound = ((stripModel ()).elements |> List.item 1).placement.valueId
             Assert.Equal(Some "det-intensity", stripBound)
             stripWindow.Close()
@@ -1398,11 +1398,11 @@ module LibraryWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let selectWindow = opened.[0]
-            Assert.True(matchesId UiIds.LibraryWindow.window selectWindow, "Choose… must open the Library window")
+            Assert.True(matchesId ConstructorUiId.libraryWindow.value selectWindow, "Choose… must open the Library window")
             Assert.True(selectWindow.IsVisible)
             // Select state, constrained to the element's kind: the fixed no-chip banner names
             // Detector, only detector entries are offered, and the Select/Close pair is there.
-            let banner = textOf selectWindow UiIds.LibraryWindow.selectConstraint
+            let banner = textOf selectWindow ConstructorUiId.librarySelectConstraint.value
             Assert.Contains("Detector", banner)
             Assert.Contains("fixed", banner)
             // The launcher-opened window opens collapsed (spec 0040 step 002) — expand its entries
@@ -1410,14 +1410,14 @@ module LibraryWindowTests =
             expandEntries selectWindow
             Assert.True(isPresent selectWindow (LW.entryNode "det-intensity"))
             Assert.False(isPresent selectWindow (LW.entryNode "src-600"), "an out-of-kind entry must not be offered")
-            Assert.True(isPresent selectWindow UiIds.LibraryWindow.selectButton)
+            Assert.True(isPresent selectWindow ConstructorUiId.librarySelectButton.value)
             // The workbench holds the session's staleness handle while the window is open.
             (match (getModel ()).activeSelect with
              | Some session -> Assert.Equal<ElementId>(elementId "det", session.target)
              | None -> Assert.Fail "Choose… must register the Select session handle")
             // Bind through the window: highlight the entry, then Select.
             clickOn selectWindow (LW.entryNode "det-intensity")
-            clickOn selectWindow UiIds.LibraryWindow.selectButton
+            clickOn selectWindow ConstructorUiId.librarySelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "the Select window closes after its return")
             let windowBound = ((getModel ()).elements |> List.item 1).placement.valueId
@@ -1428,7 +1428,7 @@ module LibraryWindowTests =
              | None -> ()
              | Some _ -> Assert.Fail "the committed bind must end the Select session")
             Assert.False(isPresent mainWindow Scene.WorkbenchIds.selectStatus, "a successful bind reports no staleness status")
-            Assert.Contains("bound: Intensity detector", textOf mainWindow UiIds.TableAndElementRotation.readout)
+            Assert.Contains("bound: Intensity detector", textOf mainWindow ConstructorUiId.teReadout.value)
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -1451,15 +1451,15 @@ module LibraryWindowTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            clickOn mainWindow UiIds.ElementMenu.choose
+            clickOn mainWindow ConstructorUiId.elementMenuChoose.value
             Dispatcher.UIThread.RunJobs()
             // The menu closed and the Selector's Choose… flow ran: ONE Select-state Library window,
             // constrained to light sources, holding the session for the source.
             Assert.Equal(None, (getModel ()).elementMenu)
             Assert.Equal(1, opened.Count)
             let selectWindow = opened.[0]
-            Assert.True(matchesId UiIds.LibraryWindow.window selectWindow, "the menu's Choose… must open the Library window")
-            Assert.Contains("Light source", textOf selectWindow UiIds.LibraryWindow.selectConstraint)
+            Assert.True(matchesId ConstructorUiId.libraryWindow.value selectWindow, "the menu's Choose… must open the Library window")
+            Assert.Contains("Light source", textOf selectWindow ConstructorUiId.librarySelectConstraint.value)
             (match (getModel ()).activeSelect with
              | Some session -> Assert.Equal<ElementId>(elementId "src", session.target)
              | None -> Assert.Fail "the menu's Choose… must register the Select session handle")
@@ -1467,11 +1467,11 @@ module LibraryWindowTests =
             Assert.True(isPresent selectWindow (LW.entryNode "src-600"))
             Assert.False(isPresent selectWindow (LW.entryNode "det-intensity"), "an out-of-kind entry must not be offered")
             clickOn selectWindow (LW.entryNode "src-600")
-            clickOn selectWindow UiIds.LibraryWindow.selectButton
+            clickOn selectWindow ConstructorUiId.librarySelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "the Select window closes after its return")
             Assert.Equal(Some "src-600", ((getModel ()).elements |> List.item 0).placement.valueId)
-            Assert.Contains("bound: Monochromatic 600 nm", textOf mainWindow UiIds.TableAndElementRotation.readout)
+            Assert.Contains("bound: Monochromatic 600 nm", textOf mainWindow ConstructorUiId.teReadout.value)
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -1543,14 +1543,14 @@ module LibraryWindowTests =
 
     [<Fact>]
     let ``the step-023 lifecycle UiIds are the stable intent-named ids`` () =
-        Assert.Equal("LibraryShowInactiveToggle", UiIds.LibraryWindow.showInactiveToggle)
-        Assert.Equal("LibraryMarkInactiveButton", UiIds.LibraryWindow.markInactiveButton)
-        Assert.Equal("LibraryMarkActiveButton", UiIds.LibraryWindow.markActiveButton)
-        Assert.Equal("LibrarySupersedeButton", UiIds.LibraryWindow.supersedeButton)
-        Assert.Equal("LibraryLifecycleConfirmButton", UiIds.LibraryWindow.lifecycleConfirmButton)
-        Assert.Equal("LibraryLifecycleCancelButton", UiIds.LibraryWindow.lifecycleCancelButton)
-        Assert.Equal("LibraryVersionsPanel", UiIds.LibraryWindow.versionsPanel)
-        Assert.Equal("LibraryViewOnlyNote", UiIds.LibraryWindow.viewOnlyNote)
+        Assert.Equal("LibraryShowInactiveToggle", ConstructorUiId.libraryShowInactiveToggle.value)
+        Assert.Equal("LibraryMarkInactiveButton", ConstructorUiId.libraryMarkInactiveButton.value)
+        Assert.Equal("LibraryMarkActiveButton", ConstructorUiId.libraryMarkActiveButton.value)
+        Assert.Equal("LibrarySupersedeButton", ConstructorUiId.librarySupersedeButton.value)
+        Assert.Equal("LibraryLifecycleConfirmButton", ConstructorUiId.libraryLifecycleConfirmButton.value)
+        Assert.Equal("LibraryLifecycleCancelButton", ConstructorUiId.libraryLifecycleCancelButton.value)
+        Assert.Equal("LibraryVersionsPanel", ConstructorUiId.libraryVersionsPanel.value)
+        Assert.Equal("LibraryViewOnlyNote", ConstructorUiId.libraryViewOnlyNote.value)
         Assert.Equal("LibraryVersionRow_2", LW.versionRow (VersionNumber 2))
 
     [<Fact>]
@@ -1646,14 +1646,14 @@ module LibraryWindowTests =
             // The protected source: none of the three lifecycle verbs render.
             commitFilter window "Monochromatic"
             clickOn window (LW.entryNode "src-600")
-            Assert.False(isPresent window UiIds.LibraryWindow.markInactiveButton, "a protected entry shows no Mark inactive verb")
-            Assert.False(isPresent window UiIds.LibraryWindow.supersedeButton, "a protected entry shows no Supersede verb")
-            Assert.False(isPresent window UiIds.LibraryWindow.markActiveButton, "a protected entry shows no Mark active verb")
+            Assert.False(isPresent window ConstructorUiId.libraryMarkInactiveButton.value, "a protected entry shows no Mark inactive verb")
+            Assert.False(isPresent window ConstructorUiId.librarySupersedeButton.value, "a protected entry shows no Supersede verb")
+            Assert.False(isPresent window ConstructorUiId.libraryMarkActiveButton.value, "a protected entry shows no Mark active verb")
             // A sample: the lifecycle verbs are present (removed, not greyed — they exist here).
             commitFilter window "n=1.75"
             clickOn window (LW.entryNode glassFilm600EntryId)
-            Assert.True(isPresent window UiIds.LibraryWindow.markInactiveButton, "a sample offers Mark inactive")
-            Assert.True(isPresent window UiIds.LibraryWindow.supersedeButton, "a sample offers Supersede")
+            Assert.True(isPresent window ConstructorUiId.libraryMarkInactiveButton.value, "a sample offers Mark inactive")
+            Assert.True(isPresent window ConstructorUiId.librarySupersedeButton.value, "a sample offers Supersede")
             window.Close())
 
     [<Fact>]
@@ -1664,8 +1664,8 @@ module LibraryWindowTests =
             let window = mountLibraryWindow library samples materials
             commitFilter window "n=1.75"
             clickOn window (LW.entryNode glassFilm600EntryId)
-            clickOn window UiIds.LibraryWindow.markInactiveButton
-            clickOn window UiIds.LibraryWindow.lifecycleConfirmButton
+            clickOn window ConstructorUiId.libraryMarkInactiveButton.value
+            clickOn window ConstructorUiId.libraryLifecycleConfirmButton.value
             // Gone from the default (ActiveOnly) tree…
             commitFilter window ""
             Assert.False(isPresent window (LW.entryNode glassFilm600EntryId),
@@ -1675,8 +1675,8 @@ module LibraryWindowTests =
             | Ok (Some _) -> ()
             | other -> Assert.Fail($"the retired sample's version must still resolve, got %A{other}")
             // The show-inactive toggle carries the count badge and reveals the sample, badged.
-            Assert.Contains("(1)", textOf window UiIds.LibraryWindow.showInactiveToggle)
-            clickOn window UiIds.LibraryWindow.showInactiveToggle
+            Assert.Contains("(1)", textOf window ConstructorUiId.libraryShowInactiveToggle.value)
+            clickOn window ConstructorUiId.libraryShowInactiveToggle.value
             Assert.True(isPresent window (LW.entryNode glassFilm600EntryId),
                         "the toggle must reveal the retired sample in the tree")
             Assert.Contains("inactive", textOf window (LW.entryNode glassFilm600EntryId))
@@ -1703,14 +1703,14 @@ module LibraryWindowTests =
             expandEntries window
             clickOn window (LW.entryNode entryId)
             // The version list renders both versions; the latest view carries NO view-only note.
-            Assert.True(isPresent window UiIds.LibraryWindow.versionsPanel, "the view panel must list the sample's versions")
+            Assert.True(isPresent window ConstructorUiId.libraryVersionsPanel.value, "the view panel must list the sample's versions")
             Assert.True(isPresent window (LW.versionRow (VersionNumber 1)))
             Assert.True(isPresent window (LW.versionRow (VersionNumber 2)))
-            Assert.False(isPresent window UiIds.LibraryWindow.viewOnlyNote, "the latest version is editable — no view-only note")
-            Assert.True(isPresent window UiIds.LibraryWindow.editButton, "the latest version keeps the Edit verb")
+            Assert.False(isPresent window ConstructorUiId.libraryViewOnlyNote.value, "the latest version is editable — no view-only note")
+            Assert.True(isPresent window ConstructorUiId.libraryEditButton.value, "the latest version keeps the Edit verb")
             // Clicking the OLDER version opens it view-only inline (no Save path).
             clickOn window (LW.versionRow (VersionNumber 1))
-            Assert.True(isPresent window UiIds.LibraryWindow.viewOnlyNote, "an older version must render the view-only note")
-            Assert.Contains("view-only", textOf window UiIds.LibraryWindow.viewOnlyNote)
-            Assert.True(isPresent window UiIds.LibraryWindow.editButton, "the library still edits the latest version")
+            Assert.True(isPresent window ConstructorUiId.libraryViewOnlyNote.value, "an older version must render the view-only note")
+            Assert.Contains("view-only", textOf window ConstructorUiId.libraryViewOnlyNote.value)
+            Assert.True(isPresent window ConstructorUiId.libraryEditButton.value, "the library still edits the latest version")
             window.Close())

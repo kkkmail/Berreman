@@ -195,29 +195,29 @@ module RendererControls =
             StackPanel.spacing 6.0
             StackPanel.children [
                 row [
-                    [ clickBox UiIds.Renderer.swapRenderer "Swap renderer" (fun () -> handlers.swap ())
-                      TextBlock.create [ TextBlock.name UiIds.Renderer.readout; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: %s{rendererName state.kind}" ] ]
+                    [ clickBox ConstructorUiId.rendererSwapButton.value "Swap renderer" (fun () -> handlers.swap ())
+                      TextBlock.create [ TextBlock.name ConstructorUiId.rendererReadout.value; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: %s{rendererName state.kind}" ] ]
                     [ fixedLabel "Cylinder rails:"
-                      presetSlider UiIds.Renderer.railsSlider 170.0 railOptions state.rails railIndex handlers.setRailsIndex
+                      presetSlider ConstructorUiId.rendererRailsSlider.value 170.0 railOptions state.rails railIndex handlers.setRailsIndex
                       valueLabel (string state.rails) ]
                 ]
                 row [
                     [ fixedLabel "Cap circles:"
-                      intSlider UiIds.Renderer.capCirclesSlider capCirclesMin capCirclesMax state.circles handlers.setCircles
+                      intSlider ConstructorUiId.rendererCapCirclesSlider.value capCirclesMin capCirclesMax state.circles handlers.setCircles
                       valueLabel (string state.circles) ]
                     [ fixedLabel "Cap radials:"
-                      presetSlider UiIds.Renderer.capRadialsSlider 150.0 radialOptions state.radials radialIndex handlers.setRadialsIndex
+                      presetSlider ConstructorUiId.rendererCapRadialsSlider.value 150.0 radialOptions state.radials radialIndex handlers.setRadialsIndex
                       valueLabel (string state.radials) ]
                 ]
                 row [
                     [ fixedLabel "Rail opacity:"
-                      opacitySlider UiIds.Renderer.railOpacitySlider state.railOpacity handlers.setRailOpacity
+                      opacitySlider ConstructorUiId.rendererRailOpacitySlider.value state.railOpacity handlers.setRailOpacity
                       valueLabel $"%.2f{state.railOpacity}" ]
                     [ fixedLabel "Face opacity:"
-                      opacitySlider UiIds.Renderer.faceOpacitySlider state.faceOpacity handlers.setFaceOpacity
+                      opacitySlider ConstructorUiId.rendererFaceOpacitySlider.value state.faceOpacity handlers.setFaceOpacity
                       valueLabel $"%.2f{state.faceOpacity}" ]
                     [ fixedLabel "Line opacity:"
-                      opacitySlider UiIds.Renderer.lineOpacitySlider state.lineOpacity handlers.setLineOpacity
+                      opacitySlider ConstructorUiId.rendererLineOpacitySlider.value state.lineOpacity handlers.setLineOpacity
                       valueLabel $"%.2f{state.lineOpacity}" ]
                 ]
             ]

@@ -98,10 +98,10 @@ module RendererTestTests =
                 |> Seq.choose (function :? Control as c when not (isNull c.Name) -> Some c.Name | _ -> None)
                 |> Set.ofSeq
             window.Close()
-            for id in [ UiIds.Renderer.swapRenderer; UiIds.Renderer.railsSlider
-                        UiIds.Renderer.capCirclesSlider; UiIds.Renderer.capRadialsSlider
-                        UiIds.Renderer.railOpacitySlider; UiIds.Renderer.faceOpacitySlider
-                        UiIds.Renderer.lineOpacitySlider ] do
+            for id in [ ConstructorUiId.rendererSwapButton.value; ConstructorUiId.rendererRailsSlider.value
+                        ConstructorUiId.rendererCapCirclesSlider.value; ConstructorUiId.rendererCapRadialsSlider.value
+                        ConstructorUiId.rendererRailOpacitySlider.value; ConstructorUiId.rendererFaceOpacitySlider.value
+                        ConstructorUiId.rendererLineOpacitySlider.value ] do
                 Assert.Contains(id, names))
 
     [<Fact>]

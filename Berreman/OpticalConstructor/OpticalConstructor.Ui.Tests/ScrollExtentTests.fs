@@ -229,8 +229,8 @@ module ScrollExtentTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             try
-                let viewer = window.GetVisualDescendants() |> Seq.pick (function :? ScrollViewer as s when s.Name = UiIds.TableAndElementRotation.scrollViewer -> Some s | _ -> None)
-                let canvas = window.GetVisualDescendants() |> Seq.pick (function :? Canvas as c when c.Name = UiIds.TableAndElementRotation.canvas -> Some c | _ -> None)
+                let viewer = window.GetVisualDescendants() |> Seq.pick (function :? ScrollViewer as s when s.Name = ConstructorUiId.tableElementScrollViewer.value -> Some s | _ -> None)
+                let canvas = window.GetVisualDescendants() |> Seq.pick (function :? Canvas as c when c.Name = ConstructorUiId.tableElementCanvas.value -> Some c | _ -> None)
                 let tableBottomInWindow () : float =
                     match canvas.TranslatePoint(Point(0.0, canvas.Bounds.Height), window) |> Option.ofNullable with
                     | Some p -> p.Y

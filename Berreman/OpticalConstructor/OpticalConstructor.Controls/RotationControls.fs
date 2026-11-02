@@ -194,9 +194,9 @@ module RotationControls =
     let mutable private armedAxis : Axis option = None
 
     let private axisOfButtonId (autoId : string) : Axis option =
-        if autoId = UiIds.Rotation.r1Minus || autoId = UiIds.Rotation.r1Plus then Some R1
-        elif autoId = UiIds.Rotation.r2Minus || autoId = UiIds.Rotation.r2Plus then Some R2
-        elif autoId = UiIds.Rotation.r3Minus || autoId = UiIds.Rotation.r3Plus then Some R3
+        if autoId = ConstructorUiId.rotationR1MinusButton.value || autoId = ConstructorUiId.rotationR1PlusButton.value then Some R1
+        elif autoId = ConstructorUiId.rotationR2MinusButton.value || autoId = ConstructorUiId.rotationR2PlusButton.value then Some R2
+        elif autoId = ConstructorUiId.rotationR3MinusButton.value || autoId = ConstructorUiId.rotationR3PlusButton.value then Some R3
         else None
 
     /// Paint one axis +/- button (a `clickBox` Border with a `TextBlock` child) armed or idle.
@@ -254,7 +254,7 @@ module RotationControls =
         // An axis lights up only when its modifier is armed AND its buttons are actually live.
         let armed (axis : Axis) (groupEnabled : bool) : bool = groupEnabled && activeAxis = Some axis
         let lockButton =
-            clickBox UiIds.Rotation.lockR3 (if state.r3Locked then "Unlock R3" else "Lock R3") state.enabled false (fun _ -> handlers.toggleLock R3)
+            clickBox ConstructorUiId.rotationLockR3Button.value (if state.r3Locked then "Unlock R3" else "Lock R3") state.enabled false (fun _ -> handlers.toggleLock R3)
         // Spec 0046: R1 / R2's toggles, right after their axis group, shown only where the host offers them.
         // The slot is ALWAYS present (hidden when not offered), so the bar's children keep their positions
         // and FuncUI never patches one axis group's named field into another's slot.
@@ -295,17 +295,17 @@ module RotationControls =
         let resetArea : IView =
             unit
                 [ TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text prompt; TextBlock.isVisible armedConfirm ] :> IView
-                  clickBox UiIds.Rotation.reset resetLabel state.enabled false (fun _ -> onReset ())
-                  clickBox UiIds.Rotation.resetAll resetAllLabel state.enabled false (fun _ -> onResetAll ()) ]
+                  clickBox ConstructorUiId.rotationResetButton.value resetLabel state.enabled false (fun _ -> onReset ())
+                  clickBox ConstructorUiId.rotationResetAllButton.value resetAllLabel state.enabled false (fun _ -> onResetAll ()) ]
         let units : IView list =
             [ unit
-                  [ axisGroup handlers (UiIds.Rotation.r1Minus, UiIds.Rotation.r1Plus, UiIds.Rotation.r1Field) "R1" R1 state.r1 r1Enabled (armed R1 r1Enabled)
-                    offeredLock UiIds.Rotation.lockR1 "R1" R1 state.r1Lock ]
+                  [ axisGroup handlers (ConstructorUiId.rotationR1MinusButton.value, ConstructorUiId.rotationR1PlusButton.value, ConstructorUiId.rotationR1Field.value) "R1" R1 state.r1 r1Enabled (armed R1 r1Enabled)
+                    offeredLock ConstructorUiId.rotationLockR1Button.value "R1" R1 state.r1Lock ]
               unit
-                  [ axisGroup handlers (UiIds.Rotation.r2Minus, UiIds.Rotation.r2Plus, UiIds.Rotation.r2Field) "R2" R2 state.r2 r2Enabled (armed R2 r2Enabled)
-                    offeredLock UiIds.Rotation.lockR2 "R2" R2 state.r2Lock ]
+                  [ axisGroup handlers (ConstructorUiId.rotationR2MinusButton.value, ConstructorUiId.rotationR2PlusButton.value, ConstructorUiId.rotationR2Field.value) "R2" R2 state.r2 r2Enabled (armed R2 r2Enabled)
+                    offeredLock ConstructorUiId.rotationLockR2Button.value "R2" R2 state.r2Lock ]
               unit
-                  [ axisGroup handlers (UiIds.Rotation.r3Minus, UiIds.Rotation.r3Plus, UiIds.Rotation.r3Field) "R3" R3 state.r3 r3Enabled (armed R3 r3Enabled)
+                  [ axisGroup handlers (ConstructorUiId.rotationR3MinusButton.value, ConstructorUiId.rotationR3PlusButton.value, ConstructorUiId.rotationR3Field.value) "R3" R3 state.r3 r3Enabled (armed R3 r3Enabled)
                     lockButton ]
               resetArea ]
         // Hook this window's keyboard once (guarded), so holding a rotate modifier lights up its axis.

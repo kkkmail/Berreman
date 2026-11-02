@@ -62,13 +62,13 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``the Experiments UiIds prefix ids and are stable`` () =
-        Assert.Equal("ExperimentCandidate_src", UiIds.Experiment.candidate "src")
-        Assert.Equal("ExperimentVariable_r1", UiIds.Experiment.variable "r1")
-        Assert.Equal("ExperimentMeasurement_both", UiIds.Experiment.measurement "both")
-        Assert.Equal("ExperimentReadout", UiIds.Experiment.readout)
-        Assert.Equal("ExperimentAddButton", UiIds.Experiment.addButton)
-        Assert.Equal("ExperimentEdit_3", UiIds.Experiment.editButton "3")
-        Assert.Equal("ExperimentRemove_3", UiIds.Experiment.removeButton "3")
+        Assert.Equal("ExperimentCandidate_src", (ConstructorUiId.experimentCandidate (ConstructorUiKey "src")).value)
+        Assert.Equal("ExperimentVariable_r1", (ConstructorUiId.experimentVariable (ConstructorUiKey "r1")).value)
+        Assert.Equal("ExperimentMeasurement_both", (ConstructorUiId.experimentMeasurement (ConstructorUiKey "both")).value)
+        Assert.Equal("ExperimentReadout", ConstructorUiId.experimentReadout.value)
+        Assert.Equal("ExperimentAddButton", ConstructorUiId.experimentAddButton.value)
+        Assert.Equal("ExperimentEdit_3", (ConstructorUiId.experimentEditButton (ConstructorUiKey "3")).value)
+        Assert.Equal("ExperimentRemove_3", (ConstructorUiId.experimentRemoveButton (ConstructorUiKey "3")).value)
 
     [<Fact>]
     let ``the variable / measurement codes and labels are the mirror mapping`` () =
@@ -375,16 +375,16 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``ChartWindow ids are stable and distinct incl the element picker + polar toggle`` () =
-        Assert.Equal("ChartWindowElement", UiIds.ChartWindow.elementSelector)
-        Assert.Equal("ChartWindowPolar", UiIds.ChartWindow.polarToggle)
+        Assert.Equal("ChartWindowElement", ConstructorUiId.chartWindowElement.value)
+        Assert.Equal("ChartWindowPolar", ConstructorUiId.chartWindowPolar.value)
         let ids =
-            [ UiIds.ChartWindow.plot; UiIds.ChartWindow.elementSelector; UiIds.ChartWindow.propertiesPanel
-              UiIds.ChartWindow.fontMinus; UiIds.ChartWindow.fontPlus; UiIds.ChartWindow.fontSize
-              UiIds.ChartWindow.axisAuto; UiIds.ChartWindow.axisMin; UiIds.ChartWindow.axisMax; UiIds.ChartWindow.axisFormat
-              UiIds.ChartWindow.axisDecimals; UiIds.ChartWindow.legendVisible; UiIds.ChartWindow.legendPlacement
-              UiIds.ChartWindow.seriesVisible; UiIds.ChartWindow.seriesThickness; UiIds.ChartWindow.seriesColor
-              UiIds.ChartWindow.seriesMarkers; UiIds.ChartWindow.seriesAxis; UiIds.ChartWindow.polarToggle; UiIds.ChartWindow.majorGrid
-              UiIds.ChartWindow.minorGrid; UiIds.ChartWindow.exportPng; UiIds.ChartWindow.exportCsv; UiIds.ChartWindow.description ]
+            [ ConstructorUiId.chartWindowPlot.value; ConstructorUiId.chartWindowElement.value; ConstructorUiId.chartWindowProperties.value
+              ConstructorUiId.chartWindowFontMinus.value; ConstructorUiId.chartWindowFontPlus.value; ConstructorUiId.chartWindowFontSize.value
+              ConstructorUiId.chartWindowAxisAuto.value; ConstructorUiId.chartWindowAxisMin.value; ConstructorUiId.chartWindowAxisMax.value; ConstructorUiId.chartWindowAxisFormat.value
+              ConstructorUiId.chartWindowAxisDecimals.value; ConstructorUiId.chartWindowLegendVisible.value; ConstructorUiId.chartWindowLegendPlacement.value
+              ConstructorUiId.chartWindowSeriesVisible.value; ConstructorUiId.chartWindowSeriesThick.value; ConstructorUiId.chartWindowSeriesColor.value
+              ConstructorUiId.chartWindowSeriesMarkers.value; ConstructorUiId.chartWindowSeriesAxis.value; ConstructorUiId.chartWindowPolar.value; ConstructorUiId.chartWindowMajorGrid.value
+              ConstructorUiId.chartWindowMinorGrid.value; ConstructorUiId.chartWindowExportPng.value; ConstructorUiId.chartWindowExportCsv.value; ConstructorUiId.chartWindowDescription.value ]
         Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
 
     /// A small sample chart with two series, axis labels, a title, and a description.
@@ -412,10 +412,10 @@ module ExperimentControlsTests =
             let hasNamed (name : string) : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function :? Control as c -> c.Name = name | _ -> false)
-            Assert.True(hasNamed UiIds.ChartWindow.plot, "the ScottPlot host control was not present")
-            Assert.True(hasNamed UiIds.ChartWindow.elementSelector, "the element picker was not present")
-            Assert.True(hasNamed UiIds.ChartWindow.propertiesPanel, "the properties panel was not present")
-            Assert.True(hasNamed UiIds.ChartWindow.polarToggle, "the polar toggle was not present for an angular chart")
+            Assert.True(hasNamed ConstructorUiId.chartWindowPlot.value, "the ScottPlot host control was not present")
+            Assert.True(hasNamed ConstructorUiId.chartWindowElement.value, "the element picker was not present")
+            Assert.True(hasNamed ConstructorUiId.chartWindowProperties.value, "the properties panel was not present")
+            Assert.True(hasNamed ConstructorUiId.chartWindowPolar.value, "the polar toggle was not present for an angular chart")
             window.Close())
 
     [<Fact>]
@@ -428,7 +428,7 @@ module ExperimentControlsTests =
             let ctrl (name : string) : Control option =
                 window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
             // Toggle polar ON (exercises the PolarAxis + GetCoordinates rebuild) and back to XY.
-            match ctrl UiIds.ChartWindow.polarToggle with
+            match ctrl ConstructorUiId.chartWindowPolar.value with
             | Some c ->
                 let b = c :?> Button
                 b.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent))
@@ -437,11 +437,11 @@ module ExperimentControlsTests =
                 (try Dispatcher.UIThread.RunJobs() with _ -> ())
             | None -> Assert.Fail("no polar toggle")
             // Pick the X axis and turn Auto off (exercises the axis panel + SetLimitsX path).
-            match ctrl UiIds.ChartWindow.elementSelector with
+            match ctrl ConstructorUiId.chartWindowElement.value with
             | Some c -> (c :?> ComboBox).SelectedIndex <- 1
             | None -> Assert.Fail("no element selector")
             (try Dispatcher.UIThread.RunJobs() with _ -> ())
-            match ctrl UiIds.ChartWindow.axisAuto with
+            match ctrl ConstructorUiId.chartWindowAxisAuto.value with
             | Some c -> (c :?> CheckBox).IsChecked <- System.Nullable false; (try Dispatcher.UIThread.RunJobs() with _ -> ())
             | None -> Assert.Fail("the X-axis panel (Auto checkbox) was not shown after selecting X axis")
             window.Close())
@@ -465,7 +465,7 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             let chartVisible () : bool =
                 window.GetVisualDescendants()
-                |> Seq.exists (function :? Polyline as p when p.Name = UiIds.Experiment.chart && p.IsEffectivelyVisible -> true | _ -> false)
+                |> Seq.exists (function :? Polyline as p when p.Name = ConstructorUiId.experimentChart.value && p.IsEffectivelyVisible -> true | _ -> false)
             Assert.True(chartVisible (), "the intensity polyline was not visible")
             window.Close())
 
@@ -481,9 +481,9 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             let readoutVisible () : bool =
                 window.GetVisualDescendants()
-                |> Seq.exists (function :? TextBlock as t when t.Name = UiIds.Experiment.readout && t.IsEffectivelyVisible -> true | _ -> false)
+                |> Seq.exists (function :? TextBlock as t when t.Name = ConstructorUiId.experimentReadout.value && t.IsEffectivelyVisible -> true | _ -> false)
             Assert.True(readoutVisible (), "the Experiment readout was not visible")
-            let candName = UiIds.Experiment.candidate "src"
+            let candName = (ConstructorUiId.experimentCandidate (ConstructorUiKey "src")).value
             let findCand () : Border option =
                 window.GetVisualDescendants()
                 |> Seq.tryPick (function :? Border as b when matchesId candName b && b.IsEffectivelyVisible -> Some b | _ -> None)
@@ -517,7 +517,7 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             let findAdd () : Border option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when matchesId UiIds.Experiment.addButton b && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Border as b when matchesId ConstructorUiId.experimentAddButton.value b && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findAdd () with
             | None -> Assert.Fail("the Add button was not visible")
             | Some b ->
@@ -572,7 +572,7 @@ module ExperimentControlsTests =
             let window = liveComponent seed
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickIn window (UiIds.Experiment.removeButton "1")   // remove the FIRST (list shifts)
+            clickIn window (ConstructorUiId.experimentRemoveButton (ConstructorUiKey "1")).value   // remove the FIRST (list shifts)
             window.Close())
 
     [<Fact>]
@@ -592,8 +592,8 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             // The Remove control lives in the Add bay: switch to it and click Remove selected. The
             // Experiments pane (kept present by the ribbon) re-renders its candidate list on the change.
-            clickIn window (UiIds.Ribbon.tab BayNames.add)
-            clickIn window UiIds.ElementPalette.removeSelected
+            clickIn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.add)).value
+            clickIn window ConstructorUiId.paletteRemoveSelectedButton.value
             window.Close())
 
     [<Fact>]
@@ -611,8 +611,8 @@ module ExperimentControlsTests =
             let window = liveComponent seed
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickIn window (UiIds.Experiment.candidate pid)     // → polarizer ([r1])
-            clickIn window (UiIds.Experiment.candidate "src")   // → source ([wavelength])
+            clickIn window (ConstructorUiId.experimentCandidate (ConstructorUiKey pid)).value     // → polarizer ([r1])
+            clickIn window (ConstructorUiId.experimentCandidate (ConstructorUiKey "src")).value   // → source ([wavelength])
             window.Close())
 
     [<Fact>]
@@ -630,9 +630,9 @@ module ExperimentControlsTests =
             let window = liveComponent seed
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickIn window (UiIds.Experiment.measurement "t")      // 2 series → 1
-            clickIn window (UiIds.Experiment.measurement "both")   // 1 → 2
-            clickIn window (UiIds.Experiment.measurement "r")      // 2 → 1
+            clickIn window (ConstructorUiId.experimentMeasurement (ConstructorUiKey "t")).value      // 2 series → 1
+            clickIn window (ConstructorUiId.experimentMeasurement (ConstructorUiKey "both")).value   // 1 → 2
+            clickIn window (ConstructorUiId.experimentMeasurement (ConstructorUiKey "r")).value      // 2 → 1
             window.Close())
 
     [<Fact>]
@@ -660,7 +660,7 @@ module ExperimentControlsTests =
             let window = Window(Width = 1000.0, Height = 980.0, Content = comp)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickIn window (UiIds.Experiment.editButton "1")          // select the FIRST experiment
+            clickIn window (ConstructorUiId.experimentEditButton (ConstructorUiKey "1")).value          // select the FIRST experiment
             Assert.Equal(Some 1, latest.Value.experimentCollection.draft.editingId |> Option.map (fun i -> i.value))
             // The editor loaded experiment #1's element (the polarizer), not the source it was on.
             Assert.Equal(Some pid, latest.Value.experimentCollection.draft.elementId |> Option.map (fun i -> i.value))
@@ -677,9 +677,9 @@ module ExperimentControlsTests =
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             let ctrl (name : string) : Control option =
                 window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
-            let ava = (ctrl UiIds.ChartWindow.plot |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
+            let ava = (ctrl ConstructorUiId.chartWindowPlot.value |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
             let lim0 = ava.Plot.Axes.GetLimits()
-            let btn = (ctrl UiIds.ChartWindow.polarToggle |> Option.get) :?> Button
+            let btn = (ctrl ConstructorUiId.chartWindowPolar.value |> Option.get) :?> Button
             let click () = btn.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)); (try Dispatcher.UIThread.RunJobs() with _ -> ())
             click ()   // → polar (hides the cartesian axes)
             click ()   // → XY (must restore them)
@@ -704,7 +704,7 @@ module ExperimentControlsTests =
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             let ctrl (name : string) : Control option =
                 window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
-            let ava = (ctrl UiIds.ChartWindow.plot |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
+            let ava = (ctrl ConstructorUiId.chartWindowPlot.value |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
             let scatters () : ScottPlot.Plottables.Scatter list =
                 ava.Plot.GetPlottables()
                 |> Seq.choose (function :? ScottPlot.Plottables.Scatter as s -> Some s | _ -> None)
@@ -713,9 +713,9 @@ module ExperimentControlsTests =
                 scatters () |> List.forall (fun s -> obj.ReferenceEquals(s.Axes.YAxis, ava.Plot.Axes.Left)),
                 "every series should START on the left axis")
             // The element picker: Header, X axis, Y left, Y right, Legend, series 0, series 1 → index 6.
-            (ctrl UiIds.ChartWindow.elementSelector |> Option.get :?> ComboBox).SelectedIndex <- 6
+            (ctrl ConstructorUiId.chartWindowElement.value |> Option.get :?> ComboBox).SelectedIndex <- 6
             (try Dispatcher.UIThread.RunJobs() with _ -> ())
-            match ctrl UiIds.ChartWindow.seriesAxis with
+            match ctrl ConstructorUiId.chartWindowSeriesAxis.value with
             | Some c -> (c :?> ComboBox).SelectedIndex <- 1     // Left → Right
             | None -> Assert.Fail("the series panel offered no axis-side picker")
             (try Dispatcher.UIThread.RunJobs() with _ -> ())
@@ -781,7 +781,7 @@ module ExperimentControlsTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let before = ChartWindow.ConstructedCount
-            clickIn window (UiIds.Experiment.viewButton expIdStr)
+            clickIn window (ConstructorUiId.experimentViewButton (ConstructorUiKey expIdStr)).value
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             Assert.True(ChartWindow.ConstructedCount > before, "the View button did not open a ChartWindow")
             window.Close())

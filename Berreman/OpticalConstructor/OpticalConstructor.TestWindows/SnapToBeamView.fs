@@ -194,7 +194,7 @@ let private beamViews (m : Model) : IView list =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.SnapToBeam.canvas
+        Canvas.name ConstructorUiId.snapToBeamCanvas.value
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -233,7 +233,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.margin (Thickness 8.0)
         StackPanel.children [
             RotationControls.view (rotationState model) (rotationHandlers dispatch)
-            TextBlock.create [ TextBlock.name UiIds.SnapToBeam.readout; TextBlock.text (readoutText model); TextBlock.verticalAlignment VerticalAlignment.Center ]
+            TextBlock.create [ TextBlock.name ConstructorUiId.snapToBeamReadout.value; TextBlock.text (readoutText model); TextBlock.verticalAlignment VerticalAlignment.Center ]
             TextBlock.create [
                 TextBlock.foreground (brush (color 100 100 100))
                 TextBlock.text "rotate the source with the bar (or the wheel = R2, Shift = larger step) — the downstream elements snap to the re-aimed beam, keeping their along-ray spacing"

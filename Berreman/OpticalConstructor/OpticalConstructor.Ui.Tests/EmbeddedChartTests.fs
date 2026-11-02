@@ -147,7 +147,7 @@ module EmbeddedChartTests =
     /// Commit `text` through the REAL faceted filter box (Enter is the commit gesture — the box
     /// has no text-change subscription).
     let private commitFilter (window : Window) (text : string) : unit =
-        match tryFindControl window UiIds.FacetedTree.filterBox with
+        match tryFindControl window ConstructorUiId.facetFilterBox.value with
         | Some (:? TextBox as tb) ->
             tb.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
@@ -208,15 +208,15 @@ module EmbeddedChartTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The default (isotropic, non-dispersive) editor derives a preview: the embedded AvaPlot renders.
-            Assert.True(isPresent window UiIds.MaterialEditor.previewChart, "the editor must embed the preview chart host")
-            match avaUnder window UiIds.MaterialEditor.previewChart with
+            Assert.True(isPresent window ConstructorUiId.materialPreviewChart.value, "the editor must embed the preview chart host")
+            match avaUnder window ConstructorUiId.materialPreviewChart.value with
             | Some ava -> Assert.True(rasterizes ava, "the non-dispersive editor preview rendered no image bytes")
             | None -> Assert.Fail("no embedded AvaPlot under the non-dispersive editor preview")
             // A transcendental pick (ForouhiBloomer) still derives and draws n/k through the SAME embedded chart.
-            clickOn window UiIds.MaterialEditor.dispersiveToggle
-            clickOn window (UiIds.MaterialEditor.modelOption 0 "ForouhiBloomer")
+            clickOn window ConstructorUiId.dispersiveToggle.value
+            clickOn window (ConstructorUiId.dispersionModelOption (ConstructorUiPosition 0) (ConstructorUiKey "ForouhiBloomer")).value
             Dispatcher.UIThread.RunJobs()
-            match avaUnder window UiIds.MaterialEditor.previewChart with
+            match avaUnder window ConstructorUiId.materialPreviewChart.value with
             | Some ava -> Assert.True(rasterizes ava, "the transcendental editor preview rendered no image bytes")
             | None -> Assert.Fail("no embedded AvaPlot under the transcendental editor preview")
             window.Close())
@@ -232,10 +232,10 @@ module EmbeddedChartTests =
         Dispatcher.UIThread.RunJobs()
         commitFilter window search
         // The tree opens collapsed (spec 0040 step 002) — expand the entries group to reach the leaf.
-        clickOn window (UiIds.FacetedTree.treeNodeChevron "entries")
+        clickOn window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
         clickOn window (MW.entryNode entryId)
-        Assert.True(isPresent window UiIds.MaterialsWindow.viewPanelChart, $"%s{label}: the view panel must embed the n/k chart host")
-        match avaUnder window UiIds.MaterialsWindow.viewPanelChart with
+        Assert.True(isPresent window ConstructorUiId.materialsViewPanelNkChart.value, $"%s{label}: the view panel must embed the n/k chart host")
+        match avaUnder window ConstructorUiId.materialsViewPanelNkChart.value with
         | Some ava -> Assert.True(rasterizes ava, $"%s{label}: the view-panel embedded chart rendered no image bytes")
         | None -> Assert.Fail($"%s{label}: no embedded AvaPlot under the Materials view panel n/k chart host")
         window.Close()

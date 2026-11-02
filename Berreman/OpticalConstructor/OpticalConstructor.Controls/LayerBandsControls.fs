@@ -65,7 +65,7 @@ module LayerBandsControls =
     /// thickness, carrying the stable per-index automation id.
     let private bandView (maxWeight : float) (index : int) (b : Band) : IView =
         Border.create [
-            Border.name (UiIds.LayerBands.band index)
+            Border.name (ConstructorUiId.layerBand (ConstructorUiPosition index)).value
             Border.height (bandHeight maxWeight b.heightWeight)
             Border.background (brush (parseHex b.colorHex))
             Border.borderBrush (brush idleBorder)
@@ -95,7 +95,7 @@ module LayerBandsControls =
             StackPanel.spacing 6.0
             StackPanel.children [
                 TextBlock.create [
-                    TextBlock.name UiIds.LayerBands.title
+                    TextBlock.name ConstructorUiId.layerBandsTitle.value
                     TextBlock.text state.title
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.maxWidth 360.0
@@ -105,7 +105,7 @@ module LayerBandsControls =
                     ScrollViewer.maxHeight 320.0
                     ScrollViewer.content (
                         StackPanel.create [
-                            StackPanel.name UiIds.LayerBands.stack
+                            StackPanel.name ConstructorUiId.layerBandsStack.value
                             StackPanel.orientation Orientation.Vertical
                             StackPanel.width 300.0
                             StackPanel.children bandViews

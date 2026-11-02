@@ -423,7 +423,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             RotationControls.view (rotationState model) (rotationHandlers dispatch)
             TextBlock.create [
-                TextBlock.name UiIds.ElementRotation.readout
+                TextBlock.name ConstructorUiId.elemRotationReadout.value
                 TextBlock.text readout
             ]
             TextBlock.create [
@@ -441,7 +441,7 @@ let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.ElementRotation.canvas
+        Canvas.name ConstructorUiId.elementRotationCanvas.value
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -451,7 +451,7 @@ let private tableCanvas (model : Model) : IView =
 
 /// The whole element-rotation test surface.
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.ElementRotation.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.elementRotationCanvas.value e
     DockPanel.create [
         DockPanel.children [
             Border.create [

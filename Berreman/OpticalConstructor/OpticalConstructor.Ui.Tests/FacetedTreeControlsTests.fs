@@ -162,23 +162,23 @@ module FacetedTreeControlsTests =
 
     [<Fact>]
     let ``the FacetedTree UiIds are the stable intent-named ids`` () =
-        Assert.Equal("FacetFilterBox", UiIds.FacetedTree.filterBox)
-        Assert.Equal("FacetRepresentationPicker", UiIds.FacetedTree.representationPicker)
-        Assert.Equal("FacetBreadcrumbStrip", UiIds.FacetedTree.breadcrumbStrip)
-        Assert.Equal("FacetResultCount", UiIds.FacetedTree.resultCount)
-        Assert.Equal("FacetOffersPanel", UiIds.FacetedTree.offersPanel)
-        Assert.Equal("FacetShowTreeButton", UiIds.FacetedTree.showTreeButton)
-        Assert.Equal("FacetTree", UiIds.FacetedTree.tree)
-        Assert.Equal("FacetScroll", UiIds.FacetedTree.scrollViewer)
+        Assert.Equal("FacetFilterBox", ConstructorUiId.facetFilterBox.value)
+        Assert.Equal("FacetRepresentationPicker", ConstructorUiId.facetRepresentationPicker.value)
+        Assert.Equal("FacetBreadcrumbStrip", ConstructorUiId.facetBreadcrumbStrip.value)
+        Assert.Equal("FacetResultCount", ConstructorUiId.facetResultCount.value)
+        Assert.Equal("FacetOffersPanel", ConstructorUiId.facetOffersPanel.value)
+        Assert.Equal("FacetShowTreeButton", ConstructorUiId.facetShowTreeButton.value)
+        Assert.Equal("FacetTree", ConstructorUiId.facetTree.value)
+        Assert.Equal("FacetScroll", ConstructorUiId.facetScroll.value)
         // The derived per-item ids are prefixed so they cannot collide; the offered-value id
         // carries the GROUP code too (the same discrete key can appear under two facets).
-        Assert.Equal("FacetRepresentationOption_by-kind", UiIds.FacetedTree.representationOption "by-kind")
-        Assert.Equal("FacetBreadcrumbChip_anisotropy", UiIds.FacetedTree.breadcrumbChip "anisotropy")
-        Assert.Equal("FacetOfferGroup_category", UiIds.FacetedTree.offerGroup "category")
-        Assert.Equal("FacetOfferedValue_category_glass", UiIds.FacetedTree.offeredValue "category" "glass")
-        Assert.Equal("FacetManualRangeBox_thickness", UiIds.FacetedTree.manualRangeBox "thickness")
-        Assert.Equal("FacetTreeNode_kind/sample", UiIds.FacetedTree.treeNode "kind/sample")
-        Assert.Equal("FacetTreeChevron_kind/sample", UiIds.FacetedTree.treeNodeChevron "kind/sample")
+        Assert.Equal("FacetRepresentationOption_by-kind", (ConstructorUiId.facetRepresentationOption (ConstructorUiKey "by-kind")).value)
+        Assert.Equal("FacetBreadcrumbChip_anisotropy", (ConstructorUiId.facetBreadcrumbChip (ConstructorUiKey "anisotropy")).value)
+        Assert.Equal("FacetOfferGroup_category", (ConstructorUiId.facetOfferGroup (ConstructorUiKey "category")).value)
+        Assert.Equal("FacetOfferedValue_category_glass", (ConstructorUiId.facetOfferedValue (ConstructorUiKey "category") (ConstructorUiKey "glass")).value)
+        Assert.Equal("FacetManualRangeBox_thickness", (ConstructorUiId.facetManualRangeBox (ConstructorUiKey "thickness")).value)
+        Assert.Equal("FacetTreeNode_kind/sample", (ConstructorUiId.facetTreeNode (ConstructorUiKey "kind/sample")).value)
+        Assert.Equal("FacetTreeChevron_kind/sample", (ConstructorUiId.facetTreeChevron (ConstructorUiKey "kind/sample")).value)
 
     // ============================ headless structure proofs ============================
 
@@ -247,7 +247,7 @@ module FacetedTreeControlsTests =
     /// The clickable label Border of the tree row carrying `code` (its stable `treeNode` id — the
     /// chevron carries the DISTINCT `treeNodeChevron` id, so this is unambiguously the label box).
     let private labelBorderOf (window : Window) (code : string) : Border =
-        let id = UiIds.FacetedTree.treeNode code
+        let id = (ConstructorUiId.facetTreeNode (ConstructorUiKey code)).value
         match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
         | Some b -> b
         | None -> failwith $"%s{id} label border was not found"
@@ -272,59 +272,59 @@ module FacetedTreeControlsTests =
             // tree is materialized, so the button is its gated-mode replacement).
             let fixedIds =
                 [
-                    UiIds.FacetedTree.scrollViewer
-                    UiIds.FacetedTree.filterBox
-                    UiIds.FacetedTree.representationPicker
-                    UiIds.FacetedTree.breadcrumbStrip
-                    UiIds.FacetedTree.resultCount
-                    UiIds.FacetedTree.offersPanel
-                    UiIds.FacetedTree.tree
+                    ConstructorUiId.facetScroll.value
+                    ConstructorUiId.facetFilterBox.value
+                    ConstructorUiId.facetRepresentationPicker.value
+                    ConstructorUiId.facetBreadcrumbStrip.value
+                    ConstructorUiId.facetResultCount.value
+                    ConstructorUiId.facetOffersPanel.value
+                    ConstructorUiId.facetTree.value
                 ]
             for id in fixedIds do
                 Assert.True(isPresent window id, $"%s{id} is missing from the mounted view")
             Assert.False(
-                isPresent window UiIds.FacetedTree.showTreeButton,
+                isPresent window ConstructorUiId.facetShowTreeButton.value,
                 "the Show/Search button must be ABSENT while the tree is materialized")
             // Every derived id over the known State: representation options, chips, offer groups,
             // offered values, the numeric group's manual range box (and ONLY the numeric group's),
             // and the rendered tree rows.
             for r in knownState.representations do
-                Assert.True(isPresent window (UiIds.FacetedTree.representationOption r.code), $"representation %s{r.code} is missing")
+                Assert.True(isPresent window (ConstructorUiId.facetRepresentationOption (ConstructorUiKey r.code)).value, $"representation %s{r.code} is missing")
             for chip in knownState.breadcrumbs do
-                Assert.True(isPresent window (UiIds.FacetedTree.breadcrumbChip chip.code), $"chip %s{chip.code} is missing")
+                Assert.True(isPresent window (ConstructorUiId.facetBreadcrumbChip (ConstructorUiKey chip.code)).value, $"chip %s{chip.code} is missing")
             for group in knownState.offers do
-                Assert.True(isPresent window (UiIds.FacetedTree.offerGroup group.code), $"offer group %s{group.code} is missing")
+                Assert.True(isPresent window (ConstructorUiId.facetOfferGroup (ConstructorUiKey group.code)).value, $"offer group %s{group.code} is missing")
                 for v in group.values do
-                    Assert.True(isPresent window (UiIds.FacetedTree.offeredValue group.code v.code), $"offered value %s{group.code}/%s{v.code} is missing")
-            Assert.True(isPresent window (UiIds.FacetedTree.manualRangeBox "thickness"), "the numeric group's manual range box is missing")
-            Assert.False(isPresent window (UiIds.FacetedTree.manualRangeBox "category"), "a discrete group must offer NO manual range box")
+                    Assert.True(isPresent window (ConstructorUiId.facetOfferedValue (ConstructorUiKey group.code) (ConstructorUiKey v.code)).value, $"offered value %s{group.code}/%s{v.code} is missing")
+            Assert.True(isPresent window (ConstructorUiId.facetManualRangeBox (ConstructorUiKey "thickness")).value, "the numeric group's manual range box is missing")
+            Assert.False(isPresent window (ConstructorUiId.facetManualRangeBox (ConstructorUiKey "category")).value, "a discrete group must offer NO manual range box")
             for code in [ "kind"; "kind/sample"; "kind/sample/quartz"; "kind/sample/mica"; "kind/polarizer" ] do
-                Assert.True(isPresent window (UiIds.FacetedTree.treeNode code), $"tree row %s{code} is missing")
+                Assert.True(isPresent window (ConstructorUiId.facetTreeNode (ConstructorUiKey code)).value, $"tree row %s{code} is missing")
             // A collapsed branch renders NO children — but still carries its count in its row text;
             // an expanded branch reads `label (count)`; a heading without a count reads its bare label.
             Assert.False(
-                isPresent window (UiIds.FacetedTree.treeNode "kind/polarizer/lp"),
+                isPresent window (ConstructorUiId.facetTreeNode (ConstructorUiKey "kind/polarizer/lp")).value,
                 "a collapsed branch's child must not render")
-            Assert.Equal("Samples (2)", textOf window (UiIds.FacetedTree.treeNode "kind/sample"))
-            Assert.Equal("Polarizers (1)", textOf window (UiIds.FacetedTree.treeNode "kind/polarizer"))
-            Assert.Equal("Kind", textOf window (UiIds.FacetedTree.treeNode "kind"))
+            Assert.Equal("Samples (2)", textOf window (ConstructorUiId.facetTreeNode (ConstructorUiKey "kind/sample")).value)
+            Assert.Equal("Polarizers (1)", textOf window (ConstructorUiId.facetTreeNode (ConstructorUiKey "kind/polarizer")).value)
+            Assert.Equal("Kind", textOf window (ConstructorUiId.facetTreeNode (ConstructorUiKey "kind")).value)
             // The chips read `label (afterCount) ×`; the live result count and the count-previews show.
-            Assert.Equal("Anisotropy: Uniaxial (12) ×", textOf window (UiIds.FacetedTree.breadcrumbChip "anisotropy"))
-            Assert.Equal("3 results", textOf window UiIds.FacetedTree.resultCount)
-            Assert.Equal("Glass (2)", textOf window (UiIds.FacetedTree.offeredValue "category" "glass"))
+            Assert.Equal("Anisotropy: Uniaxial (12) ×", textOf window (ConstructorUiId.facetBreadcrumbChip (ConstructorUiKey "anisotropy")).value)
+            Assert.Equal("3 results", textOf window ConstructorUiId.facetResultCount.value)
+            Assert.Equal("Glass (2)", textOf window (ConstructorUiId.facetOfferedValue (ConstructorUiKey "category") (ConstructorUiKey "glass")).value)
             // The filter box echoes the host's committed draft.
-            Assert.Equal("quartz", (textBoxOf window UiIds.FacetedTree.filterBox).Text)
+            Assert.Equal("quartz", (textBoxOf window ConstructorUiId.facetFilterBox.value).Text)
             // The acceptance clicks: a chip click dispatches removeConstraint with ITS code; an
             // offered-value click dispatches applyConstraint with its group AND value codes — and
             // nothing else fires.
-            clickOn window (UiIds.FacetedTree.breadcrumbChip "anisotropy")
+            clickOn window (ConstructorUiId.facetBreadcrumbChip (ConstructorUiKey "anisotropy")).value
             Assert.Equal<string>([ "remove:anisotropy" ], calls)
-            clickOn window (UiIds.FacetedTree.offeredValue "category" "glass")
+            clickOn window (ConstructorUiId.facetOfferedValue (ConstructorUiKey "category") (ConstructorUiKey "glass")).value
             Assert.Equal<string>([ "remove:anisotropy"; "apply:category=glass" ], calls)
             // A representation click chooses THAT representation; a tree row click selects THAT node.
-            clickOn window (UiIds.FacetedTree.representationOption "by-material")
+            clickOn window (ConstructorUiId.facetRepresentationOption (ConstructorUiKey "by-material")).value
             Assert.Contains("repr:by-material", calls)
-            clickOn window (UiIds.FacetedTree.treeNode "kind/sample")
+            clickOn window (ConstructorUiId.facetTreeNode (ConstructorUiKey "kind/sample")).value
             Assert.Contains("node:kind/sample", calls)
             window.Close())
 
@@ -335,14 +335,14 @@ module FacetedTreeControlsTests =
             let calls, handlers = recorder ()
             // The state still CARRIES the tree — gating alone must keep every row unrendered.
             let window = mount { knownState with materialization = FacetedTreeControls.TreeGated } handlers
-            Assert.True(isPresent window UiIds.FacetedTree.showTreeButton, "the Show/Search button is missing in gated mode")
-            Assert.False(isPresent window UiIds.FacetedTree.tree, "the tree container must be ABSENT in gated mode")
+            Assert.True(isPresent window ConstructorUiId.facetShowTreeButton.value, "the Show/Search button is missing in gated mode")
+            Assert.False(isPresent window ConstructorUiId.facetTree.value, "the tree container must be ABSENT in gated mode")
             Assert.Equal(0, treeRowCount window)
             // The rest of the surface stays live while gated (the count keeps updating).
-            Assert.Equal("3 results", textOf window UiIds.FacetedTree.resultCount)
-            Assert.True(isPresent window UiIds.FacetedTree.breadcrumbStrip)
-            Assert.True(isPresent window UiIds.FacetedTree.offersPanel)
-            clickOn window UiIds.FacetedTree.showTreeButton
+            Assert.Equal("3 results", textOf window ConstructorUiId.facetResultCount.value)
+            Assert.True(isPresent window ConstructorUiId.facetBreadcrumbStrip.value)
+            Assert.True(isPresent window ConstructorUiId.facetOffersPanel.value)
+            clickOn window ConstructorUiId.facetShowTreeButton.value
             Assert.Equal<string>([ "build" ], calls)
             window.Close())
 
@@ -353,17 +353,17 @@ module FacetedTreeControlsTests =
             let calls, handlers = recorder ()
             let window = mount knownState handlers
             // Every PARENT (a node with children) carries a chevron — expanded OR collapsed…
-            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "kind"), "the heading is a parent — it must carry a chevron")
-            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "kind/sample"), "an expanded branch with children must carry a chevron")
-            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "kind/polarizer"), "a collapsed branch with children must carry a chevron")
+            Assert.True(isPresent window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "kind")).value, "the heading is a parent — it must carry a chevron")
+            Assert.True(isPresent window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "kind/sample")).value, "an expanded branch with children must carry a chevron")
+            Assert.True(isPresent window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "kind/polarizer")).value, "a collapsed branch with children must carry a chevron")
             // …while a leaf (empty children) carries NONE.
-            Assert.False(isPresent window (UiIds.FacetedTree.treeNodeChevron "kind/sample/quartz"), "a leaf must carry NO chevron")
+            Assert.False(isPresent window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "kind/sample/quartz")).value, "a leaf must carry NO chevron")
             // The chevron and the label are DISTINCT surfaces: the chevron toggles, the label
             // selects, and clicking the chevron dispatches toggleNode with ITS code and nothing else.
-            clickOn window (UiIds.FacetedTree.treeNodeChevron "kind/sample")
+            clickOn window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "kind/sample")).value
             Assert.Equal<string>([ "toggle:kind/sample" ], calls)
             // The label still selects (never toggles).
-            clickOn window (UiIds.FacetedTree.treeNode "kind/sample")
+            clickOn window (ConstructorUiId.facetTreeNode (ConstructorUiKey "kind/sample")).value
             Assert.Equal<string>([ "toggle:kind/sample"; "node:kind/sample" ], calls)
             window.Close())
 
@@ -396,7 +396,7 @@ module FacetedTreeControlsTests =
             let calls, handlers = recorder ()
             let window = mount { knownState with filterDraft = "" } handlers
             let commits () = calls |> Seq.filter (fun c -> c.StartsWith("filter:")) |> List.ofSeq
-            let filterBox = textBoxOf window UiIds.FacetedTree.filterBox
+            let filterBox = textBoxOf window ConstructorUiId.facetFilterBox.value
             filterBox.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
             // Typing changes the box text but dispatches NOTHING (no per-keystroke commit).
@@ -415,7 +415,7 @@ module FacetedTreeControlsTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal<string>([ "filter:quartz" ], commits ())
             // ...until focus leaves the box — blur commits the box's CURRENT text.
-            (textBoxOf window (UiIds.FacetedTree.manualRangeBox "thickness")).Focus() |> ignore
+            (textBoxOf window (ConstructorUiId.facetManualRangeBox (ConstructorUiKey "thickness")).value).Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
             Assert.Equal<string>([ "filter:quartz"; "filter:quartz!" ], commits ())
             window.Close())
@@ -427,7 +427,7 @@ module FacetedTreeControlsTests =
             let calls, handlers = recorder ()
             let window = mount knownState handlers
             let ranges () = calls |> Seq.filter (fun c -> c.StartsWith("range:")) |> List.ofSeq
-            let rangeBox = textBoxOf window (UiIds.FacetedTree.manualRangeBox "thickness")
+            let rangeBox = textBoxOf window (ConstructorUiId.facetManualRangeBox (ConstructorUiKey "thickness")).value
             rangeBox.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
             window.KeyTextInput("10-20")
