@@ -1,16 +1,28 @@
 name: constructor-unit-tests
-description: dotnet test over the OpticalConstructor UI-less projects (Domain beam-tree orchestration, Storage JSON round-trip + schema validation, Optimization interface, units spine) — spec 0022 §A.6/P3 testability mandate
+description: dotnet test over the OpticalConstructor UI-less projects (Domain beam-tree orchestration, Storage JSON round-trip + schema validation, Optimization interface, units spine) — spec 0022 §A.6/P3 testability mandate — on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
 kind: command
-command: dotnet test Berreman/OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj -c Release
+phase: verify
+command: dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename constructor-unit-tests.trx {selector}
+cwd: Berreman/OpticalConstructor/OpticalConstructor.Tests
 pass_when:
   exit_code: 0
+  stdout_match: '(?m)^Test run summary: Passed!'
+  failure_capture: '(?m)^failed (.+) \((?:\d+(?:ms|s|m|h) ?)+\)\r?$'
   count_at_least:
-    capture: "Passed:\\s*(\\d+)"
+    capture: 'succeeded:\s*(\d+)'
     baseline_key: constructor_unit_tests
+result_capture: {"format": "trx", "path": "TestResults/constructor-unit-tests.trx", "skip_policy": "fail"}
 runtime_estimate_seconds: 180
-tags:
-- test
+tags: [test]
 applies_to:
-- paths:
-  - 'Berreman/OpticalConstructor/**'
+  - paths:
+      - "Berreman/OpticalConstructor/**"
 qualifier: unit
+requires_gates: [build]
+selector:
+  unit: class
+  template: '--filter-method "{value}.*" --filter-method "{value}"'
+  joiner: " "
+  arg: "{rendered}"
+whole_suite: light
+runtime_actual_whole_seconds: 13

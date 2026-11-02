@@ -38,19 +38,25 @@ subdirectory (that is where the gates set `cwd`).
 cd Berreman
 dotnet build Berreman.slnx -c Release
 
-# Core/solver unit tests (cwd = Berreman/BerremanTests)
-dotnet test --no-build -c Release
+# Tests run from each test project's own folder, over what the build produced
+cd Berreman/BerremanTests && dotnet test --no-build -c Release                        # solver
+cd Berreman/OpticalConstructor/OpticalConstructor.Tests && dotnet test --no-build -c Release
+cd Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests && dotnet test --no-build -c Release --filter-trait "Category=ui-smoke"
 
-# Optical Constructor — domain/logic tests, and headless UI tests
-dotnet test Berreman/OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj -c Release
-dotnet test Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConstructor.Ui.Tests.fsproj -c Release --filter Category=ui-smoke
+# One class, or one test with all its theory rows (xUnit v3 filters, never VSTest's --filter)
+dotnet test --no-build -c Release --filter-method "BerremanTests.SolverTests.*" --filter-method "BerremanTests.SolverTests"
+
+# The ELEV analyzers over what you changed (repo root, after the build)
+powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004
 ```
 
-Test stack: **xUnit v3**, **FsCheck** (property-based), **FluentAssertions**,
-and **Avalonia.Headless** for UI tests. Run the relevant tests after every
-change; if your local build/tests are green, the matching gate is green too.
-`BerremanTests` takes ~13 minutes (the inverse-fit tests); the two constructor
-suites take under a minute.
+Test stack: **xUnit v3 on Microsoft.Testing.Platform**, **FsCheck**
+(property-based, run through `Check.One` inside a `[<Fact>]`),
+**FluentAssertions**, and **Avalonia.Headless** for UI tests. Run the relevant
+tests after every change; if your local build/tests are green, the matching
+gate is green too. `BerremanTests` takes about 30 minutes whole (the inverse-fit
+tests, spec 0044 `.manual/020`), so run the classes you touched; the two
+constructor suites take under a minute, `ui-tests` about three.
 
 **Release only.** There is no Debug configuration: the root
 `Directory.Build.props` defaults `Configuration` to Release and the root
@@ -73,10 +79,20 @@ STL's `Sys/BuildInfo.ps1`, local-feed only until STL uploads it). Moving that pi
 means building STL's slow ring at its CURRENT version — **never bump STL's
 version ring from this repository** unless the operator explicitly says "bump".
 
-**`dotnet test` runs on VSTest.** xUnit v3 4.x marks test projects as Microsoft
-Testing Platform apps, which the .NET 10 SDK refuses on the VSTest path; the root
-`Directory.Build.props` sets `IsTestingPlatformApplication=false` so `dotnet test`
-works and prints the `Passed: N` summary the gates read. Do not remove it.
+**Tests run on Microsoft.Testing.Platform (MTP), and nothing VSTest is left**
+(spec 0048 `.manual/001`, as STL `specs/0239/.manual/005`). The root
+`global.json` sets `"test": {"runner": "Microsoft.Testing.Platform"}`. A test
+project is `OutputType Exe` with `IsTestProject` and
+`UseMicrosoftTestingPlatformRunner` true, and references `xunit.v3.mtp-v2` and
+`Microsoft.Testing.Extensions.TrxReport` (xUnit v3 generates the entry point).
+Never add back `Microsoft.NET.Test.Sdk`, `xunit.runner.visualstudio`,
+`coverlet.collector`, an xUnit v2 package (`Xunit.SkippableFact`,
+`FsCheck.Xunit`, `xunit.abstractions`) or `open Xunit.Abstractions`; skip at run
+time with `Assert.Skip`. Filter with xUnit v3's own options (`--filter-class`,
+`--filter-method`, `--filter-trait`, `--filter-not-trait`); a fact must return
+`unit` (a generic fact is refused). The gates read the MTP summary
+(`Test run summary: Passed!`, `succeeded: N`) and each run's TRX report
+(`--report-trx`, under the project's `TestResults/`).
 
 ---
 
@@ -137,6 +153,7 @@ Berreman/                              # solution root (Berreman.slnx, x64)
     OpticalConstructor.Tests          # domain/logic tests
     OpticalConstructor.Ui.Tests       # Avalonia.Headless UI smoke/structure tests
 MathNetNumerics/                       # customized MathNet.Numerics built FROM SOURCE (referenced, not a NuGet)
+Elevation/                             # the ELEV gate driver and its known-findings list (not a project)
 ```
 
 `Softellect.Berreman.Core` references `MathNetNumerics/FSharp` and
@@ -171,13 +188,43 @@ not by colocation.
 - **Explicit concrete types on every public function parameter and return type.**
   No inference reliance at a module-boundary surface; only genuinely generic
   functions keep their type parameters (`Result<'T, 'E>` stays generic), named
-  meaningfully (`'Item`, `'Config`) — not bare `'a` / `'b`.
+  meaningfully (`'Item`, `'Config`) — not bare `'a` / `'b`. Annotations are also
+  required wherever the value restriction bites (empty collections, plain
+  generic values) and around overloaded .NET call resolution.
 - **Pure functions by default**; side effects live only at the edges.
 - Prefer `async` computation expressions for IO.
 - Simplicity and correctness over cleverness.
 - Four-space indent. For floating-point comparisons in tests, reuse the
   project's tolerance helpers (see `BerremanTests/MatrixComparison.fs`) — do not
   hand-roll new epsilon logic.
+- Naming vocabulary (`Param` / `Data` / `Info` / `State` / `Context` / `Proxy` /
+  `Provider` / `Delegate` / `Generator` / `Factory` / …, plural collections,
+  `tryFind…` / `…Opt` for optionality): follow `naming_conventions.md` (repo
+  root, the same file as STL's) exactly — it is the authoritative naming
+  reference.
+
+## Comments: short, precise, useful (STL operator ruling, STL spec 0200 `.manual/015`)
+
+A comment earns its line by saying something **the code cannot**. Say **why**,
+never what — a restatement of the next statement is worse than no comment,
+because it is one more thing that goes stale.
+
+- **Cite the spec that drove the decision** (`spec 0044 §8.5`,
+  `0048 .manual/001`). When behaviour changes, add the newer spec beside the old
+  one rather than deleting it, so the *why it changed* survives too.
+- **Document a decision once.** If the narrative already lives in
+  `specs/<id>/.manual/`, point at it; do not restate it in the file.
+- **One to three lines.** A block past ~6 needs a reason to exist; past ~12 it is
+  an essay and belongs in the spec. Spend the lines on non-obvious hazards.
+- **Delete, do not shorten**, a comment that repeats an adjacent identifier.
+- **Doc comments** (`///`, PowerShell comment-based help) are API surface: they
+  describe the *contract*, not the implementation's history.
+- **No new comments in `.fsproj` / `.csproj`.** The only sanctioned one is a
+  genuinely extraordinary MSBuild/toolchain fact the XML cannot express, in one
+  line.
+
+This governs what you write and what you touch. It is not a licence to sweep the
+tree: the project files still carry comments from earlier specs.
 
 ---
 
@@ -208,8 +255,8 @@ etc. are single-case DUs, not raw `double`s. Match that everywhere you add code.
   ```
 
 - **No `enum` types.** An enumerated set is a discriminated union with a `.value`
-  member mapping to the wire/disk integer (or string) and a `tryCreate` that maps
-  an unknown stored value to a *typed error*, never a throw.
+  member mapping to the wire/disk integer (never a string, `ELEV017`) and a
+  `tryCreate` that maps an unknown stored value to a *typed error*, never a throw.
 
 - **No naked `bool`** in a domain record or signature. Use a two-case
   named-condition DU (`type LockoutState = LockedOut | NotLockedOut`) so a match
@@ -222,10 +269,97 @@ etc. are single-case DUs, not raw `double`s. Match that everywhere you add code.
 
 - **Error DUs carry diagnostic payload.** Each `*Error` case carries an elevated
   id, a typed state, or a `reason : string` — never a secret. A bare error case is
-  useless in a log.
+  useless in a log. A string field on a union named `*Error` is sanctioned (only
+  strings, only there); every case of such a union ends in `Err`, or `Exn` when it
+  wraps an exception (`ELEV020`).
+- **DU case names have two or more words** (`InteractionDeclined`, `AxisLocked`,
+  not `Declined`): a one-word case says nothing at the match site and is the first
+  to collide under `ELEV016`.
+- **Members may speak their type's own primitives.** A member declared ON a type
+  (intrinsic or extension) is exempt from the primitive-signature rules; the same
+  signature as a FREE module function is a breach. A free function whose only
+  parameter is one of our types is a fact about that type and belongs on it as a
+  member (`ELEV013`). Logger functions (`log`, `logInfo`, …) keep their free text.
+- **Names are unique, not qualified** (STL operator ruling, STL spec 0193 round
+  056 and 0219 `.manual/017`). Every type name (`ELEV014`), every public
+  module-level name (`ELEV015` — no second free `create` or `view`; name it
+  `create<Something>`), every DU case name across all DUs (`ELEV016`) and every
+  extension member on one receiver (`ELEV019`) is unique among ours (every
+  `Softellect.*` assembly). When two collide, the one in the LOWER assembly keeps
+  its name. A third-party namesake (FSharp.Core, the BCL, Avalonia) is a warning
+  under the rule's `T` code, never enforced. `[<RequireQualifiedAccess>]` is not
+  how a collision is resolved; the UiIds module is an open item of the ledger
+  (`specs/0048/.manual/002`).
+- **A closed set's wire/disk tag is an integer** (STL spec 0193 round 058,
+  enforced as `ELEV017`): a multi-case union's `value` member returns an `int`
+  (1-based, 0 left as the unset sentinel), never a string; its name is rendered by
+  an honest render member (`.text`, `.describe`). It is read back by `tryOfDb` /
+  `tryOfWire`, returning an option or `Result`. No `Unknown*` / `Other` catch-all
+  case: an unrecognized stored value is the caller's typed error at the boundary.
+- **Elevate at origin, never at the call site.** A value is born as its elevated
+  type where it first exists (the `let` that parses it, the literal that defines
+  it, the field it is bound into). Wrapping a bare local as you pass it
+  (`f (Thickness t)`, `ELEV001`) and the wrap-then-unwrap round trip
+  (`(Thickness x.value)`, `ELEV005`) are disallowed. `.value` appears only at the
+  one true interop / serialization line (`ELEV004`). This holds for test fixtures
+  too.
+- **A cross-type reuse is a named member on the SOURCE type** (`one.toObjectTwo`),
+  never a re-wrap at the call site (`ObjectTwo one.value`). Declaration order
+  decides only the form: towards an earlier type it is an intrinsic member,
+  towards a later one a type extension declared after it.
+- **A bijection is collapsed, not bridged.** Wanting both `A.toB` and `B.toA`
+  means one entity has two names: the LOWER type survives and the other is
+  deleted (`ELEV006`).
+- **Tuples:** at most three elements, and never two positions of the same type
+  (`ELEV011`) — make it a record. A function that maps a two-case union to a
+  `bool` is deleted in favour of matching on the union (`ELEV012`).
 
 The compiler is the enforcement mechanism: if a public signature type-checks, it
-is guaranteed to carry only elevated types.
+is guaranteed to carry only elevated types. The ELEV analyzers enforce the rest.
+
+## The ELEV analyzers (spec 0048 `.manual/001`)
+
+The rules above are checked by STL's **`Softellect.Analyzers`** (the ELEV rules),
+consumed as a package: `Elevation/Run-ElevationGate.ps1` loads the version the
+root `Directory.Build.targets` pins into `fsharp-analyzers` (installed at the
+`FSharp.Analyzers.SDK` version that package depends on) and runs it over the F#
+product projects of `Berreman.slnx`. The test projects and the vendored
+MathNetNumerics are out of scope. What the rules apply to is the root
+`.elevation-analyzers.json`; edit that file, never the analyzers.
+
+| Code | Rule | In one line |
+|---|---|---|
+| ELEV001 | NoCallSiteRewrap | no wrapping a bare local as you pass it |
+| ELEV002 | NoRawDuRender | render a DU through its own member, never `%A` / `%O` / `%s` |
+| ELEV003 | NoPrimitivesOutsideBoundary | no bare primitive in a signature outside a marked boundary |
+| ELEV004 | DotValueAtBoundaryOnly | `.value` only at the IO boundary (not gated yet) |
+| ELEV005 | NoWrapUnwrapRoundTrip | no `(T x.value)` |
+| ELEV006 | NoBidirectionalConversion | `A.toB` with `B.toA` is one entity: collapse it |
+| ELEV007 | NoBoxIntoObjSink | no elevated value boxed into an `obj` sink |
+| ELEV008 | NoPrimitiveInRecord | no bare primitive record field |
+| ELEV009 | NoPrimitiveOnResultHappyPath | the `Ok` case is elevated |
+| ELEV010 | NoPrimitiveBesideElevated | a signature naming our types elevates its primitives too |
+| ELEV011 | NoWideTuple | tuples of at most three, no repeated element type |
+| ELEV012 | NoTwoCaseDuToBool | no two-case union mapped to `bool` |
+| ELEV013 | NoSingleParameterFunction | a function of one of our types belongs on it |
+| ELEV014 / 015 / 016 / 019 | NoDuplicate… | unique type, public, DU-case and extension-member names |
+| ELEV017 | NoStringTagOnClosedSet | a multi-case union's `value` tag is an `int`, never a string |
+| ELEV018 | GuidNameMustBeGuid | a name that says Guid holds a Guid |
+| ELEV020 | ErrorCaseMustEndInErrOrExn | `*Error` cases end in `Err` / `Exn` |
+| ELEV021–024 | the wire guard | no plain bytes on a wire outside a carrier |
+
+A `P` suffix (`ELEV003P`) is the same rule on a private signature; a `T` suffix is
+a third-party namesake, never enforced. A genuine IO boundary is marked
+`[<ElevationBoundary>]` and a type that holds primitives on purpose
+`[<NumericCarrier>]` (both `Softellect.Sys`, matched by name).
+
+The gates are `elevation` (the projects a step touches, plus their dependents)
+and `elevation-full` (every project). **ELEV004 is excluded in the gate command,
+not in the rules**, as in STL. The tree's findings when the gates were set up are
+recorded in `Elevation/elevation-known-findings.json` and laid out in the ledger
+`specs/0048/.manual/002`: a recorded finding does not fail the gate, a new one
+does, and so does a recorded one that is gone. **Fix a finding and delete its
+entry in the same change; never add an entry and never re-record the list.**
 
 ---
 
@@ -302,14 +436,28 @@ This is a spec-driven, gated repository.
 
 - **Specs** live under `specs/<id>/`; each spec's gates are declared under
   `.gates/`. Work is implemented to satisfy those gates (build, unit-tests,
-  constructor-unit-tests, ui-smoke, ui-tests). First gate failure short-circuits;
-  `count_at_least` test gates must not regress the baseline count.
+  constructor-unit-tests, ui-smoke, ui-tests, elevation, elevation-full). First
+  gate failure short-circuits; `count_at_least` test gates must not regress the
+  baseline count.
+- **Specs are written under the ASG constitution**
+  (`C:\GitHub\AI-Strategy-Generator\.constitution-md`): a spec opens with its
+  wiring contract, names its minimum scope and its explicit negative scope,
+  enumerates what it reuses before it invents, names its verification surface,
+  and states the migration intent of every durable shape it changes. During
+  implementation, a non-trivial deviation from the spec is recorded when it is
+  made, with its reason; the working code is what is.
 - Implementation is driven by an **arc-runner** (see `.user-md/`), not by a
   watching human. If a slice is ambiguous, pick the interpretation most
   consistent with the surrounding code and record the choice — do not block on a
   prompt that waits for user input.
 - Route persistent worker output only into the per-arc `.artifacts/` folder,
   never `%TEMP%` / `%LOCALAPPDATA%`.
+- **Build machines run without OneDrive** (operator ruling, 2026-11-01). ASG's
+  `Disable-OneDrive.ps1` removes it for every account and keeps it out, so
+  Documents, Desktop and `%APPDATA%` are on the local disk. No build step, gate,
+  test or fixture may depend on a OneDrive folder or work around one. The product
+  still meets OneDrive on users' machines; that is the product's concern
+  (`specs/0046/.manual/020` §G), not the build's.
 
 ---
 

@@ -2,6 +2,12 @@
 
 Research and proposal only. No code was changed.
 
+**Revision 5 (2026-11-01, the operator's fourth round; spec 0048 `.manual/001`):**
+
+- **Build machines run without OneDrive.** ASG's `Disable-OneDrive.ps1` removes it, for every account. §G says what that settles for the build and what it leaves to the product.
+- **Every test gate runs on Microsoft.Testing.Platform**, so gate filters are xUnit v3's (`--filter-not-trait "Category=ui-smoke"`), not VSTest's (§Q).
+- **The ELEV gates now exist.** They found 3,757 findings in the current tree (ledger `specs/0048/.manual/002`). `021` puts that cleanup first, before this list's phases.
+
 **Revision 4 (2026-11-01, the operator's third round of comments)** — every open question is now decided (§4, §5):
 
 - **The kit root is flat;** subfolders hold only additional data (§A).
@@ -357,6 +363,9 @@ Inputs:
 - **Shipped catalogue:** `<install>\Catalogue\`.
 - **Every path is overridable** in `appsettings.json`; a Launcher "Data locations" panel shows them, each with "Open folder".
 - `CLAUDE.md`'s "never `%LOCALAPPDATA%`" rule covers arc-runner WORKER output, not product data.
+- **Build machines have no OneDrive** (operator, 2026-11-01). ASG's `Disable-OneDrive.ps1` removes it from every build machine, for every account. It sets the policies that keep it out, and refuses to run while a cloud-only file would be lost.
+  - **On a build machine:** `Documents`, `%APPDATA%` and `%LOCALAPPDATA%` are on the local disk. No test, fixture, acceptance kit or gate may rely on a OneDrive folder or work around one. Test kits and databases live under the test run's output directory (§Q), never under `Documents`.
+  - **On users' machines,** OneDrive may still own `Documents`. That is why the rules above hold: the database is local in `%LOCALAPPDATA%`, never in a synced folder; kits are plain files written atomically, with a lock.
 
 ### H. Exchange
 
@@ -645,7 +654,7 @@ Inputs:
   1. **Data identity:** the observations the study loads equal the harness's, exactly.
   2. **Model identity:** the generated parameter axes equal `AbsorbingTriclinicParameters.axes`, and the study's residual vector at `perturbedStart` equals the harness's `throughputResidualFor` vector (≤ 1e-12 relative).
   3. **Fit:** one seed through the study engine recovers the 15 constants and the derived quantities (birefringences, isotropic absorption) within the bands `AbsorbingBiaxialNoisyTests` asserts. Those band checks move into one shared function that both tests call.
-  4. **Full five-seed ensemble** (same statistics through the reused `statisticsFor`): marked xUnit v3 `Explicit`, so it runs on demand only. It costs the existing test's ~16 minutes, and the `ui-tests` gate filter (`Category!=ui-smoke`) would otherwise pick it up.
+  4. **Full five-seed ensemble** (same statistics through the reused `statisticsFor`): marked xUnit v3 `Explicit`, so it runs on demand only. It costs the existing test's ~16 minutes, and the `ui-tests` gate filter (`--filter-not-trait "Category=ui-smoke"`, MTP since spec 0048 `.manual/001`) would otherwise pick it up.
 - **Reuse, so that ONE implementation exists:**
   - **Promoted to product** (`OpticalConstructor.Optimization`), because the study engine, the "simulate measurement" path and the Planner need them:
     - the bench noise model (`NoiseSeed`, `AngleUncertainty`, `ElementUncertainty`, `ThroughputUncertainty`, `NoiseParam`, `UniformDeviateProvider`, `disturb`, `misread`, `misreadAbsolute`, `noisyObserveWith`, `noisyObserveAbsoluteWith`);

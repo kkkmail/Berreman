@@ -1,19 +1,30 @@
 name: ui-smoke
-description: Headless launch/render smoke gate for the Optical Constructor FuncUI app — runs the Avalonia.Headless smoke test (trait Category=ui-smoke) that opens the host, asserts OnFrameworkInitializationCompleted ran, and renders one frame for every panel/page view without throwing (spec 0024 §U1.6 / §U1.7 / AC-U1.3)
+description: Headless launch/render smoke gate for the Optical Constructor FuncUI app — runs the Avalonia.Headless smoke test (trait Category=ui-smoke) that opens the host, asserts OnFrameworkInitializationCompleted ran, and renders one frame for every panel/page view without throwing (spec 0024 §U1.6 / §U1.7 / AC-U1.3) — on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
 kind: command
-command: dotnet test Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConstructor.Ui.Tests.fsproj -c Release --filter Category=ui-smoke
+phase: verify
+command: dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename ui-smoke.trx --filter-trait "Category=ui-smoke" {selector}
+cwd: Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests
 pass_when:
   exit_code: 0
+  stdout_match: '(?m)^Test run summary: Passed!'
+  failure_capture: '(?m)^failed (.+) \((?:\d+(?:ms|s|m|h) ?)+\)\r?$'
   count_at_least:
-    capture: "Passed:\\s*(\\d+)"
+    capture: 'succeeded:\s*(\d+)'
     baseline_key: ui_smoke_tests
+result_capture: {"format": "trx", "path": "TestResults/ui-smoke.trx", "skip_policy": "fail"}
 runtime_estimate_seconds: 180
-tags:
-- test
-- smoke
+tags: [test, smoke]
 applies_to:
-- paths:
-  - 'Berreman/OpticalConstructor/OpticalConstructor.Ui/**'
-  - 'Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/**'
-  - 'Berreman/OpticalConstructor/OpticalConstructor.App/**'
+  - paths:
+      - "Berreman/OpticalConstructor/OpticalConstructor.Ui/**"
+      - "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/**"
+      - "Berreman/OpticalConstructor/OpticalConstructor.App/**"
 qualifier: smoke
+requires_gates: [build]
+selector:
+  unit: class
+  template: '--filter-method "{value}.*" --filter-method "{value}"'
+  joiner: " "
+  arg: "{rendered}"
+whole_suite: light
+runtime_actual_whole_seconds: 27

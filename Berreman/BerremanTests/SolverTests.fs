@@ -885,7 +885,7 @@ type SolverTests() =
             verifyVectorEqualityE output "eT" eT t.expected.transmittedValue.e
             verifyVectorEqualityH output "hT" hT t.expected.transmittedValue.h
         | Intensity ->
-            Skip.If(true, "Intensity based checks are not implemented yet.")
+            Assert.Skip "Intensity based checks are not implemented yet."
 
 
     let runTestMuellerMatrixR descr info (sys : OpticalSystem) =
@@ -939,13 +939,13 @@ type SolverTests() =
     [<Fact>]
     member _.basicSolverTest0 () = runTest (data.[0]) Field
 
-    [<SkippableFact>]
+    [<Fact>]
     member _.basicSolverTest1 () = runTest (data.[1]) Intensity
 
-    [<SkippableFact>]
+    [<Fact>]
     member _.basicSolverTest2 () = runTest (data.[2]) Intensity
 
-    [<SkippableFact>]
+    [<Fact>]
     member _.basicSolverTest3 () = runTest (data.[3]) Intensity
 
     [<Fact>]

@@ -1,15 +1,25 @@
 name: unit-tests
-description: BerremanTests (F# unit tests for the optics solver)
+description: BerremanTests (F# unit tests for the optics solver) on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
 kind: command
-command: dotnet test --no-build -c Release
+phase: verify
+command: dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename unit-tests.trx {selector}
 cwd: Berreman/BerremanTests
 pass_when:
   exit_code: 0
+  stdout_match: '(?m)^Test run summary: Passed!'
+  failure_capture: '(?m)^failed (.+) \((?:\d+(?:ms|s|m|h) ?)+\)\r?$'
   count_at_least:
-    capture: "Passed:\\s*(\\d+)"
+    capture: 'succeeded:\s*(\d+)'
     baseline_key: berreman_unit_tests
+result_capture: {"format": "trx", "path": "TestResults/unit-tests.trx", "skip_policy": "allow"}
 runtime_estimate_seconds: 180
 tags: [test]
 applies_to:
   - paths: ["Berreman/BerremanTests/**", "Berreman/Berreman/**", "Berreman/OpticalModel/**", "Berreman/OpticalProperties/**", "Berreman/**/*.fs", "Berreman/**/*.fsproj"]
 qualifier: unit
+requires_gates: [build]
+selector:
+  unit: class
+  template: '--filter-method "{value}.*" --filter-method "{value}"'
+  joiner: " "
+  arg: "{rendered}"

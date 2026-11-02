@@ -1,0 +1,26 @@
+// The Softellect elevation analyzers (ELEV rules, the Softellect.Analyzers package) - what they apply to here.
+//
+// Every analyzed project walks UP from its own folder to the first `.elevation-analyzers.json`, so this one
+// file at the repository root governs every project in it. Every key is optional: an absent key keeps the
+// analyzers' built-in default, which is the vocabulary STL's own file spells out (C:\GitHub\Softellect\
+// .elevation-analyzers.json). Only what differs for this repository is written here. Comments and trailing
+// commas are allowed, because the reason for an entry belongs beside it.
+//
+// Elevation/Run-ElevationGate.ps1 runs them (spec 0048 .manual/001).
+{
+    // Every product assembly of Berreman.slnx is named Softellect.Berreman.*. The vendored
+    // MathNet.Numerics.FSharp is not ours and stays out.
+    "inScopePatterns": [
+        "^Softellect\\.Berreman\\."
+    ],
+    // Whose names are OURS to the duplicate-name rules (ELEV014/015/016/019): this repository and STL,
+    // whose Softellect.Sys it references. A namesake anywhere else is third-party, filed as an ELEVnnnT
+    // warning that no gate enforces.
+    "ownAssemblyPatterns": [
+        "^Softellect\\."
+    ],
+    // STL's two entries name STL files; nothing in this repository is harness code inside a product project.
+    "excludedFilePatterns": [],
+    // The spotlight stays empty; narrow a run with $env:SOFTELLECT_ELEVATION_INCLUDE instead.
+    "includedFilePatterns": []
+}
