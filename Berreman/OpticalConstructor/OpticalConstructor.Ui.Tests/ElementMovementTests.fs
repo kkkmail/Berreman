@@ -43,13 +43,13 @@ module ElementMovementTests =
         let dragged =
             m0
             |> updateElementMovement (BeginDrag { sx = TableScene.center.sx; sy = TableScene.center.sy })
-            |> updateElementMovement (DragTo { sx = TableScene.center.sx + TableScene.pixelsPerMeter * 0.4; sy = TableScene.center.sy })
+            |> updateElementMovement (DragTo { sx = TableScene.center.sx + TableScene.pixelsPerMeter.value * 0.4; sy = TableScene.center.sy })
         Assert.True(dragged.dragging)
         Assert.True(close (elementX dragged) 0.4)
         // A press far OFF the element does not start a drag, so the subsequent move is inert.
         let notDragged =
             m0
             |> updateElementMovement (BeginDrag { sx = TableScene.center.sx; sy = TableScene.center.sy + 250.0 })
-            |> updateElementMovement (DragTo { sx = TableScene.center.sx + TableScene.pixelsPerMeter * 0.4; sy = TableScene.center.sy })
+            |> updateElementMovement (DragTo { sx = TableScene.center.sx + TableScene.pixelsPerMeter.value * 0.4; sy = TableScene.center.sy })
         Assert.False(notDragged.dragging)
         Assert.True(close (elementX notDragged) 0.0)

@@ -19,6 +19,24 @@ module Groups =
         | MutuallyExclusive
         | MultiSelect
 
+    /// Whether a group member is currently in the beam (G.1.2). On the wire it is the schema's
+    /// boolean `inBeam`, `true` for `InBeam` (`ProjectJson`'s converter).
+    type BeamPresence =
+        | InBeam
+        | OutOfBeam
+
+    /// A member's position in its group's `members` (G.1.2).
+    type GroupMemberIndex =
+        | GroupMemberIndex of int
+
+        member this.value = let (GroupMemberIndex i) = this in i
+
+    /// An element group's name (G.1.1).
+    type GroupName =
+        | GroupName of string
+
+        member this.value = let (GroupName n) = this in n
+
     /// One member of an element group (G.1.1): its FULL configuration (a reused
     /// `Placement.ElementPlacement`, so a member carries its placement, the three rotations with
     /// per-axis locks, value id, emission metadata, and display unit) plus whether it is
@@ -27,12 +45,12 @@ module Groups =
     type GroupMember =
         {
             placement : Placement.ElementPlacement
-            inBeam : bool
+            inBeam : BeamPresence
         }
 
         /// A member freshly added to a group — its stored configuration, out of the beam.
         static member ofPlacement (p : Placement.ElementPlacement) : GroupMember =
-            { placement = p; inBeam = false }
+            { placement = p; inBeam = OutOfBeam }
 
     /// A named, reusable element group (G.1.1): a set of member elements, each holding its full
     /// configuration, placeable on / removable from the central-ray path as a unit, and one of
@@ -41,13 +59,13 @@ module Groups =
     /// (G.1.3); that pin/reuse is the favourites notion, this is the on-table group itself.
     type ElementGroup =
         {
-            name : string
+            name : GroupName
             mode : MemberMode
             members : GroupMember list
         }
 
         /// A new, empty named group of the given mode.
-        static member create (name : string) (mode : MemberMode) : ElementGroup =
+        static member create (name : GroupName) (mode : MemberMode) : ElementGroup =
             { name = name; mode = mode; members = [] }
 
     /// Operations over an `ElementGroup` that change only `inBeam` (never a member's stored
@@ -56,7 +74,7 @@ module Groups =
 
         /// The members currently in the beam (G.1.2).
         let inBeam (g : ElementGroup) : GroupMember list =
-            g.members |> List.filter (fun m -> m.inBeam)
+            g.members |> List.filter (fun m -> m.inBeam = InBeam)
 
         /// Add a member (its full configuration, out of the beam) to the group (G.1.1).
         let addMember (p : Placement.ElementPlacement) (g : ElementGroup) : ElementGroup =
@@ -68,32 +86,44 @@ module Groups =
         ///   * `MultiSelect` — members toggle independently (zero, one, or several in the beam).
         /// Either way every member's stored `placement` is preserved — only `inBeam` flips (AC-G1).
         /// An out-of-range index is a no-op (the group is returned unchanged).
-        let setInBeam (i : int) (on : bool) (g : ElementGroup) : ElementGroup =
+        let setInBeam (index : GroupMemberIndex) (presence : BeamPresence) (g : ElementGroup) : ElementGroup =
+            let i = index.value
             if i < 0 || i >= List.length g.members then g
             else
                 let members' =
                     g.members
                     |> List.mapi (fun j m ->
-                        match g.mode with
-                        | MutuallyExclusive ->
-                            if j = i then { m with inBeam = on }
-                            elif on then { m with inBeam = false }   // exclusivity: others leave the beam
-                            else m
-                        | MultiSelect ->
-                            if j = i then { m with inBeam = on } else m)
+                        match g.mode, presence with
+                        | MutuallyExclusive, _ when j = i -> { m with inBeam = presence }
+                        | MutuallyExclusive, InBeam -> { m with inBeam = OutOfBeam }   // exclusivity: others leave the beam
+                        | MutuallyExclusive, OutOfBeam -> m
+                        | MultiSelect, _ -> if j = i then { m with inBeam = presence } else m)
                 { g with members = members' }
 
         /// Swap which member of a mutually-exclusive group is in the beam (G.1.2): member `i`
         /// goes in, every other member goes out. A LOSSLESS swap — every member's stored
         /// configuration is preserved, so swapping back restores the previous member exactly
         /// (AC-G1). An out-of-range index is a no-op.
-        let swapTo (i : int) (g : ElementGroup) : ElementGroup =
+        let swapTo (index : GroupMemberIndex) (g : ElementGroup) : ElementGroup =
+            let i = index.value
             if i < 0 || i >= List.length g.members then g
-            else { g with members = g.members |> List.mapi (fun j m -> { m with inBeam = (j = i) }) }
+            else { g with members = g.members |> List.mapi (fun j m -> { m with inBeam = (if j = i then InBeam else OutOfBeam) }) }
 
     // -----------------------------------------------------------------------
     // Workbench toggle sets (Part H / R-5).
     // -----------------------------------------------------------------------
+
+    /// What a toggle turns on or off (H.1): an experiment label, an element value-id or a group name.
+    type ToggleName =
+        | ToggleName of string
+
+        member this.value = let (ToggleName n) = this in n
+
+    /// A toggle's on/off state across its collection (H.1.1). On the wire it is the schema's
+    /// boolean `enabled`, `true` for `ToggleEnabled` (`ProjectJson`'s converter).
+    type ToggleState =
+        | ToggleEnabled
+        | ToggleDisabled
 
     /// A named on/off toggle (H.1): an experiment, an element, or a group within a collection.
     /// `name` is the experiment label / element value-id / group name; `enabled` is its current
@@ -101,12 +131,18 @@ module Groups =
     /// in the JSON), so on/off state round-trips through the groups/collections file (AC-H1).
     type Toggle =
         {
-            name : string
-            enabled : bool
+            name : ToggleName
+            enabled : ToggleState
         }
 
-        static member on (name : string) : Toggle = { name = name; enabled = true }
-        static member off (name : string) : Toggle = { name = name; enabled = false }
+        static member on (name : ToggleName) : Toggle = { name = name; enabled = ToggleEnabled }
+        static member off (name : ToggleName) : Toggle = { name = name; enabled = ToggleDisabled }
+
+    /// A workbench toggle set's name (H.1.1).
+    type ToggleSetName =
+        | ToggleSetName of string
+
+        member this.value = let (ToggleSetName n) = this in n
 
     /// A workbench toggle set (H.1.1): a named set of experiments sharing the same sample(s),
     /// with elements and groups turned on and off across the whole set. Toggle sets are stored
@@ -116,9 +152,9 @@ module Groups =
     /// `Experiments` concept (`ElementId.fs`) exclusively.
     type WorkbenchToggleSet =
         {
-            name : string
+            name : ToggleSetName
             /// The shared sample value-ids the experiments in the toggle set revolve around (H.1.1).
-            sampleValueIds : string list
+            sampleValueIds : Placement.ElementValueId list
             /// The experiments grouped by the toggle set, each on or off (H.1.1).
             experiments : Toggle list
             /// Elements (by value-id) toggled on/off across the toggle set (H.1.1).
@@ -128,13 +164,13 @@ module Groups =
         }
 
         /// A new, empty toggle set around the given shared sample value-ids.
-        static member create (name : string) (sampleValueIds : string list) : WorkbenchToggleSet =
+        static member create (name : ToggleSetName) (sampleValueIds : Placement.ElementValueId list) : WorkbenchToggleSet =
             { name = name; sampleValueIds = sampleValueIds; experiments = []; elements = []; groups = [] }
 
     /// Set the on/off state of a named toggle within a `Toggle list` (H.1.1) — the shared
     /// "turn an experiment / element / group on or off across the collection" operation. A name
     /// not present is a no-op.
-    let setToggle (name : string) (enabled : bool) (toggles : Toggle list) : Toggle list =
+    let setToggle (name : ToggleName) (enabled : ToggleState) (toggles : Toggle list) : Toggle list =
         toggles |> List.map (fun t -> if t.name = name then { t with enabled = enabled } else t)
 
     // -----------------------------------------------------------------------

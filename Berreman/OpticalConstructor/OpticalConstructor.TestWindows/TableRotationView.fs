@@ -229,9 +229,9 @@ let updateTableRotation (msg : TableRotationMsg) (model : TableRotationModel) : 
         let selection =
             match model.drag with
             | TableRotationPressed start ->
-                if TableScene.tableHit model.view model.table start
-                then TableRotationTableSelected
-                else TableUnselected
+                match TableScene.tableHit model.view model.table start with
+                | InsidePolygon -> TableRotationTableSelected
+                | OutsidePolygon -> TableUnselected
             | _ -> model.selection
         { model with selection = selection; drag = TableRotationNotPressed }
     | TableRotationWheel (mods, notches) ->

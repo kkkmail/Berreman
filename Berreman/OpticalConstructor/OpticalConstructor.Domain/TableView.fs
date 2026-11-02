@@ -30,10 +30,46 @@ module TableView =
     /// A point projected to the screen / canvas in logical (pixel) units. Screen +x runs to
     /// the right and +y runs DOWN (the Avalonia convention). Pure floats — the FuncUI binding
     /// maps it to an `Avalonia.Point`.
+    [<Softellect.Sys.NumericCarrier("the components of a screen-frame 2-vector in logical pixels, the numbers every projection, hit test, drag and drawing of the scene computes with (R3; the Avalonia-free twin of Avalonia.Point, as Vector3 is the table frame's)")>]
     type ScreenPoint =
         {
             sx : float
             sy : float
+        }
+
+    /// The base scale of the projection, in screen pixels per canonical meter; the view's
+    /// zoom multiplies it.
+    type PixelsPerMeter =
+        | PixelsPerMeter of float
+
+        member this.value = let (PixelsPerMeter p) = this in p
+
+    /// Where a screen point lies against a projected polygon.
+    type PolygonContainment =
+        | InsidePolygon
+        | OutsidePolygon
+
+        /// The containment past one more crossing of the polygon's boundary (the even-odd rule).
+        member this.crossed : PolygonContainment =
+            match this with
+            | InsidePolygon -> OutsidePolygon
+            | OutsidePolygon -> InsidePolygon
+
+    /// One of the eight corners of a box, by its position in `OpticalTable.plateCorners3D`'s
+    /// order (an element box's corners follow the same order).
+    type BoxCorner =
+        | BoxCorner of int
+
+        member this.value = let (BoxCorner i) = this in i
+
+        /// This corner's entry in a box's eight corners, as projected or drawn.
+        member this.pick (corners : 'Corner array) : 'Corner = corners.[this.value]
+
+    /// One edge of a box, between two of its corners.
+    type BoxEdge =
+        {
+            fromCorner : BoxCorner
+            toCorner : BoxCorner
         }
 
     /// Rotate a table-frame point about the fixed +Z (viewing) axis by `a` — the R1 spin.
@@ -66,64 +102,51 @@ module TableView =
     /// `pixelsPerMeter × zoom`, flip Y (screen Y runs down), and translate by the canvas
     /// `center` plus the view pan. At the default top-down `(0, 0, 0)` / no-pan view this is
     /// exactly `center + (s·x, -s·y)` — the straight top-down layout.
-    let project (pixelsPerMeter : float) (center : ScreenPoint) (view : TableViewState) (p : Vector3) : ScreenPoint =
+    let project (pixelsPerMeter : PixelsPerMeter) (center : ScreenPoint) (view : TableViewState) (p : Vector3) : ScreenPoint =
         let r = rotate view p
-        let s = pixelsPerMeter * view.zoom.value
+        let s = pixelsPerMeter.value * view.zoom.value
         {
             sx = center.sx + view.panX.value + s * r.x
             sy = center.sy + view.panY.value - s * r.y
         }
 
-    /// The eight corners of the optical-table plate as a 3-D box centred at the table origin:
-    /// LENGTH along +X, WIDTH along +Y, THICKNESS along +Z (all canonical meters). The four
-    /// TOP-face corners (z = +T/2) come first — counter-clockwise from `(-L/2, -W/2)` — then
-    /// the four BOTTOM-face corners (z = -T/2) in the same order, so `plateEdges` can index them.
-    let plateCorners3D (table : OpticalTable) : Vector3 list =
-        let hl = (table.length / 2.0) / 1.0<meter>
-        let hw = (table.width / 2.0) / 1.0<meter>
-        let ht = (table.thickness / 2.0) / 1.0<meter>
-        [ Vector3.create (-hl) (-hw) ht        // 0 top
-          Vector3.create   hl  (-hw) ht        // 1 top
-          Vector3.create   hl    hw  ht        // 2 top
-          Vector3.create (-hl)   hw  ht        // 3 top
-          Vector3.create (-hl) (-hw) (-ht)     // 4 bottom
-          Vector3.create   hl  (-hw) (-ht)     // 5 bottom
-          Vector3.create   hl    hw  (-ht)     // 6 bottom
-          Vector3.create (-hl)   hw  (-ht) ]   // 7 bottom
-
-    /// The twelve edges of the plate box as index pairs into `plateCorners3D` (4 top-face, 4
-    /// bottom-face, 4 vertical).
-    let plateEdges : (int * int) list =
-        [ (0, 1); (1, 2); (2, 3); (3, 0)       // top face
-          (4, 5); (5, 6); (6, 7); (7, 4)       // bottom face
-          (0, 4); (1, 5); (2, 6); (3, 7) ]     // verticals
-
-    /// The four TOP-face corners (z = +T/2) — the surface the elements sit on, used as the
-    /// clickable footprint for table selection (§C.3).
-    let plateTopFace (table : OpticalTable) : Vector3 list =
-        plateCorners3D table |> List.take 4
+    /// The twelve edges of a box over its eight corners (`OpticalTable.plateCorners3D`'s order):
+    /// 4 top-face, 4 bottom-face, 4 vertical.
+    let plateEdges : BoxEdge list =
+        [ { fromCorner = BoxCorner 0; toCorner = BoxCorner 1 }       // top face
+          { fromCorner = BoxCorner 1; toCorner = BoxCorner 2 }
+          { fromCorner = BoxCorner 2; toCorner = BoxCorner 3 }
+          { fromCorner = BoxCorner 3; toCorner = BoxCorner 0 }
+          { fromCorner = BoxCorner 4; toCorner = BoxCorner 5 }       // bottom face
+          { fromCorner = BoxCorner 5; toCorner = BoxCorner 6 }
+          { fromCorner = BoxCorner 6; toCorner = BoxCorner 7 }
+          { fromCorner = BoxCorner 7; toCorner = BoxCorner 4 }
+          { fromCorner = BoxCorner 0; toCorner = BoxCorner 4 }       // verticals
+          { fromCorner = BoxCorner 1; toCorner = BoxCorner 5 }
+          { fromCorner = BoxCorner 2; toCorner = BoxCorner 6 }
+          { fromCorner = BoxCorner 3; toCorner = BoxCorner 7 } ]
 
     /// Whether a screen point lies inside a projected polygon — the even-odd ray cast (the
     /// same rule `ConstructorView.hitTest` uses), closing the polygon by wrapping the last
     /// vertex back to the first.
-    let pointInPolygon (poly : ScreenPoint list) (pt : ScreenPoint) : bool =
+    let pointInPolygon (poly : ScreenPoint list) (pt : ScreenPoint) : PolygonContainment =
         match poly with
-        | [] | [ _ ] | [ _; _ ] -> false
+        | [] | [ _ ] | [ _; _ ] -> OutsidePolygon
         | first :: _ ->
             List.pairwise (poly @ [ first ])
             |> List.fold
-                (fun inside (a, b) ->
+                (fun containment (a, b) ->
                     if (a.sy > pt.sy) <> (b.sy > pt.sy) then
                         let xAtY = a.sx + (pt.sy - a.sy) * (b.sx - a.sx) / (b.sy - a.sy)
-                        if pt.sx < xAtY then not inside else inside
-                    else inside)
-                false
+                        if pt.sx < xAtY then containment.crossed else containment
+                    else containment)
+                OutsidePolygon
 
     /// Whether a screen click hits the table: the point lies on the projected top face of the
     /// plate (§C.3 / AC-C3 — clicking the table selects it). Pure, so the test window's
     /// select / unselect is provable without a real pointer event.
-    let tableHit (pixelsPerMeter : float) (center : ScreenPoint) (view : TableViewState) (table : OpticalTable) (pt : ScreenPoint) : bool =
-        plateTopFace table
+    let tableHit (pixelsPerMeter : PixelsPerMeter) (center : ScreenPoint) (view : TableViewState) (table : OpticalTable) (pt : ScreenPoint) : PolygonContainment =
+        table.plateTopFace
         |> List.map (project pixelsPerMeter center view)
         |> fun face -> pointInPolygon face pt
 
@@ -131,7 +154,7 @@ module TableView =
     /// a screen point back to its table-frame point. `None` when the view is edge-on (the
     /// plane projects to a line, det ≈ 0). Proves the projection round-trips and maps a click
     /// on the plane to a table point.
-    let unprojectToTablePlane (pixelsPerMeter : float) (center : ScreenPoint) (view : TableViewState) (pt : ScreenPoint) : TablePoint option =
+    let unprojectToTablePlane (pixelsPerMeter : PixelsPerMeter) (center : ScreenPoint) (view : TableViewState) (pt : ScreenPoint) : TablePoint option =
         let c1, s1 = cos view.r1.value, sin view.r1.value
         let c2, s2 = cos view.r2.value, sin view.r2.value
         let c3, s3 = cos view.r3.value, sin view.r3.value
@@ -143,7 +166,7 @@ module TableView =
         let det = a * d - b * cc
         if abs det < 1.0e-12 then None
         else
-            let s = pixelsPerMeter * view.zoom.value
+            let s = pixelsPerMeter.value * view.zoom.value
             let xr = (pt.sx - center.sx - view.panX.value) / s
             let yr = -(pt.sy - center.sy - view.panY.value) / s
             let x = (d * xr - b * yr) / det

@@ -223,7 +223,10 @@ let private selectionAt (pt : ScreenPoint) (m : SnapToReflectedModel) : Selectio
         |> List.tryHead
     match nearest with
     | Some (i, d) when d <= elementSelectRadiusPx -> ElementSelected i
-    | _ -> if TableScene.tableHit m.view m.table pt then SnapToReflectedTableSelected else NothingSelected
+    | _ ->
+        match TableScene.tableHit m.view m.table pt with
+        | InsidePolygon -> SnapToReflectedTableSelected
+        | OutsidePolygon -> NothingSelected
 
 let private setSelectedAxis (axis : RotationControls.RotationAxis) (v : float) (m : SnapToReflectedModel) : SnapToReflectedModel =
     let a = Angle.degree (snapToReflectedNormalizeDegrees v * 1.0<deg>)

@@ -24,7 +24,7 @@ module TableScene =
     let canvasWidth : float = 820.0
     let canvasHeight : float = 560.0
     let center : ScreenPoint = { sx = canvasWidth / 2.0; sy = canvasHeight / 2.0 }
-    let pixelsPerMeter : float = 200.0
+    let pixelsPerMeter : PixelsPerMeter = PixelsPerMeter 200.0
 
     // ----- projection / hit-test -----
 
@@ -32,7 +32,7 @@ module TableScene =
     let toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
 
     /// Whether a screen point lands on the plate (used to (de)select the table).
-    let tableHit (view : TableViewState) (table : OpticalTable) (sp : ScreenPoint) : bool =
+    let tableHit (view : TableViewState) (table : OpticalTable) (sp : ScreenPoint) : PolygonContainment =
         TableView.tableHit pixelsPerMeter center view table sp
 
     // ----- the table view gestures (pure `TableViewState` transforms; any R3 lock is the caller's job) -----
@@ -74,7 +74,7 @@ module TableScene =
     /// The plate as a 3-D box (top face + the twelve edges, so an R2/R3 tilt is visible), highlighting
     /// when the table is the selected object.
     let plateViews (view : TableViewState) (table : OpticalTable) (selected : bool) : IView list =
-        let corners = TableView.plateCorners3D table |> List.map (project view) |> List.toArray
+        let corners = table.plateCorners3D |> List.map (project view) |> List.toArray
         let topFace = corners.[0 .. 3] |> Array.map toPoint |> Array.toList
         let face =
             Polygon.create [
@@ -85,7 +85,7 @@ module TableScene =
             ] :> IView
         let edges =
             TableView.plateEdges
-            |> List.map (fun (a, b) -> line corners.[a] corners.[b] edgeColor (if selected then 2.0 else 1.0))
+            |> List.map (fun edge -> line (edge.fromCorner.pick corners) (edge.toCorner.pick corners) edgeColor (if selected then 2.0 else 1.0))
         face :: edges
 
     /// The default central ray (source → detector) plus the source / detector markers.

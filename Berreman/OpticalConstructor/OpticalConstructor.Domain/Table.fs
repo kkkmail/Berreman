@@ -75,6 +75,28 @@ module Table =
                 displayUnit = Units.Millimeter
             }
 
+        /// The eight corners of the plate as a 3-D box centred at the table origin: LENGTH along +X,
+        /// WIDTH along +Y, THICKNESS along +Z (canonical meters). The four TOP-face corners (z = +T/2)
+        /// come first, counter-clockwise from `(-L/2, -W/2)`, then the four BOTTOM-face corners
+        /// (z = -T/2) in the same order, so `TableView.plateEdges` can index them.
+        member table.plateCorners3D : Placement.Vector3 list =
+            let hl = (table.length / 2.0) / 1.0<meter>
+            let hw = (table.width / 2.0) / 1.0<meter>
+            let ht = (table.thickness / 2.0) / 1.0<meter>
+            [ Placement.Vector3.create (-hl) (-hw) ht        // 0 top
+              Placement.Vector3.create   hl  (-hw) ht        // 1 top
+              Placement.Vector3.create   hl    hw  ht        // 2 top
+              Placement.Vector3.create (-hl)   hw  ht        // 3 top
+              Placement.Vector3.create (-hl) (-hw) (-ht)     // 4 bottom
+              Placement.Vector3.create   hl  (-hw) (-ht)     // 5 bottom
+              Placement.Vector3.create   hl    hw  (-ht)     // 6 bottom
+              Placement.Vector3.create (-hl)   hw  (-ht) ]   // 7 bottom
+
+        /// The four TOP-face corners (z = +T/2): the surface the elements sit on, the clickable
+        /// footprint for table selection (§C.3).
+        member table.plateTopFace : Placement.Vector3 list =
+            table.plateCorners3D |> List.take 4
+
     /// A module-level alias for `OpticalTable.defaultTable` so a fresh project literal
     /// reads `table = Table.defaultTable` (C.1.2).
     let defaultTable : OpticalTable = OpticalTable.defaultTable

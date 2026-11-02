@@ -21,6 +21,18 @@ open OpticalConstructor.Domain.BeamTree
 /// nm/µm/mm entry is converted at the UI boundary only (Part A canonical-units rule).
 module CurvedElements =
 
+    /// The conic constant `k` of an aspheric figure (§C.2): `0` is a sphere.
+    type ConicConstant =
+        | ConicConstant of double
+
+        member this.value = let (ConicConstant k) = this in k
+
+    /// How many local flat zones a curved surface is sampled into (§C.3).
+    type ZoneCount =
+        | ZoneCount of int
+
+        member this.value = let (ZoneCount n) = this in n
+
     /// The surface figure (§C.2). Exactly two cases for the committed [Core] scope
     /// (010 line 88): `Spherical` — curvature fully described by
     /// `CurvedSurface.radiusOfCurvature` — and `Aspheric` — a conic constant plus an
@@ -28,7 +40,7 @@ module CurvedElements =
     /// freeform / diffractive case is admitted; they are absent from 010.
     type SurfaceFigure =
         | Spherical
-        | Aspheric of conic : double * evenPolynomial : double<meter> list
+        | Aspheric of conic : ConicConstant * evenPolynomial : double<meter> list
 
     /// The curved-surface geometry record (§C.1). One physical surface = one
     /// `CurvedSurface`; a biconvex/meniscus lens is two records (§C.4), so each
@@ -82,7 +94,8 @@ module CurvedElements =
     /// center to edge (010 line 92, §C.9, [Core]). A dimensionless fraction; the
     /// thickness it scales stays `double<meter>` — the 5% is never stored as a
     /// non-SI quantity, only applied to meter-valued `Thickness.Thickness` layers.
-    let depthGradingFraction = 0.05
+    [<Literal>]
+    let depthGradingFraction : float = 0.05
 
     /// Surface sag `z(r)` (§C.2/§C.4): the surface height at radial position `r` for
     /// the given `figure` and signed `radiusOfCurvature`. For `Spherical` this is the
@@ -114,7 +127,7 @@ module CurvedElements =
                 evenPolynomial
                 |> List.mapi (fun i a -> a * (rho ** (2.0 * float (i + 1))))
             let poly = (0.0<meter>, polyTerms) ||> List.fold (+)
-            conicSag conic + poly
+            conicSag conic.value + poly
 
     /// Local surface-normal tilt (the local AOI shift) at radial position `r`,
     /// derived from `sag` (§C.2): the arctangent of the local sag slope. `sag` is
@@ -138,7 +151,8 @@ module CurvedElements =
     /// (radius 0) has `localAoiShift = Angle.zero`. Every zone shares the single
     /// immutable `CurvedSurface.coating` instance by value (§C.8); grading (§C.9) is
     /// applied later and per zone, never here.
-    let sampleZones (surface : CurvedSurface) (zoneCount : int) : LocalZone list =
+    let sampleZones (surface : CurvedSurface) (zoneCount : ZoneCount) : LocalZone list =
+        let zoneCount = zoneCount.value
         if zoneCount < 1 then
             invalidArg "zoneCount" "sampleZones zoneCount must be >= 1."
 

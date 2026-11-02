@@ -346,10 +346,10 @@ let private elementView (i : int) (model : ElementRotationModel) (e : TestElemen
     let weight = if selected then 2.5 else 1.0
     let edges =
         TableView.plateEdges
-        |> List.map (fun (a, b) ->
+        |> List.map (fun edge ->
             Line.create [
-                Line.startPoint corners.[a]
-                Line.endPoint corners.[b]
+                Line.startPoint (edge.fromCorner.pick corners)
+                Line.endPoint (edge.toCorner.pick corners)
                 Line.stroke (brush boxColor)
                 Line.strokeThickness weight
             ] :> IView)

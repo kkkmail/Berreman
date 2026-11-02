@@ -81,7 +81,7 @@ module CurvedElementsTests =
     [<Fact>]
     let ``AC-C2 sampleZones n=1 returns the axis zone with Angle.zero shift`` () =
         let surface = sphericalSurface (50.0<mm> * mmToMeter) (10.0<mm> * mmToMeter)
-        let zones = sampleZones surface 1
+        let zones = sampleZones surface (ZoneCount 1)
         Assert.Equal(1, List.length zones)
         Assert.Equal(0.0<meter> / 1.0<meter>, zones.[0].radialPosition / 1.0<meter>, 12)
         Assert.Equal(Angle.zero, zones.[0].localAoiShift)
@@ -90,9 +90,9 @@ module CurvedElementsTests =
     let ``AC-C2 sampleZones n returns n zones uniform in radius with axis shift zero`` () =
         let aperture = 10.0<mm> * mmToMeter
         let surface = sphericalSurface (50.0<mm> * mmToMeter) aperture
-        let n = 5
+        let n = ZoneCount 5
         let zones = sampleZones surface n
-        Assert.Equal(n, List.length zones)
+        Assert.Equal(n.value, List.length zones)
 
         // Axis zone is exactly on-axis with no shift.
         Assert.Equal(0.0<meter> / 1.0<meter>, zones.[0].radialPosition / 1.0<meter>, 12)
@@ -101,7 +101,7 @@ module CurvedElementsTests =
         // Uniform spacing from 0 to semiAperture: r_i = aperture * i/(n-1).
         zones
         |> List.iteri (fun i z ->
-            let expected = (aperture / 1.0<meter>) * (float i / float (n - 1))
+            let expected = (aperture / 1.0<meter>) * (float i / float (n.value - 1))
             Assert.Equal(expected, z.radialPosition / 1.0<meter>, 12))
 
         // Edge zone lands exactly on the aperture and carries a non-zero shift.
@@ -114,7 +114,7 @@ module CurvedElementsTests =
     [<Fact>]
     let ``AC-C3 axis zone solveZone reproduces the flat solver`` () =
         let surface = sphericalSurface (50.0<mm> * mmToMeter) (10.0<mm> * mmToMeter)
-        let axis = (sampleZones surface 3).[0]
+        let axis = (sampleZones surface (ZoneCount 3)).[0]
         let p = SolverParameters.defaultValue
 
         let zoneEms = (solveZone light axis p).emSys
@@ -127,7 +127,7 @@ module CurvedElementsTests =
     let ``AC-C3 off-axis solveZone shifts incidenceAngle via rotateY`` () =
         let inclined = IncidentLightInfo.createInclined (WaveLength.nm 13.5<nm>) (IncidenceAngle.create (Angle.degree 10.0<deg>))
         let surface = sphericalSurface (50.0<mm> * mmToMeter) (10.0<mm> * mmToMeter)
-        let edge = List.last (sampleZones surface 4)
+        let edge = List.last (sampleZones surface (ZoneCount 4))
         let p = SolverParameters.defaultValue
 
         // solveZone must feed `info.incidenceAngle` shifted by the zone shift through
@@ -171,7 +171,7 @@ module CurvedElementsTests =
     [<Fact>]
     let ``AC-C6 gradeCoating leaves the axis zone unscaled`` () =
         let surface = gradedSurface (50.0<mm> * mmToMeter) (10.0<mm> * mmToMeter)
-        let axis = (sampleZones surface 5).[0]
+        let axis = (sampleZones surface (ZoneCount 5)).[0]
         let graded = gradeCoating surface axis
 
         // Axis factor is 1.0: every thickness is byte-identical to the source coating.
@@ -181,7 +181,7 @@ module CurvedElementsTests =
     [<Fact>]
     let ``AC-C6 gradeCoating scales finite thicknesses by the edge factor and keeps Infinity`` () =
         let surface = gradedSurface (50.0<mm> * mmToMeter) (10.0<mm> * mmToMeter)
-        let edge = List.last (sampleZones surface 5)
+        let edge = List.last (sampleZones surface (ZoneCount 5))
         let graded = gradeCoating surface edge
 
         // The edge zone hits the ~5% default factor exactly.
@@ -202,7 +202,7 @@ module CurvedElementsTests =
     [<Fact>]
     let ``AC-C7 inter-element gap is carried by the reused EmField.propagate seam`` () =
         let surface = sphericalSurface (50.0<mm> * mmToMeter) (10.0<mm> * mmToMeter)
-        let axis = (sampleZones surface 3).[0]
+        let axis = (sampleZones surface (ZoneCount 3)).[0]
         let outgoing = (solveZone light axis SolverParameters.defaultValue).emSys.transmitted
 
         // The inter-element gap is an ordinary engine `Layer` whose thickness is the
@@ -220,7 +220,7 @@ module CurvedElementsTests =
     [<Fact>]
     let ``AC-C8 grading disabled shares one immutable coating across all zones`` () =
         let surface = sphericalSurface (50.0<mm> * mmToMeter) (10.0<mm> * mmToMeter)
-        let zones = sampleZones surface 6
+        let zones = sampleZones surface (ZoneCount 6)
 
         // Every zone references the very same immutable OpticalSystem instance.
         zones

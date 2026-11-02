@@ -289,10 +289,10 @@ let wireframeRenderer : ElementRenderer =
                 let unbound = isUnbound e
                 let edges =
                     TableView.plateEdges
-                    |> List.map (fun (a, b) ->
+                    |> List.map (fun edge ->
                         Line.create
-                            [ Line.startPoint corners.[a]
-                              Line.endPoint corners.[b]
+                            [ Line.startPoint (edge.fromCorner.pick corners)
+                              Line.endPoint (edge.toCorner.pick corners)
                               Line.stroke (brush boxColor)
                               Line.strokeThickness weight
                               if unbound then Line.strokeDashArray (AvaloniaList<float>(unboundDash)) ] :> IView)

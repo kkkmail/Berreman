@@ -768,7 +768,7 @@ let tableAndElementRotationCanvasWidth = 820.0
 let tableAndElementRotationCanvasHeight = 560.0
 
 let center : ScreenPoint = { sx = tableAndElementRotationCanvasWidth / 2.0; sy = tableAndElementRotationCanvasHeight / 2.0 }
-let pixelsPerMeter : float = 200.0
+let pixelsPerMeter : PixelsPerMeter = PixelsPerMeter 200.0
 
 // ---------------------------------------------------------------------------
 // Pure update. Angles wrap mod 360.
@@ -886,7 +886,10 @@ let private selectionAt (pt : ScreenPoint) (m : TableAndElementRotationModel) : 
         |> List.tryHead
     match nearest with
     | Some (i, d) when d <= elementSelectRadiusPx -> ElementSelected i
-    | _ -> if TableView.tableHit pixelsPerMeter center m.view m.table pt then TableSelected else NothingSelected
+    | _ ->
+        match TableView.tableHit pixelsPerMeter center m.view m.table pt with
+        | InsidePolygon -> TableSelected
+        | OutsidePolygon -> NothingSelected
 
 /// Set the selection's axis to an exact angle (lock-respecting for R3, task 008).
 let private setSelectedAxis (axis : RotationControls.RotationAxis) (v : float) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -1842,7 +1845,7 @@ let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : I
 /// source / detector markers — all projected through the live view. The top face highlights when
 /// the table is the selected object.
 let private tableViews (model : TableAndElementRotationModel) : IView list =
-    let corners = TableView.plateCorners3D model.table |> List.map (projectPt model.view) |> List.toArray
+    let corners = model.table.plateCorners3D |> List.map (projectPt model.view) |> List.toArray
     let tableSel = (model.selection = TableSelected)
     let topFace = corners.[0 .. 3] |> Array.map toPoint |> Array.toList
     let face =
@@ -1854,7 +1857,7 @@ let private tableViews (model : TableAndElementRotationModel) : IView list =
         ] :> IView
     let edges =
         TableView.plateEdges
-        |> List.map (fun (a, b) -> line { sx = (toPoint corners.[a]).X; sy = (toPoint corners.[a]).Y } { sx = (toPoint corners.[b]).X; sy = (toPoint corners.[b]).Y } edgeColor (if tableSel then 2.0 else 1.0))
+        |> List.map (fun edge -> line (edge.fromCorner.pick corners) (edge.toCorner.pick corners) edgeColor (if tableSel then 2.0 else 1.0))
     let s = projectPt model.view RayModel.defaultSourcePoint.toVector3
     let d = projectPt model.view RayModel.defaultDetectorPoint.toVector3
     let marker (sp : ScreenPoint) (c : Color) : IView =
@@ -1871,9 +1874,9 @@ let private elementView (i : int) (model : TableAndElementRotationModel) (e : Te
     let weight = if selected then 2.5 else 1.0
     let edges =
         TableView.plateEdges
-        |> List.map (fun (a, b) ->
+        |> List.map (fun edge ->
             Line.create [
-                Line.startPoint corners.[a]; Line.endPoint corners.[b]; Line.stroke (brush boxColor); Line.strokeThickness weight
+                Line.startPoint (edge.fromCorner.pick corners); Line.endPoint (edge.toCorner.pick corners); Line.stroke (brush boxColor); Line.strokeThickness weight
             ] :> IView)
     let { primaryNormal = n1; secondaryNormal = n2 } = orientedBasis e.placement
     let cx = e.placement.placementPoint.x / 1.0<meter>
@@ -2062,7 +2065,7 @@ let tableAndElementRotationView (model : TableAndElementRotationModel) (dispatch
 /// follows the snap approach, so adding a mirror reflects the beam). The elements (incl. source / detector)
 /// draw themselves through the renderer, so no separate source / detector markers here.
 let private mainTableViews (model : TableAndElementRotationModel) : IView list =
-    let corners = TableView.plateCorners3D model.table |> List.map (projectPt model.view) |> List.toArray
+    let corners = model.table.plateCorners3D |> List.map (projectPt model.view) |> List.toArray
     let tableSel = (model.selection = TableSelected)
     let topFace = corners.[0 .. 3] |> Array.map toPoint |> Array.toList
     let face =
@@ -2074,7 +2077,7 @@ let private mainTableViews (model : TableAndElementRotationModel) : IView list =
         ] :> IView
     let edges =
         TableView.plateEdges
-        |> List.map (fun (a, b) -> line { sx = corners.[a].sx; sy = corners.[a].sy } { sx = corners.[b].sx; sy = corners.[b].sy } edgeColor (if tableSel then 2.0 else 1.0))
+        |> List.map (fun edge -> line (edge.fromCorner.pick corners) (edge.toCorner.pick corners) edgeColor (if tableSel then 2.0 else 1.0))
     // Spec 0046: the ray as the beam layout drew it — free-space runs face to face, and the refracted run
     // INSIDE each transmitting element (between the faces the element is drawn with), so a tilted element
     // shows the three segments: in, through (bent), and out parallel to the incoming ray.

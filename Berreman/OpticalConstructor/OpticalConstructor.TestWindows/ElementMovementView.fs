@@ -65,7 +65,7 @@ let private setX (x : float) (m : ElementMovementModel) : ElementMovementModel =
     { m with element = { m.element with placementPoint = { m.element.placementPoint with x = clampX m x * 1.0<meter> } } }
 
 /// Screen x → table x for the fixed top-down view (no pan / zoom): the inverse of `TableScene.project`.
-let private tableXOfScreen (sx : float) : float = (sx - TableScene.center.sx) / TableScene.pixelsPerMeter
+let private tableXOfScreen (sx : float) : float = (sx - TableScene.center.sx) / TableScene.pixelsPerMeter.value
 
 let private elementCentreScreen (m : ElementMovementModel) : ScreenPoint =
     TableScene.project m.view (Vector3.create (elementX m) 0.0 0.0)

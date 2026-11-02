@@ -52,6 +52,36 @@ module ProjectJson =
             | true -> OpticalConstructor.Domain.Placement.RotationLocked
             | false -> OpticalConstructor.Domain.Placement.RotationFree
 
+    /// Keeps a group member's presence on the wire as the groups schema's boolean `inBeam`, `true`
+    /// for in the beam: it became a union (spec 0048 E014), the stored format did not.
+    type private BeamPresenceConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Groups.BeamPresence>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Groups.InBeam -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Groups.OutOfBeam -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Groups.InBeam
+            | false -> OpticalConstructor.Domain.Groups.OutOfBeam
+
+    /// Keeps a toggle's state on the wire as the groups schema's boolean `enabled`, `true` for
+    /// enabled: it became a union (spec 0048 E014), the stored format did not.
+    type private ToggleStateConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Groups.ToggleState>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Groups.ToggleEnabled -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Groups.ToggleDisabled -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Groups.ToggleEnabled
+            | false -> OpticalConstructor.Domain.Groups.ToggleDisabled
+
     /// Custom converter for the engine's Math.NET complex matrix
     /// (`Matrix<Complex>`). FSharp.SystemTextJson unwraps the single-case
     /// `Eps`/`Mu`/`Rho` -> `ComplexMatrix3x3` -> `ComplexMatrix` wrappers down to
@@ -103,6 +133,8 @@ module ProjectJson =
         o.Converters.Add(ComplexMatrixConverter())
         o.Converters.Add(BeamBranchConverter())
         o.Converters.Add(RotationLockConverter())
+        o.Converters.Add(BeamPresenceConverter())
+        o.Converters.Add(ToggleStateConverter())
         let fsharpOptions =
             JsonFSharpOptions
                 .Default()
