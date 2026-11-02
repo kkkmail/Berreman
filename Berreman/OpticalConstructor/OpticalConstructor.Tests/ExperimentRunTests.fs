@@ -20,14 +20,16 @@ module ExperimentRunTests =
 
     let private intensityOf (steps : RunStep list) : float =
         match read Intensity steps with
-        | IntensityReading i -> i
+        | IntensityReading i -> i.value
         | EllipsometricReading _ -> failwith "expected an intensity"
 
     [<Fact>]
     let ``the source's light is unpolarized; the first polarizer sets a unit-intensity polarized input`` () =
-        let s0, s1, s2, s3 = Propagation.stokesComponents (detectorStokes [])
+        let unpolarized = detectorStokes []
+        let s0, s1, s2, s3 = unpolarized.s0, unpolarized.s1, unpolarized.s2, unpolarized.s3
         Assert.True(abs (s0 - 1.0) < tol && abs s1 < tol && abs s2 < tol && abs s3 < tol)
-        let p0, p1, _, _ = Propagation.stokesComponents (detectorStokes [ lp 0.0 ])
+        let polarized = detectorStokes [ lp 0.0 ]
+        let p0, p1 = polarized.s0, polarized.s1
         Assert.True(abs (p0 - 1.0) < tol && abs (p1 - 1.0) < tol)
 
     [<Fact>]
@@ -49,22 +51,24 @@ module ExperimentRunTests =
 
     [<Fact>]
     let ``an exported run is written wide when its series share x, long otherwise`` () =
+        let text = ExperimentExport.ExportText
+        let point (x : float) (y : float) : Propagation.CurvePoint = { x = x; y = y }
         let run (series : ExperimentExport.ExportedSeries list) : ExperimentExport.ExportedRun =
-            { title = "t"; xLabel = "x"; yLabel = "y"; description = ""; series = series }
+            { title = text "t"; xLabel = text "x"; yLabel = text "y"; description = text ""; series = series }
         let shared =
-            run [ { name = "Intensity (T)"; points = [ 0.0, 1.0; 1.0, 0.5 ] }
-                  { name = "Intensity (R)"; points = [ 0.0, 0.0; 1.0, 0.5 ] } ]
+            run [ { name = text "Intensity (T)"; points = [ point 0.0 1.0; point 1.0 0.5 ] }
+                  { name = text "Intensity (R)"; points = [ point 0.0 0.0; point 1.0 0.5 ] } ]
         let headers, rows = ExperimentExportFile.tableOf shared
         Assert.Equal<string list>([ "x"; "Intensity (T)"; "Intensity (R)" ], headers)
         Assert.Equal<float list list>([ [ 0.0; 1.0; 0.0 ]; [ 1.0; 0.5; 0.5 ] ], rows |> Array.map List.ofArray |> List.ofArray)
-        let ragged = run [ { name = "A"; points = [ 0.0, 1.0 ] }; { name = "B"; points = [ 2.0, 3.0; 4.0, 5.0 ] } ]
+        let ragged = run [ { name = text "A"; points = [ point 0.0 1.0 ] }; { name = text "B"; points = [ point 2.0 3.0; point 4.0 5.0 ] } ]
         let _, longRows = ExperimentExportFile.tableOf ragged
         Assert.Equal(3, Array.length longRows)
         // The in-memory store refuses a run with no series.
         let store = ExperimentExport.createInMemoryExperimentExport ()
         match store.proxy.exportRun (run []) with
-        | Error (ExperimentExport.NothingToExport _) -> ()
-        | other -> Assert.Fail($"expected NothingToExport, got %A{other}")
+        | Error (ExperimentExport.NothingToExportErr _) -> ()
+        | other -> Assert.Fail($"expected NothingToExportErr, got %A{other}")
         Assert.Equal(Ok (), store.proxy.exportRun shared)
         Assert.Equal<ExperimentExport.ExportedRun list>([ shared ], store.exported ())
 

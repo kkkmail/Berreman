@@ -628,9 +628,9 @@ let private showCurrentEntry (m : LibraryWindowModel) : LibraryWindowModel =
     match m.mode with
     | Select session ->
         match session.currentEntryIdOpt with
-        | Some id when constrainedEntries m |> List.exists (fun e -> e.entryId.value = id) ->
+        | Some id when constrainedEntries m |> List.exists (fun e -> e.entryId = id) ->
             let expanded = if m.expandedNodes.isExpanded "entries" then m.expandedNodes else m.expandedNodes.toggle "entries"
-            { m with selectedEntryId = Some id; selectedNodeCode = entryNodeCode id; expandedNodes = expanded }
+            { m with selectedEntryId = Some id.value; selectedNodeCode = entryNodeCode id.value; expandedNodes = expanded }
         | Some _ | None -> m
     | Browse -> m
 

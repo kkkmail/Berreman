@@ -414,9 +414,9 @@ let toSample (id : SampleId) (m : SampleEditorModel) : Sample =
 
 let private stackErrorReason (e : SampleStackEditError) : string =
     match e with
-    | InvalidRepeatCount reason
-    | SelectionNotFoldable reason
-    | NotARepeatGroup reason -> reason
+    | InvalidRepeatCountErr reason
+    | SelectionNotFoldableErr reason
+    | NotARepeatGroupErr reason -> reason
 
 let private sampleErrorReason (e : SampleError) : string =
     match e with
@@ -530,27 +530,28 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
     | BindMaterialToLayer (position, materialId) ->
         // Spec 0038 (016): a Materials-window Select session returned for THIS layer position.
         // The position is validated against the CURRENT structure first (the Domain seam
-        // `isValidPosition` — the row may have been deleted while the modeless window was
+        // `SampleStructure.tryFindLayer` — the row may have been deleted while the modeless window was
         // open): a vanished row is a no-op plus the status line, never a throw. A live row
         // takes the material through the same selection-shaped transform-and-restore dance
         // as the per-layer orientation editor above — and the picked id also becomes the
         // toolbar's CHOSEN material (step 019: the bulk verbs' one remaining source now that
         // the inline picker is gone; the vanished-row no-op chooses nothing).
-        if isValidPosition m.editor.structure position then
+        match m.editor.structure.tryFindLayer position with
+        | Some _ ->
             let single = { m.editor with selection = Set.ofList [ position ] }
             match applySampleStackMsg (SetMaterialOfSelected (MaterialVersionId.firstOf materialId)) single with
             | Ok next -> { m with editor = { next with selection = m.editor.selection }; chosenMaterial = Some materialId; status = None }
             | Error e -> { m with status = Some (stackErrorReason e) }
-        else
+        | None ->
             { m with status = Some "the chosen material was not applied — its target layer is no longer in the stack" }
     | RemoveSelectedClicked -> applyStack RemoveSelected m
     | MoveUpClicked -> applyStack MoveSelectedUp m
     | MoveDownClicked -> applyStack MoveSelectedDown m
     | FoldCountBy delta -> { m with foldCount = max 1 (m.foldCount + delta) }
-    | MakeRepeatBlockClicked -> applyStack (MakeRepeatBlock m.foldCount) m
+    | MakeRepeatBlockClicked -> applyStack (MakeRepeatBlock (PeriodCount m.foldCount)) m
     | GroupCountBy (groupIndex, delta) ->
         match List.tryItem groupIndex m.editor.structure.films with
-        | Some (Repeated g) -> applyStack (SetRepeatCount (groupIndex, g.count.value + delta)) m
+        | Some (Repeated g) -> applyStack (SetRepeatCount (FilmItemIndex groupIndex, PeriodCount (g.count.value + delta))) m
         | Some (SingleLayer _) | None -> { m with status = Some $"films item %d{groupIndex} is not a repeat group" }
     | BindMaterialToSubstrate materialId ->
         // Spec 0040 (D.4 step 011): a Materials-window Select session returned for the substrate
@@ -1034,8 +1035,8 @@ let private stackRows (m : SampleEditorModel) (dispatch : SampleEditorMsg -> uni
         match item with
         | SingleLayer layer ->
             [ rowWithChooser
-                  (layerRowView m dispatch (AtSingleLayer i) (ConstructorUiId.sampleLayerRow (ConstructorUiPosition i)).value (ConstructorUiId.sampleLayerThickness (ConstructorUiPosition i)).value (ConstructorUiId.sampleLayerOrientation (ConstructorUiPosition i)).value 0.0 layer)
-                  (AtSingleLayer i)
+                  (layerRowView m dispatch (AtSingleLayer (FilmItemIndex i)) (ConstructorUiId.sampleLayerRow (ConstructorUiPosition i)).value (ConstructorUiId.sampleLayerThickness (ConstructorUiPosition i)).value (ConstructorUiId.sampleLayerOrientation (ConstructorUiPosition i)).value 0.0 layer)
+                  (AtSingleLayer (FilmItemIndex i))
                   (ConstructorUiId.chooseMaterialButton (ConstructorUiPosition i)).value ]
         | Repeated group ->
             let superRow = groupRowView m dispatch i group
@@ -1045,8 +1046,8 @@ let private stackRows (m : SampleEditorModel) (dispatch : SampleEditorMsg -> uni
                     group.cell
                     |> List.mapi (fun j layer ->
                         rowWithChooser
-                            (layerRowView m dispatch (AtCellLayer (i, j)) (ConstructorUiId.sampleCellLayerRow (ConstructorUiPosition i) (ConstructorUiPosition j)).value (ConstructorUiId.sampleCellLayerThickness (ConstructorUiPosition i) (ConstructorUiPosition j)).value (ConstructorUiId.sampleCellLayerOrientation (ConstructorUiPosition i) (ConstructorUiPosition j)).value 28.0 layer)
-                            (AtCellLayer (i, j))
+                            (layerRowView m dispatch (AtCellLayer (FilmItemIndex i, CellLayerIndex j)) (ConstructorUiId.sampleCellLayerRow (ConstructorUiPosition i) (ConstructorUiPosition j)).value (ConstructorUiId.sampleCellLayerThickness (ConstructorUiPosition i) (ConstructorUiPosition j)).value (ConstructorUiId.sampleCellLayerOrientation (ConstructorUiPosition i) (ConstructorUiPosition j)).value 28.0 layer)
+                            (AtCellLayer (FilmItemIndex i, CellLayerIndex j))
                             (ConstructorUiId.cellChooseMaterialButton (ConstructorUiPosition i) (ConstructorUiPosition j)).value)
             superRow :: cellRows)
     |> List.concat

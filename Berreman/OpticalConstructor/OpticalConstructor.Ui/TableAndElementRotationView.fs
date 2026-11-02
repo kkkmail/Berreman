@@ -1245,22 +1245,27 @@ let mutable private openChartWindowHook : TableAndElementRotationModel -> unit =
 /// assigned right after it. The default empty chart is what an unassigned hook yields.
 let mutable private draftChartHook : TableAndElementRotationModel -> ExperimentChart.ExperimentChart = fun _ -> ExperimentChart.emptyExperimentChart
 
+type ControlCaption with
+
+    /// A chart caption as the text its exported run carries (spec 0048 E017).
+    member private this.exportText : ExperimentExport.ExportText = ExperimentExport.ExportText this.value
+
 /// Spec 0046: export the draft's computed run through the `experimentExport` seam and report the outcome.
 let private exportDraftRun (model : TableAndElementRotationModel) : TableAndElementRotationModel =
     let chart = draftChartHook model
     let run : ExperimentExport.ExportedRun =
         {
-            title = chart.title.value
-            xLabel = chart.xLabel.value
-            yLabel = chart.yLabel.value
-            description = chart.description.value
+            title = chart.title.exportText
+            xLabel = chart.xLabel.exportText
+            yLabel = chart.yLabel.exportText
+            description = chart.description.exportText
             series =
                 chart.series
                 |> List.map (fun series ->
-                    { ExperimentExport.ExportedSeries.name = series.name.value; points = series.points |> List.map (fun p -> p.x, p.y) })
+                    { ExperimentExport.ExportedSeries.name = series.name.exportText; points = series.points |> List.map (fun p -> { Propagation.CurvePoint.x = p.x; y = p.y }) })
         }
     match model.experimentExport.exportRun run with
-    | Ok () -> { model with exportStatus = Some $"Exported %d{List.length run.series} series (%s{run.title})." }
+    | Ok () -> { model with exportStatus = Some $"Exported %d{List.length run.series} series (%s{run.title.value})." }
     | Error e -> { model with exportStatus = Some $"Nothing exported — %s{e.reason}" }
 
 /// Spec 0027 (030 follow-up): the side-effecting "open the chart window for a COLLECTED experiment (by id)"
@@ -2585,7 +2590,7 @@ let private incidenceDegreesOf (placed : BeamLayout.PlacedElement) (placement : 
     | Some d ->
         let n = r1Axis (RayModel.orientedToBeam d placement)
         let c = min 1.0 (abs (n.normalized.dot d.normalized).value)
-        min Propagation.r2SweepMaxDegrees (acos c * 180.0 / System.Math.PI)
+        min Propagation.r2SweepMaxDegrees.value (acos c * 180.0 / System.Math.PI)
     | None -> 0.0
 
 /// One step of a detector's light path as a run builds it (spec 0046): the same for the whole sweep, or
@@ -2620,7 +2625,7 @@ let chartForRun
     let n = max 2 range.points
     let lo, hi =
         match variable with
-        | Experiments.VaryR2 -> max 0.0 (min range.min range.max), min Propagation.r2SweepMaxDegrees (max range.min range.max)
+        | Experiments.VaryR2 -> max 0.0 (min range.min range.max), min Propagation.r2SweepMaxDegrees.value (max range.min range.max)
         | Experiments.VaryR1 | Experiments.VaryWaveLength -> range.min, range.max
     let xs = [ for k in 0 .. n - 1 -> lo + (hi - lo) * float k / float (n - 1) ]
     let wAt (x : float) : WaveLength =
@@ -2754,7 +2759,7 @@ let chartForRun
                     match detectorKindOf model j with
                     | Library.Intensity ->
                         [ series (seriesName measurement tag "Intensity")
-                              (readings |> List.map (fun (x, r) -> x, (match r with ExperimentRun.IntensityReading i -> i | ExperimentRun.EllipsometricReading _ -> nan))) ]
+                              (readings |> List.map (fun (x, r) -> x, (match r with ExperimentRun.IntensityReading i -> i.value | ExperimentRun.EllipsometricReading _ -> nan))) ]
                     | Library.Ellipsometer ->
                         let pd (pick : Analytics.AnalysisFunctions.PsiDelta -> Angle) =
                             readings |> List.map (fun (x, r) -> x, (match r with ExperimentRun.EllipsometricReading v -> (pick v).degrees | ExperimentRun.IntensityReading _ -> nan))
@@ -2992,7 +2997,7 @@ let private materialDisplayName (materialId : MaterialLibrary.MaterialId) : stri
 
 /// A band's thickness for the Details view — finite layers carry their thickness in metres; a half-space /
 /// plate carries none (drawn as "semi-infinite"). This keeps the engine's `Thickness` DU (which collides
-/// with `Avalonia.Thickness`) out of the UI layer — the metres come from `Propagation.thicknessMeters`.
+/// with `Avalonia.Thickness`) out of the UI layer — the metres come from `Thickness.metersOpt`.
 type private BandThickness =
     | FiniteMeters of float
     | SemiInfinite
@@ -3018,10 +3023,10 @@ let private bandWeight (t : BandThickness) : float =
         // log10 of nanometres, floored — a 1 nm layer ⇒ 0, a 1 µm layer ⇒ 3, a 1 mm layer ⇒ 6.
         max 0.1 (log10 (meters * 1.0e9))
 
-/// The thickness of a sample-structure layer as a `BandThickness` (via `Propagation.thicknessMeters`,
-/// so the engine `Thickness` DU never reaches this file).
+/// The thickness of a sample-structure layer as a `BandThickness` (via `Thickness.metersOpt`, so the
+/// engine `Thickness` DU is never named in this file).
 let private layerBandThickness (layer : Library.SampleLayer) : BandThickness =
-    match Propagation.thicknessMeters layer.thickness with
+    match layer.thickness.metersOpt with
     | Some m -> FiniteMeters m
     | None -> SemiInfinite
 
@@ -3184,7 +3189,7 @@ let private chooseFromLibrary (model : TableAndElementRotationModel) (dispatch :
         {
             kindConstraint = WindowMode.KindConstraint element.placement.catalogueKind
             // Spec 0046: the Library opens with the element's current binding shown as chosen.
-            currentEntryIdOpt = element.placement.valueId |> Option.map (fun v -> v.value)
+            currentEntryIdOpt = element.placement.valueId
             target = WindowMode.TableElementTarget element.id
             onSelected = fun (entry : Library.LibraryEntry) -> dispatch (BindValueIdTo (element.id, entry.entryId.value))
             onCancelled = fun () -> sessionRef.Value |> Option.iter (fun session -> dispatch (SelectSessionEnded session))

@@ -46,11 +46,12 @@ type MuellerReconstructionTests() =
     // the transpose guard. Bound here, ahead of the members: in an F# class type every `let` binding must
     // precede the first member (FS0960), so this fixture cannot sit down among the [<Fact>] members below.
     let asymmetricM =
-        Propagation.muellerOfRows
+        RealMatrix4x4.create
             [ [ 1.0; 0.2; -0.3; 0.4 ]
               [ 0.5; 0.6; 0.7; -0.8 ]
               [ -0.9; 1.0; 0.1; 0.2 ]
               [ 0.3; -0.4; 0.5; 0.6 ] ]
+        |> MuellerMatrix
 
     // Spec 0042 (003, ADD_CONTRACT SVC_XDUO_0002) — the least-squares SOLVE seam. The MOCK and its canned
     // solution are bound here, ahead of the members (FS0960: in a class type every `let` binding precedes the
@@ -122,10 +123,10 @@ type MuellerReconstructionTests() =
     // Spec 0042 (007, IMPLEMENT) — component-wise closeness helpers for the effective-state +90/−90 invariance,
     // over the shared `allowedDiff` (no hand-rolled epsilon). Bound here, ahead of the members (FS0960: in a
     // class type every `let` binding precedes the first member). StokesVector is read through the
-    // `Propagation.stokesComponents` seam; RealVector4 through its indexer.
+    // `StokesVector.s0` … `s3` members; RealVector4 through its indexer.
     let assertStokesClose (a : StokesVector) (b : StokesVector) =
-        let (a0, a1, a2, a3) = Propagation.stokesComponents a
-        let (b0, b1, b2, b3) = Propagation.stokesComponents b
+        let (a0, a1, a2, a3) = a.s0, a.s1, a.s2, a.s3
+        let (b0, b1, b2, b3) = b.s0, b.s1, b.s2, b.s3
         Assert.True(abs (a0 - b0) < allowedDiff, $"S0 differs by {abs (a0 - b0)}")
         Assert.True(abs (a1 - b1) < allowedDiff, $"S1 differs by {abs (a1 - b1)}")
         Assert.True(abs (a2 - b2) < allowedDiff, $"S2 differs by {abs (a2 - b2)}")
@@ -246,11 +247,12 @@ type MuellerReconstructionTests() =
     member _.``quarter-wave retarder at azimuth 0 is the standard QWP Mueller form`` () =
         // Standard QWP, fast axis horizontal: [[1,0,0,0],[0,1,0,0],[0,0,0,1],[0,0,-1,0]].
         let expected =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 1.0; 0.0; 0.0 ]
                   [ 0.0; 0.0; 0.0; 1.0 ]
                   [ 0.0; 0.0; -1.0; 0.0 ] ]
+            |> MuellerMatrix
         let actual = retarderMueller Angle.zero (Retardance.degree 90.0)
         assertMuellerEqual expected actual
 
@@ -258,11 +260,12 @@ type MuellerReconstructionTests() =
     member _.``quarter-wave retarder at azimuth 45 is the standard rotated QWP Mueller form`` () =
         // Standard QWP, fast axis at 45°: [[1,0,0,0],[0,0,0,-1],[0,0,1,0],[0,1,0,0]] — exercises rotateMueller.
         let expected =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 0.0; 0.0; -1.0 ]
                   [ 0.0; 0.0; 1.0; 0.0 ]
                   [ 0.0; 1.0; 0.0; 0.0 ] ]
+            |> MuellerMatrix
         let actual = retarderMueller (Angle.degree 45.0<Berreman.Constants.deg>) (Retardance.degree 90.0)
         assertMuellerEqual expected actual
 
@@ -300,11 +303,12 @@ type MuellerReconstructionTests() =
     member _.``frobeniusDiff localizes the largest element difference and its index`` () =
         // Perturb the single element at (2,1) from 1.0 to 3.0 (a diff of 2.0); the readout must localize it.
         let perturbed =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.2; -0.3; 0.4 ]
                   [ 0.5; 0.6; 0.7; -0.8 ]
                   [ -0.9; 3.0; 0.1; 0.2 ]
                   [ 0.3; -0.4; 0.5; 0.6 ] ]
+            |> MuellerMatrix
         let d = frobeniusDiff asymmetricM perturbed
         let (mi, mj) = d.argMax
         Assert.Equal(2, mi)
@@ -692,11 +696,12 @@ type MuellerReconstructionTests() =
         // the seeded MuellerMatrix, so `reconstruct` MUST recover the seed within tolerance at rank 16. The seed
         // is ASYMMETRIC with distinct entries so a row/column-major transpose bug is observable.
         let seed =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0;  2.0;  3.0;  4.0 ]
                   [ 5.0;  6.0;  7.0;  8.0 ]
                   [ 9.0; 10.0; 11.0; 12.0 ]
                   [ 13.0; 14.0; 15.0; 16.0 ] ]
+            |> MuellerMatrix
         let vSeed = vecColumnMajor seed
         // Four independent Stokes states and four independent analyzer rows; every (s, a) pair is one designRow,
         // so the 16 rows span the tensor space (rank = rank{s}·rank{a} = 4·4 = 16).
@@ -733,17 +738,19 @@ type MuellerReconstructionTests() =
         // MuellerMatrix `*` operator. Non-commuting operands (rotation vs a general matrix) make the ordering
         // observable — a swapped product would differ.
         let mQz =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 0.6; 0.8; 0.0 ]
                   [ 0.0; -0.8; 0.6; 0.0 ]
                   [ 0.0; 0.0; 0.0; 1.0 ] ]
+            |> MuellerMatrix
         let mLr =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.2; -0.3; 0.4 ]
                   [ 0.5; 0.6; 0.7; -0.8 ]
                   [ -0.9; 1.0; 0.1; 0.2 ]
                   [ 0.3; -0.4; 0.5; 0.6 ] ]
+            |> MuellerMatrix
         assertMuellerEqual (mLr * mQz) (cascadeProduct mLr mQz)
 
     [<Fact>]
@@ -970,23 +977,26 @@ type MuellerReconstructionTests() =
             worst, $"{label} worst {worst} at M[{i},{j}]"
 
         let expectedQz =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [  0.9412063946;  0.0409543238; -0.0259356814; -0.1220013287 ]
                   [  0.0525351141;  0.6606049231; -0.3659862371; -0.1421373359 ]
                   [ -0.0129854586;  0.4061015401;  0.6094438915; -0.0169558310 ]
                   [ -0.0957187769;  0.0752040278;  0.0184691606;  1.0306648444 ] ]
+            |> MuellerMatrix
         let expectedLr =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [  0.9931797644; -0.0046529422;  0.0596850441; -0.1036207527 ]
                   [  0.3531940843;  0.1474307188; -0.0954724381; -0.6568249890 ]
                   [  0.3425940212; -0.3946501705;  0.6900321099; -0.5968927113 ]
                   [ -0.0104722933;  0.1247347199;  0.4614122160;  0.5910486653 ] ]
+            |> MuellerMatrix
         let expectedComb =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [  0.9001173290;  0.0831007067;  0.0350162173; -0.1712567077 ]
                   [  0.3413132788; -0.1694202380; -0.1576526274; -0.5502997288 ]
                   [  0.3377633308; -0.1048712506;  0.7681312510; -0.5366531986 ]
                   [  0.0999436274;  0.0459751884;  0.3292576266;  0.3168329794 ] ]
+            |> MuellerMatrix
 
         Assert.Equal(16, mQz.rank)
         Assert.Equal(16, mLr.rank)
@@ -1026,7 +1036,7 @@ type MuellerReconstructionTests() =
         let topTwoDiffPositions =
             [ for i in 0 .. 3 do
                 for j in 0 .. 3 ->
-                    (i, j), abs (Propagation.muellerElement mComb.matrix i j - Propagation.muellerElement cascade i j) ]
+                    (i, j), abs (mComb.matrix.element i j - cascade.element i j) ]
             |> List.sortByDescending snd
             |> List.truncate 2
             |> List.map fst

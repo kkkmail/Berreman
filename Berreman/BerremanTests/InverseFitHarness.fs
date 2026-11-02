@@ -378,7 +378,7 @@ module InverseFitHarness =
         : float[] -> float[] =
         let width = 16 * List.length observations
         let logThroughput (m : MuellerMatrix) =
-            let m00 = Propagation.muellerElement m 0 0
+            let m00 = m.element 0 0
             if m00 <= 0.0 || not (System.Double.IsFinite m00) then None else Some (log m00)
         fun (v : float[]) ->
             match forwardModels forward (ofScaled scaling v) observations with
@@ -516,8 +516,8 @@ module InverseFitHarness =
     let assertMuellerEqual (expected : MuellerMatrix) (actual : MuellerMatrix) : unit =
         for i in 0 .. 3 do
             for j in 0 .. 3 do
-                let e = Propagation.muellerElement expected i j
-                let a = Propagation.muellerElement actual i j
+                let e = expected.element i j
+                let a = actual.element i j
                 Assert.True(abs (e - a) < allowedDiff, $"M[{i},{j}]: expected {e}, got {a}")
 
     // -------------------------------------------------------------------------------- the noise model
@@ -553,11 +553,12 @@ module InverseFitHarness =
     let misread (draws : UniformDeviateProvider) (noise : NoiseParam) (m : MuellerMatrix) : MuellerMatrix =
         match normalizeMueller m with
         | Ok n ->
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ for i in 0 .. 3 ->
                     [ for j in 0 .. 3 ->
                         if i = 0 && j = 0 then 1.0
-                        else Propagation.muellerElement n i j + noise.element.value * draws.nextDeviate () ] ]
+                        else n.element i j + noise.element.value * draws.nextDeviate () ] ]
+            |> MuellerMatrix
         | Error e -> failwith $"a ground-truth matrix could not be normalized: %A{e}"
 
     /// What the receiver reports for an ABSORBING sample, where the absolute throughput is a datum
@@ -574,13 +575,14 @@ module InverseFitHarness =
     let misreadAbsolute (draws : UniformDeviateProvider) (noise : NoiseParam) (m : MuellerMatrix) : MuellerMatrix =
         match normalizeMueller m with
         | Ok n ->
-            let trueThroughput = Propagation.muellerElement m 0 0
+            let trueThroughput = m.element 0 0
             let reportedThroughput = trueThroughput * (1.0 + noise.throughput.value * draws.nextDeviate ())
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ for i in 0 .. 3 ->
                     [ for j in 0 .. 3 ->
                         if i = 0 && j = 0 then reportedThroughput
-                        else reportedThroughput * (Propagation.muellerElement n i j + noise.element.value * draws.nextDeviate ()) ] ]
+                        else reportedThroughput * (n.element i j + noise.element.value * draws.nextDeviate ()) ] ]
+            |> MuellerMatrix
         | Error e -> failwith $"a ground-truth matrix could not be normalized: %A{e}"
 
     /// ONE noisy realization of a whole ABSORBING experiment. Identical in structure to

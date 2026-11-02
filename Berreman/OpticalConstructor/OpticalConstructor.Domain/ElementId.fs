@@ -298,7 +298,7 @@ module Library =
     /// One component of a compound constant-Mueller polarizer (spec 0038 Part F): a 4×4 Mueller
     /// matrix stored at REFERENCE orientation plus the component's fixed angular offset within the
     /// compound. Nothing is stored rotated — the Stokes/Mueller pipeline rotates the component at
-    /// run time as R(−θ)·M·R(θ) (`Propagation.componentMueller`).
+    /// run time as R(−θ)·M·R(θ) (`MuellerComponent.offsetMueller`).
     type MuellerComponent =
         {
             matrix : MuellerMatrix

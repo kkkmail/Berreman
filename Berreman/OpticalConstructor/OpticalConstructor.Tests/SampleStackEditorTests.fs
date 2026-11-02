@@ -79,19 +79,19 @@ module SampleStackEditorTests =
 
     [<Fact>]
     let ``SelectLayer adds a valid top-level position without touching the structure`` () =
-        let state = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer 0) ]
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0 ], state.selection)
+        let state = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 0)) ]
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer (FilmItemIndex 0) ], state.selection)
         Assert.Equal(threeSingles, state.structure)
 
     [<Fact>]
     let ``SelectLayer accumulates positions (multi-select)`` () =
-        let state = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer 0); SelectLayer (AtSingleLayer 2) ]
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0; AtSingleLayer 2 ], state.selection)
+        let state = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 0)); SelectLayer (AtSingleLayer (FilmItemIndex 2)) ]
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer (FilmItemIndex 0); AtSingleLayer (FilmItemIndex 2) ], state.selection)
 
     [<Fact>]
     let ``SelectLayer adds a valid period-cell position`` () =
-        let state = editorOf withGroup |> applyAll [ SelectLayer (AtCellLayer (0, 1)) ]
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtCellLayer (0, 1) ], state.selection)
+        let state = editorOf withGroup |> applyAll [ SelectLayer (AtCellLayer (FilmItemIndex 0, CellLayerIndex 1)) ]
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtCellLayer (FilmItemIndex 0, CellLayerIndex 1) ], state.selection)
 
     [<Fact>]
     let ``SelectLayer with an invalid position is a no-op`` () =
@@ -101,27 +101,27 @@ module SampleStackEditorTests =
             editorOf withGroup
             |> applyAll
                 [
-                    SelectLayer (AtSingleLayer 7)
-                    SelectLayer (AtSingleLayer 0)
-                    SelectLayer (AtCellLayer (1, 0))
-                    SelectLayer (AtCellLayer (0, 2))
+                    SelectLayer (AtSingleLayer (FilmItemIndex 7))
+                    SelectLayer (AtSingleLayer (FilmItemIndex 0))
+                    SelectLayer (AtCellLayer (FilmItemIndex 1, CellLayerIndex 0))
+                    SelectLayer (AtCellLayer (FilmItemIndex 0, CellLayerIndex 2))
                 ]
         Assert.Equal<Set<LayerPosition>>(Set.empty, state.selection)
 
     [<Fact>]
     let ``SelectByMaterial selects exactly the matching positions, singles and cells alike`` () =
         let flat = editorOf threeSingles |> applyAll [ SelectByMaterial MaterialIds.glass152 ]
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0; AtSingleLayer 2 ], flat.selection)
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer (FilmItemIndex 0); AtSingleLayer (FilmItemIndex 2) ], flat.selection)
         let grouped = editorOf withGroup |> applyAll [ SelectByMaterial MaterialIds.glass152 ]
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtCellLayer (0, 0) ], grouped.selection)
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtCellLayer (FilmItemIndex 0, CellLayerIndex 0) ], grouped.selection)
 
     [<Fact>]
     let ``SelectByMaterial replaces any prior selection`` () =
         let state =
             editorOf threeSingles
-            |> applyAll [ SelectLayer (AtSingleLayer 1); SelectByMaterial MaterialIds.glass152 ]
-        Assert.False(Set.contains (AtSingleLayer 1) state.selection)
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0; AtSingleLayer 2 ], state.selection)
+            |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 1)); SelectByMaterial MaterialIds.glass152 ]
+        Assert.False(Set.contains (AtSingleLayer (FilmItemIndex 1)) state.selection)
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer (FilmItemIndex 0); AtSingleLayer (FilmItemIndex 2) ], state.selection)
 
     [<Fact>]
     let ``ClearSelection empties the selection`` () =
@@ -160,7 +160,7 @@ module SampleStackEditorTests =
     let ``SetMaterialOfSelected rebinds exactly the selected layers`` () =
         let state =
             editorOf threeSingles
-            |> applyAll [ SelectLayer (AtSingleLayer 1); SetMaterialOfSelected (MaterialVersionId.firstOf MaterialIds.glass175) ]
+            |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 1)); SetMaterialOfSelected (MaterialVersionId.firstOf MaterialIds.glass175) ]
         let materials = state.structure.expandedFilms |> List.map (fun l -> l.materialId.materialId)
         Assert.Equal<MaterialId list>([ MaterialIds.glass152; MaterialIds.glass175; MaterialIds.glass152 ], materials)
 
@@ -169,7 +169,7 @@ module SampleStackEditorTests =
         let orientation = EulerRotation { EulerAngles.convention = ZmXpZm; phi = deg 30.0; theta = deg 40.0; psi = deg 50.0 }
         let state =
             editorOf threeSingles
-            |> applyAll [ SelectLayer (AtSingleLayer 0); SetOrientationOfSelected orientation ]
+            |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 0)); SetOrientationOfSelected orientation ]
         let orientations = state.structure.expandedFilms |> List.map (fun l -> l.orientation)
         Assert.Equal<CrystalOrientation list>([ orientation; PrimaryAxes; PrimaryAxes ], orientations)
 
@@ -192,7 +192,7 @@ module SampleStackEditorTests =
     let ``RemoveSelected on a cell layer removes it from every repetition`` () =
         let state =
             editorOf withGroup
-            |> applyAll [ SelectLayer (AtCellLayer (0, 0)); RemoveSelected ]
+            |> applyAll [ SelectLayer (AtCellLayer (FilmItemIndex 0, CellLayerIndex 0)); RemoveSelected ]
         // The 3 periods each lose their glass layer; the vacuum cell layer stays ×3.
         let expanded = state.structure.expandedFilms
         Assert.Equal<SampleLayer list>(
@@ -210,8 +210,8 @@ module SampleStackEditorTests =
             editorOf withGroup
             |> applyAll
                 [
-                    SelectLayer (AtCellLayer (0, 0))
-                    SelectLayer (AtCellLayer (0, 1))
+                    SelectLayer (AtCellLayer (FilmItemIndex 0, CellLayerIndex 0))
+                    SelectLayer (AtCellLayer (FilmItemIndex 0, CellLayerIndex 1))
                     RemoveSelected
                 ]
         Assert.Equal<StackItem list>([ SingleLayer (layerOf MaterialIds.glass175 30.0) ], state.structure.films)
@@ -222,21 +222,21 @@ module SampleStackEditorTests =
     let ``MoveSelectedUp moves the selected layer one slot up and the selection follows`` () =
         let state =
             editorOf threeSingles
-            |> applyAll [ SelectLayer (AtSingleLayer 1); MoveSelectedUp ]
+            |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 1)); MoveSelectedUp ]
         let materials = state.structure.expandedFilms |> List.map (fun l -> l.materialId.materialId)
         Assert.Equal<MaterialId list>([ MaterialIds.vacuumMaterial; MaterialIds.glass152; MaterialIds.glass152 ], materials)
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0 ], state.selection)
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer (FilmItemIndex 0) ], state.selection)
 
     [<Fact>]
     let ``MoveSelectedUp pinned at the top is a no-op`` () =
-        let before = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer 0); SelectLayer (AtSingleLayer 1) ]
+        let before = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 0)); SelectLayer (AtSingleLayer (FilmItemIndex 1)) ]
         let after = applyAll [ MoveSelectedUp ] before
         Assert.Equal(before.structure, after.structure)
         Assert.Equal<Set<LayerPosition>>(before.selection, after.selection)
 
     [<Fact>]
     let ``MoveSelectedDown pinned at the bottom is a no-op`` () =
-        let before = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer 2) ]
+        let before = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 2)) ]
         let after = applyAll [ MoveSelectedDown ] before
         Assert.Equal(before.structure, after.structure)
         Assert.Equal<Set<LayerPosition>>(before.selection, after.selection)
@@ -245,16 +245,16 @@ module SampleStackEditorTests =
     let ``MoveSelectedDown moves the selected layer one slot down`` () =
         let state =
             editorOf threeSingles
-            |> applyAll [ SelectLayer (AtSingleLayer 0); MoveSelectedDown ]
+            |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 0)); MoveSelectedDown ]
         let materials = state.structure.expandedFilms |> List.map (fun l -> l.materialId.materialId)
         Assert.Equal<MaterialId list>([ MaterialIds.vacuumMaterial; MaterialIds.glass152; MaterialIds.glass152 ], materials)
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 1 ], state.selection)
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer (FilmItemIndex 1) ], state.selection)
 
     [<Fact>]
     let ``MoveSelectedUp within a period cell reorders every repetition`` () =
         let state =
             editorOf withGroup
-            |> applyAll [ SelectLayer (AtCellLayer (0, 1)); MoveSelectedUp ]
+            |> applyAll [ SelectLayer (AtCellLayer (FilmItemIndex 0, CellLayerIndex 1)); MoveSelectedUp ]
         // Every period now starts with the vacuum layer.
         let expandedMaterials = state.structure.expandedFilms |> List.map (fun l -> l.materialId.materialId)
         Assert.Equal<MaterialId list>(
@@ -265,19 +265,19 @@ module SampleStackEditorTests =
                 MaterialIds.glass175
             ],
             expandedMaterials)
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtCellLayer (0, 0) ], state.selection)
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtCellLayer (FilmItemIndex 0, CellLayerIndex 0) ], state.selection)
 
     [<Fact>]
     let ``MoveSelectedUp moves a single layer past a whole period group as one unit`` () =
         let state =
             editorOf withGroup
-            |> applyAll [ SelectLayer (AtSingleLayer 1); MoveSelectedUp ]
+            |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 1)); MoveSelectedUp ]
         match state.structure.films with
         | [ SingleLayer single; Repeated group ] ->
             Assert.Equal(MaterialIds.glass175, single.materialId.materialId)
             Assert.Equal(3, group.count.value)
         | films -> failwith $"unexpected films shape: %A{films}"
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0 ], state.selection)
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer (FilmItemIndex 0) ], state.selection)
 
     // ============================== MakeRepeatBlock ==============================
 
@@ -294,7 +294,7 @@ module SampleStackEditorTests =
         let k = 7
         let state =
             editorOf twoLayers
-            |> applyAll [ SelectLayer (AtSingleLayer 0); SelectLayer (AtSingleLayer 1); MakeRepeatBlock k ]
+            |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 0)); SelectLayer (AtSingleLayer (FilmItemIndex 1)); MakeRepeatBlock (PeriodCount k) ]
         let expanded = state.structure.expandedFilms
         Assert.Equal(2 * k, List.length expanded)
         // The fold preserves the cell order across every period.
@@ -310,7 +310,7 @@ module SampleStackEditorTests =
     let ``MakeRepeatBlock folds in place, leaving unselected neighbours around the group`` () =
         let state =
             editorOf threeSingles
-            |> applyAll [ SelectLayer (AtSingleLayer 0); SelectLayer (AtSingleLayer 1); MakeRepeatBlock 3 ]
+            |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 0)); SelectLayer (AtSingleLayer (FilmItemIndex 1)); MakeRepeatBlock (PeriodCount 3) ]
         match state.structure.films with
         | [ Repeated group; SingleLayer trailing ] ->
             Assert.Equal(3, group.count.value)
@@ -321,48 +321,48 @@ module SampleStackEditorTests =
 
     [<Fact>]
     let ``MakeRepeatBlock rejects a count below 1 with the typed error`` () =
-        let selected = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer 0); SelectLayer (AtSingleLayer 1) ]
-        match expectError (MakeRepeatBlock 0) selected with
-        | InvalidRepeatCount _ -> ()
-        | e -> failwith $"expected InvalidRepeatCount, got %A{e}"
-        match expectError (MakeRepeatBlock -3) selected with
-        | InvalidRepeatCount _ -> ()
-        | e -> failwith $"expected InvalidRepeatCount, got %A{e}"
+        let selected = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 0)); SelectLayer (AtSingleLayer (FilmItemIndex 1)) ]
+        match expectError (MakeRepeatBlock (PeriodCount 0)) selected with
+        | InvalidRepeatCountErr _ -> ()
+        | e -> failwith $"expected InvalidRepeatCountErr, got %A{e}"
+        match expectError (MakeRepeatBlock (PeriodCount -3)) selected with
+        | InvalidRepeatCountErr _ -> ()
+        | e -> failwith $"expected InvalidRepeatCountErr, got %A{e}"
 
     [<Fact>]
     let ``MakeRepeatBlock rejects a non-contiguous selection`` () =
-        let selected = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer 0); SelectLayer (AtSingleLayer 2) ]
-        match expectError (MakeRepeatBlock 2) selected with
-        | SelectionNotFoldable _ -> ()
-        | e -> failwith $"expected SelectionNotFoldable, got %A{e}"
+        let selected = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer (FilmItemIndex 0)); SelectLayer (AtSingleLayer (FilmItemIndex 2)) ]
+        match expectError (MakeRepeatBlock (PeriodCount 2)) selected with
+        | SelectionNotFoldableErr _ -> ()
+        | e -> failwith $"expected SelectionNotFoldableErr, got %A{e}"
 
     [<Fact>]
     let ``MakeRepeatBlock rejects an empty selection`` () =
-        match expectError (MakeRepeatBlock 2) (editorOf threeSingles) with
-        | SelectionNotFoldable _ -> ()
-        | e -> failwith $"expected SelectionNotFoldable, got %A{e}"
+        match expectError (MakeRepeatBlock (PeriodCount 2)) (editorOf threeSingles) with
+        | SelectionNotFoldableErr _ -> ()
+        | e -> failwith $"expected SelectionNotFoldableErr, got %A{e}"
 
     [<Fact>]
     let ``MakeRepeatBlock rejects a selection holding period-cell layers`` () =
-        let selected = editorOf withGroup |> applyAll [ SelectLayer (AtCellLayer (0, 0)) ]
-        match expectError (MakeRepeatBlock 2) selected with
-        | SelectionNotFoldable _ -> ()
-        | e -> failwith $"expected SelectionNotFoldable, got %A{e}"
+        let selected = editorOf withGroup |> applyAll [ SelectLayer (AtCellLayer (FilmItemIndex 0, CellLayerIndex 0)) ]
+        match expectError (MakeRepeatBlock (PeriodCount 2)) selected with
+        | SelectionNotFoldableErr _ -> ()
+        | e -> failwith $"expected SelectionNotFoldableErr, got %A{e}"
 
     // ============================== SetRepeatCount ==============================
 
     [<Fact>]
     let ``SetRepeatCount adds or removes whole periods`` () =
-        let grown = editorOf withGroup |> applyAll [ SetRepeatCount (0, 5) ]
+        let grown = editorOf withGroup |> applyAll [ SetRepeatCount (FilmItemIndex 0, PeriodCount 5) ]
         Assert.Equal(5 * 2 + 1, List.length grown.structure.expandedFilms)
-        let shrunk = editorOf withGroup |> applyAll [ SetRepeatCount (0, 1) ]
+        let shrunk = editorOf withGroup |> applyAll [ SetRepeatCount (FilmItemIndex 0, PeriodCount 1) ]
         Assert.Equal(1 * 2 + 1, List.length shrunk.structure.expandedFilms)
 
     [<Fact>]
     let ``SetRepeatCount rejects a count below 1 with the typed error — the validateRepeatCount rule`` () =
-        match expectError (SetRepeatCount (0, 0)) (editorOf withGroup) with
-        | InvalidRepeatCount _ -> ()
-        | e -> failwith $"expected InvalidRepeatCount, got %A{e}"
+        match expectError (SetRepeatCount (FilmItemIndex 0, PeriodCount 0)) (editorOf withGroup) with
+        | InvalidRepeatCountErr _ -> ()
+        | e -> failwith $"expected InvalidRepeatCountErr, got %A{e}"
         // The SAME rule the Ui boundary enforces: validateRepeatCount rejects 0, accepts 1.
         match OpticalConstructor.Ui.Validation.validateRepeatCount 0 with
         | Error _ -> ()
@@ -370,14 +370,14 @@ module SampleStackEditorTests =
         match OpticalConstructor.Ui.Validation.validateRepeatCount 1 with
         | Ok _ -> ()
         | Error e -> failwith $"Ui validateRepeatCount unexpectedly rejected 1: %A{e}"
-        let accepted = editorOf withGroup |> applyAll [ SetRepeatCount (0, 1) ]
+        let accepted = editorOf withGroup |> applyAll [ SetRepeatCount (FilmItemIndex 0, PeriodCount 1) ]
         Assert.Equal(3, List.length accepted.structure.expandedFilms)
 
     [<Fact>]
     let ``SetRepeatCount aimed at a non-group position is rejected with the typed error`` () =
-        match expectError (SetRepeatCount (1, 2)) (editorOf withGroup) with
-        | NotARepeatGroup _ -> ()
-        | e -> failwith $"expected NotARepeatGroup, got %A{e}"
-        match expectError (SetRepeatCount (7, 2)) (editorOf withGroup) with
-        | NotARepeatGroup _ -> ()
-        | e -> failwith $"expected NotARepeatGroup, got %A{e}"
+        match expectError (SetRepeatCount (FilmItemIndex 1, PeriodCount 2)) (editorOf withGroup) with
+        | NotARepeatGroupErr _ -> ()
+        | e -> failwith $"expected NotARepeatGroupErr, got %A{e}"
+        match expectError (SetRepeatCount (FilmItemIndex 7, PeriodCount 2)) (editorOf withGroup) with
+        | NotARepeatGroupErr _ -> ()
+        | e -> failwith $"expected NotARepeatGroupErr, got %A{e}"

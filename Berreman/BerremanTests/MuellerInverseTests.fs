@@ -523,7 +523,7 @@ type MuellerInverseTests() =
         // A pure circular retardance of cb IS the Stokes frame rotation through cb / 2: an optical rotator
         // turns the polarization azimuth by half its circular retardance.
         let cb = Retardance.degree 50.0
-        assertMuellerEqual (Propagation.rotationMueller (Angle (cb.value / 2.0))) (muellerOfBirefringence zero zero cb)
+        assertMuellerEqual ((Angle (cb.value / 2.0)).rotationMueller) (muellerOfBirefringence zero zero cb)
 
         // Zero everywhere is the identity — the rotation vector vanishes and the Rodrigues short-circuit
         // must not divide by its own zero norm.
@@ -561,7 +561,7 @@ type MuellerInverseTests() =
         | other -> Assert.Fail($"expected a DegenerateRotation for a half-turn, got %A{other}")
 
         // A matrix with non-positive m00 carries no usable intensity to normalize by.
-        let dark = Propagation.muellerOfRows [ for _ in 0 .. 3 -> [ for _ in 0 .. 3 -> 0.0 ] ]
+        let dark = MuellerMatrix (RealMatrix4x4.create [ for _ in 0 .. 3 -> [ for _ in 0 .. 3 -> 0.0 ] ])
         match analyticInversion dark with
         | Error (NonPositiveIntensity m00) -> Assert.Equal(0.0, m00)
         | other -> Assert.Fail($"expected a NonPositiveIntensity for a zero matrix, got %A{other}")
@@ -587,11 +587,12 @@ type MuellerInverseTests() =
         // The ideal depolarizer is the opposite extreme: it survives realizability (all four eigenvalues
         // equal and positive) but has a depolarization index of 0.
         let depolarizer =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 0.0; 0.0; 0.0 ] ]
+            |> MuellerMatrix
         Assert.True(cloudeEigenvalues depolarizer |> List.forall (fun l -> l > -1.0e-12), "the ideal depolarizer must stay realizable")
         match depolarizationIndex depolarizer with
         | Ok di -> Assert.True(abs di < 1.0e-12, $"depolarization index of an ideal depolarizer = {di}")
@@ -1098,12 +1099,12 @@ type MuellerInverseTests() =
         match normalizeMueller clean.measured with
         | Ok trueNormalized ->
             let reported = misread (UniformDeviateProvider.fromSeed (NoiseSeed 5)) NoiseParam.decentLab clean.measured
-            Assert.True(abs (Propagation.muellerElement reported 0 0 - 1.0) < 1.0e-15, "m00 must stay at exactly 1")
+            Assert.True(abs (reported.element 0 0 - 1.0) < 1.0e-15, "m00 must stay at exactly 1")
             let deviations =
                 [ for i in 0 .. 3 do
                     for j in 0 .. 3 do
                         if not (i = 0 && j = 0) then
-                            abs (Propagation.muellerElement reported i j - Propagation.muellerElement trueNormalized i j) ]
+                            abs (reported.element i j - trueNormalized.element i j) ]
             Assert.True(List.max deviations <= NoiseParam.decentLab.element.value, $"an element error escaped the budget: worst {List.max deviations}, budget {NoiseParam.decentLab.element.value}")
             Assert.True(List.min deviations > 0.0, "every element other than m00 must actually have been misread")
         | Error e -> Assert.Fail($"the C1 ground-truth matrix should normalize, got %A{e}")
@@ -1128,7 +1129,7 @@ type MuellerInverseTests() =
             List.zip runA runOther
             |> List.collect (fun (x, y) ->
                 [ for i in 0 .. 3 do
-                    for j in 0 .. 3 -> abs (Propagation.muellerElement x.measured i j - Propagation.muellerElement y.measured i j) ])
+                    for j in 0 .. 3 -> abs (x.measured.element i j - y.measured.element i j) ])
             |> List.max
         Assert.True(biggestGap > 1.0e-4, $"two different seeds must give different data, biggest element gap = {biggestGap}")
         Assert.Equal<MeasurementConfiguration list>(c3, runA |> List.map (fun o -> o.configuration))

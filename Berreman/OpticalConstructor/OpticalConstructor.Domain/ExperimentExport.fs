@@ -6,33 +6,40 @@ namespace OpticalConstructor.Domain
 /// keeps every exported run so the numbers can be checked against an independent calculation.
 module ExperimentExport =
 
+    /// A text an exported run carries into its file: the run's title, an axis label, its description, or a
+    /// series' name.
+    type ExportText =
+        | ExportText of string
+
+        member this.value = let (ExportText t) = this in t
+
     /// One exported series: its name (e.g. "Intensity (T)", "Ψ (R)") and its (x, y) points.
     type ExportedSeries =
         {
-            name : string
-            points : (float * float) list
+            name : ExportText
+            points : Propagation.CurvePoint list
         }
 
     /// One exported run: what was varied (the x label), what was read (the y label), a description of the
     /// scene and the run, and the series.
     type ExportedRun =
         {
-            title : string
-            xLabel : string
-            yLabel : string
-            description : string
+            title : ExportText
+            xLabel : ExportText
+            yLabel : ExportText
+            description : ExportText
             series : ExportedSeries list
         }
 
     /// The export error channel (errors as values; each case carries a reason).
     type ExportError =
-        | NothingToExport of reason : string
-        | ExportFailed of reason : string
+        | NothingToExportErr of reason : string
+        | ExportFailedErr of reason : string
 
         member this.reason : string =
             match this with
-            | NothingToExport reason
-            | ExportFailed reason -> reason
+            | NothingToExportErr reason
+            | ExportFailedErr reason -> reason
 
     /// The export seam: a record of a `Result`-returning function (the functional-proxy convention).
     /// Reference-compared, so a model holding one keeps its equality.
@@ -50,12 +57,12 @@ module ExperimentExport =
             exported : unit -> ExportedRun list
         }
 
-    /// A fresh, empty in-memory export store. A run with no series is refused (`NothingToExport`).
+    /// A fresh, empty in-memory export store. A run with no series is refused (`NothingToExportErr`).
     let createInMemoryExperimentExport () : ExperimentExportStore =
         let store = ref ([] : ExportedRun list)
         let exportRun (run : ExportedRun) : Result<unit, ExportError> =
             match run.series with
-            | [] -> Error (NothingToExport "the run has no data to export")
+            | [] -> Error (NothingToExportErr "the run has no data to export")
             | _ ->
                 store.Value <- store.Value @ [ run ]
                 Ok ()

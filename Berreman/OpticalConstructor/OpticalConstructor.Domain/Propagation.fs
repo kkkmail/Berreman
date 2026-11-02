@@ -13,6 +13,80 @@ open Berreman.Dispersion
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 
+/// What the propagation pipeline reads off the engine's types, as members every holder of one finds (spec 0048
+/// E017, ELEV013): the Stokes components and readings, a Mueller element, the Stokes rotation and a layer's
+/// thickness. `RealMatrix4x4` / `RealVector4` indexing happens here and nowhere else.
+[<AutoOpen>]
+module PropagationReadouts =
+
+    /// The intensity an intensity detector records: S₀ of the Stokes vector arriving at it, relative to the
+    /// unit-intensity input every run starts from (spec 0046).
+    type DetectorIntensity =
+        | DetectorIntensity of float
+
+        member this.value = let (DetectorIntensity i) = this in i
+
+    type StokesVector with
+
+        /// S₀, the intensity component (the IO seam to the engine's `RealVector4`, as are S₁ … S₃).
+        member this.s0 : float = let (StokesVector (RealVector4 rv)) = this in rv.[0]
+
+        member this.s1 : float = let (StokesVector (RealVector4 rv)) = this in rv.[1]
+
+        member this.s2 : float = let (StokesVector (RealVector4 rv)) = this in rv.[2]
+
+        member this.s3 : float = let (StokesVector (RealVector4 rv)) = this in rv.[3]
+
+        /// What an intensity detector records — this vector's S₀ (spec §4).
+        member this.intensity : DetectorIntensity = DetectorIntensity this.s0
+
+        /// Ellipsometric Ψ, Δ from the normalized Stokes vector — what an ellipsometer reads (spec §4). For the
+        /// convention
+        ///   S1 = −cos 2Ψ ,  S2 = sin 2Ψ cos Δ ,  S3 = −sin 2Ψ sin Δ
+        /// the inverse is  2Ψ = atan2( √(S2²+S3²), −S1 ) ,  Δ = atan2( −S3, S2 ).
+        member this.psiDelta : Analytics.AnalysisFunctions.PsiDelta =
+            let s0v = this.s0
+            let n = if abs s0v > 1e-12 then s0v else 1.0
+            let s1n, s2n, s3n = this.s1 / n, this.s2 / n, this.s3 / n
+            let twoPsi = atan2 (sqrt (s2n * s2n + s3n * s3n)) (- s1n)
+            let delta = atan2 (- s3n) s2n
+            { psi = Angle (twoPsi / 2.0); delta = Angle delta }
+
+    type MuellerMatrix with
+
+        /// One element, row `i`, column `j` (the read seam to the engine's `RealMatrix4x4`; tests compare
+        /// matrices through it).
+        member this.element (i : int) (j : int) : float =
+            let (MuellerMatrix m) = this
+            m.[i, j]
+
+    type Angle with
+
+        /// The standard Stokes rotation matrix R(θ) (frame rotation by θ):
+        ///   [[1,0,0,0],[0,cos2θ,sin2θ,0],[0,−sin2θ,cos2θ,0],[0,0,0,1]].
+        /// The sign convention is pinned by `Propagation.rotateMueller`: R(−θ)·LP₀·R(θ) must reproduce
+        /// `analyzerMueller IdealLinear θ` exactly.
+        member this.rotationMueller : MuellerMatrix =
+            let c = cos (2.0 * this.value)
+            let s = sin (2.0 * this.value)
+            [ [ 1.0; 0.0; 0.0; 0.0 ]
+              [ 0.0; c; s; 0.0 ]
+              [ 0.0; -s; c; 0.0 ]
+              [ 0.0; 0.0; 0.0; 1.0 ] ]
+            |> RealMatrix4x4.create
+            |> MuellerMatrix
+
+    type Thickness with
+
+        /// The thickness in metres of a finite layer, or `None` for a semi-infinite (`Infinity`) half-space /
+        /// plate (spec 0027 / 026 — the Details band view reads thicknesses without naming the engine's
+        /// `Thickness` DU, which collides with `Avalonia.Thickness` in the UI layer).
+        member this.metersOpt : float option =
+            match this with
+            | Thickness.Infinity -> None
+            | Thickness.Thickness d -> Some (d / 1.0<meter>)
+
+
 /// Spec 0027 (024) Phase 3 — the pure Mueller-matrix / Stokes-vector propagation pipeline (the only new
 /// physics-plumbing module). It composes the EXISTING engine (the sample's Mueller matrix comes from
 /// `OpticalSystemSolver`, never reinvented) with the standard ideal-polarizer Mueller matrices (written
@@ -27,30 +101,9 @@ open OpticalConstructor.Domain.Library
 ///
 /// Running `RotateR1FullCircle` over the analyzer's R1 (0…360°) yields the (angleDeg, intensity) curve;
 /// with an identity (absent) sample and an ideal LP input + LP analyzer this is exactly the Malus law.
-/// Every primitive is elevated (`PsiDelta`, `IntensityCurve` are records, not bare tuples/floats);
-/// `RealMatrix4x4` / `StokesVector` indexing is the single IO seam to the engine's backing types.
+/// Every primitive is elevated (`PsiDelta`, `IntensityCurve` are records, not bare tuples/floats); the
+/// matrices are written through `RealMatrix4x4.create` and read through `PropagationReadouts`.
 module Propagation =
-
-    /// Build a `MuellerMatrix` from an explicit 4×4 of real rows (the same `RealMatrix` backing the engine
-    /// uses). This is the one engine-API seam the ideal-polarizer matrices are written through.
-    let muellerOfRows (rows : float list list) : MuellerMatrix =
-        rows |> RealMatrix.create |> RealMatrix4x4 |> MuellerMatrix
-
-    /// Read one element out of a `MuellerMatrix` (the read seam mirroring `muellerOfRows` — the IO
-    /// seam to the engine's `RealMatrix4x4`; tests compare matrices through this).
-    let muellerElement (mm : MuellerMatrix) (i : int) (j : int) : float =
-        let (MuellerMatrix m) = mm
-        m.[i, j]
-
-    /// Read S0..S3 out of a `StokesVector` (the IO seam to the engine's `RealVector4`).
-    let stokesComponents (sv : StokesVector) : float * float * float * float =
-        let (StokesVector (RealVector4 rv)) = sv
-        rv.[0], rv.[1], rv.[2], rv.[3]
-
-    /// The intensity component S0 of a Stokes vector (what an intensity detector records).
-    let s0 (sv : StokesVector) : float =
-        let (a, _, _, _) = stokesComponents sv
-        a
 
     /// The fully-polarized, unit-intensity Stokes vector produced by an IDEAL input polarizer at
     /// orientation `theta` (the input polarizer's R1, in radians via `Angle.value`):
@@ -77,68 +130,60 @@ module Propagation =
         let h = 0.5
         match kind with
         | IdealLinear ->
-            muellerOfRows
-                [ [ h; h * c; h * s; 0.0 ]
-                  [ h * c; h * c * c; h * c * s; 0.0 ]
-                  [ h * s; h * c * s; h * s * s; 0.0 ]
-                  [ 0.0; 0.0; 0.0; 0.0 ] ]
+            [ [ h; h * c; h * s; 0.0 ]
+              [ h * c; h * c * c; h * c * s; 0.0 ]
+              [ h * s; h * c * s; h * s * s; 0.0 ]
+              [ 0.0; 0.0; 0.0; 0.0 ] ]
+            |> RealMatrix4x4.create
+            |> MuellerMatrix
         | IdealCircularLeft ->
-            muellerOfRows
-                [ [ h; 0.0; 0.0; h ]
-                  [ 0.0; 0.0; 0.0; 0.0 ]
-                  [ 0.0; 0.0; 0.0; 0.0 ]
-                  [ h; 0.0; 0.0; h ] ]
+            [ [ h; 0.0; 0.0; h ]
+              [ 0.0; 0.0; 0.0; 0.0 ]
+              [ 0.0; 0.0; 0.0; 0.0 ]
+              [ h; 0.0; 0.0; h ] ]
+            |> RealMatrix4x4.create
+            |> MuellerMatrix
         | IdealCircularRight ->
-            muellerOfRows
-                [ [ h; 0.0; 0.0; -h ]
-                  [ 0.0; 0.0; 0.0; 0.0 ]
-                  [ 0.0; 0.0; 0.0; 0.0 ]
-                  [ -h; 0.0; 0.0; h ] ]
+            [ [ h; 0.0; 0.0; -h ]
+              [ 0.0; 0.0; 0.0; 0.0 ]
+              [ 0.0; 0.0; 0.0; 0.0 ]
+              [ -h; 0.0; 0.0; h ] ]
+            |> RealMatrix4x4.create
+            |> MuellerMatrix
 
     /// The identity Mueller matrix — the "no sample present" pass-through (spec R1: an absent sample is
     /// skipped, not synthesized). With it the rotating-analyzer curve reduces to the Malus law.
     let identityMueller : MuellerMatrix =
-        muellerOfRows
-            [ [ 1.0; 0.0; 0.0; 0.0 ]
-              [ 0.0; 1.0; 0.0; 0.0 ]
-              [ 0.0; 0.0; 1.0; 0.0 ]
-              [ 0.0; 0.0; 0.0; 1.0 ] ]
+        [ [ 1.0; 0.0; 0.0; 0.0 ]
+          [ 0.0; 1.0; 0.0; 0.0 ]
+          [ 0.0; 0.0; 1.0; 0.0 ]
+          [ 0.0; 0.0; 0.0; 1.0 ] ]
+        |> RealMatrix4x4.create
+        |> MuellerMatrix
 
     // -----------------------------------------------------------------------------------------------------
     // Spec 0038 Part F (step 014) — constant-Mueller polarizer evaluation. `PolarizerBehavior` is DATA in
     // the Library domain; its evaluation lives ONLY here, in the Stokes/Mueller pipeline (a ConstantMueller
     // entry never enters the Berreman stack). `ComputedIdeal` keeps synthesizing through the EXISTING
-    // `inputStokes` / `analyzerMueller` above, exactly as before.
+    // `inputStokes` / `analyzerMueller` above, exactly as before. R(θ) is `Angle.rotationMueller`.
     // -----------------------------------------------------------------------------------------------------
-
-    /// The standard Stokes rotation matrix R(θ) (frame rotation by θ):
-    ///   [[1,0,0,0],[0,cos2θ,sin2θ,0],[0,−sin2θ,cos2θ,0],[0,0,0,1]].
-    /// The sign convention is pinned by `rotateMueller`: R(−θ)·LP₀·R(θ) must reproduce
-    /// `analyzerMueller IdealLinear θ` exactly.
-    let rotationMueller (theta : Angle) : MuellerMatrix =
-        let c = cos (2.0 * theta.value)
-        let s = sin (2.0 * theta.value)
-        muellerOfRows
-            [ [ 1.0; 0.0; 0.0; 0.0 ]
-              [ 0.0; c; s; 0.0 ]
-              [ 0.0; -s; c; 0.0 ]
-              [ 0.0; 0.0; 0.0; 1.0 ] ]
 
     /// A polarizing element stored at reference orientation, physically rotated to θ (spec 0038 Part F):
     /// R(−θ)·M·R(θ).
     let rotateMueller (theta : Angle) (m : MuellerMatrix) : MuellerMatrix =
-        rotationMueller (Angle (- theta.value)) * (m * rotationMueller theta)
+        (Angle (- theta.value)).rotationMueller * (m * theta.rotationMueller)
 
-    /// One compound component at its own fixed offset within the compound: the stored
-    /// reference-orientation matrix rotated by `offset` — R(−offset)·M·R(offset).
-    let componentMueller (c : MuellerComponent) : MuellerMatrix =
-        rotateMueller c.offset c.matrix
+    type MuellerComponent with
+
+        /// This compound component at its own fixed offset within the compound: the stored
+        /// reference-orientation matrix rotated by `offset` — R(−offset)·M·R(offset).
+        member this.offsetMueller : MuellerMatrix = rotateMueller this.offset this.matrix
 
     /// The compound's Mueller matrix: the ORDERED product of the offset-rotated components. The list is
     /// in light-traversal order (the FIRST component is the first surface light hits), so the product is
     /// Mₙ·…·M₂·M₁ and `compoundMueller components * sv` applies the first component first.
     let compoundMueller (components : MuellerComponent list) : MuellerMatrix =
-        components |> List.fold (fun acc c -> componentMueller c * acc) identityMueller
+        components |> List.fold (fun acc c -> c.offsetMueller * acc) identityMueller
 
     /// A polarizer behaviour's Mueller matrix at the element's live orientation `theta` (its R1):
     /// `ComputedIdeal` synthesizes through the EXISTING `analyzerMueller` exactly as today;
@@ -183,7 +228,7 @@ module Propagation =
     /// is TOTAL — resolution (and its typed error) happened up front in `resolveSampleMaterials`.
     type ResolvedSample =
         {
-            name : string
+            name : EntryName
             films : ResolvedLayer list
             substrate : ResolvedLayer option
             lower : OpticalPropertiesWithDisp
@@ -239,7 +284,7 @@ module Propagation =
                     | Some mvid -> resolveMaterialVersion materials mvid
                 match lowerResult with
                 | Error e -> Error e
-                | Ok lower -> Ok { name = sample.name.value; films = films; substrate = substrate; lower = lower }
+                | Ok lower -> Ok { name = sample.name; films = films; substrate = substrate; lower = lower }
 
     /// Map a RESOLVED sample to an engine `OpticalSystem` at the run wavelength `w` (the wavelength only
     /// matters for the dispersive materials; the rest ignore it): evaluate each material at `w`, apply
@@ -249,20 +294,12 @@ module Propagation =
     /// structure — no per-sample-id branching.
     let sampleToSystem (sample : ResolvedSample) (w : WaveLength) : OpticalSystem =
         {
-            description = Some (OpticalSystemDescription sample.name)
+            description = Some sample.name.toOpticalSystemDescription
             upper = OpticalProperties.vacuum
             films = sample.films |> List.map (fun f -> f.getLayer w)
             substrate = sample.substrate |> Option.map (fun s -> Substrate.Plate (s.getLayer w))
             lower = sample.lower.getProperties w
         }
-
-    /// The thickness in metres of a finite layer, or `None` for a semi-infinite (`Infinity`) half-space /
-    /// plate (spec 0027 / 026 — the Details band view reads thicknesses without touching the engine's
-    /// `Thickness` DU, which collides with `Avalonia.Thickness` in the UI layer).
-    let thicknessMeters (t : Thickness) : float option =
-        match t with
-        | Thickness.Infinity -> None
-        | Thickness.Thickness d -> Some (d / 1.0<meter>)
 
     /// Which branch of the sample an experiment captures (spec 028): the transmitted or the reflected
     /// Mueller matrix from the engine. `Experiments.MeasurementMode.CaptureBoth` drives one curve per
@@ -311,19 +348,20 @@ module Propagation =
             let mm = solver.muellerMatrixT ()
             let flux (s : OpticalSystemSolver) : float = (s.solution.func OpticalFunction.T |> Option.defaultValue OpticalFunctionValue.zero).value
             let ratio (fluxValue : float) (amplitude : float) : float = if amplitude > 1.0e-300 then fluxValue / amplitude else 1.0
-            let m00 = muellerElement mm 0 0
-            let m01 = muellerElement mm 0 1
+            let m00 = mm.element 0 0
+            let m01 = mm.element 0 1
             let fs = ratio (flux (solver.solutionS ())) (m00 + m01)
             let fp = ratio (flux (solver.solutionP ())) (m00 - m01)
             let mean = (fs + fp) / 2.0
             let half = (fs - fp) / 2.0
             let cross = sqrt (max 0.0 (fs * fp))
             let diattenuator =
-                muellerOfRows
-                    [ [ mean; half; 0.0; 0.0 ]
-                      [ half; mean; 0.0; 0.0 ]
-                      [ 0.0; 0.0; cross; 0.0 ]
-                      [ 0.0; 0.0; 0.0; cross ] ]
+                [ [ mean; half; 0.0; 0.0 ]
+                  [ half; mean; 0.0; 0.0 ]
+                  [ 0.0; 0.0; cross; 0.0 ]
+                  [ 0.0; 0.0; 0.0; cross ] ]
+                |> RealMatrix4x4.create
+                |> MuellerMatrix
             mm * diattenuator
         | BranchReflected -> solver.muellerMatrixR ()
 
@@ -341,33 +379,58 @@ module Propagation =
     let propagate (svIn : StokesVector) (mmSample : MuellerMatrix) (mmAnalyzer : MuellerMatrix) : StokesVector =
         mmAnalyzer * (mmSample * svIn)
 
-    /// The intensity an intensity detector records — the detector Stokes vector's S0 (spec §4).
-    let intensity (svDet : StokesVector) : float = s0 svDet
+    /// One point of a computed curve: the swept value `x` (in its display unit — degrees for an angle, nm for a
+    /// wavelength) and what was read there, `y` (an intensity, or Ψ / Δ in degrees).
+    [<Softellect.Sys.NumericCarrier("an element of a computed sweep curve (R3, a sweep array): the swept x and the read y of every point a sweep solved or a run exported")>]
+    type CurvePoint =
+        {
+            x : float
+            y : float
+        }
 
-    /// The rotating-analyzer experiment result: the (angleDeg, intensity) samples over the analyzer's R1
+    /// One end of a swept range, in the swept quantity's display unit: degrees for an angle, nm for a wavelength.
+    type SweptValue =
+        | SweptValue of float
+
+        member this.value = let (SweptValue v) = this in v
+
+    /// How many points a sweep samples its range at, both ends included (fewer than two are read as two).
+    type CurvePointCount =
+        | CurvePointCount of int
+
+        member this.value = let (CurvePointCount n) = this in n
+
+    /// The rotating-analyzer experiment result: the (angle in degrees, intensity) points over the analyzer's R1
     /// across the full circle (the `RotateR1FullCircle` experiment, spec §2b).
     type IntensityCurve =
         {
-            points : (float * float) list
+            points : CurvePoint list
         }
 
-    /// Sweep the analyzer's R1 across an explicit angle range [loDeg, hiDeg] (inclusive) and record S0 at
-    /// each angle (spec 028 — the varied R1 range is user-editable). `rotatingAnalyzerCurve` is the
+    /// An ellipsometer sweep's two parallel curves: Ψ and Δ, in degrees, over the same swept values.
+    type PsiDeltaCurves =
+        {
+            psiCurve : CurvePoint list
+            deltaCurve : CurvePoint list
+        }
+
+    /// Sweep the analyzer's R1 across an explicit angle range [low, high] in degrees (inclusive) and record S0
+    /// at each angle (spec 028 — the varied R1 range is user-editable). `rotatingAnalyzerCurve` is the
     /// full-circle 0…360° special case.
     let rotatingAnalyzerCurveRange
         (svIn : StokesVector)
         (mmSample : MuellerMatrix)
         (analyzerKind : PolarizerKind)
-        (loDeg : float)
-        (hiDeg : float)
-        (numPoints : int) : IntensityCurve =
-        let n = max 2 numPoints
+        (low : SweptValue)
+        (high : SweptValue)
+        (count : CurvePointCount) : IntensityCurve =
+        let n = max 2 count.value
         let points =
             [
                 for k in 0 .. n - 1 ->
-                    let deg = loDeg + (hiDeg - loDeg) * float k / float (n - 1)
+                    let deg = low.value + (high.value - low.value) * float k / float (n - 1)
                     let mm = analyzerMueller analyzerKind (Angle.degree (deg * 1.0<deg>))
-                    deg, intensity (propagate svIn mmSample mm)
+                    { x = deg; y = (propagate svIn mmSample mm).s0 }
             ]
         { points = points }
 
@@ -377,133 +440,119 @@ module Propagation =
         (svIn : StokesVector)
         (mmSample : MuellerMatrix)
         (analyzerKind : PolarizerKind)
-        (numPoints : int) : IntensityCurve =
-        rotatingAnalyzerCurveRange svIn mmSample analyzerKind 0.0 360.0 numPoints
+        (count : CurvePointCount) : IntensityCurve =
+        rotatingAnalyzerCurveRange svIn mmSample analyzerKind (SweptValue 0.0) (SweptValue 360.0) count
 
     /// Intensity through an OPTIONAL analyzer: with an analyzer, S0 of MM_analyzer·(MM_sample·SV_in); without
     /// one, S0 of MM_sample·SV_in (no analyzer present — nothing synthesized; spec R1).
     let intensityThroughAnalyzerOpt
         (svIn : StokesVector)
         (mmSample : MuellerMatrix)
-        (analyzer : (PolarizerKind * Angle) option) : float =
+        (analyzer : (PolarizerKind * Angle) option) : DetectorIntensity =
         match analyzer with
-        | Some (kind, theta) -> intensity (propagate svIn mmSample (analyzerMueller kind theta))
-        | None -> intensity (mmSample * svIn)
+        | Some (kind, theta) -> (propagate svIn mmSample (analyzerMueller kind theta)).intensity
+        | None -> (mmSample * svIn).intensity
 
-    /// The number of computed points in the incidence (R2) sweep — the last is at 89° (90° is not
+    /// The top of the incidence (R2) sweep, in degrees — the last computed point is at 89° (90° is not
     /// computable; the chart axis is drawn to 90 by the UI layer, spec 026).
-    let r2SweepMaxDegrees : float = 89.0
+    let r2SweepMaxDegrees : SweptValue = SweptValue 89.0
 
-    /// One incidence (R2) sweep over [loDeg, hiDeg] (n points; spec 028 — the range is user-editable, and
-    /// the branch selects the transmitted or reflected sample Mueller matrix): at each incidence re-solve
-    /// the sample Mueller matrix and read the intensity through the optional analyzer. The angle in DEGREES
-    /// is the x-value; the caller clamps the top below 90° (90° itself is not computable, spec 026).
+    /// One incidence (R2) sweep over [low, high] in degrees (spec 028 — the range is user-editable, and the
+    /// branch selects the transmitted or reflected sample Mueller matrix): at each incidence re-solve the sample
+    /// Mueller matrix and read the intensity through the optional analyzer. The angle in DEGREES is the x-value;
+    /// the caller clamps the top below 90° (90° itself is not computable, spec 026).
     let r2SweepCurve
         (branch : Branch)
         (svIn : StokesVector)
         (sample : ResolvedSample)
         (w : WaveLength)
         (analyzer : (PolarizerKind * Angle) option)
-        (loDeg : float)
-        (hiDeg : float)
-        (numPoints : int) : (float * float) list =
-        let n = max 2 numPoints
-        let lo = min loDeg hiDeg
-        let hi = max loDeg hiDeg
+        (low : SweptValue)
+        (high : SweptValue)
+        (count : CurvePointCount) : CurvePoint list =
+        let n = max 2 count.value
+        let lo = min low.value high.value
+        let hi = max low.value high.value
         [
             for k in 0 .. n - 1 ->
                 let deg = lo + (hi - lo) * float k / float (n - 1)
                 let inc = IncidenceAngle.create (Angle.degree (deg * 1.0<deg>))
                 let mm = sampleMueller branch sample w inc
-                deg, intensityThroughAnalyzerOpt svIn mm analyzer
+                { x = deg; y = (intensityThroughAnalyzerOpt svIn mm analyzer).value }
         ]
 
     // -----------------------------------------------------------------------------------------------------
-    // Phase 4 — Ellipsometer (Ψ / Δ readout). Scope: ONLY the ellipsometer detector readout.
+    // Spec 0027 (026) — the ellipsometer and wavelength sweep builders. Each re-solves the sample at the swept
+    // value and returns two parallel Ψ/Δ curves (in DEGREES, read by `StokesVector.psiDelta`) or, for the
+    // intensity wavelength branch, one (wNm, intensity) curve.
     // -----------------------------------------------------------------------------------------------------
 
-    /// Ellipsometric Ψ, Δ from the normalized Stokes at the detector (spec §4). For the convention
-    ///   S1 = −cos 2Ψ ,  S2 = sin 2Ψ cos Δ ,  S3 = −sin 2Ψ sin Δ
-    /// the inverse is  2Ψ = atan2( √(S2²+S3²), −S1 ) ,  Δ = atan2( −S3, S2 ).
-    let psiDeltaOfStokes (sv : StokesVector) : Analytics.AnalysisFunctions.PsiDelta =
-        let s0v, s1, s2, s3 = stokesComponents sv
-        let n = if abs s0v > 1e-12 then s0v else 1.0
-        let s1n, s2n, s3n = s1 / n, s2 / n, s3 / n
-        let twoPsi = atan2 (sqrt (s2n * s2n + s3n * s3n)) (- s1n)
-        let delta = atan2 (- s3n) s2n
-        { psi = Angle (twoPsi / 2.0); delta = Angle delta }
-
-    /// The ellipsometer detector readout for a propagated detector Stokes vector (spec §4).
-    let ellipsometerReadout (svDet : StokesVector) : Analytics.AnalysisFunctions.PsiDelta = psiDeltaOfStokes svDet
-
-    // -----------------------------------------------------------------------------------------------------
-    // Spec 0027 (026) — the ellipsometer and wavelength sweep builders (placed after `ellipsometerReadout`
-    // so they can use it). Each re-solves the sample at the swept value and returns two parallel Ψ/Δ curves
-    // (in DEGREES) or, for the intensity wavelength branch, one (wNm, intensity) curve.
-    // -----------------------------------------------------------------------------------------------------
-
-    /// One incidence (R2) sweep for an ELLIPSOMETER over [loDeg, hiDeg] (spec 028 — user range + branch):
-    /// Ψ and Δ (in DEGREES) of the sample output at each incidence, as two parallel (angleDeg, value) curves.
+    /// One incidence (R2) sweep for an ELLIPSOMETER over [low, high] in degrees (spec 028 — user range + branch):
+    /// Ψ and Δ (in DEGREES) of the sample output at each incidence, as two parallel curves.
     let r2SweepPsiDelta
         (branch : Branch)
         (svIn : StokesVector)
         (sample : ResolvedSample)
         (w : WaveLength)
-        (loDeg : float)
-        (hiDeg : float)
-        (numPoints : int) : (float * float) list * (float * float) list =
-        let n = max 2 numPoints
-        let lo = min loDeg hiDeg
-        let hi = max loDeg hiDeg
-        [
-            for k in 0 .. n - 1 ->
-                let deg = lo + (hi - lo) * float k / float (n - 1)
-                let inc = IncidenceAngle.create (Angle.degree (deg * 1.0<deg>))
-                let pd = ellipsometerReadout (sampleMueller branch sample w inc * svIn)
-                (deg, pd.psi.degrees), (deg, pd.delta.degrees)
-        ]
-        |> List.unzip
+        (low : SweptValue)
+        (high : SweptValue)
+        (count : CurvePointCount) : PsiDeltaCurves =
+        let n = max 2 count.value
+        let lo = min low.value high.value
+        let hi = max low.value high.value
+        let psi, delta =
+            [
+                for k in 0 .. n - 1 ->
+                    let deg = lo + (hi - lo) * float k / float (n - 1)
+                    let inc = IncidenceAngle.create (Angle.degree (deg * 1.0<deg>))
+                    let pd = (sampleMueller branch sample w inc * svIn).psiDelta
+                    { x = deg; y = pd.psi.degrees }, { x = deg; y = pd.delta.degrees }
+            ]
+            |> List.unzip
+        { psiCurve = psi; deltaCurve = delta }
 
-    /// One wavelength sweep over [loNm, hiNm] (n points; x in NM; spec 028 — branch selects T / R): re-solve
-    /// the sample Mueller matrix at each wavelength and read the intensity through the optional analyzer.
+    /// One wavelength sweep over [low, high] in nm (x in NM; spec 028 — branch selects T / R): re-solve the
+    /// sample Mueller matrix at each wavelength and read the intensity through the optional analyzer.
     let waveLengthSweepIntensity
         (branch : Branch)
         (svIn : StokesVector)
         (sample : ResolvedSample)
         (inc : IncidenceAngle)
         (analyzer : (PolarizerKind * Angle) option)
-        (loNm : float)
-        (hiNm : float)
-        (numPoints : int) : (float * float) list =
-        let n = max 2 numPoints
-        let lo = min loNm hiNm
-        let hi = max loNm hiNm
+        (low : SweptValue)
+        (high : SweptValue)
+        (count : CurvePointCount) : CurvePoint list =
+        let n = max 2 count.value
+        let lo = min low.value high.value
+        let hi = max low.value high.value
         [
             for k in 0 .. n - 1 ->
                 let wNm = lo + (hi - lo) * float k / float (n - 1)
                 let w = WaveLength.nm (wNm * 1.0<nm>)
                 let mm = sampleMueller branch sample w inc
-                wNm, intensityThroughAnalyzerOpt svIn mm analyzer
+                { x = wNm; y = (intensityThroughAnalyzerOpt svIn mm analyzer).value }
         ]
 
-    /// One wavelength sweep for an ELLIPSOMETER over [loNm, hiNm] (x in NM; spec 028 — branch selects T / R):
-    /// Ψ and Δ (in DEGREES) of the sample output, returned as two parallel (wNm, value) curves.
+    /// One wavelength sweep for an ELLIPSOMETER over [low, high] in nm (x in NM; spec 028 — branch selects
+    /// T / R): Ψ and Δ (in DEGREES) of the sample output, returned as two parallel curves.
     let waveLengthSweepPsiDelta
         (branch : Branch)
         (svIn : StokesVector)
         (sample : ResolvedSample)
         (inc : IncidenceAngle)
-        (loNm : float)
-        (hiNm : float)
-        (numPoints : int) : (float * float) list * (float * float) list =
-        let n = max 2 numPoints
-        let lo = min loNm hiNm
-        let hi = max loNm hiNm
-        [
-            for k in 0 .. n - 1 ->
-                let wNm = lo + (hi - lo) * float k / float (n - 1)
-                let w = WaveLength.nm (wNm * 1.0<nm>)
-                let pd = ellipsometerReadout (sampleMueller branch sample w inc * svIn)
-                (wNm, pd.psi.degrees), (wNm, pd.delta.degrees)
-        ]
-        |> List.unzip
+        (low : SweptValue)
+        (high : SweptValue)
+        (count : CurvePointCount) : PsiDeltaCurves =
+        let n = max 2 count.value
+        let lo = min low.value high.value
+        let hi = max low.value high.value
+        let psi, delta =
+            [
+                for k in 0 .. n - 1 ->
+                    let wNm = lo + (hi - lo) * float k / float (n - 1)
+                    let w = WaveLength.nm (wNm * 1.0<nm>)
+                    let pd = (sampleMueller branch sample w inc * svIn).psiDelta
+                    { x = wNm; y = pd.psi.degrees }, { x = wNm; y = pd.delta.degrees }
+            ]
+            |> List.unzip
+        { psiCurve = psi; deltaCurve = delta }

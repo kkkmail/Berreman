@@ -112,7 +112,7 @@ module WorkbenchInfoAndCaptureTests =
 
     [<Fact>]
     let ``a Select session opens with the target's current entry chosen and its row visible`` () =
-        let session (current : string option) : SelectionContext<LibraryEntry> =
+        let session (current : ElementValueId option) : SelectionContext<LibraryEntry> =
             {
                 kindConstraint = KindConstraint LightSource
                 target = TableElementTarget (ElementId "src")
@@ -120,13 +120,13 @@ module WorkbenchInfoAndCaptureTests =
                 onSelected = ignore
                 onCancelled = ignore
             }
-        let m = LW.initLibraryWindow (libraryContext ()) (Select (session (Some "src-hene-633")))
+        let m = LW.initLibraryWindow (libraryContext ()) (Select (session (Some (ElementValueId "src-hene-633"))))
         Assert.Equal(Some "src-hene-633", m.selectedEntryId)
         Assert.Equal(LW.entryNodeCode "src-hene-633", m.selectedNodeCode)
         Assert.True(m.expandedNodes.isExpanded "entries", "the entries group opens so the chosen row shows")
         // Nothing bound (or a binding of another kind) shows nothing chosen.
         Assert.Equal(None, (LW.initLibraryWindow (libraryContext ()) (Select (session None))).selectedEntryId)
-        Assert.Equal(None, (LW.initLibraryWindow (libraryContext ()) (Select (session (Some "det-intensity")))).selectedEntryId)
+        Assert.Equal(None, (LW.initLibraryWindow (libraryContext ()) (Select (session (Some (ElementValueId "det-intensity"))))).selectedEntryId)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -147,7 +147,7 @@ module WorkbenchInfoAndCaptureTests =
                 | None -> Assert.Fail "Choose… has no on-screen position"
             | None -> Assert.Fail "the menu must offer Choose…"
             match captured.Value with
-            | Some ctx -> Assert.Equal(Some "src-krf-248", ctx.currentEntryIdOpt)
+            | Some ctx -> Assert.Equal(Some (ElementValueId "src-krf-248"), ctx.currentEntryIdOpt)
             | None -> Assert.Fail "Choose… must open the Library in Select state"
             window.Close()
             Dispatcher.UIThread.RunJobs())
@@ -255,8 +255,8 @@ module WorkbenchInfoAndCaptureTests =
         Assert.StartsWith("Exported 1 series", exported.exportStatus |> Option.defaultValue "")
         match store.exported () with
         | [ run ] ->
-            Assert.Equal("Incidence angle R2 (°)", run.xLabel)
-            Assert.Equal<string list>([ "Intensity" ], run.series |> List.map (fun s -> s.name))
+            Assert.Equal("Incidence angle R2 (°)", run.xLabel.value)
+            Assert.Equal<string list>([ "Intensity" ], run.series |> List.map (fun s -> s.name.value))
         | other -> Assert.Fail($"expected one exported run, got %d{List.length other}")
 
     // ------------------------------ the run follows the light's real path ------------------------------

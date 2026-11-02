@@ -222,9 +222,9 @@ module FsxAcceptanceTests =
         |> List.ofArray
 
     let private seriesNamed (run : ExperimentExport.ExportedRun) (name : string) : (float * float) list =
-        match run.series |> List.tryFind (fun s -> s.name = name) with
-        | Some s -> s.points
-        | None -> failwith $"""no series '%s{name}' among %A{run.series |> List.map (fun s -> s.name)}"""
+        match run.series |> List.tryFind (fun s -> s.name.value = name) with
+        | Some s -> s.points |> List.map (fun p -> p.x, p.y)
+        | None -> failwith $"""no series '%s{name}' among %A{run.series |> List.map (fun s -> s.name.value)}"""
 
     /// The two curves agree point by point: the same x grid, and y within `tolerance` (absolute).
     let private assertSameCurve (what : string) (tolerance : float) (expected : (float * float) list) (actual : (float * float) list) : unit =

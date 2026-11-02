@@ -336,10 +336,10 @@ module SampleEditorWindowTests =
     let ``clicking a layer row toggles it in and out of the multi-selection`` () =
         let _, context = recordingContext ()
         let m = initSampleEditor context builtInEntries (EditSample (threeFilmSample ()))
-        let selected = m |> updateSampleEditor (ToggleLayer (AtSingleLayer 0)) |> updateSampleEditor (ToggleLayer (AtSingleLayer 1))
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0; AtSingleLayer 1 ], selected.editor.selection)
-        let toggledOff = selected |> updateSampleEditor (ToggleLayer (AtSingleLayer 0))
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 1 ], toggledOff.editor.selection)
+        let selected = m |> updateSampleEditor (ToggleLayer (AtSingleLayer (FilmItemIndex 0))) |> updateSampleEditor (ToggleLayer (AtSingleLayer (FilmItemIndex 1)))
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer (FilmItemIndex 0); AtSingleLayer (FilmItemIndex 1) ], selected.editor.selection)
+        let toggledOff = selected |> updateSampleEditor (ToggleLayer (AtSingleLayer (FilmItemIndex 0)))
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer (FilmItemIndex 1) ], toggledOff.editor.selection)
 
     [<Fact>]
     let ``AddLayer appends a layer of the chosen material with the default thickness`` () =
@@ -368,8 +368,8 @@ module SampleEditorWindowTests =
         let _, context = recordingContext ()
         let grouped =
             initSampleEditor context builtInEntries (EditSample (threeFilmSample ()))
-            |> updateSampleEditor (ToggleLayer (AtSingleLayer 0))
-            |> updateSampleEditor (ToggleLayer (AtSingleLayer 1))
+            |> updateSampleEditor (ToggleLayer (AtSingleLayer (FilmItemIndex 0)))
+            |> updateSampleEditor (ToggleLayer (AtSingleLayer (FilmItemIndex 1)))
             |> updateSampleEditor MakeRepeatBlockClicked
         let below = grouped |> updateSampleEditor (GroupCountBy (0, -2))
         match below.status with
@@ -546,10 +546,10 @@ module SampleEditorWindowTests =
         // chosen-material source now that the inline picker is gone.
         let _, context = recordingContext ()
         let m = initSampleEditor context builtInEntries (EditSample (threeFilmSample ()))
-        let bound = updateSampleEditor (BindMaterialToLayer (AtSingleLayer 1, MaterialIds.glass175)) m
+        let bound = updateSampleEditor (BindMaterialToLayer (AtSingleLayer (FilmItemIndex 1), MaterialIds.glass175)) m
         Assert.Equal<MaterialId option>(Some MaterialIds.glass175, bound.chosenMaterial)
         // The vanished-row return stays a strict no-op plus the status line.
-        let vanished = updateSampleEditor (BindMaterialToLayer (AtSingleLayer 7, MaterialIds.glass175)) m
+        let vanished = updateSampleEditor (BindMaterialToLayer (AtSingleLayer (FilmItemIndex 7), MaterialIds.glass175)) m
         Assert.Equal<MaterialId option>(None, vanished.chosenMaterial)
 
     // ========== step 010 — the supported-emission R/T constraint (pure) ==========
@@ -1202,9 +1202,9 @@ module SampleEditorWindowTests =
         let _, context = recordingContext ()
         let m =
             initSampleEditor context builtInEntries (EditSample (threeFilmSample ()))
-            |> updateSampleEditor (ToggleLayer (AtSingleLayer 2))
+            |> updateSampleEditor (ToggleLayer (AtSingleLayer (FilmItemIndex 2)))
         // The Materials window's Select session returns vacuum for row 1 — NOT the selection.
-        let bound = updateSampleEditor (BindMaterialToLayer (AtSingleLayer 1, MaterialIds.glass175)) m
+        let bound = updateSampleEditor (BindMaterialToLayer (AtSingleLayer (FilmItemIndex 1), MaterialIds.glass175)) m
         let materialAt (i : int) (model : SampleEditorModel) : MaterialId =
             match List.item i model.editor.structure.films with
             | SingleLayer layer -> layer.materialId.materialId
@@ -1214,7 +1214,7 @@ module SampleEditorWindowTests =
         Assert.Equal(MaterialIds.glass152, materialAt 2 bound)
         // The user's own multi-selection survives the targeted transform (the
         // SetLayerOrientation dance), and the status stays clean.
-        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 2 ], bound.editor.selection)
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer (FilmItemIndex 2) ], bound.editor.selection)
         Assert.Equal<string option>(None, bound.status)
 
     [<Fact>]
@@ -1223,14 +1223,14 @@ module SampleEditorWindowTests =
         // A blank NEW sample has no row 0 — the deleted-row race the targeted return must
         // survive (spec 0038 step 016; step 019 wires the Choose material… verb).
         let m = initSampleEditor context builtInEntries (NewBlankSample (newSampleId ()))
-        let vanished = updateSampleEditor (BindMaterialToLayer (AtSingleLayer 0, MaterialIds.glass152)) m
+        let vanished = updateSampleEditor (BindMaterialToLayer (AtSingleLayer (FilmItemIndex 0), MaterialIds.glass152)) m
         Assert.Equal<SampleStructure>(m.editor.structure, vanished.editor.structure)
         match vanished.status with
         | Some text -> Assert.Contains("no longer in the stack", text)
         | None -> Assert.Fail "the vanished row must surface the status line"
         // A cell-slot position of a non-group item is equally vanished (total, typed, no throw).
         let three = initSampleEditor context builtInEntries (EditSample (threeFilmSample ()))
-        let cellMiss = updateSampleEditor (BindMaterialToLayer (AtCellLayer (0, 0), MaterialIds.glass152)) three
+        let cellMiss = updateSampleEditor (BindMaterialToLayer (AtCellLayer (FilmItemIndex 0, CellLayerIndex 0), MaterialIds.glass152)) three
         Assert.Equal<SampleStructure>(three.editor.structure, cellMiss.editor.structure)
         match cellMiss.status with
         | Some text -> Assert.Contains("no longer in the stack", text)

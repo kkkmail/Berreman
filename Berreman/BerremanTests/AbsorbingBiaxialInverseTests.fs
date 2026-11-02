@@ -286,7 +286,7 @@ type AbsorbingBiaxialInverseTests() =
         let transmittances =
             [ for o in observations do
                 if o.configuration.observable = TransmittedMueller then
-                    Propagation.muellerElement o.measured 0 0 ]
+                    o.measured.element 0 0 ]
         let report = $"throughput from {List.min transmittances} to {List.max transmittances}"
 
         // Bands pinned per the spec §9 protocol from the observed values.

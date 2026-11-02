@@ -20,6 +20,18 @@ open Berreman.Media
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 
+/// The position of an item in `SampleStructure.films` (a single layer or a period group), from 0.
+type FilmItemIndex =
+    | FilmItemIndex of int
+
+    member this.value = let (FilmItemIndex i) = this in i
+
+/// The position of a layer in a period group's unit cell, from 0.
+type CellLayerIndex =
+    | CellLayerIndex of int
+
+    member this.value = let (CellLayerIndex j) = this in j
+
 /// Where an editable film layer lives inside `SampleStructure.films`: a
 /// top-level `SingleLayer` slot, or ONE cell slot of a `Repeated` period
 /// group. A repetition adds NO position — the cell slot is the single
@@ -27,8 +39,8 @@ open OpticalConstructor.Domain.Library
 /// (A `Repeated` item itself is not a layer position; groups are addressed
 /// by their films index in `SetRepeatCount`.)
 type LayerPosition =
-    | AtSingleLayer of itemIndex : int
-    | AtCellLayer of itemIndex : int * cellIndex : int
+    | AtSingleLayer of itemIndex : FilmItemIndex
+    | AtCellLayer of itemIndex : FilmItemIndex * cellIndex : CellLayerIndex
 
 /// The editor state (the slice's "state record"): the structure under edit
 /// plus the selected layer positions. Selection is a Set — no duplicates, no
@@ -50,12 +62,12 @@ type SampleStackEditState =
 type SampleStackEditError =
     /// A repeat count `< 1` — the same rule `Validation.validateRepeatCount`
     /// (Ui/Validation.fs:56) enforces at the Ui boundary.
-    | InvalidRepeatCount of reason : string
+    | InvalidRepeatCountErr of reason : string
     /// `MakeRepeatBlock` needs a non-empty, contiguous run of TOP-LEVEL
     /// single layers (a period cell / group cannot fold into another group).
-    | SelectionNotFoldable of reason : string
+    | SelectionNotFoldableErr of reason : string
     /// `SetRepeatCount` aimed at a films index that is not a `Repeated` group.
-    | NotARepeatGroup of reason : string
+    | NotARepeatGroupErr of reason : string
 
 /// The editor's message DU (the `SampleStructure` mirror of
 /// `StackEditor.StackMsg`): one arm per operation, applied by
@@ -80,10 +92,10 @@ type SampleStackMsg =
     | MoveSelectedDown
     /// Fold the selected contiguous top-level single layers into ONE
     /// `Repeated` period group of `count` repetitions.
-    | MakeRepeatBlock of count : int
+    | MakeRepeatBlock of count : PeriodCount
     /// Set the repetition count of the `Repeated` group at a films index —
     /// whole periods are added or removed (the cell is untouched).
-    | SetRepeatCount of groupIndex : int * count : int
+    | SetRepeatCount of groupIndex : FilmItemIndex * count : PeriodCount
     /// Append ONE single film layer to the bottom of the stack (spec 0033 gap
     /// G13 — the pure Domain arm the editor's Add-layer button previously
     /// lacked, forcing a view-level structural edit that broke the
@@ -102,20 +114,22 @@ type SampleStackMsg =
 // Selection helpers.
 // ---------------------------------------------------------------------------
 
-/// Whether `position` names an existing film layer of `structure`. Public since spec 0038
-/// step 016: a Select-state window's TARGETED return (`SampleLayerTarget`) checks its layer
-/// still exists through THIS seam — a vanished row is a no-op plus a status line, never a
-/// throw (the same rule `SelectLayer` applies to a stale click).
-let isValidPosition (structure : SampleStructure) (position : LayerPosition) : bool =
-    match position with
-    | AtSingleLayer i ->
-        match List.tryItem i structure.films with
-        | Some (SingleLayer _) -> true
-        | Some (Repeated _) | None -> false
-    | AtCellLayer (i, j) ->
-        match List.tryItem i structure.films with
-        | Some (Repeated g) -> j >= 0 && j < List.length g.cell
-        | Some (SingleLayer _) | None -> false
+type SampleStructure with
+
+    /// The film layer `position` names, if it exists. Public since spec 0038 step 016: a
+    /// Select-state window's TARGETED return (`SampleLayerTarget`) checks its layer still exists
+    /// through THIS seam — a vanished row is a no-op plus a status line, never a throw (the same
+    /// rule `SelectLayer` applies to a stale click).
+    member this.tryFindLayer (position : LayerPosition) : SampleLayer option =
+        match position with
+        | AtSingleLayer i ->
+            match List.tryItem i.value this.films with
+            | Some (SingleLayer l) -> Some l
+            | Some (Repeated _) | None -> None
+        | AtCellLayer (i, j) ->
+            match List.tryItem i.value this.films with
+            | Some (Repeated g) -> List.tryItem j.value g.cell
+            | Some (SingleLayer _) | None -> None
 
 /// Every position whose layer references `materialId`. A `Repeated` group
 /// contributes its matching CELL slots (once — repetition adds no position).
@@ -126,11 +140,11 @@ let private positionsOfMaterial (materialId : MaterialId) (structure : SampleStr
         match item with
         // Select-by-material is per material IDENTITY (spec 0038 step 022): the layer pins a
         // `MaterialVersionId`, so we compare its `.materialId` — any version of the material matches.
-        | SingleLayer l -> if l.materialId.materialId = materialId then [ AtSingleLayer i ] else []
+        | SingleLayer l -> if l.materialId.materialId = materialId then [ AtSingleLayer (FilmItemIndex i) ] else []
         | Repeated g ->
             g.cell
             |> List.indexed
-            |> List.choose (fun (j, l) -> if l.materialId.materialId = materialId then Some (AtCellLayer (i, j)) else None))
+            |> List.choose (fun (j, l) -> if l.materialId.materialId = materialId then Some (AtCellLayer (FilmItemIndex i, CellLayerIndex j)) else None))
     |> Set.ofList
 
 // ---------------------------------------------------------------------------
@@ -146,9 +160,9 @@ let private mapSelected (selection : Set<LayerPosition>) (f : SampleLayer -> Sam
         |> List.mapi (fun i item ->
             match item with
             | SingleLayer l ->
-                if Set.contains (AtSingleLayer i) selection then SingleLayer (f l) else item
+                if Set.contains (AtSingleLayer (FilmItemIndex i)) selection then SingleLayer (f l) else item
             | Repeated g ->
-                let cell = g.cell |> List.mapi (fun j l -> if Set.contains (AtCellLayer (i, j)) selection then f l else l)
+                let cell = g.cell |> List.mapi (fun j l -> if Set.contains (AtCellLayer (FilmItemIndex i, CellLayerIndex j)) selection then f l else l)
                 Repeated { g with cell = cell })
     { structure with films = films }
 
@@ -162,12 +176,12 @@ let private removeSelected (selection : Set<LayerPosition>) (structure : SampleS
         |> List.choose (fun (i, item) ->
             match item with
             | SingleLayer _ ->
-                if Set.contains (AtSingleLayer i) selection then None else Some item
+                if Set.contains (AtSingleLayer (FilmItemIndex i)) selection then None else Some item
             | Repeated g ->
                 let cell =
                     g.cell
                     |> List.indexed
-                    |> List.filter (fun (j, _) -> not (Set.contains (AtCellLayer (i, j)) selection))
+                    |> List.filter (fun (j, _) -> not (Set.contains (AtCellLayer (FilmItemIndex i, CellLayerIndex j)) selection))
                     |> List.map snd
                 match cell with
                 | [] -> None
@@ -187,39 +201,42 @@ type private MoveDirection =
     | TowardsTop
     | TowardsBottom
 
-let private swapAt (i : int) (j : int) (xs : 'a list) : 'a list =
-    let a = xs.[i]
-    let b = xs.[j]
-    xs |> List.mapi (fun k x -> if k = i then b elif k = j then a else x)
-
-/// Move the items at `selected` one slot within `xs`, returning the reordered
-/// list plus the old-index → new-index map for every item (movers and
-/// displaced neighbours alike; unmoved indices map to themselves).
-let private moveWithin (direction : MoveDirection) (selected : Set<int>) (xs : 'a list) : 'a list * Map<int, int> =
-    let tagged = xs |> List.mapi (fun i x -> (i, x))
+/// Move the items at `selected` one slot within `items`, whose slots are `slots` in order (one index type
+/// per container — `FilmItemIndex` for the films, `CellLayerIndex` for a cell), returning the reordered
+/// items plus the old-slot → new-slot map for every item (movers and displaced neighbours alike; unmoved
+/// slots map to themselves).
+let private moveWithin (direction : MoveDirection) (selected : Set<'Slot>) (slots : 'Slot list) (items : 'Item list) : 'Item list * Map<'Slot, 'Slot> =
+    let swapAt (i : int) (j : int) (xs : ('Slot * 'Item) list) : ('Slot * 'Item) list =
+        let a = xs.[i]
+        let b = xs.[j]
+        xs |> List.mapi (fun k x -> if k = i then b elif k = j then a else x)
+    let selectedPositions =
+        slots
+        |> List.indexed
+        |> List.choose (fun (position, slot) -> if Set.contains slot selected then Some position else None)
     let ordered =
         match direction with
-        | TowardsTop -> Set.toList selected
-        | TowardsBottom -> Set.toList selected |> List.rev
+        | TowardsTop -> selectedPositions
+        | TowardsBottom -> List.rev selectedPositions
     let initialFrontier =
         match direction with
         | TowardsTop -> 0
-        | TowardsBottom -> List.length xs - 1
+        | TowardsBottom -> List.length items - 1
     let moved, _ =
         ordered
         |> List.fold
-            (fun (items : (int * 'a) list, frontier) i ->
+            (fun (tagged : ('Slot * 'Item) list, frontier) i ->
                 if i = frontier then
                     // Pinned against the boundary (or a pinned selected neighbour).
                     match direction with
-                    | TowardsTop -> (items, frontier + 1)
-                    | TowardsBottom -> (items, frontier - 1)
+                    | TowardsTop -> (tagged, frontier + 1)
+                    | TowardsBottom -> (tagged, frontier - 1)
                 else
                     match direction with
-                    | TowardsTop -> (swapAt (i - 1) i items, frontier)
-                    | TowardsBottom -> (swapAt i (i + 1) items, frontier))
-            (tagged, initialFrontier)
-    let mapping = moved |> List.mapi (fun newIndex (oldIndex, _) -> (oldIndex, newIndex)) |> Map.ofList
+                    | TowardsTop -> (swapAt (i - 1) i tagged, frontier)
+                    | TowardsBottom -> (swapAt i (i + 1) tagged, frontier))
+            (List.zip slots items, initialFrontier)
+    let mapping = moved |> List.mapi (fun newPosition (oldSlot, _) -> (oldSlot, List.item newPosition slots)) |> Map.ofList
     (moved |> List.map snd, mapping)
 
 /// One move step over the whole state: cell selections move within their own
@@ -243,15 +260,16 @@ let private moveSelected (direction : MoveDirection) (state : SampleStackEditSta
     let filmsAfterCells, cellMappings =
         state.structure.films
         |> List.mapi (fun i item ->
-            match item, Map.tryFind i cellSelectedByGroup with
+            let index = FilmItemIndex i
+            match item, Map.tryFind index cellSelectedByGroup with
             | Repeated g, Some sel ->
-                let cell, mapping = moveWithin direction sel g.cell
-                (Repeated { g with cell = cell }, Some (i, mapping))
+                let cell, mapping = moveWithin direction sel (List.init (List.length g.cell) CellLayerIndex) g.cell
+                (Repeated { g with cell = cell }, Some (index, mapping))
             | _, _ -> (item, None))
         |> List.unzip
         |> fun (items, mappings) -> (items, mappings |> List.choose id |> Map.ofList)
     // Then the top-level move.
-    let films, topMapping = moveWithin direction topSelected filmsAfterCells
+    let films, topMapping = moveWithin direction topSelected (List.init (List.length filmsAfterCells) FilmItemIndex) filmsAfterCells
     let selection =
         state.selection
         |> Set.map (fun position ->
@@ -269,65 +287,67 @@ let private moveSelected (direction : MoveDirection) (state : SampleStackEditSta
 // The two repeat arms (the typed-error surface).
 // ---------------------------------------------------------------------------
 
-/// The `count >= 1` rule (`Validation.validateRepeatCount`'s rule, restated
-/// here because Domain cannot reference Ui).
-let private checkRepeatCount (count : int) : Result<int, SampleStackEditError> =
-    if count >= 1 then Ok count
-    else Error (InvalidRepeatCount $"repeat count must be at least 1, got %d{count}")
+type PeriodCount with
+
+    /// The `count >= 1` rule (`Validation.validateRepeatCount`'s rule, restated
+    /// here because Domain cannot reference Ui).
+    member private this.checkedRepeatCount : Result<PeriodCount, SampleStackEditError> =
+        if this.value >= 1 then Ok this
+        else Error (InvalidRepeatCountErr $"repeat count must be at least 1, got %d{this.value}")
 
 /// Fold the selected CONTIGUOUS run of top-level single layers into ONE
 /// `Repeated { cell; count }` at the run's position; the selection clears
 /// (its positions no longer exist). Cell positions, groups, gaps and an empty
-/// selection are `SelectionNotFoldable`.
-let private makeRepeatBlock (count : int) (state : SampleStackEditState) : Result<SampleStackEditState, SampleStackEditError> =
-    checkRepeatCount count
+/// selection are `SelectionNotFoldableErr`.
+let private makeRepeatBlock (count : PeriodCount) (state : SampleStackEditState) : Result<SampleStackEditState, SampleStackEditError> =
+    count.checkedRepeatCount
     |> Result.bind (fun count ->
         let hasCellPosition =
             state.selection |> Set.exists (fun p -> match p with AtCellLayer _ -> true | AtSingleLayer _ -> false)
         if hasCellPosition then
-            Error (SelectionNotFoldable "the selection includes period-cell layers; only top-level single layers fold into a repeat block")
+            Error (SelectionNotFoldableErr "the selection includes period-cell layers; only top-level single layers fold into a repeat block")
         else
             let indices =
                 state.selection
                 |> Set.toList
                 |> List.choose (fun p -> match p with AtSingleLayer i -> Some i | AtCellLayer _ -> None)
             match indices with
-            | [] -> Error (SelectionNotFoldable "nothing is selected")
+            | [] -> Error (SelectionNotFoldableErr "nothing is selected")
             | first :: _ ->
-                let contiguous = indices |> List.mapi (fun k i -> i = first + k) |> List.forall id
+                let contiguous = indices |> List.mapi (fun k i -> i.value = first.value + k) |> List.forall id
                 if not contiguous then
-                    Error (SelectionNotFoldable $"the selected layers are not contiguous: indices %A{indices}")
+                    Error (SelectionNotFoldableErr $"the selected layers are not contiguous: indices %A{indices |> List.map (fun i -> i.value)}")
                 else
                     let cell =
                         indices
-                        |> List.map (fun i -> state.structure.films.[i])
+                        |> List.map (fun i -> state.structure.films.[i.value])
                         |> List.choose (fun item -> match item with SingleLayer l -> Some l | Repeated _ -> None)
                     if List.length cell <> List.length indices then
                         // Unreachable while the selection invariant holds (AtSingleLayer only
                         // ever names SingleLayer items) — kept total rather than throwing.
-                        Error (SelectionNotFoldable "the selection names a period group; a group cannot fold into another repeat block")
+                        Error (SelectionNotFoldableErr "the selection names a period group; a group cannot fold into another repeat block")
                     else
-                        let before = state.structure.films |> List.take first
-                        let after = state.structure.films |> List.skip (first + List.length indices)
-                        let films = before @ [ Repeated { cell = cell; count = PeriodCount count } ] @ after
+                        let before = state.structure.films |> List.take first.value
+                        let after = state.structure.films |> List.skip (first.value + List.length indices)
+                        let films = before @ [ Repeated { cell = cell; count = count } ] @ after
                         Ok { structure = { state.structure with films = films }; selection = Set.empty })
 
 /// Set the repetition count of the `Repeated` group at `groupIndex`. The cell
 /// is untouched, so whole periods are added or removed and every selection
 /// position stays valid.
-let private setRepeatCount (groupIndex : int) (count : int) (state : SampleStackEditState) : Result<SampleStackEditState, SampleStackEditError> =
-    checkRepeatCount count
+let private setRepeatCount (groupIndex : FilmItemIndex) (count : PeriodCount) (state : SampleStackEditState) : Result<SampleStackEditState, SampleStackEditError> =
+    count.checkedRepeatCount
     |> Result.bind (fun count ->
-        match List.tryItem groupIndex state.structure.films with
+        match List.tryItem groupIndex.value state.structure.films with
         | Some (Repeated g) ->
             let films =
                 state.structure.films
-                |> List.mapi (fun i item -> if i = groupIndex then Repeated { g with count = PeriodCount count } else item)
+                |> List.mapi (fun i item -> if i = groupIndex.value then Repeated { g with count = count } else item)
             Ok { state with structure = { state.structure with films = films } }
         | Some (SingleLayer _) ->
-            Error (NotARepeatGroup $"films item %d{groupIndex} is a single layer, not a repeat group")
+            Error (NotARepeatGroupErr $"films item %d{groupIndex.value} is a single layer, not a repeat group")
         | None ->
-            Error (NotARepeatGroup $"films index %d{groupIndex} is out of range (%d{List.length state.structure.films} items)"))
+            Error (NotARepeatGroupErr $"films index %d{groupIndex.value} is out of range (%d{List.length state.structure.films} items)"))
 
 // ---------------------------------------------------------------------------
 // The editor's pure update (the SampleStructure mirror of `applyStackMsg`,
@@ -339,9 +359,9 @@ let private setRepeatCount (groupIndex : int) (count : int) (state : SampleStack
 let applySampleStackMsg (msg : SampleStackMsg) (state : SampleStackEditState) : Result<SampleStackEditState, SampleStackEditError> =
     match msg with
     | SelectLayer position ->
-        if isValidPosition state.structure position
-        then Ok { state with selection = Set.add position state.selection }
-        else Ok state
+        match state.structure.tryFindLayer position with
+        | Some _ -> Ok { state with selection = Set.add position state.selection }
+        | None -> Ok state
     | SelectByMaterial materialId ->
         Ok { state with selection = positionsOfMaterial materialId state.structure }
     | ClearSelection ->

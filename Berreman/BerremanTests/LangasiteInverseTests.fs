@@ -175,7 +175,7 @@ type LangasiteInverseTests() =
     let transmittedIntensity (sample : MuellerMatrix) (analyzerAngleDeg : float) : float =
         let polarizer = Propagation.analyzerMueller Library.IdealLinear (Angle.degree (polarizerAngleDeg * 1.0<deg>))
         let analyzer = Propagation.analyzerMueller Library.IdealLinear (Angle.degree (analyzerAngleDeg * 1.0<deg>))
-        analyzer * (sample * (polarizer * Propagation.unpolarizedStokes)) |> Propagation.s0
+        (analyzer * (sample * (polarizer * Propagation.unpolarizedStokes))).s0
 
     /// The model's six intensities for a material parameter set — one forward solve, six analyzer angles.
     let modelIntensities (p : UniaxialParameters) : Result<float[], ForwardModelError> =
@@ -366,7 +366,7 @@ type LangasiteInverseTests() =
         // intensities reads the sign directly.
         //
         // OBSERVED (and pinned): the engine's sample Mueller for g11 > 0 acts as
-        // Propagation.rotationMueller(+psi), which rotates the Stokes azimuth by -psi, so the maximum
+        // Angle.rotationMueller(+psi), which rotates the Stokes azimuth by -psi, so the maximum
         // moves toward SMALLER analyzer angles and I(60) > I(120). This is the sign the start guess and
         // the fitted g11 rely on.
         let g11ForThirtyDegrees = RhoValue ((System.Math.PI / 6.0) / (2.0 * System.Math.PI * platesPerWave))

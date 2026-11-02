@@ -981,7 +981,7 @@ module MaterialsWindowTests =
     let private freshSelectModel () : ResizeArray<string> * ResizeArray<string> * MW.MaterialsWindowModel =
         let materials, _, categories = freshStores ()
         let calls, context = stubContext materials categories
-        let events, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer 0))
+        let events, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer (FilmItemIndex 0)))
         events, calls, MW.initMaterialsWindow context (Select selectCtx)
 
     [<Fact>]
@@ -1027,7 +1027,7 @@ module MaterialsWindowTests =
         // resolves through the NEW context (a second Choose closes the first, logically).
         let events1, _, m1 = freshSelectModel ()
         let highlighted = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) m1
-        let events2, retargetCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer 1))
+        let events2, retargetCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer (FilmItemIndex 1)))
         let retargeted = MW.updateMaterialsWindow (MW.RetargetSelect retargetCtx) highlighted
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events1)
         Assert.Empty(events2)
@@ -1081,7 +1081,7 @@ module MaterialsWindowTests =
     let ``acceptance (016): the Materials Select state shows the Select-Close pair and the non-removable constraint — the ordinary window otherwise`` () =
         HeadlessSession.run (fun () ->
             let materials, _, categories = freshStores ()
-            let _, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer 0))
+            let _, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer (FilmItemIndex 0)))
             let window = mountSelectMaterialsWindow materials categories selectCtx
             Assert.True(isPresent window ConstructorUiId.materialsSelectButton.value, "the Select button must render")
             Assert.True(isPresent window ConstructorUiId.materialsSelectCloseButton.value, "the Close button must render")
@@ -1120,8 +1120,8 @@ module MaterialsWindowTests =
                 {
                     kindConstraint = KindConstraint Sample
                     currentEntryIdOpt = None
-                    target = SampleLayerTarget (AtSingleLayer 0)
-                    onSelected = fun entry -> dispatch (SampleEditorView.BindMaterialToLayer (AtSingleLayer 0, entry.id))
+                    target = SampleLayerTarget (AtSingleLayer (FilmItemIndex 0))
+                    onSelected = fun entry -> dispatch (SampleEditorView.BindMaterialToLayer (AtSingleLayer (FilmItemIndex 0), entry.id))
                     onCancelled = fun () -> cancels.Add "cancelled"
                 }
             let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
@@ -1142,7 +1142,7 @@ module MaterialsWindowTests =
     let ``acceptance (016): a changed table selection cancels and CLOSES the open Select-state Materials window too`` () =
         HeadlessSession.run (fun () ->
             let materials, _, categories = freshStores ()
-            let events, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer 0))
+            let events, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer (FilmItemIndex 0)))
             let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
             // The workbench staleness machinery is window-agnostic: the session handle closes
             // whichever Select-state window it points at.
@@ -1194,8 +1194,8 @@ module MaterialsWindowTests =
                 {
                     kindConstraint = KindConstraint Sample
                     currentEntryIdOpt = None
-                    target = SampleLayerTarget (AtSingleLayer 0)
-                    onSelected = fun entry -> dispatch (SampleEditorView.BindMaterialToLayer (AtSingleLayer 0, entry.id))
+                    target = SampleLayerTarget (AtSingleLayer (FilmItemIndex 0))
+                    onSelected = fun entry -> dispatch (SampleEditorView.BindMaterialToLayer (AtSingleLayer (FilmItemIndex 0), entry.id))
                     onCancelled = fun () -> ()
                 }
             let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
@@ -1344,7 +1344,7 @@ module MaterialsWindowTests =
         |> ignore
         // …a Select-state window over the SAME store no longer offers it (Select forces ActiveOnly).
         let _, selectCtx = stubContext materials categories
-        let events, selection = selectContext Sample (SampleLayerTarget (AtSingleLayer 0))
+        let events, selection = selectContext Sample (SampleLayerTarget (AtSingleLayer (FilmItemIndex 0)))
         let selectModel = MW.initMaterialsWindow selectCtx (Select selection)
         ignore events
         Assert.DoesNotContain(MaterialIds.glass200, filteredIds selectModel)

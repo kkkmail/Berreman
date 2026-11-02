@@ -9,7 +9,7 @@ open OpticalConstructor.Domain.Library                // PolarizerKind / IdealLi
 /// Spec 0042 (001) — the pure Mueller-reconstruction primitives. A *retarder* (wave plate) delays one
 /// linear eigen-polarization relative to the other by a phase `Retardance`; its Mueller matrix is the
 /// diagonal retarder core (fast axis at 0°) physically rotated to the plate's azimuth. It is built ONLY
-/// from the EXISTING `Propagation` seams (`muellerOfRows` + `rotateMueller`) so no new 4×4 algebra is
+/// from the EXISTING seams (`RealMatrix4x4.create` + `Propagation.rotateMueller`) so no new 4×4 algebra is
 /// introduced — the rotation reuses the same R(−θ)·M·R(θ) convention the ideal-polarizer pipeline pins.
 module MuellerReconstruction =
 
@@ -40,17 +40,18 @@ module MuellerReconstruction =
         let c = cos d
         let s = sin d
         let core =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 1.0; 0.0; 0.0 ]
                   [ 0.0; 0.0; c; s ]
                   [ 0.0; 0.0; -s; c ] ]
+            |> MuellerMatrix
         Propagation.rotateMueller axis core
 
     // -----------------------------------------------------------------------------------------------------
     // Spec 0042 (002) — the column-major linear-algebra core the least-squares reconstruction builds on.
-    // Every matrix element is read/written ONLY through the EXISTING `Propagation` seams (`muellerOfRows` at
-    // Propagation.fs:35 / `muellerElement` at :40) — no direct `RealMatrix4x4` indexing. The vec convention is
+    // Every matrix element is written through `RealMatrix4x4.create` and read through the `MuellerMatrix.element`
+    // member (Propagation.fs) — no direct `RealMatrix4x4` indexing. The vec convention is
     // numpy reshape order F (column-major): the flattened index `k = 4*i + j` carries `M[j, i]` (column `i`
     // laid out contiguously). Dotting the design row against that vec is the single measurement equation
     // `a · (M · s)`, and the "column-major transpose guard" fact pins exactly that identity.
@@ -66,17 +67,18 @@ module MuellerReconstruction =
 
     /// Flatten a `MuellerMatrix` to a 16-vector in COLUMN-MAJOR order (numpy reshape order F): the entry at
     /// `k = 4*i + j` is `M[j, i]`, so column `i` occupies the contiguous block `k = 4*i .. 4*i+3`. Read
-    /// through the `Propagation.muellerElement` seam only (never direct `RealMatrix4x4` indexing).
+    /// through the `MuellerMatrix.element` seam only (never direct `RealMatrix4x4` indexing).
     let vecColumnMajor (m : MuellerMatrix) : float[] =
-        Array.init 16 (fun k -> Propagation.muellerElement m (k % 4) (k / 4))
+        Array.init 16 (fun k -> m.element (k % 4) (k / 4))
 
     /// The inverse of `vecColumnMajor`: rebuild a `MuellerMatrix` from its 16-vector under the SAME
     /// column-major (order-F) convention — `M[j, i] = v[4*i + j]`, so row `r` / column `c` reads
-    /// `v[4*c + r]`. Written through the `Propagation.muellerOfRows` seam, so
+    /// `v[4*c + r]`. Written through `RealMatrix4x4.create`, so
     /// `muellerOfVecColumnMajor (vecColumnMajor m) = m` for every 4×4 (the vec round-trip).
     let muellerOfVecColumnMajor (v : float[]) : MuellerMatrix =
-        Propagation.muellerOfRows
+        RealMatrix4x4.create
             [ for r in 0 .. 3 -> [ for c in 0 .. 3 -> v.[4 * c + r] ] ]
+        |> MuellerMatrix
 
     /// The elementwise difference summary between two `MuellerMatrix`es (the reconstruction residual
     /// readout): the Frobenius norm, the mean and max absolute element difference, and the `(i, j)` index of
@@ -89,14 +91,14 @@ module MuellerReconstruction =
             argMax : int * int
         }
 
-    /// The elementwise difference between two `MuellerMatrix`es, read through the `Propagation.muellerElement`
+    /// The elementwise difference between two `MuellerMatrix`es, read through the `MuellerMatrix.element`
     /// seam only: `frobenius` = √Σ dᵢⱼ², `meanAbs` = mean |dᵢⱼ| over the 16 entries, and `maxAbs` / `argMax`
     /// = the largest |dᵢⱼ| and its `(i, j)` index (the first occurrence on ties).
     let frobeniusDiff (a : MuellerMatrix) (b : MuellerMatrix) : MatrixDiff =
         let diffs =
             [ for i in 0 .. 3 do
                 for j in 0 .. 3 ->
-                    (i, j), abs (Propagation.muellerElement a i j - Propagation.muellerElement b i j) ]
+                    (i, j), abs (a.element i j - b.element i j) ]
         let sumSq = diffs |> List.sumBy (fun (_, d) -> d * d)
         let sumAbs = diffs |> List.sumBy (fun (_, d) -> d)
         let (argMax, maxAbs) = diffs |> List.maxBy snd
@@ -335,8 +337,8 @@ module MuellerReconstruction =
     // matrix-kind classification, the per-family source & analyzer MODELS, and the base → effective state
     // builders. Every function is a tiny pure function with a concrete elevated signature, mirroring the
     // reference `matrix_glue.py` / `cpl_cpl_analyzer.py` grammar 1:1. The effective states are built ONLY from
-    // the EXISTING `Propagation` seams (`rotationMueller` at Propagation.fs:117, `analyzerMueller IdealLinear` at
-    // Propagation.fs:73, `muellerElement` at Propagation.fs:40) plus the step-001 `retarderMueller` and the
+    // the EXISTING Propagation.fs seams (`Angle.rotationMueller`, `Propagation.analyzerMueller IdealLinear`,
+    // `MuellerMatrix.element`) plus the step-001 `retarderMueller` and the
     // step-002 `kron4` — no new 4×4 algebra is introduced. The Stage-1 AIR calibration constants that POPULATE a
     // `SourceModel` / `AnalyzerModel` (zero dial, source/analyzer θ_rel, retardances) and the `buildDesign` /
     // `reconstruct` assembly are later slices; this slice ships the glue functions they consume.
@@ -507,7 +509,7 @@ module MuellerReconstruction =
     /// Row 0 of the analyzer's Mueller matrix at a raw dial reading — the reference `AnalyzerModel.base_row`
     /// (matrix_glue.py:155). The physical azimuth β = `physicalAngle`; a linear analyzer is
     /// `analyzerMueller IdealLinear β`, a circular one is `analyzerMueller IdealLinear β · retarderMueller
-    /// (β + thetaRel) retardance` (an LP behind a retarder). Row 0 is read through the `Propagation.muellerElement`
+    /// (β + thetaRel) retardance` (an LP behind a retarder). Row 0 is read through the `MuellerMatrix.element`
     /// seam only.
     let analyzerBaseRow (analyzer : AnalyzerModel) (dial : Angle) : RealVector4 =
         let beta = physicalAngle analyzer dial
@@ -520,24 +522,24 @@ module MuellerReconstruction =
                 | Some thetaRel, Some retardance -> linear * retarderMueller (beta + thetaRel) retardance
                 | _ -> linear
         RealVector4.create
-            [ Propagation.muellerElement mm 0 0
-              Propagation.muellerElement mm 0 1
-              Propagation.muellerElement mm 0 2
-              Propagation.muellerElement mm 0 3 ]
+            [ mm.element 0 0
+              mm.element 0 1
+              mm.element 0 2
+              mm.element 0 3 ]
 
     /// The effective source Stokes state after the object frame rotation φ — the reference `s_eff = R(φ) · s_base`
-    /// (matrix_glue.py:266): `Propagation.rotationMueller φ · s`.
+    /// (matrix_glue.py:266): `φ.rotationMueller · s`.
     let effectiveSource (phi : Angle) (s : StokesVector) : StokesVector =
-        Propagation.rotationMueller phi * s
+        phi.rotationMueller * s
 
     /// The effective analyzer row after the object frame rotation φ — the reference `a_eff = a_base · R(−φ)`
-    /// (matrix_glue.py:267): the row-vector times `Propagation.rotationMueller (−φ)`, entry `j = Σᵢ a[i]·R(−φ)[i,j]`,
-    /// read through the `Propagation.muellerElement` seam.
+    /// (matrix_glue.py:267): the row-vector times R(−φ) (`Angle.rotationMueller`), entry `j = Σᵢ a[i]·R(−φ)[i,j]`,
+    /// read through the `MuellerMatrix.element` seam.
     let effectiveAnalyzer (phi : Angle) (a : RealVector4) : RealVector4 =
-        let r = Propagation.rotationMueller (Angle (- phi.value))
+        let r = (Angle (- phi.value)).rotationMueller
         RealVector4.create
             [ for j in 0 .. 3 ->
-                [ 0 .. 3 ] |> List.sumBy (fun i -> a.[i] * Propagation.muellerElement r i j) ]
+                [ 0 .. 3 ] |> List.sumBy (fun i -> a.[i] * r.element i j) ]
 
     /// The design row one measurement imposes — the reference `lincoef = np.kron(s_eff, a_eff)`
     /// (matrix_glue.py:268): the 16-element Kronecker row `kron4 s a` (entry `4·i + j = s[i]·a[j]`), the same

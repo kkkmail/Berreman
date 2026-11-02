@@ -492,18 +492,19 @@ module MuellerInverse =
     /// surfaces. Normalizing removes all of that and leaves the 15 numbers that describe how the sample
     /// TRANSFORMS polarization, which is what the material constants determine.
     let normalizeMueller (m : MuellerMatrix) : Result<MuellerMatrix, InversionError> =
-        let m00 = Propagation.muellerElement m 0 0
+        let m00 = m.element 0 0
         if m00 <= 0.0 || not (System.Double.IsFinite m00) then Error (NonPositiveIntensity m00)
         else
-            Propagation.muellerOfRows
-                [ for i in 0 .. 3 -> [ for j in 0 .. 3 -> Propagation.muellerElement m i j / m00 ] ]
+            RealMatrix4x4.create
+                [ for i in 0 .. 3 -> [ for j in 0 .. 3 -> m.element i j / m00 ] ]
+            |> MuellerMatrix
             |> Ok
 
     /// The 15 elements of an ALREADY-normalized Mueller matrix other than `m₀₀`. `m₀₀` is excluded because
     /// normalization has forced it to exactly 1 in both model and measurement: including it would add a
     /// residual entry that is identically zero and silently deflate every reduced-χ² and standard error.
     let normalizedElements (m : MuellerMatrix) : float[] =
-        [| for k in 1 .. 15 -> Propagation.muellerElement m (k / 4) (k % 4) |]
+        [| for k in 1 .. 15 -> m.element (k / 4) (k % 4) |]
 
     /// The residual entries contributed by one observation: the element-wise difference between the
     /// normalized model and the normalized measurement, in a fixed element order.
@@ -580,7 +581,7 @@ module MuellerInverse =
     /// arbitrary: they are chosen so that this function reproduces the repository's OWN existing
     /// primitives, which the round-trip unit tests assert directly —
     ///   • `lb` alone reproduces `MuellerReconstruction.retarderMueller (Angle.zero) (Retardance lb)`;
-    ///   • `cb` alone reproduces `Propagation.rotationMueller (Angle (cb / 2))`;
+    ///   • `cb` alone reproduces `(Angle (cb / 2)).rotationMueller`;
     ///   • `lbPrime` alone reproduces `retarderMueller (Angle.degree 45.0<Berreman.Constants.deg>) (Retardance lbPrime)`.
     /// Deriving the convention from the code that already exists, rather than from a paper, is what keeps
     /// this consistent with every other Mueller matrix in the repository.
@@ -598,12 +599,13 @@ module MuellerInverse =
                 let k2 = Array2D.init 3 3 (fun i j -> [ 0 .. 2 ] |> List.sumBy (fun p -> k.[i, p] * k.[p, j]))
                 Array2D.init 3 3 (fun i j ->
                     (if i = j then 1.0 else 0.0) + sin theta * k.[i, j] + (1.0 - cos theta) * k2.[i, j])
-        Propagation.muellerOfRows
+        RealMatrix4x4.create
             [ for i in 0 .. 3 ->
                 [ for j in 0 .. 3 ->
                     if i = 0 && j = 0 then 1.0
                     elif i = 0 || j = 0 then 0.0
                     else block.[i - 1, j - 1] ] ]
+        |> MuellerMatrix
 
     /// Resolve one measured Mueller matrix into its six elementary anisotropy coefficients — the exact
     /// inverse of `muellerOfBirefringence` for a transparent sample.
@@ -621,7 +623,7 @@ module MuellerInverse =
     let analyticInversion (m : MuellerMatrix) : Result<ElementaryAnisotropy, InversionError> =
         normalizeMueller m
         |> Result.bind (fun n ->
-            let e i j = Propagation.muellerElement n i j
+            let e i j = n.element i j
             let trace = e 1 1 + e 2 2 + e 3 3
             let cosTheta = (trace - 1.0) / 2.0
             if cosTheta > 1.0 + 1.0e-6 || cosTheta < -1.0 - 1.0e-6 then
@@ -666,12 +668,12 @@ module MuellerInverse =
     /// weakly depolarizing matrix by construction, so `DI` is slightly BELOW 1 for any real plate and a
     /// test that demanded exactly 1 would be asserting something false.
     let depolarizationIndex (m : MuellerMatrix) : Result<float, InversionError> =
-        let m00 = Propagation.muellerElement m 0 0
+        let m00 = m.element 0 0
         if m00 <= 0.0 || not (System.Double.IsFinite m00) then Error (NonPositiveIntensity m00)
         else
             let total =
                 [ for i in 0 .. 3 do
-                    for j in 0 .. 3 -> Propagation.muellerElement m i j ** 2.0 ]
+                    for j in 0 .. 3 -> m.element i j ** 2.0 ]
                 |> List.sum
             sqrt ((total - m00 * m00) / (3.0 * m00 * m00)) |> Ok
 
@@ -714,7 +716,7 @@ module MuellerInverse =
                     let mutable acc = Complex.Zero
                     for i in 0 .. 3 do
                         for j in 0 .. 3 do
-                            acc <- acc + Complex(Propagation.muellerElement m i j, 0.0) * pauli.[i].[p, r] * Complex.Conjugate pauli.[j].[q, s]
+                            acc <- acc + Complex(m.element i j, 0.0) * pauli.[i].[p, r] * Complex.Conjugate pauli.[j].[q, s]
                     acc * Complex(0.25, 0.0) ] ]
             |> ComplexMatrix.create
         let (ComplexMatrix backing) = h
