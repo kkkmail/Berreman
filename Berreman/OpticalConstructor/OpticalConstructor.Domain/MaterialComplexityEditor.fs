@@ -727,15 +727,15 @@ let private dispersiveEps (state : MaterialComplexityEditState) : EpsDispersiveV
     match state.anisotropy with
     | Isotropic ->
         state.segments
-        |> List.map (fun seg -> { wavelengthInterval = seg.interval; dispersion = toEpsAxis seg.model1 })
+        |> List.map (fun seg -> { wavelengthInterval = seg.interval; dispersion = seg.model1.toEpsAxis })
         |> IsotropicDispersive
     | Uniaxial ->
         state.segments
         |> List.map (fun seg ->
             {
                 wavelengthInterval = seg.interval
-                ordinaryDispersion = toEpsAxis seg.model1
-                extraordinaryDispersion = toEpsAxis seg.model2
+                ordinaryDispersion = seg.model1.toEpsAxis
+                extraordinaryDispersion = seg.model2.toEpsAxis
             })
         |> UniaxialDispersive
     | Biaxial ->
@@ -743,9 +743,9 @@ let private dispersiveEps (state : MaterialComplexityEditState) : EpsDispersiveV
         |> List.map (fun seg ->
             {
                 wavelengthInterval = seg.interval
-                xDispersion = toEpsAxis seg.model1
-                yDispersion = toEpsAxis seg.model2
-                zDispersion = toEpsAxis seg.model3
+                xDispersion = seg.model1.toEpsAxis
+                yDispersion = seg.model2.toEpsAxis
+                zDispersion = seg.model3.toEpsAxis
             })
         |> BiaxialDispersive
 

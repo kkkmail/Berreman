@@ -90,7 +90,7 @@ module MaterialImport =
             name = name
             category = category
             description = Some "Imported tabulated n,k (refractiveindex.info)."
-            properties = isotropicProperties (EpsWithDisp (buildTabulatedClosure points))
+            properties = (EpsWithDisp (buildTabulatedClosure points)).isotropicProperties
             // Tabulated imports stay closure-backed (view-only): linear interpolation
             // over samples is not finite term data. Formula imports carry an editable
             // complexity instead (spec 0033 step 025).
@@ -227,7 +227,7 @@ module MaterialImport =
                     wavelengthUnit = Micrometer
                     thermoOptic = None
                 }
-        Ok (toEpsAxis model)
+        Ok model.toEpsAxis
 
     /// RII formula 3 (polynomial): n² = c₀ + Σ cᵢ·λ^{pᵢ} — ε term data directly.
     let private polynomialAxis (nums : float[]) : Result<EpsAxisDispersion, ImportError> =

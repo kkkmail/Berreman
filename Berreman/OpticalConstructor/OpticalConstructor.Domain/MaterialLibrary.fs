@@ -10,6 +10,7 @@ open Berreman.Dispersion
 open OpticalProperties.Dispersive
 open OpticalProperties.Standard
 open OpticalProperties.Active
+open OpticalConstructor.Domain.DispersionModels
 
 /// The searchable, categorised materials library aggregate (§D.8). A `MaterialEntry`
 /// pairs display metadata with the engine's `OpticalPropertiesWithDisp` (produced by
@@ -206,11 +207,11 @@ module MaterialLibrary =
         /// Pure composition to the engine's `OpticalPropertiesWithDisp`
         /// (`Dispersion.fs:55`): eps through `EpsWithDispValue.toEpsWithDisp`, absent
         /// magnetic/active options defaulted to the vacuum μ/ρ through the single
-        /// vacuum-convention site (`DispersionModels.isotropicProperties`), present
+        /// vacuum-convention site (`EpsWithDisp.isotropicProperties`), present
         /// options assembled through `toMuWithDisp` / `toRhoWithDisp` (the latter is
         /// the `OpticalProperties/Active.fs` type extension, opened above).
         member this.toProperties : OpticalPropertiesWithDisp =
-            let defaults = DispersionModels.isotropicProperties this.eps.toEpsWithDisp
+            let defaults = this.eps.toEpsWithDisp.isotropicProperties
             let muWithDisp =
                 match this.magnetic with
                 | Some m -> m.toMuWithDisp
@@ -374,7 +375,7 @@ module MaterialLibrary =
     // the seed convention every other built-in already uses.
     //
     // The dispersion is REPRODUCED through the ladder's `EpsAxisEvaluated` rung
-    // (`DispersionModels.toEpsAxis` lowers the transcendental models to the very
+    // (`DispersionModel.toEpsAxis` lowers the transcendental models to the very
     // same case): the engine exposes only the Eps-VALUED closure of Silicon /
     // Langasite (`OpticalProperties/Dispersive.fs`), not the scalar index, so
     // faithful reproduction re-states the published closed-form index. This is

@@ -46,11 +46,12 @@ module MaterialLibrary =
     /// the full `OpticalPropertiesWithDisp` from a persisted dispersion model is the
     /// §D.9 mapping (Part D); this module owns only the metadata boundary.
     let private vacuumProperties : OpticalPropertiesWithDisp =
-        System.Numerics.Complex.create 1.0 0.0
-        |> ComplexRefractionIndex
-        |> Eps.fromComplexRefractionIndex
-        |> EpsWithoutDisp
-        |> isotropicProperties
+        let eps =
+            System.Numerics.Complex.create 1.0 0.0
+            |> ComplexRefractionIndex
+            |> Eps.fromComplexRefractionIndex
+            |> EpsWithoutDisp
+        eps.isotropicProperties
 
     /// A standalone JSON-Schema that validates a single `materialEntry` document.
     /// Built from the published project schema (the slice-003 build-copied content

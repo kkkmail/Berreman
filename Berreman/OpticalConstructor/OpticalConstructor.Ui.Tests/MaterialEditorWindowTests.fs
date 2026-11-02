@@ -298,7 +298,7 @@ module MaterialEditorWindowTests =
         let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, sellmeier) ]
         match (derived st).eps with
         | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
-            Assert.Equal<EpsAxisDispersion>(toEpsAxis sellmeier, seg.dispersion)
+            Assert.Equal<EpsAxisDispersion>(sellmeier.toEpsAxis, seg.dispersion)
         | other -> Assert.Fail($"expected one isotropic dispersive segment, got %A{other}")
 
     [<Fact>]
@@ -398,9 +398,9 @@ module MaterialEditorWindowTests =
     [<Fact>]
     let ``spec 0033 G7: modelParameters exposes and rebuilds each editable coefficient`` () =
         let model = ConstantNK { n = 1.5; k = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }
-        let ps = modelParameters model
-        Assert.Equal<string list>([ "n"; "k" ], ps |> List.map (fun p -> p.key))
-        match (ps |> List.find (fun p -> p.key = "n")).update 2.7 with
+        let ps = model.parameters
+        Assert.Equal<ModelParameterKey list>([ ModelParameterKey "n"; ModelParameterKey "k" ], ps |> List.map (fun p -> p.key))
+        match (ps |> List.find (fun p -> p.key = ModelParameterKey "n")).update (CoefficientValue 2.7) with
         | ConstantNK c -> Assert.Equal(2.7, c.n)
         | other -> Assert.Fail($"expected ConstantNK, got %A{other}")
 

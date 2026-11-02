@@ -106,14 +106,14 @@ module LibraryFacetsTests =
         let seg1 : UniaxialEpsSegment =
             {
                 wavelengthInterval = nmInterval 400.0 700.0
-                ordinaryDispersion = toEpsAxis (modelOfKind "Cauchy")
-                extraordinaryDispersion = toEpsAxis (modelOfKind "Sellmeier")
+                ordinaryDispersion = (modelOfKind "Cauchy").toEpsAxis
+                extraordinaryDispersion = (modelOfKind "Sellmeier").toEpsAxis
             }
         let seg2 : UniaxialEpsSegment =
             {
                 wavelengthInterval = nmInterval 700.0 1000.0
-                ordinaryDispersion = toEpsAxis (modelOfKind "TaucLorentz")
-                extraordinaryDispersion = toEpsAxis (modelOfKind "TaucLorentz")
+                ordinaryDispersion = (modelOfKind "TaucLorentz").toEpsAxis
+                extraordinaryDispersion = (modelOfKind "TaucLorentz").toEpsAxis
             }
         materialEntryWith
             "6b0e6b9e-1a2f-4c3d-8e5a-9f0b1c2d3e4f"

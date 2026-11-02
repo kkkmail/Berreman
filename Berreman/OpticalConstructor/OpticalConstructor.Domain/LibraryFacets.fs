@@ -94,7 +94,7 @@ module LibraryFacets =
     /// terms; the transcendental four (`TaucLorentz`/`GaussianOscillator`/
     /// `ForouhiBloomer`/`BrendelBormann`) → evaluated.
     let modelDispersionKey (model : DispersionModel) : DiscreteKey =
-        dispersionModelKey (toEpsAxis model)
+        dispersionModelKey model.toEpsAxis
 
     /// The branch key of a handedness (`Berreman.Dispersion.Handedness`).
     let handednessKey (hand : Handedness) : DiscreteKey =

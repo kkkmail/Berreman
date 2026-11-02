@@ -36,7 +36,7 @@ module DispersionModelsTests =
         // Reuses the engine closure shape: read WaveLength.value, normalise to the
         // record's unit, apply n^2 = 1 + Σ bᵢ λ²/(λ² − cᵢ).
         let model = Sellmeier { b = [ 1.04 ]; c = [ 0.006 ]; wavelengthUnit = Micrometer; thermoOptic = None }
-        let f = evaluate model
+        let f = model.evaluate
         for lamUm in [ 0.4; 0.5; 0.6 ] do
             let w = toWaveLength Micrometer (UnitMagnitude lamUm)
             let lam2 = lamUm * lamUm
@@ -63,24 +63,24 @@ module DispersionModelsTests =
         let ne = Complex.create 1.65 0.0 |> ComplexRefractionIndex
         let w = WaveLength.nm 500.0<nm>
         let expected = Eps.fromComplexRefractionIndex (no, ne, no)
-        let op = toAnisotropicOpticalProperties (EpsWithoutDispValue (UniaxialAbsorbing { ordinaryComplex = no; extraordinaryComplex = ne }))
+        let op = (EpsWithoutDispValue (UniaxialAbsorbing { ordinaryComplex = no; extraordinaryComplex = ne })).toAnisotropicOpticalProperties
         Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, "constant uniaxial value")
         Assert.True(epsClose 1e-12 (uniaxialEps no ne) expected, "direct uniaxialEps helper")
         // Per-axis dispersive route: the same indices as one uniaxial segment tree.
-        let axisO = toEpsAxis (cnk 1.5 0.0)
-        let axisE = toEpsAxis (cnk 1.65 0.0)
+        let axisO = (cnk 1.5 0.0).toEpsAxis
+        let axisE = (cnk 1.65 0.0).toEpsAxis
         let segment =
             {
                 wavelengthInterval = { lower = WaveLength.nm 400.0<nm>; upper = WaveLength.nm 700.0<nm> }
                 ordinaryDispersion = axisO
                 extraordinaryDispersion = axisE
             }
-        let opDisp = toAnisotropicOpticalProperties (EpsWithDispValue (UniaxialDispersive [ segment ]))
+        let opDisp = (EpsWithDispValue (UniaxialDispersive [ segment ])).toAnisotropicOpticalProperties
         Assert.True(epsClose 1e-12 (opDisp.epsWithDisp.getEps w) expected, "dispersive uniaxial segment tree")
 
     [<Fact>]
     let ``ConstantNK composes to EpsWithoutDisp (no closure overhead)`` () =
-        match (toOpticalProperties (cnk 2.0 0.1)).epsWithDisp with
+        match (cnk 2.0 0.1).toOpticalProperties.epsWithDisp with
         | EpsWithoutDisp _ -> ()
         | EpsWithDisp _ -> Assert.Fail("ConstantNK must emit EpsWithoutDisp")
 
@@ -89,7 +89,7 @@ module DispersionModelsTests =
         let model = cnk 2.0 0.05
         let w = WaveLength.nm 500.0<nm>
         let iso = Complex.create 2.0 0.05
-        Assert.Equal(iso, (evaluate model w).value)
+        Assert.Equal(iso, (model.evaluate w).value)
         // With None, evaluateAt any operating temperature is also identical (no overhead).
         Assert.Equal(iso, (evaluateAt 350.0<K> model w).value)
 
@@ -171,8 +171,8 @@ module DispersionModelsTests =
 
     /// The lowered term data must reproduce `evaluate` at every grid wavelength.
     let private assertLoweringMatchesEvaluate (tol : float) (model : DispersionModel) =
-        let axis = toEpsAxis model
-        let f = evaluate model
+        let axis = model.toEpsAxis
+        let f = model.evaluate
         for w in visibleGrid do
             let got = (axis.complexIndex w).value
             let expected = (f w).value
@@ -191,7 +191,7 @@ module DispersionModelsTests =
                     wavelengthUnit = Micrometer
                     thermoOptic = None
                 }
-        match toEpsAxis model with
+        match model.toEpsAxis with
         | ComplexEps _ -> ()
         | other -> Assert.Fail($"Sellmeier must lower to ComplexEps (√ of the ε term sum), got {other}")
         assertLoweringMatchesEvaluate 1e-8 model
@@ -206,7 +206,7 @@ module DispersionModelsTests =
     [<Fact>]
     let ``AC-B5 Cauchy lowering is RealNK Laurent terms and matches evaluate on the grid`` () =
         let model = Cauchy { a = 1.5046; b = 0.0042; c = 0.00003; wavelengthUnit = Micrometer; thermoOptic = None }
-        match toEpsAxis model with
+        match model.toEpsAxis with
         | RealNK { nFormula = _; kFormula = k } -> Assert.True(List.isEmpty k.terms, "k must be the zero formula")
         | other -> Assert.Fail($"Cauchy must lower to RealNK, got {other}")
         assertLoweringMatchesEvaluate 1e-9 model
@@ -220,7 +220,7 @@ module DispersionModelsTests =
     [<Fact>]
     let ``AC-B5 ConstantNK lowering is RealNK constants and matches evaluate on the grid`` () =
         let model = cnk 2.0 0.1
-        match toEpsAxis model with
+        match model.toEpsAxis with
         | RealNK _ -> ()
         | other -> Assert.Fail($"ConstantNK must lower to RealNK constants, got {other}")
         assertLoweringMatchesEvaluate 1e-12 model
@@ -325,12 +325,12 @@ module DispersionModelsTests =
                     thermoOptic = None
                 }
         for model in [ tl; go ] do
-            let axis = toEpsAxis model
+            let axis = model.toEpsAxis
             match axis with
             | EpsAxisEvaluated _ -> ()
             | other -> Assert.Fail($"a transcendental model must lower to the evaluated case, got {other}")
-            let f = evaluate model
-            let op = toOpticalProperties model
+            let f = model.evaluate
+            let op = model.toOpticalProperties
             for w in visibleGrid do
                 Assert.Equal((f w).value, (axis.complexIndex w).value)
                 let expected = Eps.fromComplexRefractionIndex (f w)
@@ -348,20 +348,20 @@ module DispersionModelsTests =
                     kFormula = { terms = []; wavelengthScale = 1.0e-6<meter> }
                 }
         let model = SumOfTerms axis
-        Assert.Equal<EpsAxisDispersion>(axis, toEpsAxis model)
-        Assert.Equal(Meter, wavelengthUnitOf model)
-        Assert.Equal(None, thermoOpticOf model)
-        let f = evaluate model
+        Assert.Equal<EpsAxisDispersion>(axis, model.toEpsAxis)
+        Assert.Equal(Meter, model.wavelengthUnit)
+        Assert.Equal(None, model.thermoOptic)
+        let f = model.evaluate
         for w in visibleGrid do
             Assert.Equal((axis.complexIndex w).value, (f w).value)
 
     [<Fact>]
     let ``AC-B5 toEpsValue short-circuits ConstantNK and builds a single-segment tree otherwise`` () =
-        match toEpsValue (cnk 2.0 0.1) with
+        match (cnk 2.0 0.1).toEpsValue with
         | EpsWithoutDispValue (IsotropicAbsorbing _) -> ()
         | other -> Assert.Fail($"ConstantNK must become the constant value, got {other}")
         let sellmeier = Sellmeier { b = [ 1.04 ]; c = [ 0.006 ]; wavelengthUnit = Micrometer; thermoOptic = None }
-        match toEpsValue sellmeier with
+        match sellmeier.toEpsValue with
         | EpsWithDispValue (IsotropicDispersive [ _ ]) -> ()
         | other -> Assert.Fail($"a lowerable model must become one isotropic segment, got {other}")
         let tl =
@@ -377,15 +377,15 @@ module DispersionModelsTests =
                 }
         // A transcendental model is now total too: one isotropic segment carrying
         // the evaluated case (no lowering error).
-        match toEpsValue tl with
+        match tl.toEpsValue with
         | EpsWithDispValue (IsotropicDispersive [ { dispersion = EpsAxisEvaluated _ } ]) -> ()
         | other -> Assert.Fail($"a transcendental model must become one evaluated segment, got {other}")
 
     [<Fact>]
     let ``AC-B5 toOpticalProperties routes a lowerable model through the serializable tree`` () =
         let model = Sellmeier { b = [ 1.04 ]; c = [ 0.006 ]; wavelengthUnit = Micrometer; thermoOptic = None }
-        let op = toOpticalProperties model
-        let f = evaluate model
+        let op = model.toOpticalProperties
+        let f = model.evaluate
         for w in visibleGrid do
             let expected = Eps.fromComplexRefractionIndex (f w)
             Assert.True(epsClose 1e-8 (op.epsWithDisp.getEps w) expected, $"λ={w}")
@@ -437,7 +437,7 @@ module DispersionModelsTests =
         // = 1.4157852, B₀ = −2.4292240, C₀ = 14.1313281; at E = 3 eV the
         // denominator is 9 − 3B + C = 2.128, so n = n∞ + (3B₀ + C₀)/2.128 =
         // 5.0742287 and k = A·(3 − Eg)²/2.128 = 1.7823699.
-        let f = evaluate forouhiBloomerASi
+        let f = forouhiBloomerASi.evaluate
         let below = (f (toWaveLength ElectronVolt (UnitMagnitude 0.6))).value
         Assert.True(abs (below.Real - 3.182) <= 5e-4, $"n(0.6 eV) = {below.Real}, expected 3.182")
         Assert.Equal(0.0, below.Imaginary)
@@ -452,7 +452,7 @@ module DispersionModelsTests =
         // set. 2e-3 absolute covers the table's 5-significant-digit rounding
         // of both λ and n/k plus the seam's evNmProduct vs the table's h·c
         // (1.6e-6 relative).
-        let f = evaluate brendelBormannGold
+        let f = brendelBormannGold.evaluate
         let rows =
             [
                 0.49712, 0.89849, 1.8312
@@ -491,8 +491,8 @@ module DispersionModelsTests =
                     wavelengthUnit = ElectronVolt
                     thermoOptic = None
                 }
-        let fBb = evaluate bb
-        let fDrude = evaluate drude
+        let fBb = bb.evaluate
+        let fDrude = drude.evaluate
         for w in visibleGrid do
             Assert.True(closeC 1e-12 (fBb w).value (fDrude w).value, $"λ={w}")
 
@@ -526,8 +526,8 @@ module DispersionModelsTests =
                     wavelengthUnit = ElectronVolt
                     thermoOptic = None
                 }
-        let fBb = evaluate bb
-        let fLorentz = evaluate lorentz
+        let fBb = bb.evaluate
+        let fLorentz = lorentz.evaluate
         for w in visibleGrid do
             Assert.True(closeC 1e-4 (fBb w).value (fLorentz w).value, $"λ={w}: BB {(fBb w).value} vs Lorentz {(fLorentz w).value}")
 
@@ -538,14 +538,14 @@ module DispersionModelsTests =
         // evaluated case carrying `evaluate`; its complexIndex reproduces `evaluate`
         // and toOpticalProperties keeps both models fully working through it.
         for model in [ forouhiBloomerASi; brendelBormannGold ] do
-            Assert.Equal(ElectronVolt, wavelengthUnitOf model)
-            Assert.Equal(None, thermoOpticOf model)
-            let axis = toEpsAxis model
+            Assert.Equal(ElectronVolt, model.wavelengthUnit)
+            Assert.Equal(None, model.thermoOptic)
+            let axis = model.toEpsAxis
             match axis with
             | EpsAxisEvaluated _ -> ()
             | other -> Assert.Fail($"a transcendental model must lower to the evaluated case, got {other}")
-            let f = evaluate model
-            let op = toOpticalProperties model
+            let f = model.evaluate
+            let op = model.toOpticalProperties
             for w in visibleGrid do
                 Assert.Equal((f w).value, (axis.complexIndex w).value)
                 let expected = Eps.fromComplexRefractionIndex (f w)

@@ -726,8 +726,10 @@ let private paramBoxWithUnit (autoId : string) (p : ModelParameter) (onCommit : 
         StackPanel.spacing 4.0
         StackPanel.margin (thickOf 0.0 0.0 10.0 4.0)
         StackPanel.children (
-            [ labelBlock (p.label + ":"); coeffNumberBox autoId 100.0 p.value onCommit ]
-            @ (if p.unit = "" then [] else [ labelBlock p.unit ]))
+            [ labelBlock $"{p.label.value}:"; coeffNumberBox autoId 100.0 p.coefficient.value onCommit ]
+            @ (match p.unitOpt with
+               | Some u -> [ labelBlock u.value ]
+               | None -> []))
     ] :> IView
 
 // -- the dispersive-component formula surface (spec 0035 step 011) ----------------------------
@@ -755,11 +757,11 @@ let private formulaOfModel (fallback : DispersionFormula) (model : DispersionMod
 /// rebuilds the formula and dispatches it through `dispatchFormula`. The boxes commit
 /// on focus loss (`coeffNumberBox`), never on the render echo — the gap-G7/G9 loop
 /// guard.
-let private componentFormulaView (editorId : string) (boxId : string -> string) (formula : DispersionFormula) (dispatchFormula : DispersionFormula -> unit) : IView =
+let private componentFormulaView (editorId : string) (boxId : ConstructorUiKey -> string) (formula : DispersionFormula) (dispatchFormula : DispersionFormula -> unit) : IView =
     let boxes =
-        modelParameters (formulaAsModel formula)
+        (formulaAsModel formula).parameters
         |> List.map (fun p ->
-            paramBoxWithUnit (boxId p.key) p (fun v -> dispatchFormula (formulaOfModel formula (p.update v))))
+            paramBoxWithUnit (boxId p.key.uiKey) p (fun v -> dispatchFormula (formulaOfModel formula (p.update (CoefficientValue v)))))
     WrapPanel.create [
         automationId editorId
         WrapPanel.orientation Orientation.Horizontal
@@ -773,10 +775,10 @@ let private componentFormulaView (editorId : string) (boxId : string -> string) 
 let private segmentParamsView (dispatch : MaterialEditorMsg -> unit) (segmentIndex : int) (slot : PrincipalAxisSlot) (isFirst : bool) (axisCode : string) (model : DispersionModel) : IView =
     let laterAxisOpt = if isFirst then None else Some (ConstructorUiKey axisCode)
     let boxes =
-        modelParameters model
+        model.parameters
         |> List.map (fun p ->
-            paramBoxWithUnit (ConstructorUiId.segmentParamBoxOfAxis (ConstructorUiPosition segmentIndex) laterAxisOpt (ConstructorUiKey p.key)).value p (fun v ->
-                dispatch (EditorMsg (SetSegmentAxisModel (segmentIndex, slot, p.update v)))))
+            paramBoxWithUnit (ConstructorUiId.segmentParamBoxOfAxis (ConstructorUiPosition segmentIndex) laterAxisOpt p.key.uiKey).value p (fun v ->
+                dispatch (EditorMsg (SetSegmentAxisModel (segmentIndex, slot, p.update (CoefficientValue v))))))
     match boxes with
     | [] -> TextBlock.create [ TextBlock.text "(no editable coefficients)"; TextBlock.foreground (brush hintColor) ] :> IView
     | _ ->
@@ -889,7 +891,7 @@ let private gyrationComponentsSection (m : MaterialEditorModel) (dispatch : Mate
                         StackPanel.spacing 2.0
                         StackPanel.children [
                             labelBlock (gyrationComponentLabel comp + " (dispersion formula):")
-                            componentFormulaView (ConstructorUiId.gyrationFormulaEditor (ConstructorUiKey code)).value (fun key -> (ConstructorUiId.gyrationFormulaBox (ConstructorUiKey code) (ConstructorUiKey key)).value) formula (fun f ->
+                            componentFormulaView (ConstructorUiId.gyrationFormulaEditor (ConstructorUiKey code)).value (fun key -> (ConstructorUiId.gyrationFormulaBox (ConstructorUiKey code) key).value) formula (fun f ->
                                 dispatch (EditorMsg (SetGyrationComponentDispersion (comp, f))))
                         ]
                     ] :> IView))
@@ -1006,7 +1008,7 @@ let private muPanel (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> u
                     StackPanel.spacing 2.0
                     StackPanel.children [
                         labelBlock label
-                        componentFormulaView (ConstructorUiId.polderFormulaEditor (ConstructorUiKey code)).value (fun key -> (ConstructorUiId.polderFormulaBox (ConstructorUiKey code) (ConstructorUiKey key)).value) formula (fun f -> dispatch (EditorMsg (toMsg f)))
+                        componentFormulaView (ConstructorUiId.polderFormulaEditor (ConstructorUiKey code)).value (fun key -> (ConstructorUiId.polderFormulaBox (ConstructorUiKey code) key).value) formula (fun f -> dispatch (EditorMsg (toMsg f)))
                     ]
                 ] :> IView)
         editors @ axisRow true

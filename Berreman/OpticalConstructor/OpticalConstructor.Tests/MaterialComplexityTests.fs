@@ -333,7 +333,7 @@ module MaterialComplexityTests =
             | EpsAxisEvaluated _ -> ()
             | other -> Assert.Fail($"the transcendental segment must lower to the evaluated case, got %A{other}")
         | other -> Assert.Fail($"expected one isotropic dispersive segment, got %A{other}")
-        let f = evaluate model
+        let f = model.evaluate
         for w in visibleGrid do
             let expected = Eps.fromComplexRefractionIndex (f w)
             Assert.True(epsClose 1e-12 (c.toProperties.epsWithDisp.getEps w) expected, $"derived eps at λ={w}")

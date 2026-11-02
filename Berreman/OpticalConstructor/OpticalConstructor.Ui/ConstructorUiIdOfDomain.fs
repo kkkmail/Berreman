@@ -5,6 +5,7 @@ open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.DispersionModels
 
 /// The Controls values derived from a Domain value: the automation ids (spec 0048 R1) and a control's
 /// keys, counts and captions. Controls references no Domain type, so they are extension members here,
@@ -52,6 +53,11 @@ module ConstructorUiIdOfDomain =
 
         /// The value as its offered box's label (at the engine's layer a key doubles as its label).
         member this.caption : ControlCaption = ControlCaption this.value
+
+    type ModelParameterKey with
+
+        /// The coefficient as the key of its Material-editor box.
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
 
     type ItemCount with
 
