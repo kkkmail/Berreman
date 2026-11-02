@@ -8,11 +8,11 @@ open Berreman.Constants
 module StandardLightVariables =
 
     /// Incidence angle variable from 0 to 40 degrees.
-    let incidenceAngle40 n = Range<_>.create n IncidenceAngle.normal (IncidenceAngle.create (Angle.degree 40.0))
+    let incidenceAngle40 n = Range<_>.create n IncidenceAngle.normal (IncidenceAngle.create (Angle.degree 40.0<deg>))
 
 
     /// Incidence angle variable from 0 to 60 degrees.
-    let incidenceAngle60 n = Range<_>.create n IncidenceAngle.normal (IncidenceAngle.create (Angle.degree 60.0))
+    let incidenceAngle60 n = Range<_>.create n IncidenceAngle.normal (IncidenceAngle.create (Angle.degree 60.0<deg>))
 
 
     /// Incidence angle variable from 0 to 80 degrees.

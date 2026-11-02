@@ -20,7 +20,7 @@ module SampleStackEditorTests =
 
     let private nm (t : float) : Thickness = Thickness.nm (t * 1.0<nm>)
 
-    let private deg (d : float) : Angle = Angle.degree d
+    let private deg (d : float) : Angle = Angle.degree (d * 1.0<deg>)
 
     // The layer pins version one of the material (spec 0038 step 022 — a `SampleLayer` carries a
     // `MaterialVersionId`); `.materialId.materialId` recovers the identity in the assertions below.

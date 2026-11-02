@@ -33,10 +33,10 @@ module BeamLayoutTests =
         }
 
     let private tilted (r2 : float) (e : LayoutElement) : LayoutElement =
-        { e with placement = withR2 (Angle.degree r2) e.placement }
+        { e with placement = withR2 (Angle.degree (r2 * 1.0<deg>)) e.placement }
 
     let private tiltedOut (r3 : float) (e : LayoutElement) : LayoutElement =
-        { e with placement = withR3 (Angle.degree r3) { e.placement with r3Locked = false } }
+        { e with placement = withR3 (Angle.degree (r3 * 1.0<deg>)) { e.placement with r3Locked = false } }
 
     let private onReflectedOf (host : string) (e : LayoutElement) : LayoutElement =
         { e with host = OnReflectedBeamOf (Library.elementId host) }

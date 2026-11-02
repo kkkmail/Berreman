@@ -190,7 +190,7 @@ module SourceSpec =
                 let windowFactor = 8.0
                 let lWindow = windowFactor * w0
                 let sigma = w0 / (lWindow * sqrt 2.0)
-                let profile = FourierTransformPrimitives.createGaussian n 0.0 sigma
+                let profile = FourierTransformPrimitives.createGaussian (FourierTransformPrimitives.FftPointCount n) (FourierTransformPrimitives.FftCoordinate 0.0) (FourierTransformPrimitives.FftCoordinate sigma)
                 let spectrum = FourierTransform.fft FourierTransformPrimitives.ForwardTransform profile
                 let raw =
                     [ for j in 0 .. n - 1 ->

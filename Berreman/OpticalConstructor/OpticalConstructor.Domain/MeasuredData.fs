@@ -179,12 +179,12 @@ module MeasuredData =
         | WavelengthPsiDelta, [| ws; ps; ds |] ->
             match tryFloat ws, tryFloat ps, tryFloat ds with
             | Some w, Some p, Some d ->
-                Some { waveLength = toWaveLength Nanometer w; psi = Angle.degree p; delta = Angle.degree d; aoiOpt = None }
+                Some { waveLength = toWaveLength Nanometer w; psi = Angle.degree (p * 1.0<Berreman.Constants.deg>); delta = Angle.degree (d * 1.0<Berreman.Constants.deg>); aoiOpt = None }
             | _ -> None
         | WavelengthPsiDeltaAoi, [| ws; ps; ds; aos |] ->
             match tryFloat ws, tryFloat ps, tryFloat ds, tryFloat aos with
             | Some w, Some p, Some d, Some a ->
-                Some { waveLength = toWaveLength Nanometer w; psi = Angle.degree p; delta = Angle.degree d; aoiOpt = Some (Angle.degree a) }
+                Some { waveLength = toWaveLength Nanometer w; psi = Angle.degree (p * 1.0<Berreman.Constants.deg>); delta = Angle.degree (d * 1.0<Berreman.Constants.deg>); aoiOpt = Some (Angle.degree (a * 1.0<Berreman.Constants.deg>)) }
             | _ -> None
         | _ -> None
 

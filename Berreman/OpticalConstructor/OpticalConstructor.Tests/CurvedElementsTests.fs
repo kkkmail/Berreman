@@ -125,7 +125,7 @@ module CurvedElementsTests =
 
     [<Fact>]
     let ``AC-C3 off-axis solveZone shifts incidenceAngle via rotateY`` () =
-        let inclined = IncidentLightInfo.createInclined (WaveLength.nm 13.5<nm>) (IncidenceAngle.create (Angle.degree 10.0))
+        let inclined = IncidentLightInfo.createInclined (WaveLength.nm 13.5<nm>) (IncidenceAngle.create (Angle.degree 10.0<deg>))
         let surface = sphericalSurface (50.0<mm> * mmToMeter) (10.0<mm> * mmToMeter)
         let edge = List.last (sampleZones surface 4)
         let p = SolverParameters.defaultValue

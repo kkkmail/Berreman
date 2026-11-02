@@ -5,14 +5,14 @@
 open System.Numerics
 open MathNet.Numerics.LinearAlgebra
 
-let cplx a = Complex(a, 0.0)
+let Complex.ofReal a = Complex(a, 0.0)
 
 let c = 
     [
-        [cplx 0.0; cplx 1.0; cplx 0.0; cplx 0.0]
-        [cplx 2.25; cplx 0.0; cplx 0.0; cplx 0.0]
-        [cplx 0.0; cplx 0.0; cplx 0.0; cplx 1.0]
-        [cplx 0.0; cplx 0.0; cplx 2.25; cplx 0.0]
+        [Complex.ofReal 0.0; Complex.ofReal 1.0; Complex.ofReal 0.0; Complex.ofReal 0.0]
+        [Complex.ofReal 2.25; Complex.ofReal 0.0; Complex.ofReal 0.0; Complex.ofReal 0.0]
+        [Complex.ofReal 0.0; Complex.ofReal 0.0; Complex.ofReal 0.0; Complex.ofReal 1.0]
+        [Complex.ofReal 0.0; Complex.ofReal 0.0; Complex.ofReal 2.25; Complex.ofReal 0.0]
     ]
     |> matrix
 

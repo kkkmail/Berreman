@@ -40,7 +40,7 @@ module SourceProjectionTests =
         // wavelength reduces to canonical meters (532 nm = 5.32e-7 m).
         Assert.Equal(5.32e-7, info.waveLength.value / 1.0<meter>, 15)
         // angle / polarization / ellipticity match the inputs.
-        Assert.Equal((Angle.degree 30.0).value, info.incidenceAngle.value, 12)
+        Assert.Equal((Angle.degree 30.0<deg>).value, info.incidenceAngle.value, 12)
         Assert.Equal(Polarization.p.value, info.polarization.value, 12)
         Assert.Equal(0.25, info.ellipticity.value, 12)
 

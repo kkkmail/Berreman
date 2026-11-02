@@ -6,6 +6,7 @@ open Berreman.Media
 open Berreman.Fields
 open Berreman.MaterialProperties
 open MathNet.Numerics
+open System.Numerics
 open Berreman.MathNetNumericsMath
 
 /// !!! DO NOT CHANGE ANY VALUES HERE !!!
@@ -39,7 +40,7 @@ module Standard =
 
 
     /// 600 nm S-polarized light falling at some incidence angle (in degrees).
-    let light600nmInclinedDegreeLPs angleDegree =
+    let light600nmInclinedDegreeLPs (angleDegree : float<deg>) : IncidentLightInfo =
         IncidentLightInfo.createInclined (WaveLength.nm w600nm) (Angle.degree angleDegree |> IncidenceAngle.create)
 
 
@@ -52,7 +53,6 @@ module Standard =
         static member transparentGlass150 = RefractionIndex 1.50
         static member transparentGlass175 = RefractionIndex 1.75
         static member transparentGlass200 = RefractionIndex 2.00
-        static member getTransparentGlass n = RefractionIndex n
 
         //=======================================
         // Add any custom values after this line.
@@ -67,7 +67,7 @@ module Standard =
         static member transparentGlass200 = RefractionIndex.transparentGlass200 |> Eps.fromRefractionIndex
         static member uniaxialCrystal = (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.65) |> Eps.fromRefractionIndex
         static member biaxialCrystal = (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.75) |> Eps.fromRefractionIndex
-        static member getTransparentGlass n = RefractionIndex.getTransparentGlass n |> Eps.fromRefractionIndex
+        static member getTransparentGlass (n : RefractionIndex) : Eps = Eps.fromRefractionIndex n
 
         //=======================================
         // Add any custom values after this line.
@@ -88,8 +88,8 @@ module Standard =
         static member euvSiliconDelta = 0.006
         static member euvSiliconBeta = 0.002
 
-        static member euvMolybdenum = (createComplex (1.0 - Eps.euvMolybdenumDelta) Eps.euvMolybdenumBeta) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
-        static member euvSilicon = (createComplex  (1.0 - Eps.euvSiliconDelta) Eps.euvSiliconBeta) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
+        static member euvMolybdenum = (Complex.create (1.0 - Eps.euvMolybdenumDelta) Eps.euvMolybdenumBeta) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
+        static member euvSilicon = (Complex.create  (1.0 - Eps.euvSiliconDelta) Eps.euvSiliconBeta) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
 
 
     type OpticalProperties
@@ -101,7 +101,7 @@ module Standard =
         static member transparentGlass200 = Eps.transparentGlass200 |> OpticalProperties.fromEpsion
         static member uniaxialCrystal = Eps.uniaxialCrystal |> OpticalProperties.fromEpsion
         static member biaxialCrystal = Eps.biaxialCrystal |> OpticalProperties.fromEpsion
-        static member getTransparentGlass n = Eps.getTransparentGlass n |> OpticalProperties.fromEpsion
+        static member getTransparentGlass (n : RefractionIndex) : OpticalProperties = Eps.getTransparentGlass n |> OpticalProperties.fromEpsion
 
         //=======================================
         // Add any custom values after this line.
@@ -117,7 +117,7 @@ module Standard =
         /// Standard vacuum / transparent glass system.
         static member transparentGlassSystem =
             {
-                description = Some "Standard vacuum / transparent glass system."
+                description = Some (OpticalSystemDescription "Standard vacuum / transparent glass system.")
                 upper = OpticalProperties.vacuum
                 films = []
                 lower = OpticalProperties.transparentGlass
@@ -126,7 +126,7 @@ module Standard =
         /// Standard vacuum / uniaxial crystal system.
         static member uniaxialCrystalSystem =
             {
-                description = Some "Standard vacuum / uniaxial crystal system."
+                description = Some (OpticalSystemDescription "Standard vacuum / uniaxial crystal system.")
                 upper = OpticalProperties.vacuum
                 films = []
                 lower = OpticalProperties.uniaxialCrystal
@@ -135,7 +135,7 @@ module Standard =
         /// Standard vacuum / biaxial crystal system.
         static member biaxialCrystalSystem =
             {
-                description = Some "Standard vacuum / biaxial crystal system."
+                description = Some (OpticalSystemDescription "Standard vacuum / biaxial crystal system.")
                 upper = OpticalProperties.vacuum
                 films = []
                 lower = OpticalProperties.biaxialCrystal
@@ -144,7 +144,7 @@ module Standard =
         /// Standard vacuum / transparent glass film / vacuum system.
         static member transparentGlassFilmSystem thickness =
             {
-                description = Some "Standard vacuum / transparent glass film / vacuum system."
+                description = Some (OpticalSystemDescription "Standard vacuum / transparent glass film / vacuum system.")
                 upper = OpticalProperties.vacuum
                 films = [ { properties = OpticalProperties.transparentGlass; thickness = thickness } ]
                 lower = OpticalProperties.vacuum
@@ -153,7 +153,7 @@ module Standard =
         /// Standard vacuum / uniaxial crystal film / vacuum system.
         static member uniaxialCrystalFilmSystem thickness =
             {
-                description = Some "Standard vacuum / uniaxial crystal film / transparent glass system."
+                description = Some (OpticalSystemDescription "Standard vacuum / uniaxial crystal film / transparent glass system.")
                 upper = OpticalProperties.vacuum
                 films = [ { properties = OpticalProperties.uniaxialCrystal; thickness = thickness } ]
                 lower = OpticalProperties.vacuum
@@ -162,16 +162,16 @@ module Standard =
         /// Standard vacuum / biaxial crystal film / vacuum system.
         static member biaxialCrystalFilmSystem thickness =
             {
-                description = Some "Standard vacuum / biaxial crystal film / transparent glass system."
+                description = Some (OpticalSystemDescription "Standard vacuum / biaxial crystal film / transparent glass system.")
                 upper = OpticalProperties.vacuum
                 films = [ { properties = OpticalProperties.biaxialCrystal; thickness = thickness } ]
                 lower = OpticalProperties.vacuum
             }
 
         /// Standard vacuum / transparent glass system with refraction index n.
-        static member getTransparentGlassSystem n =
+        static member getTransparentGlassSystem (n : RefractionIndex) : BaseOpticalSystem =
             {
-                description = Some "Standard vacuum / transparent glass system."
+                description = Some (OpticalSystemDescription "Standard vacuum / transparent glass system.")
                 upper = OpticalProperties.vacuum
                 films = []
                 lower = OpticalProperties.getTransparentGlass n
@@ -185,7 +185,7 @@ module Standard =
     type OpticalSystem
         with
 
-        static member plateSystem properties description thickness =
+        static member plateSystem (properties : OpticalProperties) (description : OpticalSystemDescription) (thickness : Thickness) : OpticalSystem =
             {
                 description = Some description
                 upper = OpticalProperties.vacuum
@@ -200,7 +200,7 @@ module Standard =
         /// Standard transparent glass / vacuum system for testing internal reflection.
         static member totalReflGlass150System =
             {
-                description = Some "Standard transparent glass with n = 1.50 / vacuum system for testing internal reflection."
+                description = Some (OpticalSystemDescription "Standard transparent glass with n = 1.50 / vacuum system for testing internal reflection.")
                 upper = OpticalProperties.transparentGlass150
                 films = []
                 substrate = None
@@ -211,7 +211,7 @@ module Standard =
         /// Standard transparent glass / vacuum system for testing wedge reflection.
         static member getWedgeGlass150System thickness a =
             {
-                description = Some "Standard transparent glass with n = 1.50 / vacuum system for testing wedge."
+                description = Some (OpticalSystemDescription "Standard transparent glass with n = 1.50 / vacuum system for testing wedge.")
                 upper = OpticalProperties.vacuum
                 films = []
                 substrate =
@@ -233,23 +233,23 @@ module Standard =
 
         /// Standard transparent glass / vacuum system for testing wedge reflection.
         static member wedge40DegGlass150System =
-            OpticalSystem.getWedgeGlass150System (1.0<mm> |> Thickness.mm) (40.0 |> Angle.degree |> WedgeAngle)
+            OpticalSystem.getWedgeGlass150System (1.0<mm> |> Thickness.mm) (40.0<deg> |> Angle.degree |> WedgeAngle)
 
         /// Standard transparent glass / vacuum system for testing wedge reflection.
         static member wedge50DegGlass150System =
-            OpticalSystem.getWedgeGlass150System (1.0<mm> |> Thickness.mm) (50.0 |> Angle.degree |> WedgeAngle)
+            OpticalSystem.getWedgeGlass150System (1.0<mm> |> Thickness.mm) (50.0<deg> |> Angle.degree |> WedgeAngle)
 
         /// Standard vacuum / biaxial crystal substrate / vacuum system.
         static member biaxialCrystalSubstrateSystem thickness =
             {
-                description = Some "Standard vacuum / biaxial crystal thick plate / vacuum system."
+                description = Some (OpticalSystemDescription "Standard vacuum / biaxial crystal thick plate / vacuum system.")
                 upper = OpticalProperties.vacuum
                 films = []
                 substrate = { properties = OpticalProperties.biaxialCrystal; thickness = thickness } |> Plate |> Some
                 lower = OpticalProperties.vacuum
             }
 
-        static member wedgeSystem properties description thickness angle =
+        static member wedgeSystem (properties : OpticalProperties) (description : OpticalSystemDescription) (thickness : Thickness) (angle : WedgeAngle) : OpticalSystem =
             {
                 description = Some description
                 upper = OpticalProperties.vacuum
@@ -266,7 +266,7 @@ module Standard =
 
         /// Standard vacuum / biaxial crystal wedge / vacuum system.
         static member biaxialCrystalWedgeSystem thickness angle =
-            let d = "Standard vacuum / biaxial crystal wedge / vacuum system."
+            let d = OpticalSystemDescription "Standard vacuum / biaxial crystal wedge / vacuum system."
             OpticalSystem.wedgeSystem OpticalProperties.biaxialCrystal d thickness angle
 
         //=======================================

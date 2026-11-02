@@ -15,8 +15,8 @@ open Berreman.Constants
 let fn = [ R; T ]
 
 let numberOfPoints = 2000
-let incidenceAngleDegree = 0.0
-let polarization = 45.0 |> Angle.degree |> Polarization.create
+let incidenceAngleDegree = 0.0<deg>
+let polarization = 45.0<deg> |> Angle.degree |> Polarization.create
 
 type RefractionIndexThickness =
     | RefractionIndexThickness of RefractionIndex * Thickness
@@ -45,7 +45,7 @@ let polarizationRange =
 
 
 let wedgeAngleRange =
-    Range<_>.create numberOfPoints (0.0 |> Angle.degree |> WedgeAngle) (85.0 |> Angle.degree |> WedgeAngle)
+    Range<_>.create numberOfPoints (0.0<deg> |> Angle.degree |> WedgeAngle) (85.0<deg> |> Angle.degree |> WedgeAngle)
     |> WedgeAngleRange
 
 
@@ -97,8 +97,8 @@ let getGlassInfo useThickPlate nh1 nh2Opt light angle =
     }
 
 
-let zeroDegreeWedge = (0.0 |> Angle.degree |> WedgeAngle)
-let thirtyDegreeWedge = (30.0 |> Angle.degree |> WedgeAngle)
+let zeroDegreeWedge = (0.0<deg> |> Angle.degree |> WedgeAngle)
+let thirtyDegreeWedge = (30.0<deg> |> Angle.degree |> WedgeAngle)
 
 
 //let film = getGlassInfo false nh1 None incidentLight zeroDegreeWedge

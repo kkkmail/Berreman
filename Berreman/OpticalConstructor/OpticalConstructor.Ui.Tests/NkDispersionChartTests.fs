@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Ui.Tests
 
+open System.Numerics
 open Xunit
 open Berreman.Fields
 open Berreman.MathNetNumericsMath
@@ -108,9 +109,9 @@ module NkDispersionChartTests =
             propsOf
                 [
                     ChooseAnisotropy Biaxial
-                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (createComplex 1.6 0.0))
-                    SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (createComplex 1.7 0.0))
-                    SetPrincipalIndex (ThirdAxis, ComplexRefractionIndex (createComplex 1.8 0.0))
+                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (Complex.create 1.6 0.0))
+                    SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (Complex.create 1.7 0.0))
+                    SetPrincipalIndex (ThirdAxis, ComplexRefractionIndex (Complex.create 1.8 0.0))
                 ]
         let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
         let chart = NkDispersionChart.nkDispersionChart Biaxial biaxial Nanometer range
@@ -125,7 +126,7 @@ module NkDispersionChartTests =
             propsOf
                 [
                     ChooseAnisotropy Isotropic
-                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (createComplex 1.5 0.0))
+                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (Complex.create 1.5 0.0))
                 ]
         let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
         let chart = NkDispersionChart.nkDispersionChart Isotropic iso Nanometer range
@@ -143,8 +144,8 @@ module NkDispersionChartTests =
             propsOf
                 [
                     ChooseAnisotropy Uniaxial
-                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (createComplex 1.5 0.0))
-                    SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (createComplex 1.7 0.0))
+                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (Complex.create 1.5 0.0))
+                    SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (Complex.create 1.7 0.0))
                 ]
         let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
         let chart = NkDispersionChart.nkDispersionChart Uniaxial uni Nanometer range

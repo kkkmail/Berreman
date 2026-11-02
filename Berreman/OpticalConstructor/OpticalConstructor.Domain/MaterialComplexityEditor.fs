@@ -21,6 +21,7 @@
 module OpticalConstructor.Domain.MaterialComplexityEditor
 
 open System
+open System.Numerics
 open Berreman.MathNetNumericsMath
 open Berreman.Fields
 open Berreman.MaterialProperties
@@ -227,7 +228,7 @@ let defaultGyrationComponent : RhoValue = RhoValue 1.5e-6
 let private constantFormula (value : float) : DispersionFormula =
     {
         terms = [ { lambda = 0.0; coefficients = [| value |]; power = 1; multiplier = 1.0 } ]
-        wavelengthScale = float (toMeters Nanometer 1.0)
+        wavelengthScale = toMeters Nanometer 1.0
     }
 
 /// The default dispersive gyration component: the constant active magnitude as a
@@ -283,7 +284,7 @@ let defaultModelChoices : DispersionModel list =
                 wavelengthUnit = ElectronVolt
                 thermoOptic = None
             }
-        SumOfTerms (RealNK (constantFormula defaultIndexValue, constantFormula 0.0))
+        SumOfTerms (RealNK { nFormula = constantFormula defaultIndexValue; kFormula = constantFormula 0.0 })
     ]
 
 /// A picker-stable code for a model's KIND (its coefficient values do not
@@ -499,9 +500,9 @@ let defaultState : MaterialComplexityEditState =
         anisotropy = Isotropic
         transparency = Transparent
         dispersion = NonDispersive
-        index1 = ComplexRefractionIndex (createComplex defaultIndexValue 0.0)
-        index2 = ComplexRefractionIndex (createComplex defaultIndexValue 0.0)
-        index3 = ComplexRefractionIndex (createComplex defaultIndexValue 0.0)
+        index1 = ComplexRefractionIndex (Complex.create defaultIndexValue 0.0)
+        index2 = ComplexRefractionIndex (Complex.create defaultIndexValue 0.0)
+        index3 = ComplexRefractionIndex (Complex.create defaultIndexValue 0.0)
         segments = [ defaultSegment ]
         activity = ActivityOff
         activityDispersion = ConstantComponents
@@ -713,10 +714,10 @@ let private constantEps (state : MaterialComplexityEditState) : ConstantEpsValue
     match state.anisotropy, state.transparency with
     | Isotropic, Transparent -> IsotropicTransparent (realIndex state.index1)
     | Isotropic, Absorbing -> IsotropicAbsorbing state.index1
-    | Uniaxial, Transparent -> UniaxialTransparent (realIndex state.index1, realIndex state.index2)
-    | Uniaxial, Absorbing -> UniaxialAbsorbing (state.index1, state.index2)
-    | Biaxial, Transparent -> BiaxialTransparent (realIndex state.index1, realIndex state.index2, realIndex state.index3)
-    | Biaxial, Absorbing -> BiaxialAbsorbing (state.index1, state.index2, state.index3)
+    | Uniaxial, Transparent -> UniaxialTransparent { ordinary = realIndex state.index1; extraordinary = realIndex state.index2 }
+    | Uniaxial, Absorbing -> UniaxialAbsorbing { ordinaryComplex = state.index1; extraordinaryComplex = state.index2 }
+    | Biaxial, Transparent -> BiaxialTransparent { nx = realIndex state.index1; ny = realIndex state.index2; nz = realIndex state.index3 }
+    | Biaxial, Absorbing -> BiaxialAbsorbing { nxComplex = state.index1; nyComplex = state.index2; nzComplex = state.index3 }
 
 /// The dispersive eps of the current anisotropy: each edit segment lowers its
 /// active axis models into the engine's per-symmetry segment records through
@@ -791,7 +792,7 @@ let toComplexity (state : MaterialComplexityEditState) : Result<MaterialComplexi
 // ---------------------------------------------------------------------------
 
 let private complexIndexOf (n : RefractionIndex) : ComplexRefractionIndex =
-    ComplexRefractionIndex (createComplex n.value 0.0)
+    ComplexRefractionIndex (Complex.create n.value 0.0)
 
 /// Seed a segment's axis slots from per-axis engine term data through the raw
 /// `SumOfTerms` escape hatch — the identity under `toEpsAxis`, so the
@@ -851,13 +852,13 @@ let ofComplexity (complexity : MaterialComplexity) : Result<MaterialComplexityEd
                     let i = complexIndexOf n
                     Isotropic, Transparent, i, i, i
                 | IsotropicAbsorbing n -> Isotropic, Absorbing, n, n, n
-                | UniaxialTransparent (nO, nE) ->
-                    let o = complexIndexOf nO
-                    Uniaxial, Transparent, o, complexIndexOf nE, o
-                | UniaxialAbsorbing (nO, nE) -> Uniaxial, Absorbing, nO, nE, nO
-                | BiaxialTransparent (n1, n2, n3) ->
-                    Biaxial, Transparent, complexIndexOf n1, complexIndexOf n2, complexIndexOf n3
-                | BiaxialAbsorbing (n1, n2, n3) -> Biaxial, Absorbing, n1, n2, n3
+                | UniaxialTransparent u ->
+                    let o = complexIndexOf u.ordinary
+                    Uniaxial, Transparent, o, complexIndexOf u.extraordinary, o
+                | UniaxialAbsorbing u -> Uniaxial, Absorbing, u.ordinaryComplex, u.extraordinaryComplex, u.ordinaryComplex
+                | BiaxialTransparent b ->
+                    Biaxial, Transparent, complexIndexOf b.nx, complexIndexOf b.ny, complexIndexOf b.nz
+                | BiaxialAbsorbing b -> Biaxial, Absorbing, b.nxComplex, b.nyComplex, b.nzComplex
             Ok (anisotropy, transparency, NonDispersive, i1, i2, i3, defaultState.segments)
         | EpsWithDispValue dispersive ->
             let anisotropy, segments =

@@ -40,7 +40,7 @@ let noOfLayerPairs = 100
 
 let filmSystem =
     {
-        description = Some "Multilayer thin film system."
+        description = Some (OpticalSystemDescription "Multilayer thin film system.")
         upper = OpticalProperties.vacuum
         films = [ for _ in 1..noOfLayerPairs -> p12 ] |> List.concat
         lower = OpticalProperties.transparentGlass150

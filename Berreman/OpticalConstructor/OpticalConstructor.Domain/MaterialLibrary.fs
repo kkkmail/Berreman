@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Domain
 
 open System
+open System.Numerics
 open Berreman.Constants
 open Berreman.MathNetNumericsMath
 open Berreman.Fields
@@ -332,19 +333,19 @@ module MaterialLibrary =
         constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass200)
 
     let private uniaxialCrystalComplexity : MaterialComplexity =
-        constantComplexity (BiaxialTransparent (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.65))
+        constantComplexity (BiaxialTransparent { nx = RefractionIndex 1.5; ny = RefractionIndex 1.65; nz = RefractionIndex 1.65 })
 
     let private biaxialCrystalComplexity : MaterialComplexity =
-        constantComplexity (BiaxialTransparent (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.75))
+        constantComplexity (BiaxialTransparent { nx = RefractionIndex 1.5; ny = RefractionIndex 1.65; nz = RefractionIndex 1.75 })
 
     let private euvMolybdenumComplexity : MaterialComplexity =
-        Berreman.MathNetNumericsMath.createComplex (1.0 - Eps.euvMolybdenumDelta) Eps.euvMolybdenumBeta
+        Complex.create (1.0 - Eps.euvMolybdenumDelta) Eps.euvMolybdenumBeta
         |> ComplexRefractionIndex
         |> IsotropicAbsorbing
         |> constantComplexity
 
     let private euvSiliconComplexity : MaterialComplexity =
-        Berreman.MathNetNumericsMath.createComplex (1.0 - Eps.euvSiliconDelta) Eps.euvSiliconBeta
+        Complex.create (1.0 - Eps.euvSiliconDelta) Eps.euvSiliconBeta
         |> ComplexRefractionIndex
         |> IsotropicAbsorbing
         |> constantComplexity
@@ -356,7 +357,7 @@ module MaterialLibrary =
         let n11 = (RefractionIndex 2.315 |> EpsValue.fromRefractionIndex).refractionIndex
         let n33 = (RefractionIndex 2.226 |> EpsValue.fromRefractionIndex).refractionIndex
         {
-            eps = EpsWithoutDispValue (BiaxialTransparent (n11, n11, n33))
+            eps = EpsWithoutDispValue (BiaxialTransparent { nx = n11; ny = n11; nz = n33 })
             magnetic = None
             active = Some (RhoWithoutDispValue { gyration = PlanarActive (RhoValue 1.5e-6); hand = RightHanded })
         }
@@ -403,7 +404,7 @@ module MaterialLibrary =
         let lambda = w.value / 1.0<meter>
         let n = 3.41696 - 2.09e7 * lambda ** 2.0 + 1.48e17 * lambda ** 4.0 + 0.013924 / (-0.028 + 1.e12 * lambda ** 2.0) ** 2.0 + 0.138497 / (-0.028 + 1.e12 * lambda ** 2.0)
         let xi = (4.402681698765214e9 * lambda ** 2.0) / (0.0001 + (-0.12189462353667012 + 1.0e12 * lambda ** 2.0) ** 2.0)
-        createComplex n xi |> ComplexRefractionIndex
+        Complex.create n xi |> ComplexRefractionIndex
 
     /// Napier's constant, matching the engine `Langasite` preset's `numberE`.
     let private langasiteNumberE = exp 1.0
@@ -412,14 +413,14 @@ module MaterialLibrary =
     /// index (`OpticalProperties/Dispersive.fs`), re-stated verbatim.
     let private langasiteOrdinary (w : WaveLength) : ComplexRefractionIndex =
         let lambda = w.value / 1.0<meter>
-        (((cplx 0.00005) * complexI) / (langasiteNumberE ** (1.2011325347955075e15 * (-2.8e-7 + lambda) ** 2.0) |> cplx) + (sqrt (1.0 + (2.4981088 * lambda ** 2.0) / (-1.6845031370328092e-14 + lambda ** 2.0)) |> cplx))
+        (((Complex.ofReal 0.00005) * complexI) / (langasiteNumberE ** (1.2011325347955075e15 * (-2.8e-7 + lambda) ** 2.0) |> Complex.ofReal) + (sqrt (1.0 + (2.4981088 * lambda ** 2.0) / (-1.6845031370328092e-14 + lambda ** 2.0)) |> Complex.ofReal))
         |> ComplexRefractionIndex
 
     /// Reproduction of the engine `Langasite` preset's EXTRAORDINARY complex
     /// refraction index (`OpticalProperties/Dispersive.fs`), re-stated verbatim.
     let private langasiteExtraordinary (w : WaveLength) : ComplexRefractionIndex =
         let lambda = w.value / 1.0<meter>
-        (((cplx 0.0001) * complexI) / (langasiteNumberE ** (1.2011325347955075e15 * (-2.8e-7 + lambda) ** 2.0) |> cplx) + (sqrt (1.0 + (2.5408145 * lambda ** 2.0) / (-1.6679115500522497e-14 + lambda ** 2.0)) |> cplx))
+        (((Complex.ofReal 0.0001) * complexI) / (langasiteNumberE ** (1.2011325347955075e15 * (-2.8e-7 + lambda) ** 2.0) |> Complex.ofReal) + (sqrt (1.0 + (2.5408145 * lambda ** 2.0) / (-1.6679115500522497e-14 + lambda ** 2.0)) |> Complex.ofReal))
         |> ComplexRefractionIndex
 
     /// Silicon (spec 0040 step 004): Isotropic, dispersive, absorbing. The isotropic

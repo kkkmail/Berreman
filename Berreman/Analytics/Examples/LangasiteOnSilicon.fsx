@@ -12,7 +12,7 @@ open Berreman.Constants
 let fn = [ R; T ]
 
 let numberOfPoints = 2000
-let incidenceAngleDegree = 79.0
+let incidenceAngleDegree = 79.0<deg>
 
 let i = incidenceAngleRange numberOfPoints
 let e = ellipticityRange numberOfPoints

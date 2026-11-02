@@ -158,7 +158,7 @@ module Colorimetry =
 
         let samples =
             spectrum
-            |> Array.map (fun (wl, sol) -> (wl, sol.func channel |> Option.defaultValue 0.0))
+            |> Array.map (fun (wl, sol) -> (wl, (sol.func channel |> Option.defaultValue OpticalFunctionValue.zero).value))
 
         let norm =
             samples

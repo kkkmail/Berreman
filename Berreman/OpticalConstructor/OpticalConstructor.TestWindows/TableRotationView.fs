@@ -168,7 +168,7 @@ let normalizeDegrees (d : float) : float =
     let m = d % 360.0
     if m < 0.0 then m + 360.0 else m
 
-let private addDeg (a : Angle) (d : float) : Angle = Angle.degree (normalizeDegrees (a.degrees + d))
+let private addDeg (a : Angle) (d : float) : Angle = Angle.degree (normalizeDegrees (a.degrees + d) * 1.0<Berreman.Constants.deg>)
 
 let private rotate1 (d : float) (m : Model) : Model = { m with view = { m.view with r1 = addDeg m.view.r1 d } }
 let private rotate2 (d : float) (m : Model) : Model = { m with view = { m.view with r2 = addDeg m.view.r2 d } }
@@ -200,7 +200,7 @@ let private rotateIfSelected (f : Model -> Model) (model : Model) : Model =
 
 /// Set the view's axis to an exact angle (mod 360), lock-respecting for R3 (task 008).
 let private setAxis (axis : RotationControls.Axis) (v : float) (m : Model) : Model =
-    let a = Angle.degree (normalizeDegrees v)
+    let a = Angle.degree (normalizeDegrees v * 1.0<Berreman.Constants.deg>)
     match axis with
     | RotationControls.R1 -> { m with view = { m.view with r1 = a } }
     | RotationControls.R2 -> { m with view = { m.view with r2 = a } }

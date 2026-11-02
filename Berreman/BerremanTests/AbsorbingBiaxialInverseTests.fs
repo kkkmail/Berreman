@@ -84,7 +84,7 @@ open BerremanTests.AbsorbingBiaxialSample              // the fifteen-parameter 
 /// exactly an optic-axis cut.
 type AbsorbingBiaxialInverseTests() =
 
-    let degree = Berreman.MathNetNumericsMath.degree
+    let degree = Angle.radiansPerDegree
 
     // =================================================================================================
     // The ground truth, the tensor builder, the fit scaling and the measurement set all live in

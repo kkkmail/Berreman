@@ -24,7 +24,7 @@ module TableViewTests =
     let private vec (x : float) (y : float) (z : float) : Vector3 = Vector3.create x y z
 
     let private viewWith (r1 : float) (r2 : float) (r3 : float) : TableViewState =
-        { Table.defaultView with r1 = Angle.degree r1; r2 = Angle.degree r2; r3 = Angle.degree r3 }
+        { Table.defaultView with r1 = Angle.degree (r1 * 1.0<deg>); r2 = Angle.degree (r2 * 1.0<deg>); r3 = Angle.degree (r3 * 1.0<deg>) }
 
     // --- Default view is exactly the straight top-down layout --------------------------
 

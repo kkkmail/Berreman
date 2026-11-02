@@ -25,7 +25,7 @@ module Charting =
 
         let getFuncData (e : OpticalFunction) =
             data
-            |> Array.map (fun (v, s) -> (v, s.func e))
+            |> Array.map (fun (v, s) -> (v, s.func e |> Option.map (fun y -> y.value)))
             |> Array.choose (fun (x, yo) -> match yo with | Some y -> Some (x, y) | None -> None )
 
         Chart.combine (fn |> List.map (fun e -> Chart.Line(getFuncData e, Name = e.info.fullName)))
@@ -42,7 +42,7 @@ module Charting =
 
         let getFuncData (d : array<float * Solution> ) (e : OpticalFunction) =
             d
-            |> Array.map (fun (v, s) -> (v, s.func e))
+            |> Array.map (fun (v, s) -> (v, s.func e |> Option.map (fun y -> y.value)))
             |> Array.choose (fun (x, yo) -> match yo with | Some y -> Some (x, y) | None -> None )
 
         let plotFun (f : OpticalFunction) =
@@ -56,7 +56,7 @@ module Charting =
 
     let mapFun (data : #seq<#seq<double * double * Solution>>) (fn : OpticalFunction) =
         data
-        |> Seq.map (fun r -> r |> Seq.map (fun (_, _, e) -> e.func fn) |> Seq.choose id |> Array.ofSeq)
+        |> Seq.map (fun r -> r |> Seq.map (fun (_, _, e) -> e.func fn |> Option.map (fun y -> y.value)) |> Seq.choose id |> Array.ofSeq)
         |> Array.ofSeq
 
 
@@ -72,10 +72,10 @@ module Charting =
             let zVal = mapFun data e
 
             // kk:20180922 The axes are somehow mysteriously swapped. Here we swap X with Y back for both data and names.
-            Chart.Surface(zVal, yVal, xVal, Opacity = 0.7, Contours = TraceObjects.Contours.initXyz(Show = true), Name = e.info.name)
+            Chart.Surface(zVal, yVal, xVal, Opacity = 0.7, Contours = TraceObjects.Contours.initXyz(Show = true), Name = e.info.name.value)
             |> Chart.withXAxisStyle(y.name)
             |> Chart.withYAxisStyle(x.name)
-            |> Chart.withZAxisStyle(e.info.name)
+            |> Chart.withZAxisStyle(e.info.name.value)
             //|> Chart.withTitle(title)
             |> Chart.withDescription description
 

@@ -46,7 +46,7 @@ module MaterialLibrary =
     /// the full `OpticalPropertiesWithDisp` from a persisted dispersion model is the
     /// §D.9 mapping (Part D); this module owns only the metadata boundary.
     let private vacuumProperties : OpticalPropertiesWithDisp =
-        createComplex 1.0 0.0
+        System.Numerics.Complex.create 1.0 0.0
         |> ComplexRefractionIndex
         |> Eps.fromComplexRefractionIndex
         |> EpsWithoutDisp
@@ -302,7 +302,7 @@ module Report =
             |> List.mapi (fun i s ->
                 tr [] [
                     td [] [ str $"system[%d{i}]" ]
-                    td [] [ str (defaultArg s.description "(no description)") ]
+                    td [] [ str (match s.description with | Some (Berreman.Media.OpticalSystemDescription d) -> d | None -> "(no description)") ]
                 ])
 
         let chartNodes =

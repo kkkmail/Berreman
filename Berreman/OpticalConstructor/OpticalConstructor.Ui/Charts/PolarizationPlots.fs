@@ -31,8 +31,8 @@ let ellipseCurve (n : int) (ellipticity : float) (azimuth : float) : (float * fl
     |]
 
 /// Reflected/transmitted polarization-ellipse curves directly from the engine members.
-let reflectedEllipse (n : int) (em : EmFieldSystem) = ellipseCurve n em.ellipticityR em.azimuthR
-let transmittedEllipse (n : int) (em : EmFieldSystem) = ellipseCurve n em.ellipticityT em.azimuthT
+let reflectedEllipse (n : int) (em : EmFieldSystem) = ellipseCurve n em.ellipticityR.value em.azimuthR.value
+let transmittedEllipse (n : int) (em : EmFieldSystem) = ellipseCurve n em.ellipticityT.value em.azimuthT.value
 
 /// §H.8 — draw a polarization ellipse onto a ScottPlot plot, settings applied through
 /// the sole `applyToScottPlot` seam.

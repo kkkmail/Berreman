@@ -26,13 +26,13 @@ module SeriesDataTests =
     [<Fact>]
     let ``AC-H1 series1D reproduces Charting.plot's chosen (x,y) pairs`` () =
         let x =
-            IncidenceAngleRange (Range<_>.create 8 (Angle.degree 0.0 |> IncidenceAngle) (Angle.degree 60.0 |> IncidenceAngle))
+            IncidenceAngleRange (Range<_>.create 8 (Angle.degree 0.0<deg> |> IncidenceAngle) (Angle.degree 60.0<deg> |> IncidenceAngle))
 
         // The exact choose-on-`Some` projection `Charting.plot` performs (Charting.fs:26-30).
         let data = calculate f x
         let expected =
             data
-            |> Array.map (fun (v, s) -> (v, s.func R))
+            |> Array.map (fun (v, s) -> (v, s.func R |> Option.map (fun y -> y.value)))
             |> Array.choose (fun (xx, yo) -> match yo with | Some y -> Some (xx, y) | None -> None)
 
         let actual = (SeriesData.series1D f R x).points
@@ -46,7 +46,7 @@ module SeriesDataTests =
     [<Fact>]
     let ``AC-H1 the series legend name is the engine fullName`` () =
         let x =
-            IncidenceAngleRange (Range<_>.create 4 (Angle.degree 0.0 |> IncidenceAngle) (Angle.degree 40.0 |> IncidenceAngle))
+            IncidenceAngleRange (Range<_>.create 4 (Angle.degree 0.0<deg> |> IncidenceAngle) (Angle.degree 40.0<deg> |> IncidenceAngle))
         Assert.Equal(R.info.fullName, (SeriesData.series1D f R x).name)
 
     // ----------------------------------------------------------------- AC-H3
@@ -54,7 +54,7 @@ module SeriesDataTests =
     [<Fact>]
     let ``AC-H3 surface adapter Z grid equals mapFun output`` () =
         let x =
-            IncidenceAngleRange (Range<_>.create 6 (Angle.degree 0.0 |> IncidenceAngle) (Angle.degree 50.0 |> IncidenceAngle))
+            IncidenceAngleRange (Range<_>.create 6 (Angle.degree 0.0<deg> |> IncidenceAngle) (Angle.degree 50.0<deg> |> IncidenceAngle))
         let y =
             WaveLengthRange (   Range<_>.create 5 (WaveLength.nm 400.0<nm>) (WaveLength.nm 700.0<nm>))
 

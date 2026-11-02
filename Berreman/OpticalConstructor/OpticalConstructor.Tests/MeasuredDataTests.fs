@@ -25,9 +25,9 @@ module MeasuredDataTests =
     let private ePoint (w : float) (psi : float) (delta : float) (aoi : float option) : EllipsometricPoint =
         {
             waveLength = toWaveLength Nanometer w
-            psi = Angle.degree psi
-            delta = Angle.degree delta
-            aoiOpt = aoi |> Option.map Angle.degree
+            psi = Angle.degree (psi * 1.0<Berreman.Constants.deg>)
+            delta = Angle.degree (delta * 1.0<Berreman.Constants.deg>)
+            aoiOpt = aoi |> Option.map (fun a -> Angle.degree (a * 1.0<Berreman.Constants.deg>))
         }
 
     let private eSeries (pts : EllipsometricPoint list) : EllipsometricSeries = { points = pts }

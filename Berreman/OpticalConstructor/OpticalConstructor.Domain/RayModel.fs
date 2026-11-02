@@ -210,7 +210,7 @@ module RayModel =
     /// R2/R3 on top, so at dialled 0 it faces the beam and a dialled value tilts it relative to the beam.
     let beamOrientation (dir : Vector3) : Angle * Angle =
         let d = dir.normalized
-        Angle.radian (atan2 d.y d.x), Angle.radian (asin (max -1.0 (min 1.0 d.z)))
+        Angle (atan2 d.y d.x), Angle (asin (max -1.0 (min 1.0 d.z)))
 
     /// The placement an element takes ON its beam (A.4.3 — R2 / R3 are measured FROM the incident ray,
     /// not from a fixed table axis): its dialled R2 / R3 added to the incoming beam's own absolute

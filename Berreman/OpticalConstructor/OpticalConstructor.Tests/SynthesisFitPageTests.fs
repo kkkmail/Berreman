@@ -39,7 +39,7 @@ module SynthesisFitPageTests =
         }
 
     let private reflectanceOf (system : OpticalSystem) (w : WaveLength) : float =
-        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.get
+        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.map (fun v -> v.value) |> Option.get
 
     /// A small R-fit problem and the resulting (refined system, FitReport).
     let private fittedProblem () =

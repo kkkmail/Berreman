@@ -85,8 +85,8 @@ type MuellerReconstructionTests() =
     // case with no filesystem IO at all. The `capturedAt` timestamps are fixed literals (deterministic across
     // runs — no ambient clock read).
     let cannedRows : MuellerRawRow list =
-        [ { experiment = "E1"; captureIndex = 0; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero); description = Angle.degree 0.0; avgTotal = 0.42 }
-          { experiment = "E1"; captureIndex = 1; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 5, 0, System.TimeSpan.Zero); description = Angle.degree 45.0; avgTotal = 0.31 } ]
+        [ { experiment = "E1"; captureIndex = 0; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero); description = Angle.degree 0.0<Berreman.Constants.deg>; avgTotal = 0.42 }
+          { experiment = "E1"; captureIndex = 1; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 5, 0, System.TimeSpan.Zero); description = Angle.degree 45.0<Berreman.Constants.deg>; avgTotal = 0.31 } ]
 
     let makeMockData (rowsByDataSet : Map<MuellerDataSet, MuellerRawRow list>) : MuellerDataProxy =
         {
@@ -138,7 +138,7 @@ type MuellerReconstructionTests() =
     // Spec 0042 (008, IMPLEMENT) — Stage-1 AIR calibration helpers. Bound here, ahead of the members (FS0960:
     // in a class type every `let` binding precedes the first member). Radians-per-degree reached by its full
     // module path (no extra `open` of the numeric-wrapper module, which would drag unrelated names into scope).
-    let degree = Berreman.MathNetNumericsMath.degree
+    let degree = Angle.radiansPerDegree
 
     // ---------------------------------------------------------------------------------------------------
     // Spec 0044 §8.5 / §9 — acceptance bands for the measured-data facts, against the reference pipeline's
@@ -234,7 +234,7 @@ type MuellerReconstructionTests() =
     [<Fact>]
     member _.``zero retardance is the identity Mueller matrix (arbitrary azimuth)`` () =
         // A wave plate with no phase delay is a pass-through, whatever its azimuth: R(-θ)·I·R(θ) = I.
-        let actual = retarderMueller (Angle.degree 37.0) (Retardance.degree 0.0)
+        let actual = retarderMueller (Angle.degree 37.0<Berreman.Constants.deg>) (Retardance.degree 0.0)
         assertMuellerEqual Propagation.identityMueller actual
 
     [<Fact>]
@@ -263,7 +263,7 @@ type MuellerReconstructionTests() =
                   [ 0.0; 0.0; 0.0; -1.0 ]
                   [ 0.0; 0.0; 1.0; 0.0 ]
                   [ 0.0; 1.0; 0.0; 0.0 ] ]
-        let actual = retarderMueller (Angle.degree 45.0) (Retardance.degree 90.0)
+        let actual = retarderMueller (Angle.degree 45.0<Berreman.Constants.deg>) (Retardance.degree 90.0)
         assertMuellerEqual expected actual
 
     [<Fact>]
@@ -554,8 +554,8 @@ type MuellerReconstructionTests() =
         // those at -90 within allowedDiff. Non-symmetric base states (the 2*phi=+/-180 flip is observable).
         let sBase = StokesVector.create [ 1.0; 0.7; -0.4; 0.2 ]
         let aBase = RealVector4.create [ 0.5; 0.25; -0.3; 0.1 ]
-        assertStokesClose (effectiveSource (Angle.degree 90.0) sBase) (effectiveSource (Angle.degree (-90.0)) sBase)
-        assertVec4Close (effectiveAnalyzer (Angle.degree 90.0) aBase) (effectiveAnalyzer (Angle.degree (-90.0)) aBase)
+        assertStokesClose (effectiveSource (Angle.degree 90.0<Berreman.Constants.deg>) sBase) (effectiveSource (Angle.degree (-90.0<Berreman.Constants.deg>)) sBase)
+        assertVec4Close (effectiveAnalyzer (Angle.degree 90.0<Berreman.Constants.deg>) aBase) (effectiveAnalyzer (Angle.degree (-90.0<Berreman.Constants.deg>)) aBase)
 
     [<Fact>]
     member _.``freeCosineFit recovers a synthetic cosine zero and visibility within tolerance (always-run)`` () =
@@ -753,7 +753,7 @@ type MuellerReconstructionTests() =
         // 17 — supplied here as BerremanTests data per spec §0), and assembles one designRow + one corrected
         // signal per kept row via the injected per-row projection.
         let excluded : ExcludedPoint list =
-            [ { experiment = "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0; captureIndex = 17 } ]
+            [ { experiment = "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0<Berreman.Constants.deg>; captureIndex = 17 } ]
         // A stub per-row projection: unit effective states (one 16-wide designRow) and the row's avgTotal as the
         // corrected signal, so the assembled target identifies exactly which rows survived, in order.
         let prepareRow (r : MuellerRawRow) : StokesVector * RealVector4 * float =
@@ -762,11 +762,11 @@ type MuellerReconstructionTests() =
             r.avgTotal
         let t = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero)
         let rows : MuellerRawRow list =
-            [ { experiment = "LP-(LR#90)-LP"; captureIndex = 0; capturedAt = t; description = Angle.degree 10.0; avgTotal = 1.0 }        // LR — kept
-              { experiment = "LP-(AIR#0)-LP"; captureIndex = 1; capturedAt = t; description = Angle.degree 20.0; avgTotal = 2.0 }         // AIR — dropped
-              { experiment = "LP-(QZ#0)-LP"; captureIndex = 2; capturedAt = t; description = Angle.degree 30.0; avgTotal = 3.0 }          // QZ — wrong kind, dropped
-              { experiment = "LP-(LR#90)-CPL-2"; captureIndex = 17; capturedAt = t; description = Angle.degree 140.0; avgTotal = 4.0 }    // contaminated — dropped
-              { experiment = "LP-(LR#0)-LP"; captureIndex = 3; capturedAt = t; description = Angle.degree 40.0; avgTotal = 5.0 } ]        // LR — kept
+            [ { experiment = "LP-(LR#90)-LP"; captureIndex = 0; capturedAt = t; description = Angle.degree 10.0<Berreman.Constants.deg>; avgTotal = 1.0 }        // LR — kept
+              { experiment = "LP-(AIR#0)-LP"; captureIndex = 1; capturedAt = t; description = Angle.degree 20.0<Berreman.Constants.deg>; avgTotal = 2.0 }         // AIR — dropped
+              { experiment = "LP-(QZ#0)-LP"; captureIndex = 2; capturedAt = t; description = Angle.degree 30.0<Berreman.Constants.deg>; avgTotal = 3.0 }          // QZ — wrong kind, dropped
+              { experiment = "LP-(LR#90)-CPL-2"; captureIndex = 17; capturedAt = t; description = Angle.degree 140.0<Berreman.Constants.deg>; avgTotal = 4.0 }    // contaminated — dropped
+              { experiment = "LP-(LR#0)-LP"; captureIndex = 3; capturedAt = t; description = Angle.degree 40.0<Berreman.Constants.deg>; avgTotal = 5.0 } ]        // LR — kept
         let (design, target) = buildDesign prepareRow excluded rows Lr
         // Only the two LR science rows survive (avgTotal 1.0 and 5.0), in order; each contributes one 16-wide row.
         Assert.Equal(2, design.Length)
@@ -842,7 +842,7 @@ type MuellerReconstructionTests() =
         let analyzerLp : AnalyzerModel =
             {
                 kind = Library.IdealLinear
-                zeroDial = Angle.degree lpZeroDeg
+                zeroDial = Angle.degree (lpZeroDeg * 1.0<Berreman.Constants.deg>)
                 dialSign = DialNegative
                 thetaRelOpt = None
                 retardanceOpt = None
@@ -850,9 +850,9 @@ type MuellerReconstructionTests() =
         let analyzerCpl : AnalyzerModel =
             {
                 kind = Library.IdealCircularLeft
-                zeroDial = Angle.degree cplZeroDeg
+                zeroDial = Angle.degree (cplZeroDeg * 1.0<Berreman.Constants.deg>)
                 dialSign = DialPositive
-                thetaRelOpt = Some (Angle.degree 45.0)
+                thetaRelOpt = Some (Angle.degree 45.0<Berreman.Constants.deg>)
                 retardanceOpt = Some (Retardance.degree (- analyzerDeltaMagDeg))
             }
 
@@ -932,7 +932,7 @@ type MuellerReconstructionTests() =
         // The one contaminated point excluded from every fit (matrix_glue.py EXCLUDED_POINTS[0]), supplied
         // here as BerremanTests data (spec section 0).
         let excluded : ExcludedPoint list =
-            [ { experiment = "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0; captureIndex = 17 } ]
+            [ { experiment = "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0<Berreman.Constants.deg>; captureIndex = 17 } ]
 
         // Assemble the full n*16 design + corrected-signal target for one kind across every family, then solve
         // through the real SVD proxy (buildDesign drops AIR rows and the excluded point per file).

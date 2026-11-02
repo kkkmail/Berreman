@@ -26,8 +26,8 @@ type MuellerMatrixTests() =
     [<Fact>]
     member _.``em.muellerMatrix delegates to MuellerMatrix.fromEmFields`` () =
         let info =
-            { light600nmInclinedDegreeLPs 19.0 with
-                polarization = Angle.degree 27.0 |> Polarization
+            { light600nmInclinedDegreeLPs 19.0<Berreman.Constants.deg> with
+                polarization = Angle.degree 27.0<Berreman.Constants.deg> |> Polarization
                 ellipticity = Ellipticity 0.58 }
 
         let solver = OpticalSystemSolver(info, BaseOpticalSystem.transparentGlassSystem.fullSystem)

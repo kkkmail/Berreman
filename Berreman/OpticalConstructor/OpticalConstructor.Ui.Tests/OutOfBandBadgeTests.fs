@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Ui.Tests
 
+open System.Numerics
 open Avalonia
 open OpticalConstructor.Controls
 open Avalonia.Controls
@@ -49,7 +50,7 @@ module OutOfBandBadgeTests =
     /// A dispersive material complexity DEFINED over 300–700 nm (the per-axis content is irrelevant to
     /// the diagnostic — only the segment interval is read).
     let private dispersiveComplexity : MaterialComplexity =
-        let axis = EpsAxisEvaluated (fun _ -> ComplexRefractionIndex (createComplex 1.5 0.0))
+        let axis = EpsAxisEvaluated (fun _ -> ComplexRefractionIndex (Complex.create 1.5 0.0))
         {
             eps =
                 EpsWithDispValue

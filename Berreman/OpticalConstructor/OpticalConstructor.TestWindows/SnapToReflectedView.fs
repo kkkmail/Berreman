@@ -89,7 +89,7 @@ let private elementSelectRadiusPx : float = 50.0
 let init () : Model =
     // This test window steers its source freely (spec 0046 locks a fresh source's R1 / R2).
     let source = { ElementPlacement.create LightSource RayModel.defaultSourcePoint with r1Locked = false; r2Locked = false }
-    let mirror = withR2 (Angle.degree 45.0) { ElementPlacement.create FlatMirror { x = 0.0<meter>; y = 0.0<meter> } with r3Locked = false }
+    let mirror = withR2 (Angle.degree 45.0<deg>) { ElementPlacement.create FlatMirror { x = 0.0<meter>; y = 0.0<meter> } with r3Locked = false }
     let detector = ElementPlacement.create Detector { x = 0.0<meter>; y = 0.0<meter> }
     {
         table = Table.defaultTable
@@ -187,7 +187,7 @@ let normalizeDegrees (d : float) : float =
     let m = d % 360.0
     if m < 0.0 then m + 360.0 else m
 
-let private bumpAngle (a : Angle) (d : float) : Angle = Angle.degree (normalizeDegrees (a.degrees + d))
+let private bumpAngle (a : Angle) (d : float) : Angle = Angle.degree (normalizeDegrees (a.degrees + d) * 1.0<deg>)
 let private dist (a : ScreenPoint) (b : ScreenPoint) : float = sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
 
 let private mapElement (i : int) (f : ElementPlacement -> ElementPlacement) (m : Model) : Model =
@@ -224,7 +224,7 @@ let private selectionAt (pt : ScreenPoint) (m : Model) : Selection =
     | _ -> if TableScene.tableHit m.view m.table pt then TableSelected else NothingSelected
 
 let private setSelectedAxis (axis : RotationControls.Axis) (v : float) (m : Model) : Model =
-    let a = Angle.degree (normalizeDegrees v)
+    let a = Angle.degree (normalizeDegrees v * 1.0<deg>)
     match m.selection with
     | TableSelected ->
         match axis with

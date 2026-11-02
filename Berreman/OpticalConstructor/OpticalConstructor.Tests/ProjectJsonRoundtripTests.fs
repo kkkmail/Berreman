@@ -24,7 +24,7 @@ module ProjectJsonRoundtripTests =
 
     let private vacuumSystem : OpticalSystem =
         {
-            description = Some "test stack"
+            description = Some (OpticalSystemDescription "test stack")
             upper = OpticalProperties.vacuum
             films = [ { properties = OpticalProperties.vacuum; thickness = Thickness.Thickness filmThickness } ]
             substrate = None
@@ -95,7 +95,7 @@ module ProjectJsonRoundtripTests =
     // `$defs` — the mirror Reflected child, a Plate substrate, and a Wedge system.
     let private plateSystem : OpticalSystem =
         { vacuumSystem with substrate = Some (Plate { properties = OpticalProperties.vacuum; thickness = Thickness.Infinity }) }
-    let private wedgeAngle = WedgeAngle (Angle.degree 2.0)
+    let private wedgeAngle = WedgeAngle (Angle.degree 2.0<deg>)
     let private wedgeSystem : OpticalSystem =
         { vacuumSystem with substrate = Some (Wedge { layer = { properties = OpticalProperties.vacuum; thickness = Thickness.mm 1.0<mm> }; angle = wedgeAngle }) }
 

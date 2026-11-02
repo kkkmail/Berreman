@@ -39,7 +39,7 @@ module TableScene =
 
     /// Rotate the table VIEW about axis 1/2/3 by `deg` degrees (R1 spin, R2 pitch, R3 yaw — §C.2.4).
     let rotateViewBy (axis : int) (deg : float) (view : TableViewState) : TableViewState =
-        let a = Angle.degree deg
+        let a = Angle.degree (deg * 1.0<Berreman.Constants.deg>)
         match axis with
         | 1 -> { view with r1 = view.r1 + a }
         | 2 -> { view with r2 = view.r2 + a }

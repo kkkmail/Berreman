@@ -134,8 +134,8 @@ module RayModelTests =
               { placement = lens;     gap = 0.3<meter>; branch = BeamTree.Transmitted }
               { placement = detector; gap = 0.4<meter>; branch = BeamTree.Transmitted } ]
         let source = Vector3.create 0.0 0.0 0.0
-        let mirror0 = ElementPlacement.create FlatMirror TablePoint.origin |> withR2 (Angle.degree 30.0)
-        let mirror1 = mirror0 |> withR2 (Angle.degree 45.0)
+        let mirror0 = ElementPlacement.create FlatMirror TablePoint.origin |> withR2 (Angle.degree 30.0<deg>)
+        let mirror1 = mirror0 |> withR2 (Angle.degree 45.0<deg>)
         let before = snapChain source centralRayDirection (stopsFor mirror0) |> List.toArray
         let after  = snapChain source centralRayDirection (stopsFor mirror1) |> List.toArray
         // Along-ray distances (the gaps) are preserved exactly in BOTH configurations.
@@ -203,7 +203,7 @@ module RayModelTests =
         Assert.True(Option.isNone afterRemove.[1].ray, "element on the removed ray must orphan")
         Assert.True(Option.isNone afterRemove.[2].ray, "element on the removed ray must orphan")
         // No OTHER operation orphans: an ordinary rotation/drag keeps the attachment.
-        let rotated = withPlacement (withR2 (Angle.degree 10.0) pA) afterRemove.[0]
+        let rotated = withPlacement (withR2 (Angle.degree 10.0<deg>) pA) afterRemove.[0]
         Assert.Equal(Some (ReflectedBranch 1), rotated.ray)
         // Restore the transmitted ray along y = 0: it passes through pB (distance 0) but
         // is 0.5 m from pC (well beyond the 0.02 m resnap distance).
@@ -219,7 +219,7 @@ module RayModelTests =
     [<Fact>]
     let ``AC-B6 a ray crossing a tilted element bends per Snell's law inside and leaves parallel to the incoming ray`` () =
         let incoming = centralRayDirection
-        let tilted = ElementPlacement.create Sample TablePoint.origin |> withR2 (Angle.degree 30.0)
+        let tilted = ElementPlacement.create Sample TablePoint.origin |> withR2 (Angle.degree 30.0<deg>)
         let n = (faceNormal incoming tilted).normalized
         // Angle of incidence is the element's 30 deg tilt; INSIDE the element the ray
         // refracts toward the normal entering the n = 1.5 medium.

@@ -151,7 +151,7 @@ let private zoomBy (notches : int) (m : Model) : Model = { m with view = TableSc
 
 /// Rotate the SELECTION about axis (1/2/3) by `notches` steps: the selected element, or the table view.
 let private rotateSelected (axis : int) (notches : int) (m : Model) : Model =
-    let a = Angle.degree (wheelStepDegrees * float notches)
+    let a = Angle.degree (wheelStepDegrees * float notches * 1.0<deg>)
     let rot (r : Angle) = r + a
     match m.selected with
     | Some i ->

@@ -249,7 +249,7 @@ module Propagation =
     /// structure — no per-sample-id branching.
     let sampleToSystem (sample : ResolvedSample) (w : WaveLength) : OpticalSystem =
         {
-            description = Some sample.name
+            description = Some (OpticalSystemDescription sample.name)
             upper = OpticalProperties.vacuum
             films = sample.films |> List.map (fun f -> f.getLayer w)
             substrate = sample.substrate |> Option.map (fun s -> Substrate.Plate (s.getLayer w))
@@ -309,7 +309,7 @@ module Propagation =
             // transmittances are the engine's own flux-to-amplitude ratios for its s and p inputs (whose
             // Stokes vectors are [1, ±1, 0, 0]): S₀ then reads exactly the engine's T for either input.
             let mm = solver.muellerMatrixT ()
-            let flux (s : OpticalSystemSolver) : float = s.solution.func OpticalFunction.T |> Option.defaultValue 0.0
+            let flux (s : OpticalSystemSolver) : float = (s.solution.func OpticalFunction.T |> Option.defaultValue OpticalFunctionValue.zero).value
             let ratio (fluxValue : float) (amplitude : float) : float = if amplitude > 1.0e-300 then fluxValue / amplitude else 1.0
             let m00 = muellerElement mm 0 0
             let m01 = muellerElement mm 0 1
@@ -366,7 +366,7 @@ module Propagation =
             [
                 for k in 0 .. n - 1 ->
                     let deg = loDeg + (hiDeg - loDeg) * float k / float (n - 1)
-                    let mm = analyzerMueller analyzerKind (Angle.degree deg)
+                    let mm = analyzerMueller analyzerKind (Angle.degree (deg * 1.0<deg>))
                     deg, intensity (propagate svIn mmSample mm)
             ]
         { points = points }
@@ -413,7 +413,7 @@ module Propagation =
         [
             for k in 0 .. n - 1 ->
                 let deg = lo + (hi - lo) * float k / float (n - 1)
-                let inc = IncidenceAngle.create (Angle.degree deg)
+                let inc = IncidenceAngle.create (Angle.degree (deg * 1.0<deg>))
                 let mm = sampleMueller branch sample w inc
                 deg, intensityThroughAnalyzerOpt svIn mm analyzer
         ]
@@ -466,7 +466,7 @@ module Propagation =
         [
             for k in 0 .. n - 1 ->
                 let deg = lo + (hi - lo) * float k / float (n - 1)
-                let inc = IncidenceAngle.create (Angle.degree deg)
+                let inc = IncidenceAngle.create (Angle.degree (deg * 1.0<deg>))
                 let pd = ellipsometerReadout (sampleMueller branch sample w inc * svIn)
                 (deg, pd.psi.degrees), (deg, pd.delta.degrees)
         ]

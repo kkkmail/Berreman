@@ -5,8 +5,7 @@ open System.Threading
 // open Softellect.DistributedProcessing.Primitives.Common
 // open Softellect.Sys.Logging
 
-module Primitives =
-    let x = 1
+module Primitives = begin end
 
     // let solverId = "6059CA79-A97E-4DAF-B7FD-75E26ED6FB3E" |> Guid.Parse |> SolverId
     // let solverName = SolverName "Test"

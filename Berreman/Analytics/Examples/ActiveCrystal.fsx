@@ -24,12 +24,12 @@ let thickness = Thickness.oneCentiMeter
 
 let numberOfPoints = 2000
 
-//let polarization = 45.0 |> Angle.degree |> Polarization.create
+//let polarization = 45.0<deg> |> Angle.degree |> Polarization.create
 let polarization = Polarization.s
 
 let light = { light600nmNormalLPs with polarization = polarization }
-let d = $"Planar active crystal plate, r12 = %A{r12.value}, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
-let d1 = $"Planar active crystal plate, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
+let d = OpticalSystemDescription $"Planar active crystal plate, r12 = %A{r12.value}, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
+let d1 = OpticalSystemDescription $"Planar active crystal plate, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
 let p = OpticalProperties.planarCrystal e11 e33 r12
 
 let polarizationRange =

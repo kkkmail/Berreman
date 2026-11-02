@@ -66,12 +66,12 @@ let data =
                             n1SinFita = n1SinFita
                             e = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                             h = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                         }
@@ -81,12 +81,12 @@ let data =
                             n1SinFita = n1SinFita
                             e = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                             h = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                         }
@@ -96,12 +96,12 @@ let data =
                             n1SinFita = n1SinFita
                             e = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                             h = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                         }

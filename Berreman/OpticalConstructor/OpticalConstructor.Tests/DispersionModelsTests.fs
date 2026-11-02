@@ -59,11 +59,11 @@ module DispersionModelsTests =
         // The anisotropy lives INSIDE the serializable EpsWithDispValue (slice 011,
         // superseding the removed AnisotropicModel): the constant uniaxial case and a
         // per-axis dispersive segment tree both map to the engine's (n_o, n_e, n_o).
-        let no = createComplex 1.5 0.0 |> ComplexRefractionIndex
-        let ne = createComplex 1.65 0.0 |> ComplexRefractionIndex
+        let no = Complex.create 1.5 0.0 |> ComplexRefractionIndex
+        let ne = Complex.create 1.65 0.0 |> ComplexRefractionIndex
         let w = WaveLength.nm 500.0<nm>
         let expected = Eps.fromComplexRefractionIndex (no, ne, no)
-        let op = toAnisotropicOpticalProperties (EpsWithoutDispValue (UniaxialAbsorbing (no, ne)))
+        let op = toAnisotropicOpticalProperties (EpsWithoutDispValue (UniaxialAbsorbing { ordinaryComplex = no; extraordinaryComplex = ne }))
         Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, "constant uniaxial value")
         Assert.True(epsClose 1e-12 (uniaxialEps no ne) expected, "direct uniaxialEps helper")
         // Per-axis dispersive route: the same indices as one uniaxial segment tree.
@@ -88,7 +88,7 @@ module DispersionModelsTests =
     let ``AC-D8 thermoOptic None is byte-identical to the isothermal index`` () =
         let model = cnk 2.0 0.05
         let w = WaveLength.nm 500.0<nm>
-        let iso = createComplex 2.0 0.05
+        let iso = Complex.create 2.0 0.05
         Assert.Equal(iso, (evaluate model w).value)
         // With None, evaluateAt any operating temperature is also identical (no overhead).
         Assert.Equal(iso, (evaluateAt 350.0<K> model w).value)
@@ -207,7 +207,7 @@ module DispersionModelsTests =
     let ``AC-B5 Cauchy lowering is RealNK Laurent terms and matches evaluate on the grid`` () =
         let model = Cauchy { a = 1.5046; b = 0.0042; c = 0.00003; wavelengthUnit = Micrometer; thermoOptic = None }
         match toEpsAxis model with
-        | RealNK (_, k) -> Assert.True(List.isEmpty k.terms, "k must be the zero formula")
+        | RealNK { nFormula = _; kFormula = k } -> Assert.True(List.isEmpty k.terms, "k must be the zero formula")
         | other -> Assert.Fail($"Cauchy must lower to RealNK, got {other}")
         assertLoweringMatchesEvaluate 1e-9 model
 
@@ -342,9 +342,11 @@ module DispersionModelsTests =
         // (each formula embeds its wavelengthScale — the canonical Meter is reported)
         // and no thermo-optic record.
         let axis =
-            RealNK (
-                { terms = [ { lambda = 0.0; coefficients = [| 1.7; 0.1 |]; power = 1; multiplier = 1.0 } ]; wavelengthScale = 1.0e-6 },
-                { terms = []; wavelengthScale = 1.0e-6 })
+            RealNK
+                {
+                    nFormula = { terms = [ { lambda = 0.0; coefficients = [| 1.7; 0.1 |]; power = 1; multiplier = 1.0 } ]; wavelengthScale = 1.0e-6<meter> }
+                    kFormula = { terms = []; wavelengthScale = 1.0e-6<meter> }
+                }
         let model = SumOfTerms axis
         Assert.Equal<EpsAxisDispersion>(axis, toEpsAxis model)
         Assert.Equal(Meter, wavelengthUnitOf model)

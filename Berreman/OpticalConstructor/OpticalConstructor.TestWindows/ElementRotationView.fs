@@ -170,7 +170,7 @@ let normalizeDegrees (d : float) : float =
     let m = d % 360.0
     if m < 0.0 then m + 360.0 else m
 
-let private addDeg (a : Angle) (d : float) : Angle = Angle.degree (normalizeDegrees (a.degrees + d))
+let private addDeg (a : Angle) (d : float) : Angle = Angle.degree (normalizeDegrees (a.degrees + d) * 1.0<deg>)
 
 let private clampZoom (z : float) : float = max zoomMin (min zoomMax z)
 
@@ -189,7 +189,7 @@ let private rotate3 (deg : float) (model : Model) : Model = editSelectedPlacemen
 
 /// Set the selected element's axis to an exact angle (lock-respecting for R3, task 008).
 let private setSelectedAxis (axis : RotationControls.Axis) (v : float) (model : Model) : Model =
-    let a = Angle.degree (normalizeDegrees v)
+    let a = Angle.degree (normalizeDegrees v * 1.0<deg>)
     editSelectedPlacement (fun p -> match axis with RotationControls.R1 -> withR1 a p | RotationControls.R2 -> withR2 a p | RotationControls.R3 -> withR3 a p) model
 
 /// Reset rotations only — bypassing locks, keeping zoom / position (task 008 Reset).

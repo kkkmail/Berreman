@@ -37,8 +37,8 @@ let euvBeta2 = 0.002
 
 //===========================================================
 
-let euv1 = (createComplex (1.0 - euvDelta1) euvBeta1) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
-let euv2 = (createComplex  (1.0 - euvDelta2) euvBeta2) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
+let euv1 = (Complex.create (1.0 - euvDelta1) euvBeta1) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
+let euv2 = (Complex.create  (1.0 - euvDelta2) euvBeta2) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
 
 let o1 = euv1 |> OpticalProperties.fromEpsion
 let o2 = euv2 |> OpticalProperties.fromEpsion

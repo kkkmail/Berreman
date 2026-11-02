@@ -28,7 +28,7 @@ let p3D = polarizationRange numberOfPoints3D
 
 #time
 plot (transparentGlass light600nmNormalLPs) fn i
-plot (transparentGlass (light600nmInclinedDegreeLPs 59.0)) fn e
+plot (transparentGlass (light600nmInclinedDegreeLPs 59.0<deg>)) fn e
 plot3D (transparentGlass light600nmNormalLPs) fn e3D i3D
 #time
 
@@ -38,13 +38,13 @@ let thickness2 = Thickness.nm ((600.0 / 1.00 / 4.0) * 1.0<nm>)
 
 #time
 plot (biaxialCrystalFilm thickness light600nmNormalLPs) fn i
-plot (biaxialCrystalFilm thickness (light600nmInclinedDegreeLPs 59.0)) fn e
+plot (biaxialCrystalFilm thickness (light600nmInclinedDegreeLPs 59.0<deg>)) fn e
 plot3D (biaxialCrystalFilm thickness light600nmNormalLPs) fn e3D i3D
 #time
 
 #time
 plot (transparentGlassFilm thickness light600nmNormalLPs) fn i
-plot (transparentGlassFilm thickness (light600nmInclinedDegreeLPs 59.0)) fn p
+plot (transparentGlassFilm thickness (light600nmInclinedDegreeLPs 59.0<deg>)) fn p
 plot3D (transparentGlassFilm thickness light600nmNormalLPs) fn p3D i3D
 #time
 

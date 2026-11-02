@@ -52,6 +52,13 @@ module Media =
             | Wedge w -> { w with layer = w.layer.rotate r } |> Wedge
 
 
+    /// A free-text description of an optical system.
+    type OpticalSystemDescription =
+        | OpticalSystemDescription of string
+
+        member this.value = let (OpticalSystemDescription d) = this in d
+
+
     /// Use when upper system is coming with incident light EmField
     type ShortOpticalSystem =
         {
@@ -62,7 +69,7 @@ module Media =
 
     type BaseOpticalSystem =
         {
-            description : string option
+            description : OpticalSystemDescription option
             upper : OpticalProperties
             films : List<Layer>
             lower : OpticalProperties
@@ -93,7 +100,7 @@ module Media =
 
     and OpticalSystem =
         {
-            description : string option
+            description : OpticalSystemDescription option
             upper : OpticalProperties
             films : List<Layer>
             substrate : Substrate option

@@ -76,22 +76,22 @@ let sourceR2Degrees (m : Model) : float = m.source.r2.degrees
 
 let private bumpAxis (axis : int) (deg : float) (p : ElementPlacement) : ElementPlacement =
     match axis with
-    | 1 -> withR1 (p.r1 + Angle.degree deg) p
-    | 2 -> withR2 (p.r2 + Angle.degree deg) p
-    | _ -> withR3 (p.r3 + Angle.degree deg) p
+    | 1 -> withR1 (p.r1 + Angle.degree (deg * 1.0<deg>)) p
+    | 2 -> withR2 (p.r2 + Angle.degree (deg * 1.0<deg>)) p
+    | _ -> withR3 (p.r3 + Angle.degree (deg * 1.0<deg>)) p
 
 let private setAxis (axis : int) (deg : float) (p : ElementPlacement) : ElementPlacement =
     match axis with
-    | 1 -> withR1 (Angle.degree deg) p
-    | 2 -> withR2 (Angle.degree deg) p
-    | _ -> withR3 (Angle.degree deg) p
+    | 1 -> withR1 (Angle.degree (deg * 1.0<deg>)) p
+    | 2 -> withR2 (Angle.degree (deg * 1.0<deg>)) p
+    | _ -> withR3 (Angle.degree (deg * 1.0<deg>)) p
 
 let private resetSourceRotations (m : Model) : Model =
     { m with source = { m.source with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } }
 
 let update (msg : Msg) (model : Model) : Model =
     match msg with
-    | RotateSourceBy d -> { model with source = withR2 (model.source.r2 + Angle.degree d) model.source }
+    | RotateSourceBy d -> { model with source = withR2 (model.source.r2 + Angle.degree (d * 1.0<deg>)) model.source }
     | RotateSourceAxisBy (axis, d) ->
         if axis = 3 && model.sourceR3Locked then model
         else { model with source = bumpAxis axis d model.source }

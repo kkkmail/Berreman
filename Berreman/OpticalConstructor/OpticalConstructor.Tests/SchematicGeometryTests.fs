@@ -48,23 +48,23 @@ module SchematicGeometryTests =
         let plate = Schematic.substrateBand (Plate layer)
         Assert.Equal(Schematic.PlateBand, plate)
 
-        let wedge = Schematic.substrateBand (Wedge { layer = layer; angle = WedgeAngle (Angle.degree 3.0) })
+        let wedge = Schematic.substrateBand (Wedge { layer = layer; angle = WedgeAngle (Angle.degree 3.0<deg>) })
         match wedge with
         | Schematic.WedgeBand slope -> Assert.True(slope > 0.0, "a non-zero wedge angle must tilt the lower edge")
         | other -> failwith $"expected a sloped WedgeBand, got {other}"
 
     [<Fact>]
     let ``AC-J1 the wedge lower-edge slope increases with the wedge angle`` () =
-        let s1 = Schematic.wedgeSlope (WedgeAngle (Angle.degree 1.0))
-        let s5 = Schematic.wedgeSlope (WedgeAngle (Angle.degree 5.0))
-        Assert.Equal(0.0, Schematic.wedgeSlope (WedgeAngle (Angle.degree 0.0)), 12)
+        let s1 = Schematic.wedgeSlope (WedgeAngle (Angle.degree 1.0<deg>))
+        let s5 = Schematic.wedgeSlope (WedgeAngle (Angle.degree 5.0<deg>))
+        Assert.Equal(0.0, Schematic.wedgeSlope (WedgeAngle (Angle.degree 0.0<deg>)), 12)
         Assert.True(s1 < s5, "a larger wedge angle must slope more")
 
     // ----------------------------------------------------------------- AC-J1.5
 
     [<Fact>]
     let ``AC-J1 the incident ray tracks the incidence angle and reflects about the normal`` () =
-        let a = IncidenceAngle.create (Angle.degree 30.0)
+        let a = IncidenceAngle.create (Angle.degree 30.0<deg>)
         let ray = Schematic.rayGeometry a
         Assert.Equal(a.value, ray.angleRadians, 12)
         // Reflected ray mirrors the incident about the surface normal: y flips, x same.
@@ -95,10 +95,10 @@ module SchematicGeometryTests =
         let film t = { properties = OpticalProperties.vacuum; thickness = t }
         let sys : OpticalSystem =
             {
-                description = Some "test"
+                description = Some (OpticalSystemDescription "test")
                 upper = OpticalProperties.vacuum
                 films = [ film (thickness 1.0e-8); film (thickness 1.0e-6) ]
-                substrate = Some (Wedge { layer = film (Thickness.mm 1.0<mm>); angle = WedgeAngle (Angle.degree 2.0) })
+                substrate = Some (Wedge { layer = film (Thickness.mm 1.0<mm>); angle = WedgeAngle (Angle.degree 2.0<deg>) })
                 lower = OpticalProperties.vacuum
             }
         let bands = Schematic.layout Nanometer (fun i -> $"m%d{i}") sys

@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Ui.Tests
 
+open System.Numerics
 open System
 open Avalonia
 open Avalonia.Automation
@@ -217,7 +218,7 @@ module FsxAcceptanceTests =
     /// The script's data: `Variables.calculate` over the range, read through `fn` (what the script plots).
     let private scriptData (info : FixedInfo) (range : RangedVariable) (fn : OpticalFunction) : (float * float) list =
         calculate info range
-        |> Array.choose (fun (x, solution) -> solution.func fn |> Option.map (fun y -> x, y))
+        |> Array.choose (fun (x, solution) -> solution.func fn |> Option.map (fun y -> x, y.value))
         |> List.ofArray
 
     let private seriesNamed (run : ExperimentExport.ExportedRun) (name : string) : (float * float) list =
@@ -253,10 +254,10 @@ module FsxAcceptanceTests =
     let private glassInfo (plate : bool) : FixedInfo =
         let film = { thickness = Thickness.mm 0.001<mm>; propertiesWithDisp = constantN 1.78052 }
         {
-            incidentLightInfo = light600nmInclinedDegreeLPs 79.0
+            incidentLightInfo = light600nmInclinedDegreeLPs 79.0<deg>
             opticalSystem =
                 {
-                    description = Some "Glass"
+                    description = Some (OpticalSystemDescription "Glass")
                     upperWithDisp = OpticalProperties.vacuum.dispersive
                     filmsWithDisp = (if plate then [] else [ film ])
                     substrateWithDisp = (if plate then Some (PlateWithDisp film) else None)
@@ -304,7 +305,7 @@ module FsxAcceptanceTests =
 
     /// A script `RangedVariable` and the table sweep it corresponds to (N intervals ⇒ N + 1 points).
     let private incidenceSweep (n : int) (topDegrees : float) : RangedVariable * (ExperimentControls.VariableChoice * float * float * int) =
-        Range<_>.create n IncidenceAngle.normal (IncidenceAngle.create (Angle.degree topDegrees)) |> IncidenceAngleRange,
+        Range<_>.create n IncidenceAngle.normal (IncidenceAngle.create (Angle.degree (topDegrees * 1.0<deg>))) |> IncidenceAngleRange,
         (ExperimentControls.VaryR2, 0.0, topDegrees, n + 1)
 
     let private waveLengthSweep (n : int) (lowNm : float) (highNm : float) : RangedVariable * (ExperimentControls.VariableChoice * float * float * int) =
@@ -361,14 +362,14 @@ module FsxAcceptanceTests =
         let film = { thickness = thickness; propertiesWithDisp = dispersiveGlass }
         let system : OpticalSystemWithDisp =
             {
-                description = Some "Glass"
+                description = Some (OpticalSystemDescription "Glass")
                 upperWithDisp = OpticalProperties.vacuum.dispersive
                 filmsWithDisp = (if plate then [] else [ film ])
                 substrateWithDisp = (if plate then Some (PlateWithDisp film) else None)
                 lowerWithDisp = OpticalProperties.vacuum.dispersive
             }
         let range, sweep = waveLengthSweep 40 300.0 700.0
-        compare b (infoOf (light600nmInclinedDegreeLPs 79.0) system) range (tableRun xenon entry 79.0 sweep)
+        compare b (infoOf (light600nmInclinedDegreeLPs 79.0<deg>) system) range (tableRun xenon entry 79.0 sweep)
 
     [<Fact>]
     [<Trait("Category", "fsx-acceptance")>]
@@ -386,7 +387,7 @@ module FsxAcceptanceTests =
         let silicon = material b "Silicon" siliconOpticalProperties
         let thickness = Thickness.mm 0.01<mm>
         let entry = filmsSample b "LangasiteOnSilicon.fsx film" [ langasite, thickness ] (Some silicon)
-        let light = if incidence = 0.0 then light600nmNormalLPs else light600nmInclinedDegreeLPs incidence
+        let light = if incidence = 0.0 then light600nmNormalLPs else light600nmInclinedDegreeLPs (incidence * 1.0<deg>)
         let range, sweep = waveLengthSweep 35 250.0 600.0
         compare b (Analytics.StandardSystems.langasiteFilmOnSilicon thickness light) range (tableRun xenon entry incidence sweep)
 
@@ -413,7 +414,7 @@ module FsxAcceptanceTests =
         let layers =
             (List.replicate 20 [ { properties = OpticalProperties.transparentGlass; thickness = t1 }; { properties = OpticalProperties.vacuum; thickness = t2 } ] |> List.concat)
             @ [ { properties = OpticalProperties.transparentGlass; thickness = t1 } ]
-        let system : BaseOpticalSystem = { description = Some "Multilayer thin film system."; upper = OpticalProperties.vacuum; films = layers; lower = OpticalProperties.vacuum }
+        let system : BaseOpticalSystem = { description = Some (OpticalSystemDescription "Multilayer thin film system."); upper = OpticalProperties.vacuum; films = layers; lower = OpticalProperties.vacuum }
         entry, system.fullSystem.dispersive
 
     [<Fact>]
@@ -448,7 +449,7 @@ module FsxAcceptanceTests =
             ]
         let system : BaseOpticalSystem =
             {
-                description = Some "Multilayer thin film system."
+                description = Some (OpticalSystemDescription "Multilayer thin film system.")
                 upper = OpticalProperties.vacuum
                 films = [ for _ in 1 .. 100 -> p12 ] |> List.concat
                 lower = OpticalProperties.transparentGlass150
@@ -481,7 +482,7 @@ module FsxAcceptanceTests =
         let entry = filmsSample b "EUV multilayer" (List.replicate 100 [ (highId, t); (lowId, t) ] |> List.concat) None
         let system : BaseOpticalSystem =
             {
-                description = Some "Multilayer thin film system for EUV"
+                description = Some (OpticalSystemDescription "Multilayer thin film system for EUV")
                 upper = OpticalProperties.vacuum
                 films = [ { properties = high; thickness = t }; { properties = low; thickness = t } ] |> List.replicate 100 |> List.concat
                 lower = OpticalProperties.vacuum
@@ -490,7 +491,7 @@ module FsxAcceptanceTests =
 
     /// MultilayerThinFilm_EUV__002.fsx's own materials: n = 1 − δ + iβ.
     let private euvComplex (delta : float) (beta : float) : OpticalProperties =
-        (createComplex (1.0 - delta) beta) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex |> OpticalProperties.fromEpsion
+        (Complex.create (1.0 - delta) beta) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex |> OpticalProperties.fromEpsion
 
     /// The scripts' light is a fixed 10 nm line — a user source on the table.
     let private euvAgainstIncidence (high : OpticalProperties) (low : OpticalProperties) : unit =

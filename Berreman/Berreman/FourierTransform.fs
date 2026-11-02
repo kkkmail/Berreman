@@ -20,10 +20,35 @@ open System.Numerics
 //======================================================================
 module FourierTransformPrimitives =
 
-    // let maxSize = 4096
-    // let maxSize = 1 <<< 14 // 16,384
-    // let maxSize = 1 <<< 16 // 65,536
-    let maxSize = 1 <<< 20 // 1,048,576
+    /// The number of points of an FFT buffer.
+    type FftPointCount =
+        | FftPointCount of int
+
+        member this.value = let (FftPointCount n) = this in n
+
+        /// The largest buffer the precomputed twiddle table covers: 2^20 = 1,048,576.
+        static member maxValue = FftPointCount (1 <<< 20)
+
+        /// log2 of the count, which must be a power of 2 greater than 1.
+        member this.log2 : int =
+            let (FftPointCount n) = this
+            let isPowerOf2 = (n &&& (n - 1)) = 0
+            if n < 2 then failwith "n must be greater than 1"
+            if not isPowerOf2 then failwith "n must be a power of 2"
+            let rec loop n c s =
+                let t = 1 <<< c
+                if t = n then c
+                elif t > n then loop n (c - s) (s >>> 1)
+                else loop n (c + s) (s >>> 1)
+            loop n 16 8
+
+
+    /// A position or a width on the FFT's normalised [-0.5, 0.5) domain.
+    type FftCoordinate =
+        | FftCoordinate of float
+
+        member this.value = let (FftCoordinate x) = this in x
+
 
     type FourierTransformDirection =
         | ForwardTransform
@@ -71,7 +96,10 @@ module FourierTransformPrimitives =
     ///
     /// This arrangement is sometimes used to avoid extraneous linear phase ramps
     /// in the FFT, because the "cut" in the domain is at x=0.5 rather than x=0.0.
-    let createGaussian (numberOfPoints: int) (mu: float) (sigma: float) =
+    let createGaussian (pointCount : FftPointCount) (center : FftCoordinate) (width : FftCoordinate) : Complex[] =
+        let (FftPointCount numberOfPoints) = pointCount
+        let (FftCoordinate mu) = center
+        let (FftCoordinate sigma) = width
         let arr = Array.zeroCreate<Complex> numberOfPoints
         let half = numberOfPoints / 2
 
@@ -101,11 +129,6 @@ module SimpleFourierTransform =
 
     open FourierTransformPrimitives
 
-    let private pi  = Math.PI
-    let private tau = 2. * pi
-
-    let private twiddle a = Complex.FromPolarCoordinates(1., a)
-
     let rec private fftImpl (ftd : FourierTransformDirection) = function
         | []  -> []
         | [x] -> [x]
@@ -119,7 +142,8 @@ module SimpleFourierTransform =
                 // Forward => sign = -1 => e^(-i 2π i / N)
                 // Backward => sign = +1 => e^(+i 2π i / N)
                 let s = ftd.sign
-                let btf = odd * twiddle (s * tau * (float i / float x.Length))
+                let tau = 2. * Math.PI
+                let btf = odd * Complex.FromPolarCoordinates(1., s * tau * (float i / float x.Length))
                 even + btf, even - btf
             )
             |> List.unzip
@@ -127,7 +151,7 @@ module SimpleFourierTransform =
 
     /// Simple FFT returning a normalized list of Complex.
     /// 'ftd' picks forward or backward transform sign, each with 1/sqrt(N) factor.
-    let fft ftd a =
+    let simpleFft (ftd : FourierTransformDirection) (a : Complex list) : Complex[] =
         fftImpl ftd a
         |> normalize
 
@@ -138,42 +162,44 @@ module FourierTransform =
 
     open FourierTransformPrimitives
 
-    let pi      = Math.PI
-    let tau     = 2. * pi
+    /// The forward twiddles e^(-i * 2π * i / c) for every power-of-2 size c up to the largest buffer; the
+    /// backward transform conjugates them.
+    let private twiddles : Complex[][] =
+        let tau = 2. * Math.PI
+        let maxPoints = FftPointCount.maxValue.value
 
-    module Details =
+        let unfolder c =
+            if c < 2 * maxPoints then
+                let vs = Array.init (c / 2) (fun i -> Complex.FromPolarCoordinates(1., -tau * float i / float c))
+                Some(vs, c * 2)
+            else
+                None
 
-        let isPowerOf2 n = (n &&& (n - 1)) = 0
+        Array.unfold unfolder 1
 
-        let ilog2 n =
-            if n < 2 then failwith "n must be greater than 1"
-            if not (isPowerOf2 n) then failwith "n must be a power of 2"
-            let rec loop n c s =
-                let t = 1 <<< c
-                if t = n then c
-                elif t > n then loop n (c - s) (s >>> 1)
-                else loop n (c + s) (s >>> 1)
-            loop n 16 8
+    /// A direct DFT (O(N^2)) for reference or testing.
+    /// 'ftd' determines sign => forward = -1 => e^(-i...), backward = +1 => e^(+i...).
+    /// We then do a 1/sqrt(N) normalization for a "unitary" transform.
+    let dft (ftd : FourierTransformDirection) (vs : Complex[]) : Complex[] =
+        let l = vs.Length
+        let am = 2. * Math.PI / float l
+        Array.init l (fun i ->
+            let mutable s = Complex.Zero
+            for j = 0 to l - 1 do
+                let angle = ftd.sign * float i * float j * am
+                // e^(i * angle) => if sign=-1 => e^(-i...), if +1 => e^(+i...)
+                let tw = Complex.FromPolarCoordinates(1., angle)
+                s <- s + vs[j] * tw
+            s)
+        |> normalize
 
-        let twiddle a = Complex.FromPolarCoordinates(1., a)
-
-        let twiddles =
-            let unfolder c =
-                if c < 2 * maxSize then
-                    let vs = Array.init (c / 2) (fun i ->
-                        // Precompute negative exponent => e^(-i * 2π * i / c).
-                        // We'll flip via conjugate if needed for backward transform.
-                        twiddle (-tau * float i / float c)
-                    )
-                    Some(vs, c * 2)
-                else
-                    None
-            Array.unfold unfolder 1
-
-        let rec loop (ftd : FourierTransformDirection) n2 ln s c f t =
+    /// A Cooley-Tukey FFT using precomputed negative exponents, flipping via conjugate if needed.
+    /// Then we apply a 1/sqrt(N) normalization for a "unitary" transform.
+    let fft (ftd : FourierTransformDirection) (vs : Complex[]) : Complex[] =
+        let rec loop n2 ln s c (f : Complex[]) (t : Complex[]) =
             if c > 2 then
                 let c2 = c >>> 1
-                let struct (t, f) = loop ftd n2 (ln - 1) (s <<< 1) c2 f t
+                let struct (t, f) = loop n2 (ln - 1) (s <<< 1) c2 f t
 
                 let tws = twiddles[ln]
                 for j = 0 to c2 - 1 do
@@ -216,31 +242,10 @@ module FourierTransform =
             else
                 struct (t, f)
 
-    open Details
-
-    /// A direct DFT (O(N^2)) for reference or testing.
-    /// 'ftd' determines sign => forward = -1 => e^(-i...), backward = +1 => e^(+i...).
-    /// We then do a 1/sqrt(N) normalization for a "unitary" transform.
-    let dft (ftd : FourierTransformDirection) (vs : Complex[]) =
-        let l = vs.Length
-        let am = tau / float l
-        Array.init l (fun i ->
-            let mutable s = Complex.Zero
-            for j = 0 to l - 1 do
-                let angle = ftd.sign * float i * float j * am
-                // e^(i * angle) => if sign=-1 => e^(-i...), if +1 => e^(+i...)
-                let tw = twiddle angle
-                s <- s + vs[j] * tw
-            s)
-        |> normalize
-
-    /// A Cooley-Tukey FFT using precomputed negative exponents, flipping via conjugate if needed.
-    /// Then we apply a 1/sqrt(N) normalization for a "unitary" transform.
-    let fft ftd (vs : Complex[]) =
         let n = vs.Length
-        let ln = ilog2 n
+        let ln = (FftPointCount n).log2
         let vs0 = Array.copy vs
         let vs1 = Array.zeroCreate n
 
-        let struct (_, t) = loop ftd (n >>> 1) ln 1 n vs0 vs1
+        let struct (_, t) = loop (n >>> 1) ln 1 n vs0 vs1
         normalize t

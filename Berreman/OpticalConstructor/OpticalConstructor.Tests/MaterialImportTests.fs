@@ -28,7 +28,7 @@ module MaterialImportTests =
     let private epsAt (entry : MaterialEntry) (w : WaveLength) = (entry.properties.epsWithDisp.getEps w).[0, 0]
 
     let private nkSquared n k =
-        (Eps.fromComplexRefractionIndex (ComplexRefractionIndex(createComplex n k))).[0, 0]
+        (Eps.fromComplexRefractionIndex (ComplexRefractionIndex(Complex.create n k))).[0, 0]
 
     [<Fact>]
     let ``AC-D3 refractiveindex.info µm YAML import reduces λ to meters and reproduces n,k`` () =

@@ -105,7 +105,7 @@ module BiaxialSample =
     /// Spec R4: three internal reflections, stated explicitly at the composition root rather than
     /// inherited from `SolverParameters.defaultValue`, because `numberOfReflections` changes the physics
     /// being modelled rather than tuning it.
-    let solverParameters : SolverParameters = { numberOfReflections = 3 }
+    let solverParameters : SolverParameters = { numberOfReflections = NumberOfReflections 3 }
 
     /// The dimensionless fit space for this material: 1e-3 per unit of refractive index, 1e-5 per unit
     /// of gyration. ALGLIB's Levenberg–Marquardt differentiates with a FIXED ABSOLUTE step of 1e-6, so

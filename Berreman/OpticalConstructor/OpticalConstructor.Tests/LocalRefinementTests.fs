@@ -53,10 +53,10 @@ module LocalRefinementTests =
     /// s: on isotropic media the reflected p-amplitude is 0, so ρ ≡ 0 and Ψ ≡ 0
     /// regardless of thickness — useless as a fit target. See impl-log Gotchas.
     let private diagonalLight (a : IncidenceAngle) (w : WaveLength) : IncidentLightInfo =
-        { IncidentLightInfo.createInclined w a with polarization = Polarization.create (Angle.degree 45.0) }
+        { IncidentLightInfo.createInclined w a with polarization = Polarization.create (Angle.degree 45.0<deg>) }
 
     let private reflectanceOf (system : OpticalSystem) (w : WaveLength) : float =
-        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.get
+        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.map (fun v -> v.value) |> Option.get
 
     let private ssr (r : float[]) = r |> Array.sumBy (fun v -> v * v)
 
@@ -151,7 +151,7 @@ module LocalRefinementTests =
     let ``G6 the Psi/Delta evaluator shares the F5 psiDelta derivation`` () =
         // Off-normal, 45°-polarized incidence so r_p and r_s differ and ρ = r_p/r_s
         // is non-trivial (a pure-s default would collapse ρ to 0 — see fixtures).
-        let light = diagonalLight (Angle.degree 50.0 |> IncidenceAngle) (WaveLength.nm 600.0<nm>)
+        let light = diagonalLight (Angle.degree 50.0<deg> |> IncidenceAngle) (WaveLength.nm 600.0<nm>)
         let solution = OpticalSystemSolver(light, mkSystem 250.0<nm>).solution
         let (psi, delta) = AnalysisFunctions.psiDelta solution
 
@@ -169,7 +169,7 @@ module LocalRefinementTests =
         // AND refine (the net-new surface the photometric ACs do not exercise).
         // Off-normal, 45°-polarized incidence so ρ = r_p/r_s — hence Ψ — varies
         // with thickness (a pure-s default would collapse ρ to 0 — see fixtures).
-        let angle = Angle.degree 50.0 |> IncidenceAngle
+        let angle = Angle.degree 50.0<deg> |> IncidenceAngle
         let light = diagonalLight angle (WaveLength.nm 600.0<nm>)
         let trueSystem = mkSystem 250.0<nm>
         let desiredPsi = Psi.evaluate (OpticalSystemSolver(light, trueSystem).solution)
@@ -206,7 +206,7 @@ module LocalRefinementTests =
         // R-4's MeasuredEllipsometric import case (InverseFit.fs) is net-new
         // surface the photometric AC-G4 does not touch. Synthesize a Ψ spectrum
         // from a known 250 nm film at fixed off-normal geometry, then fit thickness.
-        let angle = Angle.degree 50.0 |> IncidenceAngle
+        let angle = Angle.degree 50.0<deg> |> IncidenceAngle
         let trueSystem = mkSystem 250.0<nm>
         let waveNm = [ 450.0; 500.0; 550.0; 600.0; 650.0 ]
         let psiAt (nm : float) =

@@ -42,7 +42,7 @@ type Surface =
 /// `seriesComparison` so the projection is expressed once (F2).
 let private projectPoints (fn : OpticalFunction) (data : (float * Solution) []) : (float * float) [] =
     data
-    |> Array.map (fun (v, s) -> (v, s.func fn))
+    |> Array.map (fun (v, s) -> (v, s.func fn |> Option.map (fun y -> y.value)))
     |> Array.choose (fun (xx, yo) -> match yo with | Some y -> Some (xx, y) | None -> None)
 
 let series1D (f : FixedInfo) (fn : OpticalFunction) (x : RangedVariable) : Series1D =

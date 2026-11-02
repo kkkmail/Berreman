@@ -1,6 +1,7 @@
 ﻿namespace Berreman
 
 open System
+open System.Numerics
 open MathNetNumericsMath
 
 open Geometry
@@ -12,16 +13,30 @@ open MaterialProperties
 
 module Solvers =
 
+    /// Number of reflections to use when there is a thick substrate plate.
+    type NumberOfReflections =
+        | NumberOfReflections of int
+
+        member this.value = let (NumberOfReflections n) = this in n
+
+
     type SolverParameters =
         {
-            /// Number of reflections to use when there is a thick substrate plate.
-            numberOfReflections : int
+            numberOfReflections : NumberOfReflections
         }
 
         static member defaultValue =
             {
-                numberOfReflections = 3
+                numberOfReflections = NumberOfReflections 3
             }
+
+
+    /// The reflected and the transmitted components one incident component splits into.
+    type private SplitComponents =
+        {
+            reflectedComponents : EmComponent list
+            transmittedComponents : EmComponent list
+        }
 
 
     type InputData =
@@ -90,18 +105,19 @@ module Solvers =
             let eht0 = EmComponent.create b2.down.evv0 (sol.[2]) n1SinFita lower
             let eht1 = EmComponent.create b2.down.evv1 (sol.[3]) n1SinFita lower
 
-            let ehr = [ ehr0; ehr1 ]
-            let eht = [ eht0; eht1 ]
-            ehr, eht
+            {
+                reflectedComponents = [ ehr0; ehr1 ]
+                transmittedComponents = [ eht0; eht1 ]
+            }
 
         // This is a case of total reflection.
         // The matrix is degenerate and we can't inverse it.
         let getTotalReflection() =
-            [ freeTblVal.[2] / coeffTblVal.[2,0] ; freeTblVal.[1] / coeffTblVal.[1,1]; cplx 0.0; cplx 0.0 ]
+            [ freeTblVal.[2] / coeffTblVal.[2,0] ; freeTblVal.[1] / coeffTblVal.[1,1]; Complex.ofReal 0.0; Complex.ofReal 0.0 ]
             |> ComplexVector.create
             |> getEH
 
-        if det.abs > almostZeroDet
+        if det.abs > almostZeroDet.value
         then
             let cfmVal = coeffTblVal.inverse
             let detInv = cfmVal.determinant
@@ -121,7 +137,9 @@ module Solvers =
                 e, e.waveLength, system.films, e.opticalProperties, system.lower
 
         let getRT = getRT upper lower films waveLength
-        let (ehr, eht) = i.emComponents |> List.map getRT |> List.unzip
+        let splits = i.emComponents |> List.map getRT
+        let ehr = splits |> List.map (fun e -> e.reflectedComponents)
+        let eht = splits |> List.map (fun e -> e.transmittedComponents)
 
         let r =
             {
@@ -246,7 +264,9 @@ module Solvers =
                             (DownStep, ems |> upOut), (ems |> upAcc) :: acc
 
 
-                    [ for i in 0..parameters.numberOfReflections -> i ]
+                    let (NumberOfReflections reflections) = parameters.numberOfReflections
+
+                    [ for i in 0..reflections -> i ]
                     |> List.fold (fun next _ -> makeStep next) (first)
                     |> snd
                     |> List.map (fun (r, t) -> { reflected = r; transmitted = t })

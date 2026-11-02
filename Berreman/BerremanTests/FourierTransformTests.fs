@@ -42,7 +42,7 @@ type FftTests =
     static member ``Test ilog2`` (i : int) =
         let e = (abs i) % 29 + 2
         let v = 1 <<< e
-        let a = FourierTransform.Details.ilog2 v
+        let a = (FftPointCount v).log2
         e = a
     static member ``Simple test`` (s : Samples) =
         let (Samples vs) = s
@@ -169,7 +169,7 @@ type FourierTransformTests() =
     /// Generate a large array of maxSize length, with average power = 1.
     /// sum( |x[i]|^2 ) / N = 1
     let createLargeArray () =
-        let n = maxSize
+        let n = FftPointCount.maxValue.value
         // 1) Create an initial array. For instance, arr[i] = (i, -i).
         let arr = Array.init n (fun i -> Complex(float i, - float i))
 
@@ -199,7 +199,7 @@ type FourierTransformTests() =
 
         let input   =
             [| for x in 0..(l - 1) ->
-                let a = FourierTransform.tau*float x/float l
+                let a = (2. * Math.PI)*float x/float l
                 let v = cos a + cos (2.*a)
                 let c = Complex (v / (float l / 2.), 0.) |> trim
                 c
@@ -209,7 +209,7 @@ type FourierTransformTests() =
 
         let output1 =
             inputList
-            |> SimpleFourierTransform.fft ForwardTransform
+            |> SimpleFourierTransform.simpleFft ForwardTransform
             |> Array.map trim
 
         let output2 =
@@ -230,7 +230,7 @@ type FourierTransformTests() =
 
         let testCases =
             [|
-                "Simple FFT"  , fun () -> SimpleFourierTransform.fft ForwardTransform  inputList        |> ignore
+                "Simple FFT"  , fun () -> SimpleFourierTransform.simpleFft ForwardTransform  inputList        |> ignore
                 // "Faster DFT"  , fun () -> FourierTransform.dft input  |> ignore
                 "Faster FFT"  , fun () -> FourierTransform.fft ForwardTransform  input  |> ignore
             |]
@@ -253,8 +253,8 @@ type FourierTransformTests() =
                       Complex(0.0, 2.0)
                       Complex(-1.0, 1.0)
                       Complex(3.0, -1.0) ]
-        let forward = SimpleFourierTransform.fft ForwardTransform input |> List.ofArray
-        let backward = SimpleFourierTransform.fft BackwardTransform forward
+        let forward = SimpleFourierTransform.simpleFft ForwardTransform input |> List.ofArray
+        let backward = SimpleFourierTransform.simpleFft BackwardTransform forward
         Assert.True(areClose 1e-12 input backward, "Forward->Backward did not recover original list")
 
     [<Fact>]
@@ -263,8 +263,8 @@ type FourierTransformTests() =
                       Complex(1.0, -1.0)
                       Complex(0.0, 3.0)
                       Complex(-2.0, 2.0) ]
-        let backward = SimpleFourierTransform.fft BackwardTransform input |> List.ofArray
-        let forward = SimpleFourierTransform.fft ForwardTransform backward
+        let backward = SimpleFourierTransform.simpleFft BackwardTransform input |> List.ofArray
+        let forward = SimpleFourierTransform.simpleFft ForwardTransform backward
         Assert.True(areClose 1e-12 input forward, "Backward->Forward did not recover original list")
 
     [<Fact>]
@@ -273,7 +273,7 @@ type FourierTransformTests() =
                       Complex(0.0, 0.0)
                       Complex(0.0, 0.0)
                       Complex(0.0, 0.0) ]
-        let output = SimpleFourierTransform.fft ForwardTransform input
+        let output = SimpleFourierTransform.simpleFft ForwardTransform input
         let expected = [ Complex(0.5, 0.0)
                          Complex(0.5, 0.0)
                          Complex(0.5, 0.0)
@@ -441,7 +441,7 @@ type FourierTransformTests() =
         // Because we do unitary normalization, forward + backward => factor ~ 1.
         // areClose tolerance = e.g. 1e-12 might be good, but for large N we could be more lenient.
         let pass = areClose 1e-12 input backward
-        Assert.True(pass, $"Forward -> Backward did not recover original array of size {maxSize}.")
+        Assert.True(pass, $"Forward -> Backward did not recover original array of size {FftPointCount.maxValue.value}.")
 
 
     [<Fact>]
@@ -457,18 +457,18 @@ type FourierTransformTests() =
 
         // 3) Compare with original
         let pass = areClose 1e-12 input forward
-        Assert.True(pass, $"Backward -> Forward did not recover original array of size {maxSize}.")
+        Assert.True(pass, $"Backward -> Forward did not recover original array of size {FftPointCount.maxValue.value}.")
 
     [<Fact>]
     member _.``Forward FFT preserves total intensity for large Gaussian`` () : unit =
         // Let’s define a “large” array with your current maxSize:
-        let n = maxSize
+        let n = FftPointCount.maxValue.value
         let mu = 0.0
         let sigma = 0.1
 
         writeLine $"Using array of length: {n}."
         // Create the Gaussian-like shape
-        let input = createGaussian n mu sigma
+        let input = createGaussian (FftPointCount n) (FftCoordinate mu) (FftCoordinate sigma)
 
         // Sum of squares in time domain
         let sTime = sumOfSquares input
@@ -487,14 +487,14 @@ type FourierTransformTests() =
 
     [<Fact>]
     member _.``Gaussian is self-Fourier in magnitude for large size`` () =
-        let n = maxSize
+        let n = FftPointCount.maxValue.value
         // let n = 1024
 
         let mu = 0.0
         let sigma = 1.0 / sqrt(2.0 * Math.PI * (double n))
         writeLine $"n = {n}, mu = {mu}, sigma = {sigma}."
 
-        let input = createGaussian n mu sigma
+        let input = createGaussian (FftPointCount n) (FftCoordinate mu) (FftCoordinate sigma)
         let output = FourierTransform.fft ForwardTransform input
         let magInput = input |> Array.map (fun c -> Complex(c.Magnitude, 0.0))
         let magOutput = output |> Array.map (fun c -> Complex(c.Magnitude, 0.0))

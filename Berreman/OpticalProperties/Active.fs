@@ -153,4 +153,4 @@ module Active =
             match this with
             | RhoWithoutDispValue g -> assembleRho g.hand g.gyration |> RhoWithoutDisp
             | RhoWithDispValue g ->
-                RhoWithDisp (fun w -> g.gyration.map (fun (f : DispersionFormula) -> f.evaluate w |> RhoValue) |> assembleRho g.hand)
+                RhoWithDisp (fun w -> g.gyration.map (fun (f : DispersionFormula) -> (f.evaluate w).toRhoValue) |> assembleRho g.hand)

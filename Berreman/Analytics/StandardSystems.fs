@@ -26,7 +26,7 @@ module StandardSystems =
     /// Langasite thick plate on silicon substrate.
     let langasiteSubstrateOnSiliconSystem thickness =
         {
-            description = Some "Langasite thick plate on silicon substrate."
+            description = Some (OpticalSystemDescription "Langasite thick plate on silicon substrate.")
             upperWithDisp = OpticalProperties.vacuum.dispersive
             filmsWithDisp = []
             substrateWithDisp =
@@ -43,7 +43,7 @@ module StandardSystems =
     /// Langasite thin film on silicon substrate.
     let langasiteFilmOnSiliconSystem thickness =
         {
-            description = Some "Langasite thin film on silicon substrate."
+            description = Some (OpticalSystemDescription "Langasite thin film on silicon substrate.")
             upperWithDisp = OpticalProperties.vacuum.dispersive
             filmsWithDisp =
                 [

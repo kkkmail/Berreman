@@ -100,7 +100,7 @@ module MuellerInverse =
         member this.value = let (SampleAzimuth a) = this in a.value
 
         /// Build a `SampleAzimuth` from a value given in degrees.
-        static member degree (d : double) : SampleAzimuth = Angle.degree d |> SampleAzimuth
+        static member degree (d : double) : SampleAzimuth = Angle.degree (d * 1.0<Berreman.Constants.deg>) |> SampleAzimuth
 
     /// Which Mueller matrix a configuration records. Transmission carries the sample's birefringence and
     /// optical activity over the whole optical path; reflection carries index information that never
@@ -466,8 +466,8 @@ module MuellerInverse =
         let tilted =
             match cut with
             | ZCut -> properties
-            | XCut -> properties.rotateY (Angle.degree 90.0)
-            | YCut -> properties.rotateX (Angle.degree 90.0)
+            | XCut -> properties.rotateY (Angle.degree 90.0<Berreman.Constants.deg>)
+            | YCut -> properties.rotateX (Angle.degree 90.0<Berreman.Constants.deg>)
             | TiltedCut a -> properties.rotateY a
         tilted.rotateZ azimuth.angle
 
@@ -581,7 +581,7 @@ module MuellerInverse =
     /// primitives, which the round-trip unit tests assert directly —
     ///   • `lb` alone reproduces `MuellerReconstruction.retarderMueller (Angle.zero) (Retardance lb)`;
     ///   • `cb` alone reproduces `Propagation.rotationMueller (Angle (cb / 2))`;
-    ///   • `lbPrime` alone reproduces `retarderMueller (Angle.degree 45.0) (Retardance lbPrime)`.
+    ///   • `lbPrime` alone reproduces `retarderMueller (Angle.degree 45.0<Berreman.Constants.deg>) (Retardance lbPrime)`.
     /// Deriving the convention from the code that already exists, rather than from a paper, is what keeps
     /// this consistent with every other Mueller matrix in the repository.
     let muellerOfBirefringence (lb : Retardance) (lbPrime : Retardance) (cb : Retardance) : MuellerMatrix =
@@ -806,7 +806,7 @@ module MuellerInverse =
                         let oriented = orientForCut configuration.cut configuration.azimuth (buildProperties parameters)
                         let system : OpticalSystem =
                             {
-                                description = Some "spec 0044 inverse-problem sample plate"
+                                description = Some (OpticalSystemDescription "spec 0044 inverse-problem sample plate")
                                 upper = OpticalProperties.vacuum
                                 films = []
                                 substrate = { properties = oriented; thickness = configuration.thickness } |> Plate |> Some

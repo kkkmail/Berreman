@@ -1,5 +1,6 @@
 ﻿namespace Berreman
 
+open System.Numerics
 open MathNetNumericsMath
 open Constants
 open Geometry
@@ -8,10 +9,13 @@ open Solvers
 
 module FieldFunctions =
 
-    let toValue errMessage x =
-        match x with
-        | Some v -> v
-        | None -> failwith errMessage
+    /// The value of an OpticalFunction for one field: a relative intensity, an ellipticity or an azimuth (radians).
+    type OpticalFunctionValue =
+        | OpticalFunctionValue of float
+
+        member this.value = let (OpticalFunctionValue v) = this in v
+        static member zero = OpticalFunctionValue 0.0
+        static member (+) (OpticalFunctionValue a, OpticalFunctionValue b) = OpticalFunctionValue (a + b)
 
 
     type ComplexVector3
@@ -20,22 +24,23 @@ module FieldFunctions =
         member this.pVector =
             let n = this.norm
 
-            if n < almostZero then RealVector3.zeroVector
-            else ((ComplexVector3.cross this this.conjugate) / (createComplex 0.0 (n * n))).re
+            if n < almostZero.value then RealVector3.zeroVector
+            else ((ComplexVector3.cross this this.conjugate) / (Complex.create 0.0 (n * n))).re
 
         /// I.V. Lindell: Methods for Electromagnetic Field Analysis, Chapter 1, Vector q.
         member a.qVector =
             let n = a.norm
 
-            if n < almostZero then RealVector3.zeroVector
+            if n < almostZero.value then RealVector3.zeroVector
             else
                 let aa = a * a
                 let r = (a / (sqrt aa)).re
-                (aa.abs / (n * n)) * (r / r.norm)
+                let (RealVector3 (RealVector rv)) = r
+                (aa.abs / (n * n)) * (rv / r.norm) |> RealVector |> RealVector3
 
         member this.ellipticity : Ellipticity =
             let v = this.pVector.norm
-            if v < almostZero then Ellipticity.defaultValue
+            if v < almostZero.value then Ellipticity.defaultValue
             else (1.0 - sqrt(1.0 - v * v)) / v |> Ellipticity
 
 
@@ -54,27 +59,27 @@ module FieldFunctions =
 
             thread em.complexBasis stokes
 
-        member em.intensityX (i : EmField) =
+        member em.intensityX (i : EmField) : OpticalFunctionValue =
             let (E e) = em.e
             let (H h) = em.h
             let (S is) = i.s
-            ((ComplexVector3.cross (ComplexBasis3.defaultValue.toX e) h.conjugate).re.z |> abs) / is.z
+            ((ComplexVector3.cross (ComplexBasis3.defaultValue.toX e) h.conjugate).re.z |> abs) / is.z |> OpticalFunctionValue
 
-        member em.intensityY (i : EmField) =
+        member em.intensityY (i : EmField) : OpticalFunctionValue =
             let (E e) = em.e
             let (H h) = em.h
             let (S is) = i.s
-            ((ComplexVector3.cross (ComplexBasis3.defaultValue.toY e) h.conjugate).re.z |> abs) / is.z
+            ((ComplexVector3.cross (ComplexBasis3.defaultValue.toY e) h.conjugate).re.z |> abs) / is.z |> OpticalFunctionValue
 
-        member em.intensity (i : EmField) =
+        member em.intensity (i : EmField) : OpticalFunctionValue =
             let (S s) = em.s
             let (S is) = i.s
-            (s.z |> abs) / is.z
+            (s.z |> abs) / is.z |> OpticalFunctionValue
 
         member em.ellipticity : Ellipticity =
             let (E e) = em.e
-            let (S s) = em.s
-            let p = e.pVector
+            let (S (RealVector3 (RealVector s))) = em.s
+            let (RealVector3 (RealVector p)) = e.pVector
 
             if p * s >= 0.0 then -e.ellipticity
             else e.ellipticity
@@ -84,9 +89,11 @@ module FieldFunctions =
             let q = e.qVector
 
             let n = q.norm
-            if n < almostZero then Polarization.defaultValue
+            if n < almostZero.value then Polarization.defaultValue
             else
-                let v = (q / q.norm) * RealBasis3.defaultValue.vY
+                let (RealVector3 (RealVector qv)) = q
+                let (RealVector3 (RealVector vY)) = RealBasis3.defaultValue.vY
+                let v = (qv / q.norm) * vY
                 let a = asin v
                 a |> Angle |> Polarization
 
@@ -99,16 +106,24 @@ module FieldFunctions =
             MuellerMatrix.fromEmFields em em
 
 
+    /// A part of an optical function's printed symbol: its letter(s) or its subscript.
+    type FunctionSymbol =
+        | FunctionSymbol of string
+
+        member this.value = let (FunctionSymbol v) = this in v
+
+
     type FunctionDescription =
         {
-            name : string
-            subscript : string option
-            description : string option
+            name : FunctionSymbol
+            subscript : FunctionSymbol option
         }
-        member this.fullName =
+        member this.fullName : string =
+            let (FunctionSymbol name) = this.name
+
             match this.subscript with
-            | Some s -> this.name + s
-            | None -> this.name
+            | Some (FunctionSymbol s) -> name + s
+            | None -> name
 
 
     type OpticalFunction =
@@ -129,19 +144,19 @@ module FieldFunctions =
 
         member this.info =
             match this with
-            | I -> { name = "I"; subscript = None; description = None }
-            | Ip -> { name = "I"; subscript = Some "p"; description = None }
-            | Is -> { name = "I"; subscript = Some "s"; description = None }
-            | R -> { name = "R"; subscript = None; description = None }
-            | Rp -> { name = "R"; subscript = Some "p"; description = None }
-            | Rs -> { name = "R"; subscript = Some "s"; description = None }
-            | T -> { name = "T"; subscript = None; description = None }
-            | Tp -> { name = "T"; subscript = Some "p"; description = None }
-            | Ts -> { name = "T"; subscript = Some "s"; description = None }
-            | EllipticityR -> { name = "elT"; subscript = None; description = None }
-            | EllipticityT -> { name = "elR"; subscript = None; description = None }
-            | AzimuthR -> { name = "pR"; subscript = None; description = None }
-            | AzimuthT -> { name = "pT"; subscript = None; description = None }
+            | I -> { name = FunctionSymbol "I"; subscript = None }
+            | Ip -> { name = FunctionSymbol "I"; subscript = Some (FunctionSymbol "p") }
+            | Is -> { name = FunctionSymbol "I"; subscript = Some (FunctionSymbol "s") }
+            | R -> { name = FunctionSymbol "R"; subscript = None }
+            | Rp -> { name = FunctionSymbol "R"; subscript = Some (FunctionSymbol "p") }
+            | Rs -> { name = FunctionSymbol "R"; subscript = Some (FunctionSymbol "s") }
+            | T -> { name = FunctionSymbol "T"; subscript = None }
+            | Tp -> { name = FunctionSymbol "T"; subscript = Some (FunctionSymbol "p") }
+            | Ts -> { name = FunctionSymbol "T"; subscript = Some (FunctionSymbol "s") }
+            | EllipticityR -> { name = FunctionSymbol "elT"; subscript = None }
+            | EllipticityT -> { name = FunctionSymbol "elR"; subscript = None }
+            | AzimuthR -> { name = FunctionSymbol "pR"; subscript = None }
+            | AzimuthT -> { name = FunctionSymbol "pT"; subscript = None }
 
 
     type EmFieldSystem
@@ -161,21 +176,21 @@ module FieldFunctions =
 
         member this.ellipticityR =
             let (Ellipticity e) = this.reflected.ellipticity
-            e
+            OpticalFunctionValue e
 
         member this.ellipticityT =
             let (Ellipticity e) = this.transmitted.ellipticity
-            e
+            OpticalFunctionValue e
 
         member this.azimuthR =
             let (Polarization (Angle a)) = this.reflected.azimuth
-            a
+            OpticalFunctionValue a
 
         member this.azimuthT =
             let (Polarization (Angle a)) = this.transmitted.azimuth
-            a
+            OpticalFunctionValue a
 
-        member this.func f =
+        member this.func (f : OpticalFunction) : OpticalFunctionValue =
             match f with
             | I -> this.i
             | Ip -> this.ip
@@ -194,17 +209,17 @@ module FieldFunctions =
 
     type Solution
         with
-        member this.func f =
+        member this.func (f : OpticalFunction) : OpticalFunctionValue option =
             match this with
             | Single b -> b.emSys.func f |> Some
             | Multiple m ->
                 let r() = m.rt |> List.choose (fun e -> e.reflected)
                 let t() = m.rt |> List.choose (fun e -> e.transmitted)
-                let fn g l = l |> List.fold (fun acc e -> acc + g e m.incident) 0.0 |> Some
+                let fn g l = l |> List.fold (fun acc e -> acc + g e m.incident) OpticalFunctionValue.zero |> Some
 
                 let fnMax f g l =
                         l
-                        |> List.sortBy (fun e -> - (f e m.incident))
+                        |> List.sortBy (fun e -> let (OpticalFunctionValue v) = f e m.incident in -v)
                         |> List.tryHead
                         |> Option.bind (fun e -> g e |> Some)
 
@@ -218,10 +233,10 @@ module FieldFunctions =
                 | T -> t() |> fn (fun e -> e.intensity)
                 | Tp -> t() |> fn (fun e -> e.intensityX)
                 | Ts -> t() |> fn (fun e -> e.intensityY)
-                | EllipticityR -> r() |> fnMax (fun e -> e.intensity) (fun e -> e.ellipticity.value)
-                | EllipticityT -> t() |> fnMax (fun e -> e.intensity) (fun e -> e.ellipticity.value)
-                | AzimuthR -> r() |> fnMax (fun e -> e.intensity) (fun e -> e.azimuth.value)
-                | AzimuthT -> t() |> fnMax (fun e -> e.intensity) (fun e -> e.azimuth.value)
+                | EllipticityR -> r() |> fnMax (fun e -> e.intensity) (fun e -> let (Ellipticity v) = e.ellipticity in OpticalFunctionValue v)
+                | EllipticityT -> t() |> fnMax (fun e -> e.intensity) (fun e -> let (Ellipticity v) = e.ellipticity in OpticalFunctionValue v)
+                | AzimuthR -> r() |> fnMax (fun e -> e.intensity) (fun e -> let (Polarization (Angle v)) = e.azimuth in OpticalFunctionValue v)
+                | AzimuthT -> t() |> fnMax (fun e -> e.intensity) (fun e -> let (Polarization (Angle v)) = e.azimuth in OpticalFunctionValue v)
 
 
         member this.stokesI : StokesVector =

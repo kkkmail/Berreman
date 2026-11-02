@@ -29,7 +29,7 @@ module EnvironmentRoundTripTests =
 
     let private favSystem : OpticalSystem =
         {
-            description = Some "pinned sub-assembly"
+            description = Some (OpticalSystemDescription "pinned sub-assembly")
             upper = OpticalProperties.vacuum
             films = [ favLayer ]
             substrate = None

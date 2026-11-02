@@ -79,7 +79,7 @@ type LangasiteInverseTests() =
 
     /// Radians per degree, reached by its full module path (mirrors `MuellerInverseTests`). Bound here,
     /// ahead of the members (FS0960: in a class type every `let` binding precedes the first member).
-    let degree = Berreman.MathNetNumericsMath.degree
+    let degree = Angle.radiansPerDegree
 
     // =================================================================================================
     // The sample, the wavelength, and the FIXED material constants.
@@ -118,7 +118,7 @@ type LangasiteInverseTests() =
     /// Spec R4 physics choice, mirrored from MuellerInverseTests: the plate solver sums the Mueller
     /// matrices of the emerging beams (direct plus internally reflected), which is what a real plate
     /// with uncoated faces produces. Stated explicitly at the composition root, not defaulted.
-    let solverParameters : SolverParameters = { numberOfReflections = 3 }
+    let solverParameters : SolverParameters = { numberOfReflections = NumberOfReflections 3 }
 
     /// The single measurement configuration: z-cut, normal incidence, transmission. Six analyzer angles
     /// are six READINGS of this one configuration, not six configurations.
@@ -173,8 +173,8 @@ type LangasiteInverseTests() =
 
     /// The transmitted intensity the detector records for one analyzer angle.
     let transmittedIntensity (sample : MuellerMatrix) (analyzerAngleDeg : float) : float =
-        let polarizer = Propagation.analyzerMueller Library.IdealLinear (Angle.degree polarizerAngleDeg)
-        let analyzer = Propagation.analyzerMueller Library.IdealLinear (Angle.degree analyzerAngleDeg)
+        let polarizer = Propagation.analyzerMueller Library.IdealLinear (Angle.degree (polarizerAngleDeg * 1.0<deg>))
+        let analyzer = Propagation.analyzerMueller Library.IdealLinear (Angle.degree (analyzerAngleDeg * 1.0<deg>))
         analyzer * (sample * (polarizer * Propagation.unpolarizedStokes)) |> Propagation.s0
 
     /// The model's six intensities for a material parameter set — one forward solve, six analyzer angles.

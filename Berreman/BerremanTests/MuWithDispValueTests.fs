@@ -51,7 +51,7 @@ type MuWithDispValueTests() =
     let linearFormula (a : double) (b : double) : DispersionFormula =
         {
             terms = [ { lambda = 0.0; coefficients = [| a; b |]; power = 1; multiplier = 1.0 } ]
-            wavelengthScale = 1.0e-6
+            wavelengthScale = 1.0e-6<meter>
         }
 
     /// The Faraday (AlongZ) tensor: rows [mu, +i·g, 0], [-i·g, mu, 0], [0, 0, muParallel].

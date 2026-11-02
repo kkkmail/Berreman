@@ -71,9 +71,9 @@ module FieldProfile =
         let entry = emSys.transmitted
 
         let stepLayer (acc : (Layer * float) list, field : EmField) (layer : Layer) =
-            let before = field.intensity incident
+            let (OpticalFunctionValue before) = field.intensity incident
             let field = field.propagate layer
-            let after = field.intensity incident
+            let (OpticalFunctionValue after) = field.intensity incident
             ((layer, before - after) :: acc, field)
 
         let (results, _) =

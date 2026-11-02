@@ -33,7 +33,7 @@ let thickness2 = Thickness.nm ((600.0 / 1.00 / 4.0) * 1.0<nm>)
 
 let filmSystem =
     {
-        description = Some "Multilayer thin film system."
+        description = Some (OpticalSystemDescription "Multilayer thin film system.")
         upper = OpticalProperties.vacuum
         films =
             [

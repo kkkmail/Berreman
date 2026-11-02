@@ -69,7 +69,7 @@ module MeritFunction =
         let system = DesignParameters.applyVector parameters vector baseSystem
         let solution = OpticalSystemSolver(target.samplePoint, system).solution
         match target.quantity with
-        | Photometric f -> solution.func f |> Option.defaultValue 0.0
+        | Photometric f -> (solution.func f |> Option.defaultValue OpticalFunctionValue.zero).value
         | Ellipsometric e -> e.evaluate solution
 
     /// Per-target residual entry: `weight × (model − desired) / max(tolerance, ε)`

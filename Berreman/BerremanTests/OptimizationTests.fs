@@ -57,10 +57,10 @@ type OptimizationTests() =
     /// Diagonal (45°) linear polarization so both reflected s- and p-amplitudes
     /// respond and ρ = r_p/r_s (hence Ψ) actually depends on the stack.
     let diagonalLight (a : IncidenceAngle) (w : WaveLength) : IncidentLightInfo =
-        { IncidentLightInfo.createInclined w a with polarization = Polarization.create (Angle.degree 45.0) }
+        { IncidentLightInfo.createInclined w a with polarization = Polarization.create (Angle.degree 45.0<deg>) }
 
     let reflectanceOf (system : OpticalSystem) (w : WaveLength) : float =
-        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.get
+        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.map (fun v -> v.value) |> Option.get
 
     let psiOf (system : OpticalSystem) (light : IncidentLightInfo) : float =
         Psi.evaluate (OpticalSystemSolver(light, system).solution)
@@ -117,7 +117,7 @@ type OptimizationTests() =
     /// 45°-polarized incidence.
     [<Fact>]
     member _.``AC-G9 LM reproduces the converged thickness for an ellipsometric Psi fit`` () =
-        let angle = Angle.degree 50.0 |> IncidenceAngle
+        let angle = Angle.degree 50.0<deg> |> IncidenceAngle
         let trueThicknessNm = 250.0
         let trueSystem = mkFilmSystem 250.0<nm>
         let baseSystem = mkFilmSystem 1.0<nm>
@@ -249,8 +249,8 @@ type OptimizationTests() =
     [<Fact>]
     member _.``AC-F3 em.muellerMatrix equals MuellerMatrix.fromEmFields for reflected and transmitted`` () =
         let info =
-            { light600nmInclinedDegreeLPs 19.0 with
-                polarization = Angle.degree 27.0 |> Polarization
+            { light600nmInclinedDegreeLPs 19.0<deg> with
+                polarization = Angle.degree 27.0<deg> |> Polarization
                 ellipticity = Ellipticity 0.58 }
         let emSys = OpticalSystemSolver(info, BaseOpticalSystem.transparentGlassSystem.fullSystem).solution.emSys
 
@@ -288,7 +288,7 @@ type OptimizationTests() =
                 substrate = None
                 lower = glass
             }
-        let light = diagonalLight (Angle.degree 50.0 |> IncidenceAngle) (WaveLength.nm 600.0<nm>)
+        let light = diagonalLight (Angle.degree 50.0<deg> |> IncidenceAngle) (WaveLength.nm 600.0<nm>)
         let solution = OpticalSystemSolver(light, interfaceSystem).solution
         let (psi, delta) = psiDelta solution
         let (n, c, s) = ncs solution
@@ -311,13 +311,13 @@ type OptimizationTests() =
     [<Fact>]
     member _.``AC-F7 totalAbsorbedPower equals absorptance (1 - R - T)`` () =
         let system = (BaseOpticalSystem.transparentGlassFilmSystem (Thickness.nm 120.0<nm>)).fullSystem
-        let info = light600nmInclinedDegreeLPs 23.0
+        let info = light600nmInclinedDegreeLPs 23.0<deg>
         let solution = OpticalSystemSolver(info, system).solution
 
         let total = totalAbsorbedPower system info
         let a = absorptance solution
-        let r = solution.func R |> Option.defaultValue 0.0
-        let t = solution.func T |> Option.defaultValue 0.0
+        let r = solution.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
+        let t = solution.func T |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
 
         Assert.True(abs (total - a) < tol, $"totalAbsorbedPower %g{total} vs absorptance %g{a}")
         Assert.True(abs (a - (1.0 - r - t)) < tol, $"A %g{a} vs 1-R-T %g{(1.0 - r - t)}")
@@ -340,12 +340,12 @@ type OptimizationTests() =
                 lower = OpticalProperties.vacuum
             }
         let light =
-            { IncidentLightInfo.createInclined (WaveLength.nm 550.0<nm>) (Angle.degree 60.0 |> IncidenceAngle) with
+            { IncidentLightInfo.createInclined (WaveLength.nm 550.0<nm>) (Angle.degree 60.0<deg> |> IncidenceAngle) with
                 refractionIndex = RefractionIndex.create 1.52 }
 
         // Sanity: at this glass→vacuum geometry the band is in total internal
         // reflection, R ≈ 1 (solved with the TIR `light`, not normal-incidence).
-        let r550 = OpticalSystemSolver(light, tirSystem).solution.func R |> Option.get
+        let r550 = OpticalSystemSolver(light, tirSystem).solution.func R |> Option.map (fun v -> v.value) |> Option.get
         Assert.True(abs (r550 - 1.0) < 1.0e-2, $"TIR fixture R(550) = %g{r550}, expected ~1")
 
         let fixedInfo : FixedInfo = { incidentLightInfo = light; opticalSystem = tirSystem.dispersive }

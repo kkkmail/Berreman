@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Ui.Tests
 
+open System.Numerics
 open System
 open OpticalConstructor.Controls
 open Avalonia
@@ -237,15 +238,15 @@ module MaterialEditorWindowTests =
                 [
                     ChooseAnisotropy Biaxial
                     SetTransparency Absorbing
-                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (createComplex 1.6 0.1))
-                    SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (createComplex 1.7 0.2))
-                    SetPrincipalIndex (ThirdAxis, ComplexRefractionIndex (createComplex 1.8 0.3))
+                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (Complex.create 1.6 0.1))
+                    SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (Complex.create 1.7 0.2))
+                    SetPrincipalIndex (ThirdAxis, ComplexRefractionIndex (Complex.create 1.8 0.3))
                 ]
         match (derived st).eps with
-        | EpsWithoutDispValue (BiaxialAbsorbing (n1, n2, n3)) ->
-            Assert.Equal(createComplex 1.6 0.1, n1.value)
-            Assert.Equal(createComplex 1.7 0.2, n2.value)
-            Assert.Equal(createComplex 1.8 0.3, n3.value)
+        | EpsWithoutDispValue (BiaxialAbsorbing { nxComplex = n1; nyComplex = n2; nzComplex = n3 }) ->
+            Assert.Equal(Complex.create 1.6 0.1, n1.value)
+            Assert.Equal(Complex.create 1.7 0.2, n2.value)
+            Assert.Equal(Complex.create 1.8 0.3, n3.value)
         | other -> Assert.Fail($"expected BiaxialAbsorbing, got %A{other}")
 
     [<Fact>]
@@ -254,11 +255,11 @@ module MaterialEditorWindowTests =
             applied
                 [
                     ChooseAnisotropy Uniaxial
-                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (createComplex 1.5 0.0))
-                    SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (createComplex 1.65 0.0))
+                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (Complex.create 1.5 0.0))
+                    SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (Complex.create 1.65 0.0))
                 ]
         match (derived st).eps with
-        | EpsWithoutDispValue (UniaxialTransparent (RefractionIndex nO, RefractionIndex nE)) ->
+        | EpsWithoutDispValue (UniaxialTransparent { ordinary = RefractionIndex nO; extraordinary = RefractionIndex nE }) ->
             Assert.True(close nO 1.5 && close nE 1.65, $"nO = %g{nO}, nE = %g{nE}")
         | other -> Assert.Fail($"expected UniaxialTransparent, got %A{other}")
 
@@ -431,7 +432,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: unchecking a toggle restores the default model losslessly and re-checking restores the edits`` () =
         let baseline = derived defaultState
         // Absorbing: unlock, edit k, uncheck — the default returns; re-check — the edit returns.
-        let absorbing = applied [ SetTransparency Absorbing; SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (createComplex 1.5 0.2)) ]
+        let absorbing = applied [ SetTransparency Absorbing; SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (Complex.create 1.5 0.2)) ]
         Assert.NotEqual<MaterialComplexity>(baseline, derived absorbing)
         let absorbingOff = applyOk (SetTransparency Transparent) absorbing
         Assert.Equal<MaterialComplexity>(baseline, derived absorbingOff)
@@ -779,7 +780,7 @@ module MaterialEditorWindowTests =
                     match savedEntry.complexity with
                     | Some c ->
                         match c.eps with
-                        | EpsWithoutDispValue (BiaxialTransparent (RefractionIndex n1, RefractionIndex n2, RefractionIndex n3)) ->
+                        | EpsWithoutDispValue (BiaxialTransparent { nx = RefractionIndex n1; ny = RefractionIndex n2; nz = RefractionIndex n3 }) ->
                             Assert.True(close n1 1.6 && close n2 1.7 && close n3 1.8, $"n = %g{n1}, %g{n2}, %g{n3}")
                         | other -> Assert.Fail($"expected the biaxial transparent constant case, got %A{other}")
                         // properties IS complexity.toProperties: the stored tensors agree.
@@ -998,9 +999,9 @@ module MaterialEditorWindowTests =
                 propsFrom
                     [
                         ChooseAnisotropy Biaxial
-                        SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (createComplex 1.6 0.0))
-                        SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (createComplex 1.7 0.0))
-                        SetPrincipalIndex (ThirdAxis, ComplexRefractionIndex (createComplex 1.8 0.0))
+                        SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (Complex.create 1.6 0.0))
+                        SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (Complex.create 1.7 0.0))
+                        SetPrincipalIndex (ThirdAxis, ComplexRefractionIndex (Complex.create 1.8 0.0))
                     ]
             for props in [ isotropic; biaxial ] do
                 let c = NkDispersionChart.nkDispersionChart Biaxial props Nanometer range

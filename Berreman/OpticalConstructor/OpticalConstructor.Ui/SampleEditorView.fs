@@ -321,7 +321,7 @@ let private orientationDegrees (o : CrystalOrientation) : float * float * float 
 /// identity is DATA, not an EulerRotation carrying zeros).
 let private orientationOf (phi : float) (theta : float) (psi : float) : CrystalOrientation =
     if phi = 0.0 && theta = 0.0 && psi = 0.0 then PrimaryAxes
-    else EulerRotation (defaultConvention, Angle.degree phi, Angle.degree theta, Angle.degree psi)
+    else EulerRotation (defaultConvention, Angle.degree (phi * 1.0<deg>), Angle.degree (theta * 1.0<deg>), Angle.degree (psi * 1.0<deg>))
 
 let private orientationLabel (o : CrystalOrientation) : string =
     match o with

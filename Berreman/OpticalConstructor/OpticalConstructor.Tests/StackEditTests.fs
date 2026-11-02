@@ -119,10 +119,10 @@ module StackEditTests =
         | Some (Plate p) -> Assert.True(refEq p l0)
         | other -> failwith $"expected Some (Plate _), got {other}"
 
-        let wedgeLayer = { layer = l0; angle = WedgeAngle (Angle.degree 3.0) }
+        let wedgeLayer = { layer = l0; angle = WedgeAngle (Angle.degree 3.0<deg>) }
         let wedge = StackEditor.applySubstrate (StackEditor.AsWedge wedgeLayer) baseSystem
         match wedge.substrate with
-        | Some (Wedge w) -> Assert.Equal(WedgeAngle (Angle.degree 3.0), w.angle)
+        | Some (Wedge w) -> Assert.Equal(WedgeAngle (Angle.degree 3.0<deg>), w.angle)
         | other -> failwith $"expected Some (Wedge _), got {other}"
         // films/upper/lower preserved through every switch state.
         Assert.True(refEq wedge.films baseSystem.films)

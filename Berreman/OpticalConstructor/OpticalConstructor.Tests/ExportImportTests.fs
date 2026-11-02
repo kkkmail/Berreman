@@ -139,7 +139,7 @@ module ExportImportTests =
 
     let private vacuumSystem : OpticalSystem =
         {
-            description = Some "test stack"
+            description = Some (OpticalSystemDescription "test stack")
             upper = OpticalProperties.vacuum
             films = [ { properties = OpticalProperties.vacuum; thickness = Thickness.Thickness filmThickness } ]
             substrate = None

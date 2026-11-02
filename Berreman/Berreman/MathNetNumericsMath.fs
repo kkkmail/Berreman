@@ -7,13 +7,6 @@ module MathNetNumericsMath =
     open MathNet.Numerics
     open MathNet.Numerics.LinearAlgebra
 
-    let pi = Constants.Pi
-    let degree = Constants.Pi / 180.0
-    let toDegree r = r * 180.0 / Constants.Pi
-
-    let cplx r = Complex(r, 0.0)
-    let createComplex r i = Complex(r, i)
-
     let complexZero = Complex(0.0, 0.0)
     let complexOne = Complex(1.0, 0.0)
     let complexMinusOne = Complex(-1.0, 0.0)
@@ -29,7 +22,14 @@ module MathNetNumericsMath =
         member this.abs
             with get () = Complex.Abs this
 
+        /// The complex number with real part r and no imaginary part.
+        static member ofReal (r : double) : Complex = Complex(r, 0.0)
 
+        /// The complex number r + i * im.
+        static member create (r : double) (im : double) : Complex = Complex(r, im)
+
+
+    [<Softellect.Sys.NumericCarrier("a MathNet vector: its elements are the solver's numbers (R3)")>]
     type RealVector =
         | RealVector of Vector<double>
         member this.Item
@@ -37,10 +37,6 @@ module MathNetNumericsMath =
                 let (RealVector v) = this
                 v.[i]
 
-        static member (*) (RealVector a, RealVector b) = a * b
-        static member (*) (a : double, RealVector b) = a * b |> RealVector
-        static member (*) (RealVector a, b : double) = b * a |> RealVector
-        static member (/) (RealVector a, b : double) = a / b |> RealVector
         static member create (a : #seq<double>) = vector a |> RealVector
         static member (+) (RealVector a, RealVector b) = a + b |> RealVector
         static member (-) (RealVector a, RealVector b) = a - b |> RealVector
@@ -50,6 +46,7 @@ module MathNetNumericsMath =
             v * v |> sqrt
 
 
+    [<Softellect.Sys.NumericCarrier("a MathNet vector: its elements are the solver's numbers (R3)")>]
     type ComplexVector =
         | ComplexVector of Vector<Complex>
         static member (*) (ComplexVector a, ComplexVector b) = a.DotProduct(b)
@@ -61,12 +58,12 @@ module MathNetNumericsMath =
 
         static member fromRe (a : #seq<double>) =
             a
-            |> Seq.map (fun e -> cplx e)
+            |> Seq.map Complex.ofReal
             |> vector
             |> ComplexVector
 
         static member fromIm (a : #seq<double>) =
-           (createComplex 0. 1.) * (ComplexVector.fromRe a)
+           (Complex.create 0. 1.) * (ComplexVector.fromRe a)
 
         member this.Item
             with get (i: int) =
@@ -88,6 +85,7 @@ module MathNetNumericsMath =
         member this.norm = (this * this.conjugate).Real |> sqrt
 
 
+    [<Softellect.Sys.NumericCarrier("a MathNet matrix: its elements are the solver's numbers (R3)")>]
     type RealMatrix =
         | RealMatrix  of Matrix<double>
 
@@ -100,11 +98,6 @@ module MathNetNumericsMath =
 
         static member (*) (RealMatrix a, RealMatrix b) =
             (a * b) |> RealMatrix
-
-        static member (*) ((a : double), RealMatrix b) =
-            (a * b) |> RealMatrix
-
-        static member (*) (a : RealMatrix, b : double) = b * a
 
         static member (+) (RealMatrix a, RealMatrix b) =
             (a + b) |> RealMatrix
@@ -123,6 +116,7 @@ module MathNetNumericsMath =
             m.Inverse() |> RealMatrix
 
 
+    [<Softellect.Sys.NumericCarrier("a MathNet matrix: its elements are the solver's numbers (R3)")>]
     type ComplexMatrix =
         | ComplexMatrix of Matrix<Complex>
 
@@ -150,12 +144,12 @@ module MathNetNumericsMath =
 
         static member fromRe (a : #seq<#seq<double>>) =
             a
-            |> Seq.map (fun e -> e |> Seq.map (fun x -> cplx x))
+            |> Seq.map (fun e -> e |> Seq.map Complex.ofReal)
             |> matrix
             |> ComplexMatrix
 
         static member fromIm (a : #seq<#seq<double>>) =
-            (createComplex 0. 1.) * (ComplexMatrix.fromRe a)
+            (Complex.create 0. 1.) * (ComplexMatrix.fromRe a)
 
         member this.inverse =
             let (ComplexMatrix m) = this
@@ -185,18 +179,10 @@ module MathNetNumericsMath =
             [| for i in 0..(len-1) -> [| for j in 0..(len-1) -> m.[i, j].Imaginary |] |] |> RealMatrix.create
 
 
-    let realDiagonalMatrix (n : int) (e : double) =
-        DiagonalMatrix.create n e |> RealMatrix
-
-
     let realFromDiagonal (d : #seq<double>) =
         d
         |> Array.ofSeq
         |> DiagonalMatrix.ofDiagArray
-
-
-    let complexDiagonalMatrix (n : int) (e : Complex) =
-        DiagonalMatrix.create n e |> ComplexMatrix
 
 
     let complexFromDiagonal (d : #seq<Complex>) =

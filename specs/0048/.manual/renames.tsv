@@ -1,1 +1,15 @@
 old	new	package	row
+Berreman.MathNetNumericsMath.cplx	System.Numerics.Complex.ofReal (extension, Berreman.MathNetNumericsMath)	Softellect.Berreman.Core	E003
+Berreman.MathNetNumericsMath.createComplex	System.Numerics.Complex.create (extension, Berreman.MathNetNumericsMath)	Softellect.Berreman.Core	E003
+Berreman.MathNetNumericsMath.pi	System.Math.PI	Softellect.Berreman.Core	E003
+Berreman.MathNetNumericsMath.degree	Berreman.Geometry.Angle.radiansPerDegree	Softellect.Berreman.Core	E003
+Berreman.MathNetNumericsMath.toDegree	Berreman.Geometry.Angle.radiansToDegrees	Softellect.Berreman.Core	E003
+Berreman.FourierTransformPrimitives.maxSize	Berreman.FourierTransformPrimitives.FftPointCount.maxValue	Softellect.Berreman.Core	E003
+Berreman.FourierTransform.Details.ilog2	Berreman.FourierTransformPrimitives.FftPointCount.log2	Softellect.Berreman.Core	E003
+Berreman.SimpleFourierTransform.fft	Berreman.SimpleFourierTransform.simpleFft	Softellect.Berreman.Core	E003
+Berreman.BerremanMatrix.normalize	Berreman.BerremanMatrix.l2Normalize	Softellect.Berreman.Core	E003
+Berreman.Geometry.xRotation	Berreman.Geometry.Angle.xRotation	Softellect.Berreman.Core	E003
+Berreman.Geometry.yRotation	Berreman.Geometry.Angle.yRotation	Softellect.Berreman.Core	E003
+Berreman.Geometry.zRotation	Berreman.Geometry.Angle.zRotation	Softellect.Berreman.Core	E003
+Berreman.Geometry.Angle.radian	Berreman.Geometry.Angle (the union case)	Softellect.Berreman.Core	E003
+RefractionIndex.getTransparentGlass (extension, OpticalProperties.Standard)	Berreman.MaterialProperties.RefractionIndex (the union case)	Softellect.Berreman.OpticalProperties	E003

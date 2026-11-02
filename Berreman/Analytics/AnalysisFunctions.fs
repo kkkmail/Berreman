@@ -20,7 +20,7 @@ module AnalysisFunctions =
     /// `OpticalFunction` cases, so no new split logic is introduced here.
     let absorptance (s : Solution) : float =
         (s.func R, s.func T)
-        |> fun (r, t) -> 1.0 - (defaultArg r 0.0) - (defaultArg t 0.0)
+        |> fun (r, t) -> 1.0 - (defaultArg r OpticalFunctionValue.zero).value - (defaultArg t OpticalFunctionValue.zero).value
 
     /// §F.3 — assemble the existing-but-unconstructed `StokesSystem` record
     /// (Fields.fs:590) from the per-`Solution` incident/reflected/transmitted Stokes
@@ -43,7 +43,7 @@ module AnalysisFunctions =
         let s1 = v.[1]
         let s2 = v.[2]
         let s3 = v.[3]
-        if abs s0 < almostZero then 0.0
+        if abs s0 < almostZero.value then 0.0
         else sqrt (s1 * s1 + s2 * s2 + s3 * s3) / s0
 
     /// Complex ellipsometric ratio ρ = r_p / r_s read from the reflected field's own

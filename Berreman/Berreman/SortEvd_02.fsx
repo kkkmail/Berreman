@@ -78,12 +78,12 @@ let data =
                             n1SinFita = n1SinFita
                             e = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                             h = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                         }
@@ -93,12 +93,12 @@ let data =
                             n1SinFita = n1SinFita
                             e = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                             h = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                         }
@@ -108,19 +108,19 @@ let data =
                             n1SinFita = n1SinFita
                             e = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                             h = 
                                 [
-                                    cplx 0.0
+                                    Complex.ofReal 0.0
                                 ]
                                 |> ComplexVector3.create
                         }
                 }
         }
 
-    create OpticalProperties.transparentGlass (Angle.degree 7.0 |> IncidenceAngle) (WaveLength.nm 600.0)
+    create OpticalProperties.transparentGlass (Angle.degree 7.0<deg> |> IncidenceAngle) (WaveLength.nm 600.0)
 
 let (BerremanMatrix bm1) = BerremanMatrix.create data.opticalSystem.upper data.light.n1SinFita
 printfn "bm1 = %A" bm1

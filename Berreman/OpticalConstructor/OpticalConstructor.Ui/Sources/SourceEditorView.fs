@@ -61,7 +61,7 @@ let update (msg : SourceMsg) (s : SourceSpec) : SourceSpec =
     | SetWaveLength (u, x) ->
         { setLight (fun l -> { l with waveLength = waveLengthFromInput u x }) s with displayUnit = u }
     | SetIncidenceAngleDegrees d ->
-        setLight (fun l -> { l with incidenceAngle = IncidenceAngle.create (Angle.degree d) }) s
+        setLight (fun l -> { l with incidenceAngle = IncidenceAngle.create (Angle.degree (d * 1.0<deg>)) }) s
     | SetPolarization p -> setLight (fun l -> { l with polarization = p }) s
     | SetEllipticity e -> setLight (fun l -> { l with ellipticity = Ellipticity.create e }) s
     | SetIntensity i -> { s with intensity = i }

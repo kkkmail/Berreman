@@ -98,16 +98,16 @@ module SourceExpansionTests =
 
     [<Fact>]
     let ``AC-E6 a cone fans the base angle into N symmetric sub-angles`` () =
-        let cone = { halfAngle = Angle.degree 10.0; samples = 5 }
+        let cone = { halfAngle = Angle.degree 10.0<deg>; samples = 5 }
         let angles = ConeAcceptance.sample cone IncidenceAngle.normal
         Assert.Equal(5, List.length angles)
-        Assert.Equal((Angle.degree -10.0).value, angles.[0].value, 12)
+        Assert.Equal((Angle.degree -10.0<deg>).value, angles.[0].value, 12)
         Assert.Equal(0.0, angles.[2].value, 12)
-        Assert.Equal((Angle.degree 10.0).value, angles.[4].value, 12)
+        Assert.Equal((Angle.degree 10.0<deg>).value, angles.[4].value, 12)
 
     [<Fact>]
     let ``AC-E6 a single-sample cone collapses to the base angle`` () =
-        let cone = { halfAngle = Angle.degree 10.0; samples = 1 }
+        let cone = { halfAngle = Angle.degree 10.0<deg>; samples = 1 }
         Assert.Equal<IncidenceAngle list>([ IncidenceAngle.normal ], ConeAcceptance.sample cone IncidenceAngle.normal)
 
     [<Fact>]
@@ -117,7 +117,7 @@ module SourceExpansionTests =
         // A collimated single sample carries unit weight (intensity 1.0, N = 1).
         Assert.All(collimated, fun (_, w) -> Assert.Equal(1.0, w, 12))
         // A cone fans it into `samples` weighted entries instead.
-        let coned = { baseSource with cone = Some { halfAngle = Angle.degree 5.0; samples = 7 } }
+        let coned = { baseSource with cone = Some { halfAngle = Angle.degree 5.0<deg>; samples = 7 } }
         let conedExpanded = SourceSpec.expand coned
         Assert.Equal(7, List.length conedExpanded)
         // AC-E6: the cone result is AVERAGED, not summed — each of the N sub-angles
@@ -180,12 +180,12 @@ module SourceExpansionTests =
 
     [<Fact>]
     let ``AC-E9 the Gaussian angular spectrum is a normalised weighted plane-wave fan`` () =
-        let beam = { waist = 1.0e-6<meter>; divergence = Angle.degree 80.0 }
+        let beam = { waist = 1.0e-6<meter>; divergence = Angle.degree 80.0<deg> }
         let spectrum = GaussianBeamSpec.angularSpectrum beam (WaveLength.nm 500.0<nm>)
         Assert.False(List.isEmpty spectrum)
         // Weights normalise to 1 and every angle is within the divergence aperture.
         Assert.Equal(1.0, spectrum |> List.sumBy snd, 9)
-        Assert.All(spectrum, fun (a, _) -> Assert.True(a.value <= (Angle.degree 80.0).value + 1.0e-9))
+        Assert.All(spectrum, fun (a, _) -> Assert.True(a.value <= (Angle.degree 80.0<deg>).value + 1.0e-9))
         // The peak weight sits at the smallest (near-axis) angle.
         let peakAngle = spectrum |> List.maxBy snd |> fst
         let minAngle = spectrum |> List.map (fun (a, _) -> a.value) |> List.min
@@ -200,8 +200,8 @@ module SourceExpansionTests =
         let n = 5
         let coneGaussian =
             { baseSource with
-                cone = Some { halfAngle = Angle.degree 5.0; samples = n }
-                gaussianBeam = Some { waist = 1.0e-6<meter>; divergence = Angle.degree 80.0 } }
+                cone = Some { halfAngle = Angle.degree 5.0<deg>; samples = n }
+                gaussianBeam = Some { waist = 1.0e-6<meter>; divergence = Angle.degree 80.0<deg> } }
         let expanded = SourceSpec.expand coneGaussian
         // The expansion fans into N * (Gaussian samples) entries...
         Assert.True(List.length expanded > n, "expected a cone-by-Gaussian fan")
@@ -214,7 +214,7 @@ module SourceExpansionTests =
     let ``AC-E9 a wider waist yields a narrower angular spread`` () =
         let w = WaveLength.nm 500.0<nm>
         let charAngle (waistM : float<meter>) =
-            { waist = waistM; divergence = Angle.degree 80.0 }
+            { waist = waistM; divergence = Angle.degree 80.0<deg> }
             |> fun b -> GaussianBeamSpec.angularSpectrum b w
             |> List.sumBy (fun (a, weight) -> abs a.value * weight)   // weights sum to 1
         Assert.True(charAngle 2.0e-6<meter> < charAngle 1.0e-6<meter>,

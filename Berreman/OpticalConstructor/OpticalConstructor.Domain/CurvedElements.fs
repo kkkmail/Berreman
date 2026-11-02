@@ -129,7 +129,7 @@ module CurvedElements =
                 sag surface.figure surface.radiusOfCurvature (r + h)
                 - sag surface.figure surface.radiusOfCurvature (r - h)
             let slope = dz / (2.0 * h)          // dimensionless
-            atan slope |> Angle.radian
+            atan slope |> Angle
 
     /// Decompose a curved surface into `zoneCount` local flat interfaces (§C.3),
     /// sampled UNIFORMLY in aperture radius from the axis (`radialPosition = 0`) to

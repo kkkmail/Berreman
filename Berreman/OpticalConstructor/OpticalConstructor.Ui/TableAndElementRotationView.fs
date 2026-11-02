@@ -778,7 +778,7 @@ let normalizeDegrees (d : float) : float =
     let m = d % 360.0
     if m < 0.0 then m + 360.0 else m
 
-let private bumpAngle (a : Angle) (d : float) : Angle = Angle.degree (normalizeDegrees (a.degrees + d))
+let private bumpAngle (a : Angle) (d : float) : Angle = Angle.degree (normalizeDegrees (a.degrees + d) * 1.0<deg>)
 
 let private dist (a : ScreenPoint) (b : ScreenPoint) : float =
     sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
@@ -890,7 +890,7 @@ let private selectionAt (pt : ScreenPoint) (m : Model) : Selection =
 
 /// Set the selection's axis to an exact angle (lock-respecting for R3, task 008).
 let private setSelectedAxis (axis : RotationControls.Axis) (v : float) (m : Model) : Model =
-    let a = Angle.degree (normalizeDegrees v)
+    let a = Angle.degree (normalizeDegrees v * 1.0<deg>)
     match m.selection with
     | TableSelected ->
         match axis with
@@ -2623,7 +2623,7 @@ let chartForRun
             match e.placement.catalogueKind, boundOf e with
             | (LinearPolarizer | CircularPolarizer), Some (Library.PolarizerItem p) ->
                 match variable with
-                | Experiments.VaryR1 when isVaried -> Ok (Some (SweptStep (fun x -> ExperimentRun.PolarizerStep (p.behavior, Angle.degree x))))
+                | Experiments.VaryR1 when isVaried -> Ok (Some (SweptStep (fun x -> ExperimentRun.PolarizerStep (p.behavior, Angle.degree (x * 1.0<deg>)))))
                 | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryWaveLength -> Ok (Some (FixedStep (ExperimentRun.PolarizerStep (p.behavior, e.placement.r1))))
             | Sample, Some (Library.SampleItem sample) ->
                 match Propagation.resolveSampleMaterials model.materials sample with
@@ -2635,11 +2635,11 @@ let chartForRun
                         | BeamTree.Reflected -> Propagation.BranchReflected
                     let incidence0 = incidenceDegreesOf (List.item j layout.elements) e.placement
                     let solve (w : WaveLength) (incidence : float) (spin : Angle) : ExperimentRun.RunStep =
-                        ExperimentRun.SampleStep (Propagation.sampleMuellerSpun branch resolved w (IncidenceAngle.create (Angle.degree incidence)) spin)
+                        ExperimentRun.SampleStep (Propagation.sampleMuellerSpun branch resolved w (IncidenceAngle.create (Angle.degree (incidence * 1.0<deg>))) spin)
                     match variable with
                     | Experiments.VaryWaveLength -> Ok (Some (SweptStep (fun x -> solve (ofNm x) incidence0 e.placement.r1)))
                     | Experiments.VaryR2 when isVaried -> Ok (Some (SweptStep (fun x -> solve w0 x e.placement.r1)))
-                    | Experiments.VaryR1 when isVaried -> Ok (Some (SweptStep (fun x -> solve w0 incidence0 (Angle.degree x))))
+                    | Experiments.VaryR1 when isVaried -> Ok (Some (SweptStep (fun x -> solve w0 incidence0 (Angle.degree (x * 1.0<deg>)))))
                     | Experiments.VaryR1 | Experiments.VaryR2 -> Ok (Some (FixedStep (solve w0 incidence0 e.placement.r1)))
             | _ -> Ok None
     let buildersFor (path : BeamLayout.PathStep list) : Result<StepBuilder list, string> =

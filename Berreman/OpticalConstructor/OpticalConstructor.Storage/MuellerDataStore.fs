@@ -100,7 +100,7 @@ module MuellerDataStore =
                                 experiment = experiment
                                 captureIndex = captureIndex
                                 capturedAt = capturedAt
-                                description = Angle.degree descriptionDeg
+                                description = Angle.degree (descriptionDeg * 1.0<Berreman.Constants.deg>)
                                 avgTotal = avgTotal
                             })))))
 

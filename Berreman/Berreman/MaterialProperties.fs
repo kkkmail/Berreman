@@ -28,7 +28,7 @@ module MaterialProperties =
             match this with
             | NoTransformation -> id
             | SquareRoot -> sqrt
-            | MultByMillion -> fun x -> x * (cplx 1000000.0)
+            | MultByMillion -> fun x -> x * (Complex.ofReal 1000000.0)
 
 
     // Covers only real refraction indices.
@@ -74,7 +74,7 @@ module MaterialProperties =
                 v.[i.numeric, j.numeric]
 
         static member fromRefractionIndex (RefractionIndex n) =
-            (n * n |> cplx) * ComplexMatrix3x3.identity |> Eps
+            (n * n |> Complex.ofReal) * ComplexMatrix3x3.identity |> Eps
 
         static member fromRefractionIndex (RefractionIndex n1, RefractionIndex n2, RefractionIndex n3) =
             [

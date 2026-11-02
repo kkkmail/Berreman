@@ -80,7 +80,7 @@ module MaterialImport =
                         let (lb, nb, kb) = sorted.[i + 1]
                         let t = if lb = la then 0.0 else (lam - la) / (lb - la)
                         na + (nb - na) * t, ka + (kb - ka) * t
-            createComplex n k |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
+            Complex.create n k |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
 
     /// An imported entry MINTS a fresh `MaterialId` (spec 0033 step 002) — imports carry no
     /// persisted identity of their own; the stable Guid ids live with the library seeds.
@@ -125,7 +125,7 @@ module MaterialImport =
 
     /// Metres per µm — the refractiveindex.info coefficient tabulation unit —
     /// derived through the sole `Units` seam (§D.11), never a literal factor.
-    let private micrometerScale : double = (toMeters Micrometer 1.0) / 1.0<meter>
+    let private micrometerScale : float<meter> = toMeters Micrometer 1.0
 
     /// The k of a transparent analytic formula: the empty (zero) formula.
     let private zeroK : DispersionFormula =
@@ -143,13 +143,13 @@ module MaterialImport =
 
     /// A complex-formula constant term c·x⁰.
     let private complexConstTerm (c : float) : ComplexDispersionTerm =
-        { lambda = Complex.Zero; coefficients = [| createComplex c 0.0 |]; power = 1; multiplier = Complex.One }
+        { lambda = Complex.Zero; coefficients = [| Complex.create c 0.0 |]; power = 1; multiplier = Complex.One }
 
     /// amplitude·x^p over Complex for any integer p (a negative p inverts the monomial).
     let private complexPowerTerm (amplitude : float) (p : int) : ComplexDispersionTerm =
         let degree = abs p
         let coefficients = Array.init (degree + 1) (fun i -> if i = degree then Complex.One else Complex.Zero)
-        { lambda = Complex.Zero; coefficients = coefficients; power = (if p >= 0 then 1 else -1); multiplier = createComplex amplitude 0.0 }
+        { lambda = Complex.Zero; coefficients = coefficients; power = (if p >= 0 then 1 else -1); multiplier = Complex.create amplitude 0.0 }
 
     /// A formula exponent usable in finite term data must be an integer.
     let private tryIntegerExponent (p : float) : int option =
@@ -196,15 +196,15 @@ module MaterialImport =
                     let coefficients =
                         Array.init (degree + 1) (fun i ->
                             let diff = degree - i
-                            if diff % 2 = 0 && diff / 2 < m then createComplex (a ** float (diff / 2)) 0.0 else Complex.Zero)
-                    [ { lambda = Complex.Zero; coefficients = coefficients; power = 1; multiplier = createComplex amplitude 0.0 } ]
+                            if diff % 2 = 0 && diff / 2 < m then Complex.create (a ** float (diff / 2)) 0.0 else Complex.Zero)
+                    [ { lambda = Complex.Zero; coefficients = coefficients; power = 1; multiplier = Complex.create amplitude 0.0 } ]
             let residual = amplitude * a ** float m
             let pole =
                 if p % 2 = 0 then
-                    [ { lambda = Complex.Zero; coefficients = [| createComplex (-a) 0.0; Complex.Zero; Complex.One |]; power = -1; multiplier = createComplex residual 0.0 } ]
+                    [ { lambda = Complex.Zero; coefficients = [| Complex.create (-a) 0.0; Complex.Zero; Complex.One |]; power = -1; multiplier = Complex.create residual 0.0 } ]
                 else
-                    let root = Complex.Sqrt (createComplex a 0.0)
-                    let half = createComplex (residual / 2.0) 0.0
+                    let root = Complex.Sqrt (Complex.create a 0.0)
+                    let half = Complex.create (residual / 2.0) 0.0
                     [
                         { lambda = Complex.Zero; coefficients = [| -root; Complex.One |]; power = -1; multiplier = half }
                         { lambda = Complex.Zero; coefficients = [| root; Complex.One |]; power = -1; multiplier = half }
@@ -262,7 +262,7 @@ module MaterialImport =
     let private cauchyAxis (nums : float[]) : Result<EpsAxisDispersion, ImportError> =
         monomialTerms 5 realPowerTerm (coefficientPairs nums.[1..])
         |> Result.map (fun terms ->
-            RealNK ({ terms = realConstTerm nums.[0] :: terms; wavelengthScale = micrometerScale }, zeroK))
+            RealNK { nFormula = { terms = realConstTerm nums.[0] :: terms; wavelengthScale = micrometerScale }; kFormula = zeroK })
 
     /// RII formula 6 (gases): n = 1 + c₀ + Σ cᵢ/(dᵢ − λ⁻²). Each oscillator is
     /// exact real term data: cᵢ/(dᵢ − x⁻²) = cᵢ·x²/(dᵢ·x² − 1)
@@ -278,7 +278,7 @@ module MaterialImport =
                         realConstTerm (amplitude / d)
                         { lambda = 0.0; coefficients = [| -1.0 / d; 0.0; 1.0 |]; power = -1; multiplier = amplitude / (d * d) }
                     ])
-        Ok (RealNK ({ terms = realConstTerm (1.0 + nums.[0]) :: oscillators; wavelengthScale = micrometerScale }, zeroK))
+        Ok (RealNK { nFormula = { terms = realConstTerm (1.0 + nums.[0]) :: oscillators; wavelengthScale = micrometerScale }; kFormula = zeroK })
 
     /// Herzberger's fixed 0.028 µm² pole — a constant of the PUBLISHED formula
     /// (Herzberger, JOSA 49, 1959), not a unit conversion.
@@ -299,7 +299,7 @@ module MaterialImport =
                 realPowerTerm c.[4] 4
                 realPowerTerm c.[5] 6
             ]
-        Ok (RealNK ({ terms = terms; wavelengthScale = micrometerScale }, zeroK))
+        Ok (RealNK { nFormula = { terms = terms; wavelengthScale = micrometerScale }; kFormula = zeroK })
 
     /// Why a formula number cannot produce editable term data (spec 0033 step
     /// 025): 8 (Retro) hides n behind the rational transform (n² − 1)/(n² + 2),

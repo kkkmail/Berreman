@@ -24,10 +24,10 @@ module MuellerReconstruction =
         member this.value = let (Retardance r) = this in r
 
         /// The retardance expressed in degrees.
-        member this.degrees = let (Retardance r) = this in (r / degree)
+        member this.degrees = let (Retardance r) = this in (r / Angle.radiansPerDegree)
 
         /// Build a `Retardance` from a value given in degrees.
-        static member degree (d : double) : Retardance = d * degree |> Retardance
+        static member degree (d : double) : Retardance = d * Angle.radiansPerDegree |> Retardance
 
     /// The Mueller matrix of an ideal (lossless) retarder whose fast axis is at azimuth `axis` and whose
     /// phase delay is `retardance`. The diagonal retarder core (fast axis at 0°) is
@@ -410,7 +410,7 @@ module MuellerReconstruction =
                     let om = objectRegex.Match(part)
                     if om.Success then
                         match System.Int32.TryParse(om.Groups.["angle"].Value) with
-                        | true, deg -> Some { name = om.Groups.["obj"].Value; labelAngle = Angle.degree (float deg) }
+                        | true, deg -> Some { name = om.Groups.["obj"].Value; labelAngle = Angle.degree (float deg * 1.0<Berreman.Constants.deg>) }
                         | _ -> None
                     else
                         None)
@@ -606,7 +606,7 @@ module MuellerReconstruction =
         let design =
             anglesDeg
             |> Array.map (fun a ->
-                let twoAlpha = 2.0 * a * degree
+                let twoAlpha = 2.0 * a * Angle.radiansPerDegree
                 [| cos twoAlpha; sin twoAlpha |])
         let rhs = norm |> Array.map (fun n -> n - 1.0)
         solver.solveLinearLeastSquares design rhs
@@ -614,7 +614,7 @@ module MuellerReconstruction =
             let p = sol.solution.[0]
             let q = sol.solution.[1]
             {
-                zeroDeg = wrapDeg180 (0.5 * (atan2 q p) / degree)
+                zeroDeg = wrapDeg180 (0.5 * (atan2 q p) / Angle.radiansPerDegree)
                 visibility = sqrt (p * p + q * q)
                 rmse = sol.rmse
             })
@@ -642,7 +642,7 @@ module MuellerReconstruction =
         let cosDelta = 1.0 - (1.0 - qLp) / (sinTwoTheta * sinTwoTheta)
         let clampedCosDelta = max (-1.0) (min 1.0 cosDelta)
         {
-            thetaRel = Angle.degree (wrapDeg180 (0.5 * (twoTheta / degree)))
+            thetaRel = Angle.degree (wrapDeg180 (0.5 * (twoTheta / Angle.radiansPerDegree)) * 1.0<Berreman.Constants.deg>)
             retardance = Retardance (acos clampedCosDelta)
         }
 

@@ -13,23 +13,23 @@ module Fields =
     // CGS units are used.
 
 
-        /// L2 norm of complex vector.
-    let l2Norm (v : #seq<Complex>) =
+    /// L2 norm of a complex vector, as the real Complex the normalizations divide by.
+    let l2Norm (v : #seq<Complex>) : Complex =
         let norm = v |> Seq.fold (fun acc r -> acc + r.Real * r.Real + r.Imaginary * r.Imaginary) 0.0 |> sqrt
-        norm
+        Complex.ofReal norm
 
 
     type IncidenceAngle =
         | IncidenceAngle of Angle
         static member create (Angle p) =
-            (p % (pi / 2.0) + pi) % (pi / 2.0) |> Angle |> IncidenceAngle
+            (p % (Math.PI / 2.0) + Math.PI) % (Math.PI / 2.0) |> Angle |> IncidenceAngle
 
         member angle.value = let (IncidenceAngle a) = angle in a.value
         member p.angle = let (IncidenceAngle a) = p in a
-        static member normal = IncidenceAngle.create (Angle.degree 0.0)
-        static member maxValue = IncidenceAngle.create (Angle.degree 89.0)
-        static member maxValue80 = IncidenceAngle.create (Angle.degree 80.0)
-        member this.description = $"incidence angle: %A{this.value / degree} degree(s)"
+        static member normal = IncidenceAngle.create (Angle.degree 0.0<deg>)
+        static member maxValue = IncidenceAngle.create (Angle.degree 89.0<deg>)
+        static member maxValue80 = IncidenceAngle.create (Angle.degree 80.0<deg>)
+        member this.description = $"incidence angle: %A{this.angle.degrees} degree(s)"
         static member (+) (IncidenceAngle a, Angle b) = a.value + b |> Angle |> IncidenceAngle
         static member (-) (IncidenceAngle a, Angle b) = a.value - b |> Angle |> IncidenceAngle
 
@@ -40,7 +40,7 @@ module Fields =
 
         static member defaultValue = 0.0 |> N1SinFita
         member nsf.value = let (N1SinFita v) = nsf in v
-        member nsf.complex = nsf.value |> cplx
+        member nsf.complex = nsf.value |> Complex.ofReal
         static member normal = N1SinFita 0.0
         static member create (RefractionIndex n) (IncidenceAngle (Angle f)) = n * (sin f) |> N1SinFita
 
@@ -72,9 +72,9 @@ module Fields =
         static member (+) (E (ComplexVector3 a), E (ComplexVector3 b)) : E = a + b |> ComplexVector3 |> E
         static member (*) (a : Complex, E (ComplexVector3 b)) = a * b |> ComplexVector3 |> E
         static member (*) (E (ComplexVector3 a), b : Complex) = a * b |> ComplexVector3 |> E
-        static member (/) (E (ComplexVector3 a), b : Complex) = a * ((cplx 1.0) / b) |> ComplexVector3 |> E
+        static member (/) (E (ComplexVector3 a), b : Complex) = a * ((Complex.ofReal 1.0) / b) |> ComplexVector3 |> E
         static member create a = a |> ComplexVector3.create |> E
-        static member fromRe a = a |> ComplexVector3.fromRe |> E
+        static member fromRe (a : #seq<double>) = a |> ComplexVector3.fromRe |> E
         static member defaultValue = [ 0.0; 0.0; 0.0 ] |> E.fromRe
         member e.value = let (E a) = e in a
         member e.x = let (E a) = e in a.x
@@ -92,9 +92,9 @@ module Fields =
         static member (+) (H (ComplexVector3 a), H (ComplexVector3 b)) : H = a + b |> ComplexVector3 |> H
         static member (*) (a : Complex, H (ComplexVector3 b)) = a * b |> ComplexVector3 |> H
         static member (*) (H (ComplexVector3 a), b : Complex) = a * b |> ComplexVector3 |> H
-        static member (/) (H (ComplexVector3 a), b : Complex) = a * ((cplx 1.0) / b) |> ComplexVector3 |> H
+        static member (/) (H (ComplexVector3 a), b : Complex) = a * ((Complex.ofReal 1.0) / b) |> ComplexVector3 |> H
         static member create a = a |> ComplexVector3.create |> H
-        static member fromRe a = a |> ComplexVector3.fromRe |> H
+        static member fromRe (a : #seq<double>) = a |> ComplexVector3.fromRe |> H
         static member defaultValue = [ 0.0; 0.0; 0.0 ] |> H.fromRe
         member h.value = let (H a) = h in a
         member h.x = let (H a) = h in a.x
@@ -163,13 +163,15 @@ module Fields =
         member s.normal =
             let norm = s.norm
 
-            if norm > almostZero
-            then Some (s.value / norm)
+            if norm > almostZero.value
+            then
+                let (S (RealVector3 (RealVector v))) = s
+                Some (v / norm |> RealVector |> RealVector3)
             else None
 
 
     let normalizeEH (E e, H h) =
-        let norm = [ e.x; h.y; e.y; -h.x ] |> l2Norm |> cplx
+        let norm = [ e.x; h.y; e.y; -h.x ] |> l2Norm
         e / norm |> E, h / norm |> H, norm
 
 
@@ -316,13 +318,13 @@ module Fields =
 
         member p.value = let (Polarization a) = p in a.value
         member p.angle = let (Polarization a) = p in a
-        static member create (Angle p) = ((p + (pi / 2.0)) % pi) - (pi / 2.0) |> Angle |> Polarization
-        member this.crossed = Angle (this.value + (pi / 2.0)) |> Polarization
+        static member create (Angle p) = ((p + (Math.PI / 2.0)) % Math.PI) - (Math.PI / 2.0) |> Angle |> Polarization
+        member this.crossed = Angle (this.value + (Math.PI / 2.0)) |> Polarization
         static member defaultValue = Angle 0.0 |> Polarization
-        static member s = Angle.degree 0.0 |> Polarization
-        static member p = Angle.degree 90.0 |> Polarization
-        static member minusP = Angle.degree -90.0 |> Polarization
-        member this.description = $"polarization: %A{this.value / degree} degree(s)"
+        static member s = Angle.degree 0.0<deg> |> Polarization
+        static member p = Angle.degree 90.0<deg> |> Polarization
+        static member minusP = Angle.degree -90.0<deg> |> Polarization
+        member this.description = $"polarization: %A{this.angle.degrees} degree(s)"
 
 
     type WedgeAngle =
@@ -330,7 +332,7 @@ module Fields =
 
         member angle.value = let (WedgeAngle a) = angle in a.value
         member angle.degrees = let (WedgeAngle a) = angle in a.degrees
-        member this.description = $"wedge angle: %A{this.value / degree} degree(s)"
+        member this.description = $"wedge angle: %A{this.degrees} degree(s)"
         static member defaultValue = 0.0 |> Angle |> WedgeAngle
 
 
@@ -349,18 +351,18 @@ module Fields =
 //
 //            let e =
 //                [
-//                    cos(beta) * cos(fita) |> cplx
-//                    sin(beta) |> cplx
-//                    -cos(beta) * sin(fita) |> cplx
+//                    cos(beta) * cos(fita) |> Complex.ofReal
+//                    sin(beta) |> Complex.ofReal
+//                    -cos(beta) * sin(fita) |> Complex.ofReal
 //                ]
 //                |> ComplexVector3.create
 //                |> E
 //
 //            let h =
 //                [
-//                    -n1 * cos(fita) * sin(beta) |> cplx
-//                    n1 * cos(beta) |> cplx
-//                    n1 * sin(beta) * sin(fita) |> cplx
+//                    -n1 * cos(fita) * sin(beta) |> Complex.ofReal
+//                    n1 * cos(beta) |> Complex.ofReal
+//                    n1 * sin(beta) * sin(fita) |> Complex.ofReal
 //                ]
 //                |> ComplexVector3.create
 //                |> H
@@ -433,7 +435,7 @@ module Fields =
         member emf.b = emf.opticalProperties.rhoT * emf.e + emf.opticalProperties.mu * emf.h
         member emf.s = S.create emf.e emf.h
         member emf.normal  = emf.s.normal
-        member emf.complexNormal = thread emf.normal (fun n -> [ cplx n.x; cplx n.y; cplx n.z ] |> ComplexVector3.create)
+        member emf.complexNormal = thread emf.normal (fun n -> [ Complex.ofReal n.x; Complex.ofReal n.y; Complex.ofReal n.z ] |> ComplexVector3.create)
 
         member emf.rotate r =
             { emf with opticalProperties = emf.opticalProperties.rotate r; emComponents = emf.emComponents |> List.map (fun e -> e.rotate r)  }
@@ -461,8 +463,8 @@ module Fields =
             thread emf.complexNormal (fun cz ->
                 let cy =
                     if (cz * ComplexBasis3.defaultValue.cZ).Real >= 0.0
-                    then [ cplx 0.0; cplx 1.0; cplx 0.0 ] |> ComplexVector3.create
-                    else  [ cplx 0.0; cplx -1.0; cplx 0.0 ] |> ComplexVector3.create
+                    then [ Complex.ofReal 0.0; Complex.ofReal 1.0; Complex.ofReal 0.0 ] |> ComplexVector3.create
+                    else  [ Complex.ofReal 0.0; Complex.ofReal -1.0; Complex.ofReal 0.0 ] |> ComplexVector3.create
 
                 {
                     cX = ComplexVector3.cross cy cz
@@ -481,8 +483,8 @@ module Fields =
 //
 //        static member create (info : IncidentLightInfo, o : OpticalProperties) : EmField =
 //            let (Ellipticity e) = info.ellipticity
-//            let a0 = 1.0 / sqrt(1.0 + e * e) |> cplx
-//            let a90 = e / sqrt(1.0 + e * e) |> cplx
+//            let a0 = 1.0 / sqrt(1.0 + e * e) |> Complex.ofReal
+//            let a90 = e / sqrt(1.0 + e * e) |> Complex.ofReal
 //            let (e0, h0, n0) = normalizeEH info.eh0
 //            let (e90, h90, n90) = normalizeEH info.eh90
 //
@@ -498,7 +500,7 @@ module Fields =
 //                            amplitude = a0 * n0
 //                            emEigenVector =
 //                                {
-//                                    eigenValue = cplx info.refractionIndex.value
+//                                    eigenValue = Complex.ofReal info.refractionIndex.value
 //                                    e = e0
 //                                    h = h0
 //                                }
@@ -508,7 +510,7 @@ module Fields =
 //                            amplitude = cplxI * a90 * n90
 //                            emEigenVector =
 //                                {
-//                                    eigenValue = cplx info.refractionIndex.value
+//                                    eigenValue = Complex.ofReal info.refractionIndex.value
 //                                    e = e90
 //                                    h = h90
 //                                }
@@ -604,28 +606,28 @@ module Fields =
             (
                 [
                     [
-                        (kPP * conjugate(kPP) + kPS * conjugate(kPS) + kSP * conjugate(kSP) + kSS * conjugate(kSS))/(cplx 2.0)
-                        (-(kPP * conjugate(kPP)) - kPS * conjugate(kPS) + kSP * conjugate(kSP) + kSS * conjugate(kSS))/(cplx 2.0)
-                        (kSP * conjugate(kPP) + kSS * conjugate(kPS) + kPP * conjugate(kSP) + kPS * conjugate(kSS))/(cplx 2.0)
-                        (-complexI/(cplx 2.0)) * (kSP * conjugate(kPP) + kSS * conjugate(kPS) - kPP * conjugate(kSP) - kPS * conjugate(kSS))
+                        (kPP * conjugate(kPP) + kPS * conjugate(kPS) + kSP * conjugate(kSP) + kSS * conjugate(kSS))/(Complex.ofReal 2.0)
+                        (-(kPP * conjugate(kPP)) - kPS * conjugate(kPS) + kSP * conjugate(kSP) + kSS * conjugate(kSS))/(Complex.ofReal 2.0)
+                        (kSP * conjugate(kPP) + kSS * conjugate(kPS) + kPP * conjugate(kSP) + kPS * conjugate(kSS))/(Complex.ofReal 2.0)
+                        (-complexI/(Complex.ofReal 2.0)) * (kSP * conjugate(kPP) + kSS * conjugate(kPS) - kPP * conjugate(kSP) - kPS * conjugate(kSS))
                     ]
                     [
-                        (-(kPP * conjugate(kPP)) + kPS * conjugate(kPS) - kSP * conjugate(kSP) + kSS * conjugate(kSS))/(cplx 2.0)
-                        (kPP * conjugate(kPP) - kPS * conjugate(kPS) - kSP * conjugate(kSP) + kSS * conjugate(kSS))/(cplx 2.0)
-                        (-(kSP * conjugate(kPP)) + kSS * conjugate(kPS) - kPP * conjugate(kSP) + kPS * conjugate(kSS))/(cplx 2.0)
-                        (complexI/(cplx 2.0)) * (kSP * conjugate(kPP) - kSS * conjugate(kPS) - kPP * conjugate(kSP) + kPS * conjugate(kSS))
+                        (-(kPP * conjugate(kPP)) + kPS * conjugate(kPS) - kSP * conjugate(kSP) + kSS * conjugate(kSS))/(Complex.ofReal 2.0)
+                        (kPP * conjugate(kPP) - kPS * conjugate(kPS) - kSP * conjugate(kSP) + kSS * conjugate(kSS))/(Complex.ofReal 2.0)
+                        (-(kSP * conjugate(kPP)) + kSS * conjugate(kPS) - kPP * conjugate(kSP) + kPS * conjugate(kSS))/(Complex.ofReal 2.0)
+                        (complexI/(Complex.ofReal 2.0)) * (kSP * conjugate(kPP) - kSS * conjugate(kPS) - kPP * conjugate(kSP) + kPS * conjugate(kSS))
                     ]
                     [
-                        (kPS * conjugate(kPP) + kPP * conjugate(kPS) + kSS * conjugate(kSP) + kSP * conjugate(kSS))/(cplx 2.0)
-                        (-(kPS * conjugate(kPP)) - kPP * conjugate(kPS) + kSS * conjugate(kSP) + kSP * conjugate(kSS))/(cplx 2.0)
-                        (kSS * conjugate(kPP) + kSP * conjugate(kPS) + kPS * conjugate(kSP) + kPP * conjugate(kSS))/(cplx 2.0)
-                        (-complexI/(cplx 2.0)) * (kSS * conjugate(kPP) + kSP * conjugate(kPS) - kPS * conjugate(kSP) - kPP * conjugate(kSS))
+                        (kPS * conjugate(kPP) + kPP * conjugate(kPS) + kSS * conjugate(kSP) + kSP * conjugate(kSS))/(Complex.ofReal 2.0)
+                        (-(kPS * conjugate(kPP)) - kPP * conjugate(kPS) + kSS * conjugate(kSP) + kSP * conjugate(kSS))/(Complex.ofReal 2.0)
+                        (kSS * conjugate(kPP) + kSP * conjugate(kPS) + kPS * conjugate(kSP) + kPP * conjugate(kSS))/(Complex.ofReal 2.0)
+                        (-complexI/(Complex.ofReal 2.0)) * (kSS * conjugate(kPP) + kSP * conjugate(kPS) - kPS * conjugate(kSP) - kPP * conjugate(kSS))
                     ]
                     [
-                        (complexI/(cplx 2.0)) * (kPS * conjugate(kPP) - kPP * conjugate(kPS) + kSS * conjugate(kSP) - kSP * conjugate(kSS))
-                        (-complexI/(cplx 2.0)) * (kPS * conjugate(kPP) - kPP * conjugate(kPS) - kSS * conjugate(kSP) + kSP * conjugate(kSS))
-                        (complexI/(cplx 2.0)) * (kSS * conjugate(kPP) - kSP * conjugate(kPS) + kPS * conjugate(kSP) - kPP * conjugate(kSS))
-                        (kSS * conjugate(kPP) - kSP * conjugate(kPS) - kPS * conjugate(kSP) + kPP * conjugate(kSS))/(cplx 2.0)
+                        (complexI/(Complex.ofReal 2.0)) * (kPS * conjugate(kPP) - kPP * conjugate(kPS) + kSS * conjugate(kSP) - kSP * conjugate(kSS))
+                        (-complexI/(Complex.ofReal 2.0)) * (kPS * conjugate(kPP) - kPP * conjugate(kPS) - kSS * conjugate(kSP) + kSP * conjugate(kSS))
+                        (complexI/(Complex.ofReal 2.0)) * (kSS * conjugate(kPP) - kSP * conjugate(kPS) + kPS * conjugate(kSP) - kPP * conjugate(kSS))
+                        (kSS * conjugate(kPP) - kSP * conjugate(kPS) - kPS * conjugate(kSP) + kPP * conjugate(kSS))/(Complex.ofReal 2.0)
                     ]
                 ]
 

@@ -50,7 +50,7 @@ type MuellerInverseTests() =
 
     /// Radians per degree, reached by its full module path (mirrors `MuellerReconstructionTests`). Bound
     /// here, ahead of the members (FS0960: in a class type every `let` binding precedes the first member).
-    let degree = Berreman.MathNetNumericsMath.degree
+    let degree = Angle.radiansPerDegree
 
     // =================================================================================================
     // Ground truth: quartz at 632.8 nm.
@@ -125,7 +125,7 @@ type MuellerInverseTests() =
     /// closed-form analytic inversion is used for starting values rather than as the reported answer.
     /// At quartz's ~4.55 % surface reflectance the second transmitted beam carries only ~0.2 % of the
     /// first, so the effect is small but real.
-    let solverParameters : SolverParameters = { numberOfReflections = 3 }
+    let solverParameters : SolverParameters = { numberOfReflections = NumberOfReflections 3 }
 
     /// The real Berreman-backed forward model, wired once for the whole class.
     let forward = createBerremanForward buildUniaxialGyrotropic solverParameters
@@ -381,13 +381,13 @@ type MuellerInverseTests() =
         // components OPPOSITELY. The forward-model fact below measures the engine's own law exactly and
         // documents the gap; nothing in this suite uses this function to predict the engine.
         let atAxis = gyrationProjection Angle.zero quartzG11 quartzG33
-        let acrossAxis = gyrationProjection (Angle.degree 90.0) quartzG11 quartzG33
+        let acrossAxis = gyrationProjection (Angle.degree 90.0<Berreman.Constants.deg>) quartzG11 quartzG33
         Assert.True(abs (atAxis.value - quartzG33.value) < allowedDiff, $"G(0) = {atAxis.value}")
         Assert.True(abs (acrossAxis.value - quartzG11.value) < allowedDiff, $"G(90) = {acrossAxis.value}")
 
         // At 45 deg the two contribute equally — the only angle at which a single measurement constrains
         // their SUM but neither individually.
-        let atHalf = gyrationProjection (Angle.degree 45.0) quartzG11 quartzG33
+        let atHalf = gyrationProjection (Angle.degree 45.0<Berreman.Constants.deg>) quartzG11 quartzG33
         let expectedHalf = 0.5 * (quartzG11.value + quartzG33.value)
         Assert.True(abs (atHalf.value - expectedHalf) < allowedDiff, $"G(45) = {atHalf.value}")
 
@@ -397,7 +397,7 @@ type MuellerInverseTests() =
         // However far a z-cut plate is tilted, the internal angle saturates at arcsin(1/n_o) = 40.41 deg,
         // where sin^2 t = 0.42 — so g11 can never carry more than 42 % of the projection weight from a
         // z-cut sample. This fact is the quantitative justification for C3 and C4 existing.
-        let grazing = internalAngle quartzOrdinaryIndex (Angle.degree 89.0 |> IncidenceAngle.create)
+        let grazing = internalAngle quartzOrdinaryIndex (Angle.degree 89.0<Berreman.Constants.deg> |> IncidenceAngle.create)
         let expectedCap = asin (1.0 / quartzOrdinaryIndex.value) / degree
         Assert.True(grazing.degrees < expectedCap + 1.0e-9, $"internal angle at grazing = {grazing.degrees}")
         Assert.True(grazing.degrees > expectedCap - 0.1, $"internal angle at grazing = {grazing.degrees}, cap = {expectedCap}")
@@ -518,7 +518,7 @@ type MuellerInverseTests() =
         assertMuellerEqual (retarderMueller Angle.zero lb) (muellerOfBirefringence lb zero zero)
 
         // A pure linear retardance with fast axis at 45 deg IS retarderMueller at azimuth 45.
-        assertMuellerEqual (retarderMueller (Angle.degree 45.0) lb) (muellerOfBirefringence zero lb zero)
+        assertMuellerEqual (retarderMueller (Angle.degree 45.0<Berreman.Constants.deg>) lb) (muellerOfBirefringence zero lb zero)
 
         // A pure circular retardance of cb IS the Stokes frame rotation through cb / 2: an optical rotator
         // turns the polarization azimuth by half its circular retardance.

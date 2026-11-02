@@ -31,8 +31,8 @@ module PolarizationPlotTests =
     /// Off-normal, 45°-polarized incidence so the reflected field carries both s and
     /// p amplitudes — a non-degenerate ellipse with a non-trivial azimuth.
     let private light =
-        { IncidentLightInfo.createInclined (WaveLength.nm 600.0<nm>) (Angle.degree 50.0 |> IncidenceAngle) with
-            polarization = Polarization.create (Angle.degree 45.0) }
+        { IncidentLightInfo.createInclined (WaveLength.nm 600.0<nm>) (Angle.degree 50.0<deg> |> IncidenceAngle) with
+            polarization = Polarization.create (Angle.degree 45.0<deg>) }
 
     let private solution = OpticalSystemSolver(light, system).solution
 
@@ -44,17 +44,17 @@ module PolarizationPlotTests =
     let ``AC-H7 ellipse semi-axes and orientation match ellipticityR and azimuthR`` () =
         let em = solution.emSys
         let n = 360
-        let curve = PolarizationPlots.ellipseCurve n em.ellipticityR em.azimuthR
+        let curve = PolarizationPlots.ellipseCurve n em.ellipticityR.value em.azimuthR.value
         let radii = curve |> Array.map (fun (x, y) -> sqrt (x * x + y * y))
 
         // Semi-major axis is 1 along the principal direction; semi-minor is |ellipticityR|.
         Assert.Equal(1.0, Array.max radii, 6)
-        Assert.Equal(abs em.ellipticityR, Array.min radii, 6)
+        Assert.Equal(abs em.ellipticityR.value, Array.min radii, 6)
 
         // The major-axis point lies along the azimuth (mod π).
         let i = radii |> Array.findIndex (fun r -> r = Array.max radii)
         let (mx, my) = curve.[i]
-        Assert.Equal(normPi em.azimuthR, normPi (atan2 my mx), 4)
+        Assert.Equal(normPi em.azimuthR.value, normPi (atan2 my mx), 4)
 
     // ----------------------------------------------------------------- Poincaré
 

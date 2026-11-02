@@ -94,29 +94,29 @@ module Variables =
 
         member this.plotValue i =
             match this with
-            | IncidenceAngleRange _ -> (this.value i) |> toDegree
-            | PolarizationRange _ -> (this.value i) |> toDegree
+            | IncidenceAngleRange _ -> (this.value i) |> Angle.radiansToDegrees
+            | PolarizationRange _ -> (this.value i) |> Angle.radiansToDegrees
             | EllipticityRange _ -> this.value i
             | WaveLengthRange _ -> (this.value i) |> toNanometers
-            | WedgeAngleRange _ -> (this.value i) |> toDegree
+            | WedgeAngleRange _ -> (this.value i) |> Angle.radiansToDegrees
             | ArbitraryVariableRange v -> (this.value i) * v.scale
 
         member this.plotMinValue =
             match this with
-            | IncidenceAngleRange r -> r.startValue.value |> toDegree
-            | PolarizationRange r -> r.startValue.value |> toDegree
+            | IncidenceAngleRange r -> r.startValue.value |> Angle.radiansToDegrees
+            | PolarizationRange r -> r.startValue.value |> Angle.radiansToDegrees
             | EllipticityRange r -> r.startValue.value
             | WaveLengthRange r -> r.startValue.value / 1.0<meter> |> toNanometers
-            | WedgeAngleRange r -> r.startValue.value |> toDegree
+            | WedgeAngleRange r -> r.startValue.value |> Angle.radiansToDegrees
             | ArbitraryVariableRange v -> v.range.startValue * v.scale
 
         member this.plotMaxValue =
             match this with
-            | IncidenceAngleRange r -> r.endValue.value |> toDegree
-            | PolarizationRange r -> r.endValue.value |> toDegree
+            | IncidenceAngleRange r -> r.endValue.value |> Angle.radiansToDegrees
+            | PolarizationRange r -> r.endValue.value |> Angle.radiansToDegrees
             | EllipticityRange r -> r.endValue.value
             | WaveLengthRange r -> r.endValue.value / 1.0<meter> |> toNanometers
-            | WedgeAngleRange r -> r.endValue.value |> toDegree
+            | WedgeAngleRange r -> r.endValue.value |> Angle.radiansToDegrees
             | ArbitraryVariableRange v -> v.range.endValue * v.scale
 
         member this.plotPoints = [| for i in 0..this.length -> this.plotValue i |]
@@ -230,7 +230,7 @@ module Variables =
 
         member private this.toFullDescription light =
             match this.opticalSystem.description with
-            | Some d -> d + lineBrake + light + lineBrake
+            | Some (OpticalSystemDescription d) -> d + lineBrake + light + lineBrake
             | None -> light + lineBrake
 
         member this.getDescription (x : RangedVariable) =

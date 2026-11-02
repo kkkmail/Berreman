@@ -99,7 +99,7 @@ type BiaxialInverseTests() =
 
     /// Radians per degree, reached by its full module path. Bound here, ahead of the members (FS0960: in
     /// a class type every `let` binding precedes the first member).
-    let degree = Berreman.MathNetNumericsMath.degree
+    let degree = Angle.radiansPerDegree
 
     // =================================================================================================
     // The ground truth — the LBO-anchored triclinic constants, the nine-parameter record, the tensor
@@ -468,7 +468,7 @@ type BiaxialInverseTests() =
         // Snell's law answers it. However far a plate is tilted, its internal angle saturates at
         // arcsin(1/n) — and the answer differs by cut, which is the point.
         let fromLargest = opticAxisFromLargest triclinic
-        let fromSmallest = Angle.degree 90.0 - fromLargest
+        let fromSmallest = Angle.degree 90.0<Berreman.Constants.deg> - fromLargest
         let cap = asin (1.0 / index2.value) / degree
 
         // Pinned per the spec §9 protocol from the computed geometry of this material.

@@ -1,5 +1,6 @@
 ﻿namespace BerremanTests
 
+open System.Numerics
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
@@ -52,7 +53,7 @@ type BerremanMatrixTests() =
                         mu = Mu.vacuum
                         rho = Rho.vacuum
                     }
-                n1SinFita = N1SinFita.create RefractionIndex.vacuum (Angle.degree 19.0 |> IncidenceAngle)
+                n1SinFita = N1SinFita.create RefractionIndex.vacuum (Angle.degree 19.0<Berreman.Constants.deg> |> IncidenceAngle)
 
                 expected =
                     [
@@ -70,9 +71,9 @@ type BerremanMatrixTests() =
                     {
                         eps =
                             [
-                                [ createComplex 2.2108445373965475 0.003606762657455528; createComplex 0.3917972387692459 -0.0008306597873681838; createComplex -0.33546707028271566 -0.0003185282981231219 ]
-                                [ createComplex 0.391797238769246 -0.0008306597873681833; createComplex 2.516781571187761 0.00448394268988372; createComplex -0.20562344050069822 0.0014226568145231013 ]
-                                [ createComplex -0.335467070282716 -0.0003185282981231219; createComplex -0.20562344050069867 0.0014226568145231018; createComplex 2.8990427550750897 0.005012161886697677 ]
+                                [ Complex.create 2.2108445373965475 0.003606762657455528; Complex.create 0.3917972387692459 -0.0008306597873681838; Complex.create -0.33546707028271566 -0.0003185282981231219 ]
+                                [ Complex.create 0.391797238769246 -0.0008306597873681833; Complex.create 2.516781571187761 0.00448394268988372; Complex.create -0.20562344050069822 0.0014226568145231013 ]
+                                [ Complex.create -0.335467070282716 -0.0003185282981231219; Complex.create -0.20562344050069867 0.0014226568145231018; Complex.create 2.8990427550750897 0.005012161886697677 ]
                             ]
                             |> Eps.create
                         mu =
@@ -90,14 +91,14 @@ type BerremanMatrixTests() =
                             ]
                             |> Rho.fromIm
                     }
-                n1SinFita = N1SinFita.create RefractionIndex.vacuum (Angle.degree 48.0 |> IncidenceAngle)
+                n1SinFita = N1SinFita.create RefractionIndex.vacuum (Angle.degree 48.0<Berreman.Constants.deg> |> IncidenceAngle)
 
                 expected =
                     [
-                        [ createComplex 0.08607659694417036 -0.062090983572361515; createComplex 0.8023304210318745 0.0003308095002124304; createComplex 0.032507755412372545 0.049696580383995735; createComplex -0.0042586087374033525 0.0010791503454091623 ]
-                        [ createComplex 2.1720091877851124 0.003600217346427447; createComplex 0.08607692385187013 0.06195635462385157; createComplex 0.3679911503054432 -0.0035567207129593463; createComplex -3.8049089780536243e-7 -0.0003420710009216313 ]
-                        [ createComplex 3.804908978053343e-7 0.0003420710009216352; createComplex -0.004262348475787381 -0.0010791594262887678; createComplex 0.010541847320044062 0.06202400235029927; createComplex 0.9925726484666699 1.056931983087678e-8 ]
-                        [ createComplex 0.368001567690997 0.002262161392498498; createComplex 0.032458779443745804 -0.05061046848984253; createComplex 1.9828552540134243 0.004713119655511653; createComplex 0.010536682326775926 -0.062023712974967664 ]
+                        [ Complex.create 0.08607659694417036 -0.062090983572361515; Complex.create 0.8023304210318745 0.0003308095002124304; Complex.create 0.032507755412372545 0.049696580383995735; Complex.create -0.0042586087374033525 0.0010791503454091623 ]
+                        [ Complex.create 2.1720091877851124 0.003600217346427447; Complex.create 0.08607692385187013 0.06195635462385157; Complex.create 0.3679911503054432 -0.0035567207129593463; Complex.create -3.8049089780536243e-7 -0.0003420710009216313 ]
+                        [ Complex.create 3.804908978053343e-7 0.0003420710009216352; Complex.create -0.004262348475787381 -0.0010791594262887678; Complex.create 0.010541847320044062 0.06202400235029927; Complex.create 0.9925726484666699 1.056931983087678e-8 ]
+                        [ Complex.create 0.368001567690997 0.002262161392498498; Complex.create 0.032458779443745804 -0.05061046848984253; Complex.create 1.9828552540134243 0.004713119655511653; Complex.create 0.010536682326775926 -0.062023712974967664 ]
                     ]
                     |> ComplexMatrix.create
             }

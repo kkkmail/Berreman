@@ -391,7 +391,7 @@ module Placement =
     /// catalogue -> domain mapping stays a total, pure function.
     let private placeholderSampleSystem : OpticalSystem =
         {
-            description = Some "Placeholder vacuum sample (Spec 0026 A.5.2; material bound via valueId in Part F)"
+            description = Some (OpticalSystemDescription "Placeholder vacuum sample (Spec 0026 A.5.2; material bound via valueId in Part F)")
             upper = OpticalProperties.vacuum
             films = []
             substrate = None

@@ -25,8 +25,8 @@ type AnalysisFunctionsTests() =
     let tol = 1.0e-9
 
     let info =
-        { light600nmInclinedDegreeLPs 19.0 with
-            polarization = Angle.degree 27.0 |> Polarization
+        { light600nmInclinedDegreeLPs 19.0<deg> with
+            polarization = Angle.degree 27.0<deg> |> Polarization
             ellipticity = Ellipticity 0.58 }
 
     let baseSolution () =
@@ -38,8 +38,8 @@ type AnalysisFunctionsTests() =
     member _.``AC-F1 absorptance equals 1 - R - T from Solution.func`` () =
         let sol = baseSolution ()
         let a = absorptance sol
-        let r = sol.func R |> Option.defaultValue 0.0
-        let t = sol.func T |> Option.defaultValue 0.0
+        let r = sol.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
+        let t = sol.func T |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
         Assert.True(abs (a - (1.0 - r - t)) < tol, $"A={a}, 1-R-T={1.0 - r - t}")
 
     /// AC-F4: `degreeOfPolarization` returns √(s1²+s2²+s3²)/s0 from the reflected
@@ -51,7 +51,7 @@ type AnalysisFunctionsTests() =
 
         let (StokesVector v) = sol.stokesR
         let manual =
-            if abs v.[0] < almostZero then 0.0
+            if abs v.[0] < almostZero.value then 0.0
             else sqrt (v.[1] * v.[1] + v.[2] * v.[2] + v.[3] * v.[3]) / v.[0]
 
         Assert.True(abs (dop - manual) < tol, $"dop={dop}, manual={manual}")
@@ -83,10 +83,10 @@ type AnalysisFunctionsTests() =
     /// substrate without altering any other threshold.
     [<Fact>]
     member _.``AC-F9 default numberOfReflections is 3 and caller value threads through`` () =
-        Assert.Equal(3, SolverParameters.defaultValue.numberOfReflections)
+        Assert.Equal(3, SolverParameters.defaultValue.numberOfReflections.value)
 
         let plateSys = OpticalSystem.biaxialCrystalSubstrateSystem (Thickness.nm 1000.0<nm>)
-        let custom = { numberOfReflections = 5 }
+        let custom = { numberOfReflections = NumberOfReflections 5 }
         let sol = OpticalSystemSolver(info, plateSys, custom).solution
 
         match sol with
@@ -128,8 +128,8 @@ type AnalysisFunctionsTests() =
         Array.iter2
             (fun (k1 : float, s1 : Solution) (k2 : float, s2 : Solution) ->
                 Assert.True(abs (k1 - k2) < tol, $"key mismatch {k1} vs {k2}")
-                let r1 = s1.func R |> Option.defaultValue 0.0
-                let r2 = s2.func R |> Option.defaultValue 0.0
+                let r1 = s1.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
+                let r2 = s2.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
                 Assert.True(abs (r1 - r2) < tol, $"R mismatch {r1} vs {r2}"))
             sweep
             restored

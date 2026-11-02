@@ -49,7 +49,7 @@ module RepeatBuilderTests =
         // straight into the engine `OpticalSystem.films` field (Media.fs:98).
         let sys : OpticalSystem =
             {
-                description = Some "DBR"
+                description = Some (OpticalSystemDescription "DBR")
                 upper = OpticalProperties.vacuum
                 films = films
                 substrate = None

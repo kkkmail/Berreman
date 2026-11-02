@@ -18,7 +18,7 @@ open OpticalConstructor.Domain.LibraryFacets
 /// seeded preset with every seeded sample `UserManaged`; and the polarizer-category facet.
 module PolarizerBehaviorTests =
 
-    let private deg (d : float) : Angle = Angle.degree d
+    let private deg (d : float) : Angle = Angle.degree (d * 1.0<Berreman.Constants.deg>)
 
     /// The reference-orientation ideal LP (θ = 0) every compound test builds components from.
     let private lp0 : MuellerMatrix = analyzerMueller IdealLinear (deg 0.0)

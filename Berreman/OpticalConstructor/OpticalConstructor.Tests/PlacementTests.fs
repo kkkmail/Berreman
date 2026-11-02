@@ -78,18 +78,18 @@ module PlacementTests =
     let ``A45 a locked rotation ignores a change request and an unlocked one applies it`` () =
         let p = ElementPlacement.create Lens TablePoint.origin
         // R3 starts locked (A.1.2), so `withR3` is inert.
-        let stillZero = withR3 (Angle.degree 30.0) p
+        let stillZero = withR3 (Angle.degree 30.0<deg>) p
         Assert.True(close stillZero.r3.degrees 0.0, $"locked R3 changed to {stillZero.r3.degrees} deg")
         // Once unlocked, the change applies.
-        let changed = p |> setR3Locked false |> withR3 (Angle.degree 30.0)
+        let changed = p |> setR3Locked false |> withR3 (Angle.degree 30.0<deg>)
         Assert.True(close changed.r3.degrees 30.0, $"unlocked R3 = {changed.r3.degrees} deg")
 
     // --- AC-A3: r2 + R2 additivity -----------------------------------------
 
     [<Fact>]
     let ``AC-A3 the table-frame orientation is the incident-ray angle plus the element's own R2`` () =
-        let incident = Angle.degree 20.0
-        let ownR2 = Angle.degree 15.0
+        let incident = Angle.degree 20.0<deg>
+        let ownR2 = Angle.degree 15.0<deg>
         let result = tableFrameOrientation incident ownR2
         Assert.True(close result.degrees 35.0, $"expected 35 deg, got {result.degrees}")
 
@@ -103,7 +103,7 @@ module PlacementTests =
         // Setting R3 != 0 tips N1 out of the table plane: the dot is no longer ~0
         // (the basis is no longer a fixed orthogonal triad — A.4.4). The record is
         // copied directly to prove the geometry math independent of the lock.
-        let tilted = { p with r3 = Angle.degree 30.0 }
+        let tilted = { p with r3 = Angle.degree 30.0<deg> }
         let dotted = (r1Axis tilted).dot r2Axis
         Assert.True(abs dotted > 1.0e-6, $"expected R1 not perpendicular to R2, got dot = {dotted}")
 
@@ -180,7 +180,7 @@ module PlacementTests =
         let placement =
             ElementPlacement.create CircularPolarizer { x = 0.01<meter>; y = -0.02<meter> }
             |> setR2Locked false
-            |> withR2 (Angle.degree 12.0)
+            |> withR2 (Angle.degree 12.0<deg>)
         let project : OpticalConstructorProject =
             { beamTree = { root = rootNode }; systems = [ vacuumSystem ]; sources = []; placements = [ placement ]; table = OpticalConstructor.Domain.Table.defaultTable }
         // serialize -> validate-on-load -> bind. validate-on-load runs the published

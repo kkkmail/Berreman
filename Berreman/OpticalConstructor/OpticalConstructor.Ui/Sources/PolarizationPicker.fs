@@ -53,7 +53,7 @@ let applyPreset (preset : PolarizationPreset) (s : SourceSpec) : SourceSpec =
     match preset with
     | PresetS -> linear Polarization.s
     | PresetP -> linear Polarization.p
-    | Preset45 -> linear (Polarization.create (Angle.degree 45.0))
+    | Preset45 -> linear (Polarization.create (Angle.degree 45.0<Berreman.Constants.deg>))
     | PresetRCP -> circular 1.0
     | PresetLCP -> circular -1.0
     | PresetUnpolarized -> { s with coherence = Unpolarized }

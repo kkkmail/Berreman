@@ -15,7 +15,7 @@ open OpticalConstructor.Storage
 module ExperimentRunTests =
 
     let private tol = 1.0e-12
-    let private lp (deg : float) : RunStep = PolarizerStep (ComputedIdeal IdealLinear, Angle.degree deg)
+    let private lp (deg : float) : RunStep = PolarizerStep (ComputedIdeal IdealLinear, Angle.degree (deg * 1.0<deg>))
     let private clear : RunStep = SampleStep Propagation.identityMueller
 
     let private intensityOf (steps : RunStep list) : float =

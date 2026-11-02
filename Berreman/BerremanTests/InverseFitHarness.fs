@@ -132,7 +132,7 @@ type AngleUncertainty =
     member this.degrees = let (AngleUncertainty a) = this in a.degrees
 
     /// Build an `AngleUncertainty` from a value given in degrees.
-    static member degree (d : double) : AngleUncertainty = Angle.degree d |> AngleUncertainty
+    static member degree (d : double) : AngleUncertainty = Angle.degree (d * 1.0<Berreman.Constants.deg>) |> AngleUncertainty
 
 /// The half-width of the uniform distribution the DETECTOR's error on one NORMALIZED Mueller element is
 /// drawn from. Normalized elements are bounded by 1, so this is directly a fraction of full scale: 0.005
@@ -315,7 +315,7 @@ module InverseFitHarness =
         {
             cut = cut
             thickness = thickness
-            incidenceAngle = Angle.degree incidenceDeg |> IncidenceAngle.create
+            incidenceAngle = Angle.degree (incidenceDeg * 1.0<Berreman.Constants.deg>) |> IncidenceAngle.create
             azimuth = SampleAzimuth.degree azimuthDeg
             observable = observable
             waveLength = waveLength
@@ -537,7 +537,7 @@ module InverseFitHarness =
     /// come back as ~89.8 deg rather than as a plate tilted 0.2 deg the other way. A signed excursion is
     /// the physically correct object here, and the operator is the seam that preserves it.
     let disturb (draws : UniformDeviateProvider) (noise : NoiseParam) (c : MeasurementConfiguration) : MeasurementConfiguration =
-        let wobble () = noise.rotation.value * draws.nextDeviate () |> Angle.radian
+        let wobble () = noise.rotation.value * draws.nextDeviate () |> Angle
         {
             c with
                 incidenceAngle = c.incidenceAngle + wobble ()

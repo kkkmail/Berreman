@@ -704,13 +704,13 @@ let private indexFieldsRow (m : Model) (dispatch : Msg -> unit) : IView =
             let im = index.value.Imaginary
             [
                 labelled label (numberBox (UiIds.MaterialEditor.indexBox number) 70.0 re (fun v ->
-                    dispatch (EditorMsg (SetPrincipalIndex (slot, ComplexRefractionIndex (createComplex v im))))))
+                    dispatch (EditorMsg (SetPrincipalIndex (slot, ComplexRefractionIndex (System.Numerics.Complex.create v im))))))
             ]
             @ (match m.editor.transparency with
                | Absorbing ->
                    [
                        labelled $"k%d{number}:" (numberBox (UiIds.MaterialEditor.absorptionBox number) 70.0 im (fun v ->
-                           dispatch (EditorMsg (SetPrincipalIndex (slot, ComplexRefractionIndex (createComplex re v))))))
+                           dispatch (EditorMsg (SetPrincipalIndex (slot, ComplexRefractionIndex (System.Numerics.Complex.create re v))))))
                    ]
                | Transparent -> []))
     WrapPanel.create [
@@ -738,14 +738,14 @@ let private paramBoxWithUnit (autoId : string) (p : ModelParameter) (onCommit : 
 /// use edits it. The component is a single REAL formula, so the k slot is the empty
 /// formula — it contributes no boxes, and only the n formula's term scalars are exposed.
 let private formulaAsModel (formula : DispersionFormula) : DispersionModel =
-    SumOfTerms (RealNK (formula, { terms = []; wavelengthScale = formula.wavelengthScale }))
+    SumOfTerms (RealNK { nFormula = formula; kFormula = { terms = []; wavelengthScale = formula.wavelengthScale } })
 
 /// Read the edited scalar formula back out of a wrapped component model (the n slot).
 /// `formulaAsModel` always builds `RealNK`, so the fallback is unreachable — it keeps
 /// the prior formula rather than throwing.
 let private formulaOfModel (fallback : DispersionFormula) (model : DispersionModel) : DispersionFormula =
     match model with
-    | SumOfTerms (RealNK (n, _)) -> n
+    | SumOfTerms (RealNK nk) -> nk.nFormula
     | _ -> fallback
 
 /// One scalar component's dispersion-formula coefficient editor (spec 0035 step 011 —

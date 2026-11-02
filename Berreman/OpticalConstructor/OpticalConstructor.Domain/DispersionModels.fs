@@ -268,17 +268,17 @@ module DispersionModels =
         |> List.mapi (fun j t ->
             let onTerm (g : ComplexDispersionTerm -> ComplexDispersionTerm) = rebuild { f with terms = setCTermAt j g f.terms }
             [
-                mkParam $"{prefix}t{j}mulR" $"{prefix} t{j + 1} mult re" "" t.multiplier.Real (fun v -> onTerm (fun t -> { t with multiplier = createComplex v t.multiplier.Imaginary }))
-                mkParam $"{prefix}t{j}mulI" $"{prefix} t{j + 1} mult im" "" t.multiplier.Imaginary (fun v -> onTerm (fun t -> { t with multiplier = createComplex t.multiplier.Real v }))
-                mkParam $"{prefix}t{j}lamR" $"{prefix} t{j + 1} λ0 re" "nm" t.lambda.Real (fun v -> onTerm (fun t -> { t with lambda = createComplex v t.lambda.Imaginary }))
+                mkParam $"{prefix}t{j}mulR" $"{prefix} t{j + 1} mult re" "" t.multiplier.Real (fun v -> onTerm (fun t -> { t with multiplier = Complex.create v t.multiplier.Imaginary }))
+                mkParam $"{prefix}t{j}mulI" $"{prefix} t{j + 1} mult im" "" t.multiplier.Imaginary (fun v -> onTerm (fun t -> { t with multiplier = Complex.create t.multiplier.Real v }))
+                mkParam $"{prefix}t{j}lamR" $"{prefix} t{j + 1} λ0 re" "nm" t.lambda.Real (fun v -> onTerm (fun t -> { t with lambda = Complex.create v t.lambda.Imaginary }))
                 mkParam $"{prefix}t{j}pow" $"{prefix} t{j + 1} power" "" (float t.power) (fun v -> onTerm (fun t -> { t with power = int (round v) }))
             ]
             @ (t.coefficients
                |> Array.toList
                |> List.mapi (fun k ck ->
                    [
-                       mkParam $"{prefix}t{j}c{k}R" $"{prefix} t{j + 1} c{k} re" "" ck.Real (fun v -> onTerm (fun t -> { t with coefficients = setArrayAt k (createComplex v t.coefficients.[k].Imaginary) t.coefficients }))
-                       mkParam $"{prefix}t{j}c{k}I" $"{prefix} t{j + 1} c{k} im" "" ck.Imaginary (fun v -> onTerm (fun t -> { t with coefficients = setArrayAt k (createComplex t.coefficients.[k].Real v) t.coefficients }))
+                       mkParam $"{prefix}t{j}c{k}R" $"{prefix} t{j + 1} c{k} re" "" ck.Real (fun v -> onTerm (fun t -> { t with coefficients = setArrayAt k (Complex.create v t.coefficients.[k].Imaginary) t.coefficients }))
+                       mkParam $"{prefix}t{j}c{k}I" $"{prefix} t{j + 1} c{k} im" "" ck.Imaginary (fun v -> onTerm (fun t -> { t with coefficients = setArrayAt k (Complex.create t.coefficients.[k].Real v) t.coefficients }))
                    ])
                |> List.concat))
         |> List.concat
@@ -359,9 +359,9 @@ module DispersionModels =
             @ listParams "sig" "sigma" un c.broadening (fun xs -> BrendelBormann { c with broadening = xs })
         | SumOfTerms axis ->
             match axis with
-            | RealNK (nF, kF) ->
-                realFormulaParams "n" nF (fun f -> SumOfTerms (RealNK (f, kF)))
-                @ realFormulaParams "k" kF (fun f -> SumOfTerms (RealNK (nF, f)))
+            | RealNK nk ->
+                realFormulaParams "n" nk.nFormula (fun f -> SumOfTerms (RealNK { nk with nFormula = f }))
+                @ realFormulaParams "k" nk.kFormula (fun f -> SumOfTerms (RealNK { nk with kFormula = f }))
             | ComplexEps cF ->
                 complexFormulaParams "eps" cF (fun f -> SumOfTerms (ComplexEps f))
             // The evaluated case (a transcendental model lowered to its closure)
@@ -399,11 +399,11 @@ module DispersionModels =
     /// `baseIndex` has Im ≥ 0 (α is the principal root of E² + i·Γ·E), so the
     /// half-plane restriction is safe by construction.
     let private faddeeva (z : Complex) : Complex =
-        let l = createComplex faddeevaScale 0.0
-        let iz = createComplex 0.0 1.0 * z
+        let l = Complex.create faddeevaScale 0.0
+        let iz = Complex.create 0.0 1.0 * z
         let ratio = (l + iz) / (l - iz)
-        let p = Array.foldBack (fun a acc -> acc * ratio + createComplex a 0.0) faddeevaCoefficients Complex.Zero
-        createComplex 2.0 0.0 * p / ((l - iz) * (l - iz)) + createComplex (1.0 / sqrt System.Math.PI) 0.0 / (l - iz)
+        let p = Array.foldBack (fun a acc -> acc * ratio + Complex.create a 0.0) faddeevaCoefficients Complex.Zero
+        Complex.create 2.0 0.0 * p / ((l - iz) * (l - iz)) + Complex.create (1.0 / sqrt System.Math.PI) 0.0 / (l - iz)
 
     /// The isothermal complex index at the reference temperature: the analytic
     /// formula evaluated against the model's abscissa (λ for Sellmeier/Cauchy in
@@ -416,10 +416,10 @@ module DispersionModels =
         | Sellmeier c ->
             let lam2 = x * x
             let s = List.map2 (fun b ci -> b * lam2 / (lam2 - ci)) c.b c.c |> List.sum
-            createComplex (sqrt (1.0 + s)) 0.0
+            Complex.create (sqrt (1.0 + s)) 0.0
         | Cauchy c ->
             let n = c.a + c.b / (x * x) + c.c / (x * x * x * x)
-            createComplex n 0.0
+            Complex.create n 0.0
         | Lorentz c ->
             let eps =
                 List.map3 (fun s r d -> Complex(s, 0.0) / Complex(r * r - x * x, -d * x)) c.strength c.resonance c.damping
@@ -445,22 +445,22 @@ module DispersionModels =
             let denominator = x * x - c.b * x + c.c
             let n = c.nInf + (b0 * x + c0) / denominator
             let k = if x > c.bandGap then c.a * (x - c.bandGap) * (x - c.bandGap) / denominator else 0.0
-            createComplex n k
+            Complex.create n k
         | BrendelBormann c ->
             let wp2 = c.plasmaFrequency * c.plasmaFrequency
-            let intraband = createComplex (c.intrabandStrength * wp2) 0.0 / Complex(x * x, c.intrabandDamping * x)
+            let intraband = Complex.create (c.intrabandStrength * wp2) 0.0 / Complex(x * x, c.intrabandDamping * x)
             let oscillator (f : double) (r : double) (d : double) (s : double) : Complex =
                 let alpha = Complex.Sqrt (Complex(x * x, d * x))
-                let width = createComplex (sqrt 2.0 * s) 0.0
-                let za = (alpha - createComplex r 0.0) / width
-                let zb = (alpha + createComplex r 0.0) / width
-                createComplex 0.0 (sqrt System.Math.PI * f * wp2) / (createComplex 2.0 0.0 * alpha * width) * (faddeeva za + faddeeva zb)
+                let width = Complex.create (sqrt 2.0 * s) 0.0
+                let za = (alpha - Complex.create r 0.0) / width
+                let zb = (alpha + Complex.create r 0.0) / width
+                Complex.create 0.0 (sqrt System.Math.PI * f * wp2) / (Complex.create 2.0 0.0 * alpha * width) * (faddeeva za + faddeeva zb)
             let interband =
                 List.map2 (fun (f, r, d) s -> oscillator f r d s) (List.zip3 c.strength c.resonance c.damping) c.broadening
                 |> List.fold (+) Complex.Zero
             Complex.Sqrt (Complex.One - intraband + interband)
         | ConstantNK c ->
-            createComplex c.n c.k
+            Complex.create c.n c.k
         | SumOfTerms axis ->
             // Raw term data evaluates through its own complexIndex; each formula
             // carries its own wavelengthScale, so the reduced x above is unused.
@@ -479,7 +479,7 @@ module DispersionModels =
             fun w ->
                 let n0 = baseIndex model w
                 let dn = th.dndT * (t - th.referenceTemperature)
-                createComplex (n0.Real + float dn) n0.Imaginary |> ComplexRefractionIndex
+                Complex.create (n0.Real + float dn) n0.Imaginary |> ComplexRefractionIndex
 
     /// The §D.6 evaluation closure `WaveLength -> ComplexRefractionIndex` of exactly
     /// the shape `Silicon`/`Langasite` build by hand. With `thermoOptic = None` it is
@@ -524,7 +524,7 @@ module DispersionModels =
 
     /// The zero formula — the k of a transparent medium.
     let private zeroFormula (scale : double) : DispersionFormula =
-        { terms = []; wavelengthScale = scale }
+        { terms = []; wavelengthScale = scale * 1.0<Berreman.Constants.meter> }
 
     /// A real constant term c·x⁰.
     let private realConstTerm (c : double) : DispersionTerm =
@@ -608,21 +608,27 @@ module DispersionModels =
                 match abscissaKindOf c.wavelengthUnit with
                 | LinearInX scale -> scale
                 | ReciprocalInX (scale, _) -> scale
-            RealNK (
-                { terms = [ realConstTerm c.n ]; wavelengthScale = scale },
-                { terms = [ realConstTerm c.k ]; wavelengthScale = scale })
+            RealNK
+                {
+                    nFormula = { terms = [ realConstTerm c.n ]; wavelengthScale = scale * 1.0<Berreman.Constants.meter> }
+                    kFormula = { terms = [ realConstTerm c.k ]; wavelengthScale = scale * 1.0<Berreman.Constants.meter> }
+                }
         | Cauchy c ->
             match abscissaKindOf c.wavelengthUnit with
             | LinearInX scale ->
                 // n(x) = A + B·x⁻² + C·x⁻⁴ — a real Laurent polynomial.
-                RealNK (
-                    { terms = [ realConstTerm c.a; realInversePowerTerm c.b 2; realInversePowerTerm c.c 4 ]; wavelengthScale = scale },
-                    zeroFormula scale)
+                RealNK
+                    {
+                        nFormula = { terms = [ realConstTerm c.a; realInversePowerTerm c.b 2; realInversePowerTerm c.c 4 ]; wavelengthScale = scale * 1.0<Berreman.Constants.meter> }
+                        kFormula = zeroFormula scale
+                    }
             | ReciprocalInX (scale, k) ->
                 // abscissa = k/x: n = A + (B/k²)·x² + (C/k⁴)·x⁴ — a plain polynomial.
-                RealNK (
-                    { terms = [ { lambda = 0.0; coefficients = [| c.a; 0.0; c.b / (k * k); 0.0; c.c / (k * k * k * k) |]; power = 1; multiplier = 1.0 } ]; wavelengthScale = scale },
-                    zeroFormula scale)
+                RealNK
+                    {
+                        nFormula = { terms = [ { lambda = 0.0; coefficients = [| c.a; 0.0; c.b / (k * k); 0.0; c.c / (k * k * k * k) |]; power = 1; multiplier = 1.0 } ]; wavelengthScale = scale * 1.0<Berreman.Constants.meter> }
+                        kFormula = zeroFormula scale
+                    }
         | Sellmeier c ->
             match abscissaKindOf c.wavelengthUnit with
             | LinearInX scale ->
@@ -630,12 +636,12 @@ module DispersionModels =
                 let constant = complexConstTerm (Complex (1.0 + List.sum c.b, 0.0))
                 let oscillator (b : double) (ci : double) : ComplexDispersionTerm =
                     complexPolyTerm (Complex (b * ci, 0.0)) (-1) [| Complex (-ci, 0.0); Complex.Zero; Complex.One |]
-                ComplexEps { terms = constant :: List.map2 oscillator c.b c.c; wavelengthScale = scale }
+                ComplexEps { terms = constant :: List.map2 oscillator c.b c.c; wavelengthScale = scale * 1.0<Berreman.Constants.meter> }
             | ReciprocalInX (scale, k) ->
                 // abscissa = k/x: Bᵢ·a²/(a²−cᵢ) = Bᵢ·k²/(k² − cᵢ·x²) — one inverse term each.
                 let oscillator (b : double) (ci : double) : ComplexDispersionTerm =
                     complexPolyTerm (Complex (b * k * k, 0.0)) (-1) [| Complex (k * k, 0.0); Complex.Zero; Complex (-ci, 0.0) |]
-                ComplexEps { terms = complexConstTerm Complex.One :: List.map2 oscillator c.b c.c; wavelengthScale = scale }
+                ComplexEps { terms = complexConstTerm Complex.One :: List.map2 oscillator c.b c.c; wavelengthScale = scale * 1.0<Berreman.Constants.meter> }
         | Lorentz c ->
             let constant = complexConstTerm (Complex (c.epsInf, 0.0))
             match abscissaKindOf c.wavelengthUnit with
@@ -643,12 +649,12 @@ module DispersionModels =
                 // ε = ε∞ + Σ sⱼ/(rⱼ² − x² − i·dⱼ·x): one literal inverse term per oscillator.
                 let oscillator (s : double) (r : double) (d : double) : ComplexDispersionTerm =
                     complexPolyTerm (Complex (s, 0.0)) (-1) [| Complex (r * r, 0.0); Complex (0.0, -d); Complex (-1.0, 0.0) |]
-                ComplexEps { terms = constant :: List.map3 oscillator c.strength c.resonance c.damping; wavelengthScale = scale }
+                ComplexEps { terms = constant :: List.map3 oscillator c.strength c.resonance c.damping; wavelengthScale = scale * 1.0<Berreman.Constants.meter> }
             | ReciprocalInX (scale, k) ->
                 // abscissa = k/x: sⱼ/(rⱼ² − a² − i·dⱼ·a) = sⱼ·x²/(rⱼ²·x² − i·dⱼ·k·x − k²).
                 let oscillator (s : double) (r : double) (d : double) : ComplexDispersionTerm list =
                     rationalXSquaredTerms (Complex (s, 0.0)) (Complex (-k * k, 0.0)) (Complex (0.0, -d * k)) (Complex (r * r, 0.0))
-                ComplexEps { terms = constant :: (List.map3 oscillator c.strength c.resonance c.damping |> List.concat); wavelengthScale = scale }
+                ComplexEps { terms = constant :: (List.map3 oscillator c.strength c.resonance c.damping |> List.concat); wavelengthScale = scale * 1.0<Berreman.Constants.meter> }
         | Drude c ->
             let constant = complexConstTerm (Complex (c.epsInf, 0.0))
             let negPlasmaSq = Complex (-c.plasmaFrequency * c.plasmaFrequency, 0.0)
@@ -656,11 +662,11 @@ module DispersionModels =
             | LinearInX scale ->
                 // ε = ε∞ − ωp²/(x² + i·γ·x).
                 let free = complexPolyTerm negPlasmaSq (-1) [| Complex.Zero; Complex (0.0, c.dampingFrequency); Complex.One |]
-                ComplexEps { terms = [ constant; free ]; wavelengthScale = scale }
+                ComplexEps { terms = [ constant; free ]; wavelengthScale = scale * 1.0<Berreman.Constants.meter> }
             | ReciprocalInX (scale, k) ->
                 // abscissa = k/x: −ωp²/(a² + i·γ·a) = −ωp²·x²/(k² + i·γ·k·x).
                 let free = rationalXSquaredTerms negPlasmaSq (Complex (k * k, 0.0)) (Complex (0.0, c.dampingFrequency * k)) Complex.Zero
-                ComplexEps { terms = constant :: free; wavelengthScale = scale }
+                ComplexEps { terms = constant :: free; wavelengthScale = scale * 1.0<Berreman.Constants.meter> }
         // The transcendental models are not finite term sums (band-gap steps, exp,
         // the Faddeeva function), so they lower to the evaluated case: the SAME
         // `evaluate` closure the engine's `EpsWithDisp` case applies.
@@ -696,7 +702,7 @@ module DispersionModels =
     let toEpsValue (model : DispersionModel) : EpsWithDispValue =
         match model with
         | ConstantNK c ->
-            createComplex c.n c.k |> ComplexRefractionIndex |> IsotropicAbsorbing |> EpsWithoutDispValue
+            Complex.create c.n c.k |> ComplexRefractionIndex |> IsotropicAbsorbing |> EpsWithoutDispValue
         | _ ->
             EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = nominalInterval; dispersion = toEpsAxis model } ])
 

@@ -31,14 +31,14 @@ let g33MaxVal = 5.0e-04
 let thickness = Thickness.oneMilliMeter
 
 let numberOfPoints = 2000
-let polarization = 45.0 |> Angle.degree |> Polarization.create
+let polarization = 45.0<deg> |> Angle.degree |> Polarization.create
 //let polarization = Polarization.s
 
 let light = { light600nmNormalLPs with polarization = polarization }
-let d = $"Planar active crystal plate, r12 = %A{g12.value}, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
+let d = OpticalSystemDescription $"Planar active crystal plate, r12 = %A{g12.value}, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
 let dPlanar = $"Planar active crystal plate, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
-let dType3_4_6 = $"3, 4, 6 active crystal plate, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
-let dType32_42_62 = $"32, 42, 62 active crystal plate, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
+let dType3_4_6 = OpticalSystemDescription $"3, 4, 6 active crystal plate, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
+let dType32_42_62 = OpticalSystemDescription $"32, 42, 62 active crystal plate, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
 
 let planar = OpticalProperties.planarCrystal e11 e33 g12
 let type3_4_6 = OpticalProperties.type_3_4_6_Crystal e11 e33 g11 g33

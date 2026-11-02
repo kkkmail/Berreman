@@ -140,7 +140,7 @@ module Dispersion =
 
     type OpticalSystemWithDisp =
         {
-            description : string option
+            description : OpticalSystemDescription option
             upperWithDisp : OpticalPropertiesWithDisp
             filmsWithDisp : List<LayerWithDisp>
             substrateWithDisp : SubstrateWithDisp option
@@ -198,18 +198,11 @@ module Dispersion =
         }
 
 
-    /// Integer power over Complex by repeated multiplication (Complex does not
-    /// support pown); a negative exponent inverts, so a pole stays a pole —
-    /// no clamping.
-    let private complexPown (z : Complex) (n : int) : Complex =
-        let p = seq { 1 .. abs n } |> Seq.fold (fun acc _ -> acc * z) Complex.One
-        if n >= 0 then p else Complex.One / p
-
-
     /// One additive term of a real dispersion formula over the REDUCED
     /// wavelength x (the canonical wavelength divided by the owning formula's
     /// wavelengthScale): multiplier * (Σ_k coefficients.[k] * (x - lambda)^k) ^ power.
     /// A negative power expresses the inverse (Sellmeier / Laurent) shapes.
+    [<Softellect.Sys.NumericCarrier("the centre, the coefficients, the exponent and the multiplier of one term of a dispersion formula, evaluated at every wavelength of a sweep (R3; as STL's TaylorApproximation)")>]
     type DispersionTerm =
         {
             lambda : double
@@ -225,6 +218,15 @@ module Dispersion =
             this.multiplier * pown poly this.power
 
 
+    /// The value a real dispersion formula takes at one wavelength: an n, a k, a mu or a gyration component.
+    type DispersionValue =
+        | DispersionValue of float
+
+        member this.value = let (DispersionValue v) = this in v
+        member this.toMuValue : MuValue = let (DispersionValue v) = this in MuValue v
+        member this.toRhoValue : RhoValue = let (DispersionValue v) = this in RhoValue v
+
+
     /// A real-valued dispersion formula: the sum of its terms over the reduced
     /// wavelength. wavelengthScale is METRES PER COEFFICIENT UNIT (e.g. 1.0e-6
     /// for coefficients tabulated in µm): evaluate reduces the canonical
@@ -232,17 +234,18 @@ module Dispersion =
     type DispersionFormula =
         {
             terms : DispersionTerm list
-            wavelengthScale : double
+            wavelengthScale : float<meter>
         }
 
-        member this.evaluate (w : WaveLength) : double =
-            let x = w.value / (this.wavelengthScale * 1.0<meter>)
-            this.terms |> List.sumBy (fun t -> t.evaluate x)
+        member this.evaluate (w : WaveLength) : DispersionValue =
+            let x = w.value / this.wavelengthScale
+            this.terms |> List.sumBy (fun t -> t.evaluate x) |> DispersionValue
 
 
     /// Mirrors DispersionTerm over System.Numerics.Complex — used ONLY where a
     /// model is inherently complex (e.g. Lorentz / Drude ε). The exponent stays
     /// an integer; the value fields (lambda, coefficients, multiplier) are complex.
+    [<Softellect.Sys.NumericCarrier("the centre, the coefficients, the exponent and the multiplier of one complex term of a dispersion formula, evaluated at every wavelength of a sweep (R3; as STL's TaylorApproximation)")>]
     type ComplexDispersionTerm =
         {
             lambda : Complex
@@ -253,6 +256,12 @@ module Dispersion =
 
         /// Evaluates the term at the reduced wavelength x (already in coefficient units).
         member this.evaluate (x : double) : Complex =
+            // Integer power over Complex by repeated multiplication (Complex has no pown); a negative
+            // exponent inverts, so a pole stays a pole.
+            let complexPown (z : Complex) (n : int) : Complex =
+                let p = seq { 1 .. abs n } |> Seq.fold (fun acc _ -> acc * z) Complex.One
+                if n >= 0 then p else Complex.One / p
+
             let d = Complex (x, 0.0) - this.lambda
             let poly = Array.foldBack (fun c acc -> acc * d + c) this.coefficients Complex.Zero
             this.multiplier * complexPown poly this.power
@@ -263,11 +272,11 @@ module Dispersion =
     type ComplexDispersionFormula =
         {
             terms : ComplexDispersionTerm list
-            wavelengthScale : double
+            wavelengthScale : float<meter>
         }
 
         member this.evaluate (w : WaveLength) : Complex =
-            let x = w.value / (this.wavelengthScale * 1.0<meter>)
+            let x = w.value / this.wavelengthScale
             this.terms |> List.fold (fun acc t -> acc + t.evaluate x) Complex.Zero
 
 
@@ -278,6 +287,40 @@ module Dispersion =
     // ==========================================================================
 
 
+    /// The ordinary and extraordinary indices of a transparent uniaxial medium.
+    type UniaxialIndices =
+        {
+            ordinary : RefractionIndex
+            extraordinary : RefractionIndex
+        }
+
+
+    /// The ordinary and extraordinary indices of an absorbing uniaxial medium.
+    type UniaxialComplexIndices =
+        {
+            ordinaryComplex : ComplexRefractionIndex
+            extraordinaryComplex : ComplexRefractionIndex
+        }
+
+
+    /// The three principal indices of a transparent biaxial medium.
+    type BiaxialIndices =
+        {
+            nx : RefractionIndex
+            ny : RefractionIndex
+            nz : RefractionIndex
+        }
+
+
+    /// The three principal indices of an absorbing biaxial medium.
+    type BiaxialComplexIndices =
+        {
+            nxComplex : ComplexRefractionIndex
+            nyComplex : ComplexRefractionIndex
+            nzComplex : ComplexRefractionIndex
+        }
+
+
     /// A non-dispersive eps — a DESCRIPTIVE DU, never a bare Eps: the case says
     /// what the medium is (symmetry × transparency), and toEps builds the engine
     /// matrix through the existing constructors. The uniaxial cases map to the
@@ -285,19 +328,19 @@ module Dispersion =
     type ConstantEpsValue =
         | IsotropicTransparent of RefractionIndex
         | IsotropicAbsorbing of ComplexRefractionIndex
-        | UniaxialTransparent of ordinary : RefractionIndex * extraordinary : RefractionIndex
-        | UniaxialAbsorbing of ordinary : ComplexRefractionIndex * extraordinary : ComplexRefractionIndex
-        | BiaxialTransparent of nx : RefractionIndex * ny : RefractionIndex * nz : RefractionIndex
-        | BiaxialAbsorbing of nx : ComplexRefractionIndex * ny : ComplexRefractionIndex * nz : ComplexRefractionIndex
+        | UniaxialTransparent of UniaxialIndices
+        | UniaxialAbsorbing of UniaxialComplexIndices
+        | BiaxialTransparent of BiaxialIndices
+        | BiaxialAbsorbing of BiaxialComplexIndices
 
         member this.toEps : Eps =
             match this with
             | IsotropicTransparent n -> Eps.fromRefractionIndex n
             | IsotropicAbsorbing n -> Eps.fromComplexRefractionIndex n
-            | UniaxialTransparent (nO, nE) -> Eps.fromRefractionIndex (nO, nE, nO)
-            | UniaxialAbsorbing (nO, nE) -> Eps.fromComplexRefractionIndex (nO, nE, nO)
-            | BiaxialTransparent (n1, n2, n3) -> Eps.fromRefractionIndex (n1, n2, n3)
-            | BiaxialAbsorbing (n1, n2, n3) -> Eps.fromComplexRefractionIndex (n1, n2, n3)
+            | UniaxialTransparent u -> Eps.fromRefractionIndex (u.ordinary, u.extraordinary, u.ordinary)
+            | UniaxialAbsorbing u -> Eps.fromComplexRefractionIndex (u.ordinaryComplex, u.extraordinaryComplex, u.ordinaryComplex)
+            | BiaxialTransparent b -> Eps.fromRefractionIndex (b.nx, b.ny, b.nz)
+            | BiaxialAbsorbing b -> Eps.fromComplexRefractionIndex (b.nxComplex, b.nyComplex, b.nzComplex)
 
 
     /// The dispersion of ONE principal axis: either separate real n and k
@@ -311,15 +354,26 @@ module Dispersion =
     /// equality: `RealNK` / `ComplexEps` compare structurally (keeping the
     /// `DispersionModel` / `EpsWithDispValue` / `MaterialComplexity` equality the
     /// round-trip tests use) and the evaluated case compares by closure reference.
+    /// The real n and k formulas of one principal axis.
+    type RealNkFormulas =
+        {
+            nFormula : DispersionFormula
+            kFormula : DispersionFormula
+        }
+
+
     [<CustomEquality; NoComparison>]
     type EpsAxisDispersion =
-        | RealNK of n : DispersionFormula * k : DispersionFormula
+        | RealNK of RealNkFormulas
         | ComplexEps of ComplexDispersionFormula
         | EpsAxisEvaluated of (WaveLength -> ComplexRefractionIndex)
 
         member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
             match this with
-            | RealNK (n, k) -> Complex (n.evaluate w, k.evaluate w) |> ComplexRefractionIndex
+            | RealNK f ->
+                let (DispersionValue n) = f.nFormula.evaluate w
+                let (DispersionValue k) = f.kFormula.evaluate w
+                Complex (n, k) |> ComplexRefractionIndex
             | ComplexEps eps -> eps.evaluate w |> sqrt |> ComplexRefractionIndex
             | EpsAxisEvaluated f -> f w
 
@@ -327,7 +381,7 @@ module Dispersion =
             match o with
             | :? EpsAxisDispersion as other ->
                 match this, other with
-                | RealNK (n1, k1), RealNK (n2, k2) -> n1 = n2 && k1 = k2
+                | RealNK f1, RealNK f2 -> f1 = f2
                 | ComplexEps e1, ComplexEps e2 -> e1 = e2
                 | EpsAxisEvaluated f1, EpsAxisEvaluated f2 -> LanguagePrimitives.PhysicalEquality f1 f2
                 | _ -> false
@@ -335,7 +389,7 @@ module Dispersion =
 
         override this.GetHashCode () : int =
             match this with
-            | RealNK (n, k) -> hash (0, n, k)
+            | RealNK f -> hash (0, f.nFormula, f.kFormula)
             | ComplexEps e -> hash (1, e)
             | EpsAxisEvaluated f -> LanguagePrimitives.PhysicalHash f
 
@@ -607,45 +661,6 @@ module Dispersion =
             }
 
 
-    /// Assembles the engine Mu for constant Polder components: in the AlongZ
-    /// (Faraday) geometry the rows are [mu, +i·g, 0], [-i·g, mu, 0],
-    /// [0, 0, muParallel]; the transverse (Voigt) axes are its cyclic
-    /// permutations, so the ±i·g pair keeps its right-handed sense about the
-    /// magnetization axis.
-    let private polderMu (p : PolderValue<MuValue>) : Mu =
-        let (MuValue mu) = p.muDiagonal
-        let (MuValue muPar) = p.muParallel
-        let (MuValue g) = p.gyration
-
-        let m = Complex (mu, 0.0)
-        let mPar = Complex (muPar, 0.0)
-        let iG = Complex (0.0, g)
-        let zero = Complex.Zero
-
-        let rows =
-            match p.axis with
-            | AlongX ->
-                [
-                    [ mPar; zero; zero ]
-                    [ zero; m; iG ]
-                    [ zero; -iG; m ]
-                ]
-            | AlongY ->
-                [
-                    [ m; zero; -iG ]
-                    [ zero; mPar; zero ]
-                    [ iG; zero; m ]
-                ]
-            | AlongZ ->
-                [
-                    [ m; iG; zero ]
-                    [ -iG; m; zero ]
-                    [ zero; zero; mPar ]
-                ]
-
-        rows |> Mu.create
-
-
     /// A non-dispersive mu — a DESCRIPTIVE DU, never a bare Mu: either a
     /// scalar permeability (mu times the identity) or a constant gyromagnetic
     /// Polder tensor.
@@ -653,10 +668,44 @@ module Dispersion =
         | ScalarMu of MuValue
         | GyromagneticMu of PolderValue<MuValue>
 
+        /// For the Polder tensor in the AlongZ (Faraday) geometry the rows are [mu, +i·g, 0], [-i·g, mu, 0],
+        /// [0, 0, muParallel]; the transverse (Voigt) axes are its cyclic permutations, so the ±i·g pair keeps
+        /// its right-handed sense about the magnetization axis.
         member this.toMu : Mu =
             match this with
             | ScalarMu (MuValue m) -> Complex (m, 0.0) * ComplexMatrix3x3.identity |> Mu
-            | GyromagneticMu p -> polderMu p
+            | GyromagneticMu p ->
+                let (MuValue mu) = p.muDiagonal
+                let (MuValue muPar) = p.muParallel
+                let (MuValue g) = p.gyration
+
+                let m = Complex (mu, 0.0)
+                let mPar = Complex (muPar, 0.0)
+                let iG = Complex (0.0, g)
+                let zero = Complex.Zero
+
+                let rows =
+                    match p.axis with
+                    | AlongX ->
+                        [
+                            [ mPar; zero; zero ]
+                            [ zero; m; iG ]
+                            [ zero; -iG; m ]
+                        ]
+                    | AlongY ->
+                        [
+                            [ m; zero; -iG ]
+                            [ zero; mPar; zero ]
+                            [ iG; zero; m ]
+                        ]
+                    | AlongZ ->
+                        [
+                            [ m; iG; zero ]
+                            [ -iG; m; zero ]
+                            [ zero; zero; mPar ]
+                        ]
+
+                rows |> Mu.create
 
 
     /// The serializable counterpart of the engine's MuWithDisp: either a
@@ -671,5 +720,5 @@ module Dispersion =
         member this.toMuWithDisp : MuWithDisp =
             match this with
             | MuWithDispValue p ->
-                MuWithDisp (fun w -> p.map (fun (f : DispersionFormula) -> f.evaluate w |> MuValue) |> polderMu)
+                MuWithDisp (fun w -> (p.map (fun (f : DispersionFormula) -> (f.evaluate w).toMuValue) |> GyromagneticMu).toMu)
             | MuWithoutDispValue c -> MuWithoutDisp c.toMu

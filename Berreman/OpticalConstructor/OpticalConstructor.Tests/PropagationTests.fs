@@ -25,7 +25,7 @@ module PropagationTests =
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-7
     let private closeT (eps : float) (a : float) (b : float) : bool = abs (a - b) <= eps
 
-    let private deg (d : float) : Angle = Angle.degree d
+    let private deg (d : float) : Angle = Angle.degree (d * 1.0<deg>)
 
     // ============================ Stokes / Mueller constants ============================
 

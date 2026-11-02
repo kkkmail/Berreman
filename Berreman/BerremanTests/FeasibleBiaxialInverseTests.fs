@@ -77,7 +77,7 @@ open BerremanTests.BiaxialSample                       // the SAME crystal Biaxi
 type FeasibleBiaxialInverseTests() =
 
     /// Radians per degree, reached by its full module path. Bound here, ahead of the members (FS0960).
-    let degree = Berreman.MathNetNumericsMath.degree
+    let degree = Angle.radiansPerDegree
 
     /// The real Berreman-backed forward model, wired once for the whole class from the shared sample.
     let forward = createBerremanForward buildTriclinic solverParameters
@@ -240,7 +240,7 @@ type FeasibleBiaxialInverseTests() =
         // retardance across the cut angle and asserts the minimum lands on the binormal prediction.
         let linearRetardanceAt (cutDeg : double) =
             let observation =
-                observe [ configuration (TiltedCut (Angle.degree cutDeg)) vendorMinimumPlate 0.0 0.0 TransmittedMueller referenceWaveLength ]
+                observe [ configuration (TiltedCut (Angle.degree (cutDeg * 1.0<deg>))) vendorMinimumPlate 0.0 0.0 TransmittedMueller referenceWaveLength ]
                 |> List.exactlyOne
             match analyticInversion observation.measured with
             | Ok a -> sqrt (a.lb.degrees ** 2.0 + a.lbPrime.degrees ** 2.0)
