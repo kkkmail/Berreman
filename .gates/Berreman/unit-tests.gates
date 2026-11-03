@@ -1,9 +1,10 @@
 name: unit-tests
-description: BerremanTests (F# unit tests for the optics solver) on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
+description: BerremanTests (F# unit tests for the optics solver) on Microsoft.Testing.Platform, over the Release x64 output the build gate produced. About 52 min whole (51 min 44 s measured 2026-11-03); single inverse classes run up to 997 s, and MTP prints nothing until its summary, so the silence window equals the deadline.
 kind: command
 phase: verify
 command: dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename unit-tests.trx {selector}
 cwd: Berreman/BerremanTests
+requires_path: ["Berreman/BerremanTests/BerremanTests.fsproj"]
 pass_when:
   exit_code: 0
   stdout_match: '(?m)^Test run summary: Passed!'
@@ -12,10 +13,22 @@ pass_when:
     capture: 'succeeded:\s*(\d+)'
     baseline_key: berreman_unit_tests
 result_capture: {"format": "trx", "path": "TestResults/unit-tests.trx", "skip_policy": "allow"}
-runtime_estimate_seconds: 180
-tags: [test]
+runtime_estimate_seconds: 3104
+attempt_timeout_seconds: 7200
+silent_for_seconds: 7200
+runtime_actual_whole_seconds: 3104
+tags: [test, slow]
 applies_to:
-  - paths: ["Berreman/BerremanTests/**", "Berreman/Berreman/**", "Berreman/OpticalModel/**", "Berreman/OpticalProperties/**", "Berreman/**/*.fs", "Berreman/**/*.fsproj"]
+  - paths:
+      - "Berreman/BerremanTests/**"
+      - "Berreman/BerremanTestSupport/**"
+      - "Berreman/Berreman/**"
+      - "Berreman/OpticalProperties/**"
+      - "Berreman/OpticalModel/**"
+      - "Berreman/Analytics/**"
+      - "Berreman/OpticalConstructor/OpticalConstructor.Optimization/**"
+      - "Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs"
+      - "Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs"
 qualifier: unit
 requires_gates: [build]
 selector:
@@ -23,3 +36,4 @@ selector:
   template: '--filter-method "{value}.*" --filter-method "{value}"'
   joiner: " "
   arg: "{rendered}"
+  required: true

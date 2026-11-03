@@ -4,10 +4,12 @@ kind: command
 phase: build
 command: dotnet build Berreman.slnx -c Release -nologo -v:m
 cwd: Berreman
+builds: ["Berreman/Berreman.slnx"]
 pass_when:
   exit_code: 0
   stdout_match: "(?s)^(?!.*error).*$"
-runtime_estimate_seconds: 120
+runtime_estimate_seconds: 600
+runtime_actual_seconds: 65
 tags: [build]
 applies_to:
   - paths: ["Berreman/**/*.fs", "Berreman/**/*.fsproj", "Berreman/**/*.slnx", "Directory.Build.props", "Directory.Build.targets", "Berreman/Berreman/BuildInfo.ps1", "Berreman/PreBuild/**"]

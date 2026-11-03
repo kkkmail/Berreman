@@ -34,13 +34,16 @@
     "confidence_threshold": "default"
   },
   "gate_runner": {
-    "default_silent_for_seconds": 600,
-    "build_slow_silent_for_seconds": 900
+    "default_silent_for_seconds": 1800,
+    "build_slow_silent_for_seconds": 3600
   },
   "gates_curator": {
     "auto_offer_exclusions": []
   },
-  "data_version": 7,
+  "spec_defaults": {
+    "gates_policy": "seam"
+  },
+  "data_version": 8,
 
-  "max_arc_wall_seconds": 172800
+  "max_arc_wall_seconds": 1209600
 }

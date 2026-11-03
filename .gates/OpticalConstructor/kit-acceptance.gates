@@ -1,0 +1,33 @@
+name: kit-acceptance
+description: The experiment-kit acceptance tests AT-1 (optics-mueller) and AT-2 (AbsorbingBiaxialNoisyTests through the kit model) in OpticalConstructor.Ui.Tests, trait Category=kit-acceptance (spec 0050 .manual/001 §Q, §U), on Microsoft.Testing.Platform, over the Release x64 output the build gate produced. AT-2 replicates a 946 s fit and MTP prints nothing until its summary, so the silence window equals the deadline. AT-2's five-seed ensemble is xUnit v3 Explicit, so skips are allowed.
+kind: command
+phase: verify
+command: dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename kit-acceptance.trx --filter-trait "Category=kit-acceptance" {selector}
+cwd: Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests
+requires_path: ["Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs"]
+expected_by: "0050"
+pass_when:
+  exit_code: 0
+  stdout_match: '(?m)^Test run summary: Passed!'
+  failure_capture: '(?m)^failed (.+) \((?:\d+(?:ms|s|m|h) ?)+\)\r?$'
+  count_at_least:
+    capture: 'succeeded:\s*(\d+)'
+    baseline_key: kit_acceptance_tests
+result_capture: {"format": "trx", "path": "TestResults/kit-acceptance.trx", "skip_policy": "allow"}
+runtime_estimate_seconds: 1800
+attempt_timeout_seconds: 3600
+silent_for_seconds: 3600
+tags: [test, slow]
+applies_to:
+  - paths:
+      - "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs"
+      - "Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs"
+      - "Berreman/OpticalConstructor/OpticalConstructor.Optimization/**"
+      - "Berreman/BerremanTestSupport/**"
+qualifier: integration
+requires_gates: [build]
+selector:
+  unit: class
+  template: '--filter-method "{value}.*" --filter-method "{value}"'
+  joiner: " "
+  arg: "{rendered}"

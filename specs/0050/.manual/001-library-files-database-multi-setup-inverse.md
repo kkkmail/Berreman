@@ -671,7 +671,7 @@ Each holds from the section named, through the end of the spec.
 
 ### U. Gates this work adds to the usual ones
 
-- **`kit-acceptance`** (`.gates/OpticalConstructor/kit-acceptance.gates`): AT-1 and AT-2, trait `kit-acceptance`. It applies to the Study, run-law and import code and the acceptance test files.
+- **`kit-acceptance`** (`.gates/OpticalConstructor/kit-acceptance.gates`, already in the catalog): AT-1 and AT-2, trait `kit-acceptance`, in `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs`. The gate is forward-pointing until section 12 creates that file. It applies to that file, the run law (`OpticalConstructor.Domain/ExperimentRun.fs`), `OpticalConstructor.Optimization` and `BerremanTestSupport`. `ui-tests` already excludes the trait.
 - **`unit-tests`** applies only to the code `BerremanTests` covers. In this work that is sections 10 and 11, and any step that changes the solver, `OpticalConstructor.Optimization`, `MuellerInverse.fs` or `MuellerReconstruction.fs`.
 
 ### V. Done when

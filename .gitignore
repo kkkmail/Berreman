@@ -346,3 +346,6 @@ ASALocalRun/
 /specs/*/.artifacts/*console*.log
 /specs/*/.artifacts/finalize-commit.log
 /specs/*/.artifacts/
+
+# The repository root's .artifacts/ is tool scratch, like /specs/*/.artifacts/ (ASG 0090 .manual/022 B20).
+/.artifacts/
