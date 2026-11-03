@@ -147,13 +147,13 @@ module MainWorkbenchTests =
         let ctx : MaterialEditorView.MaterialEditorContext =
             { materials = materials; categories = categories; requestClose = ignore }
         let em = MaterialEditorView.initMaterialEditor ctx (MaterialEditorView.NewMaterial (newMaterialId ()))
-        let before = MaterialEditorView.selectableCategories em
+        let before = em.selectableCategories
         // The four SelectableOnCreate built-ins are offered; Vacuum (HiddenOnCreate) is excluded.
         Assert.Contains(before, fun (c : MaterialCategory) -> c.id = CategoryIds.glass)
         Assert.DoesNotContain(before, fun (c : MaterialCategory) -> c.id = CategoryIds.vacuumCategory)
         // A rename through the shared proxy re-labels the picker on its next read.
         renameGlass categories "Glazing"
-        let after = MaterialEditorView.selectableCategories em
+        let after = em.selectableCategories
         Assert.Contains(after, fun (c : MaterialCategory) -> c.name.value = "Glazing")
         Assert.DoesNotContain(after, fun (c : MaterialCategory) -> c.name.value = "Glass")
 

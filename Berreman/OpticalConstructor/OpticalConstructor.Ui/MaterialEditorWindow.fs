@@ -66,7 +66,7 @@ type MaterialEditorWindow(materials : MaterialProxy, intent : MaterialEditorView
     /// `CancelClicked` the Cancel button hits, so both exits are equally gated.
     member _.ChromeCloseIntercepted() : bool =
         match latestModel with
-        | Some m when MaterialEditorView.isMaterialEditorDirty m ->
+        | Some m when m.isDirty ->
             dispatch MaterialEditorView.MaterialCancelClicked
             true
         | _ -> false

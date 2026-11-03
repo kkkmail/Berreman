@@ -1,5 +1,7 @@
 namespace OpticalConstructor.Ui
 
+open Berreman.Dispersion
+open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.Library
@@ -68,6 +70,11 @@ module ConstructorUiIdOfDomain =
 
         /// The coefficient as the key of its Material-editor box.
         member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
+    type CoefficientUnit with
+
+        /// The unit as the label trailing its coefficient box shows it.
+        member this.caption : ControlCaption = ControlCaption this.value
 
     type ItemCount with
 
@@ -154,3 +161,76 @@ module ConstructorUiIdOfDomain =
             | OpticalConstructor.Domain.SampleStackEditor.InvalidRepeatCountErr reason
             | OpticalConstructor.Domain.SampleStackEditor.SelectionNotFoldableErr reason
             | OpticalConstructor.Domain.SampleStackEditor.NotARepeatGroupErr reason -> ControlCaption reason
+
+    type MaterialComplexityEditError with
+
+        /// The typed rejection's reason as a status line or the derived-model readout shows it.
+        member this.caption : ControlCaption =
+            match this with
+            | NoSuchSegmentErr reason
+            | LastSegmentNotRemovableErr reason -> ControlCaption reason
+
+    type SegmentIndex with
+
+        /// The dispersion segment as the position of its repeated Material-editor controls.
+        member this.uiPosition : ConstructorUiPosition = ConstructorUiPosition this.value
+
+    type Anisotropy with
+
+        /// The choice as the key of its Material-editor option box.
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | Isotropic -> ConstructorUiKey "Isotropic"
+            | Uniaxial -> ConstructorUiKey "Uniaxial"
+            | Biaxial -> ConstructorUiKey "Biaxial"
+
+        /// The choice as its Material-editor option box shows it.
+        member this.caption : ControlCaption =
+            match this with
+            | Isotropic -> ControlCaption "Isotropic"
+            | Uniaxial -> ControlCaption "Uniaxial"
+            | Biaxial -> ControlCaption "Biaxial"
+
+    type Handedness with
+
+        /// The enantiomorph as the key of its Material-editor option box.
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | RightHanded -> ConstructorUiKey "Right"
+            | LeftHanded -> ConstructorUiKey "Left"
+
+        /// The enantiomorph as its Material-editor option box shows it.
+        member this.caption : ControlCaption =
+            match this with
+            | RightHanded -> ControlCaption "Right"
+            | LeftHanded -> ControlCaption "Left"
+
+    type GyrationAxis with
+
+        /// The magnetization axis as the key of its Material-editor option box.
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | AlongX -> ConstructorUiKey "X"
+            | AlongY -> ConstructorUiKey "Y"
+            | AlongZ -> ConstructorUiKey "Z"
+
+        /// The magnetization axis as its Material-editor option box shows it.
+        member this.caption : ControlCaption =
+            match this with
+            | AlongX -> ControlCaption "X"
+            | AlongY -> ControlCaption "Y"
+            | AlongZ -> ControlCaption "Z"
+
+    type MuKind with
+
+        /// The Polder-μ kind as the key of its Material-editor option box.
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | ScalarMuKind -> ConstructorUiKey "Scalar"
+            | GyromagneticMuKind -> ConstructorUiKey "Gyromagnetic"
+
+        /// The Polder-μ kind as its Material-editor option box shows it.
+        member this.caption : ControlCaption =
+            match this with
+            | ScalarMuKind -> ControlCaption "Scalar"
+            | GyromagneticMuKind -> ControlCaption "Gyromagnetic"

@@ -208,7 +208,7 @@ module MaterialEditorWindowTests =
         Assert.Equal("DispersionModelPicker", (ConstructorUiId.dispersionModelPickerOfSegment (ConstructorUiPosition 0)).value)
         Assert.Equal("DispersionModelPicker_1", (ConstructorUiId.dispersionModelPickerOfSegment (ConstructorUiPosition 1)).value)
         Assert.Equal("GyrationClassOption_Uniaxial", (ConstructorUiId.gyrationClassOption (ConstructorUiKey "Uniaxial")).value)
-        Assert.Equal("AnisotropyOption_Biaxial", (ConstructorUiId.anisotropyOption (ConstructorUiKey (anisotropyCode Biaxial))).value)
+        Assert.Equal("AnisotropyOption_Biaxial", (ConstructorUiId.anisotropyOption Biaxial.uiKey).value)
         // Spec 0035 (011): the two Constant/Dispersive component sub-toggles and the
         // per-component dispersion-formula editor / box id families.
         Assert.Equal("ActivityDispersiveToggle", ConstructorUiId.activityDispersiveToggle.value)
@@ -495,14 +495,14 @@ module MaterialEditorWindowTests =
         let m = initMaterialEditor newContext (NewMaterial minted)
         Assert.Equal({ materialId = minted; freshness = WindowLauncher.NewUnsaved }, m.target)
         Assert.Equal(EditableMaterial, m.mode)
-        Assert.Equal("", m.name)
+        Assert.Equal(EntryName "", m.name)
         Assert.Equal<MaterialComplexityEditState>(defaultState, m.editor)
         // An existing editable entry seeds the ladder from its complexity.
         let glass = builtIn MaterialIds.glass152
         let _, _, context = recordingContext ()
         let existing = initMaterialEditor context (EditMaterial glass)
         Assert.Equal({ materialId = glass.id; freshness = WindowLauncher.Persisted }, existing.target)
-        Assert.Equal(glass.name.value, existing.name)
+        Assert.Equal(glass.name, existing.name)
         Assert.Equal(EditableMaterial, existing.mode)
         match glass.complexity with
         | Some c -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, existing.editor.toComplexity)
@@ -522,7 +522,7 @@ module MaterialEditorWindowTests =
         let calls, saved, context = recordingContext ()
         let minted = newMaterialId ()
         initMaterialEditor context (NewMaterial minted)
-        |> updateMaterialEditor (SetMaterialName "Fresh")
+        |> updateMaterialEditor (SetMaterialName (EntryName "Fresh"))
         |> updateMaterialEditor MaterialSaveClicked
         |> ignore
         Assert.Equal<string list>([ "save:Fresh"; "close" ], List.ofSeq calls)
@@ -539,7 +539,7 @@ module MaterialEditorWindowTests =
         let calls2, saved2, context2 = recordingContext ()
         let glass = builtIn MaterialIds.glass152
         initMaterialEditor context2 (EditMaterial glass)
-        |> updateMaterialEditor (SetMaterialName "Edited")
+        |> updateMaterialEditor (SetMaterialName (EntryName "Edited"))
         |> updateMaterialEditor MaterialSaveClicked
         |> ignore
         Assert.Equal<string list>([ "save:Edited"; "close" ], List.ofSeq calls2)
@@ -550,7 +550,7 @@ module MaterialEditorWindowTests =
         let calls3, saved3, context3 = recordingContext ()
         let confirming =
             initMaterialEditor context3 (EditMaterial glass)
-            |> updateMaterialEditor (SetMaterialName "Discarded")
+            |> updateMaterialEditor (SetMaterialName (EntryName "Discarded"))
             |> updateMaterialEditor MaterialCancelClicked
         Assert.Empty(calls3)
         match confirming.exit with
@@ -579,13 +579,13 @@ module MaterialEditorWindowTests =
         let m = initMaterialEditor context (NewMaterial (newMaterialId ())) |> updateMaterialEditor MaterialSaveClicked
         Assert.Empty(closes)
         match m.status with
-        | Some reason -> Assert.Equal("the name is blank", reason)
+        | Some reason -> Assert.Equal(ControlCaption "the name is blank", reason)
         | None -> Assert.Fail("expected the proxy's typed reason as the status")
 
     [<Fact>]
     let ``spec 0038 (032): the per-series show/hide toggle round-trips through update and lowers onto the exact curve`` () =
         // Handler — ToggleSeriesVisibility flips the key into `hiddenSeries`; a second dispatch removes it.
-        let key = (ConstructorUiId.previewSeriesToggle (ConstructorUiKey "nk") (ConstructorUiKey "n₁")).value
+        let key = ConstructorUiId.previewSeriesToggle (ConstructorUiKey "nk") (ConstructorUiKey "n₁")
         let m0 = newModel ()
         Assert.False(Set.contains key m0.hiddenSeries, "nothing is hidden on a fresh model")
         let hiddenModel = updateMaterialEditor (ToggleSeriesVisibility key) m0
@@ -596,21 +596,21 @@ module MaterialEditorWindowTests =
         // n/k chart's series are n₁ n₂ n₃ (indices 0..2) then k₁ k₂ k₃ (3..5), so n₁ is index 0.
         let chart = NkDispersionChart.nkDispersionChart Biaxial (propsFrom []) Nanometer previewRange
         let style = NkDispersionChart.nkDispersionStyle Biaxial chart
-        let loweredN1 = applyHidden (Set.singleton key) "nk" chart style
+        let loweredN1 = applyHidden (Set.singleton key) NkPreviewTab chart style
         Assert.False(seriesVisibleAt 0 loweredN1, "hiding n₁ must flip exactly index 0 invisible")
         for i in 1 .. 5 do
             Assert.True(seriesVisibleAt i loweredN1, $"index %d{i} must stay visible when only n₁ is hidden")
         // A DIFFERENT series name lowers onto a DIFFERENT index — the index is read from the series NAME,
         // never hard-coded, so a wrong index cannot pass silently. k₂ is the 5th series (index 4).
-        let loweredK2 = applyHidden (Set.singleton (ConstructorUiId.previewSeriesToggle (ConstructorUiKey "nk") (ConstructorUiKey "k₂")).value) "nk" chart style
+        let loweredK2 = applyHidden (Set.singleton (ConstructorUiId.previewSeriesToggle (ConstructorUiKey "nk") (ConstructorUiKey "k₂"))) NkPreviewTab chart style
         Assert.False(seriesVisibleAt 4 loweredK2, "hiding k₂ must flip exactly index 4 invisible")
         for i in [ 0; 1; 2; 3; 5 ] do
             Assert.True(seriesVisibleAt i loweredK2, $"index %d{i} must stay visible when only k₂ is hidden")
-        // The tabCode namespaces the key: the SAME n₁ key applied under the WRONG tab hides nothing, so a
-        // wrong tabCode cannot pass silently either.
-        let wrongTab = applyHidden (Set.singleton key) "gyration" chart style
+        // The tab namespaces the key: the SAME n₁ key applied under the WRONG tab hides nothing, so a
+        // wrong tab cannot pass silently either.
+        let wrongTab = applyHidden (Set.singleton key) GyrationPreviewTab chart style
         for i in 0 .. 5 do
-            Assert.True(seriesVisibleAt i wrongTab, $"a mismatched tabCode must leave index %d{i} visible")
+            Assert.True(seriesVisibleAt i wrongTab, $"a mismatched tab must leave index %d{i} visible")
 
     // ============================ headless semantic-tree proofs ============================
 
@@ -678,11 +678,11 @@ module MaterialEditorWindowTests =
             Assert.False(isPresent window (ConstructorUiId.principalIndexBox (ConstructorUiPosition 2)).value)
             Assert.False(isPresent window (ConstructorUiId.principalIndexBox (ConstructorUiPosition 3)).value)
             // Uniaxial: ordinary + extraordinary.
-            clickOn window (ConstructorUiId.anisotropyOption (ConstructorUiKey (anisotropyCode Uniaxial))).value
+            clickOn window (ConstructorUiId.anisotropyOption Uniaxial.uiKey).value
             Assert.True(isPresent window (ConstructorUiId.principalIndexBox (ConstructorUiPosition 2)).value)
             Assert.False(isPresent window (ConstructorUiId.principalIndexBox (ConstructorUiPosition 3)).value)
             // Biaxial: three principal-index fields.
-            clickOn window (ConstructorUiId.anisotropyOption (ConstructorUiKey (anisotropyCode Biaxial))).value
+            clickOn window (ConstructorUiId.anisotropyOption Biaxial.uiKey).value
             Assert.True(isPresent window (ConstructorUiId.principalIndexBox (ConstructorUiPosition 1)).value)
             Assert.True(isPresent window (ConstructorUiId.principalIndexBox (ConstructorUiPosition 2)).value)
             Assert.True(isPresent window (ConstructorUiId.principalIndexBox (ConstructorUiPosition 3)).value)
@@ -696,7 +696,7 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickOn window (ConstructorUiId.anisotropyOption (ConstructorUiKey (anisotropyCode Uniaxial))).value
+            clickOn window (ConstructorUiId.anisotropyOption Uniaxial.uiKey).value
             clickOn window ConstructorUiId.activeToggle.value
             Assert.True(isPresent window ConstructorUiId.gyrationClassPicker.value)
             Assert.True(isPresent window ConstructorUiId.handednessSwitch.value)
@@ -767,7 +767,7 @@ module MaterialEditorWindowTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window ConstructorUiId.materialNameBox.value "Headless material"
-            clickOn window (ConstructorUiId.anisotropyOption (ConstructorUiKey (anisotropyCode Biaxial))).value
+            clickOn window (ConstructorUiId.anisotropyOption Biaxial.uiKey).value
             setText window (ConstructorUiId.principalIndexBox (ConstructorUiPosition 1)).value "1.6"
             setText window (ConstructorUiId.principalIndexBox (ConstructorUiPosition 2)).value "1.7"
             setText window (ConstructorUiId.principalIndexBox (ConstructorUiPosition 3)).value "1.8"
@@ -886,7 +886,7 @@ module MaterialEditorWindowTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // A uniaxial active medium's class carries exactly g11 and g33.
-            clickOn window (ConstructorUiId.anisotropyOption (ConstructorUiKey (anisotropyCode Uniaxial))).value
+            clickOn window (ConstructorUiId.anisotropyOption Uniaxial.uiKey).value
             clickOn window ConstructorUiId.activeToggle.value
             Assert.True(isPresent window ConstructorUiId.activityDispersiveToggle.value, "the activity rung must expose the Dispersive sub-toggle")
             // Constant (the default sub-branch): the per-component constant boxes, no formula editor.
@@ -1026,18 +1026,18 @@ module MaterialEditorWindowTests =
             newModel ()
             |> updateMaterialEditor (EditorMsg (ChooseAnisotropy Uniaxial))
             |> updateMaterialEditor (EditorMsg (SetActivity ActivityOn))
-        Assert.Equal<GyrationComponent list>([ G11; G33 ], previewGyrationComponents m)
+        Assert.Equal<GyrationComponent list>([ G11; G33 ], m.previewGyrationComponents)
 
     [<Fact>]
     let ``spec 0040 006: an editable scalar-magnetic entry threads ScalarMuKind, a gyromagnetic one GyromagneticMuKind`` () =
         // The default μ kind is scalar; turning magnetic on alone keeps it scalar.
         let scalar = newModel () |> updateMaterialEditor (EditorMsg (SetMagnetic MagneticOn))
-        Assert.Equal(ScalarMuKind, previewMuKind scalar)
+        Assert.Equal(ScalarMuKind, scalar.previewMuKind)
         let gyromagnetic =
             newModel ()
             |> updateMaterialEditor (EditorMsg (SetMagnetic MagneticOn))
             |> updateMaterialEditor (EditorMsg (SetMuKind GyromagneticMuKind))
-        Assert.Equal(GyromagneticMuKind, previewMuKind gyromagnetic)
+        Assert.Equal(GyromagneticMuKind, gyromagnetic.previewMuKind)
 
     [<Fact>]
     let ``spec 0040 006: a view-only entry reads the class off its stored complexity tree — Langasite carries g₁₁ / g₃₃`` () =
@@ -1048,7 +1048,7 @@ module MaterialEditorWindowTests =
         match m.mode with
         | ViewOnlyMaterial _ -> ()
         | EditableMaterial -> Assert.Fail("Langasite must open view-only")
-        Assert.Equal<GyrationComponent list>([ G11; G33 ], previewGyrationComponents m)
+        Assert.Equal<GyrationComponent list>([ G11; G33 ], m.previewGyrationComponents)
 
     [<Fact>]
     let ``spec 0040 006: a coded preset with no stored tree still renders all components`` () =
@@ -1060,8 +1060,8 @@ module MaterialEditorWindowTests =
         match m.mode with
         | ViewOnlyMaterial _ -> ()
         | EditableMaterial -> Assert.Fail("a complexity-less entry must open view-only")
-        Assert.Equal<GyrationComponent list>(NkDispersionChart.allGyrationComponents, previewGyrationComponents m)
-        Assert.Equal(GyromagneticMuKind, previewMuKind m)
+        Assert.Equal<GyrationComponent list>(NkDispersionChart.allGyrationComponents, m.previewGyrationComponents)
+        Assert.Equal(GyromagneticMuKind, m.previewMuKind)
 
     // ============================ spec 0038 (033): the unsaved-edit exit confirm ============================
 
@@ -1070,14 +1070,14 @@ module MaterialEditorWindowTests =
         // Pristine: a freshly opened editor is not dirty and Cancel closes silently as before.
         let calls, _, context = recordingContext ()
         let fresh = initMaterialEditor context (NewMaterial (newMaterialId ()))
-        Assert.False(isMaterialEditorDirty fresh, "a freshly opened editor is pristine")
+        Assert.False(fresh.isDirty, "a freshly opened editor is pristine")
         let afterCancel = updateMaterialEditor MaterialCancelClicked fresh
         Assert.Equal<string list>([ "close" ], List.ofSeq calls)
         Assert.Equal(MaterialEditing, afterCancel.exit)
         // Dirty: a name edit makes it dirty; Cancel shows the confirm and reaches nothing.
         let calls2, saved2, context2 = recordingContext ()
-        let edited = initMaterialEditor context2 (NewMaterial (newMaterialId ())) |> updateMaterialEditor (SetMaterialName "X")
-        Assert.True(isMaterialEditorDirty edited, "a name edit makes the editor dirty")
+        let edited = initMaterialEditor context2 (NewMaterial (newMaterialId ())) |> updateMaterialEditor (SetMaterialName (EntryName "X"))
+        Assert.True(edited.isDirty, "a name edit makes the editor dirty")
         let confirming = updateMaterialEditor MaterialCancelClicked edited
         Assert.Equal(MaterialConfirmingDiscard, confirming.exit)
         Assert.Empty(calls2)
@@ -1097,11 +1097,11 @@ module MaterialEditorWindowTests =
         let calls, _, context = recordingContext ()
         let glass = builtIn MaterialIds.glass152
         let m = initMaterialEditor context (EditMaterial glass)
-        Assert.False(isMaterialEditorDirty m, "an unedited existing entry is pristine")
-        let renamed = updateMaterialEditor (SetMaterialName "Other") m
-        Assert.True(isMaterialEditorDirty renamed)
-        let reverted = updateMaterialEditor (SetMaterialName glass.name.value) renamed
-        Assert.False(isMaterialEditorDirty reverted, "restoring the captured name clears dirtiness")
+        Assert.False(m.isDirty, "an unedited existing entry is pristine")
+        let renamed = updateMaterialEditor (SetMaterialName (EntryName "Other")) m
+        Assert.True(renamed.isDirty)
+        let reverted = updateMaterialEditor (SetMaterialName glass.name) renamed
+        Assert.False(reverted.isDirty, "restoring the captured name clears dirtiness")
         updateMaterialEditor MaterialCancelClicked reverted |> ignore
         Assert.Equal<string list>([ "close" ], List.ofSeq calls)
 
