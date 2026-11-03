@@ -103,20 +103,20 @@ module LauncherTests =
         withLauncher (fun launcher ->
             let names = buttons launcher |> List.map (fun b -> b.Name)
             Assert.Equal<string list>(
-                [ LauncherIds.openMainButton
-                  LauncherIds.openInverseButton
-                  LauncherIds.openMaterialsButton
-                  LauncherIds.openLibraryButton ],
+                [ ConstructorUiId.openMainButton.value
+                  ConstructorUiId.openInverseButton.value
+                  ConstructorUiId.openMaterialsButton.value
+                  ConstructorUiId.openLibraryButton.value ],
                 names))
 
     [<Fact>]
     let ``each launcher button carries its stable AutomationId and label`` () =
         withLauncher (fun launcher ->
             let expected =
-                [ LauncherIds.openMainButton, "Main"
-                  LauncherIds.openInverseButton, "Inverse"
-                  LauncherIds.openMaterialsButton, "Materials"
-                  LauncherIds.openLibraryButton, "Library" ]
+                [ ConstructorUiId.openMainButton.value, "Main"
+                  ConstructorUiId.openInverseButton.value, "Inverse"
+                  ConstructorUiId.openMaterialsButton.value, "Materials"
+                  ConstructorUiId.openLibraryButton.value, "Library" ]
             for id, label in expected do
                 match tryFindButton id launcher with
                 | Some button ->
@@ -129,11 +129,11 @@ module LauncherTests =
         withLauncher (fun launcher ->
             let footer =
                 launcher.GetVisualDescendants()
-                |> Seq.tryPick (function :? TextBlock as t when matchesId LauncherIds.versionText t -> Some t | _ -> None)
+                |> Seq.tryPick (function :? TextBlock as t when matchesId ConstructorUiId.launcherVersionText.value t -> Some t | _ -> None)
             match footer with
             | Some text ->
                 Assert.Equal($"Version {Berreman.BuildInfo.version.value}", text.Text)
-                Assert.Equal(LauncherIds.versionText, AutomationProperties.GetAutomationId text)
+                Assert.Equal(ConstructorUiId.launcherVersionText.value, AutomationProperties.GetAutomationId text)
                 Assert.True(text.IsEffectivelyVisible, "the version footer must be visible")
                 // It sits at the bottom of the form: below every surface button.
                 let footerTop = text.TranslatePoint(Point(0.0, 0.0), launcher) |> Option.ofNullable
@@ -142,7 +142,7 @@ module LauncherTests =
                     match footerTop, buttonBottom with
                     | Some (f : Point), Some (b : Point) -> Assert.True(f.Y >= b.Y, $"the footer (y = {f.Y}) must sit below '{button.Name}' (bottom y = {b.Y})")
                     | _ -> Assert.Fail("the footer and the buttons must have on-screen positions")
-            | None -> Assert.Fail($"the launcher footer '%s{LauncherIds.versionText}' was not found"))
+            | None -> Assert.Fail($"the launcher footer '%s{ConstructorUiId.launcherVersionText.value}' was not found"))
 
     [<Fact>]
     let ``the app version is the FSharp.Core prefix plus the build number`` () =
@@ -157,7 +157,7 @@ module LauncherTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Main button opens the forward Main constructor scene`` () =
         withLauncher (fun launcher ->
-            match clickAndObserve launcher LauncherIds.openMainButton with
+            match clickAndObserve launcher ConstructorUiId.openMainButton.value with
             | [ opened ] ->
                 Assert.True(opened :? MainConstructorWindow, $"'OpenMainButton' opened a {opened.GetType().Name}")
                 Assert.True(opened.IsVisible, "the opened scene window must be shown")
@@ -168,7 +168,7 @@ module LauncherTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Inverse button opens the inverse constructor scene`` () =
         withLauncher (fun launcher ->
-            match clickAndObserve launcher LauncherIds.openInverseButton with
+            match clickAndObserve launcher ConstructorUiId.openInverseButton.value with
             | [ opened ] ->
                 Assert.True(opened :? InverseConstructorWindow, $"'OpenInverseButton' opened a {opened.GetType().Name}")
                 Assert.True(opened.IsVisible, "the opened inverse scene window must be shown")
@@ -179,7 +179,7 @@ module LauncherTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Materials button opens the single-instance Materials window`` () =
         withLauncher (fun launcher ->
-            match clickAndObserve launcher LauncherIds.openMaterialsButton with
+            match clickAndObserve launcher ConstructorUiId.openMaterialsButton.value with
             | [ opened ] ->
                 Assert.True(matchesId ConstructorUiId.materialsWindow.value opened, "'OpenMaterialsButton' must open the Materials window")
                 Assert.True(opened.IsVisible, "the Materials window must be shown")
@@ -192,7 +192,7 @@ module LauncherTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Library button opens the single-instance Library window`` () =
         withLauncher (fun launcher ->
-            match clickAndObserve launcher LauncherIds.openLibraryButton with
+            match clickAndObserve launcher ConstructorUiId.openLibraryButton.value with
             | [ opened ] ->
                 Assert.True(matchesId ConstructorUiId.libraryWindow.value opened, "'OpenLibraryButton' must open the Library window")
                 Assert.True(opened.IsVisible, "the Library window must be shown")
@@ -225,7 +225,7 @@ module LauncherTests =
                         | :? Window as w when matchesId ConstructorUiId.materialsWindow.value w -> materialsOpens.Add w
                         | _ -> ())
                 // 1) launcher Materials button → CREATES the single instance.
-                (match tryFindButton LauncherIds.openMaterialsButton launcher with
+                (match tryFindButton ConstructorUiId.openMaterialsButton.value launcher with
                  | Some button -> button.RaiseEvent(RoutedEventArgs(Button.ClickEvent))
                  | None -> Assert.Fail "launcher button 'OpenMaterialsButton' was not found")
                 Dispatcher.UIThread.RunJobs()

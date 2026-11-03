@@ -585,6 +585,14 @@ type ConstructorUiId =
     static member resetViewButton : ConstructorUiId = ConstructorUiId "ResetViewButton"
     static member tableRotationReadout : ConstructorUiId = ConstructorUiId "TableRotationReadout"
 
+    // --- The product launcher window (`LauncherWindow`, project App). ---
+    static member openMainButton : ConstructorUiId = ConstructorUiId "OpenMainButton"
+    static member openInverseButton : ConstructorUiId = ConstructorUiId "OpenInverseButton"
+    static member openMaterialsButton : ConstructorUiId = ConstructorUiId "OpenMaterialsButton"
+    static member openLibraryButton : ConstructorUiId = ConstructorUiId "OpenLibraryButton"
+    /// The footer line showing the app version (spec 0046).
+    static member launcherVersionText : ConstructorUiId = ConstructorUiId "LauncherVersionText"
+
     // --- The diagnostic test launcher window (`TestLauncherWindow`, project TestWindows.App). ---
     static member openTableRotationTestButton : ConstructorUiId = ConstructorUiId "OpenTableRotationTestButton"
     static member openElementRotationTestButton : ConstructorUiId = ConstructorUiId "OpenElementRotationTestButton"

@@ -24,6 +24,7 @@ open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
 
+open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.AppShell
 
@@ -56,29 +57,6 @@ module private Startup =
     /// `MainConstructorWindow`'s constructor; the test scenes keep their own
     /// parameterless `DefaultStores` default in `TableAndElementRotationView`.)
     let context = AppContext.create workbenchSettings
-
-/// Spec 0038 step 045: the stable automation ids for the product launcher's FOUR surface buttons —
-/// Main / Inverse / Materials / Library. Centralized here (the Controls `UiIds` / workbench
-/// `WorkbenchIds` precedent) so the `LauncherWindow` and its headless tests share ONE source of
-/// truth. The product-launcher ids live with the App composition root that OWNS the launcher; the
-/// in-window ids stay in the Controls `UiIds` module. Each id is set as BOTH the button's `Name`
-/// and its `AutomationProperties.AutomationId`, so meaning-based automation finds it by a
-/// layout-independent handle ("automate by meaning, not by pixels"). Distinct from the workbench
-/// strip's `OpenMaterialsWindowButton` / `OpenLibraryWindowButton` — those are different controls
-/// that open the SAME single-instance windows over the shared registry.
-[<RequireQualifiedAccess>]
-module LauncherIds =
-    [<Literal>]
-    let openMainButton = "OpenMainButton"
-    [<Literal>]
-    let openInverseButton = "OpenInverseButton"
-    [<Literal>]
-    let openMaterialsButton = "OpenMaterialsButton"
-    [<Literal>]
-    let openLibraryButton = "OpenLibraryButton"
-    /// Spec 0046: the footer line showing the app version (`Berreman.BuildInfo.version`).
-    [<Literal>]
-    let versionText = "LauncherVersionText"
 
 /// Spec 0038 step 045: the shared body of the two constructor windows. The forward Main scene and
 /// the inverse scene are the SAME dynamic "Lego constructor" (`mainView` over
@@ -171,13 +149,13 @@ type LauncherWindow(context : AppContext) as this =
         // Every surface button carries its stable id as BOTH its `Name` and its
         // `AutomationProperties.AutomationId` (meaning-based automation, not pixels), plus the human
         // label as its accessible name.
-        let surfaceButton (id : string) (label : string) (onClick : unit -> unit) : Button =
+        let surfaceButton (id : ConstructorUiId) (label : string) (onClick : unit -> unit) : Button =
             let button =
                 Button(
-                    Name = id,
+                    Name = id.value,
                     Content = label,
                     HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
-            AutomationProperties.SetAutomationId(button, id)
+            AutomationProperties.SetAutomationId(button, id.value)
             AutomationProperties.SetName(button, label)
             button.Click.Add(fun _ -> onClick ())
             button
@@ -186,27 +164,27 @@ type LauncherWindow(context : AppContext) as this =
         // single-instance window.
         let launchers = TableAndElementRotationView.EditorLaunchers.defaults
         let mainButton =
-            surfaceButton LauncherIds.openMainButton "Main" (fun () -> MainConstructorWindow(context).Show())
+            surfaceButton ConstructorUiId.openMainButton "Main" (fun () -> MainConstructorWindow(context).Show())
         let inverseButton =
-            surfaceButton LauncherIds.openInverseButton "Inverse" (fun () -> InverseConstructorWindow(context).Show())
+            surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun () -> InverseConstructorWindow(context).Show())
         let materialsButton =
-            surfaceButton LauncherIds.openMaterialsButton "Materials" (fun () ->
+            surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun () ->
                 launchers.openMaterialsWindow context.materials context.categories)
         let libraryButton =
-            surfaceButton LauncherIds.openLibraryButton "Library" (fun () ->
+            surfaceButton ConstructorUiId.openLibraryButton "Library" (fun () ->
                 launchers.openLibraryWindow context.library context.samples context.sources context.materials context.categories)
         // Spec 0046: the app version (the STL slow-ring scheme, one ring for the whole app) as a footer
         // line at the bottom of the form, read from the ONE F# source of it (`Berreman.BuildInfo`).
         let versionText = $"Version {Berreman.BuildInfo.version.value}"
         let version =
             TextBlock(
-                Name = LauncherIds.versionText,
+                Name = ConstructorUiId.launcherVersionText.value,
                 Text = versionText,
                 FontSize = 11.0,
                 Opacity = 0.7,
                 HorizontalAlignment = Layout.HorizontalAlignment.Right,
                 Margin = Thickness(20.0, 0.0, 20.0, 10.0))
-        AutomationProperties.SetAutomationId(version, LauncherIds.versionText)
+        AutomationProperties.SetAutomationId(version, ConstructorUiId.launcherVersionText.value)
         AutomationProperties.SetName(version, versionText)
         DockPanel.SetDock(version, Dock.Bottom)
         let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
@@ -240,6 +218,7 @@ type App() =
 
 module Program =
 
+    [<Softellect.Sys.ElevationBoundary(nameof Softellect.Sys.IoBoundary, "the process entry point - argv in, exit code out, per the .NET contract")>]
     [<EntryPoint; STAThread>]
     let main (argv : string[]) : int =
         AppBuilder

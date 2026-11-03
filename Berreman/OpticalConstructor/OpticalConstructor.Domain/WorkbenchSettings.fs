@@ -82,7 +82,7 @@ module WorkbenchSettings =
 
     /// The workbench settings record: every field an elevated type — no naked bool,
     /// no raw int. `defaults` is the single source of the built-in values (the
-    /// composition root passes `.defaultValue.value` as each provider default, so
+    /// composition root reads each key with its field of `defaults` as the default, so
     /// 5 / 100 / 8 / modeless appear exactly once, here).
     type WorkbenchSettings =
         {
