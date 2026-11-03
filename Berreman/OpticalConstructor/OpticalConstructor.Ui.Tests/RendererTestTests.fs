@@ -11,6 +11,7 @@ open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
 open OpticalConstructor.TestWindows.RendererTestView
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Tests for the renderer test SCENE (Spec 0027). After task 018 the renderer itself (config + draw) is
 /// the shared `RendererControls` / `ElementRenderer` (tested separately); this scene just drives it. Pure
@@ -30,7 +31,7 @@ module RendererTestTests =
     let ``the scene seeds several element kinds, with both lens / mirror cap signs`` () =
         let m = initRendererTest ()
         Assert.True(List.length m.elements >= 4, "at least a few elements of different kinds")
-        Assert.Equal(Some 1, m.selected)
+        Assert.Equal(Some (SceneElementIndex 1), m.selected)
         let signsFor (k : OpticalConstructor.Domain.Placement.CatalogueKind) =
             m.elements |> List.filter (fun e -> e.placement.catalogueKind = k) |> List.map (fun e -> e.opticalSign) |> List.sort
         Assert.Equal<OpticalSign list>([ DivergingSign; ConvergingSign ], signsFor OpticalConstructor.Domain.Placement.Lens)
@@ -47,11 +48,11 @@ module RendererTestTests =
     [<Fact>]
     let ``the wheel zooms the table and rotates the selection`` () =
         let m0 = initRendererTest ()   // an element is selected (index 1)
-        Assert.True((updateRendererTest (RendererTestWheel (Set.empty, 1)) m0).view.zoom.value > m0.view.zoom.value, "plain wheel zooms in")
-        let rotated = updateRendererTest (RendererTestWheel (Set.ofList [ RendererTestModShift ], 1)) m0
+        Assert.True((updateRendererTest (RendererTestWheel (Set.empty, WheelNotches 1)) m0).view.zoom.value > m0.view.zoom.value, "plain wheel zooms in")
+        let rotated = updateRendererTest (RendererTestWheel (Set.ofList [ RendererTestModShift ], WheelNotches 1)) m0
         Assert.True((List.item 1 rotated.elements).placement.r1.degrees > 0.0, "Shift+wheel rotated the selected element R1")
         Assert.True(abs (rotated.view.r1.degrees) < 1e-9, "the table view did not rotate while an element was selected")
-        let tableTurned = updateRendererTest (RendererTestWheel (Set.ofList [ RendererTestModShift ], 1)) { m0 with selected = None }
+        let tableTurned = updateRendererTest (RendererTestWheel (Set.ofList [ RendererTestModShift ], WheelNotches 1)) { m0 with selected = None }
         Assert.True(tableTurned.view.r1.degrees > 0.0, "Shift+wheel rotates the table view when nothing is selected")
 
     [<Fact>]

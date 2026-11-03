@@ -1028,7 +1028,7 @@ type CatalogueKind with
 type RayPositionControls.PositionRange with
 
     /// `v` held to this range.
-    member private range.clampedPosition (v : BarMeters) : BarMeters =
+    member range.clampedPosition (v : BarMeters) : BarMeters =
         match range with
         | RayPositionControls.BoundedRange span -> BarMeters (max span.lowest.value (min span.highest.value v.value))
         | RayPositionControls.AtLeast lowest -> BarMeters (max lowest.value v.value)

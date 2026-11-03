@@ -21,6 +21,7 @@ open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 // ---------------------------------------------------------------------------
 // Wheel gesture map (the rotations act on the selection; a plain / Ctrl wheel zooms the table).
@@ -64,26 +65,21 @@ type RendererTestModel =
         /// The drawn elements (the SHARED `ElementRenderer.Drawable`: placement + draw zoom + optical sign).
         elements : ElementRenderer.Drawable list
         /// The selected element (drawn highlighted), or none. Clicking selects the nearest element.
-        selected : int option
+        selected : SceneElementIndex option
         drag : RendererTestDragState
         /// The shared renderer "large control" config (wireframe ⇄ shapes, cap detail, transparency).
         render : RendererControls.RendererControlsState
     }
 
-// The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
-let rendererTestCanvasWidth : float = TableScene.canvasWidth.value
-let rendererTestCanvasHeight : float = TableScene.canvasHeight.value
-
-let private elementSelectRadiusPx : float = 50.0
-let private dragThresholdPx : float = 3.0
-let private wheelStepDegrees : float = 5.0
+let private elementSelectRadiusPx : CanvasLength = CanvasLength 50.0
+let private dragThresholdPx : CanvasLength = CanvasLength 3.0
 
 /// One light source, a couple of optical elements, and a detector along the central ray, so the codes and
 /// shapes for several kinds are visible at once. R3 is UNLOCKED here so you can tip elements out of the
 /// plane and watch the shape renderer open up. The linear polarizer starts selected.
 let initRendererTest () : RendererTestModel =
-    let mk (x : float) (kind : CatalogueKind) (sign : OpticalSign) : ElementRenderer.Drawable =
-        let placement = { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with r3Locked = RotationFree }
+    let mk (x : float<meter>) (kind : CatalogueKind) (sign : OpticalSign) : ElementRenderer.Drawable =
+        let placement = { ElementPlacement.create kind { x = x; y = 0.0<meter> } with r3Locked = RotationFree }
         { placement = placement
           centre = placement.placementPoint.toVector3
           zoom = BeamLayout.ElementZoom 3.5
@@ -95,14 +91,14 @@ let initRendererTest () : RendererTestModel =
         // A source and a flat polarizer / detector (cylinders), a convex + a concave lens, and a concave
         // (focusing) + a convex curved mirror — spread along the beam, so both cap signs are visible.
         elements =
-            [ mk -0.9 LightSource FlatSign
-              mk -0.6 LinearPolarizer FlatSign
-              mk -0.3 Lens ConvergingSign
-              mk 0.0 Lens DivergingSign
-              mk 0.3 CurvedMirror ConvergingSign
-              mk 0.6 CurvedMirror DivergingSign
-              mk 0.9 Detector FlatSign ]
-        selected = Some 1
+            [ mk -0.9<meter> LightSource FlatSign
+              mk -0.6<meter> LinearPolarizer FlatSign
+              mk -0.3<meter> Lens ConvergingSign
+              mk 0.0<meter> Lens DivergingSign
+              mk 0.3<meter> CurvedMirror ConvergingSign
+              mk 0.6<meter> CurvedMirror DivergingSign
+              mk 0.9<meter> Detector FlatSign ]
+        selected = Some (SceneElementIndex 1)
         drag = RendererTestNotPressed
         render = RendererControls.defaultState
     }
@@ -111,128 +107,125 @@ type RendererTestMsg =
     /// Swap the active renderer (Wireframe ⇄ Shapes).
     | SwapRenderer
     /// The shared renderer control's other knobs.
-    | RenderSetRailsIndex of int
-    | RenderSetCircles of int
-    | RenderSetRadialsIndex of int
-    | RenderSetRailOpacity of float
-    | RenderSetFaceOpacity of float
-    | RenderSetLineOpacity of float
+    | RendererTestSetRailsIndex of RendererControls.RendererPresetIndex
+    | RendererTestSetCircles of RendererControls.CapCircles
+    | RendererTestSetRadialsIndex of RendererControls.RendererPresetIndex
+    | RendererTestSetRailOpacity of RendererControls.RendererOpacity
+    | RendererTestSetFaceOpacity of RendererControls.RendererOpacity
+    | RendererTestSetLineOpacity of RendererControls.RendererOpacity
     | RendererTestPointerDown of ScreenPoint
     | RendererTestPointerMove of ScreenPoint
     | RendererTestPointerUp of ScreenPoint
-    | RendererTestWheel of Set<RendererTestWheelModifier> * int
+    | RendererTestWheel of Set<RendererTestWheelModifier> * WheelNotches
 
 // ---------------------------------------------------------------------------
-// Projection + selection + gestures.
+// Selection + gestures.
 // ---------------------------------------------------------------------------
 
-let private projectPt (view : TableViewState) (p : Vector3) : ScreenPoint = TableScene.projectOnScene view p
+type RendererTestModel with
 
-let private dist (a : ScreenPoint) (b : ScreenPoint) : float = sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
+    /// The elements, each with its index.
+    member model.indexedElements : (SceneElementIndex * ElementRenderer.Drawable) list =
+        model.elements |> List.mapi (fun i e -> SceneElementIndex i, e)
 
-let private elementCentre (view : TableViewState) (e : ElementRenderer.Drawable) : ScreenPoint =
-    projectPt view (Vector3.create (e.placement.placementPoint.x / 1.0<meter>) (e.placement.placementPoint.y / 1.0<meter>) 0.0)
+    /// The element whose projected centre is nearest `pt`, if it lies within the select radius.
+    member internal model.nearestElement (pt : ScreenPoint) : SceneElementIndex option =
+        model.indexedElements
+        |> List.map (fun (i, e) -> i, pt.distanceTo (TableScene.projectOnScene model.view e.placement.placementPoint.toVector3))
+        |> List.sortBy snd
+        |> List.tryHead
+        |> Option.bind (fun (i, d) -> if d <= elementSelectRadiusPx then Some i else None)
 
-let private selectNearest (sp : ScreenPoint) (m : RendererTestModel) : int option =
-    m.elements
-    |> List.mapi (fun i e -> i, dist sp (elementCentre m.view e))
-    |> List.sortBy snd
-    |> List.tryHead
-    |> Option.bind (fun (i, d) -> if d <= elementSelectRadiusPx then Some i else None)
-
-let private mapElement (i : int) (f : ElementRenderer.Drawable -> ElementRenderer.Drawable) (m : RendererTestModel) : RendererTestModel =
-    { m with elements = m.elements |> List.mapi (fun j e -> if j = i then f e else e) }
+let private mapElement (i : SceneElementIndex) (f : ElementRenderer.Drawable -> ElementRenderer.Drawable) (m : RendererTestModel) : RendererTestModel =
+    { m with elements = m.indexedElements |> List.map (fun (j, e) -> if j = i then f e else e) }
 
 let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : RendererTestModel) : RendererTestModel =
     { m with view = TableScene.panViewBy refPt pt m.view; drag = RendererTestPanning pt }
 
-let private zoomBy (notches : int) (m : RendererTestModel) : RendererTestModel = { m with view = TableScene.zoomViewBy (WheelNotches notches) m.view }
-
-/// Rotate the SELECTION about axis (1/2/3) by `notches` steps: the selected element, or the table view.
-let private rotateSelected (axis : int) (notches : int) (m : RendererTestModel) : RendererTestModel =
-    let a = Angle.degree (wheelStepDegrees * float notches * 1.0<deg>)
-    let rot (r : Angle) = r + a
+/// Rotate the SELECTION about `axis` by `a`: the selected element, or the table view.
+let private rotateSelected (axis : RotationControls.RotationAxis) (a : Angle) (m : RendererTestModel) : RendererTestModel =
     match m.selected with
     | Some i ->
         mapElement i (fun e ->
-            { e with placement = (match axis with 1 -> withR1 (rot e.placement.r1) | 2 -> withR2 (rot e.placement.r2) | _ -> withR3 (rot e.placement.r3)) e.placement }) m
-    | None ->
-        { m with view = TableScene.rotateViewBy (match axis with 1 -> RotationControls.R1 | 2 -> RotationControls.R2 | _ -> RotationControls.R3) a m.view }
+            let p = e.placement
+            let turned =
+                match axis with
+                | RotationControls.R1 -> withR1 (p.r1 + a) p
+                | RotationControls.R2 -> withR2 (p.r2 + a) p
+                | RotationControls.R3 -> withR3 (p.r3 + a) p
+            { e with placement = turned }) m
+    | None -> { m with view = TableScene.rotateViewBy axis a m.view }
 
 let updateRendererTest (msg : RendererTestMsg) (model : RendererTestModel) : RendererTestModel =
     match msg with
     | SwapRenderer -> { model with render = model.render.swapped }
-    | RenderSetRailsIndex i -> { model with render = model.render.withRailsIndex (RendererControls.RendererPresetIndex i) }
-    | RenderSetCircles n -> { model with render = model.render.withCircles (RendererControls.CapCircles n) }
-    | RenderSetRadialsIndex i -> { model with render = model.render.withRadialsIndex (RendererControls.RendererPresetIndex i) }
-    | RenderSetRailOpacity v -> { model with render = model.render.withRailOpacity (RendererControls.RendererOpacity v) }
-    | RenderSetFaceOpacity v -> { model with render = model.render.withFaceOpacity (RendererControls.RendererOpacity v) }
-    | RenderSetLineOpacity v -> { model with render = model.render.withLineOpacity (RendererControls.RendererOpacity v) }
+    | RendererTestSetRailsIndex i -> { model with render = model.render.withRailsIndex i }
+    | RendererTestSetCircles n -> { model with render = model.render.withCircles n }
+    | RendererTestSetRadialsIndex i -> { model with render = model.render.withRadialsIndex i }
+    | RendererTestSetRailOpacity v -> { model with render = model.render.withRailOpacity v }
+    | RendererTestSetFaceOpacity v -> { model with render = model.render.withFaceOpacity v }
+    | RendererTestSetLineOpacity v -> { model with render = model.render.withLineOpacity v }
     | RendererTestPointerDown pt -> { model with drag = RendererTestPressed pt }
     | RendererTestPointerMove pt ->
         match model.drag with
         | RendererTestNotPressed -> model
-        | RendererTestPressed start -> if dist start pt < dragThresholdPx then model else panFrom start pt model
+        | RendererTestPressed start -> if start.distanceTo pt < dragThresholdPx then model else panFrom start pt model
         | RendererTestPanning last -> panFrom last pt model
     | RendererTestPointerUp _ ->
         // A clean click (no drag) selects the nearest element (or deselects); a pan does not.
         let model' =
             match model.drag with
-            | RendererTestPressed start -> { model with selected = selectNearest start model }
+            | RendererTestPressed start -> { model with selected = model.nearestElement start }
             | _ -> model
         { model' with drag = RendererTestNotPressed }
     | RendererTestWheel (mods, notches) ->
+        // The Main screen's 5° per notch, added unwrapped (as the table view's own rotation adds it).
+        let a = Angle.degree ((notches.turnedBy wheelStepDegrees).value * 1.0<deg>)
         match rendererTestWheelAction mods with
-        | RendererTestRotateSel1 -> rotateSelected 1 notches model
-        | RendererTestRotateSel2 -> rotateSelected 2 notches model
-        | RendererTestRotateSel3 -> rotateSelected 3 notches model
-        | RendererTestZoomTable -> zoomBy notches model
+        | RendererTestRotateSel1 -> rotateSelected RotationControls.R1 a model
+        | RendererTestRotateSel2 -> rotateSelected RotationControls.R2 a model
+        | RendererTestRotateSel3 -> rotateSelected RotationControls.R3 a model
+        | RendererTestZoomTable -> { model with view = TableScene.zoomViewBy notches model.view }
         | RendererTestNoWheelAction -> model
 
 // ---------------------------------------------------------------------------
 // The FuncUI view.
 // ---------------------------------------------------------------------------
 
-let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
+let private hintColor : Color = Color.FromRgb(100uy, 100uy, 100uy)
+let private canvasBackgroundColor : Color = Color.FromRgb(250uy, 250uy, 250uy)
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
 
-/// The table plate (highlighted when the table is the rotation target — nothing selected) + the ray.
-let private plateViews (model : RendererTestModel) : IView list =
-    TableScene.plateViews model.view model.table (match model.selected with None -> PlateSelected | Some _ -> PlateNotSelected)
-    @ TableScene.sourceDetectorRayViews model.view
+type RendererTestModel with
 
-/// The elements, drawn through the SHARED renderer (the only one that draws is the chosen one).
-let private elementsViews (model : RendererTestModel) : IView list =
-    let renderer = ElementRenderer.rendererOf model.render
-    let project = projectPt model.view
-    model.elements
-    |> List.mapi (fun i e ->
-        let highlight =
-            match model.selected with
-            | Some s when s = i -> ElementRenderer.ElementHighlighted
-            | Some _ | None -> ElementRenderer.ElementNotHighlighted
-        renderer.draw project highlight e)
-    |> List.concat
-
-let private tableCanvas (model : RendererTestModel) : IView =
-    Canvas.create [
-        Canvas.name ConstructorUiId.rendererTestCanvas.value
-        Canvas.width rendererTestCanvasWidth
-        Canvas.height rendererTestCanvasHeight
-        Canvas.horizontalAlignment HorizontalAlignment.Left
-        Canvas.verticalAlignment VerticalAlignment.Top
-        Canvas.children (plateViews model @ elementsViews model)
-    ] :> IView
+    /// The table plate (highlighted when the table is the rotation target — nothing selected), the ray,
+    /// and the elements drawn through the SHARED renderer (the only one that draws is the chosen one).
+    member internal model.tableCanvas : IView =
+        let plate = match model.selected with None -> PlateSelected | Some _ -> PlateNotSelected
+        let renderer = ElementRenderer.rendererOf model.render
+        let elementViews =
+            model.indexedElements
+            |> List.collect (fun (i, e) ->
+                let highlight = if Some i = model.selected then ElementRenderer.ElementHighlighted else ElementRenderer.ElementNotHighlighted
+                renderer.draw (TableScene.projectOnScene model.view) highlight e)
+        Canvas.create [
+            Canvas.name ConstructorUiId.rendererTestCanvas.value
+            Canvas.width TableScene.canvasWidth.value
+            Canvas.height TableScene.canvasHeight.value
+            Canvas.horizontalAlignment HorizontalAlignment.Left
+            Canvas.verticalAlignment VerticalAlignment.Top
+            Canvas.children (TableScene.plateViews model.view model.table plate @ TableScene.sourceDetectorRayViews model.view @ elementViews)
+        ] :> IView
 
 let private renderHandlers (dispatch : RendererTestMsg -> unit) : RendererControls.RendererControlsHandlers =
     {
         swap = fun () -> dispatch SwapRenderer
-        setRailsIndex = fun i -> dispatch (RenderSetRailsIndex i.value)
-        setCircles = fun n -> dispatch (RenderSetCircles n.value)
-        setRadialsIndex = fun i -> dispatch (RenderSetRadialsIndex i.value)
-        setRailOpacity = fun v -> dispatch (RenderSetRailOpacity v.value)
-        setFaceOpacity = fun v -> dispatch (RenderSetFaceOpacity v.value)
-        setLineOpacity = fun v -> dispatch (RenderSetLineOpacity v.value)
+        setRailsIndex = fun i -> dispatch (RendererTestSetRailsIndex i)
+        setCircles = fun n -> dispatch (RendererTestSetCircles n)
+        setRadialsIndex = fun i -> dispatch (RendererTestSetRadialsIndex i)
+        setRailOpacity = fun v -> dispatch (RendererTestSetRailOpacity v)
+        setFaceOpacity = fun v -> dispatch (RendererTestSetFaceOpacity v)
+        setLineOpacity = fun v -> dispatch (RendererTestSetLineOpacity v)
     }
 
 let private controlBar (model : RendererTestModel) (dispatch : RendererTestMsg -> unit) : IView =
@@ -243,31 +236,32 @@ let private controlBar (model : RendererTestModel) (dispatch : RendererTestMsg -
         StackPanel.children [
             RendererControls.rendererControlsView model.render (renderHandlers dispatch)
             TextBlock.create [
-                TextBlock.foreground (brush (color 100 100 100))
+                TextBlock.foreground (brush hintColor)
                 TextBlock.text "click an element to select it · drag = pan · wheel = zoom · Shift/Ctrl+Shift/Alt+wheel = R1/R2/R3 of the selection · the RED seam rail tracks the roll about R1 · L/CM caps are spherical (+/- sign)"
             ]
         ]
     ] :> IView
 
+let private wheelModifiers (km : KeyModifiers) : Set<RendererTestWheelModifier> =
+    [ if km.HasFlag KeyModifiers.Control then RendererTestModCtrl
+      if km.HasFlag KeyModifiers.Shift then RendererTestModShift
+      if km.HasFlag KeyModifiers.Alt then RendererTestModAlt ]
+    |> Set.ofList
+
 let rendererTestView (model : RendererTestModel) (dispatch : RendererTestMsg -> unit) : IView =
     let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.rendererTestCanvas e
-    let wheelMods (km : KeyModifiers) : Set<RendererTestWheelModifier> =
-        [ if km.HasFlag KeyModifiers.Control then RendererTestModCtrl
-          if km.HasFlag KeyModifiers.Shift then RendererTestModShift
-          if km.HasFlag KeyModifiers.Alt then RendererTestModAlt ]
-        |> Set.ofList
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]
             Border.create [
-                Border.background (brush (color 250 250 250))
+                Border.background (brush canvasBackgroundColor)
                 Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (RendererTestPointerDown (toScreen e)))
                 Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (RendererTestPointerMove (toScreen e)))
                 Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (RendererTestPointerUp (toScreen e)))
                 Border.onPointerWheelChanged (fun e ->
                     e.Handled <- true
-                    dispatch (RendererTestWheel (wheelMods e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
-                Border.child (tableCanvas model)
+                    dispatch (RendererTestWheel (wheelModifiers e.KeyModifiers, WheelNotches (if e.Delta.Y >= 0.0 then 1 else -1))))
+                Border.child model.tableCanvas
             ]
         ]
     ] :> IView

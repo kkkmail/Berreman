@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui.Tests
 
 open Xunit
+open OpticalConstructor.Controls
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
@@ -11,29 +12,29 @@ open OpticalConstructor.Ui
 /// central ray by drag / arrow keys, clamped to the plate. Pure MVU — no headless session needed.
 module ElementMovementTests =
 
-    let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
+    let private close (a : BarMeters) (b : float) : bool = abs (a.value - b) <= 1.0e-9
 
     [<Fact>]
     let ``init: a single Sample element in the middle of the table`` () =
         let m = initElementMovement ()
         Assert.Equal(Sample, m.element.catalogueKind)
-        Assert.True(close (elementX m) 0.0, "starts at the table centre")
-        Assert.False(m.dragging)
+        Assert.True(close m.elementX 0.0, "starts at the table centre")
+        Assert.Equal(ElementNotSliding, m.dragging)
 
     [<Fact>]
     let ``SlideBy nudges the element along the beam and clamps to the plate edges`` () =
         let m = initElementMovement ()
-        Assert.True(close (elementX (updateElementMovement (SlideBy 0.3) m)) 0.3)
-        Assert.True(close (elementX (updateElementMovement (SlideBy -0.3) (updateElementMovement (SlideBy 0.3) m))) 0.0)
+        Assert.True(close (updateElementMovement (SlideBy (BarMeters 0.3)) m).elementX 0.3)
+        Assert.True(close (updateElementMovement (SlideBy (BarMeters -0.3)) (updateElementMovement (SlideBy (BarMeters 0.3)) m)).elementX 0.0)
         // The plate half-length is 1.0 m, so a big slide pins at the edge (±1.0), never beyond.
-        Assert.True(close (elementX (updateElementMovement (SlideBy 5.0) m)) 1.0)
-        Assert.True(close (elementX (updateElementMovement (SlideBy -5.0) m)) -1.0)
+        Assert.True(close (updateElementMovement (SlideBy (BarMeters 5.0)) m).elementX 1.0)
+        Assert.True(close (updateElementMovement (SlideBy (BarMeters -5.0)) m).elementX -1.0)
 
     [<Fact>]
     let ``SlideTo sets the position and ResetPosition returns it to the centre`` () =
-        let m = updateElementMovement (SlideTo 0.5) (initElementMovement ())
-        Assert.True(close (elementX m) 0.5)
-        Assert.True(close (elementX (updateElementMovement ResetPosition m)) 0.0)
+        let m = updateElementMovement (SlideTo (BarMeters 0.5)) (initElementMovement ())
+        Assert.True(close m.elementX 0.5)
+        Assert.True(close (updateElementMovement ResetPosition m).elementX 0.0)
 
     [<Fact>]
     let ``a drag moves the element ONLY when it begins on the element`` () =
@@ -44,12 +45,12 @@ module ElementMovementTests =
             m0
             |> updateElementMovement (BeginDrag { sx = TableScene.center.sx; sy = TableScene.center.sy })
             |> updateElementMovement (DragTo { sx = TableScene.center.sx + TableScene.pixelsPerMeter.value * 0.4; sy = TableScene.center.sy })
-        Assert.True(dragged.dragging)
-        Assert.True(close (elementX dragged) 0.4)
+        Assert.Equal(ElementSliding, dragged.dragging)
+        Assert.True(close dragged.elementX 0.4)
         // A press far OFF the element does not start a drag, so the subsequent move is inert.
         let notDragged =
             m0
             |> updateElementMovement (BeginDrag { sx = TableScene.center.sx; sy = TableScene.center.sy + 250.0 })
             |> updateElementMovement (DragTo { sx = TableScene.center.sx + TableScene.pixelsPerMeter.value * 0.4; sy = TableScene.center.sy })
-        Assert.False(notDragged.dragging)
-        Assert.True(close (elementX notDragged) 0.0)
+        Assert.Equal(ElementNotSliding, notDragged.dragging)
+        Assert.True(close notDragged.elementX 0.0)
