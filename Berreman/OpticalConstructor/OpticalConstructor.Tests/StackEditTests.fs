@@ -10,6 +10,7 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.Project
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Ui
 open Xunit
 
@@ -58,28 +59,28 @@ module StackEditTests =
 
     [<Fact>]
     let ``AC-B5 delete removes the indexed film, preserving the others by identity`` () =
-        let r = StackEditor.deleteLayer 1 baseSystem
+        let r = StackEditor.deleteLayer (FilmIndex 1) baseSystem
         Assert.Equal<Layer list>([ l0; l2 ], r.films)
         Assert.Equal(3, List.length baseSystem.films)
 
     [<Fact>]
     let ``AC-B5 reorder moves a film to the target index`` () =
-        let r = StackEditor.reorderLayer 0 2 baseSystem
+        let r = StackEditor.reorderLayer (FilmIndex 0) (FilmIndex 2) baseSystem
         Assert.Equal<Layer list>([ l1; l2; l0 ], r.films)
 
     [<Fact>]
     let ``AC-B5 duplicate inserts an identical record below the source`` () =
-        let r = StackEditor.duplicateLayer 0 baseSystem
+        let r = StackEditor.duplicateLayer (FilmIndex 0) baseSystem
         Assert.Equal<Layer list>([ l0; l0; l1; l2 ], r.films)
 
     [<Fact>]
     let ``AC-B5 group gathers the selection contiguously at the first index`` () =
-        let r = StackEditor.groupLayers [ 0; 2 ] baseSystem
+        let r = StackEditor.groupLayers [ FilmIndex 0; FilmIndex 2 ] baseSystem
         Assert.Equal<Layer list>([ l0; l2; l1 ], r.films)
 
     [<Fact>]
     let ``AC-B5 rotate-layer reuses the engine Layer.rotate member`` () =
-        let r = StackEditor.rotateLayer 1 Rotation.rotatePiX baseSystem
+        let r = StackEditor.rotateLayer (FilmIndex 1) Rotation.rotatePiX baseSystem
         // Reuses Media.fs:30 Layer.rotate — the rotated row equals the engine member.
         Assert.Equal(l1.rotate Rotation.rotatePiX, r.films.[1])
         Assert.True(refEq r.films.[0] l0)
@@ -152,9 +153,9 @@ module StackEditTests =
         // The drop payload carries only the materialEntry id; resolution is the
         // slice-004 by-id seam producing the StackMsg the owning update applies.
         let resolved = StackEditor.mediumFromMaterial standard MaterialIds.silicon w |> function Ok p -> p | Error e -> failwith $"{e}"
-        match StackEditor.layerMaterialDrop standard w 1 MaterialIds.silicon with
+        match StackEditor.layerMaterialDrop standard w (FilmIndex 1) MaterialIds.silicon with
         | Ok (StackEditor.SetLayerMaterial (idx, props)) ->
-            Assert.Equal(1, idx)
+            Assert.Equal(FilmIndex 1, idx)
             // The message carries the resolveMaterial-resolved OpticalProperties (no re-resolution).
             Assert.Equal(resolved, props)
             // The owning update applies it immutably: a NEW system, layer 1's
@@ -170,9 +171,9 @@ module StackEditTests =
     [<Fact>]
     let ``AC-J4 dropping an unknown material id is a no-op error, never throwing`` () =
         let unknown = MaterialId.create ()
-        match StackEditor.layerMaterialDrop standard (WaveLength.nm 600.0<nm>) 0 unknown with
+        match StackEditor.layerMaterialDrop standard (WaveLength.nm 600.0<nm>) (FilmIndex 0) unknown with
         | Error (UnknownMaterialIdErr reason) -> Assert.Contains(string unknown.value, reason)
         | other -> failwith $"expected UnknownMaterialIdErr, got {other}"
         // setLayerMaterial on an out-of-range index leaves the system unchanged.
-        let r = StackEditor.setLayerMaterial 99 glass baseSystem
+        let r = StackEditor.setLayerMaterial (FilmIndex 99) glass baseSystem
         Assert.True(refEq r.films baseSystem.films)

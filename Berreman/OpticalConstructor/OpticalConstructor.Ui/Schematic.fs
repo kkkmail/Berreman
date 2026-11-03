@@ -207,7 +207,7 @@ let layout (unit : UnitOfMeasure) (materialKey : int -> string) (sys : OpticalSy
         sys.films
         |> List.mapi (fun i l ->
             {
-                label = $"Layer %d{i} — %s{StackEditor.displayThickness unit l.thickness}"
+                label = $"Layer %d{i} — %s{(StackEditor.displayThickness unit l.thickness).value}"
                 height = bandHeight l.thickness
                 color = colorForMaterial (materialKey i)
                 substrate = None

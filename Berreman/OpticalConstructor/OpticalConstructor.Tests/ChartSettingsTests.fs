@@ -2,6 +2,8 @@ namespace OpticalConstructor.Tests
 
 open Berreman.FieldFunctions
 open OpticalConstructor.Domain
+open OpticalConstructor.Controls
+open OpticalConstructor.Controls.ChartStyle
 open OpticalConstructor.Ui.Charts
 open OpticalConstructor.Ui.Charts.ChartSettings
 open Plotly.NET
@@ -14,8 +16,8 @@ open Xunit
 ///           conversion while the stored series/`ChartSettings` remain canonical SI.
 module ChartSettingsTests =
 
-    let private trace name vis =
-        { functionId = R; name = name; color = "#1f77b4"; lineStyle = SolidLine; visible = vis }
+    let private trace (name : ControlCaption) (vis : ChartVisibility) : TraceSettings =
+        { functionId = R; name = name; color = SeriesColorHex "#1f77b4"; lineStyle = SolidLine; visible = vis }
 
     // ----------------------------------------------------------------- AC-H4
 
@@ -27,7 +29,7 @@ module ChartSettingsTests =
         let tSc = plot.Add.Scatter([| 0.0; 1.0 |], [| 0.0; 1.0 |])
         tSc.LegendText <- "T"
 
-        let s = { ChartSettings.defaultValue with traces = [ trace "R" true; trace "T" false ] }
+        let s = { ChartSettings.defaultValue with traces = [ trace (ControlCaption "R") ShownOnChart; trace (ControlCaption "T") HiddenOnChart ] }
         applyToScottPlot s plot
 
         Assert.True(rSc.IsVisible)
@@ -46,8 +48,8 @@ module ChartSettingsTests =
 
     [<Fact>]
     let ``AC-H4 Log10 maps to the genuine Plotly log axis type`` () =
-        Assert.Equal(StyleParam.AxisType.Log, plotlyAxisType Log10)
-        Assert.Equal(StyleParam.AxisType.Linear, plotlyAxisType Linear)
+        Assert.Equal(StyleParam.AxisType.Log, AxisScale.Log10.plotlyAxisType)
+        Assert.Equal(StyleParam.AxisType.Linear, AxisScale.Linear.plotlyAxisType)
         // applyToPlotly runs and returns a chart on a Log10 setting.
         let chart = Chart.Line([ (1.0, 1.0); (2.0, 2.0) ])
         let s = { ChartSettings.defaultValue with yScale = Log10 }
@@ -66,8 +68,8 @@ module ChartSettingsTests =
         Assert.Equal(500.0, (Units.fromMeters Units.Nanometer mWl).value, 9)
 
         // The stored ChartSettings range stays canonical SI regardless of display unit.
-        let s = { ChartSettings.defaultValue with xMin = Some (float mWl) }
-        Assert.Equal(Some (float mWl), s.xMin)
+        let s = { ChartSettings.defaultValue with xMin = Some (ChartAxisBound (float mWl)) }
+        Assert.Equal(Some (ChartAxisBound (float mWl)), s.xMin)
 
     [<Fact>]
     let ``AC-H5 applyToScottPlot converts an SI xMin/xMax override to the axis display unit`` () =
@@ -79,8 +81,8 @@ module ChartSettingsTests =
         let plot = new ScottPlot.Plot()
         let s =
             { ChartSettings.defaultValue with
-                xMin = Some (float loM)
-                xMax = Some (float hiM)
+                xMin = Some (ChartAxisBound (float loM))
+                xMax = Some (ChartAxisBound (float hiM))
                 xUnit = Some Units.Nanometer }
         applyToScottPlot s plot
 
@@ -91,8 +93,8 @@ module ChartSettingsTests =
         Assert.Equal(700.0, limits.Right, 6)
 
         // Storage stays canonical SI regardless of the axis display unit.
-        Assert.Equal(Some (float loM), s.xMin)
-        Assert.Equal(Some (float hiM), s.xMax)
+        Assert.Equal(Some (ChartAxisBound (float loM)), s.xMin)
+        Assert.Equal(Some (ChartAxisBound (float hiM)), s.xMax)
 
     [<Fact>]
     let ``AC-H5 applyToScottPlot keeps inverse-unit (nm to eV) limits ascending`` () =
@@ -107,8 +109,8 @@ module ChartSettingsTests =
         let plot = new ScottPlot.Plot()
         let s =
             { ChartSettings.defaultValue with
-                xMin = Some (float loM)
-                xMax = Some (float hiM)
+                xMin = Some (ChartAxisBound (float loM))
+                xMax = Some (ChartAxisBound (float hiM))
                 xUnit = Some Units.ElectronVolt }
         applyToScottPlot s plot
 
@@ -120,5 +122,5 @@ module ChartSettingsTests =
         Assert.Equal((Units.fromMeters Units.ElectronVolt loM).value, limits.Right, 6)
 
         // Storage stays canonical SI regardless of the axis display unit.
-        Assert.Equal(Some (float loM), s.xMin)
-        Assert.Equal(Some (float hiM), s.xMax)
+        Assert.Equal(Some (ChartAxisBound (float loM)), s.xMin)
+        Assert.Equal(Some (ChartAxisBound (float hiM)), s.xMax)

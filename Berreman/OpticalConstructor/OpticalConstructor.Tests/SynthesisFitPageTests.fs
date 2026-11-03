@@ -13,7 +13,9 @@ open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Optimization.MeritFunction
 open OpticalConstructor.Optimization.FitQuality
+open OpticalConstructor.Controls
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.SynthesisFitPage
 open Xunit
 
 /// Part G §G.8 / §G.10 page-level ACs (slice 011), in the gated, UI-less
@@ -61,8 +63,8 @@ module SynthesisFitPageTests =
                     tolerance = TargetTolerance 1.0
                     kind = Equality
                 })
-        let initial = [| 220.0e-9 |]
-        match LocalRefinement.refine baseSystem parameters (DesignVector initial) targets with
+        let initial = DesignVector [| 220.0e-9 |]
+        match LocalRefinement.refine baseSystem parameters initial targets with
         | Ok (refined, result) ->
             let residual = MeritFunction.buildResidual baseSystem parameters targets
             baseSystem, parameters, initial, targets, refined, FitQuality.fromResult residual result
@@ -159,19 +161,19 @@ module SynthesisFitPageTests =
     [<Fact>]
     let ``AC-G7 Cancel is distinct from Start and Revert restores the pre-fit system`` () =
         let (baseSystem, parameters, initial, targets, _, _) = fittedProblem ()
-        let model0 = SynthesisFitPage.initSynthesisFit baseSystem parameters initial targets LevenbergMarquardt "C:/work"
+        let model0 = SynthesisFitPage.initSynthesisFit baseSystem parameters initial targets LevenbergMarquardt (FolderName "C:/work")
 
         // Start is one-click and non-destructive: snapshots the pre-fit system and
         // does NOT overwrite the working system.
         let started = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.StartFit model0
-        Assert.True(started.running)
+        Assert.Equal(FitRunning, started.running)
         Assert.Equal<OpticalSystem>(model0.workingSystem, started.workingSystem)
         Assert.Equal(Some model0.workingSystem, started.preFit)
 
         // Cancel is a DISTINCT message from Start; it sets the cooperative flag the
         // G.9 loop observes, and is not the same control as Start.
         let cancelled = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.CancelFit started
-        Assert.True(cancelled.cancelRequested)
+        Assert.Equal(Synthesis.SearchCancelRequested, cancelled.cancelRequested)
         Assert.NotEqual<SynthesisFitPage.Msg>(SynthesisFitPage.StartFit, SynthesisFitPage.CancelFit)
 
         // A completed-then-accepted fit replaces the working system only after an
@@ -179,9 +181,9 @@ module SynthesisFitPageTests =
         let candidateSystem = mkSystem 250.0<nm>
         let report = (let (_, _, _, _, _, r) = fittedProblem () in r)
         let completed = SynthesisFitPage.updateSynthesisFit (SynthesisFitPage.FitCompleted(candidateSystem, report)) cancelled
-        Assert.False(completed.running)
+        Assert.Equal(FitNotRunning, completed.running)
         let requested = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.RequestAccept completed
-        Assert.True((SynthesisFitPage.acceptConfirmationPrompt requested).IsSome)   // confirm gate
+        Assert.True(Option.isSome requested.acceptConfirmationPrompt)   // confirm gate
         Assert.Equal<OpticalSystem>(model0.workingSystem, requested.workingSystem)  // not yet replaced
         let confirmed = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.ConfirmAccept requested
         Assert.Equal<OpticalSystem>(candidateSystem, confirmed.workingSystem)       // now replaced
@@ -220,16 +222,16 @@ module SynthesisFitPageTests =
     [<Fact>]
     let ``AC-G8 the fit-vs-measured overlay refreshes from the model on completion without a manual reload`` () =
         let (baseSystem, parameters, initial, targets, refined, report) = fittedProblem ()
-        let model0 = SynthesisFitPage.initSynthesisFit baseSystem parameters initial targets LevenbergMarquardt "C:/work"
+        let model0 = SynthesisFitPage.initSynthesisFit baseSystem parameters initial targets LevenbergMarquardt (FolderName "C:/work")
 
         // No candidate yet: no overlay.
-        Assert.True((SynthesisFitPage.comparisonOverlay model0).IsNone)
+        Assert.True(Option.isNone model0.comparisonOverlay)
 
         // Start then complete — the overlay refreshes WITHOUT any extra reload message.
         let running = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.StartFit model0
         let completed = SynthesisFitPage.updateSynthesisFit (SynthesisFitPage.FitCompleted(refined, report)) running
 
-        match SynthesisFitPage.comparisonOverlay completed with
+        match completed.comparisonOverlay with
         | Some (infos, funcs) ->
             // Two models overlaid (pre-fit reference + fitted candidate) for the
             // targets' photometric channel — the exact `plotComparison` inputs.
@@ -241,4 +243,4 @@ module SynthesisFitPageTests =
 
     [<Fact>]
     let ``G10 the page exposes a named Synthesis/Fit navigation entry`` () =
-        Assert.Equal("Synthesis / Fit", SynthesisFitPage.navEntry.title)
+        Assert.Equal(ControlCaption "Synthesis / Fit", SynthesisFitPage.navEntry.title)

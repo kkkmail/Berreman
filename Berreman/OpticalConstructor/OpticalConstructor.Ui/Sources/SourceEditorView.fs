@@ -24,17 +24,7 @@ open Analytics.StandardLightVariables
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.SourceSpec
-
-// ---------------------------------------------------------------------------
-// Wavelength entry at the boundary (§E.2 / AC-E2). The chosen display unit is
-// converted to a WaveLength through the sole Units seam; the domain model stores
-// no non-SI unit (the WaveLength's .value is meters).
-// ---------------------------------------------------------------------------
-
-/// Build a `WaveLength` from an operator entry in display unit `u` (§E.2). nm/µm
-/// land on `WaveLength.Nm`/`WaveLength.Mkm` natively; Å, mm, eV, cm⁻¹ — which the
-/// engine `WaveLength` cannot represent — reduce to nm via the §A.10 conversions.
-let waveLengthFromInput (u : UnitOfMeasure) (x : float) : WaveLength = toWaveLength u (UnitMagnitude x)
+open OpticalConstructor.Controls
 
 // ---------------------------------------------------------------------------
 // The editor model messages & pure update (Avalonia-free).
@@ -43,13 +33,14 @@ let waveLengthFromInput (u : UnitOfMeasure) (x : float) : WaveLength = toWaveLen
 // ---------------------------------------------------------------------------
 
 type SourceMsg =
-    /// Wavelength entered in a display unit; converted at the boundary and the
-    /// display unit is recorded on the source.
-    | SetWaveLength of UnitOfMeasure * float
-    | SetIncidenceAngleDegrees of float
+    /// Wavelength entered in a display unit; converted at the boundary through the sole
+    /// `Units.toWaveLength` seam (§E.2 / AC-E2): nm/µm land on `WaveLength.Nm`/`WaveLength.Mkm`,
+    /// Å, mm, eV, cm⁻¹ reduce to nm. The display unit is recorded on the source.
+    | SetWaveLength of UnitOfMeasure * UnitMagnitude
+    | SetIncidenceAngle of IncidenceAngle
     | SetPolarization of Polarization
-    | SetEllipticity of float
-    | SetIntensity of float
+    | SetEllipticity of Ellipticity
+    | SetIntensity of IlluminationWeight
     | SetDisplayUnit of UnitOfMeasure
 
 let private setLight (f : IncidentLightInfo -> IncidentLightInfo) (s : SourceSpec) : SourceSpec =
@@ -59,12 +50,11 @@ let private setLight (f : IncidentLightInfo -> IncidentLightInfo) (s : SourceSpe
 let update (msg : SourceMsg) (s : SourceSpec) : SourceSpec =
     match msg with
     | SetWaveLength (u, x) ->
-        { setLight (fun l -> { l with waveLength = waveLengthFromInput u x }) s with displayUnit = u }
-    | SetIncidenceAngleDegrees d ->
-        setLight (fun l -> { l with incidenceAngle = IncidenceAngle.create (Angle.degree (d * 1.0<deg>)) }) s
+        { setLight (fun l -> { l with waveLength = toWaveLength u x }) s with displayUnit = u }
+    | SetIncidenceAngle a -> setLight (fun l -> { l with incidenceAngle = a }) s
     | SetPolarization p -> setLight (fun l -> { l with polarization = p }) s
-    | SetEllipticity e -> setLight (fun l -> { l with ellipticity = Ellipticity.create e }) s
-    | SetIntensity i -> { s with intensity = IlluminationWeight i }
+    | SetEllipticity e -> setLight (fun l -> { l with ellipticity = e }) s
+    | SetIntensity i -> { s with intensity = i }
     | SetDisplayUnit u -> { s with displayUnit = u }
 
 // ---------------------------------------------------------------------------
@@ -75,28 +65,30 @@ let update (msg : SourceMsg) (s : SourceSpec) : SourceSpec =
 // module does NOT implement sweep execution / charting / calculate wiring.
 // ---------------------------------------------------------------------------
 
-/// A ranged wavelength axis over the §E.3 preset span (200–800 nm,
-/// `StandardLightVariables.fs:64`) — a `WaveLengthRange`, no fresh `Range<_>`.
-let wavelengthAxisRanged (numberOfPoints : int) : SourceAxis<WaveLength> =
-    let points = NumberOfPoints numberOfPoints
-    Ranged points.wavelength200to800Range
+type NumberOfPoints with
 
-/// A ranged incidence-angle axis over the §E.3 preset span (0–89°,
-/// `StandardLightVariables.fs:40`) — an `IncidenceAngleRange`, no fresh `Range<_>`.
-let incidenceAngleAxisRanged (numberOfPoints : int) : SourceAxis<IncidenceAngle> =
-    let points = NumberOfPoints numberOfPoints
-    Ranged points.incidenceAngleRange
+    /// A ranged wavelength axis of this many points over the §E.3 preset span (200–800 nm,
+    /// `StandardLightVariables.fs:64`) — a `WaveLengthRange`, no fresh `Range<_>`.
+    member this.wavelengthSourceAxis : SourceAxis<WaveLength> = Ranged this.wavelength200to800Range
 
-/// A fixed (single-value) wavelength axis carrying the committed value.
-let wavelengthAxisFixed (w : WaveLength) : SourceAxis<WaveLength> = Fixed w
+    /// A ranged incidence-angle axis of this many points over the §E.3 preset span (0–89°,
+    /// `StandardLightVariables.fs:40`) — an `IncidenceAngleRange`, no fresh `Range<_>`.
+    member this.incidenceAngleSourceAxis : SourceAxis<IncidenceAngle> = Ranged this.incidenceAngleRange
 
-/// The `RangedVariable` a `Ranged` axis hands to the sweep layer unchanged
-/// (`None` for a `Fixed` axis). The matching case (`WaveLengthRange`/
-/// `IncidenceAngleRange`) is preserved verbatim — no new range type (§E.3).
-let axisRangedVariable (axis : SourceAxis<'T>) : RangedVariable option =
-    match axis with
-    | Ranged r -> Some r
-    | Fixed _ -> None
+type WaveLength with
+
+    /// A fixed (single-value) wavelength axis carrying this committed value.
+    member this.fixedSourceAxis : SourceAxis<WaveLength> = Fixed this
+
+type SourceAxis<'T> with
+
+    /// The `RangedVariable` a `Ranged` axis hands to the sweep layer unchanged
+    /// (`None` for a `Fixed` axis). The matching case (`WaveLengthRange`/
+    /// `IncidenceAngleRange`) is preserved verbatim — no new range type (§E.3).
+    member this.rangedVariableOpt : RangedVariable option =
+        match this with
+        | Ranged r -> Some r
+        | Fixed _ -> None
 
 // ---------------------------------------------------------------------------
 // Source palette discoverability (§E.10 / AC-E10). Adding a Source is a one-click
@@ -104,35 +96,42 @@ let axisRangedVariable (axis : SourceAxis<'T>) : RangedVariable option =
 // freely removable from the sources list of §E.8).
 // ---------------------------------------------------------------------------
 
-/// A reasonable default new source: a vacuum, normal-incidence, monochromatic
-/// 600 nm s-polarised collimated coherent source at unit intensity, nm display.
-let defaultSource (sourceId : string) : SourceSpec =
-    {
-        sourceId = SourceSpecId sourceId
-        name = None
-        light = IncidentLightInfo.create (WaveLength.nm 600.0<nm>)
-        displayUnit = Nanometer
-        intensity = IlluminationWeight 1.0
-        spectralProfile = None
-        cone = None
-        gaussianBeam = None
-        coherence = Coherent
-    }
+type SourceSpecId with
 
-/// A named element-palette entry. `requiresConfirmation = false` makes adding the
+    /// A reasonable default new source under this id: a vacuum, normal-incidence, monochromatic
+    /// 600 nm s-polarised collimated coherent source at unit intensity, nm display.
+    member this.defaultSource : SourceSpec =
+        {
+            sourceId = this
+            name = None
+            light = IncidentLightInfo.create (WaveLength.nm 600.0<nm>)
+            displayUnit = Nanometer
+            intensity = IlluminationWeight 1.0
+            spectralProfile = None
+            cone = None
+            gaussianBeam = None
+            coherence = Coherent
+        }
+
+/// Whether adding a palette element asks for confirmation first (§E.10).
+type AddConfirmation =
+    | AddWithoutConfirmation
+    | AddAfterConfirmation
+
+/// A named element-palette entry. `AddWithoutConfirmation` makes adding the
 /// element a one-click action with no gate (§E.10).
 type PaletteEntry =
     {
-        title : string
+        title : ControlCaption
         element : ConstructorElement
-        requiresConfirmation : bool
+        addConfirmation : AddConfirmation
     }
 
 /// The Source palette entry (§E.10): one-click add of a `ConstructorElement.SourceElement`
 /// with no confirmation gate, reachable from the palette navigation.
 let sourcePaletteEntry : PaletteEntry =
     {
-        title = "Source"
+        title = ControlCaption "Source"
         element = ConstructorElement.SourceElement
-        requiresConfirmation = false
+        addConfirmation = AddWithoutConfirmation
     }

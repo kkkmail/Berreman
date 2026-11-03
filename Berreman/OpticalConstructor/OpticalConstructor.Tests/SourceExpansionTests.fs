@@ -14,7 +14,7 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.SourceSpec
 open OpticalConstructor.Domain.SourceCombination
 open OpticalConstructor.Storage.SpectralImport
-open OpticalConstructor.Ui.Sources
+open OpticalConstructor.Ui.Sources.SourceEditorView
 open Xunit
 
 /// Part E expand-on-the-boundary tests (slice 007). Prove the load-bearing
@@ -25,7 +25,7 @@ open Xunit
 /// amplitudes (AC-E5..AC-E9).
 module SourceExpansionTests =
 
-    let private baseSource = SourceEditorView.defaultSource "src"
+    let private baseSource = (SourceSpecId "src").defaultSource
 
     /// The test's solve-and-read-Stokes closure: build the incident `EmField` in
     /// vacuum (engine `EmField.create`) and read `EmField.stokesVector`. Combining
