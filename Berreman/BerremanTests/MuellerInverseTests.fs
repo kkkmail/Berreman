@@ -511,7 +511,7 @@ type MuellerInverseTests() =
         // not against a paper. If muellerOfBirefringence and retarderMueller / rotationMueller ever
         // disagree, the inversion is producing coefficients in some other convention and every starting
         // value derived from it is silently wrong.
-        let lb = Retardance.degree 37.0
+        let lb = Retardance.degree 37.0<Berreman.Constants.deg>
         let zero = Retardance 0.0
 
         // A pure linear retardance with fast axis at 0 deg IS retarderMueller at azimuth 0.
@@ -522,7 +522,7 @@ type MuellerInverseTests() =
 
         // A pure circular retardance of cb IS the Stokes frame rotation through cb / 2: an optical rotator
         // turns the polarization azimuth by half its circular retardance.
-        let cb = Retardance.degree 50.0
+        let cb = Retardance.degree 50.0<Berreman.Constants.deg>
         assertMuellerEqual ((Angle (cb.value / 2.0)).rotationMueller) (muellerOfBirefringence zero zero cb)
 
         // Zero everywhere is the identity — the rotation vector vanishes and the Rodrigues short-circuit
@@ -533,10 +533,10 @@ type MuellerInverseTests() =
     member _.``analyticInversion inverts muellerOfBirefringence exactly and reports zero dichroism`` () =
         // The round trip that makes Stage A trustworthy as a starting-value generator.
         let cases =
-            [ "pure linear at 0", Retardance.degree 37.0, Retardance 0.0, Retardance 0.0
-              "pure linear at 45", Retardance 0.0, Retardance.degree -22.0, Retardance 0.0
-              "pure circular", Retardance 0.0, Retardance 0.0, Retardance.degree 50.0
-              "mixed", Retardance.degree 31.0, Retardance.degree 12.0, Retardance.degree -44.0 ]
+            [ "pure linear at 0", Retardance.degree 37.0<Berreman.Constants.deg>, Retardance 0.0, Retardance 0.0
+              "pure linear at 45", Retardance 0.0, Retardance.degree (-22.0<Berreman.Constants.deg>), Retardance 0.0
+              "pure circular", Retardance 0.0, Retardance 0.0, Retardance.degree 50.0<Berreman.Constants.deg>
+              "mixed", Retardance.degree 31.0<Berreman.Constants.deg>, Retardance.degree 12.0<Berreman.Constants.deg>, Retardance.degree (-44.0<Berreman.Constants.deg>) ]
 
         for (label, lb, lbPrime, cb) in cases do
             match analyticInversion (muellerOfBirefringence lb lbPrime cb) with
@@ -556,7 +556,7 @@ type MuellerInverseTests() =
         // rotation is not interpretable at all. Both must be typed errors: returning a plausible-looking
         // coefficient for either would corrupt the starting values silently, which is far worse than
         // failing.
-        match analyticInversion (muellerOfBirefringence (Retardance.degree 180.0) (Retardance 0.0) (Retardance 0.0)) with
+        match analyticInversion (muellerOfBirefringence (Retardance.degree 180.0<Berreman.Constants.deg>) (Retardance 0.0) (Retardance 0.0)) with
         | Error (DegenerateRotation reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected a DegenerateRotation for a half-turn, got %A{other}")
 
@@ -572,7 +572,7 @@ type MuellerInverseTests() =
         // physically realizable, and has exactly ONE non-zero eigenvalue when the matrix is
         // non-depolarizing. Both properties are pinned here on matrices whose answer is known a priori, so
         // that the same functions can be trusted as a realizability check on solver output below.
-        let nonDepolarizing = muellerOfBirefringence (Retardance.degree 31.0) (Retardance.degree 12.0) (Retardance.degree -44.0)
+        let nonDepolarizing = muellerOfBirefringence (Retardance.degree 31.0<Berreman.Constants.deg>) (Retardance.degree 12.0<Berreman.Constants.deg>) (Retardance.degree (-44.0<Berreman.Constants.deg>))
         match cloudeEigenvalues nonDepolarizing with
         | [ l0; l1; l2; l3 ] ->
             Assert.True(abs (l0 - 1.0) < 1.0e-9, $"dominant Cloude eigenvalue = {l0}")
@@ -756,8 +756,8 @@ type MuellerInverseTests() =
         // optimizer: every piece of Stage-B logic - scaling, forward evaluation, normalization, residual
         // assembly - must be exercisable with no numerical machinery present at all. If this fact needs a
         // real solver to pass, the logic and the physics are entangled.
-        let cannedModel = muellerOfBirefringence (Retardance.degree 20.0) (Retardance 0.0) (Retardance.degree 5.0)
-        let cannedMeasurement = muellerOfBirefringence (Retardance.degree 20.0) (Retardance 0.0) (Retardance.degree 5.0)
+        let cannedModel = muellerOfBirefringence (Retardance.degree 20.0<Berreman.Constants.deg>) (Retardance 0.0) (Retardance.degree 5.0<Berreman.Constants.deg>)
+        let cannedMeasurement = muellerOfBirefringence (Retardance.degree 20.0<Berreman.Constants.deg>) (Retardance 0.0) (Retardance.degree 5.0<Berreman.Constants.deg>)
 
         let mockForward : ForwardModelProxy<UniaxialParameters> =
             { muellerOf = fun _ _ -> Ok cannedModel }

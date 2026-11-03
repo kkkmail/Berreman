@@ -6,7 +6,8 @@ open System.IO.Compression                             // ZipFile / ZipArchive �
 open System.Globalization
 open FSharp.Data
 open Berreman.Geometry                                 // Angle — `description` is elevated to Angle.degree (never a bare degree)
-open OpticalConstructor.Domain.MuellerReconstruction   // MuellerRawRow / MuellerDataError / MuellerDataProxy / MuellerDataSet
+open OpticalConstructor.Domain.MeasuredData           // MeasuredIntensity — `avg_total` is elevated at the parse
+open OpticalConstructor.Domain.MuellerReconstruction   // MuellerRawRow / MuellerDataError / MuellerDataProxy / MuellerDataSet / MuellerArchivePath
 
 /// Spec 0042 (006, IMPLEMENT_CONTRACT STORE_XDUO_0009) — the real adapter behind the DECLARED
 /// `MuellerDataProxy` (step 005), re-pointed at the committed archive by spec 0044 §8.3. Three pieces:
@@ -17,7 +18,7 @@ open OpticalConstructor.Domain.MuellerReconstruction   // MuellerRawRow / Muelle
 ///     `capture_index`, `captured_at`, `description` and `avg_total` columns BY NAME (a trimmed header->index
 ///     map), elevating `description` to the engine `Angle` via `Angle.degree`. It never touches the
 ///     filesystem and never throws past the boundary: every parse failure is a typed `MuellerDataError`
-///     (`MalformedRow` for a bad column/row, `EmptyFile` for a header with no capture rows).
+///     (`MalformedRowErr` for a bad column/row, `EmptyFileErr` for a header with no capture rows).
 ///
 ///   • `tryLoadFromArchive` — the storage EDGE: `MuellerArchivePath -> MuellerDataSet -> rows`. It owns the
 ///     `MuellerDataSet -> archive entry name` mapping, opens the zip, reads that entry's text, and delegates
@@ -35,15 +36,6 @@ open OpticalConstructor.Domain.MuellerReconstruction   // MuellerRawRow / Muelle
 /// and keeps its own direct tests.
 module MuellerDataStore =
 
-    /// The on-disk location of the committed measured-data archive, elevated so no bare string is ever passed
-    /// into a factory. It is a STORAGE concept and deliberately lives here rather than in the Domain: nothing
-    /// above this boundary is allowed to learn that the data is packaged as an archive at all.
-    type MuellerArchivePath =
-        | MuellerArchivePath of string
-
-        /// The raw path (the IO seam — read only where the filesystem is actually touched).
-        member this.value = let (MuellerArchivePath p) = this in p
-
     let private inv = CultureInfo.InvariantCulture
 
     /// The required columns of a Mueller capture family, read BY NAME (the file carries many more —
@@ -57,7 +49,7 @@ module MuellerDataStore =
 
     /// Parse one already-column-split data row into a `MuellerRawRow`, reading each required cell by its
     /// resolved column index. Every field is parsed invariant-culture; the first bad cell short-circuits to a
-    /// typed `MalformedRow` naming the row, the column, and the offending value — never a throw. `description`
+    /// typed `MalformedRowErr` naming the row, the column, and the offending value — never a throw. `description`
     /// (the raw analyzer dial angle in degrees) is elevated to the engine `Angle` via `Angle.degree`.
     let private parseRow
         (rowNumber : int)
@@ -67,25 +59,25 @@ module MuellerDataStore =
         let cell (name : string) : Result<string, MuellerDataError> =
             let i = indexOf name
             if i < cols.Length then Ok (cols.[i].Trim())
-            else Error (MalformedRow $"data row {rowNumber}: the '{name}' cell is missing (the row is too short)")
+            else Error (MalformedRowErr $"data row {rowNumber}: the '{name}' cell is missing (the row is too short)")
         let asInt (name : string) : Result<int, MuellerDataError> =
             cell name
             |> Result.bind (fun s ->
                 match Int32.TryParse(s, NumberStyles.Integer, inv) with
                 | true, v -> Ok v
-                | _ -> Error (MalformedRow $"data row {rowNumber}: '{name}' is not an integer: '{s}'"))
+                | _ -> Error (MalformedRowErr $"data row {rowNumber}: '{name}' is not an integer: '{s}'"))
         let asFloat (name : string) : Result<float, MuellerDataError> =
             cell name
             |> Result.bind (fun s ->
                 match Double.TryParse(s, NumberStyles.Float, inv) with
                 | true, v -> Ok v
-                | _ -> Error (MalformedRow $"data row {rowNumber}: '{name}' is not a number: '{s}'"))
+                | _ -> Error (MalformedRowErr $"data row {rowNumber}: '{name}' is not a number: '{s}'"))
         let asDateTimeOffset (name : string) : Result<DateTimeOffset, MuellerDataError> =
             cell name
             |> Result.bind (fun s ->
                 match DateTimeOffset.TryParse(s, inv, DateTimeStyles.AssumeUniversal) with
                 | true, v -> Ok v
-                | _ -> Error (MalformedRow $"data row {rowNumber}: '{name}' is not an ISO-8601 timestamp: '{s}'"))
+                | _ -> Error (MalformedRowErr $"data row {rowNumber}: '{name}' is not an ISO-8601 timestamp: '{s}'"))
         cell "experiment"
         |> Result.bind (fun experiment ->
             asInt "capture_index"
@@ -97,11 +89,11 @@ module MuellerDataStore =
                         asFloat "avg_total"
                         |> Result.map (fun avgTotal ->
                             {
-                                experiment = experiment
-                                captureIndex = captureIndex
+                                experiment = MuellerExperimentLabel experiment
+                                captureIndex = CaptureIndex captureIndex
                                 capturedAt = capturedAt
                                 description = Angle.degree (descriptionDeg * 1.0<Berreman.Constants.deg>)
-                                avgTotal = avgTotal
+                                avgTotal = MeasuredIntensity avgTotal
                             })))))
 
     /// Parse a Mueller capture family from CSV TEXT (§7.2 measured-data load). Header-aware, BOM-tolerant,
@@ -110,11 +102,11 @@ module MuellerDataStore =
     /// `captured_at`, `description` and `avg_total` columns are read BY NAME (a trimmed header->index map, so
     /// the many unread columns and any column re-ordering are tolerated); `description` is elevated to the
     /// engine `Angle`. The result is the ordered `MuellerRawRow` list, or a typed `MuellerDataError`:
-    /// `MalformedRow` (a missing required column, a short/unparseable row) or `EmptyFile` (empty text, or a
+    /// `MalformedRowErr` (a missing required column, a short/unparseable row) or `EmptyFileErr` (empty text, or a
     /// header with no capture rows). No exception crosses the boundary — the whole body is under try/with.
     let parseMuellerCsv (csvText : string) : Result<MuellerRawRow list, MuellerDataError> =
         if String.IsNullOrWhiteSpace csvText then
-            Error (EmptyFile "the Mueller CSV text was empty")
+            Error (EmptyFileErr "the Mueller CSV text was empty")
         else
             try
                 let csv = CsvFile.Parse(stripBom csvText)
@@ -126,7 +118,7 @@ module MuellerDataStore =
                         |> Map.ofArray
                     match requiredColumns |> List.filter (fun name -> not (Map.containsKey name headerIndex)) with
                     | _ :: _ as missing ->
-                        Error (MalformedRow $"""the Mueller CSV is missing required column(s): {String.Join(", ", List.toArray missing)}""")
+                        Error (MalformedRowErr $"""the Mueller CSV is missing required column(s): {String.Join(", ", List.toArray missing)}""")
                     | [] ->
                         let indexOf (name : string) : int = Map.find name headerIndex
                         // Non-blank data rows only: FSharp.Data can surface a trailing all-empty row for a final
@@ -144,10 +136,10 @@ module MuellerDataStore =
                             |> Result.map List.rev
                         match parsed with
                         | Error e -> Error e
-                        | Ok [] -> Error (EmptyFile "the Mueller CSV carried a header but no capture rows")
+                        | Ok [] -> Error (EmptyFileErr "the Mueller CSV carried a header but no capture rows")
                         | Ok rows -> Ok rows
-                | _ -> Error (MalformedRow "the Mueller CSV has no header row")
-            with e -> Error (MalformedRow $"could not parse the Mueller CSV: {e.Message}")
+                | _ -> Error (MalformedRowErr "the Mueller CSV has no header row")
+            with e -> Error (MalformedRowErr $"could not parse the Mueller CSV: {e.Message}")
 
     /// The archive entry that carries each data set — the ONE place the identity → location mapping exists
     /// (spec 0044 §8.3). Zip entry names always use forward slashes, whatever the host platform. The five
@@ -176,8 +168,8 @@ module MuellerDataStore =
     /// boundary and it is TOTAL: opening the archive, finding the entry and reading it all run under
     /// `try/with`, and every failure becomes a typed `MuellerDataError` — never a throw across into the pure
     /// Domain. The two archive-specific failures are reported distinctly because they call for different
-    /// fixes: `ArchiveUnreadable` means the container is missing or corrupt (a deployment problem — the
-    /// `Content` copy did not happen), while `DataSetMissing` means the container opened but does not carry
+    /// fixes: `ArchiveUnreadableErr` means the container is missing or corrupt (a deployment problem — the
+    /// `Content` copy did not happen), while `DataSetMissingErr` means the container opened but does not carry
     /// that entry (a data problem — the archive is the wrong build). The parse itself is delegated
     /// UNCHANGED, so every missing-column / malformed-row / empty-file diagnostic is `parseMuellerCsv`'s.
     ///
@@ -192,12 +184,12 @@ module MuellerDataStore =
             try
                 use zip = ZipFile.OpenRead archive.value
                 match zip.GetEntry entry with
-                | null -> Error (DataSetMissing (dataSet, archive.value))
+                | null -> Error (DataSetMissingErr (dataSet, archive))
                 | e ->
                     use stream = e.Open()
                     use reader = new StreamReader(stream)
                     Ok (reader.ReadToEnd())
-            with e -> Error (ArchiveUnreadable (archive.value, e.Message))
+            with e -> Error (ArchiveUnreadableErr (archive, e.Message))
         match read with
         | Error e -> Error e
         | Ok text -> parseMuellerCsv text
