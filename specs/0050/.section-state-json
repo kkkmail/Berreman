@@ -18,14 +18,14 @@
     {
       "name": "S1.3 -- Every library entry is identified by a frozen GUID",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "e6ed7ea",
       "spec_jsonl_lines": 20
     },
     {
       "name": "S1.4 -- Library entry files: envelope, provenance, canonical JSON, content hash, schemas",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 31
     },
     {
       "name": "S1.5 -- The built-in catalogue generated once from the code seeds",

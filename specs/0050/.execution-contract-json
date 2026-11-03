@@ -1233,6 +1233,750 @@
           "command_sha256": "8dd1ba43d332fb8845f68990376256b56b9e03f50476f3db8c04dfb5556b6492"
         }
       ]
+    },
+    {
+      "id": "S14-OPTIONS-MOVE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "OpticalConstructor.Storage/CanonicalJson.fs (module CanonicalJson, compiled after SchemaValidation.fs and before ProjectJson.fs) owns the one JsonSerializerOptions value: ProjectJson.options and its five private converters move there verbatim and are deleted from ProjectJson.fs. ProjectJson, GroupsLibrary, RecentFiles, Report, UserEnvironment and DispersionModelsTests read CanonicalJson.options, every comment naming the moved value or its converters names CanonicalJson, and nothing under Berreman/ names ProjectJson.options. No output changes: every existing JSON round-trip fact passes unchanged.",
+      "checks": [
+        {
+          "step": 21,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 21,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 21,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S14-NUMBERS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "CanonicalJson.options carries a System.Numerics.Complex as a [re, im] pair and a MathNet Matrix<double> as an array of rows (ComplexConverter, RealMatrixConverter), so a complex number, a Mueller matrix and an absorbing built-in material complexity survive serialize-then-read equal. Proved red first (System.Text.Json reads a complex back as zero and cannot read Matrix<double>), then green.",
+      "checks": [
+        {
+          "step": 22,
+          "gate": "constructor-unit-tests",
+          "selection": "selected",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 23,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S14-IDENTITY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "OpticalConstructor.Domain/LibraryEntryFiles.fs (module LibraryEntryFiles, after ElementId.fs) declares LibraryEntryKind (six two-word cases, int tags 1-6 with value and tryOfWire, the 001 §A extensions, currentSchemaVersion 1, all), FileSchemaVersion, EntrySchema, LibraryEntryId (Guid) with toLibraryEntryId on MaterialId, SampleId and CategoryId and tryToLibraryEntryId on ElementValueId and no reverse conversion, CatalogueId, CatalogueName, KitId, the source-pull provenance types and SourcePullInfo, EntryProvenance (built-in / user / kit import / source pull) whose protection and categoryOrigin derive from the case, ContentHash, and FileStem, which replaces : * ? \" < > | / and \\ with _ and keeps every other character (.spec-md §3.11), with EntryName.fileStem.",
+      "checks": [
+        {
+          "step": 24,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S14-CONTENT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "LibraryEntryFiles.fs declares the payload records and LibraryEntryPayload (material complexity, sample, source, polarizer, detector kind, category visibility; preset protection and category origin are not stored), LibraryEntryContent (schema, id, version, name, categoryOpt, descriptionOpt, payload, provenance; fileName = the name made safe + the kind's extension), LibraryEntryEnvelope { content; contentHash } and LibraryEntryError, with CategoryName.toEntryName. Builders refuse a non-GUID preset id (EntryIdNotGuidErr) and a protection or origin that disagrees with the provenance (ProvenanceMismatchErr); decoders, marked StorageBoundary, answer the original value, EntryKindMismatchErr for another kind and MissingEntryFieldErr for a material without a category or a sample without a description.",
+      "checks": [
+        {
+          "step": 25,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S14-MANIFEST-MODEL",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "LibraryEntryFiles.fs declares CatalogueManifestRow, LibraryEntryEnvelope.manifestRow and CatalogueManifest (schemaVersion, id, name, version, entries; currentSchemaVersion 1, extension .catalogue-json, fileName). CatalogueManifest.tryCreate sorts the rows by kind tag then file name and refuses two entries of one kind whose file names are equal ignoring case (DuplicateEntryFileNameErr) and one id and version twice (DuplicateEntryVersionErr), while allowing equal names of different kinds.",
+      "checks": [
+        {
+          "step": 26,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S14-CANONICAL",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "CanonicalJson renders a value canonically: ordinal-sorted object keys, invariant shortest round-trip numbers, relaxed escaping, no BOM; indented with two spaces and LF for files, compact for hashing. contentHashOf is the lowercase hex SHA-256 of the compact canonical UTF-8, independent of key order, whitespace and culture; doubles round-trip bit-exactly; a non-finite number is MalformedJsonErr; and the canonical text and hash of a fixed value are frozen as literals.",
+      "checks": [
+        {
+          "step": 27,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S14-WIRE-TAGS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "CanonicalJson.options writes LibraryEntryKind, TabulatedInterpolation, PublishedIndexLaw and PublishedGyrationLaw as their int value and reads them through tryOfWire; an unknown tag throws JsonException (MalformedJsonErr at the callers). No other union changes its form.",
+      "checks": [
+        {
+          "step": 28,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S14-SCHEMA-SEAM",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "SchemaValidation.validateWith holds the one JSON-Schema evaluation body; SchemaValidation.validate (project), GroupsLibrary.validateGroupsLibrary and UserEnvironment.validateUserEnvironment call it and keep their names, lazies and $ids, and the project, groups and environment round-trip facts pass unchanged.",
+      "checks": [
+        {
+          "step": 29,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 29,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 29,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S14-ENTRY-FILES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "One file per library entry: Errors.fs StorageError gains UnsupportedSchemaVersionErr of SchemaVersionMismatchInfo (file extension, found, expected) and ContentHashMismatchErr of ContentHashMismatchInfo (entry id, recorded, computed). schema/library-common plus one draft 2020-12 schema per kind (material, sample, source, polarizer, detector, category) ship as Content; each checks the schema header unconditionally and the rest only for version 1. EntryFileJson seals a content with its hash, writes indented canonical text with contentHash beside the content's keys, and parses in the order JSON (MalformedJsonErr), the kind's schema (SchemaValidationErr), the version (UnsupportedSchemaVersionErr, before binding), binding (MalformedJsonErr) and the hash (ContentHashMismatchErr). Every kind round-trips equal, over every MaterialComplexity shape, a multilayer sample, a tunable source, a constant-Mueller polarizer and every provenance.",
+      "checks": [
+        {
+          "step": 30,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S14-CATALOGUE-FILE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "schema/library-catalogue.schema.json ships as Content; CatalogueManifest.fileText, manifestHash and LibraryFileText.parseCatalogueManifest write, hash and read the .catalogue-json, rejecting another schema version with UnsupportedSchemaVersionErr and a schema-invalid manifest with SchemaValidationErr. Every built-in (builtInEntries, standardCategories and seedEntries' samples, sources, detectors and polarizers), sealed at version 1 under built-in provenance, writes, reads and decodes equal to its seed, and together they form one valid catalogue with unique file names per kind.",
+      "checks": [
+        {
+          "step": 31,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S14-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "Every S1.4 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; the moved options change with all their readers in one step, and FS0025 stays an error, so every match on a new or grown union is complete.",
+      "checks": [
+        {
+          "step": 21,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 22,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 23,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 24,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 25,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 26,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 27,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 28,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 29,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 30,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 31,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S14-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A, §B 'Every entry file carries', 'JSON Schema per kind', 'No up-converters'; specs/0050/.section-plan-jsonl section 4 (S1.4) brief; specs/0050/.spec-md §3.11, §5, §6",
+      "requirement": "Every S1.4 step leaves the projects it touches, and the projects that reference them, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command). New names are unique (ELEV014/015/016/019), case names have two words, closed sets carry int tags, no free function has a single domain-typed parameter (ELEV013) or a bare primitive in its signature (ELEV003), no two same-typed fields sit in one case (ELEV011), the only kind-id re-wraps are the StorageBoundary-marked decoders, and no conversion is bidirectional (ELEV006).",
+      "checks": [
+        {
+          "step": 21,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 22,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 23,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 24,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 25,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 26,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 27,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 28,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 29,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 30,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 31,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S14-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 4 (S1.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.4 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s04-elev-list-empty).",
+      "checks": [
+        {
+          "step": 21,
+          "gate": "invariant-s04-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "04188f0efcb8ada4b9bb58c28136710b3dda06df4775603246604188314130c1"
+        },
+        {
+          "step": 22,
+          "gate": "invariant-s04-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "04188f0efcb8ada4b9bb58c28136710b3dda06df4775603246604188314130c1"
+        },
+        {
+          "step": 23,
+          "gate": "invariant-s04-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "04188f0efcb8ada4b9bb58c28136710b3dda06df4775603246604188314130c1"
+        },
+        {
+          "step": 24,
+          "gate": "invariant-s04-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "04188f0efcb8ada4b9bb58c28136710b3dda06df4775603246604188314130c1"
+        },
+        {
+          "step": 25,
+          "gate": "invariant-s04-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "04188f0efcb8ada4b9bb58c28136710b3dda06df4775603246604188314130c1"
+        },
+        {
+          "step": 26,
+          "gate": "invariant-s04-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "04188f0efcb8ada4b9bb58c28136710b3dda06df4775603246604188314130c1"
+        },
+        {
+          "step": 27,
+          "gate": "invariant-s04-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "04188f0efcb8ada4b9bb58c28136710b3dda06df4775603246604188314130c1"
+        },
+        {
+          "step": 28,
+          "gate": "invariant-s04-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "04188f0efcb8ada4b9bb58c28136710b3dda06df4775603246604188314130c1"
+        },
+        {
+          "step": 29,
+          "gate": "invariant-s04-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "04188f0efcb8ada4b9bb58c28136710b3dda06df4775603246604188314130c1"
+        },
+        {
+          "step": 30,
+          "gate": "invariant-s04-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "04188f0efcb8ada4b9bb58c28136710b3dda06df4775603246604188314130c1"
+        },
+        {
+          "step": 31,
+          "gate": "invariant-s04-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "04188f0efcb8ada4b9bb58c28136710b3dda06df4775603246604188314130c1"
+        }
+      ]
+    },
+    {
+      "id": "S14-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 4 (S1.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.4 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s04-no-vstest).",
+      "checks": [
+        {
+          "step": 21,
+          "gate": "invariant-s04-no-vstest",
+          "selection": "command",
+          "command_sha256": "7ccacd2f088bffb387ec741be5fcc07125c6ff95121f9b59720eba6a1863d24d"
+        },
+        {
+          "step": 22,
+          "gate": "invariant-s04-no-vstest",
+          "selection": "command",
+          "command_sha256": "7ccacd2f088bffb387ec741be5fcc07125c6ff95121f9b59720eba6a1863d24d"
+        },
+        {
+          "step": 23,
+          "gate": "invariant-s04-no-vstest",
+          "selection": "command",
+          "command_sha256": "7ccacd2f088bffb387ec741be5fcc07125c6ff95121f9b59720eba6a1863d24d"
+        },
+        {
+          "step": 24,
+          "gate": "invariant-s04-no-vstest",
+          "selection": "command",
+          "command_sha256": "7ccacd2f088bffb387ec741be5fcc07125c6ff95121f9b59720eba6a1863d24d"
+        },
+        {
+          "step": 25,
+          "gate": "invariant-s04-no-vstest",
+          "selection": "command",
+          "command_sha256": "7ccacd2f088bffb387ec741be5fcc07125c6ff95121f9b59720eba6a1863d24d"
+        },
+        {
+          "step": 26,
+          "gate": "invariant-s04-no-vstest",
+          "selection": "command",
+          "command_sha256": "7ccacd2f088bffb387ec741be5fcc07125c6ff95121f9b59720eba6a1863d24d"
+        },
+        {
+          "step": 27,
+          "gate": "invariant-s04-no-vstest",
+          "selection": "command",
+          "command_sha256": "7ccacd2f088bffb387ec741be5fcc07125c6ff95121f9b59720eba6a1863d24d"
+        },
+        {
+          "step": 28,
+          "gate": "invariant-s04-no-vstest",
+          "selection": "command",
+          "command_sha256": "7ccacd2f088bffb387ec741be5fcc07125c6ff95121f9b59720eba6a1863d24d"
+        },
+        {
+          "step": 29,
+          "gate": "invariant-s04-no-vstest",
+          "selection": "command",
+          "command_sha256": "7ccacd2f088bffb387ec741be5fcc07125c6ff95121f9b59720eba6a1863d24d"
+        },
+        {
+          "step": 30,
+          "gate": "invariant-s04-no-vstest",
+          "selection": "command",
+          "command_sha256": "7ccacd2f088bffb387ec741be5fcc07125c6ff95121f9b59720eba6a1863d24d"
+        },
+        {
+          "step": 31,
+          "gate": "invariant-s04-no-vstest",
+          "selection": "command",
+          "command_sha256": "7ccacd2f088bffb387ec741be5fcc07125c6ff95121f9b59720eba6a1863d24d"
+        }
+      ]
+    },
+    {
+      "id": "S14-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 4 (S1.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.4 step, nothing under Berreman/ names kit.kit-json (section invariant s04-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 21,
+          "gate": "invariant-s04-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8fddb44e72434c1bd07ed746a8c73613f602365215099a01ba3807c712cd6902"
+        },
+        {
+          "step": 22,
+          "gate": "invariant-s04-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8fddb44e72434c1bd07ed746a8c73613f602365215099a01ba3807c712cd6902"
+        },
+        {
+          "step": 23,
+          "gate": "invariant-s04-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8fddb44e72434c1bd07ed746a8c73613f602365215099a01ba3807c712cd6902"
+        },
+        {
+          "step": 24,
+          "gate": "invariant-s04-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8fddb44e72434c1bd07ed746a8c73613f602365215099a01ba3807c712cd6902"
+        },
+        {
+          "step": 25,
+          "gate": "invariant-s04-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8fddb44e72434c1bd07ed746a8c73613f602365215099a01ba3807c712cd6902"
+        },
+        {
+          "step": 26,
+          "gate": "invariant-s04-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8fddb44e72434c1bd07ed746a8c73613f602365215099a01ba3807c712cd6902"
+        },
+        {
+          "step": 27,
+          "gate": "invariant-s04-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8fddb44e72434c1bd07ed746a8c73613f602365215099a01ba3807c712cd6902"
+        },
+        {
+          "step": 28,
+          "gate": "invariant-s04-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8fddb44e72434c1bd07ed746a8c73613f602365215099a01ba3807c712cd6902"
+        },
+        {
+          "step": 29,
+          "gate": "invariant-s04-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8fddb44e72434c1bd07ed746a8c73613f602365215099a01ba3807c712cd6902"
+        },
+        {
+          "step": 30,
+          "gate": "invariant-s04-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8fddb44e72434c1bd07ed746a8c73613f602365215099a01ba3807c712cd6902"
+        },
+        {
+          "step": 31,
+          "gate": "invariant-s04-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8fddb44e72434c1bd07ed746a8c73613f602365215099a01ba3807c712cd6902"
+        }
+      ]
+    },
+    {
+      "id": "S14-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 4 (S1.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.4 step, nothing under Berreman/ names EpsAxisEvaluated, in code or in a comment (section invariant s04-no-eps-axis-evaluated, established by S1.1 step 9).",
+      "checks": [
+        {
+          "step": 21,
+          "gate": "invariant-s04-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2f91f546ba606db4e464970000ffb1bfd7a3018231c73501d6c2a99db949c498"
+        },
+        {
+          "step": 22,
+          "gate": "invariant-s04-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2f91f546ba606db4e464970000ffb1bfd7a3018231c73501d6c2a99db949c498"
+        },
+        {
+          "step": 23,
+          "gate": "invariant-s04-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2f91f546ba606db4e464970000ffb1bfd7a3018231c73501d6c2a99db949c498"
+        },
+        {
+          "step": 24,
+          "gate": "invariant-s04-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2f91f546ba606db4e464970000ffb1bfd7a3018231c73501d6c2a99db949c498"
+        },
+        {
+          "step": 25,
+          "gate": "invariant-s04-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2f91f546ba606db4e464970000ffb1bfd7a3018231c73501d6c2a99db949c498"
+        },
+        {
+          "step": 26,
+          "gate": "invariant-s04-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2f91f546ba606db4e464970000ffb1bfd7a3018231c73501d6c2a99db949c498"
+        },
+        {
+          "step": 27,
+          "gate": "invariant-s04-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2f91f546ba606db4e464970000ffb1bfd7a3018231c73501d6c2a99db949c498"
+        },
+        {
+          "step": 28,
+          "gate": "invariant-s04-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2f91f546ba606db4e464970000ffb1bfd7a3018231c73501d6c2a99db949c498"
+        },
+        {
+          "step": 29,
+          "gate": "invariant-s04-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2f91f546ba606db4e464970000ffb1bfd7a3018231c73501d6c2a99db949c498"
+        },
+        {
+          "step": 30,
+          "gate": "invariant-s04-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2f91f546ba606db4e464970000ffb1bfd7a3018231c73501d6c2a99db949c498"
+        },
+        {
+          "step": 31,
+          "gate": "invariant-s04-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2f91f546ba606db4e464970000ffb1bfd7a3018231c73501d6c2a99db949c498"
+        }
+      ]
+    },
+    {
+      "id": "S14-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 4 (S1.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.4 step, nothing under Berreman/ says complexity = None or complexity = Some (section invariant s04-complexity-mandatory, established by S1.2 steps 13 and 14).",
+      "checks": [
+        {
+          "step": 21,
+          "gate": "invariant-s04-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "7bd2e25e622e26a4cd0d9501364f322572968a20a7723fbce54377ec549331be"
+        },
+        {
+          "step": 22,
+          "gate": "invariant-s04-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "7bd2e25e622e26a4cd0d9501364f322572968a20a7723fbce54377ec549331be"
+        },
+        {
+          "step": 23,
+          "gate": "invariant-s04-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "7bd2e25e622e26a4cd0d9501364f322572968a20a7723fbce54377ec549331be"
+        },
+        {
+          "step": 24,
+          "gate": "invariant-s04-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "7bd2e25e622e26a4cd0d9501364f322572968a20a7723fbce54377ec549331be"
+        },
+        {
+          "step": 25,
+          "gate": "invariant-s04-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "7bd2e25e622e26a4cd0d9501364f322572968a20a7723fbce54377ec549331be"
+        },
+        {
+          "step": 26,
+          "gate": "invariant-s04-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "7bd2e25e622e26a4cd0d9501364f322572968a20a7723fbce54377ec549331be"
+        },
+        {
+          "step": 27,
+          "gate": "invariant-s04-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "7bd2e25e622e26a4cd0d9501364f322572968a20a7723fbce54377ec549331be"
+        },
+        {
+          "step": 28,
+          "gate": "invariant-s04-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "7bd2e25e622e26a4cd0d9501364f322572968a20a7723fbce54377ec549331be"
+        },
+        {
+          "step": 29,
+          "gate": "invariant-s04-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "7bd2e25e622e26a4cd0d9501364f322572968a20a7723fbce54377ec549331be"
+        },
+        {
+          "step": 30,
+          "gate": "invariant-s04-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "7bd2e25e622e26a4cd0d9501364f322572968a20a7723fbce54377ec549331be"
+        },
+        {
+          "step": 31,
+          "gate": "invariant-s04-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "7bd2e25e622e26a4cd0d9501364f322572968a20a7723fbce54377ec549331be"
+        }
+      ]
+    },
+    {
+      "id": "S14-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 4 (S1.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.4 step, no Berreman/*.fs file holds a seeded preset string id (src-600, src-hene-..., det-intensity, det-ellipsometer, pol-lp, pol-cp-left, pol-cp-right and the rest; section invariant s04-no-seeded-string-preset-ids, established by S1.3 step 20).",
+      "checks": [
+        {
+          "step": 21,
+          "gate": "invariant-s04-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
+        },
+        {
+          "step": 22,
+          "gate": "invariant-s04-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
+        },
+        {
+          "step": 23,
+          "gate": "invariant-s04-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
+        },
+        {
+          "step": 24,
+          "gate": "invariant-s04-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
+        },
+        {
+          "step": 25,
+          "gate": "invariant-s04-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
+        },
+        {
+          "step": 26,
+          "gate": "invariant-s04-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
+        },
+        {
+          "step": 27,
+          "gate": "invariant-s04-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
+        },
+        {
+          "step": 28,
+          "gate": "invariant-s04-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
+        },
+        {
+          "step": 29,
+          "gate": "invariant-s04-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
+        },
+        {
+          "step": 30,
+          "gate": "invariant-s04-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
+        },
+        {
+          "step": 31,
+          "gate": "invariant-s04-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -1492,6 +2236,171 @@
         "S13-INV-NO-EPS-AXIS-EVALUATED",
         "S13-INV-COMPLEXITY-MANDATORY"
       ]
+    },
+    {
+      "step": 21,
+      "sha256": "38e7f11caeb1e909c8835e85b61d5682a1213eb9c9d4624e20a31b0b98b81b91",
+      "obligations": [
+        "S14-OPTIONS-MOVE",
+        "S14-BUILD",
+        "S14-ELEVATION",
+        "S14-INV-ELEV-LIST",
+        "S14-INV-NO-VSTEST",
+        "S14-INV-NO-KIT-KIT-JSON",
+        "S14-INV-NO-EPS-AXIS-EVALUATED",
+        "S14-INV-COMPLEXITY-MANDATORY",
+        "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 22,
+      "sha256": "5aef854cee638d6feb261520420452ec51152bd7a8210d06e58076ea1c5646b5",
+      "obligations": [
+        "S14-NUMBERS",
+        "S14-BUILD",
+        "S14-ELEVATION",
+        "S14-INV-ELEV-LIST",
+        "S14-INV-NO-VSTEST",
+        "S14-INV-NO-KIT-KIT-JSON",
+        "S14-INV-NO-EPS-AXIS-EVALUATED",
+        "S14-INV-COMPLEXITY-MANDATORY",
+        "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 23,
+      "sha256": "7d0f36596d2b9c7b9cff0044b5ff2c5538081c4a4830e7956ec74d7b0b40fbea",
+      "obligations": [
+        "S14-NUMBERS",
+        "S14-BUILD",
+        "S14-ELEVATION",
+        "S14-INV-ELEV-LIST",
+        "S14-INV-NO-VSTEST",
+        "S14-INV-NO-KIT-KIT-JSON",
+        "S14-INV-NO-EPS-AXIS-EVALUATED",
+        "S14-INV-COMPLEXITY-MANDATORY",
+        "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 24,
+      "sha256": "a98c7ade226ab62703d83dd5e14db6417a14d4c8fb3b762c437347b8151728c0",
+      "obligations": [
+        "S14-IDENTITY",
+        "S14-BUILD",
+        "S14-ELEVATION",
+        "S14-INV-ELEV-LIST",
+        "S14-INV-NO-VSTEST",
+        "S14-INV-NO-KIT-KIT-JSON",
+        "S14-INV-NO-EPS-AXIS-EVALUATED",
+        "S14-INV-COMPLEXITY-MANDATORY",
+        "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 25,
+      "sha256": "fb0d813f2f03924c53aa274011ea783ce2690ad93ab0c631ed3f59f9de33e22a",
+      "obligations": [
+        "S14-CONTENT",
+        "S14-BUILD",
+        "S14-ELEVATION",
+        "S14-INV-ELEV-LIST",
+        "S14-INV-NO-VSTEST",
+        "S14-INV-NO-KIT-KIT-JSON",
+        "S14-INV-NO-EPS-AXIS-EVALUATED",
+        "S14-INV-COMPLEXITY-MANDATORY",
+        "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 26,
+      "sha256": "c5f73e0aa671d46cba852948f48c3c4fff784bc1d93809624ee222937556b1fa",
+      "obligations": [
+        "S14-MANIFEST-MODEL",
+        "S14-BUILD",
+        "S14-ELEVATION",
+        "S14-INV-ELEV-LIST",
+        "S14-INV-NO-VSTEST",
+        "S14-INV-NO-KIT-KIT-JSON",
+        "S14-INV-NO-EPS-AXIS-EVALUATED",
+        "S14-INV-COMPLEXITY-MANDATORY",
+        "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 27,
+      "sha256": "d255e55f122c83c07ff8a9f79e701029209bbb6282529fe2d9ef08d383258a58",
+      "obligations": [
+        "S14-CANONICAL",
+        "S14-BUILD",
+        "S14-ELEVATION",
+        "S14-INV-ELEV-LIST",
+        "S14-INV-NO-VSTEST",
+        "S14-INV-NO-KIT-KIT-JSON",
+        "S14-INV-NO-EPS-AXIS-EVALUATED",
+        "S14-INV-COMPLEXITY-MANDATORY",
+        "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 28,
+      "sha256": "3d22f00c48949ec1aaa63fdfa8aa975a819712bb91ea03a97d704aafd0a02040",
+      "obligations": [
+        "S14-WIRE-TAGS",
+        "S14-BUILD",
+        "S14-ELEVATION",
+        "S14-INV-ELEV-LIST",
+        "S14-INV-NO-VSTEST",
+        "S14-INV-NO-KIT-KIT-JSON",
+        "S14-INV-NO-EPS-AXIS-EVALUATED",
+        "S14-INV-COMPLEXITY-MANDATORY",
+        "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 29,
+      "sha256": "2dbcd6d6683be4e01ca2b5fdd9ab6e7d4886409af5b20bb8833e52038c37db3e",
+      "obligations": [
+        "S14-SCHEMA-SEAM",
+        "S14-BUILD",
+        "S14-ELEVATION",
+        "S14-INV-ELEV-LIST",
+        "S14-INV-NO-VSTEST",
+        "S14-INV-NO-KIT-KIT-JSON",
+        "S14-INV-NO-EPS-AXIS-EVALUATED",
+        "S14-INV-COMPLEXITY-MANDATORY",
+        "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 30,
+      "sha256": "5ff5557bc31d6df42ee95178a316bffddcf26bf702fdce9593270e0ac73d646e",
+      "obligations": [
+        "S14-ENTRY-FILES",
+        "S14-BUILD",
+        "S14-ELEVATION",
+        "S14-INV-ELEV-LIST",
+        "S14-INV-NO-VSTEST",
+        "S14-INV-NO-KIT-KIT-JSON",
+        "S14-INV-NO-EPS-AXIS-EVALUATED",
+        "S14-INV-COMPLEXITY-MANDATORY",
+        "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 31,
+      "sha256": "14890c08bee804af389215ad67ac9c4db7e277dfadfe423f5a4ea42405358166",
+      "obligations": [
+        "S14-CATALOGUE-FILE",
+        "S14-BUILD",
+        "S14-ELEVATION",
+        "S14-INV-ELEV-LIST",
+        "S14-INV-NO-VSTEST",
+        "S14-INV-NO-KIT-KIT-JSON",
+        "S14-INV-NO-EPS-AXIS-EVALUATED",
+        "S14-INV-COMPLEXITY-MANDATORY",
+        "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
     }
   ],
   "behavior_seams": [
@@ -1564,6 +2473,41 @@
       "id": "s13-live-guid-lookup",
       "step": 20,
       "obligation": "S13-GUID-IDS"
+    },
+    {
+      "id": "s14-numbers-red",
+      "step": 22,
+      "obligation": "S14-NUMBERS"
+    },
+    {
+      "id": "s14-numbers-green",
+      "step": 23,
+      "obligation": "S14-NUMBERS"
+    },
+    {
+      "id": "s14-provenance-mismatch",
+      "step": 25,
+      "obligation": "S14-CONTENT"
+    },
+    {
+      "id": "s14-manifest-duplicates",
+      "step": 26,
+      "obligation": "S14-MANIFEST-MODEL"
+    },
+    {
+      "id": "s14-canonical-order",
+      "step": 27,
+      "obligation": "S14-CANONICAL"
+    },
+    {
+      "id": "s14-entry-typed-errors",
+      "step": 30,
+      "obligation": "S14-ENTRY-FILES"
+    },
+    {
+      "id": "s14-builtins-round-trip",
+      "step": 31,
+      "obligation": "S14-CATALOGUE-FILE"
     }
   ],
   "temporal_checks": [],
@@ -1645,6 +2589,24 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Ui",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 22,
+      "step": 23,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests"
+      ]
+    },
+    {
+      "from": 21,
+      "step": 31,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests"
       ]
     }
   ]
