@@ -1,0 +1,289 @@
+{
+  "campaign_status": "in-progress",
+  "plan_approval_requested": true,
+  "plan_approved": false,
+  "sections": [
+    {
+      "name": "S1.1 -- Every dispersion axis is data: tabulated and transcendental cases",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S1.2 -- A material's physics is its complexity",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S1.3 -- Every library entry is identified by a frozen GUID",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S1.4 -- Library entry files: envelope, provenance, canonical JSON, content hash, schemas",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S1.5 -- The built-in catalogue generated once from the code seeds",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S1.6 -- CatalogueImport replaces seeding; the app and the tests load the catalogue",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S1.7 -- The code seed values are deleted",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S2.1 -- The library model in EF Core, created without migrations",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S2.2 -- Pinned replaces VersionsInUse; SQLite materials and categories",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S2.3 -- SQLite samples, sources, presets and the live library",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S2.4 -- Database location, settings, backup and restore; the app runs on the database",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S3.1 -- Import on every start and the per-entry decision table",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S3.2 -- The import dialog and single-file drop",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S3.3 -- Export, Export my library and licence attribution",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S4.1 -- The kit file, KitFolder, KitProxy and KitContext",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S4.2 -- Attachments by relative path and hash; the library snapshot and its resolution",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S4.3 -- Today's experiments and scenes persist in the kit; the in-memory seams go",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S4.4 -- The .ocproj aggregate is deleted",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S5.1 -- The kit history over the per-user preferences",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S5.2 -- The kit start screen and the Launcher",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S5.3 -- The kit window: title, Kit menu, lock, reload and mode; Data locations",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S6 -- Send and receive kits; copy experiments between kits",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S7.1 -- Items, parameters and item models",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S7.2 -- The Items panel, the flow strip and item mapping on copy",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S8.1 -- The run law walks every object; the source is real",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S8.2 -- Setups as slots",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S8.3 -- The naming template and the grid generator",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S8.4 -- The slot bar, quick swap and the direct problem",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S9.1 -- Experiments v2: scans, roles, sessions and attachments",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S9.2 -- Import profiles and the column-mapping wizard",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S9.3 -- One file, many experiments; exclusions, corrections, the Data step and the experiment matrix",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S9.4 -- The optics-mueller lab files move into the kit folder",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S10.1 -- The bench noise model and the fit harness move into Optimization",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S10.2 -- BerremanTestSupport: the shared ground truth and designs",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S10.3 -- The staged Mueller pipeline and its reference values are promoted",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S11.1 -- Studies: unknowns, scopes, links, sessions and opened materials",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S11.2 -- The forward model of an experiment and the study residual",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S11.3 -- Engines, staged and joint fits, and append-only fit runs",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S11.4 -- Fit results: uncertainty, correlation, realizability, product check, profile likelihood",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S11.5 -- Publishing, the study view; the solver hand-off stub goes",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S12.1 -- AT-1 and the optics-mueller reference kit",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S12.2 -- AT-2 and the absorbing-biaxial-noisy reference kit",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S13.1 -- MaterialSourceProxy and refractiveindex.info",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S13.2 -- PTB OCDB, the Henke compound calculator and glass catalogues",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S14.1 -- The Measurement Planner: kit inputs and the structural layer",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "S14.2 -- The Planner's numerical layer, the plan, the cache and the Plan view",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    },
+    {
+      "name": "Close -- the composition root and the whole-tree proof",
+      "status": "pending",
+      "commit_ref": null,
+      "spec_jsonl_lines": null
+    }
+  ]
+}
