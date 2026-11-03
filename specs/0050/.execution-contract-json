@@ -11342,6 +11342,1304 @@
           "command_sha256": "affedbe344bc32d4f95afdf08d11fc57f47216b4d3e64e8fbc00b230d48c17c2"
         }
       ]
+    },
+    {
+      "id": "S42-ATTACH-SHAPES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "Domain Kit.fs declares KitDataFolder (data or a folder inside it; root; tryCreate), its copyTargetFor collision rule (the leaf name, then ' (2)', ' (3)'… before the extension, compared ignoring case), KitFolder.tryKitPathOf (an absolute name inside the kit folder, else None), LabFileSource, DataAttachment (kit-relative path + ContentHash, never an absolute path) with KitDataFile.attachment, and DataAttachmentStatus (unchanged, changed since attach, missing) with DataAttachment.statusAgainst.",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S42-COPY-IN",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "Both KitProxy implementations gain tryKitPathOf and copyInFile: a copy-in writes a new file in the kit's data folder under its own name or the next free suffix, creating missing folders, never replacing a file (FileName.writeNewBytesAtomically shares one body with writeBytesAtomically over ExistingFilePolicy), answers the file as readDataFile reads it, and is refused by readOnlyView; the in-memory folder stands for C:/in-memory-kit and gains removeLabFile.",
+      "checks": [
+        {
+          "step": 133,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S42-ATTACH",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "KitProxy.attachLabFile records a picked file inside the kit in place (nothing written) and copies one from outside into the data folder, answering its kit-relative path and hash; KitProxy.attachmentStatus answers unchanged, changed since attach or missing, writing nothing, in both implementations.",
+      "checks": [
+        {
+          "step": 134,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S42-DATA-SEAM",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "Experiments.DataFilePath is deleted: Experiment.dataFileOpt holds a DataAttachment and attachDataFile takes one; ExperimentDataProxy gains attachDataFile and attachmentStatus and loads by attachment; ExperimentDataStore.createFileBacked (kit) reads the picked file and attaches and reads through the kit; loadAndValidate takes the attachment; the constructor's attach records a typed attach-failed status; the picker passes a FileName; the root composes the seam over the session's in-memory kit; no file under Berreman/OpticalConstructor names DataFilePath except the two spec 0044 history notes.",
+      "checks": [
+        {
+          "step": 135,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 135,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 135,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S42-OPEN-STATUS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "Loading a saved collection computes each attached experiment's status through attachmentStatus: an unchanged attachment is validated, a changed one is DataFileChangedSinceAttach and a missing one DataFileMissingFromKit naming its kit path.",
+      "checks": [
+        {
+          "step": 136,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 136,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S42-REFERENCES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "LibraryVersionRef and EntryReference (EntryVersionReference / EntryLatestReference) exist; LibraryEntryContent.references names a material's category and a sample's material versions and referencedEntryIds is their ids; VersionRef.entryReference, ElementBinding.entryReferenceOpt and Experiment.libraryReferences (the setup's bindings once each) answer what a kit snapshots.",
+      "checks": [
+        {
+          "step": 137,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S42-SNAPSHOT-FILES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "KitProxy.listSnapshots and writeSnapshot hold library/<id>@v<n>.<kind>-json files in both implementations: a version is written once (SnapshotExistsErr after), read back through its kind's schema, version and hash checks and its own name, refused by readOnlyView, and the folder snapshot is byte for byte the catalogue entry file.",
+      "checks": [
+        {
+          "step": 138,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S42-SNAPSHOT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "KitLibraryContext.snapshotReferences writes every referenced library version and its closure (a sample's materials, each material's category) once into library/, built-ins included, pinning each in the library before writing it; a version the kit already holds is kept, unpinned and unrewritten; a reference neither held nor snapshotted is UnheldEntryErr; a read-only kit refuses with nothing pinned; proved in memory and over SQLite pins.",
+      "checks": [
+        {
+          "step": 139,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S42-KIT-ORIGIN",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "ImportOrigin gains KitSnapshotOrigin; under it ImportDecision.decide reuses the held entry for an equal hash and otherwise defaults to keeping the kit's copy, offering Add to my library (a version without moving the latest), a fork for a divergence, and side by side plus a re-binding per same-name entry for a name collision, with no re-binding for a category.",
+      "checks": [
+        {
+          "step": 140,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S42-RESOLUTION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "KitLibraryContext.resolveSnapshots answers one KitSnapshotOrigin decision per snapshot through CatalogueImportProxy.decideEntry, covering reuse, missing, divergence and name-collision rows, and writes nothing, through a read-only kit too.",
+      "checks": [
+        {
+          "step": 141,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S42-OVERLAY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "KitLibraryContext.openOverlay and KitLibraryStores.overlaidWith compose the session's library: the library's stores overlaid with the kit's read-only snapshots (a divergent version answered from the kit, a re-bound entry answered by the held entry, snapshot-only entries listed after the library's), every write passing through, so a kit opened against an empty library resolves every entry from library/.",
+      "checks": [
+        {
+          "step": 142,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S42-CONFIRM",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "KitLibraryContext.confirm applies the chosen rows through CatalogueImportContext.apply, pins every version an add choice wrote, answers the re-bindings, and writes nothing for the kit's defaults; a dangling add is refused before anything is written.",
+      "checks": [
+        {
+          "step": 143,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S42-DIALOG",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "The import dialog gains ResolveKitSnapshot: a kit's rows open on the kit's defaults with kit captions (Keep the kit's copy (read-only), Add to my library), nothing applies before Apply, and Apply confirms through KitLibraryContext.confirm, reporting the outcome.",
+      "checks": [
+        {
+          "step": 144,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 144,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S42-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "Every S4.2 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error, so every complete match on KitError, ExperimentFileStatus, ImportOrigin and ImportDialogRequest covers its cases.",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 133,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 134,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 135,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 136,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 137,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 138,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 139,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 140,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 141,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 142,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 143,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 144,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S42-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'A changed or missing data file is flagged on open and before each fit'; 'Absolute paths are never stored'; 'Attaching a file from outside the kit copies it into data/, keeping its name and suffixing on collision'; 'Lab files are read-only for the app'; 'Library closure snapshot: every library version the kit references is copied into library/ when first referenced, built-ins included … So the kit opens on any machine'; 'Resolution on open (the §B decision table, applied to the snapshot): same id, version and hash → the database entry; missing locally → the snapshot read-only, with \"Add to my library\"; divergence → reported; the kit keeps its snapshot; name-only collision → side by side, with the explicit re-binding. One dialog shows all rows; nothing changes in the database unconfirmed'), §A ('library/<id>@v<n>.<kind>-json'), §C ('A version becomes Pinned … when a kit first references it'), §B ('Per-entry import decision'); specs/0050/.section-plan-jsonl section 16 (S4.2) brief; specs/0050/.spec-md §3.7, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "Every S4.2 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): every new value is elevated where it is born, FileByteContent and ExistingFilePolicy are reused rather than declared again (ELEV014), every new case name has two words and is unique (ELEV016), every *Error case ends in Err (ELEV020), no conversion runs both ways (ELEV006), every IO declaration carrying a primitive is marked on itself, and every caption is rendered by a member (ELEV002).",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 133,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 134,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 135,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 136,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 137,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 138,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 139,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 140,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 141,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 142,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 143,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 144,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S42-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 16 (S4.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.2 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s16-elev-list-empty).",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 133,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 134,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 135,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 136,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 137,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 138,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 139,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 140,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 141,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 142,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 143,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        },
+        {
+          "step": 144,
+          "gate": "invariant-s16-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "b3f8fb0d0cb933c49ae755c15db958b1b4f5976bc10b34ba3b2579d85d43661e"
+        }
+      ]
+    },
+    {
+      "id": "S42-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 16 (S4.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.2 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s16-no-vstest).",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 133,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 134,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 135,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 136,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 137,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 138,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 139,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 140,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 141,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 142,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 143,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        },
+        {
+          "step": 144,
+          "gate": "invariant-s16-no-vstest",
+          "selection": "command",
+          "command_sha256": "daaa753e74c43d48225c16df2547e6d955aa1ec569304a6e7aedbbbdaa019139"
+        }
+      ]
+    },
+    {
+      "id": "S42-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 16 (S4.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.2 step, nothing under Berreman/ names kit.kit-json (section invariant s16-no-kit-kit-json): the kit file is named by its extension alone, .kit-json.",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 133,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 134,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 135,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 136,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 137,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 138,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 139,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 140,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 141,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 142,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 143,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        },
+        {
+          "step": 144,
+          "gate": "invariant-s16-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4644557af3cdd5f4ede7fac907b67c9a085b20844be8f7d126311a9b157d5762"
+        }
+      ]
+    },
+    {
+      "id": "S42-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 16 (S4.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.2 step, nothing under Berreman/ names EpsAxisEvaluated (section invariant s16-no-eps-axis-evaluated, established by S1.1).",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 133,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 134,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 135,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 136,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 137,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 138,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 139,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 140,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 141,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 142,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 143,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        },
+        {
+          "step": 144,
+          "gate": "invariant-s16-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "ce9bce0a54d56f728989caa8753d4588ca35706912f9658960ee33e76f53e914"
+        }
+      ]
+    },
+    {
+      "id": "S42-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 16 (S4.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.2 step, nothing under Berreman/ says complexity = None or complexity = Some (section invariant s16-complexity-mandatory, established by S1.2).",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 133,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 134,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 135,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 136,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 137,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 138,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 139,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 140,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 141,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 142,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 143,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        },
+        {
+          "step": 144,
+          "gate": "invariant-s16-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "dcec097d1ab1f3d6b282e085a3b0e21b721a6d2e6ca672b0de31147f009b4307"
+        }
+      ]
+    },
+    {
+      "id": "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 16 (S4.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.2 step, no Berreman/*.fs file holds a seeded preset string id (section invariant s16-no-seeded-string-preset-ids, established by S1.3).",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 133,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 134,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 135,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 136,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 137,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 138,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 139,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 140,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 141,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 142,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 143,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        },
+        {
+          "step": 144,
+          "gate": "invariant-s16-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "580c77df5b1f28d7da59a81513200f034d8fcece57cdd78cd36fd841b51da9c2"
+        }
+      ]
+    },
+    {
+      "id": "S42-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 16 (S4.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.2 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (section invariant s16-no-seeding-seam, established by S1.6).",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 133,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 134,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 135,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 136,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 137,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 138,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 139,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 140,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 141,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 142,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 143,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        },
+        {
+          "step": 144,
+          "gate": "invariant-s16-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8349ab8028599395092b13ace0dbb8e7812c095caa217d3f126e72e942dc223e"
+        }
+      ]
+    },
+    {
+      "id": "S42-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 16 (S4.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.2 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (section invariant s16-t1-no-code-seeds, 001 §T 'From section 1', established by S1.7).",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 133,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 134,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 135,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 136,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 137,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 138,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 139,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 140,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 141,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 142,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 143,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        },
+        {
+          "step": 144,
+          "gate": "invariant-s16-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "e6d6b01c8a5ae16cb399f994fd8e3a9089c720d2107f4cb44417d9bafb95c7ad"
+        }
+      ]
+    },
+    {
+      "id": "S42-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 16 (S4.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.2 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (section invariant s16-no-seed-modules, established by S1.3 and S1.7).",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 133,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 134,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 135,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 136,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 137,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 138,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 139,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 140,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 141,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 142,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 143,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        },
+        {
+          "step": 144,
+          "gate": "invariant-s16-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "321bb6c7d7a0db4be21581ac94ae641888b198bf9e51b9864aa5be1c7fdbca45"
+        }
+      ]
+    },
+    {
+      "id": "S42-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 16 (S4.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.2 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (section invariant s16-no-test-db, established by S2.1 step 59).",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 133,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 134,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 135,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 136,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 137,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 138,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 139,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 140,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 141,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 142,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 143,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        },
+        {
+          "step": 144,
+          "gate": "invariant-s16-no-test-db",
+          "selection": "command",
+          "command_sha256": "b66444a07b77755c958c20b44e3a5889a65b6842c2f93903b4e11d5feae42c48"
+        }
+      ]
+    },
+    {
+      "id": "S42-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 16 (S4.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.2 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (section invariant s16-no-versions-in-use, established by S2.2 step 65).",
+      "checks": [
+        {
+          "step": 132,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 133,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 134,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 135,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 136,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 137,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 138,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 139,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 140,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 141,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 142,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 143,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        },
+        {
+          "step": 144,
+          "gate": "invariant-s16-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -13625,6 +14923,266 @@
         "S41-INV-NO-TEST-DB",
         "S41-INV-NO-VERSIONS-IN-USE"
       ]
+    },
+    {
+      "step": 132,
+      "sha256": "8bb1b6f1e256c4efe1a84d56ee48773eb6954f6ed8adfefe680fda1013912362",
+      "obligations": [
+        "S42-ATTACH-SHAPES",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 133,
+      "sha256": "1b4ae580bb1f6eddbb2a265a76eb1d8780fcc230190160e5725db71137988f28",
+      "obligations": [
+        "S42-COPY-IN",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 134,
+      "sha256": "6045ec804acd04c5cb29eb3c43461a0fae8959ecdbb7d592866f1539faacd1c4",
+      "obligations": [
+        "S42-ATTACH",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 135,
+      "sha256": "a2176283c5c2a33c47bbaf5d07b7f0456dddd799a35c3965fcea53bfd8efe7b7",
+      "obligations": [
+        "S42-DATA-SEAM",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 136,
+      "sha256": "0cd59eb7eb6e52ee4d85f06ffb26225d742b623c2bbf3709811d7d8ed47f290d",
+      "obligations": [
+        "S42-OPEN-STATUS",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 137,
+      "sha256": "1011c2d0f4ba5cf7a7b76a3bb5c3541f6985381d96595668ad7c07c128ac4b59",
+      "obligations": [
+        "S42-REFERENCES",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 138,
+      "sha256": "be8c1b607506a1d1140b97c5713279fe660ae4f676242805d9f76ce6cef8fcf2",
+      "obligations": [
+        "S42-SNAPSHOT-FILES",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 139,
+      "sha256": "f03e88cf6c7f37c77c704d7bcf5755706c9016de92c8666ead1f4443935f299b",
+      "obligations": [
+        "S42-SNAPSHOT",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 140,
+      "sha256": "e5214f9cf70029567ba24f0a5b13e056285f79b021741897bcc5ae04f793326a",
+      "obligations": [
+        "S42-KIT-ORIGIN",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 141,
+      "sha256": "237d405e694394bfdb50d8c01c442c293c8e14a2599207dc0fa5e2fa5d8a16bd",
+      "obligations": [
+        "S42-RESOLUTION",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 142,
+      "sha256": "506b2cf68beb6376b3b3073b4d0dae0c209cb2620944927ab3cdf217a21a331d",
+      "obligations": [
+        "S42-OVERLAY",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 143,
+      "sha256": "491f02bbf55c03d0b428b7b736fce9c2d141e3b33ba935db7b183874c8f1d9dd",
+      "obligations": [
+        "S42-CONFIRM",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 144,
+      "sha256": "7eea9db9a42da18f7f5464026716a7f9bb097424c6982cc62c1ecb24f3597a07",
+      "obligations": [
+        "S42-DIALOG",
+        "S42-BUILD",
+        "S42-ELEVATION",
+        "S42-INV-ELEV-LIST",
+        "S42-INV-NO-VSTEST",
+        "S42-INV-NO-KIT-KIT-JSON",
+        "S42-INV-NO-EPS-AXIS-EVALUATED",
+        "S42-INV-COMPLEXITY-MANDATORY",
+        "S42-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S42-INV-NO-SEEDING-SEAM",
+        "S42-INV-T1-NO-CODE-SEEDS",
+        "S42-INV-NO-SEED-MODULES",
+        "S42-INV-NO-TEST-DB",
+        "S42-INV-NO-VERSIONS-IN-USE"
+      ]
     }
   ],
   "behavior_seams": [
@@ -14107,6 +15665,71 @@
       "id": "s41-kit-context",
       "step": 131,
       "obligation": "S41-KIT-CONTEXT"
+    },
+    {
+      "id": "s42-attach-shapes",
+      "step": 132,
+      "obligation": "S42-ATTACH-SHAPES"
+    },
+    {
+      "id": "s42-copy-in",
+      "step": 133,
+      "obligation": "S42-COPY-IN"
+    },
+    {
+      "id": "s42-attach",
+      "step": 134,
+      "obligation": "S42-ATTACH"
+    },
+    {
+      "id": "s42-data-seam",
+      "step": 135,
+      "obligation": "S42-DATA-SEAM"
+    },
+    {
+      "id": "s42-open-status",
+      "step": 136,
+      "obligation": "S42-OPEN-STATUS"
+    },
+    {
+      "id": "s42-references",
+      "step": 137,
+      "obligation": "S42-REFERENCES"
+    },
+    {
+      "id": "s42-snapshot-files",
+      "step": 138,
+      "obligation": "S42-SNAPSHOT-FILES"
+    },
+    {
+      "id": "s42-snapshot",
+      "step": 139,
+      "obligation": "S42-SNAPSHOT"
+    },
+    {
+      "id": "s42-kit-origin",
+      "step": 140,
+      "obligation": "S42-KIT-ORIGIN"
+    },
+    {
+      "id": "s42-resolution",
+      "step": 141,
+      "obligation": "S42-RESOLUTION"
+    },
+    {
+      "id": "s42-overlay",
+      "step": 142,
+      "obligation": "S42-OVERLAY"
+    },
+    {
+      "id": "s42-confirm",
+      "step": 143,
+      "obligation": "S42-CONFIRM"
+    },
+    {
+      "id": "s42-dialog",
+      "step": 144,
+      "obligation": "S42-DIALOG"
     }
   ],
   "temporal_checks": [],
@@ -14362,6 +15985,17 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Domain",
         "Berreman/OpticalConstructor/OpticalConstructor.Storage",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests"
+      ]
+    },
+    {
+      "from": 132,
+      "step": 144,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
       ]
     }
   ]

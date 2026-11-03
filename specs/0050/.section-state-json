@@ -90,14 +90,14 @@
     {
       "name": "S4.1 -- The kit file, KitFolder, KitProxy and KitContext",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "cfd7e4f",
       "spec_jsonl_lines": 131
     },
     {
       "name": "S4.2 -- Attachments by relative path and hash; the library snapshot and its resolution",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 144
     },
     {
       "name": "S4.3 -- Today's experiments and scenes persist in the kit; the in-memory seams go",
