@@ -26,17 +26,16 @@ module ElementRendererBindingTests =
     let private drawableOf (kind : CatalogueKind) (valueId : string option) : ElementRenderer.Drawable =
         let placement = { ElementPlacement.create kind TablePoint.origin with valueId = valueId |> Option.map ElementValueId }
         { placement = placement
-          centre = ElementRenderer.centreOfPlacement placement
-          zoom = 3.5
-          opticalSign = 0
-          bindingState = ElementRenderer.bindingStateOf placement
+          centre = placement.placementPoint.toVector3
+          zoom = BeamLayout.ElementZoom 3.5
+          opticalSign = FlatSign
           normals = ElementRenderer.ShowNormals }
 
     /// Render one drawable through the given renderer kind and collect the realized Avalonia shapes. MUST be
     /// called on the headless UI thread (inside `HeadlessSession.run`).
     let private renderShapes (kind : RendererControls.RendererKind) (e : ElementRenderer.Drawable) : Shape list =
         let renderer = ElementRenderer.rendererOf { RendererControls.defaultState with kind = kind }
-        let views = renderer.draw (TableScene.projectOnScene Table.defaultView) false e
+        let views = renderer.draw (TableScene.projectOnScene Table.defaultView) ElementRenderer.ElementNotHighlighted e
         let window = Window(Width = TableScene.canvasWidth.value, Height = TableScene.canvasHeight.value)
         window.Content <- Component(fun _ -> Canvas.create [ Canvas.children views ] :> IView)
         window.Show()
@@ -61,9 +60,9 @@ module ElementRendererBindingTests =
     // ============================ pure host derivation ============================
 
     [<Fact>]
-    let ``bindingStateOf: valueId gates bindable kinds; lens and mirrors are never bindable`` () =
+    let ``bindingState: valueId gates bindable kinds; lens and mirrors are never bindable`` () =
         let stateOf (kind : CatalogueKind) (valueId : string option) : ElementRenderer.BindingState =
-            ElementRenderer.bindingStateOf { ElementPlacement.create kind TablePoint.origin with valueId = valueId |> Option.map ElementValueId }
+            (drawableOf kind valueId).bindingState
         // Lens / flat / curved mirror are pure geometry — NotBindable regardless of any value id.
         Assert.Equal(ElementRenderer.NotBindableElement, stateOf Lens None)
         Assert.Equal(ElementRenderer.NotBindableElement, stateOf FlatMirror (Some "ignored"))

@@ -82,13 +82,12 @@ let private wheelStepDegrees : float = 5.0
 /// shapes for several kinds are visible at once. R3 is UNLOCKED here so you can tip elements out of the
 /// plane and watch the shape renderer open up. The linear polarizer starts selected.
 let initRendererTest () : RendererTestModel =
-    let mk (x : float) (kind : CatalogueKind) (sign : int) : ElementRenderer.Drawable =
+    let mk (x : float) (kind : CatalogueKind) (sign : OpticalSign) : ElementRenderer.Drawable =
         let placement = { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with r3Locked = RotationFree }
         { placement = placement
-          centre = ElementRenderer.centreOfPlacement placement
-          zoom = 3.5
+          centre = placement.placementPoint.toVector3
+          zoom = BeamLayout.ElementZoom 3.5
           opticalSign = sign
-          bindingState = ElementRenderer.bindingStateOf placement
           normals = ElementRenderer.ShowNormals }
     {
         table = Table.defaultTable
@@ -96,13 +95,13 @@ let initRendererTest () : RendererTestModel =
         // A source and a flat polarizer / detector (cylinders), a convex + a concave lens, and a concave
         // (focusing) + a convex curved mirror — spread along the beam, so both cap signs are visible.
         elements =
-            [ mk -0.9 LightSource 0
-              mk -0.6 LinearPolarizer 0
-              mk -0.3 Lens 1
-              mk 0.0 Lens -1
-              mk 0.3 CurvedMirror 1
-              mk 0.6 CurvedMirror -1
-              mk 0.9 Detector 0 ]
+            [ mk -0.9 LightSource FlatSign
+              mk -0.6 LinearPolarizer FlatSign
+              mk -0.3 Lens ConvergingSign
+              mk 0.0 Lens DivergingSign
+              mk 0.3 CurvedMirror ConvergingSign
+              mk 0.6 CurvedMirror DivergingSign
+              mk 0.9 Detector FlatSign ]
         selected = Some 1
         drag = RendererTestNotPressed
         render = RendererControls.defaultState
@@ -207,7 +206,12 @@ let private elementsViews (model : RendererTestModel) : IView list =
     let renderer = ElementRenderer.rendererOf model.render
     let project = projectPt model.view
     model.elements
-    |> List.mapi (fun i e -> renderer.draw project (model.selected = Some i) e)
+    |> List.mapi (fun i e ->
+        let highlight =
+            match model.selected with
+            | Some s when s = i -> ElementRenderer.ElementHighlighted
+            | Some _ | None -> ElementRenderer.ElementNotHighlighted
+        renderer.draw project highlight e)
     |> List.concat
 
 let private tableCanvas (model : RendererTestModel) : IView =

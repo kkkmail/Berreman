@@ -146,7 +146,7 @@ module ScrollExtentTests =
         assertReachable "MaterialEditor" (fun () -> MaterialEditorWindow(materials, MaterialEditorView.NewMaterial (newMaterialId ())))
         assertReachable "SampleEditor" (fun () -> SampleEditorWindow(materials, samples, categories, SampleEditorView.NewSeededMultilayer (newSampleId ())))
         assertReachable "CategoryEditor" (fun () -> CategoryEditorWindow(categories))
-        assertReachable "SourceEditor" (fun () -> LightSourceEditorWindow(SourceProxy.createInMemory (), LightSourceEditorView.NewSource "src-x"))
+        assertReachable "SourceEditor" (fun () -> LightSourceEditorWindow(SourceProxy.createInMemory (), LightSourceEditorView.NewSource (Placement.ElementValueId "src-x")))
 
     [<Fact>]
     let ``the chart and solver-handoff windows leave everything reachable`` () =

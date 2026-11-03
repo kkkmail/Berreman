@@ -185,7 +185,7 @@ module LibraryWindowTests =
                     fun intent ->
                         calls.Add(
                             match intent with
-                            | LightSourceEditorView.NewSource mintedId -> "source-add:" + mintedId
+                            | LightSourceEditorView.NewSource mintedId -> "source-add:" + mintedId.value
                             | LightSourceEditorView.EditSource s -> "source-edit:" + s.name.value)
                 requestClose = fun () -> calls.Add "close-requested"
             }

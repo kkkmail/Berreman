@@ -2126,10 +2126,12 @@ let private mainElementViews (model : TableAndElementRotationModel) : IView list
         // Spec 0046: the orientation markers only on the SELECTED element — an unselected element's N1 lies on
         // the beam at normal incidence and ran across the next element's faces, where it read as the ray.
         let placement = drawnPlacement model i
-        let selected = (model.selection = ElementSelected i)
-        let normals = if selected then ElementRenderer.ShowNormals else ElementRenderer.HideNormals
-        renderer.draw project selected
-            { placement = placement; centre = nodes.[i].position; zoom = e.zoom; opticalSign = e.placement.catalogueKind.opticalSign; bindingState = ElementRenderer.bindingStateOf placement; normals = normals })
+        let highlight, normals =
+            match model.selection with
+            | ElementSelected s when s = i -> ElementRenderer.ElementHighlighted, ElementRenderer.ShowNormals
+            | _ -> ElementRenderer.ElementNotHighlighted, ElementRenderer.HideNormals
+        renderer.draw project highlight
+            { placement = placement; centre = nodes.[i].position; zoom = BeamLayout.ElementZoom e.zoom; opticalSign = e.placement.catalogueKind.opticalSign; normals = normals })
     |> List.concat
 
 /// The MOVE bay state/handlers: slide the selected element along the beam (disabled unless an element is

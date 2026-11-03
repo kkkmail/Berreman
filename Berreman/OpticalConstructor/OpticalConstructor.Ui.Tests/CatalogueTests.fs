@@ -49,5 +49,5 @@ module CatalogueTests =
         // for everything else — the shape renderer's branching contract.
         for k in allKinds do
             match k with
-            | Lens | CurvedMirror -> Assert.Equal(1, k.opticalSign)
-            | _ -> Assert.Equal(0, k.opticalSign)
+            | Lens | CurvedMirror -> Assert.Equal(ConvergingSign, k.opticalSign)
+            | _ -> Assert.Equal(FlatSign, k.opticalSign)

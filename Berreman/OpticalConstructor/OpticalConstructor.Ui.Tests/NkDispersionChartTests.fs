@@ -13,6 +13,7 @@ open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Controls.ExperimentChart
 open OpticalConstructor.Controls.ChartStyle
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.NkDispersionChart
 
 /// Spec 0038 (032) — the Material editor's tabbed multi-curve preview builders on the 018 dual-axis
 /// spine. Headless MODEL tests (no window): `nkDispersionChart` yields PER PRINCIPAL AXIS n curves on
@@ -44,7 +45,7 @@ module NkDispersionChartTests =
         | Error e -> failwith $"expected a derivable complexity, got %A{e}"
 
     /// The derived complexity VALUE tree (not `.toProperties`) from a fold of ladder edits — the
-    /// stored representation `muKindOfComplexity` / `gyrationComponentsOfComplexity` classify as DATA
+    /// stored representation `MaterialComplexity.muKind` / `gyrationComponentsOfComplexity` classify as DATA
     /// for a view-only entry that has no ladder to read.
     let private complexityOf (msgs : MaterialComplexityMsg list) : MaterialComplexity =
         let st = msgs |> List.fold (fun s m -> applyOk m s) MaterialComplexityEditor.defaultState
@@ -188,7 +189,7 @@ module NkDispersionChartTests =
         Assert.True(peak "g₁₁" > 0.0, "g₁₁ must be non-zero for an active uniaxial medium")
         Assert.True(peak "g₃₃" > 0.0, "g₃₃ must be non-zero for an active uniaxial medium")
         // A view-only classifier agrees the entry is optically active.
-        Assert.True(NkDispersionChart.hasGyration active, "an active entry must classify as gyrotropic")
+        Assert.Equal(ActivityOn, NkDispersionChart.assembledActivity active)
 
     [<Fact>]
     let ``spec 0040 006: the gyration builder draws all six components for a coded preset with no stored class`` () =
@@ -225,7 +226,7 @@ module NkDispersionChartTests =
         Assert.Equal(RightAxis, (seriesStyleOf (ChartSeriesIndex 3) style).axisSide)
         for i in 0 .. 2 do
             Assert.Equal(LeftAxis, (seriesStyleOf (ChartSeriesIndex i) style).axisSide)
-        Assert.True(NkDispersionChart.hasMagnetic magnetic, "a Polder-μ entry must classify as magnetic")
+        Assert.Equal(MagneticOn, NkDispersionChart.assembledMagnetic magnetic)
 
     [<Fact>]
     let ``spec 0040 006: the mu builder emits a single scalar component for a scalar-mu entry`` () =
@@ -245,10 +246,10 @@ module NkDispersionChartTests =
         // No gyration series to side to the right — the single component stays on the LEFT.
         let style = NkDispersionChart.muStyle chart
         Assert.Equal(LeftAxis, (seriesStyleOf (ChartSeriesIndex 0) style).axisSide)
-        Assert.True(NkDispersionChart.hasMagnetic scalar, "a scalar-μ entry must still classify as magnetic")
+        Assert.Equal(MagneticOn, NkDispersionChart.assembledMagnetic scalar)
 
     [<Fact>]
-    let ``spec 0040 006: muKindOfComplexity reads the μ kind off a view-only entry's stored magnetic tree`` () =
+    let ``spec 0040 006: muKind reads the μ kind off a view-only entry's stored magnetic tree`` () =
         // The μ analog of the view-only gyration classification (`gyrationComponentsOfComplexity`):
         // the seam `previewMuKind` threads for a VIEW-ONLY entry, reading the μ kind off the stored
         // value tree as DATA (no engine tensor evaluated). A scalar-μ tree → ScalarMuKind (one curve)…
@@ -256,7 +257,7 @@ module NkDispersionChartTests =
         match scalar.magnetic with
         | Some (MuWithoutDispValue (ScalarMu _)) -> ()
         | other -> Assert.Fail($"expected a stored scalar μ tree, got %A{other}")
-        Assert.Equal(ScalarMuKind, NkDispersionChart.muKindOfComplexity scalar)
+        Assert.Equal(ScalarMuKind, scalar.muKind)
         // …a constant gyromagnetic (full-tensor) tree → GyromagneticMuKind (diagonal + gyration)…
         let gyromagnetic =
             complexityOf
@@ -271,7 +272,7 @@ module NkDispersionChartTests =
         match gyromagnetic.magnetic with
         | Some (MuWithoutDispValue (GyromagneticMu _)) -> ()
         | other -> Assert.Fail($"expected a stored gyromagnetic μ tree, got %A{other}")
-        Assert.Equal(GyromagneticMuKind, NkDispersionChart.muKindOfComplexity gyromagnetic)
+        Assert.Equal(GyromagneticMuKind, gyromagnetic.muKind)
         // …and a DISPERSIVE Polder tree (always the full tensor — the engine's `MuWithDispValue`
         // carries no scalar dispersive case) → GyromagneticMuKind.
         let dispersive =
@@ -284,4 +285,4 @@ module NkDispersionChartTests =
         match dispersive.magnetic with
         | Some (MuWithDispValue _) -> ()
         | other -> Assert.Fail($"expected a stored dispersive Polder μ tree, got %A{other}")
-        Assert.Equal(GyromagneticMuKind, NkDispersionChart.muKindOfComplexity dispersive)
+        Assert.Equal(GyromagneticMuKind, dispersive.muKind)

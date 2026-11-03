@@ -38,6 +38,7 @@ open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Ui.NkDispersionChart
 
 // ---------------------------------------------------------------------------
 // Elevated window-local states (named DUs, never bools).
@@ -1168,7 +1169,7 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
             |> List.tryPick (fun (vn, e) -> if vn = shownVersion then Some e else None)
             |> Option.defaultValue latestEntry
         let viewingOlder = shownVersion <> latestVersion
-        let chart = NkDispersionChart.nkDispersionChart (NkDispersionChart.anisotropyOfEntry shownEntry) shownEntry.properties Nanometer MaterialEditorView.previewRange
+        let chart = NkDispersionChart.nkDispersionChart shownEntry.previewAnisotropy shownEntry.properties Nanometer MaterialEditorView.previewRange
         let editability =
             if viewingOlder then $" (version {shownVersion.value} — view-only)"
             else
@@ -1205,7 +1206,7 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
                             ] :> IView ]
                           @ viewOnlyNote
                           @ versionsRow m versions latestVersion shownVersion dispatch
-                          @ [ EmbeddedChart.embeddedChartView ConstructorUiId.materialsViewPanelNkChart chart (NkDispersionChart.nkDispersionStyle (NkDispersionChart.anisotropyOfEntry shownEntry) chart) ])
+                          @ [ EmbeddedChart.embeddedChartView ConstructorUiId.materialsViewPanelNkChart chart (NkDispersionChart.nkDispersionStyle shownEntry.previewAnisotropy chart) ])
                   ])
           ] :> IView ]
 

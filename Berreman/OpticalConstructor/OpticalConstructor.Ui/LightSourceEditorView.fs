@@ -27,7 +27,7 @@ open OpticalConstructor.Domain.Units
 /// How the editor OPENS: a NEW source (the Library's Add source verb — its entry id minted at window
 /// open) or an EXISTING user source edited in place (the Edit verb).
 type SourceEditorIntent =
-    | NewSource of mintedId : string
+    | NewSource of mintedId : OpticalConstructor.Domain.Placement.ElementValueId
     | EditSource of SourcePreset
 
 /// The editor's IO seam (the functional-proxy Context convention): the user-sources write store Save
@@ -59,7 +59,7 @@ type SourceEditSnapshot = string * float<meter> option * TuningChoice * float<me
 type LightSourceEditorModel =
     {
         context : SourceEditorContext
-        sourceId : string
+        sourceId : OpticalConstructor.Domain.Placement.ElementValueId
         freshness : WindowLauncher.EntryFreshness
         name : string
         waveLengthText : string
@@ -131,7 +131,7 @@ let initLightSourceEditor (context : SourceEditorContext) (intent : SourceEditor
     let sourceId, freshness, name, waveLength, tuning =
         match intent with
         | NewSource mintedId -> mintedId, WindowLauncher.NewUnsaved, "", defaultWaveLength, FixedLine
-        | EditSource s -> s.id.value, WindowLauncher.Persisted, s.name.value, s.waveLength, s.tuning
+        | EditSource s -> s.id, WindowLauncher.Persisted, s.name.value, s.waveLength, s.tuning
     // A fixed line opens with sensible limits ready should it be switched to tunable.
     let choice, minimum, maximum =
         match tuning with
@@ -160,11 +160,11 @@ let toSource (m : LightSourceEditorModel) : Result<SourcePreset, string> =
     match m.waveLength, m.tuning, m.minimum, m.maximum with
     | None, _, _, _ -> Error $"enter a positive wavelength in %s{m.unit.abbreviation}"
     | Some w, FixedChoice, _, _ ->
-        Ok { id = OpticalConstructor.Domain.Placement.ElementValueId m.sourceId; name = OpticalConstructor.Domain.MaterialLibrary.EntryName (m.name.Trim()); waveLength = w; tuning = FixedLine; protection = UserManaged }
+        Ok { id = m.sourceId; name = OpticalConstructor.Domain.MaterialLibrary.EntryName (m.name.Trim()); waveLength = w; tuning = FixedLine; protection = UserManaged }
     | Some w, TunableChoice, Some lo, Some hi ->
         Ok
             {
-                id = OpticalConstructor.Domain.Placement.ElementValueId m.sourceId
+                id = m.sourceId
                 name = OpticalConstructor.Domain.MaterialLibrary.EntryName (m.name.Trim())
                 waveLength = w
                 tuning = TunableBetween { Berreman.Dispersion.WaveLengthInterval.lower = lo; upper = hi }

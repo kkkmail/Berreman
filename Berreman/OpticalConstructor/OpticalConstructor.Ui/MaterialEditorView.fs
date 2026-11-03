@@ -43,6 +43,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Controls
 open OpticalConstructor.Controls.ExperimentChart
+open OpticalConstructor.Ui.NkDispersionChart
 
 /// How the Material editor OPENS (spec 0038 step 008): Add mints the entry's `MaterialId`
 /// AT WINDOW OPEN — the id-mint left the save path, so the window-policy seam
@@ -231,7 +232,7 @@ let private previewProperties (m : MaterialEditorModel) : OpticalPropertiesWithD
 
 /// The gyration components the preview draws (spec 0040 step 006): in edit mode the editor's own
 /// gyration class decides them; a view-only entry reads the class off its stored `complexity`
-/// activity tree (mirroring `NkDispersionChart.anisotropyOfEntry`); a coded preset with no stored
+/// activity tree (mirroring `MaterialEntry.previewAnisotropy`); a coded preset with no stored
 /// tree keeps every component (the pre-restriction rendering). Public so the window tests verify the
 /// threading without a rendered frame.
 let previewGyrationComponents (m : MaterialEditorModel) : GyrationComponent list =
@@ -250,7 +251,7 @@ let previewMuKind (m : MaterialEditorModel) : MuKind =
     | EditableMaterial -> m.editor.muKind
     | ViewOnlyMaterial _ ->
         match m.viewOnlyComplexity with
-        | Some complexity -> NkDispersionChart.muKindOfComplexity complexity
+        | Some complexity -> complexity.muKind
         | None -> GyromagneticMuKind
 
 /// The advisory gain warning over the n/k chart's sampled k curves — every per-axis k series (the
@@ -1080,24 +1081,26 @@ let private previewPane (m : MaterialEditorModel) (dispatch : MaterialEditorMsg 
         placeholder, ""
     | Some o ->
         let nkChart = NkDispersionChart.nkDispersionChart m.editor.anisotropy o Nanometer previewRange
-        let showGyration =
+        let activity =
             match m.mode with
-            | EditableMaterial -> m.editor.activity = ActivityOn
-            | ViewOnlyMaterial _ -> NkDispersionChart.hasGyration o
-        let showMu =
+            | EditableMaterial -> m.editor.activity
+            | ViewOnlyMaterial _ -> NkDispersionChart.assembledActivity o
+        let magnetic =
             match m.mode with
-            | EditableMaterial -> m.editor.magnetic = MagneticOn
-            | ViewOnlyMaterial _ -> NkDispersionChart.hasMagnetic o
+            | EditableMaterial -> m.editor.magnetic
+            | ViewOnlyMaterial _ -> NkDispersionChart.assembledMagnetic o
         let tabs =
             [ chartTab ConstructorUiId.materialPreviewNkTab.value "nk" "n, k" ConstructorUiId.materialPreviewChart m dispatch nkChart (NkDispersionChart.nkDispersionStyle m.editor.anisotropy nkChart) ]
-            @ (if showGyration then
+            @ (match activity with
+               | ActivityOn ->
                    let g = NkDispersionChart.gyrationChart (previewGyrationComponents m) o Nanometer previewRange
-                   [ chartTab ConstructorUiId.materialPreviewGyrationTab.value "gyration" "Gyration" ConstructorUiId.materialGyrationChart m dispatch g (NkDispersionChart.gyrationStyle g) ]
-               else [])
-            @ (if showMu then
+                   [ chartTab ConstructorUiId.materialPreviewGyrationTab.value "gyration" "Gyration" ConstructorUiId.materialGyrationChart m dispatch g g.gyrationStyle ]
+               | ActivityOff -> [])
+            @ (match magnetic with
+               | MagneticOn ->
                    let mu = NkDispersionChart.muChart (previewMuKind m) o Nanometer previewRange
                    [ chartTab ConstructorUiId.materialPreviewMuTab.value "mu" "μ (Polder)" ConstructorUiId.materialMuChart m dispatch mu (NkDispersionChart.muStyle mu) ]
-               else [])
+               | MagneticOff -> [])
         let pane =
             TabControl.create [
                 automationId<TabControl> ConstructorUiId.materialPreviewTabs.value

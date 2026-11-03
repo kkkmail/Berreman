@@ -6,6 +6,13 @@ module OpticalConstructor.Ui.Catalogue
 
 open OpticalConstructor.Domain.Placement
 
+/// A schematic optical sign for the shape renderer's lens / curved-mirror spherical caps (a bare placement
+/// carries no signed radius of curvature). The cases sort diverging < flat < converging, as −1 < 0 < +1 did.
+type OpticalSign =
+    | DivergingSign
+    | FlatSign
+    | ConvergingSign
+
 type CatalogueKind with
 
     /// The full display name of a catalogue kind.
@@ -34,10 +41,9 @@ type CatalogueKind with
         | CurvedMirror -> "CM"
         | Detector -> "D"
 
-    /// A schematic optical sign for the shape renderer's lens / curved-mirror spherical caps (a bare
-    /// placement carries no signed radius of curvature): +1 = converging (convex lens / concave mirror) for
-    /// lenses and curved mirrors, 0 = flat (everything else, drawn as a plain cylinder).
-    member this.opticalSign : int =
+    /// The kind's optical sign: converging (convex lens / concave mirror) for lenses and curved mirrors,
+    /// flat for everything else (drawn as a plain cylinder).
+    member this.opticalSign : OpticalSign =
         match this with
-        | Lens | CurvedMirror -> 1
-        | _ -> 0
+        | Lens | CurvedMirror -> ConvergingSign
+        | _ -> FlatSign

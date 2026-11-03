@@ -286,7 +286,7 @@ module WorkbenchInfoAndCaptureTests =
     let ``the source editor saves a tunable source and refuses limits in the wrong order`` () =
         let sources = SourceProxy.createInMemory ()
         let context : SE.SourceEditorContext = { sources = sources; requestClose = ignore }
-        let m = SE.initLightSourceEditor context (SE.NewSource "src-tune") |> SE.updateLightSourceEditor (SE.SetLightSourceName "My OPO") |> SE.updateLightSourceEditor (SE.SetTuning SE.TunableChoice)
+        let m = SE.initLightSourceEditor context (SE.NewSource (ElementValueId "src-tune")) |> SE.updateLightSourceEditor (SE.SetLightSourceName "My OPO") |> SE.updateLightSourceEditor (SE.SetTuning SE.TunableChoice)
         let saved = SE.updateLightSourceEditor SE.LightSourceSaveClicked m
         Assert.Equal(None, saved.status)
         match sources.tryGetSource (ElementValueId "src-tune") with

@@ -33,8 +33,8 @@ module RendererTestTests =
         Assert.Equal(Some 1, m.selected)
         let signsFor (k : OpticalConstructor.Domain.Placement.CatalogueKind) =
             m.elements |> List.filter (fun e -> e.placement.catalogueKind = k) |> List.map (fun e -> e.opticalSign) |> List.sort
-        Assert.Equal<int list>([ -1; 1 ], signsFor OpticalConstructor.Domain.Placement.Lens)
-        Assert.Equal<int list>([ -1; 1 ], signsFor OpticalConstructor.Domain.Placement.CurvedMirror)
+        Assert.Equal<OpticalSign list>([ DivergingSign; ConvergingSign ], signsFor OpticalConstructor.Domain.Placement.Lens)
+        Assert.Equal<OpticalSign list>([ DivergingSign; ConvergingSign ], signsFor OpticalConstructor.Domain.Placement.CurvedMirror)
 
     [<Fact>]
     let ``a clean click far from every element deselects; the renderer stays`` () =

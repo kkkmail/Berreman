@@ -24,6 +24,7 @@ open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.MaterialEditorView
+open OpticalConstructor.Ui.NkDispersionChart
 
 /// Spec 0033 (023) — the MaterialEditorWindow component (UICOMP_XDUO_0004): the Material editor
 /// window in OpticalConstructor.Ui over the pure Domain `MaterialComplexityEditor`
@@ -1010,7 +1011,7 @@ module MaterialEditorWindowTests =
             let active = propsFrom [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
             let gComponents = (UniaxialActive { g11 = defaultGyrationComponent; g33 = defaultGyrationComponent }).components |> List.map fst
             let g = NkDispersionChart.gyrationChart gComponents active Nanometer range
-            render (ConstructorUiId "TabRenderGyration") g (NkDispersionChart.gyrationStyle g)
+            render (ConstructorUiId "TabRenderGyration") g g.gyrationStyle
             // The μ tab for a gyromagnetic entry.
             let magnetic = propsFrom [ SetMagnetic MagneticOn; SetMuKind GyromagneticMuKind; ChooseGyrationAxis AlongZ ]
             let mu = NkDispersionChart.muChart GyromagneticMuKind magnetic Nanometer range

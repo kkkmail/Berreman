@@ -132,7 +132,7 @@ module WireUiFinalCompositionTests =
               LibraryWindowKey
               MaterialEditorKey (MaterialLibrary.newMaterialId ())
               SampleEditorKey (Library.newSampleId ())
-              SourceEditorKey (Library.newSourceId ()).value
+              SourceEditorKey (Library.newSourceId ())
               CategoryEditorKey
               SolverHandoffWindowKey ]
             |> List.iter (openThroughLauncher ctx))

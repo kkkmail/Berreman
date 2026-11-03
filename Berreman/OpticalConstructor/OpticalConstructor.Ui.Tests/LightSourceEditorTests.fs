@@ -49,7 +49,7 @@ module LightSourceEditorTests =
     let ``a new source opens at 600 nm, pristine, and Save stores it user-managed under the minted id`` () =
         let sources = SourceProxy.createInMemory ()
         let calls, context = editorContext sources
-        let m0 = SE.initLightSourceEditor context (SE.NewSource "src-new-1")
+        let m0 = SE.initLightSourceEditor context (SE.NewSource (Placement.ElementValueId "src-new-1"))
         Assert.False(SE.isLightSourceEditorDirty m0)
         Assert.Equal(Some 600.0, m0.waveLength |> Option.map nmOf)
         let saved =
@@ -69,7 +69,7 @@ module LightSourceEditorTests =
     [<Fact>]
     let ``switching the unit keeps the wavelength and shows it in the new unit`` () =
         let _, context = editorContext (SourceProxy.createInMemory ())
-        let m = SE.initLightSourceEditor context (SE.NewSource "src-x") |> SE.updateLightSourceEditor (SE.SetUnit ElectronVolt)
+        let m = SE.initLightSourceEditor context (SE.NewSource (Placement.ElementValueId "src-x")) |> SE.updateLightSourceEditor (SE.SetUnit ElectronVolt)
         Assert.Equal(ElectronVolt, m.unit)
         Assert.Equal(Some 600.0, m.waveLength |> Option.map nmOf)
         Assert.Equal(SE.formatIn ElectronVolt (WaveLength.nm 600.0<nm>), m.waveLengthText)
@@ -84,9 +84,9 @@ module LightSourceEditorTests =
     let ``Save refuses a blank name or an unparsable wavelength and keeps the editor open`` () =
         let sources = SourceProxy.createInMemory ()
         let calls, context = editorContext sources
-        let blank = SE.initLightSourceEditor context (SE.NewSource "src-y") |> SE.updateLightSourceEditor SE.LightSourceSaveClicked
+        let blank = SE.initLightSourceEditor context (SE.NewSource (Placement.ElementValueId "src-y")) |> SE.updateLightSourceEditor SE.LightSourceSaveClicked
         Assert.True(Option.isSome blank.status, "a blank name is refused with a reason")
-        let bad = SE.initLightSourceEditor context (SE.NewSource "src-y") |> SE.updateLightSourceEditor (SE.SetLightSourceName "X") |> SE.updateLightSourceEditor (SE.SetWaveLengthText "abc")
+        let bad = SE.initLightSourceEditor context (SE.NewSource (Placement.ElementValueId "src-y")) |> SE.updateLightSourceEditor (SE.SetLightSourceName "X") |> SE.updateLightSourceEditor (SE.SetWaveLengthText "abc")
         Assert.Equal(None, bad.waveLength)
         Assert.Contains("enter a positive wavelength", (SE.updateLightSourceEditor SE.LightSourceSaveClicked bad).status |> Option.defaultValue "")
         Assert.Empty(calls)
@@ -136,7 +136,7 @@ module LightSourceEditorTests =
                 fun intent ->
                     calls.Add(
                         match intent with
-                        | SE.NewSource mintedId -> "source-add:" + mintedId
+                        | SE.NewSource mintedId -> "source-add:" + mintedId.value
                         | SE.EditSource s -> "source-edit:" + s.name.value)
             requestClose = fun () -> calls.Add "close"
         }
@@ -243,7 +243,7 @@ module LightSourceEditorTests =
     let ``the editor window stores a typed source on Save and closes`` () =
         HeadlessSession.run (fun () ->
             let sources = SourceProxy.createInMemory ()
-            let window = LightSourceEditorWindow(sources, SE.NewSource "src-typed")
+            let window = LightSourceEditorWindow(sources, SE.NewSource (Placement.ElementValueId "src-typed"))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             typeInto window ConstructorUiId.sourceNameBox.value "Typed KrF"

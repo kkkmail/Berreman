@@ -44,7 +44,7 @@ module WindowLauncherTests =
 
     /// A stub factory that types-out every request as a construction failure.
     let private failingFactory : WindowKey -> Result<Window, WindowLauncherError> =
-        fun (key : WindowKey) -> WindowFactoryFailed(key, "stub factory refuses") |> Error
+        fun (key : WindowKey) -> WindowFactoryFailedErr(key, "stub factory refuses") |> Error
 
     /// A stub factory for tests that must never reach construction.
     let private unreachableFactory : WindowKey -> Result<Window, WindowLauncherError> =
@@ -73,23 +73,23 @@ module WindowLauncherTests =
         | other -> Assert.Fail($"expected Ok ModelessSelectWindows, got %A{other}")
 
     [<Fact>]
-    let ``forgetting a key with no live window is the typed WindowNotRegistered error — never a throw`` () =
+    let ``forgetting a key with no live window is the typed WindowNotRegisteredErr error — never a throw`` () =
         let launcher = WindowLauncher.createMock unreachableFactory ModelessSelectWindows
         match launcher.forgetWindow MaterialsWindowKey with
-        | Error (WindowNotRegistered MaterialsWindowKey) -> ()
-        | other -> Assert.Fail($"expected Error (WindowNotRegistered MaterialsWindowKey), got %A{other}")
+        | Error (WindowNotRegisteredErr MaterialsWindowKey) -> ()
+        | other -> Assert.Fail($"expected Error (WindowNotRegisteredErr MaterialsWindowKey), got %A{other}")
 
     [<Fact>]
     let ``a factory failure propagates as the typed error and the key is NOT registered — the next open retries`` () =
         let launcher = WindowLauncher.createMock failingFactory ModelessSelectWindows
         match launcher.openOrActivate LibraryWindowKey with
-        | Error (WindowFactoryFailed (LibraryWindowKey, reason)) -> Assert.Contains("refuses", reason)
-        | other -> Assert.Fail($"expected Error (WindowFactoryFailed (LibraryWindowKey, …)), got %A{other}")
+        | Error (WindowFactoryFailedErr (LibraryWindowKey, reason)) -> Assert.Contains("refuses", reason)
+        | other -> Assert.Fail($"expected Error (WindowFactoryFailedErr (LibraryWindowKey, …)), got %A{other}")
         // A failed create must not poison the registry: the key is still absent,
         // so the retry consults the factory again (and fails the same typed way)
         // rather than "activating" a window that was never built.
         match launcher.openOrActivate LibraryWindowKey with
-        | Error (WindowFactoryFailed (LibraryWindowKey, _)) -> ()
+        | Error (WindowFactoryFailedErr (LibraryWindowKey, _)) -> ()
         | other -> Assert.Fail($"the retry must reach the factory again, got %A{other}")
 
     [<Fact>]
@@ -258,30 +258,30 @@ module WindowLauncherTests =
         | other -> Assert.Fail($"expected Ok ModelessSelectWindows, got %A{other}")
 
     [<Fact>]
-    let ``the real launcher's forget of a never-registered key is the typed WindowNotRegistered error`` () =
+    let ``the real launcher's forget of a never-registered key is the typed WindowNotRegisteredErr error`` () =
         // A freshly minted id cannot be in the app-global registry.
         let key = MaterialEditorKey (MaterialLibrary.newMaterialId ())
         match (WindowLauncher.create unreachableFactory ModelessSelectWindows BrowseOpen).forgetWindow key with
-        | Error (WindowNotRegistered k) -> Assert.Equal(key, k)
-        | other -> Assert.Fail($"expected Error (WindowNotRegistered …), got %A{other}")
+        | Error (WindowNotRegisteredErr k) -> Assert.Equal(key, k)
+        | other -> Assert.Fail($"expected Error (WindowNotRegisteredErr …), got %A{other}")
 
     [<Fact>]
     let ``a real-launcher factory failure (or throw) is the typed error and the key stays unregistered`` () =
         let key = SampleEditorKey (Library.newSampleId ())
         let launcher = WindowLauncher.create failingFactory ModelessSelectWindows BrowseOpen
         match launcher.openOrActivate key with
-        | Error (WindowFactoryFailed (k, reason)) ->
+        | Error (WindowFactoryFailedErr (k, reason)) ->
             Assert.Equal(key, k)
             Assert.Contains("refuses", reason)
-        | other -> Assert.Fail($"expected Error (WindowFactoryFailed …), got %A{other}")
+        | other -> Assert.Fail($"expected Error (WindowFactoryFailedErr …), got %A{other}")
         // The retry consults the factory again — nothing was registered for the key.
         match launcher.openOrActivate key with
-        | Error (WindowFactoryFailed _) -> ()
+        | Error (WindowFactoryFailedErr _) -> ()
         | other -> Assert.Fail($"the retry must reach the factory again, got %A{other}")
         // A THROWING factory is caught at the launcher boundary and mapped, never rethrown.
         let throwing : WindowKey -> Result<Window, WindowLauncherError> = fun _ -> failwith "boom"
         match (WindowLauncher.create throwing ModelessSelectWindows BrowseOpen).openOrActivate key with
-        | Error (WindowFactoryFailed (_, reason)) -> Assert.Contains("boom", reason)
+        | Error (WindowFactoryFailedErr (_, reason)) -> Assert.Contains("boom", reason)
         | other -> Assert.Fail($"a factory throw must map to the typed error, got %A{other}")
 
     // ------------- real registry behaviour over shown windows (gate `ui-smoke`) -------------

@@ -700,7 +700,7 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
     | AddSource ->
         // Spec 0046: the source's entry id is minted HERE, at the window-open dispatch (the Add
         // sample precedent), so the launcher keys the new editor by the id its Save stores under.
-        m.context.openSourceEditor (LightSourceEditorView.NewSource (newSourceId ()).value)
+        m.context.openSourceEditor (LightSourceEditorView.NewSource (newSourceId ()))
         disarmed m
     | EditSelected ->
         // Edit opens the Sample editor on the selected SAMPLE, or (spec 0046) the source editor on a
