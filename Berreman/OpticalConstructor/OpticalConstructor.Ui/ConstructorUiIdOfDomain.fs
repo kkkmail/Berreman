@@ -8,6 +8,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.DispersionModels
+open OpticalConstructor.Domain.Units
 
 /// The Controls values derived from a Domain value: the automation ids (spec 0048 R1) and a control's
 /// keys, counts and captions. Controls references no Domain type, so they are extension members here,
@@ -206,6 +207,27 @@ module ConstructorUiIdOfDomain =
             | CategoryStillReferencedErr reason
             | BuiltInNotRemovableErr reason
             | InvalidCategoryErr reason -> ControlCaption reason
+
+    type SourceError with
+
+        /// The typed rejection's reason as a status line shows it.
+        member this.caption : ControlCaption = ControlCaption this.reason
+
+    type UnitOfMeasure with
+
+        /// The unit as the ASCII key of its choice box (the display symbols carry µ / ⁻¹).
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | Nanometer -> ConstructorUiKey "nm"
+            | Micrometer -> ConstructorUiKey "um"
+            | Angstrom -> ConstructorUiKey "A"
+            | ElectronVolt -> ConstructorUiKey "eV"
+            | Wavenumber -> ConstructorUiKey "cm-1"
+            | Meter -> ConstructorUiKey "m"
+            | Millimeter -> ConstructorUiKey "mm"
+
+        /// The unit as its choice box shows it.
+        member this.caption : ControlCaption = ControlCaption this.abbreviation
 
     type SampleError with
 

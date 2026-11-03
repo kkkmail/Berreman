@@ -286,11 +286,11 @@ module WorkbenchInfoAndCaptureTests =
     let ``the source editor saves a tunable source and refuses limits in the wrong order`` () =
         let sources = SourceProxy.createInMemory ()
         let context : SE.SourceEditorContext = { sources = sources; requestClose = ignore }
-        let m = SE.initLightSourceEditor context (SE.NewSource (ElementValueId "src-tune")) |> SE.updateLightSourceEditor (SE.SetLightSourceName "My OPO") |> SE.updateLightSourceEditor (SE.SetTuning SE.TunableChoice)
+        let m = SE.initLightSourceEditor context (SE.NewSource (ElementValueId "src-tune")) |> SE.updateLightSourceEditor (SE.SetLightSourceName (EntryName "My OPO")) |> SE.updateLightSourceEditor (SE.SetTuning SE.TunableChoice)
         let saved = SE.updateLightSourceEditor SE.LightSourceSaveClicked m
         Assert.Equal(None, saved.status)
         match sources.tryGetSource (ElementValueId "src-tune") with
         | Ok (Some s) -> Assert.Equal(Some (400.0, 800.0), s.tunableLimitsOpt |> Option.map (fun l -> round (l.lower.value / nmToMeter / oneNanometer), round (l.upper.value / nmToMeter / oneNanometer)))
         | other -> Assert.Fail($"expected the tunable source, got %A{other}")
-        let reversed = m |> SE.updateLightSourceEditor (SE.SetMinimumText "900") |> SE.updateLightSourceEditor SE.LightSourceSaveClicked
+        let reversed = m |> SE.updateLightSourceEditor (SE.SetMinimumText (ControlCaption "900")) |> SE.updateLightSourceEditor SE.LightSourceSaveClicked
         Assert.True(Option.isSome reversed.status, "limits in the wrong order are refused with a reason")

@@ -50,12 +50,12 @@ module LightSourceEditorTests =
         let sources = SourceProxy.createInMemory ()
         let calls, context = editorContext sources
         let m0 = SE.initLightSourceEditor context (SE.NewSource (Placement.ElementValueId "src-new-1"))
-        Assert.False(SE.isLightSourceEditorDirty m0)
+        Assert.False(m0.isDirty)
         Assert.Equal(Some 600.0, m0.waveLength |> Option.map nmOf)
         let saved =
             m0
-            |> SE.updateLightSourceEditor (SE.SetLightSourceName "My EUV line")
-            |> SE.updateLightSourceEditor (SE.SetWaveLengthText "13.4")
+            |> SE.updateLightSourceEditor (SE.SetLightSourceName (EntryName "My EUV line"))
+            |> SE.updateLightSourceEditor (SE.SetWaveLengthText (ControlCaption "13.4"))
             |> SE.updateLightSourceEditor SE.LightSourceSaveClicked
         Assert.Equal(None, saved.status)
         Assert.Equal<string list>([ "close" ], List.ofSeq calls)
@@ -75,9 +75,9 @@ module LightSourceEditorTests =
         Assert.Equal(SE.formatIn ElectronVolt (WaveLength.nm 600.0<nm>), m.waveLengthText)
         // The box echoing that text back keeps the stored value exactly (no rounding drift, not dirty).
         let echoed = SE.updateLightSourceEditor (SE.SetWaveLengthText m.waveLengthText) m
-        Assert.False(SE.isLightSourceEditorDirty echoed)
+        Assert.False(echoed.isDirty)
         // A value typed in eV is read in eV: 91.84 eV is the 13.5 nm EUV line.
-        let euv = SE.updateLightSourceEditor (SE.SetWaveLengthText "91.84") m
+        let euv = SE.updateLightSourceEditor (SE.SetWaveLengthText (ControlCaption "91.84")) m
         Assert.True(abs ((euv.waveLength |> Option.map nmOf |> Option.defaultValue 0.0) - 13.5) < 1.0e-3)
 
     [<Fact>]
@@ -86,9 +86,9 @@ module LightSourceEditorTests =
         let calls, context = editorContext sources
         let blank = SE.initLightSourceEditor context (SE.NewSource (Placement.ElementValueId "src-y")) |> SE.updateLightSourceEditor SE.LightSourceSaveClicked
         Assert.True(Option.isSome blank.status, "a blank name is refused with a reason")
-        let bad = SE.initLightSourceEditor context (SE.NewSource (Placement.ElementValueId "src-y")) |> SE.updateLightSourceEditor (SE.SetLightSourceName "X") |> SE.updateLightSourceEditor (SE.SetWaveLengthText "abc")
+        let bad = SE.initLightSourceEditor context (SE.NewSource (Placement.ElementValueId "src-y")) |> SE.updateLightSourceEditor (SE.SetLightSourceName (EntryName "X")) |> SE.updateLightSourceEditor (SE.SetWaveLengthText (ControlCaption "abc"))
         Assert.Equal(None, bad.waveLength)
-        Assert.Contains("enter a positive wavelength", (SE.updateLightSourceEditor SE.LightSourceSaveClicked bad).status |> Option.defaultValue "")
+        Assert.Contains("enter a positive wavelength", (SE.updateLightSourceEditor SE.LightSourceSaveClicked bad).status |> Option.map (fun reason -> reason.value) |> Option.defaultValue "")
         Assert.Empty(calls)
         Assert.Equal(Ok [], sources.listSources ())
 
@@ -105,7 +105,7 @@ module LightSourceEditorTests =
         Assert.Equal<string list>([ "close" ], List.ofSeq calls)
         calls.Clear()
         // Dirty: Cancel asks first; Keep editing stays; Discard closes WITHOUT saving.
-        let dirty = SE.updateLightSourceEditor (SE.SetLightSourceName "Line B") m0
+        let dirty = SE.updateLightSourceEditor (SE.SetLightSourceName (EntryName "Line B")) m0
         let asking = SE.updateLightSourceEditor SE.LightSourceCancelClicked dirty
         Assert.Equal(SE.LightSourceConfirmingDiscard, asking.exit)
         Assert.Empty(calls)
@@ -247,7 +247,7 @@ module LightSourceEditorTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             typeInto window ConstructorUiId.sourceNameBox.value "Typed KrF"
-            clickOn window (ConstructorUiId.sourceWaveLengthUnit (ConstructorUiKey (SE.unitCode Nanometer))).value
+            clickOn window (ConstructorUiId.sourceWaveLengthUnit Nanometer.uiKey).value
             typeInto window ConstructorUiId.sourceWaveLengthBox.value "248.4"
             clickOn window ConstructorUiId.sourceSaveButton.value
             Assert.False(window.IsVisible, "Save closes the editor")

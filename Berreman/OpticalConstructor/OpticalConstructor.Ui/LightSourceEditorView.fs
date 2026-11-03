@@ -11,17 +11,16 @@ module OpticalConstructor.Ui.LightSourceEditorView
 open System
 open System.Globalization
 open Avalonia
-open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Layout
 open Avalonia.Media
-open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open Berreman.Constants
 open Berreman.Fields
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Units
 
 /// How the editor OPENS: a NEW source (the Library's Add source verb — its entry id minted at window
@@ -52,7 +51,7 @@ type LightSourceEditorExitPrompt =
 
 /// The slice Save persists, compared for dirtiness: the name, the wavelength in metres (`None` while the typed
 /// value does not parse), the tuning choice and the tunable limits in metres.
-type SourceEditSnapshot = string * float<meter> option * TuningChoice * float<meter> option * float<meter> option
+type SourceEditSnapshot = EntryName * float<meter> option * TuningChoice * float<meter> option * float<meter> option
 
 /// The editor's model. `waveLengthText` is the raw box text; `waveLength` is what it parses to in `unit`
 /// (kept unchanged when only the unit changes, so switching units never moves the value).
@@ -61,28 +60,28 @@ type LightSourceEditorModel =
         context : SourceEditorContext
         sourceId : OpticalConstructor.Domain.Placement.ElementValueId
         freshness : WindowLauncher.EntryFreshness
-        name : string
-        waveLengthText : string
+        name : EntryName
+        waveLengthText : ControlCaption
         waveLength : WaveLength option
         /// Spec 0046: fixed line or tunable, and a tunable source's limits (raw texts + parsed values).
         tuning : TuningChoice
-        minimumText : string
+        minimumText : ControlCaption
         minimum : WaveLength option
-        maximumText : string
+        maximumText : ControlCaption
         maximum : WaveLength option
         unit : UnitOfMeasure
         initialEdit : SourceEditSnapshot
         exit : LightSourceEditorExitPrompt
-        status : string option
+        status : ControlCaption option
     }
 
 type LightSourceEditorMsg =
-    | SetLightSourceName of string
-    | SetWaveLengthText of string
+    | SetLightSourceName of EntryName
+    | SetWaveLengthText of ControlCaption
     /// Spec 0046: fixed line or tunable, and the tunable limits' texts.
     | SetTuning of TuningChoice
-    | SetMinimumText of string
-    | SetMaximumText of string
+    | SetMinimumText of ControlCaption
+    | SetMaximumText of ControlCaption
     /// Show (and type) the wavelength in another unit — the value itself is unchanged.
     | SetUnit of UnitOfMeasure
     | LightSourceSaveClicked
@@ -95,43 +94,65 @@ type LightSourceEditorMsg =
 /// The wavelength units the editor offers, in display order.
 let waveLengthUnits : UnitOfMeasure list = [ Nanometer; Micrometer; Angstrom; ElectronVolt; Wavenumber ]
 
-/// The ASCII automation-id code of a unit choice (the display symbols carry µ / ⁻¹).
-let unitCode (u : UnitOfMeasure) : string =
-    match u with
-    | Nanometer -> "nm"
-    | Micrometer -> "um"
-    | Angstrom -> "A"
-    | ElectronVolt -> "eV"
-    | Wavenumber -> "cm-1"
-    | Meter -> "m"
-    | Millimeter -> "mm"
-
 /// A NEW source's starting wavelength — the seeded source's 600 nm.
 let defaultWaveLength : WaveLength = WaveLength.nm 600.0<nm>
 
 /// The wavelength as the box shows it in `u` (six significant digits, invariant culture).
-let formatIn (u : UnitOfMeasure) (w : WaveLength) : string =
-    (wavelengthToUnit u w).value.ToString("G6", CultureInfo.InvariantCulture)
+let formatIn (u : UnitOfMeasure) (w : WaveLength) : ControlCaption =
+    ControlCaption ((wavelengthToUnit u w).value.ToString("G6", CultureInfo.InvariantCulture))
 
 /// Parse a typed wavelength in `u`: a positive finite number, else `None`.
-let parseIn (u : UnitOfMeasure) (text : string) : WaveLength option =
-    match Double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture) with
+let parseIn (u : UnitOfMeasure) (text : ControlCaption) : WaveLength option =
+    match Double.TryParse(text.value, NumberStyles.Float, CultureInfo.InvariantCulture) with
     | true, v when v > 0.0 && not (Double.IsInfinity v) -> Some (toWaveLength u (UnitMagnitude v))
     | _ -> None
 
 let private metresOf (w : WaveLength option) : float<meter> option = w |> Option.map (fun x -> x.value)
 
-let private currentEdit (m : LightSourceEditorModel) : SourceEditSnapshot =
-    (m.name, metresOf m.waveLength, m.tuning, metresOf m.minimum, metresOf m.maximum)
+type EntryName with
 
-/// Whether the editor carries unsaved changes (the edit slice differs from the one captured at load).
-let isLightSourceEditorDirty (m : LightSourceEditorModel) : bool = m.initialEdit <> currentEdit m
+    /// The name as Save stores it, without the box's leading and trailing blanks.
+    member private this.trimmed : EntryName = EntryName (this.value.Trim())
+
+type LightSourceEditorModel with
+
+    member internal this.currentEdit : SourceEditSnapshot =
+        (this.name, metresOf this.waveLength, this.tuning, metresOf this.minimum, metresOf this.maximum)
+
+    /// Whether the editor carries unsaved changes (the edit slice differs from the one captured at load).
+    member this.isDirty : bool = this.initialEdit <> this.currentEdit
+
+    /// The source Save would store, or the reason it cannot yet.
+    member this.toSource : Result<SourcePreset, ControlCaption> =
+        match this.waveLength, this.tuning, this.minimum, this.maximum with
+        | None, _, _, _ -> Error (ControlCaption $"enter a positive wavelength in %s{this.unit.abbreviation}")
+        | Some w, FixedChoice, _, _ ->
+            Ok { id = this.sourceId; name = this.name.trimmed; waveLength = w; tuning = FixedLine; protection = UserManaged }
+        | Some w, TunableChoice, Some lo, Some hi ->
+            Ok
+                {
+                    id = this.sourceId
+                    name = this.name.trimmed
+                    waveLength = w
+                    tuning = TunableBetween { Berreman.Dispersion.WaveLengthInterval.lower = lo; upper = hi }
+                    protection = UserManaged
+                }
+        | Some _, TunableChoice, _, _ -> Error (ControlCaption $"enter positive tunable limits in %s{this.unit.abbreviation}")
+
+    /// The wavelength restated in nm and eV (the units visible-light and EUV work read), or the parse hint.
+    member this.readoutCaption : ControlCaption =
+        match this.waveLength with
+        | Some w ->
+            let nm = (wavelengthToUnit Nanometer w).value
+            let ev = (wavelengthToUnit ElectronVolt w).value
+            ControlCaption (String.Format(CultureInfo.InvariantCulture, "λ = {0:G6} nm  ·  {1:G6} eV", nm, ev))
+        | None -> ControlCaption $"enter a positive wavelength in %s{this.unit.abbreviation}"
 
 let initLightSourceEditor (context : SourceEditorContext) (intent : SourceEditorIntent) : LightSourceEditorModel =
     let sourceId, freshness, name, waveLength, tuning =
         match intent with
-        | NewSource mintedId -> mintedId, WindowLauncher.NewUnsaved, "", defaultWaveLength, FixedLine
-        | EditSource s -> s.id, WindowLauncher.Persisted, s.name.value, s.waveLength, s.tuning
+        | NewSource mintedId -> mintedId, WindowLauncher.NewUnsaved, EntryName "", defaultWaveLength, FixedLine
+        | EditSource s -> s.id, WindowLauncher.Persisted, s.name, s.waveLength, s.tuning
     // A fixed line opens with sensible limits ready should it be switched to tunable.
     let choice, minimum, maximum =
         match tuning with
@@ -155,23 +176,6 @@ let initLightSourceEditor (context : SourceEditorContext) (intent : SourceEditor
         status = None
     }
 
-/// The source Save would store, or the reason it cannot yet.
-let toSource (m : LightSourceEditorModel) : Result<SourcePreset, string> =
-    match m.waveLength, m.tuning, m.minimum, m.maximum with
-    | None, _, _, _ -> Error $"enter a positive wavelength in %s{m.unit.abbreviation}"
-    | Some w, FixedChoice, _, _ ->
-        Ok { id = m.sourceId; name = OpticalConstructor.Domain.MaterialLibrary.EntryName (m.name.Trim()); waveLength = w; tuning = FixedLine; protection = UserManaged }
-    | Some w, TunableChoice, Some lo, Some hi ->
-        Ok
-            {
-                id = m.sourceId
-                name = OpticalConstructor.Domain.MaterialLibrary.EntryName (m.name.Trim())
-                waveLength = w
-                tuning = TunableBetween { Berreman.Dispersion.WaveLengthInterval.lower = lo; upper = hi }
-                protection = UserManaged
-            }
-    | Some _, TunableChoice, _, _ -> Error $"enter positive tunable limits in %s{m.unit.abbreviation}"
-
 let updateLightSourceEditor (msg : LightSourceEditorMsg) (m : LightSourceEditorModel) : LightSourceEditorModel =
     match msg with
     | SetLightSourceName s -> { m with name = s }
@@ -193,7 +197,7 @@ let updateLightSourceEditor (msg : LightSourceEditorMsg) (m : LightSourceEditorM
         if unchanged then { m with maximumText = t } else { m with maximumText = t; maximum = parseIn m.unit t }
     | SetUnit u ->
         // Every wavelength the editor shows switches unit together; the values themselves never move.
-        let shown (value : WaveLength option) (text : string) : string * WaveLength option =
+        let shown (value : WaveLength option) (text : ControlCaption) : ControlCaption * WaveLength option =
             match value with
             | Some w -> formatIn u w, Some w
             | None -> text, parseIn u text
@@ -209,16 +213,16 @@ let updateLightSourceEditor (msg : LightSourceEditorMsg) (m : LightSourceEditorM
             maximumText = maximumText
             maximum = maximum }
     | LightSourceSaveClicked ->
-        match toSource m with
+        match m.toSource with
         | Ok source ->
             match m.context.sources.saveSource source with
             | Ok () ->
                 m.context.requestClose ()
                 { m with status = None }
-            | Error e -> { m with status = Some e.reason }
+            | Error e -> { m with status = Some e.caption }
         | Error reason -> { m with status = Some reason }
     | LightSourceCancelClicked ->
-        if isLightSourceEditorDirty m then { m with exit = LightSourceConfirmingDiscard }
+        if m.isDirty then { m with exit = LightSourceConfirmingDiscard }
         else
             m.context.requestClose ()
             m
@@ -231,23 +235,19 @@ let updateLightSourceEditor (msg : LightSourceEditorMsg) (m : LightSourceEditorM
 // The FuncUI view (the Sample editor's look: idle / chosen boxes, Save / Cancel action pair).
 // ---------------------------------------------------------------------------
 
-let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private idleBackground = color 232 232 232
-let private chosenBackground = color 150 185 235
-let private saveBackground = color 186 224 186
-let private cancelBackground = color 236 202 202
-let private idleBorder = color 120 120 120
-let private hintColor = color 110 110 110
-let private errorColor = color 165 40 40
-
-let private automationId<'t when 't :> Control> (autoId : string) : IAttr<'t> =
-    AttrBuilder<'t>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
+let private saveBackground = Color.FromRgb(186uy, 224uy, 186uy)
+let private cancelBackground = Color.FromRgb(236uy, 202uy, 202uy)
+let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+let private hintColor = Color.FromRgb(110uy, 110uy, 110uy)
+let private errorColor = Color.FromRgb(165uy, 40uy, 40uy)
 
 /// A clickable box (keyed by its id; highlighted when chosen).
-let private clickBox (autoId : string) (label : string) (background : Color) (onClick : unit -> unit) : IView =
+let private clickBox (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
     Border.create [
-        automationId<Border> autoId
+        id.automationAttribute<Border> ()
         Border.background (brush background)
         Border.borderBrush (brush idleBorder)
         Border.borderThickness 1.0
@@ -255,41 +255,44 @@ let private clickBox (autoId : string) (label : string) (background : Color) (on
         Border.padding (Thickness(10.0, 4.0))
         Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
         Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, label, background)))
+        Border.child (TextBlock.create [ TextBlock.text label.value ])
+        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, label.value, background)))
     ]
-    |> Avalonia.FuncUI.DSL.View.withKey autoId
+    |> Avalonia.FuncUI.DSL.View.withKey id.value
     :> IView
 
-let private actionButton (autoId : string) (label : string) (background : Color) (onClick : unit -> unit) : IView =
+let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
     Border.create [
-        automationId<Border> autoId
+        id.automationAttribute<Border> ()
         Border.background (brush background)
         Border.borderBrush (brush idleBorder)
         Border.borderThickness 1.0
         Border.cornerRadius (CornerRadius 3.0)
         Border.padding (Thickness(22.0, 6.0))
         Border.margin (Thickness(0.0, 0.0, 10.0, 0.0))
-        Border.child (TextBlock.create [ TextBlock.text label ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf autoId)
+        Border.child (TextBlock.create [ TextBlock.text label.value ])
+        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
     ]
-    |> Avalonia.FuncUI.DSL.View.withKey autoId
+    |> Avalonia.FuncUI.DSL.View.withKey id.value
     :> IView
 
-let private labelBlock (text : string) : IView =
-    TextBlock.create [ TextBlock.text text; TextBlock.width 90.0; TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
+type ControlCaption with
+
+    /// The caption as a row's fixed-width label.
+    member private this.lightSourceEditorLabel : IView =
+        TextBlock.create [ TextBlock.text this.value; TextBlock.width 90.0; TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
 
 let private nameRow (m : LightSourceEditorModel) (dispatch : LightSourceEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
         StackPanel.children [
-            labelBlock "Name:"
+            (ControlCaption "Name:").lightSourceEditorLabel
             TextBox.create [
                 TextBox.name ConstructorUiId.sourceNameBox.value
                 TextBox.width 320.0
-                TextBox.text m.name
-                TextBox.onTextChanged (SetLightSourceName >> dispatch)
+                TextBox.text m.name.value
+                TextBox.onTextChanged (EntryName >> SetLightSourceName >> dispatch)
             ] :> IView
         ]
     ] :> IView
@@ -302,9 +305,9 @@ let private tuningRows (m : LightSourceEditorModel) (dispatch : LightSourceEdito
           StackPanel.orientation Orientation.Horizontal
           StackPanel.spacing 6.0
           StackPanel.children [
-              labelBlock "Tuning:"
-              clickBox ConstructorUiId.sourceTuningFixed.value "Fixed line" (if tunable then idleBackground else chosenBackground) (fun () -> dispatch (SetTuning FixedChoice))
-              clickBox ConstructorUiId.sourceTuningTunable.value "Tunable" (if tunable then chosenBackground else idleBackground) (fun () -> dispatch (SetTuning TunableChoice))
+              (ControlCaption "Tuning:").lightSourceEditorLabel
+              clickBox ConstructorUiId.sourceTuningFixed (ControlCaption "Fixed line") (if tunable then idleBackground else chosenBackground) (fun () -> dispatch (SetTuning FixedChoice))
+              clickBox ConstructorUiId.sourceTuningTunable (ControlCaption "Tunable") (if tunable then chosenBackground else idleBackground) (fun () -> dispatch (SetTuning TunableChoice))
           ]
       ] :> IView
       StackPanel.create [
@@ -312,19 +315,19 @@ let private tuningRows (m : LightSourceEditorModel) (dispatch : LightSourceEdito
           StackPanel.spacing 6.0
           StackPanel.isVisible tunable
           StackPanel.children [
-              labelBlock "Limits:"
+              (ControlCaption "Limits:").lightSourceEditorLabel
               TextBox.create [
                   TextBox.name ConstructorUiId.sourceTunableMinimumBox.value
                   TextBox.width 110.0
-                  TextBox.text m.minimumText
-                  TextBox.onTextChanged (SetMinimumText >> dispatch)
+                  TextBox.text m.minimumText.value
+                  TextBox.onTextChanged (ControlCaption >> SetMinimumText >> dispatch)
               ] :> IView
               TextBlock.create [ TextBlock.text "to"; TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
               TextBox.create [
                   TextBox.name ConstructorUiId.sourceTunableMaximumBox.value
                   TextBox.width 110.0
-                  TextBox.text m.maximumText
-                  TextBox.onTextChanged (SetMaximumText >> dispatch)
+                  TextBox.text m.maximumText.value
+                  TextBox.onTextChanged (ControlCaption >> SetMaximumText >> dispatch)
               ] :> IView
               TextBlock.create [ TextBlock.text (m.unit.abbreviation); TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
           ]
@@ -335,33 +338,28 @@ let private waveLengthRow (m : LightSourceEditorModel) (dispatch : LightSourceEd
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
         StackPanel.children (
-            [ labelBlock (if m.tuning = TunableChoice then "Setting:" else "Wavelength:")
+            [ (match m.tuning with
+               | TunableChoice -> ControlCaption "Setting:"
+               | FixedChoice -> ControlCaption "Wavelength:").lightSourceEditorLabel
               TextBox.create [
                   TextBox.name ConstructorUiId.sourceWaveLengthBox.value
                   TextBox.width 110.0
-                  TextBox.text m.waveLengthText
-                  TextBox.onTextChanged (SetWaveLengthText >> dispatch)
+                  TextBox.text m.waveLengthText.value
+                  TextBox.onTextChanged (ControlCaption >> SetWaveLengthText >> dispatch)
               ] :> IView ]
             @ (waveLengthUnits
                |> List.map (fun u ->
-                   clickBox (ConstructorUiId.sourceWaveLengthUnit (ConstructorUiKey (unitCode u))).value u.abbreviation (if u = m.unit then chosenBackground else idleBackground) (fun () -> dispatch (SetUnit u)))))
+                   clickBox (ConstructorUiId.sourceWaveLengthUnit u.uiKey) u.caption (if u = m.unit then chosenBackground else idleBackground) (fun () -> dispatch (SetUnit u)))))
     ] :> IView
 
-/// The wavelength restated in nm and eV (the units visible-light and EUV work read), or the parse hint.
-let readoutText (m : LightSourceEditorModel) : string =
-    match m.waveLength with
-    | Some w ->
-        let nm = (wavelengthToUnit Nanometer w).value
-        let ev = (wavelengthToUnit ElectronVolt w).value
-        String.Format(CultureInfo.InvariantCulture, "λ = {0:G6} nm  ·  {1:G6} eV", nm, ev)
-    | None -> $"enter a positive wavelength in %s{m.unit.abbreviation}"
+type LightSourceEditorModel with
 
-let private readoutRow (m : LightSourceEditorModel) : IView =
-    TextBlock.create [
-        TextBlock.name ConstructorUiId.sourceWaveLengthReadout.value
-        TextBlock.margin (Thickness(96.0, 0.0, 0.0, 0.0))
-        TextBlock.text (readoutText m)
-    ] :> IView
+    member internal this.readoutRow : IView =
+        TextBlock.create [
+            TextBlock.name ConstructorUiId.sourceWaveLengthReadout.value
+            TextBlock.margin (Thickness(96.0, 0.0, 0.0, 0.0))
+            TextBlock.text this.readoutCaption.value
+        ] :> IView
 
 /// A function, not a value: a brush built at module initialisation belongs to whichever thread first
 /// touched the module, and rendering it on the UI thread would then throw.
@@ -376,7 +374,10 @@ let private statusRow (m : LightSourceEditorModel) : IView =
     TextBlock.create [
         TextBlock.name ConstructorUiId.sourceEditorStatus.value
         TextBlock.foreground (brush errorColor)
-        TextBlock.text (m.status |> Option.defaultValue "")
+        TextBlock.text (
+            match m.status with
+            | Some reason -> reason.value
+            | None -> "")
     ] :> IView
 
 let private actionsRow (m : LightSourceEditorModel) (dispatch : LightSourceEditorMsg -> unit) : IView =
@@ -385,13 +386,13 @@ let private actionsRow (m : LightSourceEditorModel) (dispatch : LightSourceEdito
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [
-                actionButton ConstructorUiId.sourceSaveButton.value "Save" saveBackground (fun () -> dispatch LightSourceSaveClicked)
-                actionButton ConstructorUiId.sourceCancelButton.value "Cancel" cancelBackground (fun () -> dispatch LightSourceCancelClicked)
+                actionButton ConstructorUiId.sourceSaveButton (ControlCaption "Save") saveBackground (fun () -> dispatch LightSourceSaveClicked)
+                actionButton ConstructorUiId.sourceCancelButton (ControlCaption "Cancel") cancelBackground (fun () -> dispatch LightSourceCancelClicked)
             ]
         ] :> IView
     | LightSourceConfirmingDiscard ->
         StackPanel.create [
-            automationId<StackPanel> ConstructorUiId.sourceExitConfirm.value
+            ConstructorUiId.sourceExitConfirm.automationAttribute<StackPanel> ()
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [
                 TextBlock.create [
@@ -400,8 +401,8 @@ let private actionsRow (m : LightSourceEditorModel) (dispatch : LightSourceEdito
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(0.0, 0.0, 12.0, 0.0))
                 ] :> IView
-                actionButton ConstructorUiId.sourceDiscardButton.value "Discard changes" cancelBackground (fun () -> dispatch LightSourceDiscardConfirmed)
-                actionButton ConstructorUiId.sourceKeepEditingButton.value "Keep editing" saveBackground (fun () -> dispatch LightSourceKeepEditing)
+                actionButton ConstructorUiId.sourceDiscardButton (ControlCaption "Discard changes") cancelBackground (fun () -> dispatch LightSourceDiscardConfirmed)
+                actionButton ConstructorUiId.sourceKeepEditingButton (ControlCaption "Keep editing") saveBackground (fun () -> dispatch LightSourceKeepEditing)
             ]
         ] :> IView
 
@@ -415,7 +416,7 @@ let lightSourceEditorView (m : LightSourceEditorModel) (dispatch : LightSourceEd
             @ tuningRows m dispatch
             @ [
             waveLengthRow m dispatch
-            readoutRow m
+            m.readoutRow
             noteRow ()
             statusRow m
             actionsRow m dispatch

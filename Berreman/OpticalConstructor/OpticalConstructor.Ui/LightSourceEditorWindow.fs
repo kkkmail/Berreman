@@ -48,7 +48,7 @@ type LightSourceEditorWindow(sources : SourceProxy, intent : LightSourceEditorVi
     /// dirty editor must NOT close through the chrome; false when the close may proceed.
     member _.ChromeCloseIntercepted() : bool =
         match latestModel with
-        | Some m when LightSourceEditorView.isLightSourceEditorDirty m ->
+        | Some m when m.isDirty ->
             dispatch LightSourceEditorView.LightSourceCancelClicked
             true
         | _ -> false
