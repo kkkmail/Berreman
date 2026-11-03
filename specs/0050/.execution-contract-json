@@ -1977,6 +1977,354 @@
           "command_sha256": "ddfdecad0bcaa4848adefa0080dbe702bcd0e744c40291f243c78cae874a9279"
         }
       ]
+    },
+    {
+      "id": "S15-CATALOGUE-PROXY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A 'Catalogue folder layout', §B 'Shipped catalogue'; specs/0050/.section-plan-jsonl section 5 (S1.5) brief; specs/0050/.spec-md §3.3, §3.5, §3.6, §4, §5, §7",
+      "requirement": "Domain CatalogueFiles.fs (compiled after LibraryEntryFiles.fs) declares CatalogueIds.builtInCatalogue, the frozen GUID 499ae2ca-4f4c-4d4f-b53e-62ef2627130a of the shipped Built-in catalogue; CatalogueError (CatalogueIoErr, CatalogueFileRejectedErr, MissingEntryFileErr, UnlistedEntryFileErr, ManifestMismatchErr, each of reason : string, and InvalidCatalogueEntriesErr of LibraryEntryError); CatalogueData { manifest; envelopes } with tryCreate, which builds the manifest through CatalogueManifest.tryCreate and orders the envelopes by its rows, and validate, the one consistency rule: the manifest is exactly the one its envelopes make, in row order; and the [<ReferenceEquality>] CatalogueProxy { readCatalogue; writeCatalogue } with its in-memory double createInMemory. The double reads back what it was written, holds nothing (CatalogueIoErr) until written, refuses an inconsistent catalogue with ManifestMismatchErr and stores nothing then; tryCreate refuses duplicate entry versions with InvalidCatalogueEntriesErr.",
+      "checks": [
+        {
+          "step": 32,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S15-CATALOGUE-FOLDER",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A 'Catalogue folder layout', §B 'Shipped catalogue'; specs/0050/.section-plan-jsonl section 5 (S1.5) brief; specs/0050/.spec-md §3.3, §3.5, §3.6, §4, §5, §7",
+      "requirement": "Storage CatalogueFolderStore.fs (compiled after EntryFileJson.fs) implements CatalogueProxy.create (folder : FolderName). Read parses .catalogue-json and each manifest row's entry file through the S1.4 parsers, so schema, version and hash are checked, and ignores files that are not library-entry files; it answers CatalogueIoErr for a missing folder or manifest, MissingEntryFileErr for a row with no file, UnlistedEntryFileErr for an entry file no row names, CatalogueFileRejectedErr naming a rejected file, and ManifestMismatchErr when the manifest is not the one its entries make. Write validates first, refuses a folder holding an unlisted entry file without changing any file, and writes each entry file and then the manifest through LibraryFileText.writeAtomically (*.tmp, then replace), so a written folder reads back equal and keeps no .tmp. StorageError gains describe, the render a Domain reason carries. The facts run the real proxy over folders under the test output.",
+      "checks": [
+        {
+          "step": 33,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S15-BUILTIN-PARITY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A 'Catalogue folder layout', §B 'Shipped catalogue'; specs/0050/.section-plan-jsonl section 5 (S1.5) brief; specs/0050/.spec-md §3.3, §3.5, §3.6, §4, §5, §7",
+      "requirement": "Berreman/OpticalConstructor/Catalogue/Builtin/ is committed, generated once by the throw-away export-builtin.fsx through the product writer (CatalogueProxy.create ... writeCatalogue): one .catalogue-json (name Built-in, id CatalogueIds.builtInCatalogue, version 1) and one file per seed (every builtInEntries material, standardCategories category, allSeedSamples sample, allSeedSources source, and seedEntries detector and polarizer), each version 1 under BuiltInProvenance of the built-in catalogue, named by its safe name plus its kind's extension with no category folders, LF-only, and none git-ignored. OpticalConstructor.Storage.fsproj copies the folder to Catalogue/Builtin/ in every output that references Storage. Read from the test output, the catalogue holds one row per seed, decodes structurally equal to the seeds with the same GUIDs, equals the seeds sealed now hash for hash, and its manifest hash is stable across reads. Proved red first (the output holds no catalogue), then green.",
+      "checks": [
+        {
+          "step": 34,
+          "gate": "constructor-unit-tests",
+          "selection": "selected",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 35,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S15-EXPORT-DISCARDED",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A 'Catalogue folder layout', §B 'Shipped catalogue'; specs/0050/.section-plan-jsonl section 5 (S1.5) brief; specs/0050/.spec-md §3.3, §3.5, §3.6, §4, §5, §7",
+      "requirement": "Once the parity facts are green, export-builtin.fsx is deleted, so git ls-files lists only files under Berreman/OpticalConstructor/Catalogue/Builtin/ beneath Berreman/OpticalConstructor/Catalogue/, and no second export path, script or seed-to-file code remains; the parity facts still pass against the committed folder.",
+      "checks": [
+        {
+          "step": 36,
+          "gate": "constructor-unit-tests",
+          "selection": "selected",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S15-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A 'Catalogue folder layout', §B 'Shipped catalogue'; specs/0050/.section-plan-jsonl section 5 (S1.5) brief; specs/0050/.spec-md §3.3, §3.5, §3.6, §4, §5, §7",
+      "requirement": "Every S1.5 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error, so every match on CatalogueError and StorageError (describe) is complete, and the new Content item builds into every output.",
+      "checks": [
+        {
+          "step": 32,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 33,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 34,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 35,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 36,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S15-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §A 'Catalogue folder layout', §B 'Shipped catalogue'; specs/0050/.section-plan-jsonl section 5 (S1.5) brief; specs/0050/.spec-md §3.3, §3.5, §3.6, §4, §5, §7",
+      "requirement": "Every S1.5 step that edits an .fs or .fsproj leaves the projects it touches, and the projects that reference them, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command). The new names (CatalogueFiles, CatalogueFolderStore, CatalogueIds.builtInCatalogue, CatalogueData, CatalogueError and its cases, CatalogueProxy, readCatalogue, writeCatalogue, writeAtomically) are unique (ELEV014/015/016/019); every CatalogueError case ends in Err; create and createInMemory are static members, not free functions (ELEV013); and a declaration whose signature carries a bare primitive for file IO is marked with ElevationBoundary on itself.",
+      "checks": [
+        {
+          "step": 32,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 33,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 34,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 35,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S15-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 5 (S1.5) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.5 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s05-elev-list-empty).",
+      "checks": [
+        {
+          "step": 32,
+          "gate": "invariant-s05-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "a2f1fa606076b6e4a39ed360fa813e33aa6fe8982870564a8bdea24902d054e2"
+        },
+        {
+          "step": 33,
+          "gate": "invariant-s05-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "a2f1fa606076b6e4a39ed360fa813e33aa6fe8982870564a8bdea24902d054e2"
+        },
+        {
+          "step": 34,
+          "gate": "invariant-s05-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "a2f1fa606076b6e4a39ed360fa813e33aa6fe8982870564a8bdea24902d054e2"
+        },
+        {
+          "step": 35,
+          "gate": "invariant-s05-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "a2f1fa606076b6e4a39ed360fa813e33aa6fe8982870564a8bdea24902d054e2"
+        },
+        {
+          "step": 36,
+          "gate": "invariant-s05-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "a2f1fa606076b6e4a39ed360fa813e33aa6fe8982870564a8bdea24902d054e2"
+        }
+      ]
+    },
+    {
+      "id": "S15-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 5 (S1.5) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.5 step, no .fsproj, .props or .targets names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s05-no-vstest).",
+      "checks": [
+        {
+          "step": 32,
+          "gate": "invariant-s05-no-vstest",
+          "selection": "command",
+          "command_sha256": "60905a35117fcff20affae63a4ce812de3192b727671b9e58d38cdecaa355529"
+        },
+        {
+          "step": 33,
+          "gate": "invariant-s05-no-vstest",
+          "selection": "command",
+          "command_sha256": "60905a35117fcff20affae63a4ce812de3192b727671b9e58d38cdecaa355529"
+        },
+        {
+          "step": 34,
+          "gate": "invariant-s05-no-vstest",
+          "selection": "command",
+          "command_sha256": "60905a35117fcff20affae63a4ce812de3192b727671b9e58d38cdecaa355529"
+        },
+        {
+          "step": 35,
+          "gate": "invariant-s05-no-vstest",
+          "selection": "command",
+          "command_sha256": "60905a35117fcff20affae63a4ce812de3192b727671b9e58d38cdecaa355529"
+        },
+        {
+          "step": 36,
+          "gate": "invariant-s05-no-vstest",
+          "selection": "command",
+          "command_sha256": "60905a35117fcff20affae63a4ce812de3192b727671b9e58d38cdecaa355529"
+        }
+      ]
+    },
+    {
+      "id": "S15-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 5 (S1.5) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.5 step, nothing under Berreman/ names kit.kit-json (section invariant s05-no-kit-kit-json; 001 §T).",
+      "checks": [
+        {
+          "step": 32,
+          "gate": "invariant-s05-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "207510e9500d6d506eaac9c8545f03844bee845743c13fd2f39675c15fbc9b0f"
+        },
+        {
+          "step": 33,
+          "gate": "invariant-s05-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "207510e9500d6d506eaac9c8545f03844bee845743c13fd2f39675c15fbc9b0f"
+        },
+        {
+          "step": 34,
+          "gate": "invariant-s05-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "207510e9500d6d506eaac9c8545f03844bee845743c13fd2f39675c15fbc9b0f"
+        },
+        {
+          "step": 35,
+          "gate": "invariant-s05-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "207510e9500d6d506eaac9c8545f03844bee845743c13fd2f39675c15fbc9b0f"
+        },
+        {
+          "step": 36,
+          "gate": "invariant-s05-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "207510e9500d6d506eaac9c8545f03844bee845743c13fd2f39675c15fbc9b0f"
+        }
+      ]
+    },
+    {
+      "id": "S15-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 5 (S1.5) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.5 step, nothing under Berreman/ names EpsAxisEvaluated (section invariant s05-no-eps-axis-evaluated, established by S1.1).",
+      "checks": [
+        {
+          "step": 32,
+          "gate": "invariant-s05-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c918191135f8029c88bf1d96d9fb05376212b97ff28efb50ac7f721441924e7a"
+        },
+        {
+          "step": 33,
+          "gate": "invariant-s05-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c918191135f8029c88bf1d96d9fb05376212b97ff28efb50ac7f721441924e7a"
+        },
+        {
+          "step": 34,
+          "gate": "invariant-s05-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c918191135f8029c88bf1d96d9fb05376212b97ff28efb50ac7f721441924e7a"
+        },
+        {
+          "step": 35,
+          "gate": "invariant-s05-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c918191135f8029c88bf1d96d9fb05376212b97ff28efb50ac7f721441924e7a"
+        },
+        {
+          "step": 36,
+          "gate": "invariant-s05-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c918191135f8029c88bf1d96d9fb05376212b97ff28efb50ac7f721441924e7a"
+        }
+      ]
+    },
+    {
+      "id": "S15-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 5 (S1.5) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.5 step, nothing under Berreman/ writes complexity = None or complexity = Some (section invariant s05-complexity-mandatory, established by S1.2).",
+      "checks": [
+        {
+          "step": 32,
+          "gate": "invariant-s05-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a62632fb97856b3d0db21fa8f82919ddef7d615375c602e6471f14075f40f7e5"
+        },
+        {
+          "step": 33,
+          "gate": "invariant-s05-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a62632fb97856b3d0db21fa8f82919ddef7d615375c602e6471f14075f40f7e5"
+        },
+        {
+          "step": 34,
+          "gate": "invariant-s05-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a62632fb97856b3d0db21fa8f82919ddef7d615375c602e6471f14075f40f7e5"
+        },
+        {
+          "step": 35,
+          "gate": "invariant-s05-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a62632fb97856b3d0db21fa8f82919ddef7d615375c602e6471f14075f40f7e5"
+        },
+        {
+          "step": 36,
+          "gate": "invariant-s05-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a62632fb97856b3d0db21fa8f82919ddef7d615375c602e6471f14075f40f7e5"
+        }
+      ]
+    },
+    {
+      "id": "S15-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 5 (S1.5) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.5 step, no Berreman/*.fs file holds a seeded preset string id (src-600, src-hene-..., det-intensity, det-ellipsometer, pol-lp, pol-cp-left, pol-cp-right and the rest; section invariant s05-no-seeded-string-preset-ids, established by S1.3 step 20).",
+      "checks": [
+        {
+          "step": 32,
+          "gate": "invariant-s05-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ee974257d6952f82419b80580260a59737dfa517e58baf1165f9c6b6f8851297"
+        },
+        {
+          "step": 33,
+          "gate": "invariant-s05-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ee974257d6952f82419b80580260a59737dfa517e58baf1165f9c6b6f8851297"
+        },
+        {
+          "step": 34,
+          "gate": "invariant-s05-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ee974257d6952f82419b80580260a59737dfa517e58baf1165f9c6b6f8851297"
+        },
+        {
+          "step": 35,
+          "gate": "invariant-s05-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ee974257d6952f82419b80580260a59737dfa517e58baf1165f9c6b6f8851297"
+        },
+        {
+          "step": 36,
+          "gate": "invariant-s05-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ee974257d6952f82419b80580260a59737dfa517e58baf1165f9c6b6f8851297"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -2401,6 +2749,80 @@
         "S14-INV-COMPLEXITY-MANDATORY",
         "S14-INV-NO-SEEDED-STRING-PRESET-IDS"
       ]
+    },
+    {
+      "step": 32,
+      "sha256": "9bda60b05757df9ade55c6f5edf427715e0823d4ef6d8c629db07b3949464c14",
+      "obligations": [
+        "S15-CATALOGUE-PROXY",
+        "S15-BUILD",
+        "S15-ELEVATION",
+        "S15-INV-ELEV-LIST",
+        "S15-INV-NO-VSTEST",
+        "S15-INV-NO-KIT-KIT-JSON",
+        "S15-INV-NO-EPS-AXIS-EVALUATED",
+        "S15-INV-COMPLEXITY-MANDATORY",
+        "S15-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 33,
+      "sha256": "d86d368806c79d371a3869a0c283cf38ffd2f3012a0b521c3d35b409fafa566a",
+      "obligations": [
+        "S15-CATALOGUE-FOLDER",
+        "S15-BUILD",
+        "S15-ELEVATION",
+        "S15-INV-ELEV-LIST",
+        "S15-INV-NO-VSTEST",
+        "S15-INV-NO-KIT-KIT-JSON",
+        "S15-INV-NO-EPS-AXIS-EVALUATED",
+        "S15-INV-COMPLEXITY-MANDATORY",
+        "S15-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 34,
+      "sha256": "9708b6cef1618fe490ed37d1ef8b79b61327ce464248e05c78258da31f060646",
+      "obligations": [
+        "S15-BUILTIN-PARITY",
+        "S15-BUILD",
+        "S15-ELEVATION",
+        "S15-INV-ELEV-LIST",
+        "S15-INV-NO-VSTEST",
+        "S15-INV-NO-KIT-KIT-JSON",
+        "S15-INV-NO-EPS-AXIS-EVALUATED",
+        "S15-INV-COMPLEXITY-MANDATORY",
+        "S15-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 35,
+      "sha256": "f97cc3798248e1e3d7475a27c3ad0bc9c894c53cce184eb908b35cbd702d3583",
+      "obligations": [
+        "S15-BUILTIN-PARITY",
+        "S15-BUILD",
+        "S15-ELEVATION",
+        "S15-INV-ELEV-LIST",
+        "S15-INV-NO-VSTEST",
+        "S15-INV-NO-KIT-KIT-JSON",
+        "S15-INV-NO-EPS-AXIS-EVALUATED",
+        "S15-INV-COMPLEXITY-MANDATORY",
+        "S15-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 36,
+      "sha256": "9c7375b2e80f09f0fc7f03f6771446a515600e88676e5958bf56d87f7ebcf61f",
+      "obligations": [
+        "S15-EXPORT-DISCARDED",
+        "S15-BUILD",
+        "S15-INV-ELEV-LIST",
+        "S15-INV-NO-VSTEST",
+        "S15-INV-NO-KIT-KIT-JSON",
+        "S15-INV-NO-EPS-AXIS-EVALUATED",
+        "S15-INV-COMPLEXITY-MANDATORY",
+        "S15-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
     }
   ],
   "behavior_seams": [
@@ -2480,11 +2902,6 @@
       "obligation": "S14-NUMBERS"
     },
     {
-      "id": "s14-numbers-green",
-      "step": 23,
-      "obligation": "S14-NUMBERS"
-    },
-    {
       "id": "s14-provenance-mismatch",
       "step": 25,
       "obligation": "S14-CONTENT"
@@ -2508,6 +2925,21 @@
       "id": "s14-builtins-round-trip",
       "step": 31,
       "obligation": "S14-CATALOGUE-FILE"
+    },
+    {
+      "id": "s15-in-memory-catalogue",
+      "step": 32,
+      "obligation": "S15-CATALOGUE-PROXY"
+    },
+    {
+      "id": "s15-folder-typed-errors",
+      "step": 33,
+      "obligation": "S15-CATALOGUE-FOLDER"
+    },
+    {
+      "id": "s15-builtin-parity-red",
+      "step": 34,
+      "obligation": "S15-BUILTIN-PARITY"
     }
   ],
   "temporal_checks": [],
@@ -2607,6 +3039,25 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Domain",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests"
+      ]
+    },
+    {
+      "from": 34,
+      "step": 35,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/Catalogue"
+      ]
+    },
+    {
+      "from": 32,
+      "step": 36,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/Catalogue"
       ]
     }
   ]

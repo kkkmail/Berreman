@@ -24,14 +24,14 @@
     {
       "name": "S1.4 -- Library entry files: envelope, provenance, canonical JSON, content hash, schemas",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "4eb7929",
       "spec_jsonl_lines": 31
     },
     {
       "name": "S1.5 -- The built-in catalogue generated once from the code seeds",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 36
     },
     {
       "name": "S1.6 -- CatalogueImport replaces seeding; the app and the tests load the catalogue",

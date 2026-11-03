@@ -1,0 +1,10 @@
+{
+  "STORE_BigBoy_0001": {
+    "name": "CatalogueProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  }
+}

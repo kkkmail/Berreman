@@ -1,0 +1,10 @@
+{
+  "STORE_BigBoy_0001": {
+    "lifecycle": "declared",
+    "declaringStep": 32,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  }
+}
