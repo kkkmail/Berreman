@@ -3303,7 +3303,7 @@ let buildDataFilePickerOptions
 /// Spec 0038 Part L (038): the picker now STARTS at the persisted last-used folder for the
 /// measured-data purpose (`UserEnvironment.lastFolders` keyed by `measuredDataFolderKey`, resolved to a
 /// `SuggestedStartLocation` through the provider) and, on a confirmed selection, records the chosen
-/// file's folder back through `UserEnvironment.save` — cancel changes nothing on disk. IO edge — the
+/// file's folder back through `EnvironmentSettings.save` — cancel changes nothing on disk. IO edge — the
 /// `openChartWindowHook` seam precedent — wrapped so an unavailable provider (a headless host) degrades
 /// to a no-op rather than throwing. A headless test never clicks Attach; it dispatches
 /// `AttachDataFileTo` directly over a mock proxy, so the picker is off the tested path; the pure
@@ -3312,7 +3312,7 @@ let buildDataFilePickerOptions
 let private pickDataFile (owner : Window) (onPicked : Experiments.DataFilePath -> unit) : unit =
     try
         let settingsPath = UserEnvironment.settingsPath ()
-        let settings = UserEnvironment.load settingsPath
+        let settings = UserEnvironment.EnvironmentSettings.load settingsPath
         let picked =
             async {
                 // Resolve the persisted folder to an `IStorageFolder` through the provider (`None` when
@@ -3322,7 +3322,7 @@ let private pickDataFile (owner : Window) (onPicked : Experiments.DataFilePath -
                     | Some folder ->
                         async {
                             let! resolved =
-                                Avalonia.Platform.Storage.StorageProviderExtensions.TryGetFolderFromPathAsync(owner.StorageProvider, folder)
+                                Avalonia.Platform.Storage.StorageProviderExtensions.TryGetFolderFromPathAsync(owner.StorageProvider, folder.value)
                                 |> Async.AwaitTask
                             return Option.ofObj resolved
                         }
@@ -3335,15 +3335,15 @@ let private pickDataFile (owner : Window) (onPicked : Experiments.DataFilePath -
                     // identical); the module-qualified `.create` would bind the same-named case in
                     // expression position. The picked local path is both the attach target and the
                     // folder we persist.
-                    | file :: _ -> UserEnvironment.FilePicked file.Path.LocalPath
+                    | file :: _ -> UserEnvironment.FilePicked (Experiments.DataFilePath file.Path.LocalPath)
                     | [] -> UserEnvironment.PickCancelled
                 // Fold the outcome into the environment and persist ONLY when a confirmed selection
                 // actually changed the folder (best-effort — a save failure must not sink the attach);
                 // a cancel leaves `settings` unchanged, so nothing is written.
                 let updated = UserEnvironment.applyPick UserEnvironment.measuredDataFolderKey pick settings
-                if updated <> settings then UserEnvironment.save settingsPath updated |> ignore
+                if updated <> settings then updated.save settingsPath |> ignore
                 match pick with
-                | UserEnvironment.FilePicked local -> onPicked (Experiments.DataFilePath local)
+                | UserEnvironment.FilePicked dataFile -> onPicked dataFile
                 | UserEnvironment.PickCancelled -> ()
             }
         Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate picked)

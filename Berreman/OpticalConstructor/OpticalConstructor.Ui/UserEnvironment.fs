@@ -30,12 +30,17 @@ open System.IO
 open System.Text.Json
 open System.Text.Json.Nodes
 open Json.Schema
+open Softellect.Sys.Primitives
 open Berreman.Constants
 open Berreman.Media
 open Berreman.Solvers
+open Analytics
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Controls
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.SchemaValidation
 open OpticalConstructor.Ui.Localization
 
 // ---------------------------------------------------------------------------
@@ -58,14 +63,31 @@ type DockSide =
     | Bottom
     | Center
 
+/// A dockable panel's id (`"stack"`, `"chart"`, …).
+type PanelId =
+    | PanelId of string
+
+    member this.value = let (PanelId p) = this in p
+
+/// A panel's size along its dock axis, in device-independent pixels.
+type PanelSize =
+    | PanelSize of float
+
+    member this.value = let (PanelSize s) = this in s
+
+/// Whether a dockable panel is shown.
+type PanelVisibility =
+    | PanelShown
+    | PanelHidden
+
 /// One dockable/resizable panel's saved state (§J.8): its id, its dock edge, its
-/// size along the dock axis (device-independent pixels), and whether it is shown.
+/// size along the dock axis, and whether it is shown.
 type PanelState =
     {
-        panel : string
+        panel : PanelId
         dock : DockSide
-        size : float
-        visible : bool
+        size : PanelSize
+        visible : PanelVisibility
     }
 
 /// The serialized window/panel layout (§J.8) — the ordered set of dockable panels.
@@ -102,9 +124,9 @@ type Preferences =
         /// Default wavelength range for new sweeps (canonical SI meters).
         wavelengthRange : WavelengthRange
         /// Default number of sweep points.
-        sweepPoints : int
+        sweepPoints : Variables.NumberOfPoints
         /// Decimal places for display formatting.
-        decimalPrecision : int
+        decimalPrecision : ChartStyle.DecimalDigits
         /// Solver defaults — the engine's `SolverParameters` (Solvers.fs:15).
         solver : SolverParameters
     }
@@ -114,19 +136,31 @@ type Preferences =
 // model (`Commands.fs`) declares the DEFAULT key map; this persists the user's
 // customizations so a preferred key map and rotation step survive across sessions
 // (Part I / UserEnvironment.fs:141). Reuses the settings store rather than a parallel
-// preferences file (E.8.1). A pure, serializable shape — plain strings/float, no
-// Avalonia handle and no dependency on `Commands` — so it round-trips through the
-// shared `ProjectJson.options` and `Commands` parses the gesture strings against its
+// preferences file (E.8.1). A pure, serializable shape — no Avalonia handle and no
+// dependency on `Commands` — so it round-trips through the shared
+// `ProjectJson.options` and `Commands` parses the gesture strings against its
 // registry without a module cycle.
 // ---------------------------------------------------------------------------
 
-/// One key-binding override (§E.8.1): the language-neutral command id (the
-/// `Commands.CommandDef.id`, e.g. `"reset-rotation"`) bound to a gesture string the
-/// `Commands` parser understands (e.g. `"Ctrl+R"`). Persisted by value.
+/// A language-neutral command id (`"reset-rotation"`, `"open"`): what a key binding
+/// targets and what a toolbar entry runs.
+type CommandId =
+    | CommandId of string
+
+    member this.value = let (CommandId c) = this in c
+
+/// A key gesture as the text the `Commands` parser reads (`"Ctrl+R"`).
+type KeyGestureText =
+    | KeyGestureText of string
+
+    member this.value = let (KeyGestureText g) = this in g
+
+/// One key-binding override (§E.8.1): the command id (the `Commands.CommandDef.id`)
+/// bound to a gesture. Persisted by value.
 type KeyBindingOverride =
     {
-        command : string
-        gesture : string
+        command : CommandId
+        gesture : KeyGestureText
     }
 
 /// The configurable constructor key map (§E.8.1) plus the configurable rotation step
@@ -136,7 +170,7 @@ type KeyBindingOverride =
 /// on next launch (E.8.1 / Part I).
 type KeyMap =
     {
-        rotationStepDegrees : float
+        rotationStepDegrees : BarDegrees
         overrides : KeyBindingOverride list
     }
 
@@ -144,7 +178,7 @@ type KeyMap =
 /// overrides — the default bindings declared in `Commands.fs`.
 let defaultKeyMap : KeyMap =
     {
-        rotationStepDegrees = 5.0
+        rotationStepDegrees = BarDegrees 5.0
         overrides = []
     }
 
@@ -160,19 +194,32 @@ let defaultKeyMap : KeyMap =
 type FavoritePin =
     | LayerPin of Layer
     | SystemPin of OpticalSystem
-    | MaterialPin of string
-    | SourcePin of string
+    | MaterialPin of MaterialLibrary.MaterialId
+    | SourcePin of SourceSpec.SourceSpecId
+
+/// A favorites group's name.
+type FavoriteGroupName =
+    | FavoriteGroupName of string
+
+    member this.value = let (FavoriteGroupName n) = this in n
 
 /// A named, grouped collection of pins (§J.6 — "named, grouped pins").
 type FavoriteGroup =
     {
-        name : string
+        name : FavoriteGroupName
         pins : FavoritePin list
     }
 
 // ---------------------------------------------------------------------------
 // The persistent environment (§J.6 root record).
 // ---------------------------------------------------------------------------
+
+/// What a file picker is for (`"measured-data"`): the key its last-used folder is
+/// remembered under.
+type PickerPurpose =
+    | PickerPurpose of string
+
+    member this.value = let (PickerPurpose p) = this in p
 
 /// The persistent user environment (§J.6 [Core] + J.7/J.8 fields). Persisted as
 /// schema-validated JSON (NOT `.binz`); the favorites board, last folders, panel
@@ -183,25 +230,24 @@ type FavoriteGroup =
 type EnvironmentSettings =
     {
         favorites : FavoriteGroup list
-        /// The last working folder PER picker purpose (§J.6), keyed by a purpose id (e.g.
-        /// `measuredDataFolderKey`) — a `Map<purpose, folder>` so each picker resumes where it left
-        /// off and a NEW picker adds a key, not a parallel field. A picker seeds its
-        /// `SuggestedStartLocation` from `lastFolder` and records the confirmed folder through
-        /// `rememberFolder`. An old array-shaped file fails schema validation and the total `load`
-        /// falls back to the empty map (no migration, §J.6 item 3).
-        lastFolders : Map<string, string>
+        /// The last working folder PER picker purpose (§J.6) — a `Map<purpose, folder>` so each
+        /// picker resumes where it left off and a NEW picker adds a key, not a parallel field. A
+        /// picker seeds its `SuggestedStartLocation` from `lastFolder` and records the confirmed
+        /// folder through `rememberFolder`. An old array-shaped file fails schema validation and the
+        /// total `load` falls back to the empty map (no migration, §J.6 item 3).
+        lastFolders : Map<PickerPurpose, FolderName>
         layout : PanelLayout
         theme : Theme
-        /// Chart color palettes surfaced to Part H (J.8); hex color strings. The
-        /// palette IMPLEMENTATION is Part H — this only carries the configured set.
-        chartPalette : string list
-        toolbar : string list
+        /// Chart color palettes surfaced to Part H (J.8). The palette IMPLEMENTATION is
+        /// Part H — this only carries the configured set.
+        chartPalette : ChartStyle.SeriesColorHex list
+        toolbar : CommandId list
         preferences : Preferences
         /// The selected UI language (Spec 0026 §I.2.1), persisted here and restored on
         /// next launch. Defaults to `English`. The *Settings*-ribbon selector (Part D /
-        /// slice 006) writes through `save` (UserEnvironment.fs `save`); every UI string
-        /// resolves through `Localization` against this language. A fieldless DU, so the
-        /// shared `ProjectJson.options` round-trip it as a bare string.
+        /// slice 006) writes through `save`; every UI string resolves through
+        /// `Localization` against this language. A fieldless DU, so the shared
+        /// `ProjectJson.options` round-trip it as a bare string.
         language : Language
         /// The configurable constructor key map (Spec 0026 Part E §E.8.1): the user's
         /// key-binding overrides + the rotation step (§E.3.1), persisted here so a
@@ -219,11 +265,11 @@ type EnvironmentSettings =
 /// the chart in the fill region, results docked right.
 let defaultPanels : PanelState list =
     [
-        { panel = "stack";     dock = Left;   size = 240.0; visible = true }
-        { panel = "materials"; dock = Left;   size = 240.0; visible = true }
-        { panel = "sources";   dock = Left;   size = 240.0; visible = true }
-        { panel = "chart";     dock = Center; size = 600.0; visible = true }
-        { panel = "results";   dock = Right;  size = 320.0; visible = true }
+        { panel = PanelId "stack";     dock = Left;   size = PanelSize 240.0; visible = PanelShown }
+        { panel = PanelId "materials"; dock = Left;   size = PanelSize 240.0; visible = PanelShown }
+        { panel = PanelId "sources";   dock = Left;   size = PanelSize 240.0; visible = PanelShown }
+        { panel = PanelId "chart";     dock = Center; size = PanelSize 600.0; visible = PanelShown }
+        { panel = PanelId "results";   dock = Right;  size = PanelSize 320.0; visible = PanelShown }
     ]
 
 /// Built-in default preferences: nanometer length/wavelength labels, a 400–800 nm
@@ -234,8 +280,8 @@ let defaultPreferences : Preferences =
         lengthUnit = Nanometer
         wavelengthUnit = Nanometer
         wavelengthRange = { min = 400.0e-9<meter>; max = 800.0e-9<meter> }
-        sweepPoints = 100
-        decimalPrecision = 4
+        sweepPoints = Variables.NumberOfPoints 100
+        decimalPrecision = ChartStyle.DecimalDigits 4
         solver = SolverParameters.defaultValue
     }
 
@@ -247,8 +293,15 @@ let defaults : EnvironmentSettings =
         lastFolders = Map.empty
         layout = { panels = defaultPanels }
         theme = Light
-        chartPalette = [ "#1f77b4"; "#ff7f0e"; "#2ca02c"; "#d62728"; "#9467bd" ]
-        toolbar = [ "open"; "save"; "build"; "solve"; "chart" ]
+        chartPalette =
+            [
+                ChartStyle.SeriesColorHex "#1f77b4"
+                ChartStyle.SeriesColorHex "#ff7f0e"
+                ChartStyle.SeriesColorHex "#2ca02c"
+                ChartStyle.SeriesColorHex "#d62728"
+                ChartStyle.SeriesColorHex "#9467bd"
+            ]
+        toolbar = [ CommandId "open"; CommandId "save"; CommandId "build"; CommandId "solve"; CommandId "chart" ]
         preferences = defaultPreferences
         language = English
         keyMap = defaultKeyMap
@@ -266,21 +319,11 @@ let userEnvironmentSchemaVersion = "1.0"
 /// The build-copied env schema content item, loaded beside the assembly at runtime
 /// (the fsproj copies it to the output root). Mirrors the slice-003 project-schema
 /// load.
-let schemaFileName = "optical-constructor-environment.schema.json"
+let schemaFileName : FileName = FileName "optical-constructor-environment.schema.json"
 
-let private schemaFullPath =
-    Path.Combine(AppContext.BaseDirectory, schemaFileName)
-
-/// Load the published env schema ONCE behind `lazy` — `JsonSchema.FromText`
-/// registers the document by its (distinct) `$id` in the process-global registry,
-/// so a single load keeps validate-on-load idempotent across calls.
-let private envSchema : Result<JsonSchema, StorageError> Lazy =
-    lazy
-        if File.Exists schemaFullPath then
-            try File.ReadAllText schemaFullPath |> JsonSchema.FromText |> Ok
-            with e -> Error (FileIoExn e)
-        else
-            Error SchemaMissingErr
+/// The env schema, loaded ONCE: `JsonSchema.FromText` registers the document by its
+/// `$id` in the process-global registry, so a second load would throw.
+let private envSchema : Result<JsonSchema, StorageError> Lazy = lazy (schemaFileName.tryLoadSchema ())
 
 /// Validate a parsed document against the env schema (§J.6 item 1) via
 /// `JsonSchema.Net`. On any evaluation failure returns `SchemaValidationErr`
@@ -300,74 +343,83 @@ let validateUserEnvironment (element : JsonElement) : Result<unit, StorageError>
             let messages = if List.isEmpty messages then [ "environment schema validation failed" ] else messages
             Error (SchemaValidationErr messages)
 
-/// Serialize the environment to canonical JSON (§J.6 item 1), injecting the
-/// envelope `schemaVersion`, REUSING the slice-003 shared `ProjectJson.options`
-/// (§I.1) — never a second JSON stack, never `.binz`.
-let serialize (settings : EnvironmentSettings) : Result<string, StorageError> =
-    try
-        let node = JsonSerializer.SerializeToNode(settings, ProjectJson.options)
-        let envelope = node.AsObject()
-        envelope.["schemaVersion"] <- JsonValue.Create(userEnvironmentSchemaVersion)
-        Ok(envelope.ToJsonString(ProjectJson.options))
-    with e -> Error(MalformedJsonErr e.Message)
+/// The text of an `environment.json` document.
+type EnvironmentJsonText =
+    | EnvironmentJsonText of string
 
-/// Parse, validate-on-load, then bind (§J.6 item 1). Schema validation ALWAYS runs
-/// before the record is admitted; a `schemaVersion` mismatch fails the schema's
-/// `const` and surfaces as `SchemaValidationErr`, never a migration (AC-J6).
-let deserialize (json : string) : Result<EnvironmentSettings, StorageError> =
-    let parsed =
-        try Ok(JsonDocument.Parse json)
-        with e -> Error(MalformedJsonErr e.Message)
+    member this.value = let (EnvironmentJsonText j) = this in j
 
-    match parsed with
-    | Error e -> Error e
-    | Ok doc ->
-        use doc = doc
-        match validateUserEnvironment doc.RootElement with
-        | Error e -> Error e
-        | Ok () ->
-            try Ok(doc.RootElement.Deserialize<EnvironmentSettings>(ProjectJson.options))
+    /// Parse, validate-on-load, then bind (§J.6 item 1). Schema validation ALWAYS runs
+    /// before the record is admitted; a `schemaVersion` mismatch fails the schema's
+    /// `const` and surfaces as `SchemaValidationErr`, never a migration (AC-J6).
+    member this.deserialize : Result<EnvironmentSettings, StorageError> =
+        let parsed =
+            try Ok(JsonDocument.Parse this.value)
             with e -> Error(MalformedJsonErr e.Message)
 
+        match parsed with
+        | Error e -> Error e
+        | Ok doc ->
+            use doc = doc
+            match validateUserEnvironment doc.RootElement with
+            | Error e -> Error e
+            | Ok () ->
+                try Ok(doc.RootElement.Deserialize<EnvironmentSettings>(ProjectJson.options))
+                with e -> Error(MalformedJsonErr e.Message)
+
+type EnvironmentSettings with
+
+    /// Serialize the environment to canonical JSON (§J.6 item 1), injecting the
+    /// envelope `schemaVersion`, REUSING the slice-003 shared `ProjectJson.options`
+    /// (§I.1) — never a second JSON stack, never `.binz`.
+    member this.serialize : Result<EnvironmentJsonText, StorageError> =
+        try
+            let node = JsonSerializer.SerializeToNode(this, ProjectJson.options)
+            let envelope = node.AsObject()
+            envelope.["schemaVersion"] <- JsonValue.Create(userEnvironmentSchemaVersion)
+            Ok(EnvironmentJsonText (envelope.ToJsonString(ProjectJson.options)))
+        with e -> Error(MalformedJsonErr e.Message)
+
+    /// Persist the environment to `path` as schema-validated canonical JSON (§J.6 item
+    /// 1). A serialization or write failure returns `StorageError` for the UI to
+    /// surface; it never throws across this boundary.
+    member this.save (path : FileName) : Result<unit, StorageError> =
+        match this.serialize with
+        | Error e -> Error e
+        | Ok json ->
+            try
+                Directory.CreateDirectory(Path.GetDirectoryName path.value) |> ignore
+                File.WriteAllText(path.value, json.value)
+                Ok()
+            with e -> Error(FileIoExn e)
+
+    /// Load the environment from `path`, falling back to the built-in `defaults` on ANY
+    /// failure — missing file, malformed JSON, or schema-validation failure (AC-J6, no
+    /// migration). Total `path -> EnvironmentSettings`, so the UI never has to handle an
+    /// error case just to render a usable environment.
+    static member load (path : FileName) : EnvironmentSettings =
+        try
+            if File.Exists path.value then
+                match (EnvironmentJsonText (File.ReadAllText path.value)).deserialize with
+                | Ok s -> s
+                | Error _ -> defaults
+            else defaults
+        with _ -> defaults
+
 // ---------------------------------------------------------------------------
-// Fixed per-user path + total load / save (§J.6 item 2).
+// Fixed per-user path (§J.6 item 2).
 // ---------------------------------------------------------------------------
 
 /// The single fixed per-user settings path under the OS application-data folder
 /// (§J.6 item 2 — outside the repository working tree, so a committable-vs-gitignore
 /// non-issue). Mirrors the slice-013 recent-files path convention.
-let settingsPath () : string =
-    let dir =
-        Path.Combine(
-            Environment.GetFolderPath Environment.SpecialFolder.ApplicationData,
-            "Softellect", "Berreman", "OpticalConstructor")
-    Path.Combine(dir, "environment.json")
-
-/// Load the environment from `path`, falling back to the built-in `defaults` on ANY
-/// failure — missing file, malformed JSON, or schema-validation failure (AC-J6, no
-/// migration). Total `path -> EnvironmentSettings`, so the UI never has to handle an
-/// error case just to render a usable environment.
-let load (path : string) : EnvironmentSettings =
-    try
-        if File.Exists path then
-            match deserialize (File.ReadAllText path) with
-            | Ok s -> s
-            | Error _ -> defaults
-        else defaults
-    with _ -> defaults
-
-/// Persist the environment to `path` as schema-validated canonical JSON (§J.6 item
-/// 1). A serialization or write failure returns `StorageError` for the UI to
-/// surface; it never throws across this boundary.
-let save (path : string) (settings : EnvironmentSettings) : Result<unit, StorageError> =
-    match serialize settings with
-    | Error e -> Error e
-    | Ok json ->
-        try
-            Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
-            File.WriteAllText(path, json)
-            Ok()
-        with e -> Error(FileIoExn e)
+let settingsPath () : FileName =
+    let folder =
+        FolderName (
+            Path.Combine(
+                Environment.GetFolderPath Environment.SpecialFolder.ApplicationData,
+                "Softellect", "Berreman", "OpticalConstructor"))
+    (FileName "environment.json").combine folder
 
 // ---------------------------------------------------------------------------
 // Picker last-folder (§J.6 `lastFolders`, keyed by picker purpose). The field is a
@@ -377,37 +429,44 @@ let save (path : string) (settings : EnvironmentSettings) : Result<unit, Storage
 // stays testable without ever raising a real dialog.
 // ---------------------------------------------------------------------------
 
-/// The picker-purpose key for the measured-data file picker (the collection builder's
-/// per-experiment attach). The only key today; a centralized `[<Literal>]` so the id is never
-/// scattered through the codebase.
-[<Literal>]
-let measuredDataFolderKey = "measured-data"
+/// The picker purpose of the measured-data file picker (the collection builder's
+/// per-experiment attach), centralized so the id is never scattered through the codebase.
+let measuredDataFolderKey : PickerPurpose = PickerPurpose "measured-data"
 
 /// The persisted last-used folder for `purpose`, if any. `None` on a fresh environment, or when an
 /// old array-shaped `lastFolders` file failed validation and the total `load` fell back to the
 /// empty-map default (no migration) — the picker then opens at the host default. A pure lookup: the
 /// option-building input.
-let lastFolder (purpose : string) (settings : EnvironmentSettings) : string option =
+let lastFolder (purpose : PickerPurpose) (settings : EnvironmentSettings) : FolderName option =
     settings.lastFolders |> Map.tryFind purpose
 
-/// Record the directory of a confirmed `selectedFile` under `purpose` — the pure state transition the
-/// picker persists on a confirmed selection. A path with no directory part leaves the map untouched.
-let rememberFolder (purpose : string) (selectedFile : string) (settings : EnvironmentSettings) : EnvironmentSettings =
-    let folder = Path.GetDirectoryName selectedFile
-    if String.IsNullOrEmpty folder then settings
-    else { settings with lastFolders = settings.lastFolders |> Map.add purpose folder }
+type Experiments.DataFilePath with
+
+    /// The folder this data file is in, or `None` for a path with no folder part.
+    member this.tryGetFolderName : FolderName option = (FileName this.value).tryGetFolderName
+
+/// Record the folder of a confirmed `selectedFile` under `purpose` — the pure state transition the
+/// picker persists on a confirmed selection. A path with no folder part leaves the map untouched.
+let rememberFolder
+    (purpose : PickerPurpose)
+    (selectedFile : Experiments.DataFilePath)
+    (settings : EnvironmentSettings)
+    : EnvironmentSettings =
+    match selectedFile.tryGetFolderName with
+    | Some folder -> { settings with lastFolders = settings.lastFolders |> Map.add purpose folder }
+    | None -> settings
 
 /// The outcome of a file-picker interaction, modeled as pure DATA (the "IO as data" discipline) so the
 /// confirmed-vs-cancel decision the picker makes at its IO edge folds through `applyPick` here rather
 /// than living as untested control flow.
 type DataFilePick =
-    | FilePicked of string
+    | FilePicked of Experiments.DataFilePath
     | PickCancelled
 
 /// Fold a picker outcome into the environment: a confirmed selection records its folder under
 /// `purpose`; a cancel leaves the settings untouched (cancel changes nothing). Pure — both branches
 /// are exercised without a real dialog.
-let applyPick (purpose : string) (pick : DataFilePick) (settings : EnvironmentSettings) : EnvironmentSettings =
+let applyPick (purpose : PickerPurpose) (pick : DataFilePick) (settings : EnvironmentSettings) : EnvironmentSettings =
     match pick with
     | FilePicked selectedFile -> rememberFolder purpose selectedFile settings
     | PickCancelled -> settings

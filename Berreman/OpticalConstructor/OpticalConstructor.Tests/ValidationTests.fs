@@ -2,6 +2,8 @@ namespace OpticalConstructor.Tests
 
 open Berreman.Constants
 open Berreman.Media
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Ui.Validation
 open Xunit
 
@@ -20,22 +22,22 @@ module ValidationTests =
 
     [<Fact>]
     let ``AC-J9 zero thickness is rejected`` () =
-        Assert.True(isError (validateThickness (Thickness.Thickness 0.0<meter>)))
+        Assert.True(isError (Thickness.Thickness 0.0<meter>).validateThickness)
 
     [<Fact>]
     let ``AC-J9 negative thickness is rejected`` () =
-        Assert.True(isError (validateThickness (Thickness.Thickness -1.0e-7<meter>)))
+        Assert.True(isError (Thickness.Thickness -1.0e-7<meter>).validateThickness)
 
     [<Fact>]
     let ``AC-J9 a positive finite thickness is Ok and unchanged`` () =
         let t = Thickness.Thickness 1.0e-7<meter>
-        match validateThickness t with
+        match t.validateThickness with
         | Ok back -> Assert.Equal(t, back)            // no coercion
         | Error e -> Assert.Fail($"%A{e}")
 
     [<Fact>]
     let ``AC-J9 the semi-infinite half-space (Infinity) is Ok`` () =
-        match validateThickness Thickness.Infinity with
+        match Thickness.Infinity.validateThickness with
         | Ok Thickness.Infinity -> ()
         | other -> Assert.Fail($"%A{other}")
 
@@ -43,13 +45,13 @@ module ValidationTests =
 
     [<Fact>]
     let ``AC-J9 a repeat count below 1 is rejected`` () =
-        Assert.True(isError (validateRepeatCount 0))
-        Assert.True(isError (validateRepeatCount -3))
+        Assert.True(isError (PeriodCount 0).validateRepeatCount)
+        Assert.True(isError (PeriodCount -3).validateRepeatCount)
 
     [<Fact>]
     let ``AC-J9 a repeat count of 1 or more is Ok and unchanged`` () =
-        Assert.Equal<Result<int, ValidationError list>>(Ok 1, validateRepeatCount 1)
-        Assert.Equal<Result<int, ValidationError list>>(Ok 8, validateRepeatCount 8)
+        Assert.Equal<Result<PeriodCount, ValidationError list>>(Ok (PeriodCount 1), (PeriodCount 1).validateRepeatCount)
+        Assert.Equal<Result<PeriodCount, ValidationError list>>(Ok (PeriodCount 8), (PeriodCount 8).validateRepeatCount)
 
     // --- AC-J9: non-empty wavelength range with positive endpoints --------------
 
@@ -72,20 +74,20 @@ module ValidationTests =
     [<Fact>]
     let ``AC-J9 a valid wavelength range is Ok and unchanged`` () =
         match validateWavelengthRange 400.0e-9<meter> 800.0e-9<meter> with
-        | Ok (lo, hi) ->
-            Assert.Equal(400.0e-9<meter>, lo)         // no coercion / reordering
-            Assert.Equal(800.0e-9<meter>, hi)
+        | Ok range ->
+            Assert.Equal(400.0e-9<meter>, range.min)  // no coercion / reordering
+            Assert.Equal(800.0e-9<meter>, range.max)
         | Error e -> Assert.Fail($"%A{e}")
 
     // --- AC-J9: physical-sanity gain warning (advisory, non-blocking) -----------
 
     [<Fact>]
     let ``AC-J9 a negative imaginary index raises a non-blocking gain warning`` () =
-        match imaginaryIndexGainWarning -0.01 with
+        match (ExtinctionCoefficient -0.01).imaginaryIndexGainWarning with
         | [ w ] -> Assert.Equal(Warning, w.severity)
         | other -> Assert.Fail($"%A{other}")
 
     [<Fact>]
     let ``AC-J9 an absorbing (k >= 0) index raises no warning`` () =
-        Assert.Empty(imaginaryIndexGainWarning 0.0)
-        Assert.Empty(imaginaryIndexGainWarning 0.5)
+        Assert.Empty((ExtinctionCoefficient 0.0).imaginaryIndexGainWarning)
+        Assert.Empty((ExtinctionCoefficient 0.5).imaginaryIndexGainWarning)

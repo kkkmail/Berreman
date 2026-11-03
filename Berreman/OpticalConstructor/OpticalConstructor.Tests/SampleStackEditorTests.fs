@@ -7,6 +7,7 @@ open Berreman.Media
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.SampleStackEditor
+open OpticalConstructor.Ui.Validation
 
 /// Spec 0033 step 021 — the pure, Avalonia-free SAMPLE-stack edit model
 /// (`SampleStackEditor` over `SampleStructure`). Every message arm is exercised
@@ -364,10 +365,10 @@ module SampleStackEditorTests =
         | InvalidRepeatCountErr _ -> ()
         | e -> failwith $"expected InvalidRepeatCountErr, got %A{e}"
         // The SAME rule the Ui boundary enforces: validateRepeatCount rejects 0, accepts 1.
-        match OpticalConstructor.Ui.Validation.validateRepeatCount 0 with
+        match (PeriodCount 0).validateRepeatCount with
         | Error _ -> ()
-        | Ok c -> failwith $"Ui validateRepeatCount unexpectedly accepted %d{c}"
-        match OpticalConstructor.Ui.Validation.validateRepeatCount 1 with
+        | Ok c -> failwith $"Ui validateRepeatCount unexpectedly accepted %d{c.value}"
+        match (PeriodCount 1).validateRepeatCount with
         | Ok _ -> ()
         | Error e -> failwith $"Ui validateRepeatCount unexpectedly rejected 1: %A{e}"
         let accepted = editorOf withGroup |> applyAll [ SetRepeatCount (FilmItemIndex 0, PeriodCount 1) ]

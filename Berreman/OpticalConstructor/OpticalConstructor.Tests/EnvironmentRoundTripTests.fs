@@ -7,10 +7,17 @@ open System.Text.Json.Nodes
 open Berreman.Constants
 open Berreman.MaterialProperties
 open Berreman.Media
+open Softellect.Sys.Primitives
+open Analytics.Variables
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.SourceSpec
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Controls
+open OpticalConstructor.Controls.ChartStyle
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Ui.Localization
 open OpticalConstructor.Ui.UserEnvironment
+open OpticalConstructor.Ui.AppShell
 open Xunit
 
 /// §J.6/J.7/J.8 environment persistence (AC-J6/AC-J7/AC-J8). `EnvironmentSettings`
@@ -23,6 +30,8 @@ open Xunit
 module EnvironmentRoundTripTests =
 
     let private filmThickness : float<meter> = 1.0e-7<meter>
+
+    let private pinnedMaterial : MaterialId = MaterialId (Guid "8f1c2d3e-4b5a-4c6d-9e7f-0a1b2c3d4e5f")
 
     let private favLayer : Layer =
         { properties = OpticalProperties.vacuum; thickness = Thickness.Thickness filmThickness }
@@ -46,22 +55,22 @@ module EnvironmentRoundTripTests =
             favorites =
                 [
                     {
-                        name = "optics shelf"
+                        name = FavoriteGroupName "optics shelf"
                         pins =
                             [
                                 LayerPin favLayer            // reused engine Layer, by value
                                 SystemPin favSystem          // OpticalSystem fragment, by value
-                                MaterialPin "Si"             // materialEntry id
-                                SourcePin "src-d65"          // sourceSpec id
+                                MaterialPin pinnedMaterial   // materialEntry id
+                                SourcePin (SourceSpecId "src-d65")  // sourceSpec id
                             ]
                     }
                 ]
-            lastFolders = Map.ofList [ measuredDataFolderKey, @"C:\work\optics" ]
+            lastFolders = Map.ofList [ measuredDataFolderKey, FolderName @"C:\work\optics" ]
             theme = Dark
             // Edit the saved layout through the AppShell reducer (J.8): hide "results".
-            layout = OpticalConstructor.Ui.AppShell.setPanelVisible "results" false defaults.layout
-            chartPalette = [ "#112233"; "#445566" ]
-            preferences = { defaults.preferences with wavelengthUnit = Micrometer; sweepPoints = 250 } }
+            layout = setPanelVisible (PanelId "results") PanelHidden defaults.layout
+            chartPalette = [ SeriesColorHex "#112233"; SeriesColorHex "#445566" ]
+            preferences = { defaults.preferences with wavelengthUnit = Micrometer; sweepPoints = NumberOfPoints 250 } }
 
     let private okOr (r : Result<'a, _>) : 'a =
         match r with
@@ -72,20 +81,20 @@ module EnvironmentRoundTripTests =
 
     [<Fact>]
     let ``AC-J6 EnvironmentSettings serializes to schema-validating JSON, never binz`` () =
-        let json = serialize sample |> okOr
+        let json = sample.serialize |> okOr
         // The artefact is JSON text carrying the envelope version, never a .binz pickle.
-        Assert.StartsWith("{", json.TrimStart())
-        Assert.Contains("schemaVersion", json)
-        Assert.DoesNotContain(".binz", json)
+        Assert.StartsWith("{", json.value.TrimStart())
+        Assert.Contains("schemaVersion", json.value)
+        Assert.DoesNotContain(".binz", json.value)
         // Validate-on-load admits the document against the published env schema.
-        deserialize json |> okOr |> ignore
+        json.deserialize |> okOr |> ignore
 
     [<Fact>]
     let ``AC-J6 a full round-trip preserves every persisted field`` () =
-        let back = serialize sample |> okOr |> deserialize |> okOr
+        let back = (sample.serialize |> okOr).deserialize |> okOr
         // Favorites board (all four pin shapes, by-value fragments included) survives.
         Assert.Equal(1, List.length back.favorites)
-        Assert.Equal("optics shelf", back.favorites.[0].name)
+        Assert.Equal(FavoriteGroupName "optics shelf", back.favorites.[0].name)
         match back.favorites.[0].pins with
         | [ LayerPin l; SystemPin s; MaterialPin m; SourcePin src ] ->
             // The by-value Layer fragment's canonical SI thickness is byte-identical.
@@ -93,16 +102,16 @@ module EnvironmentRoundTripTests =
             | Thickness.Thickness d -> Assert.Equal(filmThickness, d)
             | other -> Assert.Fail($"unexpected pinned thickness: %A{other}")
             Assert.Equal(1, List.length s.films)
-            Assert.Equal("Si", m)
-            Assert.Equal("src-d65", src)
+            Assert.Equal(pinnedMaterial, m)
+            Assert.Equal(SourceSpecId "src-d65", src)
         | other -> Assert.Fail($"unexpected pins: %A{other}")
         // Last folders, theme, palette, layout, preferences all survive.
-        Assert.Equal<Map<string, string>>(sample.lastFolders, back.lastFolders)
+        Assert.Equal<Map<PickerPurpose, FolderName>>(sample.lastFolders, back.lastFolders)
         Assert.Equal(Dark, back.theme)
-        Assert.Equal<string list>(sample.chartPalette, back.chartPalette)
-        Assert.False((back.layout.panels |> List.find (fun p -> p.panel = "results")).visible)
+        Assert.Equal<SeriesColorHex list>(sample.chartPalette, back.chartPalette)
+        Assert.Equal(PanelHidden, (back.layout.panels |> List.find (fun p -> p.panel = PanelId "results")).visible)
         Assert.Equal(Micrometer, back.preferences.wavelengthUnit)
-        Assert.Equal(250, back.preferences.sweepPoints)
+        Assert.Equal(NumberOfPoints 250, back.preferences.sweepPoints)
         // Structural equality of the whole record (Math.NET value-equality on tensors).
         Assert.True((sample = back), "round-tripped environment must equal the original")
 
@@ -115,10 +124,10 @@ module EnvironmentRoundTripTests =
             // A document missing required fields (and the schemaVersion const) must
             // FAIL validation; load returns defaults rather than attempting migration.
             File.WriteAllText(path, "{ \"theme\": \"Dark\" }")
-            Assert.Equal(defaults, load path)
+            Assert.Equal(defaults, EnvironmentSettings.load (FileName path))
             // A malformed (non-JSON) file likewise yields defaults, never throws.
             File.WriteAllText(path, "not json at all {{{")
-            Assert.Equal(defaults, load path)
+            Assert.Equal(defaults, EnvironmentSettings.load (FileName path))
         finally
             if File.Exists path then File.Delete path
 
@@ -126,14 +135,14 @@ module EnvironmentRoundTripTests =
     let ``AC-J6 a missing settings file yields defaults`` () =
         let path = Path.Combine(Path.GetTempPath(), $"""oc-env-missing-%s{(Guid.NewGuid().ToString("N"))}.json""")
         Assert.False(File.Exists path)
-        Assert.Equal(defaults, load path)
+        Assert.Equal(defaults, EnvironmentSettings.load (FileName path))
 
     [<Fact>]
     let ``AC-J6 save then load round-trips through the file system`` () =
         let path = Path.Combine(Path.GetTempPath(), $"""oc-env-rt-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
-            save path sample |> okOr
-            Assert.True((sample = load path))
+            sample.save (FileName path) |> okOr
+            Assert.True((sample = EnvironmentSettings.load (FileName path)))
         finally
             if File.Exists path then File.Delete path
 
@@ -163,7 +172,7 @@ module EnvironmentRoundTripTests =
         // A chosen language survives serialize -> validate-on-load -> bind (the schema
         // admits the new field), so it is restored on next launch.
         let ru = { defaults with language = Russian }
-        let back = serialize ru |> okOr |> deserialize |> okOr
+        let back = (ru.serialize |> okOr).deserialize |> okOr
         Assert.Equal(Russian, back.language)
 
     [<Fact>]
@@ -172,8 +181,8 @@ module EnvironmentRoundTripTests =
         // chosen language is restored by `load` on the next launch (I.2.1 / I.5).
         let path = Path.Combine(Path.GetTempPath(), $"""oc-env-lang-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
-            save path { defaults with language = Russian } |> okOr
-            Assert.Equal(Russian, (load path).language)
+            ({ defaults with language = Russian }).save (FileName path) |> okOr
+            Assert.Equal(Russian, (EnvironmentSettings.load (FileName path)).language)
         finally
             if File.Exists path then File.Delete path
 
@@ -183,7 +192,7 @@ module EnvironmentRoundTripTests =
     let ``AC-E8 the constructor key map defaults to a 5 degree step with no overrides`` () =
         // E.3.1: the rotation step defaults to 5°. E.8.1: no overrides means the built-in
         // default bindings declared in Commands.fs.
-        Assert.Equal(5.0, defaults.keyMap.rotationStepDegrees)
+        Assert.Equal(BarDegrees 5.0, defaults.keyMap.rotationStepDegrees)
         Assert.Empty(defaults.keyMap.overrides)
 
     [<Fact>]
@@ -193,12 +202,12 @@ module EnvironmentRoundTripTests =
         let customized =
             { defaults with
                 keyMap =
-                    { rotationStepDegrees = 10.0
+                    { rotationStepDegrees = BarDegrees 10.0
                       overrides =
-                        [ { command = "reset-rotation"; gesture = "Ctrl+R" }
-                          { command = "delete-element"; gesture = "Ctrl+Delete" } ] } }
-        let back = serialize customized |> okOr |> deserialize |> okOr
-        Assert.Equal(10.0, back.keyMap.rotationStepDegrees)
+                        [ { command = CommandId "reset-rotation"; gesture = KeyGestureText "Ctrl+R" }
+                          { command = CommandId "delete-element"; gesture = KeyGestureText "Ctrl+Delete" } ] } }
+        let back = (customized.serialize |> okOr).deserialize |> okOr
+        Assert.Equal(BarDegrees 10.0, back.keyMap.rotationStepDegrees)
         Assert.Equal<KeyBindingOverride list>(customized.keyMap.overrides, back.keyMap.overrides)
         // Whole-record structural equality (the new field included).
         Assert.True((customized = back), "the customized key map must survive the round-trip")
@@ -208,9 +217,9 @@ module EnvironmentRoundTripTests =
         let path = Path.Combine(Path.GetTempPath(), $"""oc-env-keymap-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
             let customized =
-                { defaults with keyMap = { defaults.keyMap with rotationStepDegrees = 7.5 } }
-            save path customized |> okOr
-            Assert.Equal(7.5, (load path).keyMap.rotationStepDegrees)
+                { defaults with keyMap = { defaults.keyMap with rotationStepDegrees = BarDegrees 7.5 } }
+            customized.save (FileName path) |> okOr
+            Assert.Equal(BarDegrees 7.5, (EnvironmentSettings.load (FileName path)).keyMap.rotationStepDegrees)
         finally
             if File.Exists path then File.Delete path
 
@@ -218,7 +227,7 @@ module EnvironmentRoundTripTests =
 
     [<Fact>]
     let ``AC-J8 theme and panel layout round-trip through the environment JSON`` () =
-        let back = serialize sample |> okOr |> deserialize |> okOr
+        let back = (sample.serialize |> okOr).deserialize |> okOr
         Assert.Equal(sample.theme, back.theme)
         Assert.Equal(List.length sample.layout.panels, List.length back.layout.panels)
         List.iter2
@@ -237,15 +246,15 @@ module EnvironmentRoundTripTests =
 
     [<Fact>]
     let ``the serialized envelope stamps the pinned schemaVersion`` () =
-        let json = serialize sample |> okOr
-        use doc = JsonDocument.Parse json
+        let json = sample.serialize |> okOr
+        use doc = JsonDocument.Parse json.value
         Assert.Equal(userEnvironmentSchemaVersion, doc.RootElement.GetProperty("schemaVersion").GetString())
 
     [<Fact>]
     let ``a schemaVersion mismatch is a typed SchemaValidationErr, never a migration`` () =
-        let envelope = (serialize sample |> okOr |> JsonNode.Parse).AsObject()
+        let envelope = (JsonNode.Parse (sample.serialize |> okOr).value).AsObject()
         envelope.["schemaVersion"] <- JsonValue.Create "9.9"
-        match deserialize (envelope.ToJsonString()) with
+        match (EnvironmentJsonText (envelope.ToJsonString())).deserialize with
         | Error (SchemaValidationErr _) -> ()
         | other -> Assert.Fail($"expected SchemaValidationErr, got %A{other}")
 
@@ -253,16 +262,16 @@ module EnvironmentRoundTripTests =
     let ``load falls back to defaults on a schemaVersion mismatch file`` () =
         let path = Path.Combine(Path.GetTempPath(), $"""oc-env-ver-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
-            let envelope = (serialize sample |> okOr |> JsonNode.Parse).AsObject()
+            let envelope = (JsonNode.Parse (sample.serialize |> okOr).value).AsObject()
             envelope.["schemaVersion"] <- JsonValue.Create "9.9"
             File.WriteAllText(path, envelope.ToJsonString())
-            Assert.Equal(defaults, load path)
+            Assert.Equal(defaults, EnvironmentSettings.load (FileName path))
         finally
             if File.Exists path then File.Delete path
 
     [<Fact>]
     let ``malformed JSON deserializes to a typed MalformedJsonErr, never a throw`` () =
-        match deserialize "not json at all {{{" with
+        match (EnvironmentJsonText "not json at all {{{").deserialize with
         | Error (MalformedJsonErr _) -> ()
         | other -> Assert.Fail($"expected MalformedJsonErr, got %A{other}")
 
@@ -279,9 +288,9 @@ module EnvironmentRoundTripTests =
         let path = Path.Combine(root, "nested", "environment.json")
         try
             Assert.False(Directory.Exists root)
-            save path defaults |> okOr
+            defaults.save (FileName path) |> okOr
             Assert.True(File.Exists path, "save must create the directory chain and write the file")
-            Assert.Equal(defaults, load path)
+            Assert.Equal(defaults, EnvironmentSettings.load (FileName path))
         finally
             if Directory.Exists root then Directory.Delete(root, true)
 
@@ -292,11 +301,11 @@ module EnvironmentRoundTripTests =
         let panels = defaults.layout.panels
         Assert.Equal<string list>(
             [ "stack"; "materials"; "sources"; "chart"; "results" ],
-            panels |> List.map (fun p -> p.panel))
+            panels |> List.map (fun p -> p.panel.value))
         Assert.Equal<DockSide list>(
             [ Left; Left; Left; Center; Right ],
             panels |> List.map (fun p -> p.dock))
-        Assert.True(panels |> List.forall (fun p -> p.visible), "every default panel starts visible")
+        Assert.True(panels |> List.forall (fun p -> p.visible = PanelShown), "every default panel starts visible")
 
     [<Fact>]
     let ``the built-in defaults carry the documented preferences`` () =
@@ -306,8 +315,8 @@ module EnvironmentRoundTripTests =
         Assert.Equal(Nanometer, defaults.preferences.wavelengthUnit)
         Assert.Equal(400.0e-9<meter>, defaults.preferences.wavelengthRange.min)
         Assert.Equal(800.0e-9<meter>, defaults.preferences.wavelengthRange.max)
-        Assert.Equal(100, defaults.preferences.sweepPoints)
-        Assert.Equal(4, defaults.preferences.decimalPrecision)
+        Assert.Equal(100, defaults.preferences.sweepPoints.value)
+        Assert.Equal(4, defaults.preferences.decimalPrecision.value)
 
     [<Fact>]
     let ``the built-in defaults start with an empty board, a Light theme and English`` () =
@@ -325,10 +334,10 @@ module EnvironmentRoundTripTests =
     [<InlineData("chart")>]
     [<InlineData("results")>]
     let ``AC-J8 each panel's visibility edit survives the JSON round-trip`` (panel : string) =
-        let edited = { defaults with layout = OpticalConstructor.Ui.AppShell.setPanelVisible panel false defaults.layout }
-        let back = serialize edited |> okOr |> deserialize |> okOr
-        Assert.False((back.layout.panels |> List.find (fun p -> p.panel = panel)).visible)
-        Assert.Equal(1, back.layout.panels |> List.filter (fun p -> not p.visible) |> List.length)
+        let edited = { defaults with layout = setPanelVisible (PanelId panel) PanelHidden defaults.layout }
+        let back = (edited.serialize |> okOr).deserialize |> okOr
+        Assert.Equal(PanelHidden, (back.layout.panels |> List.find (fun p -> p.panel = PanelId panel)).visible)
+        Assert.Equal(1, back.layout.panels |> List.filter (fun p -> p.visible = PanelHidden) |> List.length)
 
     [<Theory>]
     [<InlineData("Light")>]
@@ -339,23 +348,26 @@ module EnvironmentRoundTripTests =
             | "Light" -> Light
             | "Dark" -> Dark
             | other -> failwith $"unknown theme case in the test data: {other}"
-        let back = serialize { defaults with theme = theme } |> okOr |> deserialize |> okOr
+        let back = (({ defaults with theme = theme }).serialize |> okOr).deserialize |> okOr
         Assert.Equal(theme, back.theme)
 
     [<Fact>]
     let ``toolbar and chart palette round-trip in order`` () =
-        let edited = { defaults with toolbar = [ "solve"; "open" ]; chartPalette = [ "#010203"; "#a0b0c0"; "#ffffff" ] }
-        let back = serialize edited |> okOr |> deserialize |> okOr
-        Assert.Equal<string list>(edited.toolbar, back.toolbar)
-        Assert.Equal<string list>(edited.chartPalette, back.chartPalette)
+        let edited =
+            { defaults with
+                toolbar = [ CommandId "solve"; CommandId "open" ]
+                chartPalette = [ SeriesColorHex "#010203"; SeriesColorHex "#a0b0c0"; SeriesColorHex "#ffffff" ] }
+        let back = (edited.serialize |> okOr).deserialize |> okOr
+        Assert.Equal<CommandId list>(edited.toolbar, back.toolbar)
+        Assert.Equal<SeriesColorHex list>(edited.chartPalette, back.chartPalette)
 
     [<Fact>]
     let ``last folders round-trip by purpose key`` () =
         let edited =
             { defaults with
-                lastFolders = Map.ofList [ measuredDataFolderKey, @"C:\work\b"; "other-picker", @"C:\work\a" ] }
-        let back = serialize edited |> okOr |> deserialize |> okOr
-        Assert.Equal<Map<string, string>>(edited.lastFolders, back.lastFolders)
+                lastFolders = Map.ofList [ measuredDataFolderKey, FolderName @"C:\work\b"; PickerPurpose "other-picker", FolderName @"C:\work\a" ] }
+        let back = (edited.serialize |> okOr).deserialize |> okOr
+        Assert.Equal<Map<PickerPurpose, FolderName>>(edited.lastFolders, back.lastFolders)
 
     // --- Spec 0038 step 043: the two recent-files stores are collapsed into one.
     // --- `EnvironmentSettings` no longer carries a `recentFiles` field (that store
@@ -367,11 +379,11 @@ module EnvironmentRoundTripTests =
     let ``an old environment.json carrying a recentFiles array still loads, field ignored, no migration`` () =
         // Take a valid serialized envelope and graft a legacy `recentFiles` array onto
         // it, simulating a file written before the field was dropped.
-        let envelope = (serialize sample |> okOr |> JsonNode.Parse).AsObject()
+        let envelope = (JsonNode.Parse (sample.serialize |> okOr).value).AsObject()
         envelope.["recentFiles"] <- JsonNode.Parse """[ "a.ocproj", "b.ocproj" ]"""
         // The root schema is permissive (no additionalProperties:false), so the legacy
         // field still VALIDATES; STJ ignores the unmapped property on bind.
-        let back = deserialize (envelope.ToJsonString()) |> okOr
+        let back = (EnvironmentJsonText (envelope.ToJsonString())).deserialize |> okOr
         // Every surviving field binds normally — the load is total, not a fall-back.
         Assert.Equal(sample, back)
 
@@ -379,12 +391,12 @@ module EnvironmentRoundTripTests =
     let ``load reads an old on-disk environment.json with a recentFiles array without falling back to defaults`` () =
         let path = Path.Combine(Path.GetTempPath(), $"""oc-env-legacy-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
-            let envelope = (serialize sample |> okOr |> JsonNode.Parse).AsObject()
+            let envelope = (JsonNode.Parse (sample.serialize |> okOr).value).AsObject()
             envelope.["recentFiles"] <- JsonNode.Parse """[ "a.ocproj" ]"""
             File.WriteAllText(path, envelope.ToJsonString())
             // A genuine total load off disk: the legacy file loads to the real settings,
             // NOT the built-in defaults (which would signal a validation/migration miss).
-            let loaded = load path
+            let loaded = EnvironmentSettings.load (FileName path)
             Assert.Equal(sample, loaded)
             Assert.NotEqual(defaults, loaded)
         finally

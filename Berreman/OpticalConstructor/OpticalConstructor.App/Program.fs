@@ -25,12 +25,13 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.AppShell
 
 /// Load the persisted user environment once at startup (J.6). `load` is total and
 /// falls back to the built-in `defaults` on a missing/invalid settings file, so the
 /// app always has a usable theme to apply (AC-J6).
 module private Startup =
-    let settings = UserEnvironment.load (UserEnvironment.settingsPath ())
+    let settings = UserEnvironment.EnvironmentSettings.load (UserEnvironment.settingsPath ())
 
     /// The typed appsettings.json values (spec 0038 Part C, step 005): the provider
     /// is created ONCE here — `AppConfig.loadWorkbenchSettings` opens the
@@ -220,13 +221,13 @@ type LauncherWindow(context : AppContext) as this =
         this.Content <- form
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
-/// (§J.8 — `AppShell.themeVariant` is the only theme-label → Avalonia seam).
+/// (§J.8 — `Theme.themeVariant` is the only theme-label → Avalonia seam).
 type App() =
     inherit Application()
 
     override this.Initialize() =
         this.Styles.Add(FluentTheme())
-        this.RequestedThemeVariant <- AppShell.themeVariant Startup.settings.theme
+        this.RequestedThemeVariant <- Startup.settings.theme.themeVariant
 
     override this.OnFrameworkInitializationCompleted() =
         match this.ApplicationLifetime with

@@ -2,7 +2,7 @@
 /// `AvaloniaTestApplication` assembly attribute points `Avalonia.Headless` at the
 /// REAL composition-root `OpticalConstructor.App.App`, so the shared headless session
 /// builds and `Initialize()`s the SAME `App` type the desktop entry point runs. That
-/// means `App.Initialize`'s theme seam (`AppShell.themeVariant`, Program.fs:52-54)
+/// means `App.Initialize`'s theme seam (`Theme.themeVariant`, Program.fs:52-54)
 /// actually executes inside the session — the smoke test drives the real lifetime
 /// rather than a stand-in app that bypasses framework-init (AC-U1.3 / §U1.7). The real
 /// `App.Initialize` already loads the Fluent theme, so no separate test `Application`
