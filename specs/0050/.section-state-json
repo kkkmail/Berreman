@@ -12,14 +12,14 @@
     {
       "name": "S1.2 -- A material's physics is its complexity",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "1eaaefc",
       "spec_jsonl_lines": 14
     },
     {
       "name": "S1.3 -- Every library entry is identified by a frozen GUID",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 20
     },
     {
       "name": "S1.4 -- Library entry files: envelope, provenance, canonical JSON, content hash, schemas",

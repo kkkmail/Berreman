@@ -813,6 +813,426 @@
           "command_sha256": "f20ae17aedb6b45a6879fb5fbdf68653f28b48f857d8895ce5c50e81f858d4e7"
         }
       ]
+    },
+    {
+      "id": "S13-WELL-KNOWN-IDS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Identity is GUID + version + hash, never the name'; specs/0050/.section-plan-jsonl section 3 (S1.3) brief; specs/0050/.spec-md §0.1, §3.3, §7",
+      "requirement": "The built-in identities are named in one place. OpticalConstructor.Domain/ElementId.fs module Library gains SampleIds (eleven SampleId values, the literals moved out of SeedSamples, named glassPlate1mmId ... langasiteSiliconId) and PresetIds (33 ElementValueId values, one per seeded source, detector and polarizer preset), plain modules without RequireQualifiedAccess or Literal. SeedSamples, SeedSources, seedEntries and seedTrees read them, so each id is written once. OpticalConstructor.Ui/TableAndElementRotationView.fs SeedEntryIds is deleted; CatalogueKind.defaultSeedEntry and paletteButtons read PresetIds. MainSceneMsgTests, TableAndElementRotationTests, ExperimentControlsTests and FsxAcceptanceTests name presets through PresetIds, with fixtures holding ElementValueId (no .value re-wrap). The ids keep their old text in this step, so every fact keeps its result and every suite count is unchanged.",
+      "checks": [
+        {
+          "step": 15,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 15,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 15,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S13-CONSTRUCTOR-FIXTURES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Identity is GUID + version + hash, never the name'; specs/0050/.section-plan-jsonl section 3 (S1.3) brief; specs/0050/.spec-md §0.1, §3.3, §7",
+      "requirement": "Every seeded preset id written in the constructor suite (ExperimentCollectionProxyTests, ExperimentCollectionRoundTripTests, ExperimentProxyTests, LibraryProxyTests, PlacedSampleEmissionTests, PolarizerBehaviorTests, SceneProxyTests, SceneRoundTripTests, SourceLibraryTests) is a PresetIds member, held as an ElementValueId. Only test-local user-source ids, the tunable fixture src-t and the SourceSpecId fixtures keep a src- spelling. Every fact keeps its assertion and constructor-unit-tests keeps its count.",
+      "checks": [
+        {
+          "step": 16,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S13-LIBRARY-WINDOW-FIXTURES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Identity is GUID + version + hash, never the name'; specs/0050/.section-plan-jsonl section 3 (S1.3) brief; specs/0050/.spec-md §0.1, §3.3, §7",
+      "requirement": "LibraryWindowTests names every seeded preset through PresetIds: entry ids, tree-node and Select-bay ids (ConstructorUiId.libraryEntry over ElementValueId.uiKey), recorder texts and filtered-id lists, the sorted lists written with List.sort so they hold for any id spelling. No seeded id text remains in the file. Every fact keeps its assertion and the suite counts are unchanged.",
+      "checks": [
+        {
+          "step": 17,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 17,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S13-UI-FIXTURES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Identity is GUID + version + hash, never the name'; specs/0050/.section-plan-jsonl section 3 (S1.3) brief; specs/0050/.spec-md §0.1, §3.3, §7",
+      "requirement": "ElementRendererBindingTests, InverseConstructorTests, LightSourceEditorTests, SolverHandoffWindowTests, WireUi0040CompositionTests, WireUiCompositionTests and WorkbenchInfoAndCaptureTests name every seeded preset through PresetIds, their helpers taking ElementValueId. Only test-local ids keep a src- spelling in OpticalConstructor.Ui.Tests. Every fact keeps its assertion and the suite counts are unchanged.",
+      "checks": [
+        {
+          "step": 18,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 18,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S13-GUID-IDS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Identity is GUID + version + hash, never the name'; specs/0050/.section-plan-jsonl section 3 (S1.3) brief; specs/0050/.spec-md §0.1, §3.3, §7",
+      "requirement": "Every library entry kind is identified by a GUID: each of the 33 PresetIds members is a GUID minted once, written as an ElementValueId literal in the lowercase hyphenated form a Guid's string prints, distinct from every other well-known id. Library.newSourceId mints the plain string of a fresh GUID, without the src- prefix. Every seedEntries id parses as a GUID and equals its canonical string, and the ids are distinct; the Library window's Add source opens the editor on such an id. liveLibrary.tryGetEntry resolves a seeded preset, a user source and a sample by their GUID ids and answers Ok None for an unknown GUID. Proved red first, then green. Afterwards no seeded preset string id (src-600, src-hene-..., det-intensity, det-ellipsometer, pol-lp, pol-cp-left, pol-cp-right and the rest) remains in any Berreman/*.fs file.",
+      "checks": [
+        {
+          "step": 19,
+          "gate": "constructor-unit-tests",
+          "selection": "selected",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 19,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 19,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 20,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 20,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 20,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S13-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Identity is GUID + version + hash, never the name'; specs/0050/.section-plan-jsonl section 3 (S1.3) brief; specs/0050/.spec-md §0.1, §3.3, §7",
+      "requirement": "Every S1.3 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; the deleted SeedEntryIds module and every helper whose parameter becomes an ElementValueId change with all their callers in the same step.",
+      "checks": [
+        {
+          "step": 15,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 16,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 17,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 18,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 19,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 20,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S13-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Identity is GUID + version + hash, never the name'; specs/0050/.section-plan-jsonl section 3 (S1.3) brief; specs/0050/.spec-md §0.1, §3.3, §7",
+      "requirement": "Every S1.3 step leaves the projects it touches, and the projects that reference them, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command). The new SampleIds and PresetIds members are typed values, elevated at their definition, and every public module-level name stays unique (ELEV015): PresetIds arrives in the step that deletes SeedEntryIds, and SampleIds' names carry an Id suffix beside SeedSamples.",
+      "checks": [
+        {
+          "step": 15,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 16,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 17,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 18,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 19,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 20,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S13-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 3 (S1.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.3 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s03-elev-list-empty).",
+      "checks": [
+        {
+          "step": 15,
+          "gate": "invariant-s03-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e0cee0c9309e9912452c8d008f24417d85a9b4a674130b2c6def230cde2fa44e"
+        },
+        {
+          "step": 16,
+          "gate": "invariant-s03-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e0cee0c9309e9912452c8d008f24417d85a9b4a674130b2c6def230cde2fa44e"
+        },
+        {
+          "step": 17,
+          "gate": "invariant-s03-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e0cee0c9309e9912452c8d008f24417d85a9b4a674130b2c6def230cde2fa44e"
+        },
+        {
+          "step": 18,
+          "gate": "invariant-s03-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e0cee0c9309e9912452c8d008f24417d85a9b4a674130b2c6def230cde2fa44e"
+        },
+        {
+          "step": 19,
+          "gate": "invariant-s03-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e0cee0c9309e9912452c8d008f24417d85a9b4a674130b2c6def230cde2fa44e"
+        },
+        {
+          "step": 20,
+          "gate": "invariant-s03-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e0cee0c9309e9912452c8d008f24417d85a9b4a674130b2c6def230cde2fa44e"
+        }
+      ]
+    },
+    {
+      "id": "S13-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 3 (S1.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.3 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s03-no-vstest).",
+      "checks": [
+        {
+          "step": 15,
+          "gate": "invariant-s03-no-vstest",
+          "selection": "command",
+          "command_sha256": "8733e2bb56408ec4c083a1ad19c1563e2f3ee12afac28037f383cc79a8e35e60"
+        },
+        {
+          "step": 16,
+          "gate": "invariant-s03-no-vstest",
+          "selection": "command",
+          "command_sha256": "8733e2bb56408ec4c083a1ad19c1563e2f3ee12afac28037f383cc79a8e35e60"
+        },
+        {
+          "step": 17,
+          "gate": "invariant-s03-no-vstest",
+          "selection": "command",
+          "command_sha256": "8733e2bb56408ec4c083a1ad19c1563e2f3ee12afac28037f383cc79a8e35e60"
+        },
+        {
+          "step": 18,
+          "gate": "invariant-s03-no-vstest",
+          "selection": "command",
+          "command_sha256": "8733e2bb56408ec4c083a1ad19c1563e2f3ee12afac28037f383cc79a8e35e60"
+        },
+        {
+          "step": 19,
+          "gate": "invariant-s03-no-vstest",
+          "selection": "command",
+          "command_sha256": "8733e2bb56408ec4c083a1ad19c1563e2f3ee12afac28037f383cc79a8e35e60"
+        },
+        {
+          "step": 20,
+          "gate": "invariant-s03-no-vstest",
+          "selection": "command",
+          "command_sha256": "8733e2bb56408ec4c083a1ad19c1563e2f3ee12afac28037f383cc79a8e35e60"
+        }
+      ]
+    },
+    {
+      "id": "S13-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 3 (S1.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.3 step, nothing under Berreman/ names kit.kit-json (section invariant s03-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 15,
+          "gate": "invariant-s03-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "6209cc50db509bef20ec9f7907531f373316d836cba2515939277b9973cc7603"
+        },
+        {
+          "step": 16,
+          "gate": "invariant-s03-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "6209cc50db509bef20ec9f7907531f373316d836cba2515939277b9973cc7603"
+        },
+        {
+          "step": 17,
+          "gate": "invariant-s03-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "6209cc50db509bef20ec9f7907531f373316d836cba2515939277b9973cc7603"
+        },
+        {
+          "step": 18,
+          "gate": "invariant-s03-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "6209cc50db509bef20ec9f7907531f373316d836cba2515939277b9973cc7603"
+        },
+        {
+          "step": 19,
+          "gate": "invariant-s03-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "6209cc50db509bef20ec9f7907531f373316d836cba2515939277b9973cc7603"
+        },
+        {
+          "step": 20,
+          "gate": "invariant-s03-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "6209cc50db509bef20ec9f7907531f373316d836cba2515939277b9973cc7603"
+        }
+      ]
+    },
+    {
+      "id": "S13-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 3 (S1.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.3 step, nothing under Berreman/ names EpsAxisEvaluated, in code or in a comment (section invariant s03-no-eps-axis-evaluated, established by S1.1 step 9).",
+      "checks": [
+        {
+          "step": 15,
+          "gate": "invariant-s03-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "36e724cbb15ccab25abb74818addd91464dcc819d345c4a1aed7f1f28985e1f9"
+        },
+        {
+          "step": 16,
+          "gate": "invariant-s03-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "36e724cbb15ccab25abb74818addd91464dcc819d345c4a1aed7f1f28985e1f9"
+        },
+        {
+          "step": 17,
+          "gate": "invariant-s03-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "36e724cbb15ccab25abb74818addd91464dcc819d345c4a1aed7f1f28985e1f9"
+        },
+        {
+          "step": 18,
+          "gate": "invariant-s03-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "36e724cbb15ccab25abb74818addd91464dcc819d345c4a1aed7f1f28985e1f9"
+        },
+        {
+          "step": 19,
+          "gate": "invariant-s03-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "36e724cbb15ccab25abb74818addd91464dcc819d345c4a1aed7f1f28985e1f9"
+        },
+        {
+          "step": 20,
+          "gate": "invariant-s03-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "36e724cbb15ccab25abb74818addd91464dcc819d345c4a1aed7f1f28985e1f9"
+        }
+      ]
+    },
+    {
+      "id": "S13-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 3 (S1.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.3 step, nothing under Berreman/ says complexity = None or complexity = Some (section invariant s03-complexity-mandatory, established by S1.2 steps 13 and 14).",
+      "checks": [
+        {
+          "step": 15,
+          "gate": "invariant-s03-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "8dd1ba43d332fb8845f68990376256b56b9e03f50476f3db8c04dfb5556b6492"
+        },
+        {
+          "step": 16,
+          "gate": "invariant-s03-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "8dd1ba43d332fb8845f68990376256b56b9e03f50476f3db8c04dfb5556b6492"
+        },
+        {
+          "step": 17,
+          "gate": "invariant-s03-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "8dd1ba43d332fb8845f68990376256b56b9e03f50476f3db8c04dfb5556b6492"
+        },
+        {
+          "step": 18,
+          "gate": "invariant-s03-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "8dd1ba43d332fb8845f68990376256b56b9e03f50476f3db8c04dfb5556b6492"
+        },
+        {
+          "step": 19,
+          "gate": "invariant-s03-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "8dd1ba43d332fb8845f68990376256b56b9e03f50476f3db8c04dfb5556b6492"
+        },
+        {
+          "step": 20,
+          "gate": "invariant-s03-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "8dd1ba43d332fb8845f68990376256b56b9e03f50476f3db8c04dfb5556b6492"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -988,6 +1408,90 @@
         "S12-INV-NO-KIT-KIT-JSON",
         "S12-INV-NO-EPS-AXIS-EVALUATED"
       ]
+    },
+    {
+      "step": 15,
+      "sha256": "79ab10f3517b1c02c34b262e30d7b5c0373f0a2122af4eca3d3bdc63720501e2",
+      "obligations": [
+        "S13-WELL-KNOWN-IDS",
+        "S13-BUILD",
+        "S13-ELEVATION",
+        "S13-INV-ELEV-LIST",
+        "S13-INV-NO-VSTEST",
+        "S13-INV-NO-KIT-KIT-JSON",
+        "S13-INV-NO-EPS-AXIS-EVALUATED",
+        "S13-INV-COMPLEXITY-MANDATORY"
+      ]
+    },
+    {
+      "step": 16,
+      "sha256": "1b38cf8fb9c881f4bb4fe5bbc2717164da3d080600c9a6021b36efa692115be7",
+      "obligations": [
+        "S13-CONSTRUCTOR-FIXTURES",
+        "S13-BUILD",
+        "S13-ELEVATION",
+        "S13-INV-ELEV-LIST",
+        "S13-INV-NO-VSTEST",
+        "S13-INV-NO-KIT-KIT-JSON",
+        "S13-INV-NO-EPS-AXIS-EVALUATED",
+        "S13-INV-COMPLEXITY-MANDATORY"
+      ]
+    },
+    {
+      "step": 17,
+      "sha256": "b9cc95f6f87db5a0c51a5af61357f54316ffc91df0af8f84378aae658fbd90c2",
+      "obligations": [
+        "S13-LIBRARY-WINDOW-FIXTURES",
+        "S13-BUILD",
+        "S13-ELEVATION",
+        "S13-INV-ELEV-LIST",
+        "S13-INV-NO-VSTEST",
+        "S13-INV-NO-KIT-KIT-JSON",
+        "S13-INV-NO-EPS-AXIS-EVALUATED",
+        "S13-INV-COMPLEXITY-MANDATORY"
+      ]
+    },
+    {
+      "step": 18,
+      "sha256": "bb00b99dc1d80ca31333f9c137ec709c6369477a6fa69aefb6f949f265dba8e0",
+      "obligations": [
+        "S13-UI-FIXTURES",
+        "S13-BUILD",
+        "S13-ELEVATION",
+        "S13-INV-ELEV-LIST",
+        "S13-INV-NO-VSTEST",
+        "S13-INV-NO-KIT-KIT-JSON",
+        "S13-INV-NO-EPS-AXIS-EVALUATED",
+        "S13-INV-COMPLEXITY-MANDATORY"
+      ]
+    },
+    {
+      "step": 19,
+      "sha256": "24bcbec26c03f50d35e27dc10afc7d0cf7504fd9742d382c5ccd0ee46e5ca55a",
+      "obligations": [
+        "S13-GUID-IDS",
+        "S13-BUILD",
+        "S13-ELEVATION",
+        "S13-INV-ELEV-LIST",
+        "S13-INV-NO-VSTEST",
+        "S13-INV-NO-KIT-KIT-JSON",
+        "S13-INV-NO-EPS-AXIS-EVALUATED",
+        "S13-INV-COMPLEXITY-MANDATORY"
+      ]
+    },
+    {
+      "step": 20,
+      "sha256": "b805e0477175f7c8d85800250c6911ff533171a5d25e7ecb13fdf163307b8a3e",
+      "obligations": [
+        "S13-GUID-IDS",
+        "S13-BUILD",
+        "S13-ELEVATION",
+        "S13-INV-ELEV-LIST",
+        "S13-INV-NO-VSTEST",
+        "S13-INV-NO-KIT-KIT-JSON",
+        "S13-INV-NO-EPS-AXIS-EVALUATED",
+        "S13-INV-COMPLEXITY-MANDATORY"
+      ]
     }
   ],
   "behavior_seams": [
@@ -1050,6 +1554,16 @@
       "id": "s12-mandatory-complexity",
       "step": 13,
       "obligation": "S12-MANDATORY"
+    },
+    {
+      "id": "s13-guid-ids-red",
+      "step": 19,
+      "obligation": "S13-GUID-IDS"
+    },
+    {
+      "id": "s13-live-guid-lookup",
+      "step": 20,
+      "obligation": "S13-GUID-IDS"
     }
   ],
   "temporal_checks": [],
@@ -1109,6 +1623,25 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Domain",
         "Berreman/OpticalConstructor/OpticalConstructor.Storage",
         "Berreman/OpticalConstructor/OpticalConstructor.Controls",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 19,
+      "step": 20,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 15,
+      "step": 20,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
