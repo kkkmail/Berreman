@@ -60,14 +60,14 @@
     {
       "name": "S2.3 -- SQLite samples, sources, presets and the live library",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "2f2f782",
       "spec_jsonl_lines": 80
     },
     {
       "name": "S2.4 -- Database location, settings, backup and restore; the app runs on the database",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 90
     },
     {
       "name": "S3.1 -- Import on every start and the per-entry decision table",

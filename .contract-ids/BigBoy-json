@@ -14,5 +14,13 @@
     "declaringProject": "OpticalConstructor.Database",
     "status": "active",
     "formerNames": []
+  },
+  "STORE_BigBoy_0003": {
+    "name": "LibraryBackupProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
   }
 }
