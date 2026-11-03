@@ -60,6 +60,16 @@ module ConstructorUiIdOfDomain =
 
         static member solverHandoffStatus (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"SolverHandoffStatus_{experimentId.value}"
 
+        /// A collected experiment's "Attach data file…" verb and its inline parse / validation status (the
+        /// Main workbench's collection builder).
+        static member attachDataFile (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"AttachDataFile_{experimentId.value}"
+
+        static member dataFileStatus (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataFileStatus_{experimentId.value}"
+
+        /// A saved collection's loadable row in the collection builder, by its name.
+        static member savedCollection (name : OpticalConstructor.Domain.ExperimentCollectionStore.CollectionName) : ConstructorUiId =
+            ConstructorUiId $"SavedCollection_{name.value}"
+
         /// A material-category option of the Material editor.
         static member materialEditorCategoryOption (categoryId : CategoryId) : ConstructorUiId =
             ConstructorUiId $"MaterialCategoryOption_{categoryId.value}"
@@ -220,6 +230,27 @@ module ConstructorUiIdOfDomain =
 
         /// The draft's point count as the Experiments bay's box shows it.
         member this.pointCount : ExperimentControls.ExperimentPointCount = ExperimentControls.ExperimentPointCount this.value
+
+    type ExperimentControls.ExperimentRangeEnd with
+
+        /// The value typed into the Experiments bay's range box as the draft's range end.
+        member this.sweptValue : OpticalConstructor.Domain.Propagation.SweptValue = OpticalConstructor.Domain.Propagation.SweptValue this.value
+
+    type ExperimentControls.ExperimentPointCount with
+
+        /// The count typed into the Experiments bay's points box as the draft's point count.
+        member this.curvePointCount : OpticalConstructor.Domain.Propagation.CurvePointCount =
+            OpticalConstructor.Domain.Propagation.CurvePointCount this.value
+
+    type ExperimentId with
+
+        /// The experiment as the key of its Experiments-bay collection row (its number's text).
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey (string this.value)
+
+    type OpticalConstructor.Domain.ExperimentCollectionStore.CollectionName with
+
+        /// The name as its saved-collection button shows it.
+        member this.caption : ControlCaption = ControlCaption this.value
 
     type EntryName with
 

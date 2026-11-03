@@ -200,14 +200,14 @@ module LightSourceEditorTests =
     [<Trait("Category", "ui-smoke")>]
     let ``a user source and a seeded lithography source bind to the table's source and resolve`` () =
         HeadlessSession.run (fun () ->
-            let m0 = { Scene.initMain () with selection = Scene.ElementSelected 0 }
+            let m0 = { Scene.initMain () with selection = Scene.ElementSelected (Scene.SceneElementIndex 0) }
             let mine : SourcePreset = { id = Placement.ElementValueId "src-mine"; name = EntryName "My 13.4 nm line"; waveLength = WaveLength.nm 13.4<nm>; tuning = FixedLine; protection = UserManaged }
             Assert.Equal(Ok (), m0.sources.saveSource mine)
             let sourceId = (List.item 0 m0.elements).id
-            let boundMine = Scene.updateTableAndElementRotation (Scene.BindValueIdTo (sourceId, "src-mine")) m0
+            let boundMine = Scene.updateTableAndElementRotation (Scene.BindValueIdTo (sourceId, Placement.ElementValueId "src-mine")) m0
             Assert.Equal(Some (Placement.ElementValueId "src-mine"), (List.item 0 boundMine.elements).placement.valueId)
             Assert.Contains("bound: My 13.4 nm line", readoutOf boundMine)
-            let boundArf = Scene.updateTableAndElementRotation (Scene.BindValueIdTo (sourceId, "src-arf-193")) m0
+            let boundArf = Scene.updateTableAndElementRotation (Scene.BindValueIdTo (sourceId, Placement.ElementValueId "src-arf-193")) m0
             Assert.Contains("bound: ArF excimer 193 nm", readoutOf boundArf))
 
     // ------------------------------ the editor window (headless) ------------------------------

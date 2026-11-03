@@ -66,13 +66,13 @@ module SolverHandoffWindowTests =
         let src, sample, det = endpoints m0
         let bindOne (elementId : Library.ElementId) (entryOpt : string option) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
             match entryOpt with
-            | Some entryId -> updateTableAndElementRotation (BindValueIdTo (elementId, entryId)) m
+            | Some entryId -> updateTableAndElementRotation (BindValueIdTo (elementId, Placement.ElementValueId entryId)) m
             | None -> m
         let committed =
             m0
             |> bindOne src.id srcBind
             |> bindOne det.id detBind
-            |> updateTableAndElementRotation (ExpChooseElement sample.id.value)
+            |> updateTableAndElementRotation (ExpChooseElement sample.id)
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation ExpCommit
         committed.library, List.head committed.experimentCollection.experiments

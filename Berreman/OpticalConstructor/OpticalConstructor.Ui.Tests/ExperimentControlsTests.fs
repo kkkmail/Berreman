@@ -29,7 +29,7 @@ module ExperimentControlsTests =
 
     /// Select the element at index `i`, then bind it to a Library entry id (the `BindValueId` MVU path).
     let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
-        { m with selection = ElementSelected i } |> updateTableAndElementRotation (BindValueId entryId)
+        { m with selection = ElementSelected (SceneElementIndex i) } |> updateTableAndElementRotation (BindValueId (ElementValueId entryId))
 
     /// Spec 0046: the Main scene with its source bound to a TUNABLE source (xenon lamp + monochromator,
     /// 190–1000 nm) — only a tunable source's wavelength can be varied.
@@ -84,40 +84,40 @@ module ExperimentControlsTests =
         // Spec 0038 (013): the Materials bay left the ribbon (the Materials WINDOW carries that
         // workbench now); spec 0038 (015): the Library (samples) workbench bay left the same
         // way (the Library WINDOW), so seven in-pane bays remain, Details last. Spec 0046: Add first.
-        Assert.Equal<string list>(
+        Assert.Equal<Ribbon.BayName list>(
             [ BayNames.add; BayNames.rotation; BayNames.move; BayNames.render; BayNames.selector
               BayNames.experiments; BayNames.details ],
             BayNames.allBayNames)
         let m = initMain ()
         let bays = mainBays m ignore
-        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name.value))
+        Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
 
     // ============================ host MVU: choose / vary / capture / range ============================
 
     [<Fact>]
     let ``choosing the source constrains the variable to wavelength (data-driven)`` () =
-        let m = withTunableSource () |> updateTableAndElementRotation (ExpChooseElement "src")
+        let m = withTunableSource () |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src"))
         Assert.Equal(Some (Library.ElementId "src"), m.experimentCollection.draft.elementId)
         Assert.Equal(Some Experiments.VaryWaveLength, m.experimentCollection.draft.variable)
         // Spec 0046: the sweep spans the tunable source's limits (190–1000 nm) and stays inside them.
         Assert.True(abs (m.experimentCollection.draft.range.min.value - 190.0) < 1e-9)
         Assert.True(abs (m.experimentCollection.draft.range.max.value - 1000.0) < 1e-9)
-        Assert.True(abs ((updateTableAndElementRotation (ExpSetRangeMin 50.0) m).experimentCollection.draft.range.min.value - 190.0) < 1e-9)
+        Assert.True(abs ((updateTableAndElementRotation (ExpSetRangeMin (ExperimentControls.ExperimentRangeEnd 50.0)) m).experimentCollection.draft.range.min.value - 190.0) < 1e-9)
 
     [<Fact>]
     let ``a fixed-line or unbound source varies nothing — its wavelength cannot be changed`` () =
         for m in [ initMain (); bind 0 "src-hene-633" (initMain ()) ] do
-            let chosen = m |> updateTableAndElementRotation (ExpChooseElement "src")
+            let chosen = m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src"))
             Assert.Equal(None, chosen.experimentCollection.draft.variable)
-            Assert.Empty((experimentState chosen).variableChoices)
+            Assert.Empty((chosen.experimentState).variableChoices)
 
     [<Fact>]
     let ``choosing a sample allows R1 and R2 and can then switch variable`` () =
         let m = initMain () |> updateTableAndElementRotation (AddElement Sample)
         let sid = idOf 2 m
-        let m1 = m |> updateTableAndElementRotation (ExpChooseElement sid)
+        let m1 = m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId sid))
         // The sample bay state offers exactly the sample's allowed variables (R1, R2).
-        let st = experimentState m1
+        let st = m1.experimentState
         Assert.Equal<ExperimentControls.VariableChoice list>([ ExperimentControls.VaryR1; ExperimentControls.VaryR2 ], st.variableChoices)
         Assert.Equal(Some Experiments.VaryR1, m1.experimentCollection.draft.variable)
         let m2 = m1 |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
@@ -127,7 +127,7 @@ module ExperimentControlsTests =
     let ``choosing a mirror defaults the capture to reflected (not hard-coded)`` () =
         let m = initMain () |> updateTableAndElementRotation (AddElement FlatMirror)
         let mid = idOf 2 m
-        let m1 = m |> updateTableAndElementRotation (ExpChooseElement mid)
+        let m1 = m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId mid))
         Assert.Equal(Experiments.CaptureReflected, m1.experimentCollection.draft.measurement)
 
     [<Fact>]
@@ -137,7 +137,7 @@ module ExperimentControlsTests =
         // detector captures R; a ThinFilm reflects AND transmits (EmitBoth).
         let mirror = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 euvMirrorId
         Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, (elem 2 mirror).placement.emission)
-        let mirrorChosen = mirror |> updateTableAndElementRotation (ExpChooseElement (idOf 2 mirror))
+        let mirrorChosen = mirror |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 mirror)))
         Assert.Equal(Experiments.CaptureReflected, mirrorChosen.experimentCollection.draft.measurement)
         let film = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassFilm600Id
         Assert.Equal<Placement.Emission>(Placement.EmitBoth, (elem 2 film).placement.emission)
@@ -146,18 +146,18 @@ module ExperimentControlsTests =
         // seeded detector sits on the plate's transmitted beam only ⇒ CaptureTransmitted.
         let plate = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassPlate1mmId
         Assert.Equal<Placement.Emission>(Placement.EmitBoth, (elem 2 plate).placement.emission)
-        let plateChosen = plate |> updateTableAndElementRotation (ExpChooseElement (idOf 2 plate))
+        let plateChosen = plate |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 plate)))
         Assert.Equal(Experiments.CaptureTransmitted, plateChosen.experimentCollection.draft.measurement)
 
     [<Fact>]
     let ``the measurement and range round-trip through the model`` () =
         let m =
             initMain ()
-            |> updateTableAndElementRotation (ExpChooseElement "src")
+            |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src"))
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
-            |> updateTableAndElementRotation (ExpSetRangeMin 250.0)
-            |> updateTableAndElementRotation (ExpSetRangeMax 650.0)
-            |> updateTableAndElementRotation (ExpSetRangePoints 51)
+            |> updateTableAndElementRotation (ExpSetRangeMin (ExperimentControls.ExperimentRangeEnd 250.0))
+            |> updateTableAndElementRotation (ExpSetRangeMax (ExperimentControls.ExperimentRangeEnd 650.0))
+            |> updateTableAndElementRotation (ExpSetRangePoints (ExperimentControls.ExperimentPointCount 51))
         let d = m.experimentCollection.draft
         Assert.Equal(Experiments.CaptureBoth, d.measurement)
         Assert.Equal(250.0, d.range.min.value)
@@ -168,7 +168,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``Add appends to the collection and re-Add does not duplicate`` () =
-        let m = withTunableSource () |> updateTableAndElementRotation (ExpChooseElement "src") |> updateTableAndElementRotation ExpCommit
+        let m = withTunableSource () |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src")) |> updateTableAndElementRotation ExpCommit
         Assert.Equal(1, List.length m.experimentCollection.experiments)
         let m2 = m |> updateTableAndElementRotation ExpCommit
         Assert.Equal(1, List.length m2.experimentCollection.experiments)
@@ -177,60 +177,59 @@ module ExperimentControlsTests =
     let ``New then Add appends a distinct second experiment`` () =
         let m =
             withTunableSource ()
-            |> updateTableAndElementRotation (ExpChooseElement "src") |> updateTableAndElementRotation ExpCommit
+            |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src")) |> updateTableAndElementRotation ExpCommit
             |> updateTableAndElementRotation ExpNew
-            |> updateTableAndElementRotation (ExpChooseElement "det")           // detector has nothing to vary → cannot commit
+            |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "det"))           // detector has nothing to vary → cannot commit
         // The detector exposes nothing to vary, so a second Add is inert.
         let m2 = m |> updateTableAndElementRotation ExpCommit
         Assert.Equal(1, List.length m2.experimentCollection.experiments)
         // Choose a varyable element instead and Add — now there are two.
         let m3 = m |> updateTableAndElementRotation (AddElement Sample)
         let sid = idOf 2 m3
-        let m4 = m3 |> updateTableAndElementRotation (ExpChooseElement sid) |> updateTableAndElementRotation ExpCommit
+        let m4 = m3 |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId sid)) |> updateTableAndElementRotation ExpCommit
         Assert.Equal(2, List.length m4.experimentCollection.experiments)
 
     [<Fact>]
     let ``Edit loads an experiment and Remove deletes it`` () =
-        let m = withTunableSource () |> updateTableAndElementRotation (ExpChooseElement "src") |> updateTableAndElementRotation ExpCommit
+        let m = withTunableSource () |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src")) |> updateTableAndElementRotation ExpCommit
         let exp = List.head m.experimentCollection.experiments
-        let idStr = string exp.id.value
-        let mEdit = m |> updateTableAndElementRotation (ExpEdit idStr)
+        let mEdit = m |> updateTableAndElementRotation (ExpEdit exp.id)
         Assert.Equal(Some exp.id, mEdit.experimentCollection.draft.editingId)
-        let mRemove = m |> updateTableAndElementRotation (ExpRemove idStr)
+        let mRemove = m |> updateTableAndElementRotation (ExpRemove exp.id)
         Assert.Empty(mRemove.experimentCollection.experiments)
 
     [<Fact>]
     let ``the bay state exposes the collection rows and the editing highlight`` () =
-        let m = withTunableSource () |> updateTableAndElementRotation (ExpChooseElement "src") |> updateTableAndElementRotation ExpCommit
-        let st = experimentState m
+        let m = withTunableSource () |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src")) |> updateTableAndElementRotation ExpCommit
+        let st = m.experimentState
         Assert.Single(st.collection) |> ignore
         let row = List.head st.collection
         Assert.Contains("Light source", row.description.value)
         Assert.Equal(ExperimentControls.LoadedInEditor, row.focus)
         Assert.Equal(ExperimentControls.EditorUpdatesExisting, st.editorMode)
 
-    // ============================ host experimentResult branches ============================
+    // ============================ host branches.experimentResult ============================
 
     /// initMain + a LinearPolarizer at index 2, chosen to vary (default VaryR1).
     let private withChosenPolarizer () : TableAndElementRotationModel =
         let m = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
-        m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m))
+        m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m)))
 
     /// initMain + a bound Sample at index 2, chosen, on the given variable, capture T.
     let private withChosenSample (v : ExperimentControls.VariableChoice) : TableAndElementRotationModel =
         let m = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassFilm200Id
         m
-        |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m))
+        |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m)))
         |> updateTableAndElementRotation (ExpChooseVariable v)
         |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
 
     [<Fact>]
     let ``with no element chosen the chart is empty`` () =
-        Assert.Empty((experimentResult (initMain ())).series)
+        Assert.Empty(((initMain ()).experimentResult).series)
 
     [<Fact>]
     let ``varying a polarizer R1 with an intensity detector yields an intensity series`` () =
-        let chart = experimentResult (withChosenPolarizer ())
+        let chart = (withChosenPolarizer ()).experimentResult
         Assert.Single(chart.series) |> ignore
         Assert.NotEmpty((List.head chart.series).points)
         Assert.Equal("Rotation R1 (°)", chart.xLabel.value)
@@ -238,7 +237,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``a VaryR2 intensity experiment yields one incidence series with x running to 89`` () =
-        let chart = experimentResult (withChosenSample ExperimentControls.VaryR2)
+        let chart = (withChosenSample ExperimentControls.VaryR2).experimentResult
         Assert.Single(chart.series) |> ignore
         let xs = (List.head chart.series).points |> List.map (fun p -> p.x)
         Assert.NotEmpty(xs)
@@ -250,9 +249,9 @@ module ExperimentControlsTests =
     let ``a VaryWaveLength intensity experiment spans the chosen wavelength range`` () =
         let m =
             withChosenSample ExperimentControls.VaryWaveLength
-            |> updateTableAndElementRotation (ExpSetRangeMin 300.0)
-            |> updateTableAndElementRotation (ExpSetRangeMax 700.0)
-        let chart = experimentResult m
+            |> updateTableAndElementRotation (ExpSetRangeMin (ExperimentControls.ExperimentRangeEnd 300.0))
+            |> updateTableAndElementRotation (ExpSetRangeMax (ExperimentControls.ExperimentRangeEnd 700.0))
+        let chart = m.experimentResult
         Assert.Single(chart.series) |> ignore
         let xs = (List.head chart.series).points |> List.map (fun p -> p.x)
         Assert.True(abs (300.0 - List.head xs) < 1e-6)
@@ -268,10 +267,10 @@ module ExperimentControlsTests =
             initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassPlate1mmId
             |> updateTableAndElementRotation (AddElement Detector)
             |> (fun m -> m |> updateTableAndElementRotation (PlaceOnBeam ((elem 3 m).id, BeamLayout.OnReflectedBeamOf (elem 2 m).id)))
-            |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m)))
+            |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
-        let chart = experimentResult m
+        let chart = m.experimentResult
         Assert.Equal(2, List.length chart.series)
         Assert.Equal<string list>([ "Intensity (T)"; "Intensity (R)" ], chart.series |> List.map (fun s -> s.name.value))
 
@@ -279,10 +278,10 @@ module ExperimentControlsTests =
     let ``an ellipsometer VaryR2 experiment yields two series (Psi and Delta)`` () =
         let m =
             initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassFilm200Id |> bind 1 "det-ellipsometer"
-            |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m)))
+            |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
-        let chart = experimentResult m
+        let chart = m.experimentResult
         Assert.Equal<string list>([ "Ψ"; "Δ" ], chart.series |> List.map (fun s -> s.name.value))
 
     [<Fact>]
@@ -292,9 +291,9 @@ module ExperimentControlsTests =
         let m = initMain () |> updateTableAndElementRotation (AddElement Sample)
         let m1 =
             m
-            |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m)))
+            |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
-        Assert.Empty((experimentResult m1).series)
+        Assert.Empty((m1.experimentResult).series)
 
     // ============ step 018 — the silent ideal-analyzer fallback is RETIRED ============
 
@@ -306,7 +305,7 @@ module ExperimentControlsTests =
         let m =
             initMain ()
             |> updateTableAndElementRotation (AddElement LinearPolarizer)                                                  // pre-bound pol-lp
-            |> updateTableAndElementRotation (AddElementBoundTo (CircularPolarizer, Some SeedEntryIds.polarizerCpRight))   // pre-bound pol-cp-right
+            |> updateTableAndElementRotation (AddElementBoundTo (CircularPolarizer, Some (ElementValueId SeedEntryIds.polarizerCpRight)))   // pre-bound pol-cp-right
         Assert.Equal(ResolvedAnalyzer Library.IdealLinear, runAnalyzerKind m (Some (elem 2 m).id))
         Assert.Equal(ResolvedAnalyzer Library.IdealCircularRight, runAnalyzerKind m (Some (elem 3 m).id))
 
@@ -332,13 +331,13 @@ module ExperimentControlsTests =
         // The retired fallback would have synthesized an IdealLinear Malus curve here; the
         // experiment surface now reports the typed 'no analyzer present' status instead.
         let m = initMain () |> updateTableAndElementRotation (AddElement Sample)
-        let m1 = m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m))     // a sample defaults to VaryR1
-        let chart = experimentResult m1
+        let m1 = m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m)))     // a sample defaults to VaryR1
+        let chart = m1.experimentResult
         Assert.Empty(chart.series)
         Assert.Equal(noAnalyzerTitle, chart.title.value)
         Assert.Equal(noAnalyzerStatus, chart.description.value)
         // The Experiments bay surfaces the same status through its state.
-        Assert.Equal(noAnalyzerStatus, (experimentState m1).description.value)
+        Assert.Equal(noAnalyzerStatus, (m1.experimentState).description.value)
 
     [<Fact>]
     let ``a rotate-R1 intensity run with a pre-bound polarizer still yields the Malus curve`` () =
@@ -346,7 +345,7 @@ module ExperimentControlsTests =
         // entry — the surface that used to lean on the silent fallback keeps its curve.
         let m = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
         Assert.Equal(Some (ElementValueId SeedEntryIds.polarizerLp), (elem 2 m).placement.valueId)
-        let chart = experimentResult (m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m)))
+        let chart = (m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m)))).experimentResult
         Assert.Single(chart.series) |> ignore
         Assert.Equal("Rotating analyzer (Malus)", chart.title.value)
 
@@ -463,7 +462,7 @@ module ExperimentControlsTests =
             let pid = idOf 2 baseModel
             let mutable model =
                 baseModel
-                |> updateTableAndElementRotation (ExpChooseElement pid)
+                |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid))
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
             let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 360.0)
@@ -515,7 +514,7 @@ module ExperimentControlsTests =
             let pid = idOf 2 baseModel
             let mutable model =
                 baseModel
-                |> updateTableAndElementRotation (ExpChooseElement pid)
+                |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid))
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
             let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 360.0)
@@ -572,9 +571,9 @@ module ExperimentControlsTests =
             let pid = idOf 2 baseM
             let seed =
                 baseM
-                |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation ExpCommit      // exp #1
+                |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid)) |> updateTableAndElementRotation ExpCommit      // exp #1
                 |> updateTableAndElementRotation ExpNew
-                |> updateTableAndElementRotation (ExpChooseElement "src") |> updateTableAndElementRotation ExpCommit     // exp #2
+                |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src")) |> updateTableAndElementRotation ExpCommit     // exp #2
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let window = liveComponent seed
             window.Show()
@@ -592,14 +591,14 @@ module ExperimentControlsTests =
                 initMain ()
                 |> updateTableAndElementRotation (AddElement Sample)
                 |> updateTableAndElementRotation (AddElement LinearPolarizer)
-                |> (fun m -> { m with selection = ElementSelected 2 })
+                |> (fun m -> { m with selection = ElementSelected (SceneElementIndex 2) })
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let window = liveComponent seed
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The Remove control lives in the Add bay: switch to it and click Remove selected. The
             // Experiments pane (kept present by the ribbon) re-renders its candidate list on the change.
-            clickIn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.add)).value
+            clickIn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.add.value)).value
             clickIn window ConstructorUiId.paletteRemoveSelectedButton.value
             window.Close())
 
@@ -612,7 +611,7 @@ module ExperimentControlsTests =
         HeadlessSession.run (fun () ->
             let seed =
                 initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)     // idx 2
-                |> updateTableAndElementRotation (ExpChooseElement "src")                     // source ⇒ variable boxes = [wavelength]
+                |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src"))                     // source ⇒ variable boxes = [wavelength]
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let pid = idOf 2 seed
             let window = liveComponent seed
@@ -628,9 +627,9 @@ module ExperimentControlsTests =
         HeadlessSession.run (fun () ->
             let seed =
                 initMain () |> updateTableAndElementRotation (AddElement Sample)
-                |> (fun m -> { m with selection = ElementSelected 2 })
-                |> updateTableAndElementRotation (BindValueId glassFilm200Id)
-                |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m)))
+                |> (fun m -> { m with selection = ElementSelected (SceneElementIndex 2) })
+                |> updateTableAndElementRotation (BindValueId (ElementValueId glassFilm200Id))
+                |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
                 |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
                 |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)   // two series (T + R)
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
@@ -652,9 +651,9 @@ module ExperimentControlsTests =
             let pid = idOf 2 baseModel
             let seed =
                 baseModel
-                |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation ExpCommit          // exp #1 (polarizer)
+                |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid)) |> updateTableAndElementRotation ExpCommit          // exp #1 (polarizer)
                 |> updateTableAndElementRotation ExpNew
-                |> updateTableAndElementRotation (ExpChooseElement "src") |> updateTableAndElementRotation ExpCommit         // exp #2 (source) → editing #2
+                |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src")) |> updateTableAndElementRotation ExpCommit         // exp #2 (source) → editing #2
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let latest = ref seed
             let comp =
@@ -736,13 +735,13 @@ module ExperimentControlsTests =
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``ChartWindow constructs and really renders a live experiment chart`` () =
-        // The double-click hook does `ChartWindow(experimentResult model).Show()`. This drives that exact
+        // The double-click hook does `ChartWindow(model.experimentResult).Show()`. This drives that exact
         // path AND forces ScottPlot's real Skia rasterization (headless Avalonia never rasterizes), so a
         // construction- or render-time throw would surface here rather than silently failing in the app.
         HeadlessSession.run (fun () ->
             let m = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
             let pid = idOf 2 m
-            let chart = experimentResult (m |> updateTableAndElementRotation (ExpChooseElement pid))
+            let chart = (m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid))).experimentResult
             Assert.False(List.isEmpty chart.series, "precondition: the R1 intensity chart has a series")
             let window = ChartWindow(chart)
             try window.Show() with _ -> ()
@@ -760,8 +759,8 @@ module ExperimentControlsTests =
         HeadlessSession.run (fun () ->
             let m = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
             let pid = idOf 2 m
-            let m1 = m |> updateTableAndElementRotation (ExpChooseElement pid)      // draft ⇒ a non-empty R1 intensity chart
-            Assert.False(List.isEmpty (experimentResult m1).series, "precondition: the draft chart has a series")
+            let m1 = m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid))      // draft ⇒ a non-empty R1 intensity chart
+            Assert.False(List.isEmpty (m1.experimentResult).series, "precondition: the draft chart has a series")
             let before = ChartWindow.ConstructedCount
             updateTableAndElementRotation OpenExperimentChartWindow m1 |> ignore
             try Dispatcher.UIThread.RunJobs() with _ -> ()
@@ -778,7 +777,7 @@ module ExperimentControlsTests =
             let pid = idOf 2 baseM
             let seed =
                 baseM
-                |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation ExpCommit          // add the experiment
+                |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid)) |> updateTableAndElementRotation ExpCommit          // add the experiment
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let expIdStr = string (List.head seed.experimentCollection.experiments).id.value
             let mutable model = seed

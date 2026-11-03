@@ -138,11 +138,11 @@ module OutOfBandBadgeTests =
         // The bound-sample element flags, naming the material and both ranges.
         match outOfBandWarningFor model flagged with
         | Some text ->
-            Assert.Contains("Dispersive glass", text)
-            Assert.Contains("300", text)
-            Assert.Contains("700", text)
-            Assert.Contains("200", text)
-            Assert.Contains("800", text)
+            Assert.Contains("Dispersive glass", text.value)
+            Assert.Contains("300", text.value)
+            Assert.Contains("700", text.value)
+            Assert.Contains("200", text.value)
+            Assert.Contains("800", text.value)
         | None -> Assert.Fail("the wavelength sweep past the material's defined band must flag")
         // The seeded (unbound) source reaches no material, so it never flags.
         Assert.Equal(None, outOfBandWarningFor model (List.head model.elements))
@@ -165,7 +165,7 @@ module OutOfBandBadgeTests =
                 | None -> failwith "the scene must be flagged for this test"
             // The host builds the scene's warning badges (exactly one — the flagged sample); render them
             // on a canvas the same way the main workbench overlays them, and prove the control + tooltip.
-            let badges = outOfBandBadges model
+            let badges = model.outOfBandBadges
             Assert.NotEmpty(badges)
             let window = Window(Width = tableAndElementRotationCanvasWidth, Height = tableAndElementRotationCanvasHeight)
             window.Content <- Component(fun _ -> Canvas.create [ Canvas.children badges ] :> IView)
@@ -176,7 +176,7 @@ module OutOfBandBadgeTests =
                 Assert.Equal((ConstructorUiId.outOfBandBadge (ConstructorUiPosition sampleIndex)).value, Avalonia.Automation.AutomationProperties.GetAutomationId(badge))
                 // Its hover tooltip carries the SAME warning text the Details bay shows.
                 match ToolTip.GetTip badge with
-                | :? string as tip -> Assert.Equal(expected, tip)
+                | :? string as tip -> Assert.Equal(expected.value, tip)
                 | other -> Assert.Fail($"the badge tooltip must be the warning text, got %A{other}")
             | None -> Assert.Fail("the flagged element must render an out-of-band warning badge")
             window.Close())

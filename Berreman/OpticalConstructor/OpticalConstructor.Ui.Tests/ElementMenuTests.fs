@@ -30,13 +30,13 @@ module ElementMenuTests =
     let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
 
     /// Bind element `i` through the ONE targeted bind arm.
-    let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, entryId)) m
+    let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, ElementValueId entryId)) m
 
     let private plateId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId.value
 
     /// The canvas point an element is drawn at (its snapped centre through the live view).
     let private canvasPointOf (i : int) (m : TableAndElementRotationModel) : ScreenPoint =
-        TableView.project pixelsPerMeter center m.view ((snappedCentres m).[i])
+        OpticalConstructor.Ui.TableScene.projectOnScene m.view (m.snappedCentres.[SceneElementIndex i])
 
     /// initMain = [ source (0); detector (1) ] + a sample (2) bound to a 1 mm glass PLATE (emits both),
     /// tilted to R2 = 30° so its reflected ray leaves the main beam.
@@ -44,7 +44,7 @@ module ElementMenuTests =
         initMain ()
         |> updateTableAndElementRotation (AddElement Sample)
         |> bind 2 plateId
-        |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, 30.0))
+        |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 30.0))
 
     /// `plateScene` + a second detector (3) moved onto the sample's reflected ray.
     let private plateWithReflectedDetector () : TableAndElementRotationModel =
@@ -57,7 +57,7 @@ module ElementMenuTests =
     let ``a right click on an element selects it and opens its menu; off every element or a left click closes it`` () =
         let m = plateScene ()
         let opened = m |> updateTableAndElementRotation (OpenElementMenuAt (canvasPointOf 1 m))
-        Assert.Equal(ElementSelected 1, opened.selection)
+        Assert.Equal(ElementSelected (SceneElementIndex 1), opened.selection)
         match opened.elementMenu with
         | Some menu -> Assert.Equal((elem 1 m).id, menu.target)
         | None -> Assert.Fail("the right click must open the element menu")
@@ -86,16 +86,16 @@ module ElementMenuTests =
     let ``an element moved onto a sample's reflected ray snaps onto it — off the straight beam`` () =
         let m = plateWithReflectedDetector ()
         Assert.Equal(BeamLayout.OnReflectedBeamOf (elem 2 m).id, (elem 3 m).beam)
-        let centres = snappedCentres m
-        Assert.True(abs centres.[3].y > 1.0e-3, $"the reflected detector leaves the straight beam (y = {centres.[3].y})")
-        Assert.True(abs centres.[1].y < 2.0e-2, "the main detector stays on the (barely shifted) transmitted beam")
+        let centres = m.snappedCentres
+        Assert.True(abs centres.[SceneElementIndex 3].y > 1.0e-3, $"the reflected detector leaves the straight beam (y = {centres.[SceneElementIndex 3].y})")
+        Assert.True(abs centres.[SceneElementIndex 1].y < 2.0e-2, "the main detector stays on the (barely shifted) transmitted beam")
         // It lands a gap ALONG the reflected ray, so it never collapses onto its host.
-        Assert.True(elementX (elem 3 m) > elementX (elem 2 m))
+        Assert.True((elem 3 m).elementX > (elem 2 m).elementX)
 
     [<Fact>]
     let ``removing the host moves the elements on its reflected ray back to the main beam`` () =
         let m = plateWithReflectedDetector ()
-        let removed = { m with selection = ElementSelected 2 } |> updateTableAndElementRotation RemoveSelected
+        let removed = { m with selection = ElementSelected (SceneElementIndex 2) } |> updateTableAndElementRotation RemoveSelectedElement
         Assert.Equal<BeamLayout.BeamHost list>(List.replicate 3 BeamLayout.OnMainBeam, removed.elements |> List.map (fun e -> e.beam))
 
     [<Fact>]
@@ -103,9 +103,9 @@ module ElementMenuTests =
         let m = plateWithReflectedDetector ()
         let sampleId = (elem 2 m).id
         let off = m |> updateTableAndElementRotation (ToggleElementRay (sampleId, BeamTree.ReflectedBeam))
-        Assert.Equal(BeamLayout.OnMainBeam, (List.item 3 (sceneLayout off).elements).beam)
+        Assert.Equal(BeamLayout.OnMainBeam, (List.item 3 (off.sceneLayout).elements).beam)
         let on = off |> updateTableAndElementRotation (ToggleElementRay (sampleId, BeamTree.ReflectedBeam))
-        Assert.Equal(BeamLayout.OnReflectedBeamOf sampleId, (List.item 3 (sceneLayout on).elements).beam)
+        Assert.Equal(BeamLayout.OnReflectedBeamOf sampleId, (List.item 3 (on.sceneLayout).elements).beam)
 
     [<Fact>]
     let ``the source never moves and a loop-forming move is refused`` () =
@@ -136,7 +136,7 @@ module ElementMenuTests =
         let added = elem 3 m
         Assert.Equal(BeamLayout.OnReflectedBeamOf (elem 2 m).id, added.beam)
         // Spec 0046: at the end of the open ray — 1 m along (the reflected ray carries nothing yet).
-        Assert.True(abs (elementX added - openRayEndX m) < tol, $"it lands where the open ray ends (x = {elementX added})")
+        Assert.True(abs (added.elementX - m.openRayEndX) < tol, $"it lands where the open ray ends (x = {added.elementX})")
         // Both detectors are lit, so the plate's experiment captures T, R and Both.
         let sampleId = (elem 2 m).id
         Assert.Equal<Experiments.MeasurementMode list>(
@@ -148,12 +148,12 @@ module ElementMenuTests =
         let rOff = plateScene () |> fun m -> m |> updateTableAndElementRotation (ToggleElementRay ((elem 2 m).id, BeamTree.ReflectedBeam))
         let m = rOff |> updateTableAndElementRotation (AddElement Detector)
         Assert.Equal(BeamLayout.OnMainBeam, (elem 3 m).beam)
-        let laid = sceneLayout m
+        let laid = m.sceneLayout
         // The new detector sits before the seeded one, so it terminates the main beam: the seeded detector
         // receives no light, and the beam is drawn no further than the new detector's face.
         Assert.Equal(BeamLayout.Lit, (List.item 3 laid.elements).light)
         Assert.Equal(BeamLayout.Unlit, (List.item 1 laid.elements).light)
-        let newFace = (snappedCentres m).[3].x - (elem 3 m).zoom * float (elem 3 m).placement.box.b / 2.0
+        let newFace = (m.snappedCentres).[SceneElementIndex 3].x - (elem 3 m).zoom.value * float (elem 3 m).placement.box.b / 2.0
         for s in laid.segments do
             Assert.True(max s.start.x s.finish.x <= newFace + tol, $"a ray reaches x = {max s.start.x s.finish.x}, past the new detector")
 
@@ -167,25 +167,25 @@ module ElementMenuTests =
         Assert.Equal(BeamLayout.PivotAtIncidentFace, faced.rotationPivot)
         // The sample's incident ray (the free-space run arriving at it) ends exactly at its beam point —
         // the middle of its incident face — and the sample's drawn centre moves behind it.
-        let beamPoint = Vector3.create (elementX (elem 2 m)) 0.0 0.0
-        let arriving = (sceneLayout faced).segments |> List.filter (fun s -> abs (s.finish.x - beamPoint.x) < tol && abs s.finish.y < tol)
+        let beamPoint = Vector3.create ((elem 2 m).elementX) 0.0 0.0
+        let arriving = (faced.sceneLayout).segments |> List.filter (fun s -> abs (s.finish.x - beamPoint.x) < tol && abs s.finish.y < tol)
         Assert.NotEmpty(arriving)
-        Assert.True((snappedCentres faced).[2].x > beamPoint.x, "about its incident face, the sample's centre sits behind the beam point")
+        Assert.True((faced.snappedCentres).[SceneElementIndex 2].x > beamPoint.x, "about its incident face, the sample's centre sits behind the beam point")
         Assert.Equal(BeamLayout.PivotAtCentre, (faced |> updateTableAndElementRotation (SetRotationPivot BeamLayout.PivotAtCentre)).rotationPivot)
 
     // ------------------------------ captures follow the detectors ------------------------------
 
     [<Fact>]
     let ``with only a transmitted detector the experiments offer only T and draw only T`` () =
-        let m = plateScene () |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id.value)) |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
+        let m = plateScene () |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id)) |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
         Assert.Equal<Experiments.MeasurementMode list>([ Experiments.CaptureTransmitted ], availableCaptures m (elem 2 m).id)
-        let st = experimentState m
+        let st = m.experimentState
         Assert.Equal<ExperimentControls.MeasurementChoice list>([ ExperimentControls.CaptureT ], st.measurementOffers |> List.map (fun o -> o.choice))
         // Spec 0046: the offer says what its detector reads.
         Assert.Equal("Transmitted (T) — intensity", (List.head st.measurementOffers).label.value)
         // Even an explicit Both request runs (and records) T alone.
         let both = m |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
-        Assert.Equal<string list>([ "Intensity" ], (experimentResult both).series |> List.map (fun s -> s.name.value))
+        Assert.Equal<string list>([ "Intensity" ], (both.experimentResult).series |> List.map (fun s -> s.name.value))
         let committed = both |> updateTableAndElementRotation ExpCommit
         Assert.Equal(Experiments.CaptureTransmitted, (List.head committed.experimentCollection.experiments).measurement)
 
@@ -205,8 +205,8 @@ module ElementMenuTests =
     let ``with no detector nothing can be captured and Add is disabled`` () =
         let m = plateScene ()
         let noDetector = { m with elements = m.elements |> List.filter (fun e -> e.placement.catalogueKind <> Detector) }
-        let chosen = noDetector |> updateTableAndElementRotation (ExpChooseElement (elem 1 noDetector).id.value)
-        let st = experimentState chosen
+        let chosen = noDetector |> updateTableAndElementRotation (ExpChooseElement (elem 1 noDetector).id)
+        let st = chosen.experimentState
         Assert.Empty(st.measurementOffers)
         Assert.Equal(ControlWithheld, st.addAvailability)   // nothing captures the element's light, so it cannot be added
         Assert.Empty((chosen |> updateTableAndElementRotation ExpCommit).experimentCollection.experiments)
@@ -220,9 +220,9 @@ module ElementMenuTests =
             plateScene ()
             |> transmitOnly
             |> updateTableAndElementRotation ToggleR3Lock
-            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, r2))
-            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R3, r3))
-            |> mainSnap
+            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees r2))
+            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R3, BarDegrees r3))
+            |> (fun x -> x.mainSnap)
             |> snd
         let dirOf (s : BeamLayout.RaySegment) : Vector3 =
             (Vector3.create (s.finish.x - s.start.x) (s.finish.y - s.start.y) (s.finish.z - s.start.z)).normalized
@@ -335,7 +335,7 @@ module ElementMenuTests =
                 |> Seq.length
             // Five elements on the beam, the sample selected: ONE N1 marker (the sample's) — the polarizers' and
             // the source's / detector's N1 markers, lying on the beam, are not drawn (operator .manual/004-005).
-            let withSampleSelected = plateScene () |> updateTableAndElementRotation (AddElement LinearPolarizer) |> fun m -> { m with selection = ElementSelected 2 }
+            let withSampleSelected = plateScene () |> updateTableAndElementRotation (AddElement LinearPolarizer) |> fun m -> { m with selection = ElementSelected (SceneElementIndex 2) }
             for model, expected in [ withSampleSelected, 1; { withSampleSelected with selection = TableSelected }, 0 ] do
                 let window = mount model
                 try Assert.Equal(expected, normalLines window)
@@ -347,7 +347,7 @@ module ElementMenuTests =
         HeadlessSession.run (fun () ->
             let model0 =
                 plateScene ()
-                |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id.value))
+                |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id))
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let window = mount model0
             try

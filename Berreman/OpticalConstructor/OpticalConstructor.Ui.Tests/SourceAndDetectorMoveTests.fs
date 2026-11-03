@@ -29,7 +29,7 @@ module SourceAndDetectorMoveTests =
 
     /// The canvas point an element is drawn at (its snapped centre through the live view).
     let private canvasPointOf (i : int) (m : TableAndElementRotationModel) : ScreenPoint =
-        TableView.project pixelsPerMeter center m.view ((snappedCentres m).[i])
+        OpticalConstructor.Ui.TableScene.projectOnScene m.view (m.snappedCentres.[SceneElementIndex i])
 
     let private clickAt (sp : ScreenPoint) (m : TableAndElementRotationModel) : TableAndElementRotationModel = m |> updateTableAndElementRotation (PointerDown sp) |> updateTableAndElementRotation (PointerUp sp)
 
@@ -50,7 +50,7 @@ module SourceAndDetectorMoveTests =
 
     [<Fact>]
     let ``a click on the light source selects it`` () =
-        Assert.Equal(ElementSelected 0, (sourceSelected ()).selection)
+        Assert.Equal(ElementSelected (SceneElementIndex 0), (sourceSelected ()).selection)
 
     [<Fact>]
     let ``the light source starts with every move and every rotation locked, so nothing moves it`` () =
@@ -60,13 +60,13 @@ module SourceAndDetectorMoveTests =
         let m = sourceSelected ()
         let tried =
             m
-            |> updateTableAndElementRotation (MoveSelectedBy (TableX, 0.2))
-            |> updateTableAndElementRotation (MoveSelectedBy (TableY, 0.2))
-            |> updateTableAndElementRotation (MoveSelectedBy (TableZ, 0.2))
-            |> updateTableAndElementRotation (SlideSelectedBy 0.2)
-            |> updateTableAndElementRotation (RotateR1By 15.0)
-            |> updateTableAndElementRotation (RotateR2By 15.0)
-            |> updateTableAndElementRotation (RotateR3By 15.0)
+            |> updateTableAndElementRotation (MoveSelectedBy (TableX, BarMeters 0.2))
+            |> updateTableAndElementRotation (MoveSelectedBy (TableY, BarMeters 0.2))
+            |> updateTableAndElementRotation (MoveSelectedBy (TableZ, BarMeters 0.2))
+            |> updateTableAndElementRotation (SlideSelectedBy (BarMeters 0.2))
+            |> updateTableAndElementRotation (RotateR1By (BarDegrees 15.0))
+            |> updateTableAndElementRotation (RotateR2By (BarDegrees 15.0))
+            |> updateTableAndElementRotation (RotateR3By (BarDegrees 15.0))
         Assert.Equal<TestElement>(elem 0 m, elem 0 tried)
 
     [<Fact>]
@@ -78,24 +78,24 @@ module SourceAndDetectorMoveTests =
     [<Fact>]
     let ``an unlocked light source moves freely in x, y and z — nothing checks the table`` () =
         let m = unlockAllMoves (sourceSelected ())
-        let moved = m |> updateTableAndElementRotation (MoveSelectedBy (TableX, 0.25)) |> updateTableAndElementRotation (MoveSelectedTo (TableY, 0.1)) |> updateTableAndElementRotation (MoveSelectedTo (TableZ, 0.15))
+        let moved = m |> updateTableAndElementRotation (MoveSelectedBy (TableX, BarMeters 0.25)) |> updateTableAndElementRotation (MoveSelectedTo (TableY, BarMeters 0.1)) |> updateTableAndElementRotation (MoveSelectedTo (TableZ, BarMeters 0.15))
         let x, y, z = sourceAt moved
         Assert.True(close x -0.75 && close y 0.1 && close z 0.15, $"source at (%g{x}, %g{y}, %g{z})")
-        let far = m |> updateTableAndElementRotation (MoveSelectedTo (TableX, -9.0)) |> updateTableAndElementRotation (MoveSelectedTo (TableY, 9.0)) |> updateTableAndElementRotation (MoveSelectedTo (TableZ, 3.0))
+        let far = m |> updateTableAndElementRotation (MoveSelectedTo (TableX, BarMeters -9.0)) |> updateTableAndElementRotation (MoveSelectedTo (TableY, BarMeters 9.0)) |> updateTableAndElementRotation (MoveSelectedTo (TableZ, BarMeters 3.0))
         let fx, fy, fz = sourceAt far
         Assert.True(close fx -9.0 && close fy 9.0 && close fz 3.0, $"source at (%g{fx}, %g{fy}, %g{fz})")
 
     [<Fact>]
     let ``re-locking a move axis freezes it again; a snapped element only slides along its beam`` () =
-        let m = sourceSelected () |> updateTableAndElementRotation (ToggleMoveLock TableZ) |> updateTableAndElementRotation (MoveSelectedTo (TableZ, 0.2)) |> updateTableAndElementRotation (ToggleMoveLock TableZ)
-        let _, _, z = sourceAt (updateTableAndElementRotation (MoveSelectedTo (TableZ, 0.5)) m)
+        let m = sourceSelected () |> updateTableAndElementRotation (ToggleMoveLock TableZ) |> updateTableAndElementRotation (MoveSelectedTo (TableZ, BarMeters 0.2)) |> updateTableAndElementRotation (ToggleMoveLock TableZ)
+        let _, _, z = sourceAt (updateTableAndElementRotation (MoveSelectedTo (TableZ, BarMeters 0.5)) m)
         Assert.True(close z 0.2, $"the re-locked height stayed (z = %g{z})")
         // A sample rides its beam: y / z moves and the move locks are inert, x slides it along the beam.
         let s = updateTableAndElementRotation (AddElement Sample) (initMain ())
-        Assert.Equal<TableAndElementRotationModel>(s, updateTableAndElementRotation (MoveSelectedBy (TableY, 0.2)) s)
-        Assert.Equal<TableAndElementRotationModel>(s, updateTableAndElementRotation (MoveSelectedBy (TableZ, 0.2)) s)
+        Assert.Equal<TableAndElementRotationModel>(s, updateTableAndElementRotation (MoveSelectedBy (TableY, BarMeters 0.2)) s)
+        Assert.Equal<TableAndElementRotationModel>(s, updateTableAndElementRotation (MoveSelectedBy (TableZ, BarMeters 0.2)) s)
         Assert.Equal<TableAndElementRotationModel>(s, updateTableAndElementRotation (ToggleMoveLock TableX) s)
-        Assert.True(close (elementX (elem 2 (updateTableAndElementRotation (MoveSelectedBy (TableX, 0.2)) s))) -0.1)
+        Assert.True(close ((elem 2 (updateTableAndElementRotation (MoveSelectedBy (TableX, BarMeters 0.2)) s)).elementX) -0.1)
 
     [<Fact>]
     let ``moving the light source on x carries the ray and every element with it, like y and z`` () =
@@ -104,41 +104,41 @@ module SourceAndDetectorMoveTests =
         let scene =
             initMain ()
             |> updateTableAndElementRotation (AddElement Sample)
-            |> fun m -> updateTableAndElementRotation (BindValueIdTo ((elem 2 m).id, plateId.value)) m
-            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, 30.0))
+            |> fun m -> updateTableAndElementRotation (BindValueIdTo ((elem 2 m).id, plateId)) m
+            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 30.0))
             |> updateTableAndElementRotation (AddElement Detector)
-        let before = snappedCentres scene
-        let gaps (m : TableAndElementRotationModel) : float list = m.elements |> List.map (fun e -> elementX e - elementX (elem 0 m))
-        let source = { scene with selection = ElementSelected 0 } |> updateTableAndElementRotation (ToggleMoveLock TableX)
-        let movedX = updateTableAndElementRotation (MoveSelectedBy (TableX, 0.4)) source
+        let before = scene.snappedCentres
+        let gaps (m : TableAndElementRotationModel) : float list = m.elements |> List.map (fun e -> e.elementX - (elem 0 m).elementX)
+        let source = { scene with selection = ElementSelected (SceneElementIndex 0) } |> updateTableAndElementRotation (ToggleMoveLock TableX)
+        let movedX = updateTableAndElementRotation (MoveSelectedBy (TableX, BarMeters 0.4)) source
         // Every along-beam gap is kept, so every element is drawn exactly 0.4 m further along x.
         Assert.Equal<float list>(gaps scene, gaps movedX)
-        let after = snappedCentres movedX
+        let after = movedX.snappedCentres
         for i in 0 .. List.length scene.elements - 1 do
-            Assert.True(abs ((after.[i]).x - (before.[i]).x - 0.4) < 1.0e-9 && abs ((after.[i]).y - (before.[i]).y) < 1.0e-9,
-                        $"element %d{i} moved by (%g{(after.[i]).x - (before.[i]).x}, %g{(after.[i]).y - (before.[i]).y})")
+            Assert.True(abs ((after.[SceneElementIndex i]).x - (before.[SceneElementIndex i]).x - 0.4) < 1.0e-9 && abs ((after.[SceneElementIndex i]).y - (before.[SceneElementIndex i]).y) < 1.0e-9,
+                        $"element %d{i} moved by (%g{(after.[SceneElementIndex i]).x - (before.[SceneElementIndex i]).x}, %g{(after.[SceneElementIndex i]).y - (before.[SceneElementIndex i]).y})")
         // The open-ray end and a Reset follow the source too; resetting the source carries the ray back.
-        Assert.True(close (openRayEndX movedX) 1.4)
+        Assert.True(close (movedX.openRayEndX) 1.4)
         let back = updateTableAndElementRotation ResetSelectedPosition movedX
         Assert.Equal<float list>(gaps scene, gaps back)
-        Assert.True(close (elementX (elem 0 back)) -1.0 && close (elementX (elem 1 back)) 1.0)
+        Assert.True(close ((elem 0 back).elementX) -1.0 && close ((elem 1 back).elementX) 1.0)
         // A locked x moves nothing at all.
-        Assert.Equal<TableAndElementRotationModel>(scene, { (updateTableAndElementRotation (MoveSelectedBy (TableX, 0.4)) { scene with selection = ElementSelected 0 }) with selection = scene.selection })
+        Assert.Equal<TableAndElementRotationModel>(scene, { (updateTableAndElementRotation (MoveSelectedBy (TableX, BarMeters 0.4)) { scene with selection = ElementSelected (SceneElementIndex 0) }) with selection = scene.selection })
 
     [<Fact>]
     let ``the beam follows the light source: raised, every element and ray segment rides at its height`` () =
-        let m = sourceSelected () |> updateTableAndElementRotation (ToggleMoveLock TableZ) |> updateTableAndElementRotation (MoveSelectedTo (TableZ, 0.12)) |> updateTableAndElementRotation (AddElement Sample)
-        let centres = snappedCentres m
-        Assert.True(close (centres.[0]).z 0.12)
-        Assert.True(close (centres.[1]).z 0.12, $"the detector rides the raised beam (z = %g{(centres.[1]).z})")
-        Assert.True(close (centres.[2]).z 0.12, $"the sample rides the raised beam (z = %g{(centres.[2]).z})")
-        Assert.All(snd (mainSnap m), fun s -> Assert.True(abs (s.start.z - 0.12) < 1.0e-9 && abs (s.finish.z - 0.12) < 1.0e-9))
+        let m = sourceSelected () |> updateTableAndElementRotation (ToggleMoveLock TableZ) |> updateTableAndElementRotation (MoveSelectedTo (TableZ, BarMeters 0.12)) |> updateTableAndElementRotation (AddElement Sample)
+        let centres = m.snappedCentres
+        Assert.True(close (centres.[SceneElementIndex 0]).z 0.12)
+        Assert.True(close (centres.[SceneElementIndex 1]).z 0.12, $"the detector rides the raised beam (z = %g{(centres.[SceneElementIndex 1]).z})")
+        Assert.True(close (centres.[SceneElementIndex 2]).z 0.12, $"the sample rides the raised beam (z = %g{(centres.[SceneElementIndex 2]).z})")
+        Assert.All(snd (m.mainSnap), fun s -> Assert.True(abs (s.start.z - 0.12) < 1.0e-9 && abs (s.finish.z - 0.12) < 1.0e-9))
 
     [<Fact>]
     let ``an unlocked light source rotates and swings the beam; the table has no R1 / R2 lock`` () =
-        let m = sourceSelected () |> updateTableAndElementRotation ToggleR2Lock |> updateTableAndElementRotation (RotateR2By 15.0)
+        let m = sourceSelected () |> updateTableAndElementRotation ToggleR2Lock |> updateTableAndElementRotation (RotateR2By (BarDegrees 15.0))
         Assert.True(close (elem 0 m).placement.r2.degrees 15.0)
-        Assert.True(abs ((snappedCentres m).[1]).y > 1.0e-3, "the detector follows the steered beam off the x axis")
+        Assert.True(abs ((m.snappedCentres).[SceneElementIndex 1]).y > 1.0e-3, "the detector follows the steered beam off the x axis")
         Assert.False((elem 0 (updateTableAndElementRotation ToggleR1Lock m)).placement.r1Locked = RotationLocked)
         let t = { initMain () with selection = TableSelected }
         Assert.Equal<TableAndElementRotationModel>(t, updateTableAndElementRotation ToggleR1Lock t)
@@ -148,8 +148,8 @@ module SourceAndDetectorMoveTests =
     let ``Reset returns the light source to its default point even while its moves are locked`` () =
         let m =
             unlockAllMoves (sourceSelected ())
-            |> updateTableAndElementRotation (MoveSelectedTo (TableX, 0.0))
-            |> updateTableAndElementRotation (MoveSelectedTo (TableZ, 0.3))
+            |> updateTableAndElementRotation (MoveSelectedTo (TableX, BarMeters 0.0))
+            |> updateTableAndElementRotation (MoveSelectedTo (TableZ, BarMeters 0.3))
             |> unlockAllMoves
         let reset = updateTableAndElementRotation ResetSelectedPosition m
         let x, y, z = sourceAt reset
@@ -160,14 +160,14 @@ module SourceAndDetectorMoveTests =
 
     [<Fact>]
     let ``a detector slides anywhere past the start of its ray, uncapped, and Reset puts it 1 m along`` () =
-        let m = { initMain () with selection = ElementSelected 1 }
-        Assert.Equal(RayPositionControls.AtLeast (BarMeters -1.0), alongBeamRange m 1)
-        let far = updateTableAndElementRotation (SlideSelectedTo 7.5) m
-        Assert.True(close (elementX (elem 1 far)) 7.5)
-        Assert.True(abs (((snappedCentres far).[1]).x - 7.5) < 1.0e-9, "laid out 7.5 m along the straight beam")
-        Assert.True(close (elementX (elem 1 (m |> updateTableAndElementRotation (SlideSelectedBy 5.0) |> updateTableAndElementRotation (SlideSelectedBy 5.0)))) 11.0)
-        Assert.True(close (elementX (elem 1 (updateTableAndElementRotation (SlideSelectedTo -4.0) m))) -1.0, "never before the source")
-        Assert.True(close (elementX (elem 1 (updateTableAndElementRotation ResetSelectedPosition far))) 1.0)
+        let m = { initMain () with selection = ElementSelected (SceneElementIndex 1) }
+        Assert.Equal(RayPositionControls.AtLeast (BarMeters -1.0), alongBeamRange m (SceneElementIndex 1))
+        let far = updateTableAndElementRotation (SlideSelectedTo (BarMeters 7.5)) m
+        Assert.True(close ((elem 1 far).elementX) 7.5)
+        Assert.True(abs (((far.snappedCentres).[SceneElementIndex 1]).x - 7.5) < 1.0e-9, "laid out 7.5 m along the straight beam")
+        Assert.True(close ((elem 1 (m |> updateTableAndElementRotation (SlideSelectedBy (BarMeters 5.0)) |> updateTableAndElementRotation (SlideSelectedBy (BarMeters 5.0)))).elementX) 11.0)
+        Assert.True(close ((elem 1 (updateTableAndElementRotation (SlideSelectedTo (BarMeters -4.0)) m)).elementX) -1.0, "never before the source")
+        Assert.True(close ((elem 1 (updateTableAndElementRotation ResetSelectedPosition far)).elementX) 1.0)
 
     // ------------------------------ the ray rule (update) ------------------------------
 
@@ -175,42 +175,42 @@ module SourceAndDetectorMoveTests =
     let ``an element is held between the source and the detector, and moving the detector out extends its ray`` () =
         // initMain = [ source (x = -1); detector (x = +1) ] + a sample (2, selected).
         let s = updateTableAndElementRotation (AddElement Sample) (initMain ())
-        Assert.Equal(boundedRange -1.0 1.0, alongBeamRange s 2)
-        Assert.True(close (elementX (elem 2 (updateTableAndElementRotation (SlideSelectedTo 7.5) s))) 1.0, "stops at the detector")
-        Assert.True(close (elementX (elem 2 (updateTableAndElementRotation (SlideSelectedTo -7.5) s))) -1.0, "stops at the source")
+        Assert.Equal(boundedRange -1.0 1.0, alongBeamRange s (SceneElementIndex 2))
+        Assert.True(close ((elem 2 (updateTableAndElementRotation (SlideSelectedTo (BarMeters 7.5)) s)).elementX) 1.0, "stops at the detector")
+        Assert.True(close ((elem 2 (updateTableAndElementRotation (SlideSelectedTo (BarMeters -7.5)) s)).elementX) -1.0, "stops at the source")
         // Move the detector 5 m out: the sample may now follow it.
-        let detectorOut = { s with selection = ElementSelected 1 } |> updateTableAndElementRotation (SlideSelectedTo 5.0)
-        let s' = { detectorOut with selection = ElementSelected 2 }
-        Assert.Equal(boundedRange -1.0 5.0, alongBeamRange s' 2)
-        Assert.True(close (elementX (elem 2 (updateTableAndElementRotation (SlideSelectedTo 4.0) s'))) 4.0)
+        let detectorOut = { s with selection = ElementSelected (SceneElementIndex 1) } |> updateTableAndElementRotation (SlideSelectedTo (BarMeters 5.0))
+        let s' = { detectorOut with selection = ElementSelected (SceneElementIndex 2) }
+        Assert.Equal(boundedRange -1.0 5.0, alongBeamRange s' (SceneElementIndex 2))
+        Assert.True(close ((elem 2 (updateTableAndElementRotation (SlideSelectedTo (BarMeters 4.0)) s')).elementX) 4.0)
         // A moved source carries its ray: the span moves with it, its length unchanged.
         let shifted =
-            { s with selection = ElementSelected 0 }
+            { s with selection = ElementSelected (SceneElementIndex 0) }
             |> unlockAllMoves
-            |> updateTableAndElementRotation (MoveSelectedTo (TableX, -3.0))
-        Assert.Equal(boundedRange -3.0 -1.0, alongBeamRange shifted 2)
+            |> updateTableAndElementRotation (MoveSelectedTo (TableX, BarMeters -3.0))
+        Assert.Equal(boundedRange -3.0 -1.0, alongBeamRange shifted (SceneElementIndex 2))
 
     [<Fact>]
     let ``with no detector on it a ray ends 1 m along; a reflected ray starts at its host`` () =
         // Remove the detector: the main beam is open and ends 1 m along.
         let open' =
-            { initMain () with selection = ElementSelected 1 }
-            |> updateTableAndElementRotation RemoveSelected
+            { initMain () with selection = ElementSelected (SceneElementIndex 1) }
+            |> updateTableAndElementRotation RemoveSelectedElement
             |> updateTableAndElementRotation (AddElement Sample)
-        Assert.Equal(boundedRange -1.0 (openRayEndX open'), alongBeamRange open' 1)
+        Assert.Equal(boundedRange -1.0 (open'.openRayEndX), alongBeamRange open' (SceneElementIndex 1))
         // A sample bound to a glass plate (emits R and T) opens a reflected ray; a lens moved onto it is
         // held between the plate and 1 m.
         let plateId = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
         let scene =
             initMain ()
             |> updateTableAndElementRotation (AddElement Sample)
-            |> fun m -> updateTableAndElementRotation (BindValueIdTo ((elem 2 m).id, plateId.value)) m
-            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, 30.0))
+            |> fun m -> updateTableAndElementRotation (BindValueIdTo ((elem 2 m).id, plateId)) m
+            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 30.0))
             |> updateTableAndElementRotation (AddElement Lens)
         let onReflected = updateTableAndElementRotation (PlaceOnBeam ((elem 3 scene).id, BeamLayout.OnReflectedBeamOf (elem 2 scene).id)) scene
-        let hostX = elementX (elem 2 onReflected)
-        Assert.Equal(boundedRange hostX (openRayEndX onReflected), alongBeamRange onReflected 3)
-        Assert.True(close (elementX (elem 3 onReflected)) (elementX (elem 3 scene)), "already past its host, it keeps its place")
+        let hostX = (elem 2 onReflected).elementX
+        Assert.Equal(boundedRange hostX (onReflected.openRayEndX), alongBeamRange onReflected (SceneElementIndex 3))
+        Assert.True(close ((elem 3 onReflected).elementX) ((elem 3 scene).elementX), "already past its host, it keeps its place")
 
     // ------------------------------ the bays (headless) ------------------------------
 
@@ -273,7 +273,7 @@ module SourceAndDetectorMoveTests =
             Assert.DoesNotContain(ConstructorUiId.rayPositionMinusButton.value, sourceIds)
             // Switching the selection swaps the bar (keyed, so no named field is patched across).
             select dispatch getModel 1
-            Assert.Equal(ElementSelected 1, (getModel ()).selection)
+            Assert.Equal(ElementSelected (SceneElementIndex 1), (getModel ()).selection)
             let detectorIds = visibleIds window
             Assert.Contains(ConstructorUiId.rayPositionMinusButton.value, detectorIds)
             Assert.DoesNotContain(ConstructorUiId.tablePositionXLockButton.value, detectorIds)
@@ -293,8 +293,8 @@ module SourceAndDetectorMoveTests =
             Assert.Contains(ConstructorUiId.rotationLockR1Button.value, elementIds)
             Assert.Contains(ConstructorUiId.rotationLockR2Button.value, elementIds)
             // A click on the empty plate selects the table: the R1 / R2 locks hide, R3's stays.
-            dispatch (PointerDown { sx = center.sx; sy = center.sy + 60.0 })
-            dispatch (PointerUp { sx = center.sx; sy = center.sy + 60.0 })
+            dispatch (PointerDown { sx = OpticalConstructor.Ui.TableScene.center.sx; sy = OpticalConstructor.Ui.TableScene.center.sy + 60.0 })
+            dispatch (PointerUp { sx = OpticalConstructor.Ui.TableScene.center.sx; sy = OpticalConstructor.Ui.TableScene.center.sy + 60.0 })
             Assert.Equal(TableSelected, (getModel ()).selection)
             let tableIds = visibleIds window
             Assert.DoesNotContain(ConstructorUiId.rotationLockR1Button.value, tableIds)

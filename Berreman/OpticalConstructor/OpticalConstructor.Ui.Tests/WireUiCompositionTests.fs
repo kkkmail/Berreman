@@ -135,7 +135,7 @@ module WireUiCompositionTests =
     let private openMaterialsWindow (root : Window) : Window =
         let opened, sub = trackOpened ()
         use _sub = sub
-        clickOn root WorkbenchIds.openMaterialsButton
+        clickOn root ConstructorUiId.openMaterialsWindowButton.value
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
         Assert.True(matchesId ConstructorUiId.materialsWindow.value opened.[0], "the strip button must open the Materials window")
@@ -149,7 +149,7 @@ module WireUiCompositionTests =
     let private openLibraryWindow (root : Window) : Window =
         let opened, sub = trackOpened ()
         use _sub = sub
-        clickOn root WorkbenchIds.openLibraryButton
+        clickOn root ConstructorUiId.openLibraryWindowButton.value
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
         Assert.True(matchesId ConstructorUiId.libraryWindow.value opened.[0], "the strip button must open the Library window")
@@ -165,13 +165,13 @@ module WireUiCompositionTests =
             // One frame per bay, on the real window (the whole ribbon surface — a bay whose
             // content throws fails the sweep here). Spec 0038 steps 013/015: neither workbench
             // tab is in the roster any more.
-            Assert.DoesNotContain("Materials", BayNames.allBayNames)
-            Assert.DoesNotContain("Library", BayNames.allBayNames)
+            Assert.DoesNotContain(Ribbon.BayName "Materials", BayNames.allBayNames)
+            Assert.DoesNotContain(Ribbon.BayName "Library", BayNames.allBayNames)
             for bay in BayNames.allBayNames do
-                clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey bay)).value
-                Assert.True(window.IsVisible, $"the %s{bay} bay must render one frame without throwing")
+                clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey bay.value)).value
+                Assert.True(window.IsVisible, $"the %s{bay.value} bay must render one frame without throwing")
             // Selector: the kind-constrained binding surface mounts (its ids are unconditional).
-            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.selector)).value
+            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.selector.value)).value
             for id in [ ConstructorUiId.libraryKindLabel.value; ConstructorUiId.libraryBoundReadout.value; ConstructorUiId.libraryTree.value ] do
                 Assert.True(isPresent window id, $"the Select bay must mount %s{id}")
             // Materials: the strip button opens the REAL single-instance Materials window,
@@ -221,7 +221,7 @@ module WireUiCompositionTests =
             opened.[0].Close()
             // Library window (spec 0038 step 015) → narrow, select the leaf, Edit: the REAL
             // step-022 Sample editor mounts, seeded with the picked sample.
-            clickOn window WorkbenchIds.openLibraryButton
+            clickOn window ConstructorUiId.openLibraryWindowButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             let libraryWindow = opened.[1]

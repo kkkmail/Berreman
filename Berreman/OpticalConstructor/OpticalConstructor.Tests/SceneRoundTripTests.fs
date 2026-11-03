@@ -30,19 +30,19 @@ module SceneRoundTripTests =
     let private sourceEl : TestElement =
         { TestElement.id = Library.ElementId "src"
           placement = { ElementPlacement.create LightSource { x = -0.75<meter>; y = 0.10<meter> } with valueId = Some (ElementValueId "src-600") }
-          zoom = 1.5
+          zoom = BeamLayout.ElementZoom 1.5
           beam = BeamLayout.OnMainBeam }
 
     let private polarizerEl : TestElement =
         { TestElement.id = Library.ElementId "pol"
           placement = { ElementPlacement.create LinearPolarizer { x = 0.0<meter>; y = 0.0<meter> } with valueId = Some (ElementValueId "pol-lp") }
-          zoom = 3.25
+          zoom = BeamLayout.ElementZoom 3.25
           beam = BeamLayout.OnMainBeam }
 
     let private detectorEl : TestElement =
         { TestElement.id = Library.ElementId "det"
           placement = ElementPlacement.create Detector { x = 0.80<meter>; y = -0.20<meter> }
-          zoom = 2.0
+          zoom = BeamLayout.ElementZoom 2.0
           // Spec 0046: the detector sits on the polarizer's REFLECTED ray, so the round-trip proves the
           // beam host survives save-load too.
           beam = BeamLayout.OnReflectedBeamOf (Library.ElementId "pol") }
@@ -59,7 +59,7 @@ module SceneRoundTripTests =
         { initMain () with
             elements = [ sourceEl; polarizerEl; detectorEl ]
             view = dialledView
-            snapChain = true
+            snapChain = Scene.SnapToBeam
             // Spec 0046: the non-default rotation pivot, so the round-trip proves it survives too.
             rotationPivot = BeamLayout.PivotAtIncidentFace }
 
@@ -70,7 +70,7 @@ module SceneRoundTripTests =
         let name = sceneName "Experiment A"
 
         // capture -> save.
-        let captured = captureScene model
+        let captured = model.captureScene
         match proxy.saveScene name captured with
         | Ok () -> ()
         | Error e -> Assert.Fail($"saveScene failed: %A{e}")
@@ -112,15 +112,15 @@ module SceneRoundTripTests =
             restored.elements |> List.map (fun e -> e.beam))
         // ... and the table view state + snap flag.
         Assert.Equal<Table.TableViewState>(dialledView, restored.view)
-        Assert.True(restored.snapChain)
+        Assert.Equal(Scene.SnapToBeam, restored.snapChain)
         Assert.Equal(BeamLayout.PivotAtIncidentFace, restored.rotationPivot)
 
     [<Fact>]
     let ``saveScene overwrites a scene stored under the same name (upsert)`` () =
         let proxy = SceneProxy.createInMemory ()
         let name = sceneName "Bench"
-        let first = captureScene (sourceModel ())
-        let second = captureScene { sourceModel () with snapChain = false; view = Table.defaultView }
+        let first = (sourceModel ()).captureScene
+        let second = ({ sourceModel () with snapChain = Scene.FreePlacement; view = Table.defaultView }).captureScene
 
         match proxy.saveScene name first with
         | Ok () -> ()
@@ -150,7 +150,7 @@ module SceneRoundTripTests =
         // A `SceneName` constructed OUTSIDE `tryCreate` can carry a blank; the store re-validates
         // and rejects it rather than storing an unaddressable key.
         let proxy = SceneProxy.createInMemory ()
-        match proxy.saveScene (SceneName "   ") (captureScene (sourceModel ())) with
+        match proxy.saveScene (SceneName "   ") ((sourceModel ()).captureScene) with
         | Error (InvalidSceneErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected Error (InvalidSceneErr _), got %A{other}")
         // ... and nothing was stored.

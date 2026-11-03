@@ -152,6 +152,22 @@ type ConstructorUiId =
     /// The chart description text shown under the inline chart.
     static member experimentChartDescription : ConstructorUiId = ConstructorUiId "ExperimentChartDescription"
 
+    // --- The Main workbench's own surfaces around the shared controls (spec 0038 steps 013-017, 037). ---
+    /// The ribbon tab-strip row's right-aligned buttons that open the single-instance Materials / Library windows.
+    static member openMaterialsWindowButton : ConstructorUiId = ConstructorUiId "OpenMaterialsWindowButton"
+    static member openLibraryWindowButton : ConstructorUiId = ConstructorUiId "OpenLibraryWindowButton"
+    /// The staleness status line under the readout (a targeted Select return whose element has vanished).
+    static member workbenchSelectStatus : ConstructorUiId = ConstructorUiId "WorkbenchSelectStatus"
+    /// The Select bay's Choose… verb and its inline quick-pick strip.
+    static member selectorChooseButton : ConstructorUiId = ConstructorUiId "SelectorChooseButton"
+    static member selectorQuickPickStrip : ConstructorUiId = ConstructorUiId "SelectorQuickPickStrip"
+    /// The experiment-collection builder: the name field, Save, the status line, the saved list and the data files.
+    static member collectionNameField : ConstructorUiId = ConstructorUiId "CollectionNameField"
+    static member saveCollectionButton : ConstructorUiId = ConstructorUiId "SaveCollectionButton"
+    static member collectionStatus : ConstructorUiId = ConstructorUiId "CollectionStatus"
+    static member savedCollections : ConstructorUiId = ConstructorUiId "SavedCollections"
+    static member experimentDataFiles : ConstructorUiId = ConstructorUiId "ExperimentDataFiles"
+
     // --- The materials workbench list surface (`MaterialsControls`). ---
     static member materialSearchBox : ConstructorUiId = ConstructorUiId "MaterialSearchBox"
     static member materialCategoryFilter : ConstructorUiId = ConstructorUiId "MaterialCategoryFilter"

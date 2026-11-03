@@ -113,7 +113,7 @@ module ScrollExtentTests =
     /// chart, description, collection row, export, collection builder) above the table.
     let private filledExperiments () : TableAndElementRotationModel =
         let m = initMain () |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
-        let pid = (List.item 2 m.elements).id.value
+        let pid = (List.item 2 m.elements).id
         m |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation ExpCommit |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation (SelectBay BayNames.experiments)
 
     // ------------------------------ the law, window by window ------------------------------
@@ -122,7 +122,7 @@ module ScrollExtentTests =
     [<Trait("Category", "ui-smoke")>]
     let ``Main: every bay leaves the whole page reachable — the table below a tall bay included`` () =
         for bay in BayNames.allBayNames do
-            assertReachable $"Main/%s{bay}" (fun () -> constructorWindow ({ initMain () with selection = ElementSelected 0 } |> updateTableAndElementRotation (SelectBay bay)))
+            assertReachable $"Main/%s{bay.value}" (fun () -> constructorWindow ({ initMain () with selection = ElementSelected (SceneElementIndex 0) } |> updateTableAndElementRotation (SelectBay bay)))
         assertReachable "Main/Experiments (collected + chart)" (fun () -> constructorWindow (filledExperiments ()))
 
     [<Fact>]
@@ -216,17 +216,17 @@ module ScrollExtentTests =
     [<Fact>]
     let ``wheelTarget: the page scrolls first until the table is in view; a modifier is always the table's`` () =
         let page (top : float) (offset : float) : PageScroll option =
-            Some { tableTop = top; tableBottom = top + 560.0; viewportHeight = 600.0; offset = offset; maxOffset = 400.0 }
-        Assert.Equal(WheelToPage, wheelTarget Set.empty (page 458.0 0.0) -1.0)          // table cut off, page can go down
-        Assert.Equal(WheelToTable, wheelTarget Set.empty (page 20.0 400.0) -1.0)        // table fully in view
-        Assert.Equal(WheelToTable, wheelTarget Set.empty (page 458.0 0.0) 1.0)          // cut off, but the page is at its top
-        Assert.Equal(WheelToPage, wheelTarget Set.empty (page -200.0 300.0) 1.0)        // cut off at the top, page can go up
-        Assert.Equal(WheelToTable, wheelTarget (Set.ofList [ ModCtrl ]) (page 458.0 0.0) -1.0)
-        Assert.Equal(WheelToTable, wheelTarget (Set.ofList [ ModShift ]) (page 458.0 0.0) -1.0)
-        Assert.Equal(WheelToTable, wheelTarget Set.empty None -1.0)
+            Some { tableTop = PagePixels top; tableBottom = PagePixels (top + 560.0); viewportHeight = PagePixels 600.0; offset = PagePixels offset; maxOffset = PagePixels 400.0 }
+        Assert.Equal(WheelToPage, wheelTarget Set.empty (page 458.0 0.0) (WheelNotches -1))          // table cut off, page can go down
+        Assert.Equal(WheelToTable, wheelTarget Set.empty (page 20.0 400.0) (WheelNotches -1))        // table fully in view
+        Assert.Equal(WheelToTable, wheelTarget Set.empty (page 458.0 0.0) (WheelNotches 1))          // cut off, but the page is at its top
+        Assert.Equal(WheelToPage, wheelTarget Set.empty (page -200.0 300.0) (WheelNotches 1))        // cut off at the top, page can go up
+        Assert.Equal(WheelToTable, wheelTarget (Set.ofList [ ModCtrl ]) (page 458.0 0.0) (WheelNotches -1))
+        Assert.Equal(WheelToTable, wheelTarget (Set.ofList [ ModShift ]) (page 458.0 0.0) (WheelNotches -1))
+        Assert.Equal(WheelToTable, wheelTarget Set.empty None (WheelNotches -1))
         // A table taller than the viewport is never fully in view: the page scrolls to its end, then the table zooms.
-        let tall = Some { tableTop = -40.0; tableBottom = 520.0; viewportHeight = 480.0; offset = 600.0; maxOffset = 600.0 }
-        Assert.Equal(WheelToTable, wheelTarget Set.empty tall -1.0)
+        let tall = Some { tableTop = PagePixels -40.0; tableBottom = PagePixels 520.0; viewportHeight = PagePixels 480.0; offset = PagePixels 600.0; maxOffset = PagePixels 600.0 }
+        Assert.Equal(WheelToTable, wheelTarget Set.empty tall (WheelNotches -1))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

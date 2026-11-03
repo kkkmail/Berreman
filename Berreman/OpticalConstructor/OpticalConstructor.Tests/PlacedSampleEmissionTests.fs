@@ -65,10 +65,10 @@ module PlacedSampleEmissionTests =
     /// Select the element at index `i`, then bind it to a Library entry (the `BindValueId` MVU path,
     /// which converges on the one targeted `BindValueIdTo` commit arm).
     let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
-        { m with selection = ElementSelected i } |> updateTableAndElementRotation (BindValueId entryId)
+        { m with selection = ElementSelected (SceneElementIndex i) } |> updateTableAndElementRotation (BindValueId (ElementValueId entryId))
 
     let private emissionOf (i : int) (m : TableAndElementRotationModel) : Emission = (List.item i m.elements).placement.emission
-    let private idOf (i : int) (m : TableAndElementRotationModel) : string = (List.item i m.elements).id.value
+    let private idOf (i : int) (m : TableAndElementRotationModel) : Library.ElementId = (List.item i m.elements).id
 
     [<Fact>]
     let ``a placed Mirror sample defaults to reflected-only and its experiment to CaptureReflected`` () =

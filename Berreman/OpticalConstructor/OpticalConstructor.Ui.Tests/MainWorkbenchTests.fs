@@ -121,13 +121,13 @@ module MainWorkbenchTests =
         // Spec 0038 steps 013/015: the Materials bay left the ribbon at step 013 and the
         // Library (samples workbench) bay leaves with step 015 — both workbenches are
         // single-instance WINDOWS now, and no full-surface bay remains.
-        Assert.DoesNotContain("Materials", BayNames.allBayNames)
-        Assert.DoesNotContain("Library", BayNames.allBayNames)
+        Assert.DoesNotContain(Ribbon.BayName "Materials", BayNames.allBayNames)
+        Assert.DoesNotContain(Ribbon.BayName "Library", BayNames.allBayNames)
         Assert.Contains(BayNames.selector, BayNames.allBayNames)
         Assert.Equal(Some BayNames.details, List.tryLast BayNames.allBayNames)
         let m = freshMain ()
         let bays = mainBays m ignore
-        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name.value))
+        Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
         for bay in bays do
             Assert.Equal(Ribbon.InRibbonPane, bay.mode)
 
@@ -178,7 +178,7 @@ module MainWorkbenchTests =
 
     [<Fact>]
     let ``sampleBandsState collapses a period group to x-N bands (the Details-bay shape)`` () =
-        let st = sampleBandsState SeedSamples.multilayerQw
+        let st = SeedSamples.multilayerQw.bandsState
         Assert.Contains("Quarter-wave", st.title.value)
         // One band per unit-cell layer (kept collapsed, ×20) plus the closing single layer.
         Assert.Equal(3, List.length st.bands)
@@ -200,15 +200,15 @@ module MainWorkbenchTests =
                          "the Materials bay tab must be gone from the ribbon")
             Assert.False(isPresent window (ConstructorUiId.ribbonTab (ConstructorUiKey "Library")).value,
                          "the Library bay tab must be gone from the ribbon")
-            Assert.True(isPresent window WorkbenchIds.openMaterialsButton,
+            Assert.True(isPresent window ConstructorUiId.openMaterialsWindowButton.value,
                         "the ribbon strip row must carry the right-aligned Materials… button")
-            Assert.True(isPresent window WorkbenchIds.openLibraryButton,
+            Assert.True(isPresent window ConstructorUiId.openLibraryWindowButton.value,
                         "the ribbon strip row must carry the right-aligned Library… button")
             // With no full-surface bay left, every bay keeps the shared table canvas below the
             // strip — switching to the LAST bay (Details) and back never drops it.
             Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "the default bay keeps the table canvas below the ribbon strip")
-            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.details)).value
+            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.details.value)).value
             Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "an in-pane bay keeps the table canvas below the strip")
-            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.rotation)).value
+            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.rotation.value)).value
             Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "returning to a table bay keeps the table canvas")
             window.Close())

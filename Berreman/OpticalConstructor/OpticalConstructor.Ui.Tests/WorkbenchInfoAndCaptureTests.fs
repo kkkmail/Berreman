@@ -37,12 +37,12 @@ module WorkbenchInfoAndCaptureTests =
     module SE = LightSourceEditorView
 
     let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
-    let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, entryId)) m
+    let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, ElementValueId entryId)) m
     let private glassFilm200Id : string = (SampleItem SeedSamples.glassFilm200).entryId.value
     let private glassPlate1mmId : string = (SampleItem SeedSamples.glassPlate1mm).entryId.value
 
     let private canvasPointOf (i : int) (m : TableAndElementRotationModel) : ScreenPoint =
-        TableView.project pixelsPerMeter center m.view ((snappedCentres m).[i])
+        TableScene.projectOnScene m.view (m.snappedCentres.[SceneElementIndex i])
 
     let private mountView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : Window =
         let window = Window(Width = 1200.0, Height = 1000.0)
@@ -66,11 +66,11 @@ module WorkbenchInfoAndCaptureTests =
     [<Fact>]
     let ``elementInfo names the element and its bound entry, or says it is unbound`` () =
         let m = initMain () |> bind 0 "src-hene-633" |> updateTableAndElementRotation (AddElement CatalogueKind.Sample)
-        let heading, detail = elementInfo m 0
+        let heading, detail = (fun (info : ElementInfo) -> info.heading.value, info.detail.value) (elementInfo m (SceneElementIndex 0))
         Assert.Equal("Light source #1", heading)
         Assert.Contains("HeNe laser 632.8 nm", detail)
         Assert.Contains("632.8 nm", detail)
-        Assert.Contains("Unbound", snd (elementInfo m 2))
+        Assert.Contains("Unbound", (elementInfo m (SceneElementIndex 2)).detail.value)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -158,32 +158,32 @@ module WorkbenchInfoAndCaptureTests =
     let private filmOnR2 (source : string) : TableAndElementRotationModel =
         let m = initMain () |> bind 0 source |> updateTableAndElementRotation (AddElement CatalogueKind.Sample) |> bind 2 glassFilm200Id
         m
-        |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id.value)
+        |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id)
         |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
         |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
 
     [<Fact>]
     let ``a tunable source is set within its limits while R2 varies; a fixed line shows read-only and ignores a setting`` () =
         let tunable = filmOnR2 "src-xe-mono"
-        match (experimentState tunable).sourceWaveLength with
+        match (tunable.experimentState).sourceWaveLength with
         | ExperimentControls.TunableSourceWaveLength (setting, limits) ->
             Assert.True(abs (setting.value - 600.0) < 1e-9 && abs (limits.lowest.value - 190.0) < 1e-9 && abs (limits.highest.value - 1000.0) < 1e-9)
         | other -> Assert.Fail($"expected a tunable setting, got %A{other}")
-        let clamped = updateTableAndElementRotation (ExpSetSourceWaveLength 2000.0) tunable
+        let clamped = updateTableAndElementRotation (ExpSetSourceWaveLength (ExperimentControls.BayNanometers 2000.0)) tunable
         match clamped.experimentCollection.draft.sourceWaveLengthOpt with
         | Some w -> Assert.True(abs (w.value / nmToMeter / oneNanometer - 1000.0) < 1e-9)
         | None -> Assert.Fail "the setting must be kept (clamped)"
         let fixedLine = filmOnR2 "src-hene-633"
-        match (experimentState fixedLine).sourceWaveLength with
+        match (fixedLine.experimentState).sourceWaveLength with
         | ExperimentControls.FixedSourceWaveLength setting -> Assert.True(abs (setting.value - 632.8) < 1e-9)
         | other -> Assert.Fail($"expected a fixed line, got %A{other}")
-        Assert.Equal<TableAndElementRotationModel>(fixedLine, updateTableAndElementRotation (ExpSetSourceWaveLength 500.0) fixedLine)
+        Assert.Equal<TableAndElementRotationModel>(fixedLine, updateTableAndElementRotation (ExpSetSourceWaveLength (ExperimentControls.BayNanometers 500.0)) fixedLine)
 
     [<Fact>]
     let ``the run uses the source's wavelength: a tunable source set to 632.8 nm equals the HeNe line`` () =
-        let tuned = filmOnR2 "src-xe-mono" |> updateTableAndElementRotation (ExpSetSourceWaveLength 632.8)
+        let tuned = filmOnR2 "src-xe-mono" |> updateTableAndElementRotation (ExpSetSourceWaveLength (ExperimentControls.BayNanometers 632.8))
         let line = filmOnR2 "src-hene-633"
-        let ys (m : TableAndElementRotationModel) : float list = (List.head (experimentResult m).series).points |> List.map (fun p -> p.y)
+        let ys (m : TableAndElementRotationModel) : float list = (List.head (m.experimentResult).series).points |> List.map (fun p -> p.y)
         List.zip (ys tuned) (ys line)
         |> List.iter (fun (a, b) -> Assert.True(abs (a - b) < 1e-12, $"%g{a} vs %g{b}"))
         // ... and it differs from the 600 nm default (the wavelength really is used).
@@ -197,19 +197,19 @@ module WorkbenchInfoAndCaptureTests =
         let m =
             initMain ()
             |> updateTableAndElementRotation (AddElement CatalogueKind.Sample) |> bind 2 glassPlate1mmId
-            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, 30.0))
+            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 30.0))
             |> updateTableAndElementRotation (AddElement Detector)
             |> fun m -> bind 3 "det-ellipsometer" m
         Assert.Equal(BeamLayout.OnReflectedBeamOf (elem 2 m).id, (elem 3 m).beam)
         let chosen =
             m
-            |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id.value)
+            |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id)
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
-        let offers = (experimentState chosen).measurementOffers |> List.map (fun o -> o.label.value)
+        let offers = (chosen.experimentState).measurementOffers |> List.map (fun o -> o.label.value)
         Assert.Contains("Transmitted (T) — intensity", offers)
         Assert.Contains("Reflected (R) — Ψ, Δ (ellipsometer)", offers)
-        let chart = experimentResult chosen
+        let chart = chosen.experimentResult
         Assert.Equal<string list>([ "Intensity (T)"; "Ψ (R)"; "Δ (R)" ], chart.series |> List.map (fun s -> s.name.value))
 
     [<Fact>]
@@ -250,9 +250,9 @@ module WorkbenchInfoAndCaptureTests =
     let ``Export data hands the draft's run to the export seam, and says so when there is nothing to export`` () =
         let store = ExperimentExport.createInMemoryExperimentExport ()
         let nothing = updateTableAndElementRotation ExportExperimentData { initMain () with experimentExport = store.proxy }
-        Assert.StartsWith("Nothing exported", nothing.exportStatus |> Option.defaultValue "")
+        Assert.StartsWith("Nothing exported", nothing.exportStatus |> Option.map (fun c -> c.value) |> Option.defaultValue "")
         let exported = updateTableAndElementRotation ExportExperimentData { filmOnR2 "src-600" with experimentExport = store.proxy }
-        Assert.StartsWith("Exported 1 series", exported.exportStatus |> Option.defaultValue "")
+        Assert.StartsWith("Exported 1 series", exported.exportStatus |> Option.map (fun c -> c.value) |> Option.defaultValue "")
         match store.exported () with
         | [ run ] ->
             Assert.Equal("Incidence angle R2 (°)", run.xLabel.value)
@@ -268,17 +268,17 @@ module WorkbenchInfoAndCaptureTests =
             |> updateTableAndElementRotation (AddElement LinearPolarizer)                       // index 2, R1 = 0, before the sample
             |> updateTableAndElementRotation (AddElement CatalogueKind.Sample) |> bind 3 glassFilm200Id
             |> updateTableAndElementRotation (AddElement LinearPolarizer)                       // index 4, after the sample
-            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, 90.0))
+            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 90.0))
         let run =
             m
-            |> updateTableAndElementRotation (ExpChooseElement (elem 3 m).id.value)
+            |> updateTableAndElementRotation (ExpChooseElement (elem 3 m).id)
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
-        let ys = (List.head (experimentResult run).series).points |> List.map (fun p -> p.y)
+        let ys = (List.head (run.experimentResult).series).points |> List.map (fun p -> p.y)
         Assert.True(List.forall (fun y -> abs y < 1e-9) ys, $"crossed polarizers must pass nothing, max %g{List.max ys}")
         // Parallel instead: the film's own transmittance comes through.
-        let parallel' = run |> fun r -> { r with selection = ElementSelected 4 } |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, 0.0))
-        Assert.True((List.head (experimentResult parallel').series).points |> List.exists (fun p -> p.y > 0.5))
+        let parallel' = run |> fun r -> { r with selection = ElementSelected (SceneElementIndex 4) } |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 0.0))
+        Assert.True((List.head (parallel'.experimentResult).series).points |> List.exists (fun p -> p.y > 0.5))
 
     // ------------------------------ the source editor's tunable mode ------------------------------
 

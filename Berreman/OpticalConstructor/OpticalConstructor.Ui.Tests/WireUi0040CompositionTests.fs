@@ -184,7 +184,7 @@ module WireUi0040CompositionTests =
     let private openMaterialsWindow (root : Window) : Window =
         let opened, sub = trackOpened ()
         use _sub = sub
-        clickOn root WorkbenchIds.openMaterialsButton
+        clickOn root ConstructorUiId.openMaterialsWindowButton.value
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
         Assert.True(matchesId ConstructorUiId.materialsWindow.value opened.[0], "the strip button must open the Materials window")
@@ -197,7 +197,7 @@ module WireUi0040CompositionTests =
     let private openLibraryWindow (root : Window) : Window =
         let opened, sub = trackOpened ()
         use _sub = sub
-        clickOn root WorkbenchIds.openLibraryButton
+        clickOn root ConstructorUiId.openLibraryWindowButton.value
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
         Assert.True(matchesId ConstructorUiId.libraryWindow.value opened.[0], "the strip button must open the Library window")

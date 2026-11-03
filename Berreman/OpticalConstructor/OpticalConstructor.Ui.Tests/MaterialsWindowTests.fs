@@ -244,7 +244,7 @@ module MaterialsWindowTests =
             "FacetTreeNode_entry:" + string MaterialIds.glass152.value,
             (ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
         // The constructor-side entry point: the ribbon strip's right-aligned button.
-        Assert.Equal("OpenMaterialsWindowButton", Scene.WorkbenchIds.openMaterialsButton)
+        Assert.Equal("OpenMaterialsWindowButton", ConstructorUiId.openMaterialsWindowButton.value)
 
     // ============================ pure: projection ============================
 
@@ -713,7 +713,7 @@ module MaterialsWindowTests =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshStores ()
             let window = mountMain materials samples categories
-            Assert.True(isPresent window Scene.WorkbenchIds.openMaterialsButton,
+            Assert.True(isPresent window ConstructorUiId.openMaterialsWindowButton.value,
                         "the ribbon strip row must carry the right-aligned Materials… button")
             // Observe the windows the REAL defaults open (the WindowOpenedEvent seam the desktop
             // lifetime itself uses) — subscribed only after the Main window is shown.
@@ -724,7 +724,7 @@ module MaterialsWindowTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            clickOn window Scene.WorkbenchIds.openMaterialsButton
+            clickOn window ConstructorUiId.openMaterialsWindowButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let materialsWindow = opened.[0]
@@ -732,14 +732,14 @@ module MaterialsWindowTests =
             Assert.True(materialsWindow.IsVisible)
             // The single-instance acceptance: a second click ACTIVATES the live window — the
             // shared registry under MaterialsWindowKey creates nothing new.
-            clickOn window Scene.WorkbenchIds.openMaterialsButton
+            clickOn window ConstructorUiId.openMaterialsWindowButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             Assert.True(materialsWindow.IsVisible, "the activated window must still be the live one")
             // Close → the registry forgets the key, so the NEXT open creates afresh.
             materialsWindow.Close()
             Dispatcher.UIThread.RunJobs()
-            clickOn window Scene.WorkbenchIds.openMaterialsButton
+            clickOn window ConstructorUiId.openMaterialsWindowButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             opened.[1].Close()
@@ -1158,7 +1158,7 @@ module MaterialsWindowTests =
                 }
             let mainWindow = HostWindow(Width = 980.0, Height = 1050.0)
             Program.mkSimple
-                (fun () -> { model0 with selection = Scene.ElementSelected 1; activeSelect = Some session })
+                (fun () -> { model0 with selection = Scene.ElementSelected (Scene.SceneElementIndex 1); activeSelect = Some session })
                 Scene.updateTableAndElementRotation
                 Scene.mainView
             |> Program.withHost mainWindow
@@ -1170,7 +1170,7 @@ module MaterialsWindowTests =
             // closes the Materials Select window and its session cancels — exactly once.
             match tryFindControl mainWindow ConstructorUiId.tableElementCanvas.value with
             | Some canvas ->
-                let p = canvas.TranslatePoint(Point(Scene.center.sx, Scene.center.sy), mainWindow)
+                let p = canvas.TranslatePoint(Point(TableScene.center.sx, TableScene.center.sy), mainWindow)
                 Assert.True(p.HasValue, "the canvas must have an on-screen position")
                 mainWindow.MouseDown(p.Value, MouseButton.Left, RawInputModifiers.None)
                 Dispatcher.UIThread.RunJobs()

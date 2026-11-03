@@ -152,7 +152,7 @@ module AppContextTests =
             // Surface 1: the Library… strip button (spec 0038 step 015) → the REAL Library
             // window → Make-multilayer → the REAL Sample editor over the SHARED store (the
             // seeded-period creation path, so a plain name + Save persists).
-            clickOn first WorkbenchIds.openLibraryButton
+            clickOn first ConstructorUiId.openLibraryWindowButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let libraryOfFirst = opened.[0]
@@ -180,7 +180,7 @@ module AppContextTests =
             Dispatcher.UIThread.RunJobs()
             // Surface 2: ITS strip button opens a fresh Library window that re-queries the SAME
             // store — the added sample is listed by the other window.
-            clickOn second WorkbenchIds.openLibraryButton
+            clickOn second ConstructorUiId.openLibraryWindowButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(3, opened.Count)
             let libraryOfSecond = opened.[2]

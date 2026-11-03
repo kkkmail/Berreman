@@ -231,7 +231,7 @@ module LauncherTests =
                 Dispatcher.UIThread.RunJobs()
                 Assert.Equal(1, materialsOpens.Count)
                 // 2) constructor strip Materials button → ACTIVATES the SAME instance (no new window).
-                clickBorder constructorWindow TableAndElementRotationView.WorkbenchIds.openMaterialsButton
+                clickBorder constructorWindow ConstructorUiId.openMaterialsWindowButton.value
                 Dispatcher.UIThread.RunJobs()
                 Assert.Equal(1, materialsOpens.Count)
                 materialsOpens.[0].Close()

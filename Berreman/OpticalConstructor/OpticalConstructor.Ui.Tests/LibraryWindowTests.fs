@@ -250,7 +250,7 @@ module LibraryWindowTests =
         // The entry-leaf id derives from the tree-node code family, prefixed so it cannot collide.
         Assert.Equal("FacetTreeNode_entry:src-600", (ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value)
         // The constructor-side entry point: the ribbon strip's right-aligned button.
-        Assert.Equal("OpenLibraryWindowButton", Scene.WorkbenchIds.openLibraryButton)
+        Assert.Equal("OpenLibraryWindowButton", ConstructorUiId.openLibraryWindowButton.value)
 
     // ============================ pure: projection ============================
 
@@ -781,7 +781,7 @@ module LibraryWindowTests =
         HeadlessSession.run (fun () ->
             let library, samples, materials = freshStores ()
             let window = mountMain library samples materials
-            Assert.True(isPresent window Scene.WorkbenchIds.openLibraryButton,
+            Assert.True(isPresent window ConstructorUiId.openLibraryWindowButton.value,
                         "the ribbon strip row must carry the right-aligned Library… button")
             // Observe the windows the REAL defaults open (the WindowOpenedEvent seam the desktop
             // lifetime itself uses) — subscribed only after the Main window is shown.
@@ -792,7 +792,7 @@ module LibraryWindowTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            clickOn window Scene.WorkbenchIds.openLibraryButton
+            clickOn window ConstructorUiId.openLibraryWindowButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let libraryWindow = opened.[0]
@@ -800,14 +800,14 @@ module LibraryWindowTests =
             Assert.True(libraryWindow.IsVisible)
             // The single-instance acceptance: a second click ACTIVATES the live window — the
             // shared registry under LibraryWindowKey creates nothing new.
-            clickOn window Scene.WorkbenchIds.openLibraryButton
+            clickOn window ConstructorUiId.openLibraryWindowButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             Assert.True(libraryWindow.IsVisible, "the activated window must still be the live one")
             // Close → the registry forgets the key, so the NEXT open creates afresh.
             libraryWindow.Close()
             Dispatcher.UIThread.RunJobs()
-            clickOn window Scene.WorkbenchIds.openLibraryButton
+            clickOn window ConstructorUiId.openLibraryWindowButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             opened.[1].Close()
@@ -1061,7 +1061,7 @@ module LibraryWindowTests =
         Assert.Equal("LibrarySelectButton", ConstructorUiId.librarySelectButton.value)
         Assert.Equal("LibrarySelectCloseButton", ConstructorUiId.librarySelectCloseButton.value)
         Assert.Equal("LibrarySelectConstraint", ConstructorUiId.librarySelectConstraint.value)
-        Assert.Equal("WorkbenchSelectStatus", Scene.WorkbenchIds.selectStatus)
+        Assert.Equal("WorkbenchSelectStatus", ConstructorUiId.workbenchSelectStatus.value)
 
     [<Fact>]
     let ``Select state pre-applies the kind constraint at the corpus seam — non-removable, no breadcrumb chip`` () =
@@ -1233,7 +1233,7 @@ module LibraryWindowTests =
             let library, samples, materials = freshStores ()
             let model0 = freshMainModel ()
             // The detector is the selected element, so the readout shows ITS bound name.
-            let mainWindow, dispatch = mountMainWithDispatch { model0 with selection = Scene.ElementSelected 1 }
+            let mainWindow, dispatch = mountMainWithDispatch { model0 with selection = Scene.ElementSelected (Scene.SceneElementIndex 1) }
             // The Select session the step-017 Choose… flow will compose: onSelected dispatches
             // the TARGETED bind (by the element's serializable id) into the live scene loop.
             let cancels = ResizeArray<string>()
@@ -1242,7 +1242,7 @@ module LibraryWindowTests =
                     kindConstraint = KindConstraint Detector
                     currentEntryIdOpt = None
                     target = TableElementTarget (ElementId "det")
-                    onSelected = fun entry -> dispatch (Scene.BindValueIdTo (ElementId "det", entry.entryId.value))
+                    onSelected = fun entry -> dispatch (Scene.BindValueIdTo (ElementId "det", entry.entryId))
                     onCancelled = fun () -> cancels.Add "cancelled"
                 }
             let selectWindow = mountSelectLibraryWindow library samples materials selectCtx
@@ -1255,7 +1255,7 @@ module LibraryWindowTests =
             // The TARGETED bind landed on the detector element: the workbench readout renders
             // the bound entry's display name in the same pass.
             Assert.Contains("bound: Intensity detector", textOf mainWindow ConstructorUiId.teReadout.value)
-            Assert.False(isPresent mainWindow Scene.WorkbenchIds.selectStatus, "a successful bind reports no staleness status")
+            Assert.False(isPresent mainWindow ConstructorUiId.workbenchSelectStatus.value, "a successful bind reports no staleness status")
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -1276,12 +1276,12 @@ module LibraryWindowTests =
                 }
             let mainWindow, _ =
                 mountMainWithDispatch
-                    { model0 with selection = Scene.ElementSelected 1; activeSelect = Some session }
+                    { model0 with selection = Scene.ElementSelected (Scene.SceneElementIndex 1); activeSelect = Some session }
             Assert.True(selectWindow.IsVisible)
             // A REAL canvas click on the empty table changes the selection (element → table):
             // the staleness rule cancels and closes the open Select window in the same pass —
             // the pending-bind-clears precedent extended.
-            clickCanvasAt mainWindow Scene.center.sx Scene.center.sy
+            clickCanvasAt mainWindow TableScene.center.sx TableScene.center.sy
             Assert.False(selectWindow.IsVisible, "the changed table selection must close the Select window")
             Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
             mainWindow.Close()
@@ -1293,27 +1293,27 @@ module LibraryWindowTests =
         HeadlessSession.run (fun () ->
             let library, samples, materials = freshStores ()
             let model0 = freshMainModel ()
-            let mainWindow, dispatch = mountMainWithDispatch { model0 with selection = Scene.ElementSelected 1 }
+            let mainWindow, dispatch = mountMainWithDispatch { model0 with selection = Scene.ElementSelected (Scene.SceneElementIndex 1) }
             let selectCtx : SelectionContext<LibraryEntry> =
                 {
                     kindConstraint = KindConstraint Detector
                     currentEntryIdOpt = None
                     target = TableElementTarget (ElementId "det")
-                    onSelected = fun entry -> dispatch (Scene.BindValueIdTo (ElementId "det", entry.entryId.value))
+                    onSelected = fun entry -> dispatch (Scene.BindValueIdTo (ElementId "det", entry.entryId))
                     onCancelled = fun () -> ()
                 }
             let selectWindow = mountSelectLibraryWindow library samples materials selectCtx
             // The target element vanishes while the modeless window is open (no session handle
             // is registered here — the belt-and-braces race the targeted return must survive).
-            dispatch Scene.RemoveSelected
+            dispatch Scene.RemoveSelectedElement
             Dispatcher.UIThread.RunJobs()
             // The return is a NO-OP plus the status line, never a throw.
             clickOn selectWindow ((ConstructorUiId.libraryEntryNode (ElementValueId "det-intensity")).value)
             clickOn selectWindow ConstructorUiId.librarySelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "the Select window still closes after its return")
-            Assert.True(isPresent mainWindow Scene.WorkbenchIds.selectStatus, "the vanished target must surface the status line")
-            Assert.Contains("no longer on the table", textOf mainWindow Scene.WorkbenchIds.selectStatus)
+            Assert.True(isPresent mainWindow ConstructorUiId.workbenchSelectStatus.value, "the vanished target must surface the status line")
+            Assert.Contains("no longer on the table", textOf mainWindow ConstructorUiId.workbenchSelectStatus.value)
             Assert.DoesNotContain("bound: Intensity detector", textOf mainWindow ConstructorUiId.teReadout.value)
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())
@@ -1344,7 +1344,7 @@ module LibraryWindowTests =
     /// The Main scene over fresh stores with the detector element selected (2 detector entries
     /// < the default threshold 5 — the under-threshold fixture) and the Select bay shown.
     let private detectorSelectorModel () : Scene.TableAndElementRotationModel =
-        { freshMainModel () with selection = Scene.ElementSelected 1; ribbon = Scene.BayNames.selector }
+        { freshMainModel () with selection = Scene.ElementSelected (Scene.SceneElementIndex 1); ribbon = Scene.BayNames.selector }
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -1354,9 +1354,9 @@ module LibraryWindowTests =
             // default QuickPickThreshold 5, so the bay offers the Choose… verb ALONE.
             let model0 = Scene.updateTableAndElementRotation (Scene.AddElement Sample) (freshMainModel ())
             let window, _, getModel = mountMainExposed { model0 with ribbon = Scene.BayNames.selector }
-            Assert.Equal<Scene.SelectorOffer>(Scene.ChooseAlone, Scene.selectorOffer (getModel ()))
-            Assert.True(isPresent window Scene.WorkbenchIds.chooseButton, "Choose… must be offered for the over-threshold kind")
-            Assert.False(isPresent window Scene.WorkbenchIds.quickPickStrip, "the quick-pick strip must NOT render at/above the threshold")
+            Assert.Equal<Scene.SelectorOffer>(Scene.ChooseAlone, (getModel ()).selectorOffer)
+            Assert.True(isPresent window ConstructorUiId.selectorChooseButton.value, "Choose… must be offered for the over-threshold kind")
+            Assert.False(isPresent window ConstructorUiId.selectorQuickPickStrip.value, "the quick-pick strip must NOT render at/above the threshold")
             Assert.False(isPresent window ConstructorUiId.libraryTree.value, "the strip's row tree must be gone with it")
             Assert.False(isPresent window (ConstructorUiId.libraryEntry glassFilm600EntryId.uiKey).value, "no inline sample row may remain")
             window.Close()
@@ -1367,10 +1367,10 @@ module LibraryWindowTests =
     let ``acceptance (017): an under-threshold kind shows the quick-pick strip beside Choose…`` () =
         HeadlessSession.run (fun () ->
             let window, _, getModel = mountMainExposed (detectorSelectorModel ())
-            Assert.Equal<Scene.SelectorOffer>(Scene.QuickPickAndChoose, Scene.selectorOffer (getModel ()))
-            Assert.True(isPresent window Scene.WorkbenchIds.quickPickStrip, "the strip must render below the threshold")
+            Assert.Equal<Scene.SelectorOffer>(Scene.QuickPickAndChoose, (getModel ()).selectorOffer)
+            Assert.True(isPresent window ConstructorUiId.selectorQuickPickStrip.value, "the strip must render below the threshold")
             Assert.True(isPresent window (ConstructorUiId.libraryEntry (ConstructorUiKey "det-intensity")).value, "the kind-constrained rows render inline")
-            Assert.True(isPresent window Scene.WorkbenchIds.chooseButton, "Choose… is offered beside the strip")
+            Assert.True(isPresent window ConstructorUiId.selectorChooseButton.value, "Choose… is offered beside the strip")
             window.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -1395,7 +1395,7 @@ module LibraryWindowTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            clickOn mainWindow Scene.WorkbenchIds.chooseButton
+            clickOn mainWindow ConstructorUiId.selectorChooseButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let selectWindow = opened.[0]
@@ -1428,7 +1428,7 @@ module LibraryWindowTests =
             (match (getModel ()).activeSelect with
              | None -> ()
              | Some _ -> Assert.Fail "the committed bind must end the Select session")
-            Assert.False(isPresent mainWindow Scene.WorkbenchIds.selectStatus, "a successful bind reports no staleness status")
+            Assert.False(isPresent mainWindow ConstructorUiId.workbenchSelectStatus.value, "a successful bind reports no staleness status")
             Assert.Contains("bound: Intensity detector", textOf mainWindow ConstructorUiId.teReadout.value)
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())
@@ -1440,10 +1440,10 @@ module LibraryWindowTests =
             let model0 = freshMainModel ()
             let mainWindow, dispatch, getModel = mountMainExposed model0
             // A right click on the source selects it and opens its menu, which offers Choose….
-            let sourcePoint = TableView.project Scene.pixelsPerMeter Scene.center model0.view ((Scene.snappedCentres model0).[0])
+            let sourcePoint = TableView.project TableScene.pixelsPerMeter TableScene.center model0.view (model0.snappedCentres.[Scene.SceneElementIndex 0])
             dispatch (Scene.OpenElementMenuAt sourcePoint)
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal(Scene.ElementSelected 0, (getModel ()).selection)
+            Assert.Equal(Scene.ElementSelected (Scene.SceneElementIndex 0), (getModel ()).selection)
             Assert.Equal(None, ((getModel ()).elements |> List.item 0).placement.valueId)
             let opened = ResizeArray<Window>()
             use _sub =
@@ -1488,12 +1488,12 @@ module LibraryWindowTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            clickOn mainWindow Scene.WorkbenchIds.chooseButton
+            clickOn mainWindow ConstructorUiId.selectorChooseButton.value
             Dispatcher.UIThread.RunJobs()
             // A second Choose… on the same element RE-TARGETS the live single instance through
             // the launcher (no second window); the superseded session's cancel fires while the
             // successor is stored, and the reference-keyed end leaves the NEW handle in place.
-            clickOn mainWindow Scene.WorkbenchIds.chooseButton
+            clickOn mainWindow ConstructorUiId.selectorChooseButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let selectWindow = opened.[0]

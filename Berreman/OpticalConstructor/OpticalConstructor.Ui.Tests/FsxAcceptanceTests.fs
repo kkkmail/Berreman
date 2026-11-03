@@ -176,30 +176,30 @@ module FsxAcceptanceTests =
                 sources = b.sources
                 experimentExport = b.export.proxy }
             |> apply
-                [ BindValueIdTo (ElementId "src", run.sourceEntry)
-                  BindValueIdTo (ElementId "det", SeedEntryIds.detectorIntensity)
+                [ BindValueIdTo (ElementId "src", ElementValueId run.sourceEntry)
+                  BindValueIdTo (ElementId "det", ElementValueId SeedEntryIds.detectorIntensity)
                   // The input polarizer (pre-bound to the ideal LP) at the script's polarization angle.
                   AddElement LinearPolarizer
-                  RotSetAxis (RotationControls.R1, run.polarizationDegrees)
+                  RotSetAxis (RotationControls.R1, BarDegrees run.polarizationDegrees)
                   // The sample (index 3), tilted to the script's incidence; bound below.
                   AddElement CatalogueKind.Sample
-                  RotSetAxis (RotationControls.R2, run.incidenceDegrees) ]
-            |> fun m -> updateTableAndElementRotation (BindValueIdTo (idAt 3 m, run.sampleEntry)) m
+                  RotSetAxis (RotationControls.R2, BarDegrees run.incidenceDegrees) ]
+            |> fun m -> updateTableAndElementRotation (BindValueIdTo (idAt 3 m, ElementValueId run.sampleEntry)) m
             // A second detector (index 4): it goes to the first free ray — the sample's reflected ray.
             |> updateTableAndElementRotation (AddElement Detector)
-            |> fun m -> updateTableAndElementRotation (BindValueIdTo (idAt 4 m, SeedEntryIds.detectorIntensity)) m
+            |> fun m -> updateTableAndElementRotation (BindValueIdTo (idAt 4 m, ElementValueId SeedEntryIds.detectorIntensity)) m
         let varied =
             match run.variable with
-            | ExperimentControls.VaryWaveLength -> "src"
-            | ExperimentControls.VaryR1 | ExperimentControls.VaryR2 -> (idAt 3 table).value
+            | ExperimentControls.VaryWaveLength -> ElementId "src"
+            | ExperimentControls.VaryR1 | ExperimentControls.VaryR2 -> idAt 3 table
         let experiment =
             table
             |> apply
                 [ ExpChooseElement varied
                   ExpChooseVariable run.variable
-                  ExpSetRangeMin run.low
-                  ExpSetRangeMax run.high
-                  ExpSetRangePoints run.points
+                  ExpSetRangeMin (ExperimentControls.ExperimentRangeEnd run.low)
+                  ExpSetRangeMax (ExperimentControls.ExperimentRangeEnd run.high)
+                  ExpSetRangePoints (ExperimentControls.ExperimentPointCount run.points)
                   ExpChooseMeasurement ExperimentControls.CaptureBoth
                   SelectBay BayNames.experiments ]
         let mutable exported : ExperimentExport.ExportedRun list = []

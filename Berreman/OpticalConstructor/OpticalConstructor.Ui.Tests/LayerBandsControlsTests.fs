@@ -21,7 +21,7 @@ module LayerBandsControlsTests =
 
     /// Select the element at index `i`, then bind it to a Library entry id (the immediate `BindValueId` path).
     let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
-        { m with selection = ElementSelected i } |> updateTableAndElementRotation (BindValueId entryId)
+        { m with selection = ElementSelected (SceneElementIndex i) } |> updateTableAndElementRotation (BindValueId (ElementValueId entryId))
 
     /// The Guid-string entry id of the seeded 41-layer multilayer these tests bind (referenced
     /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
@@ -51,12 +51,12 @@ module LayerBandsControlsTests =
         // same way (the Library WINDOW), so Details is the last bay, still immediately after
         // Experiments.
         Assert.Equal(Some BayNames.details, List.tryLast BayNames.allBayNames)
-        Assert.DoesNotContain("Materials", BayNames.allBayNames)
-        Assert.DoesNotContain("Library", BayNames.allBayNames)
+        Assert.DoesNotContain(Ribbon.BayName "Materials", BayNames.allBayNames)
+        Assert.DoesNotContain(Ribbon.BayName "Library", BayNames.allBayNames)
         let m = initMain ()
         let bays = mainBays m ignore
-        let names = bays |> List.map (fun b -> b.name.value)
-        Assert.Equal<string list>(BayNames.allBayNames, names)
+        let names = bays |> List.map (fun b -> b.name)
+        Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, names)
         // Details comes immediately after Experiments.
         let idxExp = List.findIndex ((=) BayNames.experiments) names
         let idxDet = List.findIndex ((=) BayNames.details) names
@@ -72,7 +72,7 @@ module LayerBandsControlsTests =
             |> updateTableAndElementRotation (AddElement Sample)             // index 2
             |> bind 2 multilayerQwId
         let bays = mainBays m ignore
-        Assert.Contains(BayNames.details, bays |> List.map (fun b -> b.name.value))
+        Assert.Contains(BayNames.details, bays |> List.map (fun b -> b.name))
         // Re-derive the band view through the same public seam the host uses (the ribbon bay's content is the
         // LayerBandsControls.view of detailsState); assert the band shape via the rendered Details bay below.
         // Here assert that the bound entry resolves to a multilayer whose description spells out the stack.
@@ -87,7 +87,7 @@ module LayerBandsControlsTests =
         // initMain selects the table first; with no element selected the Details bay shows a hint (no bands).
         let m = { (initMain ()) with selection = TableSelected }
         let bays = mainBays m ignore
-        Assert.Contains(BayNames.details, bays |> List.map (fun b -> b.name.value))
+        Assert.Contains(BayNames.details, bays |> List.map (fun b -> b.name))
 
     // ============================ headless render proofs (ui-smoke) ============================
 
@@ -141,7 +141,7 @@ module LayerBandsControlsTests =
             let mutable model =
                 initMain ()
                 |> updateTableAndElementRotation (AddElement Sample)               // index 2, selected
-                |> updateTableAndElementRotation (BindValueId multilayerQwId)
+                |> updateTableAndElementRotation (BindValueId (ElementValueId multilayerQwId))
                 |> updateTableAndElementRotation (SelectBay BayNames.details)
             let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
             let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 360.0)

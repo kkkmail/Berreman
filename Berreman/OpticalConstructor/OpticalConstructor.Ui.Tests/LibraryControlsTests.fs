@@ -62,7 +62,7 @@ module LibraryControlsTests =
         let m = withSampleSelected ()
         let bays = mainBays m ignore
         // The Select bay exists and is offered.
-        Assert.Contains(BayNames.selector, bays |> List.map (fun b -> b.name.value))
+        Assert.Contains(BayNames.selector, bays |> List.map (fun b -> b.name))
         // Its rows: every selectable leaf is a Sample entry id; the kind label is "Sample".
         // (Re-derive the bay state the same way the host does — through the live model.)
         let sampleIds =
@@ -78,22 +78,22 @@ module LibraryControlsTests =
             | other -> Assert.Fail($"%s{id.value} is not a Sample: %A{other}"))
 
     [<Fact>]
-    let ``BindValueId sets the selected element's valueId; inert for table or nothing`` () =
+    let ``BindValueId (ElementValueId sets) the selected element's valueId; inert for table or nothing`` () =
         let m = withSampleSelected ()                      // element 2 (a Sample) selected
-        let bound = updateTableAndElementRotation (BindValueId glass1mmId) m
+        let bound = updateTableAndElementRotation (BindValueId (ElementValueId glass1mmId)) m
         Assert.Equal(Some (ElementValueId glass1mmId), (elem 2 bound).placement.valueId)
         // Inert when the table is selected.
         let tableSel = { (initMain ()) with selection = TableSelected }
-        Assert.Equal<TableAndElementRotationModel>(tableSel, updateTableAndElementRotation (BindValueId glass1mmId) tableSel)
+        Assert.Equal<TableAndElementRotationModel>(tableSel, updateTableAndElementRotation (BindValueId (ElementValueId glass1mmId)) tableSel)
         // Inert when nothing is selected.
         let nothingSel = { (initMain ()) with selection = NothingSelected }
-        Assert.Equal<TableAndElementRotationModel>(nothingSel, updateTableAndElementRotation (BindValueId glass1mmId) nothingSel)
+        Assert.Equal<TableAndElementRotationModel>(nothingSel, updateTableAndElementRotation (BindValueId (ElementValueId glass1mmId)) nothingSel)
 
     [<Fact>]
     let ``binding then rebinding overwrites the valueId`` () =
         let m = withSampleSelected ()
-        let m1 = updateTableAndElementRotation (BindValueId glass1mmId) m
-        let m2 = updateTableAndElementRotation (BindValueId glass2mmId) m1
+        let m1 = updateTableAndElementRotation (BindValueId (ElementValueId glass1mmId)) m
+        let m2 = updateTableAndElementRotation (BindValueId (ElementValueId glass2mmId)) m1
         Assert.Equal(Some (ElementValueId glass2mmId), (elem 2 m2).placement.valueId)
 
     [<Fact>]
@@ -105,33 +105,33 @@ module LibraryControlsTests =
         // SAMPLES WORKBENCH bay — which spec 0038 step 015 moved into the single-instance Library
         // WINDOW, so no "Library" bay is offered any more (the Selector alone keeps binding duty).
         // Spec 0046 (operator): the label is the verb "Select" (was "Selector"); likewise "Rotate".
-        Assert.Equal("Select", BayNames.selector)
-        Assert.Equal("Rotate", BayNames.rotation)
+        Assert.Equal("Select", BayNames.selector.value)
+        Assert.Equal("Rotate", BayNames.rotation.value)
         Assert.Contains(BayNames.selector, BayNames.allBayNames)
-        Assert.DoesNotContain("Library", BayNames.allBayNames)
+        Assert.DoesNotContain(Ribbon.BayName "Library", BayNames.allBayNames)
         // Spec 0046: Add comes first.
-        Assert.Equal<string list>(
+        Assert.Equal<Ribbon.BayName list>(
             [ BayNames.add; BayNames.rotation; BayNames.move; BayNames.render; BayNames.selector ],
             BayNames.allBayNames |> List.truncate 5)
         let m = initMain ()
         let bays = mainBays m ignore
-        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name.value))
+        Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
 
     // ============================ Spec 0027 (026) confirm-gated bind (pure) ============================
 
     [<Fact>]
-    let ``RequestBindValueId sets a pending entry WITHOUT binding the valueId`` () =
+    let ``RequestBindValueId (ElementValueId sets) a pending entry WITHOUT binding the valueId`` () =
         let m = withSampleSelected ()                          // element 2 (a Sample) selected
-        let pending = updateTableAndElementRotation (RequestBindValueId glass1mmId) m
+        let pending = updateTableAndElementRotation (RequestBindValueId (ElementValueId glass1mmId)) m
         // The pending choice is recorded, but no valueId is bound yet.
-        Assert.Equal(Some glass1mmId, pending.pendingEntry)
+        Assert.Equal(Some (ElementValueId glass1mmId), pending.pendingEntry)
         Assert.Equal(None, (elem 2 pending).placement.valueId)
 
     [<Fact>]
     let ``ConfirmBindValueId commits the pending entry to the selected element's valueId and clears pending`` () =
         let m =
             withSampleSelected ()
-            |> updateTableAndElementRotation (RequestBindValueId glass1mmId)
+            |> updateTableAndElementRotation (RequestBindValueId (ElementValueId glass1mmId))
             |> updateTableAndElementRotation ConfirmBindValueId
         Assert.Equal(Some (ElementValueId glass1mmId), (elem 2 m).placement.valueId)
         Assert.Equal(None, m.pendingEntry)
@@ -140,7 +140,7 @@ module LibraryControlsTests =
     let ``CancelBindValueId clears the pending entry and does NOT bind`` () =
         let m =
             withSampleSelected ()
-            |> updateTableAndElementRotation (RequestBindValueId glass1mmId)
+            |> updateTableAndElementRotation (RequestBindValueId (ElementValueId glass1mmId))
             |> updateTableAndElementRotation CancelBindValueId
         Assert.Equal(None, m.pendingEntry)
         Assert.Equal(None, (elem 2 m).placement.valueId)
@@ -152,7 +152,7 @@ module LibraryControlsTests =
 
     [<Fact>]
     let ``libraryState surfaces the pending entry's name and FULL description before confirm`` () =
-        let m = withSampleSelected () |> updateTableAndElementRotation (RequestBindValueId multilayerQwId)
+        let m = withSampleSelected () |> updateTableAndElementRotation (RequestBindValueId (ElementValueId multilayerQwId))
         // The host's libraryState fills the pending fields from the proxy; mirror that resolution here.
         match m.library.tryGetEntry (ElementValueId multilayerQwId) with
         | Ok (Some entry) ->
@@ -160,7 +160,7 @@ module LibraryControlsTests =
             // A multilayer's description spells out the stack, not just its short name.
             Assert.Contains("layer", entry.fullDescription)
         | other -> Assert.Fail($"expected the quarter-wave multilayer entry, got %A{other}")
-        Assert.Equal(Some multilayerQwId, m.pendingEntry)
+        Assert.Equal(Some (ElementValueId multilayerQwId), m.pendingEntry)
 
     // ============================ headless render proof (ui-smoke) ============================
 
@@ -174,7 +174,7 @@ module LibraryControlsTests =
                 withSampleSelected ()
                 |> withWideQuickPick
                 |> updateTableAndElementRotation (SelectBay BayNames.selector)
-                |> updateTableAndElementRotation (RequestBindValueId glass1mmId)
+                |> updateTableAndElementRotation (RequestBindValueId (ElementValueId glass1mmId))
             let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
             let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 320.0)
             window.Content <- Component(fun _ -> mainView model dispatch)
@@ -188,7 +188,7 @@ module LibraryControlsTests =
                     | :? Border as b when not (System.String.IsNullOrEmpty b.Name) && b.Name.StartsWith("RibbonTab_") -> Some b.Name
                     | _ -> None)
                 |> List.ofSeq
-            Assert.Contains((ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.selector)).value, tabNames)
+            Assert.Contains((ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.selector.value)).value, tabNames)
             Assert.DoesNotContain((ConstructorUiId.ribbonTab (ConstructorUiKey "Library")).value, tabNames)
             // The pending entry's full description is shown (and the element is NOT bound yet).
             Assert.Equal(None, (elem 2 model).placement.valueId)
@@ -306,7 +306,7 @@ module LibraryControlsTests =
             Dispatcher.UIThread.RunJobs()
             // SELECT: click a leaf entry — the pending confirm panel renders on the patched tree.
             clickIn window (ConstructorUiId.libraryEntry (ConstructorUiKey glass1mmId)).value
-            Assert.Equal(Some glass1mmId, latest.Value.pendingEntry)
+            Assert.Equal(Some (ElementValueId glass1mmId), latest.Value.pendingEntry)
             // BIND: click Confirm — the pending entry commits to the selected element's valueId.
             clickIn window ConstructorUiId.libraryConfirmButton.value
             Assert.Equal(Some (ElementValueId glass1mmId), (elem 2 latest.Value).placement.valueId)
