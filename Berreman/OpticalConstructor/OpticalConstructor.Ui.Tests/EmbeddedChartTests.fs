@@ -233,7 +233,7 @@ module EmbeddedChartTests =
         commitFilter window search
         // The tree opens collapsed (spec 0040 step 002) — expand the entries group to reach the leaf.
         clickOn window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-        clickOn window (MW.entryNode entryId)
+        clickOn window ((ConstructorUiId.materialsEntryNode entryId).value)
         Assert.True(isPresent window ConstructorUiId.materialsViewPanelNkChart.value, $"%s{label}: the view panel must embed the n/k chart host")
         match avaUnder window ConstructorUiId.materialsViewPanelNkChart.value with
         | Some ava -> Assert.True(rasterizes ava, $"%s{label}: the view-panel embedded chart rendered no image bytes")

@@ -1046,7 +1046,7 @@ module SampleEditorWindowTests =
             // re-materials ROW 1 (never "the current selection") and closes the window.
             commitFilter materialsWindow "1.75"
             clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            clickOn materialsWindow (MaterialsWindowView.entryNode MaterialIds.glass175)
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass175).value)
             clickOn materialsWindow ConstructorUiId.materialsSelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(materialsWindow.IsVisible, "Select must close the Materials window")
@@ -1082,7 +1082,7 @@ module SampleEditorWindowTests =
             // row-0 session binds nothing.
             commitFilter materialsWindow "1.75"
             clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            clickOn materialsWindow (MaterialsWindowView.entryNode MaterialIds.glass175)
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass175).value)
             clickOn materialsWindow ConstructorUiId.materialsSelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Contains("Transparent glass (n = 1.75)", textOf window (ConstructorUiId.sampleLayerRow (ConstructorUiPosition 2)).value)
@@ -1112,7 +1112,7 @@ module SampleEditorWindowTests =
             // never a throw, and no surviving row takes the returned material.
             commitFilter materialsWindow "1.75"
             clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            clickOn materialsWindow (MaterialsWindowView.entryNode MaterialIds.glass175)
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass175).value)
             clickOn materialsWindow ConstructorUiId.materialsSelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(materialsWindow.IsVisible, "the Select window still closes after its return")
@@ -1188,7 +1188,7 @@ module SampleEditorWindowTests =
             // Select return.
             commitFilter materialsWindow "Mid-session titania"
             clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            clickOn materialsWindow (MaterialsWindowView.entryNode added.id)
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode added.id).value)
             clickOn materialsWindow ConstructorUiId.materialsSelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Contains("Mid-session titania", textOf window (ConstructorUiId.sampleLayerRow (ConstructorUiPosition 0)).value)
@@ -1296,7 +1296,7 @@ module SampleEditorWindowTests =
             // the substrate plate and closes the window.
             commitFilter materialsWindow "1.75"
             clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            clickOn materialsWindow (MaterialsWindowView.entryNode MaterialIds.glass175)
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass175).value)
             clickOn materialsWindow ConstructorUiId.materialsSelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(materialsWindow.IsVisible, "Select must close the Materials window")

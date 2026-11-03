@@ -858,7 +858,7 @@ type MaterialComplexity with
     /// re-derived into model coefficients, so an editor seeded from it would surface a
     /// misleading `SumOfTerms` segment the user cannot meaningfully change. Such an
     /// entry opens VIEW-ONLY instead: the host editability seams
-    /// (`MaterialEditorView.init`, `MaterialsWindowView.editableSelection`) gate on
+    /// (`MaterialEditorView.init`, `MaterialsWindowModel.editableSelection`) gate on
     /// this predicate rather than on `complexity` presence alone. A constant or
     /// finite-term (`RealNK` / `ComplexEps`) dispersion is fully editable.
     member this.isEditable : bool =

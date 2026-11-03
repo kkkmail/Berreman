@@ -180,9 +180,9 @@ module WireUiCompositionTests =
             let materialsWindow = openMaterialsWindow window
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaves.
             clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            Assert.True(isPresent materialsWindow (MW.entryNode MaterialIds.glass152),
+            Assert.True(isPresent materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value),
                         "the Materials window must list the seeded glass152 entry from the root-wired store")
-            Assert.True(isPresent materialsWindow (MW.entryNode MaterialIds.silicon),
+            Assert.True(isPresent materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.silicon).value),
                         "the Materials window must list the seeded silicon entry from the root-wired store")
             materialsWindow.Close()
             Dispatcher.UIThread.RunJobs()
@@ -244,13 +244,13 @@ module WireUiCompositionTests =
             // (`samplesReferencing`) composed at the root, not a detached lookup.
             commitFilter materialsWindow "1.52"
             clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            clickOn materialsWindow (MW.entryNode MaterialIds.glass152)
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
             clickOn materialsWindow ConstructorUiId.materialsRemoveButton.value
             clickOn materialsWindow ConstructorUiId.materialsRemoveConfirmButton.value
             let message = textOf materialsWindow ConstructorUiId.materialsWindowMessage.value
             Assert.Contains("still referenced", message)
             Assert.Contains("Glass plate", message)
-            Assert.True(isPresent materialsWindow (MW.entryNode MaterialIds.glass152),
+            Assert.True(isPresent materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value),
                         "the refused remove must leave the entry listed")
             materialsWindow.Close()
             Dispatcher.UIThread.RunJobs()

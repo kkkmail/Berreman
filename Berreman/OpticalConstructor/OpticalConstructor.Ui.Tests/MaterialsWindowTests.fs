@@ -222,7 +222,7 @@ module MaterialsWindowTests =
         | Error e -> Assert.Fail($"rename failed: %A{e}")
 
     let private filteredIds (m : MW.MaterialsWindowModel) : MaterialId list =
-        MW.filteredEntries m |> List.map (fun e -> e.id)
+        m.filteredEntries |> List.map (fun e -> e.id)
 
     // ============================ pure: ids contract ============================
 
@@ -242,7 +242,7 @@ module MaterialsWindowTests =
         // The entry-leaf id derives from the tree-node code family, prefixed so it cannot collide.
         Assert.Equal(
             "FacetTreeNode_entry:" + string MaterialIds.glass152.value,
-            MW.entryNode MaterialIds.glass152)
+            (ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
         // The constructor-side entry point: the ribbon strip's right-aligned button.
         Assert.Equal("OpenMaterialsWindowButton", Scene.WorkbenchIds.openMaterialsButton)
 
@@ -277,19 +277,19 @@ module MaterialsWindowTests =
     [<Fact>]
     let ``the committed text filter narrows the corpus and echoes as the box draft`` () =
         let _, m = freshModel ()
-        let narrowed = MW.updateMaterialsWindow (MW.CommitTextFilter "glass") m
-        Assert.Equal(4, List.length (MW.filteredEntries narrowed))
+        let narrowed = MW.updateMaterialsWindow (MW.CommitTextFilter (TextQuery "glass")) m
+        Assert.Equal(4, List.length (narrowed.filteredEntries))
         Assert.Contains(MaterialIds.glass152, filteredIds narrowed)
         Assert.DoesNotContain(MaterialIds.silicon, filteredIds narrowed)
         Assert.Equal("glass", (MW.facetedState narrowed).filterDraft.value)
-        let restored = MW.updateMaterialsWindow (MW.CommitTextFilter "") narrowed
-        Assert.Equal(12, List.length (MW.filteredEntries restored))
+        let restored = MW.updateMaterialsWindow (MW.CommitTextFilter (TextQuery "")) narrowed
+        Assert.Equal(12, List.length (restored.filteredEntries))
 
     [<Fact>]
     let ``applying a facet constraint narrows the corpus and takes a removable breadcrumb chip with its after-count`` () =
         let _, m = freshModel ()
         let constrained = MW.updateMaterialsWindow (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) m
-        Assert.Equal(4, List.length (MW.filteredEntries constrained))
+        Assert.Equal(4, List.length (constrained.filteredEntries))
         Assert.Contains(MaterialIds.langasite, filteredIds constrained)
         let chips = (MW.facetedState constrained).breadcrumbs
         Assert.Equal(1, List.length chips)
@@ -297,12 +297,12 @@ module MaterialsWindowTests =
         Assert.Equal("Category: Crystal", (List.head chips).label.value)
         Assert.Equal(4, (List.head chips).afterCount.value)
         // Facet constraints AND the text filter compose: no glass is a crystal.
-        let composed = MW.updateMaterialsWindow (MW.CommitTextFilter "glass") constrained
-        Assert.Empty(MW.filteredEntries composed)
+        let composed = MW.updateMaterialsWindow (MW.CommitTextFilter (TextQuery "glass")) constrained
+        Assert.Empty(composed.filteredEntries)
         Assert.Equal(0, (MW.facetedState composed).resultCount.value)
         // Removing the chip restores (the text filter stays applied).
         let removed = MW.updateMaterialsWindow (MW.RemoveFacet materialCategoryKey) composed
-        Assert.Equal(4, List.length (MW.filteredEntries removed))
+        Assert.Equal(4, List.length (removed.filteredEntries))
         Assert.Empty((MW.facetedState removed).breadcrumbs)
 
     [<Fact>]
@@ -315,7 +315,7 @@ module MaterialsWindowTests =
         let chips = (MW.facetedState replaced).breadcrumbs
         Assert.Equal(1, List.length chips)
         Assert.Equal("Category: Glass", (List.head chips).label.value)
-        for entry in MW.filteredEntries replaced do
+        for entry in replaced.filteredEntries do
             Assert.Equal(CategoryIds.glass, entry.category)
 
     [<Fact>]
@@ -365,7 +365,7 @@ module MaterialsWindowTests =
         Assert.Equal(MW.PendingRemove MaterialIds.glass200, armed.removeGate)
         let cancelled = MW.updateMaterialsWindow MW.CancelRemove armed
         Assert.Equal(MW.NoPendingRemove, cancelled.removeGate)
-        Assert.Equal(12, List.length (MW.filteredEntries cancelled))
+        Assert.Equal(12, List.length (cancelled.filteredEntries))
 
     [<Fact>]
     let ``removing a REFERENCED material surfaces MaterialStillReferenced and leaves the store unchanged`` () =
@@ -411,7 +411,7 @@ module MaterialsWindowTests =
         let armed () =
             let _, m = freshModel ()
             m |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) |> MW.updateMaterialsWindow MW.RequestRemoveSelected
-        Assert.Equal(MW.NoPendingRemove, (MW.updateMaterialsWindow (MW.CommitTextFilter "si") (armed ())).removeGate)
+        Assert.Equal(MW.NoPendingRemove, (MW.updateMaterialsWindow (MW.CommitTextFilter (TextQuery "si")) (armed ())).removeGate)
         Assert.Equal(MW.NoPendingRemove, (MW.updateMaterialsWindow (MW.ApplyFacetValue (materialDispersionKey, DiscreteKey "Dispersive")) (armed ())).removeGate)
         Assert.Equal(MW.NoPendingRemove, (MW.updateMaterialsWindow (MW.RemoveFacet materialDispersionKey) (armed ())).removeGate)
         // A re-selection re-targets the verbs AND disarms.
@@ -435,7 +435,7 @@ module MaterialsWindowTests =
         match cancelled.lastError with
         | Some _ -> ()
         | None -> Assert.Fail "the refusal must stay visible after a mere cancel"
-        Assert.Equal(None, (MW.updateMaterialsWindow (MW.CommitTextFilter "si") cancelled).lastError)
+        Assert.Equal(None, (MW.updateMaterialsWindow (MW.CommitTextFilter (TextQuery "si")) cancelled).lastError)
 
     [<Fact>]
     let ``Add mints a fresh upfront id per dispatch and reaches the launcher`` () =
@@ -469,17 +469,17 @@ module MaterialsWindowTests =
     [<Fact>]
     let ``the view panel target follows the selection and the Edit affordance follows the step-013 complexity`` () =
         let _, m = freshModel ()
-        Assert.Equal<MaterialEntry option>(None, MW.selectedEntry m)
+        Assert.Equal<MaterialEntry option>(None, m.selectedEntry)
         let glass = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) m
-        match MW.selectedEntry glass with
+        match glass.selectedEntry with
         | Some entry -> Assert.Equal("Transparent glass (n = 1.52)", entry.name.value)
         | None -> Assert.Fail "the selected glass entry must resolve"
-        match MW.editableSelection glass with
+        match glass.editableSelection with
         | Some _ -> ()
         | None -> Assert.Fail "glass152 carries the edit model and must offer Edit"
         // Silicon is a coded engine preset: selectable (the panel shows it) but NOT editable.
         let silicon = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.silicon) m
-        match MW.selectedEntry silicon, MW.editableSelection silicon with
+        match silicon.selectedEntry, silicon.editableSelection with
         | Some _, None -> ()
         | other -> Assert.Fail($"expected a selectable but non-editable preset, got %A{other}")
 
@@ -503,7 +503,7 @@ module MaterialsWindowTests =
         Assert.Equal(materialCategoryKey.value, firstOfferCode m)
         // The physics reshuffle reorders the OFFERS (Anisotropy now leads) but leaves the tree
         // alphabetical and identical.
-        let reshaped = MW.updateMaterialsWindow (MW.ChooseRepresentation "by-physics") m
+        let reshaped = MW.updateMaterialsWindow (MW.ChooseRepresentation (ConstructorUiKey "by-physics")) m
         Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey "by-physics"), (MW.facetedState reshaped).activeRepresentationOpt)
         Assert.Equal(materialAnisotropyKey.value, firstOfferCode reshaped)
         Assert.Equal<string list>(byCategoryTree, treeFacetLabels reshaped)
@@ -513,7 +513,7 @@ module MaterialsWindowTests =
         Assert.Equal(1, List.length (MW.facetedState constrained).breadcrumbs)
         Assert.Equal(4, (MW.facetedState constrained).resultCount.value)
         // An unknown code is inert.
-        Assert.Equal<MW.MaterialsWindowModel>(constrained, MW.updateMaterialsWindow (MW.ChooseRepresentation "no-such") constrained)
+        Assert.Equal<MW.MaterialsWindowModel>(constrained, MW.updateMaterialsWindow (MW.ChooseRepresentation (ConstructorUiKey "no-such")) constrained)
 
     [<Fact>]
     let ``the projected tree lists entry leaves and facet branches in case-insensitive alphabetical label order`` () =
@@ -562,7 +562,7 @@ module MaterialsWindowTests =
                 for leaf in branch.children do
                     Assert.True(List.isEmpty leaf.children, "a branch entry leaf is terminal")
                     // Each branch-nested leaf is a SELECTABLE entry (its code resolves to a MaterialId).
-                    match MW.entryIdOfNodeCode leaf.code.value with
+                    match leaf.code.tryMaterialsEntryId with
                     | Some id -> distinct <- Set.add id distinct
                     | None -> Assert.Fail($"branch entry leaf %s{leaf.label.value} (%s{leaf.code.value}) must resolve to a material id")
             // 3) The group total is exactly the DISTINCT entries reachable by expanding its branches
@@ -587,13 +587,13 @@ module MaterialsWindowTests =
         // material selected THROUGH a facet branch works), yet the bare branch/heading codes remain
         // grouping-only — the selection contract after the fix. The handler carries the EXACT clicked
         // code (a `SelectEntryNode`), so the highlight can land on that node rather than the corpus copy.
-        let leafCode = "branch:" + materialCategoryKey.value + ":Glass:" + MW.entryNodeCode MaterialIds.glass152
-        Assert.Equal(Some MaterialIds.glass152, MW.entryIdOfNodeCode leafCode)
-        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode ("facet:" + materialCategoryKey.value))
-        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode ("branch:" + materialCategoryKey.value + ":Glass"))
+        let leafCode = ConstructorUiKey ("branch:" + materialCategoryKey.value + ":Glass:" + MaterialIds.glass152.materialsEntryCode.value)
+        Assert.Equal(Some MaterialIds.glass152, leafCode.tryMaterialsEntryId)
+        Assert.Equal<MaterialId option>(None, (ConstructorUiKey ("facet:" + materialCategoryKey.value)).tryMaterialsEntryId)
+        Assert.Equal<MaterialId option>(None, (ConstructorUiKey ("branch:" + materialCategoryKey.value + ":Glass")).tryMaterialsEntryId)
         let dispatched = ResizeArray<MW.MaterialsWindowMsg>()
         let handlers = MW.facetedHandlers dispatched.Add
-        handlers.selectNode (ConstructorUiKey leafCode)
+        handlers.selectNode leafCode
         Assert.Equal<MW.MaterialsWindowMsg list>([ MW.SelectEntryNode (MaterialIds.glass152, leafCode) ], List.ofSeq dispatched)
 
     [<Fact>]
@@ -602,17 +602,17 @@ module MaterialsWindowTests =
         // highlight the matching row in the "Materials" corpus group instead of the clicked branch
         // row. The projected `selectedCode` must now be the EXACT clicked node code.
         let _, m = freshModel ()
-        let leafCode = "branch:" + materialCategoryKey.value + ":Glass:" + MW.entryNodeCode MaterialIds.glass152
+        let leafCode = ConstructorUiKey ("branch:" + materialCategoryKey.value + ":Glass:" + MaterialIds.glass152.materialsEntryCode.value)
         let selected = MW.updateMaterialsWindow (MW.SelectEntryNode (MaterialIds.glass152, leafCode)) m
         let state = MW.facetedState selected
         // The highlight is on the clicked branch row — NOT the flat corpus-group `entry:<guid>` code.
-        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey leafCode), state.selectedCodeOpt)
-        Assert.NotEqual<ConstructorUiKey option>(Some (ConstructorUiKey (MW.entryNodeCode MaterialIds.glass152)), state.selectedCodeOpt)
+        Assert.Equal<ConstructorUiKey option>(Some leafCode, state.selectedCodeOpt)
+        Assert.NotEqual<ConstructorUiKey option>(Some (MaterialIds.glass152.materialsEntryCode), state.selectedCodeOpt)
         // The domain selection still resolves (the view panel / verbs target the material).
         Assert.Equal(Some MaterialIds.glass152, selected.selectedId)
         // The id-only path (programmatic / verb-driven) still highlights the corpus-group row.
         let viaId = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) m
-        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey (MW.entryNodeCode MaterialIds.glass152)), (MW.facetedState viaId).selectedCodeOpt)
+        Assert.Equal<ConstructorUiKey option>(Some (MaterialIds.glass152.materialsEntryCode), (MW.facetedState viaId).selectedCodeOpt)
 
     [<Fact>]
     let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
@@ -627,13 +627,13 @@ module MaterialsWindowTests =
         // The children are still PROJECTED (collapse is a render concern) — only the flag changes.
         Assert.Equal(12, List.length (entriesOf m).children)
         // Toggling "entries" records it expanded and the projected node flips to ExpandedNode.
-        let expanded = MW.updateMaterialsWindow (MW.ToggleNode "entries") m
-        Assert.True(expanded.expandedNodes.isExpanded "entries")
+        let expanded = MW.updateMaterialsWindow (MW.ToggleNode (ConstructorUiKey "entries")) m
+        Assert.Equal(FacetedTreeControls.ExpandedNode, expanded.expandedNodes.nodeExpansion (ConstructorUiKey "entries"))
         Assert.Equal(FacetedTreeControls.ExpandedNode, (entriesOf expanded).expansion)
         Assert.Equal(12, List.length (entriesOf expanded).children)
         // A second toggle collapses it again (persisted, so it survives an unrelated re-projection).
-        let collapsed = MW.updateMaterialsWindow (MW.ToggleNode "entries") expanded
-        Assert.False(collapsed.expandedNodes.isExpanded "entries")
+        let collapsed = MW.updateMaterialsWindow (MW.ToggleNode (ConstructorUiKey "entries")) expanded
+        Assert.Equal(FacetedTreeControls.CollapsedNode, collapsed.expandedNodes.nodeExpansion (ConstructorUiKey "entries"))
         Assert.Equal(FacetedTreeControls.CollapsedNode, (entriesOf collapsed).expansion)
 
     [<Fact>]
@@ -643,10 +643,10 @@ module MaterialsWindowTests =
         let _, m = freshModel ()
         Assert.Equal<ConstructorUiKey option>(None, (MW.facetedState m).selectedCodeOpt)
         let selected = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) m
-        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey (MW.entryNodeCode MaterialIds.glass152)), (MW.facetedState selected).selectedCodeOpt)
+        Assert.Equal<ConstructorUiKey option>(Some (MaterialIds.glass152.materialsEntryCode), (MW.facetedState selected).selectedCodeOpt)
         // A re-selection re-targets the highlight in the same projection.
         let retargeted = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass200) selected
-        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey (MW.entryNodeCode MaterialIds.glass200)), (MW.facetedState retargeted).selectedCodeOpt)
+        Assert.Equal<ConstructorUiKey option>(Some (MaterialIds.glass200.materialsEntryCode), (MW.facetedState retargeted).selectedCodeOpt)
 
     [<Fact>]
     let ``a result count above the threshold gates the tree and Show-Search materializes it`` () =
@@ -666,19 +666,19 @@ module MaterialsWindowTests =
 
     [<Fact>]
     let ``only an entry node code selects — branches and headings are grouping display`` () =
-        Assert.Equal(Some MaterialIds.glass152, MW.entryIdOfNodeCode (MW.entryNodeCode MaterialIds.glass152))
-        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode "branch:material-category:Crystal")
-        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode "entries")
-        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode "entry:not-a-guid")
+        Assert.Equal(Some MaterialIds.glass152, MaterialIds.glass152.materialsEntryCode.tryMaterialsEntryId)
+        Assert.Equal<MaterialId option>(None, (ConstructorUiKey "branch:material-category:Crystal").tryMaterialsEntryId)
+        Assert.Equal<MaterialId option>(None, (ConstructorUiKey "entries").tryMaterialsEntryId)
+        Assert.Equal<MaterialId option>(None, (ConstructorUiKey "entry:not-a-guid").tryMaterialsEntryId)
         let dispatched = ResizeArray<MW.MaterialsWindowMsg>()
         let handlers = MW.facetedHandlers dispatched.Add
-        handlers.selectNode (ConstructorUiKey (MW.entryNodeCode MaterialIds.glass152))
+        handlers.selectNode (MaterialIds.glass152.materialsEntryCode)
         handlers.selectNode (ConstructorUiKey "branch:material-category:Crystal")
         handlers.selectNode (ConstructorUiKey "entries")
         // Only the entry-leaf click selects — carrying the EXACT clicked code (a corpus-group leaf
         // here) so the highlight lands on the clicked row; the bare branch/heading codes are inert.
         Assert.Equal<MW.MaterialsWindowMsg list>(
-            [ MW.SelectEntryNode (MaterialIds.glass152, MW.entryNodeCode MaterialIds.glass152) ],
+            [ MW.SelectEntryNode (MaterialIds.glass152, MaterialIds.glass152.materialsEntryCode) ],
             List.ofSeq dispatched)
         // The offer click lifts its tokens back to elevated engine values at the boundary.
         handlers.applyConstraint materialCategoryKey.uiKey (ConstructorUiKey "Crystal")
@@ -752,21 +752,21 @@ module MaterialsWindowTests =
         HeadlessSession.run (fun () ->
             let materials, _, categories = freshStores ()
             let window = mountMaterialsWindow materials categories
-            Assert.True(isPresent window (MW.entryNode MaterialIds.glass152))
-            Assert.True(isPresent window (MW.entryNode MaterialIds.silicon))
+            Assert.True(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value))
+            Assert.True(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.silicon).value))
             Assert.Equal("12 results", textOf window ConstructorUiId.facetResultCount.value)
             // Click the Dispersion facet's "Dispersive" offer: the corpus narrows to the two
             // wavelength-dependent presets IN THE SAME RENDER PASS.
             clickOn window (ConstructorUiId.facetOfferedValue (ConstructorUiKey materialDispersionKey.value) (ConstructorUiKey "Dispersive")).value
-            Assert.True(isPresent window (MW.entryNode MaterialIds.silicon),
+            Assert.True(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.silicon).value),
                         "the matching entry must stay listed")
-            Assert.False(isPresent window (MW.entryNode MaterialIds.glass152),
+            Assert.False(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value),
                          "the non-matching entry must leave the tree in the same render pass")
             Assert.Equal("2 results", textOf window ConstructorUiId.facetResultCount.value)
             // The removable chip carries the after-count; clicking it restores the corpus.
             Assert.True(isPresent window (ConstructorUiId.facetBreadcrumbChip (ConstructorUiKey materialDispersionKey.value)).value)
             clickOn window (ConstructorUiId.facetBreadcrumbChip (ConstructorUiKey materialDispersionKey.value)).value
-            Assert.True(isPresent window (MW.entryNode MaterialIds.glass152))
+            Assert.True(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value))
             Assert.Equal("12 results", textOf window ConstructorUiId.facetResultCount.value)
             window.Close())
 
@@ -807,13 +807,13 @@ module MaterialsWindowTests =
             // The referenced remove: narrow to the seeded glass, select its leaf, Remove →
             // Confirm → the typed refusal NAMES the referencing sample and the store keeps it.
             commitFilter window "1.52"
-            clickOn window (MW.entryNode MaterialIds.glass152)
+            clickOn window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
             clickOn window ConstructorUiId.materialsRemoveButton.value
             clickOn window ConstructorUiId.materialsRemoveConfirmButton.value
             let message = textOf window ConstructorUiId.materialsWindowMessage.value
             Assert.Contains("still referenced", message)
             Assert.Contains("Glass plate", message)
-            Assert.True(isPresent window (MW.entryNode MaterialIds.glass152),
+            Assert.True(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value),
                         "the refused remove must leave the entry listed")
             match materials.listMaterials ActiveOnly with
             | Ok entries -> Assert.Equal(13, List.length entries)
@@ -854,7 +854,7 @@ module MaterialsWindowTests =
             let materials, _, categories = freshStores ()
             let window = mountMaterialsWindow materials categories
             commitFilter window "1.52"
-            clickOn window (MW.entryNode MaterialIds.glass152)
+            clickOn window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
             let opened = ResizeArray<Window>()
             use _sub =
                 Window.WindowOpenedEvent.Raised
@@ -885,7 +885,7 @@ module MaterialsWindowTests =
             let window = mountMaterialsWindow materials categories
             Assert.False(isPresent window ConstructorUiId.materialsViewPanel.value, "no selection → no view panel")
             commitFilter window "1.52"
-            clickOn window (MW.entryNode MaterialIds.glass152)
+            clickOn window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
             Assert.True(isPresent window ConstructorUiId.materialsViewPanel.value, "the view panel must render for the selected entry")
             Assert.True(isPresent window ConstructorUiId.materialsViewPanelNkChart.value, "the view panel must embed the shared n/k chart host")
             Assert.Contains("Transparent glass", textOf window ConstructorUiId.materialsViewPanel.value)
@@ -916,7 +916,7 @@ module MaterialsWindowTests =
             // The materialized tree opens collapsed (spec 0040 step 002) — expand entries to reach
             // the leaves.
             expandEntries window
-            Assert.True(isPresent window (MW.entryNode MaterialIds.glass152))
+            Assert.True(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value))
             window.Close())
 
     [<Fact>]
@@ -937,13 +937,13 @@ module MaterialsWindowTests =
             // do NOT render.
             Assert.True(isPresent window (ConstructorUiId.facetTreeNode (ConstructorUiKey "entries")).value, "the entries group row must render")
             Assert.True(isPresent window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value, "the entries group must carry a disclosure chevron")
-            Assert.False(isPresent window (MW.entryNode MaterialIds.glass152), "a collapsed tree must hide its entry leaves on first open")
+            Assert.False(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value), "a collapsed tree must hide its entry leaves on first open")
             // Clicking the chevron expands the group — the leaves render in the same pass.
             expandEntries window
-            Assert.True(isPresent window (MW.entryNode MaterialIds.glass152), "the chevron click must reveal the entry leaves")
+            Assert.True(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value), "the chevron click must reveal the entry leaves")
             // A second click collapses it again.
             expandEntries window
-            Assert.False(isPresent window (MW.entryNode MaterialIds.glass152), "a second chevron click must collapse the group")
+            Assert.False(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value), "a second chevron click must collapse the group")
             window.Close())
 
     [<Fact>]
@@ -955,10 +955,10 @@ module MaterialsWindowTests =
             // Narrow to the glass presets so both leaves render near the top and stay clickable.
             commitFilter window "glass"
             // Before any selection every leaf is idle (no row carries the chosen fill).
-            Assert.Equal(Some idleFill, backgroundColorOf (labelBorderOf window (MW.entryNode MaterialIds.glass152)))
-            clickOn window (MW.entryNode MaterialIds.glass152)
-            let selected = labelBorderOf window (MW.entryNode MaterialIds.glass152)
-            let sibling = labelBorderOf window (MW.entryNode MaterialIds.glass200)
+            Assert.Equal(Some idleFill, backgroundColorOf (labelBorderOf window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)))
+            clickOn window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
+            let selected = labelBorderOf window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
+            let sibling = labelBorderOf window ((ConstructorUiId.materialsEntryNode MaterialIds.glass200).value)
             // Exactly the selected row reads the chosen fill; the sibling stays idle.
             Assert.Equal(Some chosenFill, backgroundColorOf selected)
             Assert.Equal(Some idleFill, backgroundColorOf sibling)
@@ -990,7 +990,7 @@ module MaterialsWindowTests =
         // pre-applied constraint narrows nothing here — it shows as the fixed banner only —
         // and it takes NO chip (nothing to remove).
         let _, _, m = freshSelectModel ()
-        Assert.Equal(12, List.length (MW.filteredEntries m))
+        Assert.Equal(12, List.length (m.filteredEntries))
         let state = MW.facetedState m
         Assert.Equal(12, state.resultCount.value)
         Assert.Empty(state.breadcrumbs)
@@ -1126,7 +1126,7 @@ module MaterialsWindowTests =
                 }
             let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
             commitFilter selectWindow "1.52"
-            clickOn selectWindow (MW.entryNode MaterialIds.glass152)
+            clickOn selectWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
             clickOn selectWindow ConstructorUiId.materialsSelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "Select must close the window after onSelected")
@@ -1200,7 +1200,7 @@ module MaterialsWindowTests =
                 }
             let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
             commitFilter selectWindow "1.52"
-            clickOn selectWindow (MW.entryNode MaterialIds.glass152)
+            clickOn selectWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
             clickOn selectWindow ConstructorUiId.materialsSelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "the Select window still closes after its return")
@@ -1251,7 +1251,7 @@ module MaterialsWindowTests =
         Assert.Equal("MaterialsLifecycleCancelButton", ConstructorUiId.materialsLifecycleCancelButton.value)
         Assert.Equal("MaterialsVersionsPanel", ConstructorUiId.materialsVersionsPanel.value)
         Assert.Equal("MaterialsViewOnlyNote", ConstructorUiId.materialsViewOnlyNote.value)
-        Assert.Equal("MaterialsVersionRow_2", MW.versionRow (VersionNumber 2))
+        Assert.Equal("MaterialsVersionRow_2", (ConstructorUiId.materialsVersionRow (VersionNumber 2)).value)
 
     [<Fact>]
     let ``the show-inactive toggle scopes the corpus, badges retired entries, and keeps references resolving`` () =
@@ -1267,7 +1267,7 @@ module MaterialsWindowTests =
         // Default scope EXCLUDES it (pickers / facet counts), and the badge count is 1.
         Assert.DoesNotContain(MaterialIds.glass200, filteredIds retired)
         Assert.Equal(11, (MW.facetedState retired).resultCount.value)
-        Assert.Equal(1, MW.inactiveCount retired)
+        Assert.Equal(1, retired.inactiveCount.value)
         // The reference still resolves IGNORING lifecycle (the table keeps drawing it).
         match materials.resolveVersion (MaterialVersionId.firstOf MaterialIds.glass200) with
         | Ok (Some entry) -> Assert.Equal(MaterialIds.glass200, entry.id)
@@ -1280,7 +1280,7 @@ module MaterialsWindowTests =
         let leaf =
             (MW.facetedState shown).tree
             |> List.head
-            |> fun entries -> entries.children |> List.find (fun n -> n.code.value = MW.entryNodeCode MaterialIds.glass200)
+            |> fun entries -> entries.children |> List.find (fun n -> n.code = MaterialIds.glass200.materialsEntryCode)
         Assert.Contains("inactive", leaf.label.value)
         // A second toggle hides them again.
         Assert.Equal(ActiveOnly, (MW.updateMaterialsWindow MW.ToggleShowInactive shown).showInactive)
@@ -1291,21 +1291,21 @@ module MaterialsWindowTests =
         let _, context = stubContext materials categories
         let m = MW.initMaterialsWindow context Browse
         // No selection → no lifecycle verbs.
-        Assert.Empty(MW.offeredLifecycleActions m)
+        Assert.Empty(m.offeredLifecycleActions)
         // An ACTIVE selection offers Mark inactive + Supersede…
         let selected = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass200) m
-        Assert.Equal<MW.LifecycleAction list>([ MW.MarkInactiveAction; MW.SupersedeAction ], MW.offeredLifecycleActions selected)
+        Assert.Equal<MW.LifecycleAction list>([ MW.MarkInactiveAction; MW.SupersedeAction ], selected.offeredLifecycleActions)
         // Confirm-gated: Request arms with the id, a query change disarms.
         let armed = MW.updateMaterialsWindow MW.RequestMarkInactive selected
         Assert.Equal(MW.PendingLifecycle (MaterialIds.glass200, MW.MarkInactiveAction), armed.lifecycleGate)
-        Assert.Equal(MW.NoPendingLifecycle, (MW.updateMaterialsWindow (MW.CommitTextFilter "x") armed).lifecycleGate)
+        Assert.Equal(MW.NoPendingLifecycle, (MW.updateMaterialsWindow (MW.CommitTextFilter (TextQuery "x")) armed).lifecycleGate)
         // Confirm retires it; the SAME selection now offers Mark active alone.
         let retired = MW.updateMaterialsWindow MW.ConfirmLifecycle armed
-        Assert.Equal<MW.LifecycleAction list>([ MW.MarkActiveAction ], MW.offeredLifecycleActions retired)
+        Assert.Equal<MW.LifecycleAction list>([ MW.MarkActiveAction ], retired.offeredLifecycleActions)
         // Mark active revives it (back in the active listing).
         let revived = retired |> MW.updateMaterialsWindow MW.RequestMarkActive |> MW.updateMaterialsWindow MW.ConfirmLifecycle
         Assert.Contains(MaterialIds.glass200, filteredIds revived)
-        Assert.Equal<MW.LifecycleAction list>([ MW.MarkInactiveAction; MW.SupersedeAction ], MW.offeredLifecycleActions revived)
+        Assert.Equal<MW.LifecycleAction list>([ MW.MarkInactiveAction; MW.SupersedeAction ], revived.offeredLifecycleActions)
         // A vanished id: arm, remove the material behind the window's back, then confirm → the
         // typed store refusal surfaces inline and nothing is silently swallowed.
         let armedAgain = revived |> MW.updateMaterialsWindow MW.RequestSupersede
@@ -1361,10 +1361,10 @@ module MaterialsWindowTests =
         let _, context = stubContext materials categories
         let selected = MW.initMaterialsWindow context Browse |> MW.updateMaterialsWindow (MW.SelectEntry id)
         // Both versions are enumerated (ascending), and the default view is the LATEST.
-        Assert.Equal<int list>([ 1; 2 ], MW.selectedVersions selected |> List.map (fun (v, _) -> v.value))
+        Assert.Equal<int list>([ 1; 2 ], selected.selectedVersions |> List.map (fun (v, _) -> v.value))
         Assert.Equal<VersionNumber option>(None, selected.viewedVersion)
         // The Edit affordance targets the LATEST editable entry (v2).
-        match MW.editableSelection selected with
+        match selected.editableSelection with
         | Some entry -> Assert.Equal(v2.name, entry.name)
         | None -> Assert.Fail "the latest version must remain editable"
         // Viewing an OLDER version records it; the latest is not "older".
@@ -1383,11 +1383,11 @@ module MaterialsWindowTests =
             let window = mountMaterialsWindow materials categories
             // Select the unreferenced glass200 and mark it inactive through the confirm gate.
             commitFilter window "2.00"
-            clickOn window (MW.entryNode MaterialIds.glass200)
+            clickOn window ((ConstructorUiId.materialsEntryNode MaterialIds.glass200).value)
             clickOn window ConstructorUiId.materialsMarkInactiveButton.value
             clickOn window ConstructorUiId.materialsLifecycleConfirmButton.value
             // Its row is gone from the default (ActiveOnly) tree…
-            Assert.False(isPresent window (MW.entryNode MaterialIds.glass200),
+            Assert.False(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.glass200).value),
                          "the retired material must leave the default tree in the same render pass")
             // …but its version still resolves IGNORING lifecycle (the table keeps drawing it).
             match materials.resolveVersion (MaterialVersionId.firstOf MaterialIds.glass200) with
@@ -1396,9 +1396,9 @@ module MaterialsWindowTests =
             // The show-inactive toggle carries the count badge and reveals the entry, badged.
             Assert.Contains("(1)", textOf window ConstructorUiId.materialsShowInactiveToggle.value)
             clickOn window ConstructorUiId.materialsShowInactiveToggle.value
-            Assert.True(isPresent window (MW.entryNode MaterialIds.glass200),
+            Assert.True(isPresent window ((ConstructorUiId.materialsEntryNode MaterialIds.glass200).value),
                         "the toggle must reveal the retired entry in the tree")
-            Assert.Contains("inactive", textOf window (MW.entryNode MaterialIds.glass200))
+            Assert.Contains("inactive", textOf window ((ConstructorUiId.materialsEntryNode MaterialIds.glass200).value))
             window.Close())
 
     [<Fact>]
@@ -1418,15 +1418,15 @@ module MaterialsWindowTests =
             Dispatcher.UIThread.RunJobs()
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
             expandEntries window
-            clickOn window (MW.entryNode id)
+            clickOn window ((ConstructorUiId.materialsEntryNode id).value)
             // The version list renders both versions; the latest view carries NO view-only note.
             Assert.True(isPresent window ConstructorUiId.materialsVersionsPanel.value, "the view panel must list the entry's versions")
-            Assert.True(isPresent window (MW.versionRow (VersionNumber 1)))
-            Assert.True(isPresent window (MW.versionRow (VersionNumber 2)))
+            Assert.True(isPresent window ((ConstructorUiId.materialsVersionRow (VersionNumber 1)).value))
+            Assert.True(isPresent window ((ConstructorUiId.materialsVersionRow (VersionNumber 2)).value))
             Assert.False(isPresent window ConstructorUiId.materialsViewOnlyNote.value, "the latest version is editable — no view-only note")
             Assert.True(isPresent window ConstructorUiId.materialsEditButton.value, "the latest version keeps the Edit verb")
             // Clicking the OLDER version opens it view-only inline (no Save path).
-            clickOn window (MW.versionRow (VersionNumber 1))
+            clickOn window ((ConstructorUiId.materialsVersionRow (VersionNumber 1)).value)
             Assert.True(isPresent window ConstructorUiId.materialsViewOnlyNote.value, "an older version must render the view-only note")
             Assert.Contains("view-only", textOf window ConstructorUiId.materialsViewOnlyNote.value)
             // The library still edits the LATEST — the Edit verb is unchanged by viewing an older version.

@@ -456,7 +456,7 @@ module WindowLauncherTests =
             commitFilter materialsWindow "1.52"
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
             clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            clickOn materialsWindow (MaterialsWindowView.entryNode MaterialLibrary.MaterialIds.glass152)
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialLibrary.MaterialIds.glass152).value)
             // Observe the editors the real launcher opens (the WireUiComposition seam).
             let opened = ResizeArray<Window>()
             use _sub =

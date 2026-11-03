@@ -15,6 +15,11 @@ open OpticalConstructor.Domain.DispersionModels
 [<AutoOpen>]
 module ConstructorUiIdOfDomain =
 
+    type MaterialId with
+
+        /// The material as its Materials-window corpus leaf's tree-node code (`entry:<guid>`).
+        member this.materialsEntryCode : ConstructorUiKey = ConstructorUiKey $"entry:{this.value}"
+
     type ConstructorUiId with
 
         /// An element's invisible hover target on the Main table, which carries its tooltip (spec 0046).
@@ -32,6 +37,51 @@ module ConstructorUiIdOfDomain =
         /// A material-category option of the Material editor.
         static member materialEditorCategoryOption (categoryId : CategoryId) : ConstructorUiId =
             ConstructorUiId $"MaterialCategoryOption_{categoryId.value}"
+
+        /// A material's corpus leaf in the Materials window's faceted tree.
+        static member materialsEntryNode (materialId : MaterialId) : ConstructorUiId = ConstructorUiId.facetTreeNode materialId.materialsEntryCode
+
+        /// One stored version's row in the Materials window's version list.
+        static member materialsVersionRow (version : VersionNumber) : ConstructorUiId = ConstructorUiId $"MaterialsVersionRow_{version.value}"
+
+    type ConstructorUiKey with
+
+        /// The category a Category-manager row key stands for (the inverse of `CategoryId.uiKey`).
+        member this.tryCategoryId : CategoryId option =
+            match System.Guid.TryParse this.value with
+            | true, g -> Some (CategoryId g)
+            | _ -> None
+
+        /// A facet branch's member leaf, under this branch code: `<branch code>:entry:<guid>`.
+        member this.materialsBranchLeaf (materialId : MaterialId) : ConstructorUiKey =
+            ConstructorUiKey $"{this.value}:{materialId.materialsEntryCode.value}"
+
+        /// The material a Materials-window entry leaf stands for: the corpus `entry:<guid>` or a
+        /// branch-nested `…:entry:<guid>`; a `facet:` / `branch:` / `entries` code is `None`.
+        member this.tryMaterialsEntryId : MaterialId option =
+            let flatPrefix = "entry:"
+            let nestedMarker = ":entry:"
+            let code = this.value
+            let idText =
+                if code.StartsWith flatPrefix then Some (code.Substring flatPrefix.Length)
+                else
+                    match code.LastIndexOf(nestedMarker, System.StringComparison.Ordinal) with
+                    | -1 -> None
+                    | idx -> Some (code.Substring (idx + nestedMarker.Length))
+            match idText with
+            | Some t ->
+                match System.Guid.TryParse t with
+                | true, g -> Some (MaterialId g)
+                | _ -> None
+            | None -> None
+
+    type ControlCaption with
+
+        /// The text typed into a Category-manager row's name box, as the category's name.
+        member this.toCategoryName : CategoryName = CategoryName this.value
+
+        /// The text committed in a filter box, as the query it filters by.
+        member this.toTextQuery : TextQuery = TextQuery this.value
 
     type ElementId with
 
@@ -106,6 +156,9 @@ module ConstructorUiIdOfDomain =
         /// The name as a row, a summary or a name box shows it.
         member this.caption : ControlCaption = ControlCaption this.value
 
+        /// The name as a retired entry's tree leaf shows it, badged.
+        member this.inactiveCaption : ControlCaption = ControlCaption $"{this.value} — inactive"
+
     type SubstrateKind with
 
         /// The geometry as the key of its Sample-editor option box.
@@ -142,6 +195,17 @@ module ConstructorUiIdOfDomain =
             | MaterialStillReferencedErr reason
             | MaterialVersionInUseErr reason
             | InvalidMaterialErr reason -> ControlCaption reason
+
+    type CategoryError with
+
+        /// The typed rejection's reason as the Category editor's block slot shows it.
+        member this.caption : ControlCaption =
+            match this with
+            | UnknownCategoryIdErr reason
+            | DuplicateCategoryIdErr reason
+            | CategoryStillReferencedErr reason
+            | BuiltInNotRemovableErr reason
+            | InvalidCategoryErr reason -> ControlCaption reason
 
     type SampleError with
 

@@ -229,17 +229,17 @@ module WireUi0040CompositionTests =
             // Collapsed by default (step 002): the entries group renders a chevron, but no leaf.
             Assert.True(isPresent materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value,
                         "the Materials tree's entries group must carry a disclosure chevron")
-            Assert.False(isPresent materialsWindow (MW.entryNode MaterialIds.glass152),
+            Assert.False(isPresent materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value),
                          "a collapsed Materials tree must hide its entry leaves on first open")
             // Expanding reveals the leaves in the same render pass (expansion persists across the filter).
             expandNode materialsWindow "entries"
             commitFilter materialsWindow "glass"
-            Assert.True(isPresent materialsWindow (MW.entryNode MaterialIds.glass152),
+            Assert.True(isPresent materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value),
                         "the expanded Materials tree lists the seeded glass152 leaf from the root-wired store")
             // Visible selection (step 003): exactly the clicked row reads the chosen fill; a sibling stays idle.
-            clickOn materialsWindow (MW.entryNode MaterialIds.glass152)
-            let mSelected = labelBorderOf materialsWindow (MW.entryNode MaterialIds.glass152)
-            let mSibling = labelBorderOf materialsWindow (MW.entryNode MaterialIds.glass200)
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
+            let mSelected = labelBorderOf materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
+            let mSibling = labelBorderOf materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass200).value)
             Assert.Equal(Some chosenFill, backgroundColorOf mSelected)
             Assert.Equal(Some idleFill, backgroundColorOf mSibling)
             Assert.True(mSelected.BorderThickness.Top > mSibling.BorderThickness.Top,
@@ -332,7 +332,7 @@ module WireUi0040CompositionTests =
             // substrate plate and closes the window.
             commitFilter materialsWindow "1.75"
             expandNode materialsWindow "entries"
-            clickOn materialsWindow (MW.entryNode MaterialIds.glass175)
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass175).value)
             clickOn materialsWindow ConstructorUiId.materialsSelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(materialsWindow.IsVisible, "Select must close the Materials window")

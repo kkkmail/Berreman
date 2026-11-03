@@ -29,6 +29,6 @@ type CategoryEditorWindow(categories : CategoryProxy) as this =
                 categories = categories
                 requestClose = fun () -> this.Close()
             }
-        Program.mkSimple (fun () -> CategoryEditorView.initCategoryEditor context) CategoryEditorView.updateCategoryEditor CategoryEditorView.categoryEditorView
+        Program.mkSimple (fun () -> context.initCategoryEditor) CategoryEditorView.updateCategoryEditor CategoryEditorView.categoryEditorView
         |> Program.withHost this
         |> Program.run
