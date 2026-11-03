@@ -44,15 +44,15 @@ let info =
 let em = EmField.create info
 printfn "em = %A" em
 
-//let i4 = ComplexMatrix4x4.identity * (cplx 2.0)
+//let i4 = ComplexMatrix4x4.identity * (Complex.ofReal 2.0)
 //printfn "i4 = %A" i4
 
 //let m1 = 
 //    [
-//        [0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx; 1.0 |> cplx]
-//        [0.0 |> cplx; 0.0 |> cplx; 1.0 |> cplx; 0.0 |> cplx]
-//        [0.0 |> cplx; 1.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx]
-//        [1.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx]
+//        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal]
+//        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
+//        [0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
+//        [1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
 //    ]
 //    |> matrix
 //    |> ComplexMatrix4x4
@@ -63,10 +63,10 @@ printfn "em = %A" em
 
 //let m2 = 
 //    [
-//        [0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx; 1.0 |> cplx]
-//        [0.0 |> cplx; 0.0 |> cplx; 1.0 |> cplx; 0.0 |> cplx]
-//        [0.0 |> cplx; 1.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx]
-//        [0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx]
+//        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal]
+//        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
+//        [0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
+//        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
 //    ]
 //    |> matrix
 //    |> ComplexMatrix4x4
@@ -85,7 +85,7 @@ let (ComplexMatrix4x4 v) = b
 printfn "b = %A" b
 printfn "b.Determinant = %A" (v.determinant)
 
-let b2 = b.matrixExp(createComplex 0.0 pi)
+let b2 = b.matrixExp(Complex.create 0.0 pi)
 printfn "b2 = %A" b2
 
 //printfn "Calling evd..."

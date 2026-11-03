@@ -5,6 +5,7 @@ open Berreman.Fields                                // WaveLength (a tunable sou
 open OpticalConstructor.Domain.Placement           // CatalogueKind / Emission / ElementPlacement / TablePoint
 open OpticalConstructor.Domain.Library              // ElementId / DetectorKind / SampleVersionId / SampleId
 open OpticalConstructor.Domain.Lifecycle           // VersionRef / VersionsInUse (step 020)
+open OpticalConstructor.Domain.Propagation         // SweptValue / CurvePointCount (a range's ends and points)
 
 /// Spec 0027 (028) / spec 0038 Part I (step 025) — the Experiments domain, redesigned around a
 /// multi-step, EDITABLE experiment built from the live setup:
@@ -12,7 +13,7 @@ open OpticalConstructor.Domain.Lifecycle           // VersionRef / VersionsInUse
 ///      (each descriptor: the catalogue kind, a placement/orientation summary, and the bound entry
 ///      reference BY VERSION where versioned) with the varied element identified WITHIN the list;
 ///   2. the user picks WHICH element to vary — and the element's CATALOGUE KIND determines what may
-///      be varied. This is DATA (`variablesFor`), attached to the element through its kind, NOT
+///      be varied. This is DATA (`VariableParameter.allowedFor`), attached to the element through its kind, NOT
 ///      hard-coded at the bay: a light source varies only its wavelength, a polarizer only its R1, a
 ///      sample its R1 and R2 (for now), and other kinds nothing yet;
 ///   3. the user picks what to CAPTURE (transmitted / reflected / both), sets the numeric range, and
@@ -56,20 +57,20 @@ module Experiments =
             | VaryWaveLength -> "nm"
             | VaryR1 | VaryR2 -> "°"
 
-    /// What each catalogue kind permits varying (spec 028) — declared HERE as DATA (attached to the element
-    /// through its kind) so the Experiments bay READS the allowed set rather than hard-coding it. A light
-    /// source varies only its wavelength; a linear / circular polarizer only its R1; a sample its R1 and R2
-    /// (for now); a lens / mirror / detector expose nothing to vary yet (future kinds add cases here).
-    let variablesFor (kind : CatalogueKind) : VariableParameter list =
-        match kind with
-        | LightSource -> [ VaryWaveLength ]
-        | LinearPolarizer
-        | CircularPolarizer -> [ VaryR1 ]
-        | Sample -> [ VaryR1; VaryR2 ]
-        | Lens
-        | FlatMirror
-        | CurvedMirror
-        | Detector -> []
+        /// What each catalogue kind permits varying (spec 028) — declared HERE as DATA (attached to the element
+        /// through its kind) so the Experiments bay READS the allowed set rather than hard-coding it. A light
+        /// source varies only its wavelength; a linear / circular polarizer only its R1; a sample its R1 and R2
+        /// (for now); a lens / mirror / detector expose nothing to vary yet (future kinds add cases here).
+        static member allowedFor (kind : CatalogueKind) : VariableParameter list =
+            match kind with
+            | LightSource -> [ VaryWaveLength ]
+            | LinearPolarizer
+            | CircularPolarizer -> [ VaryR1 ]
+            | Sample -> [ VaryR1; VaryR2 ]
+            | Lens
+            | FlatMirror
+            | CurvedMirror
+            | Detector -> []
 
     /// What an experiment CAPTURES at the detector (spec 028): the transmitted branch, the reflected
     /// branch, or both. A DU — not a bool / enum — that REPLACES the previously hard-coded "always T"
@@ -113,9 +114,9 @@ module Experiments =
     /// A numeric variation range: [min, max] over `points` samples, in the varied quantity's display unit.
     type VariableRange =
         {
-            min : float
-            max : float
-            points : int
+            min : SweptValue
+            max : SweptValue
+            points : CurvePointCount
         }
 
         /// The default range for a variable (spec 028): R1 0…360° (73 pts); R2 0…89° incidence (91 pts —
@@ -123,9 +124,9 @@ module Experiments =
         /// (91 pts).
         static member forVariable (v : VariableParameter) : VariableRange =
             match v with
-            | VaryR1 -> { min = 0.0; max = 360.0; points = 73 }
-            | VaryR2 -> { min = 0.0; max = 89.0; points = 91 }
-            | VaryWaveLength -> { min = 200.0; max = 800.0; points = 91 }
+            | VaryR1 -> { min = SweptValue 0.0; max = SweptValue 360.0; points = CurvePointCount 73 }
+            | VaryR2 -> { min = SweptValue 0.0; max = SweptValue 89.0; points = CurvePointCount 91 }
+            | VaryWaveLength -> { min = SweptValue 200.0; max = SweptValue 800.0; points = CurvePointCount 91 }
 
     /// A stable identity for an experiment in the collection (a monotonic int — deterministic, so add /
     /// edit / remove are unit-testable without a Guid clock).
@@ -134,6 +135,8 @@ module Experiments =
 
         member this.value = let (ExperimentId i) = this in i
         static member create (i : int) : ExperimentId = ExperimentId i
+
+        member this.next : ExperimentId = ExperimentId (this.value + 1)
 
     /// An elevated filesystem path to an experiment's measured data file (spec 0038 Part I, step 025) —
     /// a single-case DU, never a bare `string` in the `Experiment` record or the serialized contract.
@@ -155,7 +158,7 @@ module Experiments =
     /// reference the `VersionsInUse` seam collects.
     type ElementBinding =
         | BoundByVersion of VersionRef
-        | BoundByEntryId of entryId : string
+        | BoundByEntryId of entryId : ElementValueId
         | Unbound
 
         /// The versioned reference this binding pins, if any — the projection `boundVersions` folds over
@@ -180,6 +183,15 @@ module Experiments =
         static member ofPlacement (p : ElementPlacement) : PlacementSummary =
             { position = p.placementPoint; r1 = p.r1; r2 = p.r2; r3 = p.r3 }
 
+    /// An element's human label as an experiment captures it ("<kind> #<n>"), so a row outlives the element.
+    type ElementLabel =
+        | ElementLabel of string
+
+        member this.value = let (ElementLabel l) = this in l
+
+        /// No element chosen yet (a fresh draft, a dark line).
+        static member blank : ElementLabel = ElementLabel ""
+
     /// One element of an experiment's captured setup (spec 0038 Part I): its stable serializable id and a
     /// human label (captured at commit-time so the row survives the element's later removal), its
     /// catalogue kind, a placement/orientation summary, and the bound entry reference (by version where
@@ -189,7 +201,7 @@ module Experiments =
     type ElementDescriptor =
         {
             elementId : ElementId
-            label : string
+            label : ElementLabel
             kind : CatalogueKind
             placement : PlacementSummary
             binding : ElementBinding
@@ -231,9 +243,9 @@ module Experiments =
             | Some v -> this.setup |> List.tryFind (fun d -> d.elementId = v.elementId)
             | None -> None
 
-        /// The human label of the varied element (from its captured descriptor), or "" for a dark line.
-        member this.variedLabel : string =
-            this.variedDescriptor |> Option.map (fun d -> d.label) |> Option.defaultValue ""
+        /// The human label of the varied element (from its captured descriptor), or blank for a dark line.
+        member this.variedLabel : ElementLabel =
+            this.variedDescriptor |> Option.map (fun d -> d.label) |> Option.defaultValue ElementLabel.blank
 
         /// The detector element of the chain, if the setup captured one — the descriptor whose kind is
         /// `Detector`. Its binding (a protected-preset entry id) resolves through the Library to the
@@ -247,20 +259,20 @@ module Experiments =
         member this.description : string =
             match this.varied with
             | Some v ->
-                $"%s{this.variedLabel}: vary %s{v.variable.label} over %g{this.range.min}…%g{this.range.max} %s{v.variable.unitLabel} (%d{this.range.points} pts), capture %s{this.measurement.label}"
+                $"%s{this.variedLabel.value}: vary %s{v.variable.label} over %g{this.range.min.value}…%g{this.range.max.value} %s{v.variable.unitLabel} (%d{this.range.points.value} pts), capture %s{this.measurement.label}"
             | None ->
                 $"Dark line (%d{List.length this.setup} element(s)), capture %s{this.measurement.label}"
 
-    /// Every versioned reference the experiment's setup binds (spec 0038 Part I): each descriptor
-    /// binding projected to its `VersionRef` (preset / unbound descriptors contribute none).
-    let versionRefsOf (experiment : Experiment) : VersionRef list =
-        experiment.setup |> List.choose (fun d -> d.binding.versionRefOpt)
+        /// Every versioned reference the experiment's setup binds (spec 0038 Part I): each descriptor
+        /// binding projected to its `VersionRef` (preset / unbound descriptors contribute none).
+        member this.versionRefs : VersionRef list =
+            this.setup |> List.choose (fun d -> d.binding.versionRefOpt)
 
     /// The set of versioned references currently bound across a live experiment collection (spec 0038
     /// Part I / §13.1). This is the step-020 "versions in use" set — a version in it is IMMUTABLE (its
     /// physics change mints the next version) and un-deletable. Pure and unit-testable.
     let boundVersions (experiments : Experiment list) : Set<VersionRef> =
-        experiments |> List.collect versionRefsOf |> Set.ofList
+        experiments |> List.collect (fun e -> e.versionRefs) |> Set.ofList
 
     /// Build the step-020 `VersionsInUse` seam over a live source of experiments (spec 0038 Part I): the
     /// composition root injects `fun () -> currentExperiments` so the material / sample stores' saves
@@ -275,7 +287,7 @@ module Experiments =
     type ExperimentDraft =
         {
             elementId : ElementId option
-            elementLabel : string
+            elementLabel : ElementLabel
             variable : VariableParameter option
             measurement : MeasurementMode
             range : VariableRange
@@ -287,7 +299,7 @@ module Experiments =
         static member empty : ExperimentDraft =
             {
                 elementId = None
-                elementLabel = ""
+                elementLabel = ElementLabel.blank
                 variable = None
                 measurement = CaptureTransmitted
                 range = VariableRange.forVariable VaryR1
@@ -300,24 +312,33 @@ module Experiments =
     type ExperimentCollection =
         {
             experiments : Experiment list
-            nextId : int
+            nextId : ExperimentId
             draft : ExperimentDraft
         }
 
         static member empty : ExperimentCollection =
-            { experiments = []; nextId = 1; draft = ExperimentDraft.empty }
+            { experiments = []; nextId = ExperimentId 1; draft = ExperimentDraft.empty }
 
-    /// Whether the draft is complete enough for the interactive add (an element AND a variable are
-    /// chosen). Dark-line experiments (no varied element) are constructed directly, not through the bay's
-    /// gated add — the bay disables Add when this is false.
-    let canCommit (c : ExperimentCollection) : bool =
-        match c.draft.elementId, c.draft.variable with
-        | Some _, Some _ -> true
-        | _ -> false
+        /// A loaded collection (spec 0038 Part L, 037): the next id advances past the loaded ids so a later add
+        /// never collides, and the draft starts fresh.
+        static member ofLoaded (experiments : Experiment list) : ExperimentCollection =
+            {
+                experiments = experiments
+                nextId = ExperimentId ((experiments |> List.map (fun e -> e.id.value) |> List.fold max 0) + 1)
+                draft = ExperimentDraft.empty
+            }
 
-    /// Start a brand-new draft (clears the editor and the editing cursor).
-    let newDraft (c : ExperimentCollection) : ExperimentCollection =
-        { c with draft = ExperimentDraft.empty }
+        /// Whether the draft is complete enough for the interactive add (an element AND a variable are
+        /// chosen). Dark-line experiments (no varied element) are constructed directly, not through the bay's
+        /// gated add — the bay disables Add when this is false.
+        member this.canCommit : bool =
+            match this.draft.elementId, this.draft.variable with
+            | Some _, Some _ -> true
+            | _ -> false
+
+        /// Start a brand-new draft (clears the editor and the editing cursor).
+        member this.newDraft : ExperimentCollection =
+            { this with draft = ExperimentDraft.empty }
 
     /// Choose the element to vary (spec 028 step 2). The allowed variables (`variablesFor kind`) and the
     /// default measurement (from the element's emission) are supplied by the host; the draft's variable
@@ -325,7 +346,7 @@ module Experiments =
     /// to that variable's default.
     let chooseElement
         (id : ElementId)
-        (label : string)
+        (label : ElementLabel)
         (allowed : VariableParameter list)
         (defaultMeasurement : MeasurementMode)
         (c : ExperimentCollection) : ExperimentCollection =
@@ -348,14 +369,14 @@ module Experiments =
     let chooseMeasurement (m : MeasurementMode) (c : ExperimentCollection) : ExperimentCollection =
         { c with draft = { c.draft with measurement = m } }
 
-    let setRangeMin (v : float) (c : ExperimentCollection) : ExperimentCollection =
+    let setRangeMin (v : SweptValue) (c : ExperimentCollection) : ExperimentCollection =
         { c with draft = { c.draft with range = { c.draft.range with min = v } } }
 
-    let setRangeMax (v : float) (c : ExperimentCollection) : ExperimentCollection =
+    let setRangeMax (v : SweptValue) (c : ExperimentCollection) : ExperimentCollection =
         { c with draft = { c.draft with range = { c.draft.range with max = v } } }
 
-    let setRangePoints (n : int) (c : ExperimentCollection) : ExperimentCollection =
-        { c with draft = { c.draft with range = { c.draft.range with points = max 2 n } } }
+    let setRangePoints (n : CurvePointCount) (c : ExperimentCollection) : ExperimentCollection =
+        { c with draft = { c.draft with range = { c.draft.range with points = CurvePointCount (max 2 n.value) } } }
 
     /// Set (or clear, with `None`) the wavelength a tunable source runs at for the draft (spec 0046). The
     /// host clamps it to the source's limits.
@@ -399,7 +420,7 @@ module Experiments =
             | Some _ ->
                 let exp =
                     {
-                        id = ExperimentId c.nextId
+                        id = c.nextId
                         setup = setup
                         varied = variedOpt
                         measurement = c.draft.measurement
@@ -409,7 +430,7 @@ module Experiments =
                     }
                 { c with
                     experiments = c.experiments @ [ exp ]
-                    nextId = c.nextId + 1
+                    nextId = c.nextId.next
                     draft = { c.draft with editingId = Some exp.id } }
             | None -> c
 
@@ -449,8 +470,8 @@ module Experiments =
 
     /// The Experiments error channel (errors as values; each case carries a `reason`).
     type ExperimentError =
-        | UnknownExperiment of reason : string
-        | ExperimentUnavailable of reason : string
+        | UnknownExperimentErr of reason : string
+        | ExperimentUnavailableErr of reason : string
 
     /// The mock Experiments IO seam (the functional-proxy convention): a record of camelCase
     /// `Result`-returning functions. A test substitutes a stub of the SAME shape. Function-valued
@@ -460,7 +481,7 @@ module Experiments =
     type ExperimentProxy =
         {
             listExperiments : unit -> Result<Experiment list, ExperimentError>
-            tryGetExperiment : int -> Result<Experiment option, ExperimentError>
+            tryGetExperiment : ExperimentId -> Result<Experiment option, ExperimentError>
         }
 
     /// A dark-line seed template (spec 0038 Part I): an EMPTY setup with nothing varied — the "how much
@@ -482,9 +503,9 @@ module Experiments =
     /// The in-memory mock proxy (spec §3 / Q7): closes over the seed templates, no IO, deterministic for
     /// tests. A real disk-backed `create` would live in `OpticalConstructor.Storage`, leaving the
     /// bay / logic unchanged.
-    let createInMemory () : ExperimentProxy =
+    let createInMemoryExperiments () : ExperimentProxy =
         let seeds = seedExperiments
         {
             listExperiments = fun () -> Ok seeds
-            tryGetExperiment = fun i -> Ok (seeds |> List.tryFind (fun e -> e.id.value = i))
+            tryGetExperiment = fun id -> Ok (seeds |> List.tryFind (fun e -> e.id = id))
         }

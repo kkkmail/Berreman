@@ -25,8 +25,8 @@ module GradientDiscretizeTests =
     let ``AC-B11 discretize yields exactly n equal-thickness reused Layers summing to total`` () =
         let total = 300.0e-9<meter>
         let n = 5
-        let g = { totalThickness = total; subLayerCount = n; indexProfile = profile }
-        let layers = discretize g
+        let g = { totalThickness = total; subLayerCount = SubLayerCount n; indexProfile = profile }
+        let layers = g.discretize
 
         Assert.Equal(n, List.length layers)
 
@@ -48,12 +48,12 @@ module GradientDiscretizeTests =
     [<Fact>]
     let ``AC-B11 discretize with subLayerCount = 1 returns a single full-thickness Layer`` () =
         let total = 120.0e-9<meter>
-        let g = { totalThickness = total; subLayerCount = 1; indexProfile = profile }
-        let layers = discretize g
+        let g = { totalThickness = total; subLayerCount = SubLayerCount 1; indexProfile = profile }
+        let layers = g.discretize
         Assert.Equal(1, List.length layers)
         Assert.True(abs ((thicknessMeters layers.[0] - total) / total) <= 1e-12)
 
     [<Fact>]
     let ``discretize rejects subLayerCount < 1`` () =
-        let g = { totalThickness = 100.0e-9<meter>; subLayerCount = 0; indexProfile = profile }
-        Assert.Throws<System.ArgumentException>(fun () -> discretize g |> ignore) |> ignore
+        let g = { totalThickness = 100.0e-9<meter>; subLayerCount = SubLayerCount 0; indexProfile = profile }
+        Assert.Throws<System.ArgumentException>(fun () -> g.discretize |> ignore) |> ignore

@@ -13,8 +13,8 @@ open Constants
 module BerremanMatrix =
 
     /// Normalizes complex vector using L2 norm.
-    let normalize (v : #seq<Complex>) =
-        let norm = v |> l2Norm |> cplx
+    let l2Normalize (v : #seq<Complex>) : seq<Complex> =
+        let norm = v |> l2Norm
         let retVal = v |> Seq.map (fun e -> e / norm)
         retVal
 
@@ -24,7 +24,7 @@ module BerremanMatrix =
 
         [| for i in 0..(len-1) ->
             [| for j in 0..(len-1) -> m.[j, i] |]
-            |> normalize
+            |> l2Normalize
             |> Array.ofSeq
         |]
         |> matrix
@@ -120,12 +120,12 @@ module BerremanMatrix =
 
             match l.thickness with
             | Thickness x ->
-                let a = m.berremanMatrix.matrixExp (Complex(0.0, (2.0 * pi * x / w.value))) |> BerremanMatrixPropagated
+                let a = m.berremanMatrix.matrixExp (Complex(0.0, (2.0 * System.Math.PI * x / w.value))) |> BerremanMatrixPropagated
                 a
             | Infinity -> failwith "TODO: Implement infinite thickness by making this layer the output media."
 
         static member propagateInclinedLayer (l : WedgeLayer) (emc : EmComponent) (w : WaveLength) : BerremanMatrixPropagated =
-            if abs emc.n1SinFita.value < almostZero
+            if abs emc.n1SinFita.value < almostZero.value
             then BerremanMatrixPropagated.propagateLayer l.layer emc w
             else failwith "propagateInclinedLayer for not normal incidence is not yet implemented."
 
@@ -152,7 +152,7 @@ module BerremanMatrix =
                 let normed =
                     [| for i in 0..(len-1) ->
                         [| for j in 0..(len-1) -> e.[j, i] |]
-                        |> normalize
+                        |> l2Normalize
                         |> Array.ofSeq
                     |]
 
@@ -161,7 +161,7 @@ module BerremanMatrix =
             let ve =
                 Array.zip (evd.EigenValues.ToArray()) (evd.EigenVectors |> toArrays)
                 |> List.ofArray
-                |> List.map (fun (v, e) -> v, e |> normalize |> ComplexVector4.create)
+                |> List.map (fun (v, e) -> v, e |> l2Normalize |> ComplexVector4.create)
 //                |> List.map (fun (v, e) -> v, e, ((BerremanFieldEH e).sZ, (BerremanFieldEH e).xy))
                 |> List.map (fun (v, e) -> v, e, (sign (BerremanFieldEH e).sZ, (BerremanFieldEH e).xy))
                 |> List.sortBy (fun (_, _, s) -> s) // Sort by z component of Poynting vector first, then by x <-> y relative polarization.
@@ -196,13 +196,13 @@ module BerremanMatrix =
             let bm = BerremanMatrix.create o nsf
             let ev = bm.eigenBasis()
             let (Ellipticity e) = info.ellipticity
-            let a90 = (e / sqrt(1.0 + e * e) |> cplx) * cplxI
-            let a0 = 1.0 / sqrt(1.0 + e * e) |> cplx
+            let a90 = (e / sqrt(1.0 + e * e) |> Complex.ofReal) * cplxI
+            let a0 = 1.0 / sqrt(1.0 + e * e) |> Complex.ofReal
 
-            let emc0 = EmComponent.create ev.down.evv0 (cplx 1.0) nsf o
-            let emc1 = EmComponent.create ev.down.evv1 (cplx 1.0) nsf o
-            let norm0 = emc0.e.value.norm |> cplx
-            let norm1 = emc1.e.value.norm |> cplx
+            let emc0 = EmComponent.create ev.down.evv0 (Complex.ofReal 1.0) nsf o
+            let emc1 = EmComponent.create ev.down.evv1 (Complex.ofReal 1.0) nsf o
+            let norm0 = emc0.e.value.norm |> Complex.ofReal
+            let norm1 = emc1.e.value.norm |> Complex.ofReal
 
             let em =
                 {
@@ -225,7 +225,7 @@ module BerremanMatrix =
             let propagate (emc : EmComponent) =
                 match s.thickness with
                 | Thickness h ->
-                    let multiplier = exp (Complex(0.0, (2.0 * pi * h * emc.emEigenVector.w.z / emf.waveLength.value)))
+                    let multiplier = exp (Complex(0.0, (2.0 * System.Math.PI * h * emc.emEigenVector.w.z / emf.waveLength.value)))
                     emc * multiplier
                 | Infinity -> failwith "TODO: Implement infinite thickness by making this layer the output media."
 
@@ -234,7 +234,7 @@ module BerremanMatrix =
                 let beh = [ emc.emEigenVector.e.x; emc.emEigenVector.h.y; emc.emEigenVector.e.y; -emc.emEigenVector.h.x ] |> ComplexVector.create |> ComplexVector4
                 let bp = bmp * beh
                 let norm = beh.norm
-                let multiplier = bp * (beh.conjugate) / ((norm * norm) |> cplx)
+                let multiplier = bp * (beh.conjugate) / ((norm * norm) |> Complex.ofReal)
                 emc * multiplier
 
             let a = emf.emComponents |> List.map propagate
@@ -246,7 +246,7 @@ module BerremanMatrix =
         member emf.propagate (s : WedgeLayer) : EmField =
             let m = emf.emComponents |> List.map (fun e -> abs e.n1SinFita.value)|> List.max
 
-            if m < almostZero
+            if m < almostZero.value
             then emf.propagate s.layer
             else failwith "propagateInclinedLayer for not normal incidence is not yet implemented."
 

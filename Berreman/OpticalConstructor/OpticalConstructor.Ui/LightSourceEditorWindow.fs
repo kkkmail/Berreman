@@ -15,17 +15,17 @@ open OpticalConstructor.Domain.Library
 type LightSourceEditorWindow(sources : SourceProxy, intent : LightSourceEditorView.SourceEditorIntent) as this =
     inherit HostWindow()
 
-    let mutable dispatch : LightSourceEditorView.Msg -> unit = ignore
+    let mutable dispatch : LightSourceEditorView.LightSourceEditorMsg -> unit = ignore
     // The latest model, mirrored on every step — the `OnClosing` chrome gate reads dirtiness off it.
-    let mutable latestModel : LightSourceEditorView.Model option = None
+    let mutable latestModel : LightSourceEditorView.LightSourceEditorModel option = None
 
     do
         this.Title <-
             match intent with
-            | LightSourceEditorView.EditSource s -> $"Source Editor — %s{s.name}"
+            | LightSourceEditorView.EditSource s -> $"Source Editor — %s{s.name.value}"
             | LightSourceEditorView.NewSource _ -> "Source Editor — new source"
-        this.Name <- UiIds.SourceEditor.window
-        AutomationProperties.SetAutomationId(this, UiIds.SourceEditor.window)
+        this.Name <- ConstructorUiId.sourceEditorWindow.value
+        AutomationProperties.SetAutomationId(this, ConstructorUiId.sourceEditorWindow.value)
         this.Width <- 620.0
         this.Height <- 280.0
         // Spec 0046: never larger than the screen it opens on (its content scrolls).
@@ -35,12 +35,12 @@ type LightSourceEditorWindow(sources : SourceProxy, intent : LightSourceEditorVi
                 sources = sources
                 requestClose = fun () -> this.Close()
             }
-        let initModel = LightSourceEditorView.init context intent
+        let initModel = LightSourceEditorView.initLightSourceEditor context intent
         latestModel <- Some initModel
         Program.mkProgram
             (fun () -> initModel, Cmd.ofEffect (fun d -> dispatch <- d))
-            (fun msg m -> let next = LightSourceEditorView.update msg m in latestModel <- Some next; next, Cmd.none)
-            LightSourceEditorView.view
+            (fun msg m -> let next = LightSourceEditorView.updateLightSourceEditor msg m in latestModel <- Some next; next, Cmd.none)
+            LightSourceEditorView.lightSourceEditorView
         |> Program.withHost this
         |> Program.run
 
@@ -48,8 +48,8 @@ type LightSourceEditorWindow(sources : SourceProxy, intent : LightSourceEditorVi
     /// dirty editor must NOT close through the chrome; false when the close may proceed.
     member _.ChromeCloseIntercepted() : bool =
         match latestModel with
-        | Some m when LightSourceEditorView.isDirty m ->
-            dispatch LightSourceEditorView.CancelClicked
+        | Some m when m.isDirty ->
+            dispatch LightSourceEditorView.LightSourceCancelClicked
             true
         | _ -> false
 

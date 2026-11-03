@@ -85,7 +85,7 @@ module WireUiFinalCompositionTests =
         {
             kindConstraint = KindConstraint kind
             currentEntryIdOpt = None
-            target = TableElementTarget (Library.elementId "wire-sweep")
+            target = TableElementTarget (Library.ElementId "wire-sweep")
             onSelected = ignore
             onCancelled = ignore
         }

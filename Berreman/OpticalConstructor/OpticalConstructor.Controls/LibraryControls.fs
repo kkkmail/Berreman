@@ -1,12 +1,10 @@
 namespace OpticalConstructor.Controls
 
 open Avalonia
-open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
-open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
@@ -21,53 +19,69 @@ open Avalonia.FuncUI.Types
 /// function record (the functional-proxy seam; a test substitutes stubs).
 module LibraryControls =
 
-    /// One row the host pre-flattens from a `LibraryTree` (Controls carries no domain types). `depth`
-    /// drives the indent; `entryId` is "" for a non-selectable group header, the entry id for a leaf;
-    /// `isBound` marks the row whose entry is the selected element's current `valueId`.
+    /// How deep a row sits in the tree (0 = the top level); it drives the row's indent.
+    type LibraryRowDepth =
+        | LibraryRowDepth of int
+
+        member this.value = let (LibraryRowDepth d) = this in d
+
+        /// The row's left indent, in device-independent pixels.
+        member this.indent : float = float (12 * this.value)
+
+    /// Whether a leaf row's entry is the selected element's current `valueId`.
+    type LibraryEntryBinding =
+        | EntryBound
+        | EntryUnbound
+
+    /// What a row is: a non-selectable group header, or a selectable entry (its id, as the host keys it).
+    type LibraryRowKind =
+        | LibraryGroupHeader
+        | LibraryEntryLeaf of entry : ConstructorUiKey * binding : LibraryEntryBinding
+
+    /// One row the host pre-flattens from a `LibraryTree` (Controls carries no domain types).
     type Row =
         {
-            label : string
-            depth : int
-            entryId : string
-            isBound : bool
+            label : ControlCaption
+            depth : LibraryRowDepth
+            kind : LibraryRowKind
         }
 
     /// The bay's pure, serializable state.
-    type State =
+    type LibraryControlsState =
         {
             /// The chosen tree representation, flattened to selectable leaf rows + group headers.
             rows : Row list
-            /// The constrained kind label ("Sample" / "Detector" / …), or "" when nothing bindable.
-            kindLabel : string
+            /// The constrained kind label ("Sample" / "Detector" / …), or `None` when nothing bindable.
+            kindLabel : ControlCaption option
             /// The bound entry's display name for the current selection (the readout), if any.
-            boundName : string option
-            /// `false` when nothing (or a non-bindable thing) is selected.
-            enabled : bool
+            boundName : ControlCaption option
+            /// `ControlWithheld` when nothing (or a non-bindable thing) is selected.
+            availability : ControlAvailability
             /// Spec 0027 (026): the selected-but-not-yet-confirmed entry id (the pending choice), if any.
-            pendingEntryId : string option
+            pendingEntryId : ConstructorUiKey option
             /// Spec 0027 (026): the pending entry's display name (shown in the confirm panel), if any.
-            pendingName : string option
+            pendingName : ControlCaption option
             /// Spec 0027 (026): the pending entry's FULL description (shown before the user confirms).
-            pendingDescription : string
+            pendingDescription : ControlCaption
         }
 
-    let empty : State =
+    let empty : LibraryControlsState =
         {
             rows = []
-            kindLabel = ""
+            kindLabel = None
             boundName = None
-            enabled = false
+            availability = ControlWithheld
             pendingEntryId = None
             pendingName = None
-            pendingDescription = ""
+            pendingDescription = ControlCaption ""
         }
 
     /// Behaviour injected by the host (the functional-proxy seam; tests pass stubs).
-    type Handlers =
+    type LibraryControlsHandlers =
         {
             /// Spec 0027 (026): SELECT this entry id as the pending choice (does NOT bind yet — it shows
             /// the entry's full description and offers Confirm / Cancel).
-            selectEntry : string -> unit
+            selectEntry : ConstructorUiKey -> unit
             /// Spec 0027 (026): COMMIT the pending choice — bind it to the selected element's `valueId`.
             confirmEntry : unit -> unit
             /// Spec 0027 (026): CLEAR the pending choice without binding.
@@ -75,21 +89,11 @@ module LibraryControls =
         }
 
     // -- The button look, identical to the other bars' idle button (so they MATCH). --
-    let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = color 232 232 232
-    let private boundBackground = color 150 185 235
-    let private pendingBackground = color 255 224 160
-    let private idleBorder = color 120 120 120
-
-    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
-    /// `Control.Name`) through FuncUI's attr builder. The leaf rows live in a KIND-CONSTRAINED list
-    /// whose MEMBERSHIP changes with the selection, and the Confirm / Cancel actions live in a panel
-    /// that comes and goes with the pending choice — so FuncUI can shift a sibling onto a reused
-    /// control's slot. Avalonia forbids renaming a styled control, and an AutomationId survives that
-    /// reuse (the `MaterialsControls` precedent).
-    let private automationId (autoId : string) : IAttr<Border> =
-        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+    let private boundBackground = Color.FromRgb(150uy, 185uy, 235uy)
+    let private pendingBackground = Color.FromRgb(255uy, 224uy, 160uy)
+    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
 
     /// How a leaf row is currently highlighted: the confirmed bound entry, the pending (selected-not-yet-
     /// confirmed) entry, or neither.
@@ -98,10 +102,11 @@ module LibraryControls =
         | RowPending
         | RowPlain
 
-    /// A clickable leaf row (a styled Border carrying a reuse-safe AutomationId), highlighted when it
-    /// is the bound or pending entry. The row is KEYED by its id so a membership change recreates the
-    /// box at a shifted slot instead of patching another entry's styled control in place.
-    let private leafRow (id : string) (label : string) (depth : int) (highlight : RowHighlight) (enabled : bool) (onClick : unit -> unit) : IView =
+    /// A clickable leaf row, highlighted when it is the bound or pending entry. Its id is an AutomationId,
+    /// not a `Name`: the kind-constrained list's membership changes with the selection, so FuncUI can shift a
+    /// sibling onto a reused Border, and Avalonia forbids renaming a styled control (the `MaterialsControls`
+    /// precedent). Keyed by its id, so a membership shift recreates the box instead of patching another's.
+    let private leafRow (id : ConstructorUiId) (label : ControlCaption) (depth : LibraryRowDepth) (highlight : RowHighlight) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
         let background =
             match highlight with
             | RowBound -> boundBackground
@@ -109,75 +114,86 @@ module LibraryControls =
             | RowPlain -> idleBackground
         let row =
             Border.create [
-                automationId id
-                Border.isEnabled enabled
-                Border.opacity (if enabled then 1.0 else 0.4)
+                id.automationAttribute<Border> ()
+                Border.isEnabled availability.isEnabled
+                Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
                 Border.background (brush background)
                 Border.borderBrush (brush idleBorder)
                 Border.borderThickness 1.0
                 Border.cornerRadius (CornerRadius 3.0)
                 Border.padding (Thickness(10.0, 4.0))
-                Border.margin (Thickness(float (12 * depth), 0.0, 6.0, 4.0))
+                Border.margin (Thickness(depth.indent, 0.0, 6.0, 4.0))
                 Border.horizontalAlignment HorizontalAlignment.Left
-                Border.child (TextBlock.create [ TextBlock.text label ])
+                Border.child (TextBlock.create [ TextBlock.text label.value ])
                 // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the
                 // highlight changes (matching the other bars) so a reused row can't keep a stale handler.
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (label, highlight)))
+                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (label.value, highlight)))
             ]
             // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
             // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
-            |> Avalonia.FuncUI.DSL.View.withKey id
+            |> Avalonia.FuncUI.DSL.View.withKey id.value
         row :> IView
 
     /// A non-selectable group-header row (a plain, indented label — no id, no click), keyed by its
     /// label + depth so membership shifts never patch one header's slot into another's.
-    let private headerRow (label : string) (depth : int) : IView =
+    let private headerRow (label : ControlCaption) (depth : LibraryRowDepth) : IView =
         let header =
             TextBlock.create [
-                TextBlock.text label
+                TextBlock.text label.value
                 TextBlock.fontWeight FontWeight.SemiBold
-                TextBlock.margin (Thickness(float (12 * depth), 4.0, 0.0, 2.0))
+                TextBlock.margin (Thickness(depth.indent, 4.0, 0.0, 2.0))
             ]
-            |> Avalonia.FuncUI.DSL.View.withKey $"LibraryHeader_%d{depth}_%s{label}"
+            |> Avalonia.FuncUI.DSL.View.withKey $"LibraryHeader_{depth.value}_{label.value}"
         header :> IView
 
-    let private rowView (state : State) (handlers : Handlers) (r : Row) : IView =
-        if r.entryId = "" then headerRow r.label r.depth
-        else
+    let private rowView (state : LibraryControlsState) (handlers : LibraryControlsHandlers) (r : Row) : IView =
+        match r.kind with
+        | LibraryGroupHeader -> headerRow r.label r.depth
+        | LibraryEntryLeaf (entry, binding) ->
             let highlight =
-                if state.pendingEntryId = Some r.entryId then RowPending
-                elif r.isBound then RowBound
-                else RowPlain
-            leafRow (UiIds.Library.entry r.entryId) r.label r.depth highlight state.enabled (fun () -> handlers.selectEntry r.entryId)
+                match binding with
+                | _ when state.pendingEntryId = Some entry -> RowPending
+                | EntryBound -> RowBound
+                | EntryUnbound -> RowPlain
+            leafRow (ConstructorUiId.libraryEntry entry) r.label r.depth highlight state.availability (fun () -> handlers.selectEntry entry)
+
+    /// Whether an action button carries the bound-entry accent (Confirm) or the idle look (Cancel).
+    type private ActionEmphasis =
+        | AccentAction
+        | PlainAction
 
     // -- The Confirm / Cancel action buttons of the pending bind. The panel they live in comes and
     // goes with the pending choice, so they are regenerable: a reuse-safe AutomationId (never a
     // write-once `Name`), keyed by that id.
-    let private actionButton (id : string) (label : string) (accent : bool) (onClick : unit -> unit) : IView =
+    let private actionButton (id : ConstructorUiId) (caption : ControlCaption) (emphasis : ActionEmphasis) (onClick : unit -> unit) : IView =
+        let background =
+            match emphasis with
+            | AccentAction -> boundBackground
+            | PlainAction -> idleBackground
         let button =
             Border.create [
-                automationId id
-                Border.background (brush (if accent then boundBackground else idleBackground))
+                id.automationAttribute<Border> ()
+                Border.background (brush background)
                 Border.borderBrush (brush idleBorder)
                 Border.borderThickness 1.0
                 Border.cornerRadius (CornerRadius 3.0)
                 Border.padding (Thickness(12.0, 5.0))
                 Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
                 Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text label ])
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label)))
+                Border.child (TextBlock.create [ TextBlock.text caption.value ])
+                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, caption.value)))
             ]
-            |> Avalonia.FuncUI.DSL.View.withKey id
+            |> Avalonia.FuncUI.DSL.View.withKey id.value
         button :> IView
 
     /// The pending-bind confirm panel: the pending entry's name, its FULL description, and Confirm / Cancel
     /// (shown only while an entry is pending — i.e. selected but not yet committed).
-    let private confirmPanel (state : State) (handlers : Handlers) : IView list =
+    let private confirmPanel (state : LibraryControlsState) (handlers : LibraryControlsHandlers) : IView list =
         match state.pendingEntryId, state.pendingName with
         | Some _, Some name ->
             [
                 Border.create [
-                    Border.background (brush (color 250 246 235))
+                    Border.background (brush (Color.FromRgb(250uy, 246uy, 235uy)))
                     Border.borderBrush (brush idleBorder)
                     Border.borderThickness 1.0
                     Border.cornerRadius (CornerRadius 3.0)
@@ -188,10 +204,10 @@ module LibraryControls =
                             StackPanel.orientation Orientation.Vertical
                             StackPanel.spacing 4.0
                             StackPanel.children [
-                                TextBlock.create [ TextBlock.text $"Selected: %s{name}"; TextBlock.fontWeight FontWeight.SemiBold ]
+                                TextBlock.create [ TextBlock.text $"Selected: {name.value}"; TextBlock.fontWeight FontWeight.SemiBold ]
                                 TextBlock.create [
-                                    TextBlock.name UiIds.Library.description
-                                    TextBlock.text state.pendingDescription
+                                    TextBlock.name ConstructorUiId.libraryEntryDescription.value
+                                    TextBlock.text state.pendingDescription.value
                                     TextBlock.textWrapping TextWrapping.Wrap
                                     TextBlock.maxWidth 360.0
                                 ]
@@ -199,8 +215,8 @@ module LibraryControls =
                                     StackPanel.orientation Orientation.Horizontal
                                     StackPanel.spacing 0.0
                                     StackPanel.children [
-                                        actionButton UiIds.Library.confirm "Confirm" true handlers.confirmEntry
-                                        actionButton UiIds.Library.cancel "Cancel" false handlers.cancelEntry
+                                        actionButton ConstructorUiId.libraryConfirmButton (ControlCaption "Confirm") AccentAction handlers.confirmEntry
+                                        actionButton ConstructorUiId.libraryCancelButton (ControlCaption "Cancel") PlainAction handlers.cancelEntry
                                     ]
                                 ]
                             ]
@@ -211,24 +227,27 @@ module LibraryControls =
 
     /// The Library bay — the constrained-kind label, the bound-entry readout, the kind-constrained tree of
     /// selectable entries, and (once an entry is picked) the confirm panel showing its full description.
-    let view (state : State) (handlers : Handlers) : IView =
-        let kindText = if state.kindLabel = "" then "Showing: (select an element)" else $"Showing: %s{state.kindLabel}"
+    let libraryControlsView (state : LibraryControlsState) (handlers : LibraryControlsHandlers) : IView =
+        let kindText =
+            match state.kindLabel with
+            | Some kind -> $"Showing: {kind.value}"
+            | None -> "Showing: (select an element)"
         let boundText =
             match state.boundName with
-            | Some name -> $"Bound: %s{name}"
+            | Some name -> $"Bound: {name.value}"
             | None -> "Bound: (none)"
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    TextBlock.create [ TextBlock.name UiIds.Library.kindLabel; TextBlock.text kindText ] :> IView
-                    TextBlock.create [ TextBlock.name UiIds.Library.readout; TextBlock.text boundText ] :> IView
+                    TextBlock.create [ TextBlock.name ConstructorUiId.libraryKindLabel.value; TextBlock.text kindText ] :> IView
+                    TextBlock.create [ TextBlock.name ConstructorUiId.libraryBoundReadout.value; TextBlock.text boundText ] :> IView
                     ScrollViewer.create [
                         ScrollViewer.maxHeight 220.0
                         ScrollViewer.content (
                             StackPanel.create [
-                                StackPanel.name UiIds.Library.tree
+                                StackPanel.name ConstructorUiId.libraryTree.value
                                 StackPanel.orientation Orientation.Vertical
                                 StackPanel.children (state.rows |> List.map (rowView state handlers))
                             ])

@@ -6,6 +6,7 @@ open Berreman.Fields
 open Berreman.FieldFunctions
 open Analytics
 open Analytics.Variables
+open Analytics.StandardSystems
 open OpticalConstructor.Ui.Charts
 open Xunit
 
@@ -19,50 +20,49 @@ open Xunit
 module SeriesDataTests =
 
     let private light = IncidentLightInfo.create (WaveLength.nm 550.0<nm>)
-    let private f = StandardSystems.transparentGlass light
+    let private f = FixedInfo.transparentGlass light
 
     // ----------------------------------------------------------------- AC-H1
 
     [<Fact>]
     let ``AC-H1 series1D reproduces Charting.plot's chosen (x,y) pairs`` () =
         let x =
-            IncidenceAngleRange (Range<_>.create 8 (Angle.degree 0.0 |> IncidenceAngle) (Angle.degree 60.0 |> IncidenceAngle))
+            IncidenceAngleRange (Range<_>.create (NumberOfPoints 8) (Angle.degree 0.0<deg> |> IncidenceAngle) (Angle.degree 60.0<deg> |> IncidenceAngle))
 
         // The exact choose-on-`Some` projection `Charting.plot` performs (Charting.fs:26-30).
         let data = calculate f x
         let expected =
             data
-            |> Array.map (fun (v, s) -> (v, s.func R))
-            |> Array.choose (fun (xx, yo) -> match yo with | Some y -> Some (xx, y) | None -> None)
+            |> Array.choose (fun p -> p.solution.func R |> Option.map (fun y -> (p.plotValue, y.value)))
 
         let actual = (SeriesData.series1D f R x).points
 
         Assert.Equal(expected.Length, actual.Length)
         Array.zip expected actual
-        |> Array.iter (fun ((ex, ey), (ax, ay)) ->
-            Assert.Equal(ex, ax, 12)
-            Assert.Equal(ey, ay, 12))
+        |> Array.iter (fun ((ex, ey), a) ->
+            Assert.Equal(ex, a.x, 12)
+            Assert.Equal(ey, a.y, 12))
 
     [<Fact>]
     let ``AC-H1 the series legend name is the engine fullName`` () =
         let x =
-            IncidenceAngleRange (Range<_>.create 4 (Angle.degree 0.0 |> IncidenceAngle) (Angle.degree 40.0 |> IncidenceAngle))
-        Assert.Equal(R.info.fullName, (SeriesData.series1D f R x).name)
+            IncidenceAngleRange (Range<_>.create (NumberOfPoints 4) (Angle.degree 0.0<deg> |> IncidenceAngle) (Angle.degree 40.0<deg> |> IncidenceAngle))
+        Assert.Equal(R.info.fullName, (SeriesData.series1D f R x).name.value)
 
     // ----------------------------------------------------------------- AC-H3
 
     [<Fact>]
     let ``AC-H3 surface adapter Z grid equals mapFun output`` () =
         let x =
-            IncidenceAngleRange (Range<_>.create 6 (Angle.degree 0.0 |> IncidenceAngle) (Angle.degree 50.0 |> IncidenceAngle))
+            IncidenceAngleRange (Range<_>.create (NumberOfPoints 6) (Angle.degree 0.0<deg> |> IncidenceAngle) (Angle.degree 50.0<deg> |> IncidenceAngle))
         let y =
-            WaveLengthRange (   Range<_>.create 5 (WaveLength.nm 400.0<nm>) (WaveLength.nm 700.0<nm>))
+            WaveLengthRange (   Range<_>.create (NumberOfPoints 5) (WaveLength.nm 400.0<nm>) (WaveLength.nm 700.0<nm>))
 
         // A single fixed calculate3D run, shared between mapFun and the adapter, so
         // the comparison is order-stable (calculate3D parallelises over rows).
         let data = calculate3D f x y
-        let expected = Charting.mapFun data R
-        let actual = (SeriesData.surfaceFromData data R x.plotPoints y.plotPoints).z
+        let expected = Charting.mapFun data R |> Array.map (Array.map (fun v -> v.value))
+        let actual = (SeriesData.surfaceFromData data R x y).z
 
         Assert.Equal(expected.Length, actual.Length)
         Array.zip expected actual

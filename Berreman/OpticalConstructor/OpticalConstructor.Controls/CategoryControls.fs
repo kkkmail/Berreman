@@ -1,12 +1,10 @@
 namespace OpticalConstructor.Controls
 
 open Avalonia
-open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
-open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
@@ -14,84 +12,77 @@ open Avalonia.FuncUI.Types
 /// the Category manager projects the slice-004 `CategoryEditor` onto. A category list with an inline
 /// name box per row and Add / Rename(save) / Remove verbs; a BUILT-IN row's name stays editable but
 /// its Remove verb is OMITTED (removed, not greyed), matching the `MaterialsControls` view-only-Edit
-/// precedent; an inline block-message slot surfaces the store's typed refusals (`CategoryStillReferenced`
-/// / `BuiltInNotRemovable`). This control is DOMAIN-FREE (matching `MaterialsControls` / `LibraryControls`):
+/// precedent; an inline block-message slot surfaces the store's typed refusals (`CategoryStillReferencedErr`
+/// / `BuiltInNotRemovableErr`). This control is DOMAIN-FREE (matching `MaterialsControls` / `LibraryControls`):
 /// the host flattens the editor's working `MaterialCategory` rows into `Row`s and injects the behaviour
 /// as a `Handlers` function record (the functional-proxy seam; a test substitutes stubs). The control
 /// renders the rows it is given and never touches a proxy (the host flattens and dispatches).
 module CategoryControls =
 
+    /// Where a listed category comes from. A built-in row's name box stays editable, but its Remove
+    /// verb is removed: only a user category may be deleted (the store enforces the actual block).
+    type CategoryRowOrigin =
+        | BuiltInCategoryRow
+        | UserCategoryRow
+
     /// One category row the host pre-flattens from the `CategoryEditor` working rows (Controls carries
-    /// no domain types). `categoryId` is the category's stable id in its string form; `isBuiltIn` marks
-    /// a `BuiltInCategory` row — its name box stays editable, but its Remove verb is removed (only a
-    /// `UserCategory` may be deleted; the store enforces the actual block).
-    type Row =
+    /// no domain types). `categoryId` is the category's stable id, as the host keys it.
+    type CategoryControlsRow =
         {
-            categoryId : string
-            name : string
-            isBuiltIn : bool
+            categoryId : ConstructorUiKey
+            name : ControlCaption
+            origin : CategoryRowOrigin
         }
 
     /// The bay's pure, serializable state.
-    type State =
+    type CategoryControlsState =
         {
             /// The rows the host flattened from the editor's working set — rendered as given.
-            rows : Row list
-            /// The inline block message (`CategoryStillReferenced` / `BuiltInNotRemovable`), or "" when
-            /// no block is surfaced — the slot renders only while a message is present.
-            blockMessage : string
+            rows : CategoryControlsRow list
+            /// The inline block message (`CategoryStillReferencedErr` / `BuiltInNotRemovableErr`), if one is
+            /// surfaced — the slot renders only while a message is present.
+            blockMessage : ControlCaption option
         }
 
-    let empty : State =
+    let emptyCategoryControls : CategoryControlsState =
         {
             rows = []
-            blockMessage = ""
+            blockMessage = None
         }
 
     /// Behaviour injected by the host (the functional-proxy seam; tests pass stubs). The per-row verbs
     /// take the row's category id — the host maps them onto the `CategoryEditor` messages / `commit`.
-    type Handlers =
+    type CategoryControlsHandlers =
         {
             /// Begin an inline add (a fresh, blank-named row) — the editor's `BeginAddCategory`.
             addCategory : unit -> unit
             /// The row's inline name box changed — the editor's `SetCategoryName (id, newName)`.
-            setCategoryName : string -> string -> unit
+            setCategoryName : ConstructorUiKey -> ControlCaption -> unit
             /// Save (commit) the row's rename.
-            saveCategory : string -> unit
+            saveCategory : ConstructorUiKey -> unit
             /// Remove the row (a `UserCategory` only — the store enforces the actual block).
-            removeCategory : string -> unit
+            removeCategory : ConstructorUiKey -> unit
             /// Cancel the row's in-progress edit.
-            cancelCategory : string -> unit
+            cancelCategory : ConstructorUiKey -> unit
         }
 
     // -- The button look, identical to the other bars' idle/chosen boxes (so they MATCH). --
-    let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = color 232 232 232
-    let private chosenBackground = color 150 185 235
-    let private blockBackground = color 250 235 235
-    let private idleBorder = color 120 120 120
+    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+    let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
+    let private blockBackground = Color.FromRgb(250uy, 235uy, 235uy)
+    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
 
-    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
-    /// `Control.Name`) on a `Border` through FuncUI's attr builder. The rows and their per-row verb
-    /// buttons live in child lists whose MEMBERSHIP changes (the host adds/removes a row; a built-in
-    /// row omits Remove), so a sibling can shift onto a reused control's slot — Avalonia forbids
-    /// renaming a styled control, and an AutomationId survives that reuse (the `MaterialsControls`
-    /// precedent).
-    let private borderAutoId (autoId : string) : IAttr<Border> =
-        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
-
-    /// The same reuse-safe AutomationId on a `TextBox` (the per-row inline name box).
-    let private textBoxAutoId (autoId : string) : IAttr<TextBox> =
-        AttrBuilder<TextBox>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
-
-    /// A clickable verb button (a styled, named Border), accented when it is the primary verb.
+    /// A clickable verb button (a styled Border), on the accent background when it is the primary verb.
+    /// Its id is an AutomationId, not a `Name`: the rows and their verbs live in child lists whose
+    /// MEMBERSHIP changes (the host adds / removes a row; a built-in row omits Remove), so FuncUI can
+    /// shift a sibling onto a reused control, and Avalonia forbids renaming a styled control.
     /// `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the id or
     /// the label changes so a reused box can't keep a stale handler.
-    let private button (autoId : string) (label : string) (accent : bool) (onClick : unit -> unit) : IView =
+    let private button (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
         Border.create [
-            borderAutoId autoId
-            Border.background (brush (if accent then chosenBackground else idleBackground))
+            id.automationAttribute<Border> ()
+            Border.background (brush background)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
             Border.cornerRadius (CornerRadius 3.0)
@@ -99,24 +90,25 @@ module CategoryControls =
             Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
             Border.horizontalAlignment HorizontalAlignment.Left
             Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, label)))
+            Border.child (TextBlock.create [ TextBlock.text label.value ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, label.value)))
         ] :> IView
 
     /// One category row — an inline name box (editable for EVERY row, including built-ins), a Save
     /// (rename) verb and a Cancel verb, and a Remove verb for a `UserCategory` only (a built-in OMITS
     /// Remove — removed from the row, not greyed).
-    let private rowView (handlers : Handlers) (r : Row) : IView =
+    let private rowView (handlers : CategoryControlsHandlers) (r : CategoryControlsRow) : IView =
         let nameBox =
             TextBox.create [
-                textBoxAutoId (UiIds.Category.rowNameBox r.categoryId)
+                (ConstructorUiId.categoryRowNameBox r.categoryId).automationAttribute<TextBox> ()
                 TextBox.width 200.0
-                TextBox.text r.name
-                TextBox.onTextChanged (handlers.setCategoryName r.categoryId)
+                TextBox.text r.name.value
+                TextBox.onTextChanged (ControlCaption >> handlers.setCategoryName r.categoryId)
             ] :> IView
         let removeVerb =
-            if r.isBuiltIn then []
-            else [ button (UiIds.Category.rowRemoveButton r.categoryId) "Remove" false (fun () -> handlers.removeCategory r.categoryId) ]
+            match r.origin with
+            | BuiltInCategoryRow -> []
+            | UserCategoryRow -> [ button (ConstructorUiId.categoryRowRemoveButton r.categoryId) (ControlCaption "Remove") idleBackground (fun () -> handlers.removeCategory r.categoryId) ]
         let row =
             StackPanel.create [
                 StackPanel.orientation Orientation.Horizontal
@@ -125,8 +117,8 @@ module CategoryControls =
                 StackPanel.children (
                     [
                         nameBox
-                        button (UiIds.Category.rowSaveButton r.categoryId) "Save" false (fun () -> handlers.saveCategory r.categoryId)
-                        button (UiIds.Category.rowCancelButton r.categoryId) "Cancel" false (fun () -> handlers.cancelCategory r.categoryId)
+                        button (ConstructorUiId.categoryRowSaveButton r.categoryId) (ControlCaption "Save") idleBackground (fun () -> handlers.saveCategory r.categoryId)
+                        button (ConstructorUiId.categoryRowCancelButton r.categoryId) (ControlCaption "Cancel") idleBackground (fun () -> handlers.cancelCategory r.categoryId)
                     ]
                     @ removeVerb)
             ]
@@ -134,27 +126,28 @@ module CategoryControls =
             // the rows that shift slots instead of patching one row's controls into another's.
             // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
             // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
-            |> Avalonia.FuncUI.DSL.View.withKey r.categoryId
+            |> Avalonia.FuncUI.DSL.View.withKey r.categoryId.value
         row :> IView
 
     /// The category list: a NAMED vertical stack of the host's rows, rendered as given.
-    let private listView (state : State) (handlers : Handlers) : IView =
+    let private listView (state : CategoryControlsState) (handlers : CategoryControlsHandlers) : IView =
         ScrollViewer.create [
             ScrollViewer.maxHeight 260.0
             ScrollViewer.content (
                 StackPanel.create [
-                    StackPanel.name UiIds.Category.list
+                    StackPanel.name ConstructorUiId.categoriesList.value
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.rows |> List.map (rowView handlers))
                 ])
         ] :> IView
 
-    /// The inline block-message slot — the store's typed refusal (`CategoryStillReferenced` /
-    /// `BuiltInNotRemovable`), shown only while a message is present (the `LibraryControls.confirmPanel`
+    /// The inline block-message slot — the store's typed refusal (`CategoryStillReferencedErr` /
+    /// `BuiltInNotRemovableErr`), shown only while a message is present (the `LibraryControls.confirmPanel`
     /// precedent — no message means the control is absent, not an empty box).
-    let private blockMessagePanel (state : State) : IView list =
-        if state.blockMessage = "" then []
-        else
+    let private blockMessagePanel (state : CategoryControlsState) : IView list =
+        match state.blockMessage with
+        | None -> []
+        | Some message ->
             [
                 Border.create [
                     Border.background (brush blockBackground)
@@ -165,8 +158,8 @@ module CategoryControls =
                     Border.margin (Thickness(0.0, 2.0, 0.0, 2.0))
                     Border.child (
                         TextBlock.create [
-                            TextBlock.name UiIds.Category.blockMessage
-                            TextBlock.text state.blockMessage
+                            TextBlock.name ConstructorUiId.categoryBlockMessage.value
+                            TextBlock.text message.value
                             TextBlock.textWrapping TextWrapping.Wrap
                             TextBlock.maxWidth 360.0
                         ])
@@ -175,13 +168,13 @@ module CategoryControls =
 
     /// The Category-manager surface — an Add verb, the editable category list, and (when the store
     /// refuses an edit) the inline block-message slot, top to bottom.
-    let view (state : State) (handlers : Handlers) : IView =
+    let categoryControlsView (state : CategoryControlsState) (handlers : CategoryControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    button UiIds.Category.addButton "Add category" true (fun () -> handlers.addCategory ())
+                    button ConstructorUiId.addCategoryButton (ControlCaption "Add category") chosenBackground handlers.addCategory
                     listView state handlers
                 ]
                 @ blockMessagePanel state)

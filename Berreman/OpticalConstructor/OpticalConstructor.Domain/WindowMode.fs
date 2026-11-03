@@ -52,7 +52,7 @@ module WindowMode =
             target : SelectionTarget
             /// Spec 0046: the entry the target is bound to now (its id), if any — the window opens with
             /// it shown as the chosen one.
-            currentEntryIdOpt : string option
+            currentEntryIdOpt : ElementValueId option
             onSelected : 'entry -> unit
             onCancelled : unit -> unit
         }

@@ -25,7 +25,9 @@ module PropagationTests =
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-7
     let private closeT (eps : float) (a : float) (b : float) : bool = abs (a - b) <= eps
 
-    let private deg (d : float) : Angle = Angle.degree d
+    let private deg (d : float) : Angle = Angle.degree (d * 1.0<deg>)
+
+    let private stokesComponents (sv : StokesVector) : float * float * float * float = sv.s0, sv.s1, sv.s2, sv.s3
 
     // ============================ Stokes / Mueller constants ============================
 
@@ -37,7 +39,7 @@ module PropagationTests =
         Assert.True(close 0.2 s1)
         Assert.True(close -0.3 s2)
         Assert.True(close 0.5 s3)
-        Assert.True(close 1.0 (s0 sv))
+        Assert.True(close 1.0 sv.s0)
 
     [<Fact>]
     let ``inputStokes of an ideal linear polarizer at 0 and 45 degrees`` () =
@@ -64,21 +66,22 @@ module PropagationTests =
         // Aligned analyzer (0°) on an already-LP-at-0° input passes the FULL intensity 1.0 (the ½ factor
         // only halves UNPOLARIZED input; an aligned ideal analyzer transmits a parallel beam in full).
         let aligned = analyzerMueller IdealLinear (deg 0.0) * svIn
-        Assert.True(closeT 1.0e-9 1.0 (s0 aligned))
+        Assert.True(closeT 1.0e-9 1.0 aligned.s0)
         // Crossed analyzer (90°): S0 ≈ 0.
         let crossed = analyzerMueller IdealLinear (deg 90.0) * svIn
-        Assert.True(closeT 1.0e-9 0.0 (s0 crossed))
+        Assert.True(closeT 1.0e-9 0.0 crossed.s0)
 
     // ============================ the Malus proof ============================
 
     [<Fact>]
     let ``a rotating ideal analyzer after an ideal input traces Malus I = I0 cos^2 theta`` () =
         let svIn = inputStokes IdealLinear (deg 0.0)
-        let curve = rotatingAnalyzerCurve svIn identityMueller IdealLinear 73
+        let curve = rotatingAnalyzerCurve svIn identityMueller IdealLinear (CurvePointCount 73)
         // I(0) is the peak; every sample must match I(0)·cos²θ within tolerance.
-        let i0 = curve.points |> List.head |> snd
+        let i0 = (List.head curve.points).y
         Assert.True(i0 > 0.0)
-        for (d, i) in curve.points do
+        for p in curve.points do
+            let d, i = p.x, p.y
             let theta = d * Math.PI / 180.0
             let expected = i0 * (cos theta) ** 2.0
             Assert.True(closeT 1.0e-9 expected i, $"at %g{d}° expected %g{expected} got %g{i}")
@@ -86,9 +89,9 @@ module PropagationTests =
     [<Fact>]
     let ``the Malus curve peaks when aligned and is ~0 when crossed`` () =
         let svIn = inputStokes IdealLinear (deg 0.0)
-        let curve = rotatingAnalyzerCurve svIn identityMueller IdealLinear 73
+        let curve = rotatingAnalyzerCurve svIn identityMueller IdealLinear (CurvePointCount 73)
         let at (d : float) : float =
-            curve.points |> List.find (fun (a, _) -> close a d) |> snd
+            (curve.points |> List.find (fun p -> close p.x d)).y
         let i0 = at 0.0
         // Aligned (0° / 180°) = peak; crossed (90° / 270°) ≈ 0.
         Assert.True(closeT 1.0e-9 i0 (at 180.0))
@@ -114,16 +117,16 @@ module PropagationTests =
     let private glassSample : Sample =
         {
             id = SampleId.create ()
-            name = "Glass plate (n=1.52, 1 mm)"
+            name = MaterialLibrary.EntryName "Glass plate (n=1.52, 1 mm)"
             structure =
                 {
                     films = []
                     substrate = Some { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm>; orientation = PrimaryAxes }
                     lower = None
                 }
-            substrate = Library.Plate
-            description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
-            supportedEmission = Library.defaultSupportedEmission Library.Plate
+            substrate = Library.ThickPlate
+            description = MaterialLibrary.EntryDescription "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
+            supportedEmission = Library.ThickPlate.defaultSupportedEmission
         }
 
     /// The versioned material store over the standard built-ins (spec 0038 step 022): the sample
@@ -138,7 +141,7 @@ module PropagationTests =
     let private resolveOrFail (s : Sample) : ResolvedSample =
         match resolveSampleMaterials standardProxy s with
         | Ok r -> r
-        | Error e -> failwith ($"sample %s{s.name} did not resolve: %A{e}")
+        | Error e -> failwith ($"sample %s{s.name.value} did not resolve: %A{e}")
 
     let private glassResolved : ResolvedSample = resolveOrFail glassSample
 
@@ -146,7 +149,7 @@ module PropagationTests =
     let ``the engine sample Mueller matrix transmits at most the input intensity`` () =
         let mm = sampleMuellerT glassResolved (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
         let svOut = mm * unpolarizedStokes
-        let out = s0 svOut
+        let out = svOut.s0
         // A physical transmittance: 0 < S0 ≤ 1 for unit unpolarized input.
         Assert.True(out > 0.0, $"transmitted S0 was not positive: %g{out}")
         Assert.True(out <= 1.0 + 1.0e-9, $"transmitted S0 exceeded the input: %g{out}")
@@ -164,7 +167,7 @@ module PropagationTests =
     let ``psiDeltaOfStokes round-trips known Psi / Delta pairs`` () =
         let cases = [ 45.0, 0.0; 30.0, 90.0; 20.0, 180.0; 10.0, -45.0 ]
         for (psiDeg, deltaDeg) in cases do
-            let pd = psiDeltaOfStokes (stokesOfPsiDelta psiDeg deltaDeg)
+            let pd = (stokesOfPsiDelta psiDeg deltaDeg).psiDelta
             Assert.True(closeT 1.0e-6 psiDeg pd.psi.degrees, $"Ψ: expected %g{psiDeg} got %g{pd.psi.degrees}")
             // Δ wraps to (−180, 180]; compare after normalizing the difference.
             let dwrap = ((pd.delta.degrees - deltaDeg + 540.0) % 360.0) - 180.0
@@ -174,7 +177,7 @@ module PropagationTests =
     let ``ellipsometerReadout of a real sample is finite and in range`` () =
         let svIn = inputStokes IdealLinear (deg 45.0)
         let mm = sampleMuellerT glassResolved (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
-        let pd = ellipsometerReadout (mm * svIn)
+        let pd = (mm * svIn).psiDelta
         Assert.False(Double.IsNaN pd.psi.degrees)
         Assert.False(Double.IsNaN pd.delta.degrees)
         Assert.InRange(pd.psi.degrees, 0.0, 90.0)
@@ -201,7 +204,7 @@ module PropagationTests =
         // The samples in `seedEntries` ARE the named `SeedSamples` values, in order (spec 0033
         // step 002 — the id literals live only in `SeedSamples`).
         Assert.Equal<SampleId list>(
-            SeedSamples.all |> List.map (fun s -> s.id),
+            SeedSamples.allSeedSamples |> List.map (fun s -> s.id),
             seededSamples |> List.map (fun s -> s.id))
 
     [<Fact>]
@@ -209,16 +212,16 @@ module PropagationTests =
         for s in seededSamples do
             let w = runWaveLengthFor s
             let mm = sampleMuellerT (resolveOrFail s) w IncidenceAngle.normal
-            let out = s0 (mm * unpolarizedStokes)
-            Assert.False(System.Double.IsNaN out, $"%s{s.name} produced NaN S0")
-            Assert.False(System.Double.IsInfinity out, $"%s{s.name} produced infinite S0")
-            Assert.True(out >= -1.0e-9, $"%s{s.name} transmitted a negative S0: %g{out}")
-            Assert.True(out <= 1.0 + 1.0e-9, $"%s{s.name} transmitted S0 > input: %g{out}")
+            let out = (mm * unpolarizedStokes).s0
+            Assert.False(System.Double.IsNaN out, $"%s{s.name.value} produced NaN S0")
+            Assert.False(System.Double.IsInfinity out, $"%s{s.name.value} produced infinite S0")
+            Assert.True(out >= -1.0e-9, $"%s{s.name.value} transmitted a negative S0: %g{out}")
+            Assert.True(out <= 1.0 + 1.0e-9, $"%s{s.name.value} transmitted S0 > input: %g{out}")
 
     [<Fact>]
     let ``sampleToSystem is total for every seeded sample with the expected layer count`` () =
         let plateIds =
-            [ SeedSamples.activeCrystal.id; SeedSamples.glassVacuum.id; SeedSamples.glassPlate1mm.id; SeedSamples.glassPlate2mm.id ]
+            [ SeedSamples.activeCrystalPlate.id; SeedSamples.glassVacuum.id; SeedSamples.glassPlate1mm.id; SeedSamples.glassPlate2mm.id ]
         for s in seededSamples do
             let w = runWaveLengthFor s
             let system = sampleToSystem (resolveOrFail s) w
@@ -226,7 +229,7 @@ module PropagationTests =
             elif s.id = SeedSamples.euvMoSi.id then Assert.Equal(200, List.length system.films)
             elif plateIds |> List.contains s.id then
                 Assert.Empty system.films
-                Assert.True(Option.isSome system.substrate, $"%s{s.name} should be a substrate plate")
+                Assert.True(Option.isSome system.substrate, $"%s{s.name.value} should be a substrate plate")
             else
                 // The remaining seeded samples are single-film systems.
                 Assert.Equal(1, List.length system.films)
@@ -234,15 +237,15 @@ module PropagationTests =
     [<Fact>]
     let ``every seeded sample carries a non-empty description`` () =
         for s in seededSamples do
-            Assert.False(System.String.IsNullOrWhiteSpace s.description, $"%s{s.name} has an empty description")
+            Assert.False(System.String.IsNullOrWhiteSpace s.description.value, $"%s{s.name.value} has an empty description")
 
     [<Fact>]
     let ``the dispersive langasite sample evaluates differently at different wavelengths`` () =
         let langasite = resolveOrFail SeedSamples.langasiteSilicon
         // Silicon's dispersion makes the transmitted intensity wavelength-dependent; the dispersive seam
         // (getProperties w) is therefore actually being evaluated at the run wavelength.
-        let i400 = s0 (sampleMuellerT langasite (WaveLength.nm 400.0<nm>) IncidenceAngle.normal * unpolarizedStokes)
-        let i800 = s0 (sampleMuellerT langasite (WaveLength.nm 800.0<nm>) IncidenceAngle.normal * unpolarizedStokes)
+        let i400 = (sampleMuellerT langasite (WaveLength.nm 400.0<nm>) IncidenceAngle.normal * unpolarizedStokes).s0
+        let i800 = (sampleMuellerT langasite (WaveLength.nm 800.0<nm>) IncidenceAngle.normal * unpolarizedStokes).s0
         Assert.False(Double.IsNaN i400)
         Assert.False(Double.IsNaN i800)
         Assert.True(abs (i400 - i800) > 1.0e-9, $"dispersion not observed: I(400)=%g{i400} I(800)=%g{i800}")
@@ -256,66 +259,68 @@ module PropagationTests =
     [<Fact>]
     let ``r2SweepCurve returns n points whose x runs 0..89 monotone with finite y`` () =
         let n = 31
-        let curve = r2SweepCurve BranchTransmitted linear45 glassResolved (WaveLength.nm 600.0<nm>) None 0.0 r2SweepMaxDegrees n
+        let curve = r2SweepCurve BranchTransmitted linear45 glassResolved (WaveLength.nm 600.0<nm>) None (SweptValue 0.0) r2SweepMaxDegrees (CurvePointCount n)
         Assert.Equal(n, List.length curve)
-        let xs = curve |> List.map fst
+        let xs = curve |> List.map (fun p -> p.x)
         Assert.True(close 0.0 (List.head xs))
-        Assert.True(close r2SweepMaxDegrees (List.last xs), $"last x = %g{(List.last xs)}, expected 89")
+        Assert.True(close r2SweepMaxDegrees.value (List.last xs), $"last x = %g{(List.last xs)}, expected 89")
         Assert.True(close 89.0 (List.last xs))
         Assert.True((xs = List.sort xs), "incidence x-values must be sorted ascending")
-        for (_, y) in curve do
-            Assert.False(Double.IsNaN y)
-            Assert.False(Double.IsInfinity y)
+        for p in curve do
+            Assert.False(Double.IsNaN p.y)
+            Assert.False(Double.IsInfinity p.y)
 
     [<Fact>]
     let ``intensityThroughAnalyzerOpt None equals S0 of the raw sample output`` () =
         let mm = sampleMuellerT glassResolved (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
         let withNone = intensityThroughAnalyzerOpt linear45 mm None
-        let direct = s0 (mm * linear45)
-        Assert.True(close direct withNone)
+        let direct = (mm * linear45).s0
+        Assert.True(close direct withNone.value)
 
     [<Fact>]
     let ``intensityThroughAnalyzerOpt Some passes through the analyzer Mueller matrix`` () =
         let mm = sampleMuellerT glassResolved (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
         let analyzer = Some (IdealLinear, deg 90.0)
         let withAnalyzer = intensityThroughAnalyzerOpt linear45 mm analyzer
-        let expected = intensity (propagate linear45 mm (analyzerMueller IdealLinear (deg 90.0)))
-        Assert.True(close expected withAnalyzer)
+        let expected = (propagate linear45 mm (analyzerMueller IdealLinear (deg 90.0))).intensity
+        Assert.True(close expected.value withAnalyzer.value)
 
     [<Fact>]
     let ``waveLengthSweepIntensity spans the chosen range with finite y`` () =
         let n = 21
-        let curve = waveLengthSweepIntensity BranchTransmitted linear45 glassResolved IncidenceAngle.normal None 200.0 800.0 n
+        let curve = waveLengthSweepIntensity BranchTransmitted linear45 glassResolved IncidenceAngle.normal None (SweptValue 200.0) (SweptValue 800.0) (CurvePointCount n)
         Assert.Equal(n, List.length curve)
-        let xs = curve |> List.map fst
+        let xs = curve |> List.map (fun p -> p.x)
         Assert.True(close 200.0 (List.head xs))
         Assert.True(close 800.0 (List.last xs))
-        for (_, y) in curve do
-            Assert.False(Double.IsNaN y)
+        for p in curve do
+            Assert.False(Double.IsNaN p.y)
 
     [<Fact>]
     let ``r2SweepPsiDelta returns two equal-length Psi / Delta curves`` () =
         let n = 19
-        let psi, delta = r2SweepPsiDelta BranchTransmitted linear45 glassResolved (WaveLength.nm 600.0<nm>) 0.0 r2SweepMaxDegrees n
+        let curves = r2SweepPsiDelta BranchTransmitted linear45 glassResolved (WaveLength.nm 600.0<nm>) (SweptValue 0.0) r2SweepMaxDegrees (CurvePointCount n)
+        let psi, delta = curves.psiCurve, curves.deltaCurve
         Assert.Equal(n, List.length psi)
         Assert.Equal(List.length psi, List.length delta)
-        Assert.True(close 89.0 (List.last (psi |> List.map fst)))
+        Assert.True(close 89.0 (List.last (psi |> List.map (fun p -> p.x))))
 
     [<Fact>]
     let ``waveLengthSweepPsiDelta returns two equal-length Psi / Delta curves over the range`` () =
         let n = 17
-        let psi, delta = waveLengthSweepPsiDelta BranchTransmitted linear45 glassResolved IncidenceAngle.normal 300.0 700.0 n
+        let curves = waveLengthSweepPsiDelta BranchTransmitted linear45 glassResolved IncidenceAngle.normal (SweptValue 300.0) (SweptValue 700.0) (CurvePointCount n)
+        let psi, delta = curves.psiCurve, curves.deltaCurve
         Assert.Equal(n, List.length psi)
         Assert.Equal(List.length psi, List.length delta)
-        Assert.True(close 300.0 (List.head (psi |> List.map fst)))
-        Assert.True(close 700.0 (List.last (delta |> List.map fst)))
+        Assert.True(close 300.0 (List.head (psi |> List.map (fun p -> p.x))))
+        Assert.True(close 700.0 (List.last (delta |> List.map (fun p -> p.x))))
 
     // ============================ Spec 0027 (028) — T / R branches + range rotate ============================
 
     [<Fact>]
     let ``sampleMuellerR reflects a physical (0 < S0 <= 1) intensity`` () =
         let mm = sampleMuellerR glassResolved (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
-        let out = s0 (mm * unpolarizedStokes)
+        let out = (mm * unpolarizedStokes).s0
         Assert.False(Double.IsNaN out)
         Assert.True(out >= -1.0e-9, $"reflected S0 was negative: %g{out}")
         Assert.True(out <= 1.0 + 1.0e-9, $"reflected S0 exceeded the input: %g{out}")
@@ -328,14 +333,14 @@ module PropagationTests =
         let t = sampleMuellerT glassResolved w IncidenceAngle.normal
         let r = sampleMuellerR glassResolved w IncidenceAngle.normal
         // The branch selector agrees with the dedicated T / R helpers (same S0 for unpolarized input).
-        Assert.True(close (s0 (byBranchT * unpolarizedStokes)) (s0 (t * unpolarizedStokes)))
-        Assert.True(close (s0 (byBranchR * unpolarizedStokes)) (s0 (r * unpolarizedStokes)))
+        Assert.True(close ((byBranchT * unpolarizedStokes).s0) ((t * unpolarizedStokes).s0))
+        Assert.True(close ((byBranchR * unpolarizedStokes).s0) ((r * unpolarizedStokes).s0))
 
     [<Fact>]
     let ``rotatingAnalyzerCurveRange over a sub-range starts and ends at the chosen angles`` () =
         let svIn = inputStokes IdealLinear (deg 0.0)
-        let curve = rotatingAnalyzerCurveRange svIn identityMueller IdealLinear 30.0 150.0 25
-        let xs = curve.points |> List.map fst
+        let curve = rotatingAnalyzerCurveRange svIn identityMueller IdealLinear (SweptValue 30.0) (SweptValue 150.0) (CurvePointCount 25)
+        let xs = curve.points |> List.map (fun p -> p.x)
         Assert.True(close 30.0 (List.head xs))
         Assert.True(close 150.0 (List.last xs))
         Assert.True((xs = List.sort xs), "rotate x-values must be sorted ascending")
@@ -343,12 +348,12 @@ module PropagationTests =
     [<Fact>]
     let ``rotatingAnalyzerCurve is the 0..360 special case of the range rotate`` () =
         let svIn = inputStokes IdealLinear (deg 20.0)
-        let full = rotatingAnalyzerCurve svIn identityMueller IdealLinear 37
-        let range = rotatingAnalyzerCurveRange svIn identityMueller IdealLinear 0.0 360.0 37
+        let full = rotatingAnalyzerCurve svIn identityMueller IdealLinear (CurvePointCount 37)
+        let range = rotatingAnalyzerCurveRange svIn identityMueller IdealLinear (SweptValue 0.0) (SweptValue 360.0) (CurvePointCount 37)
         Assert.Equal(List.length full.points, List.length range.points)
-        for ((xa, ya), (xb, yb)) in List.zip full.points range.points do
-            Assert.True(close xa xb)
-            Assert.True(close ya yb)
+        for (a, b) in List.zip full.points range.points do
+            Assert.True(close a.x b.x)
+            Assert.True(close a.y b.y)
 
     // ============================ Spec 0033 (001) — structural stacks, typed resolution ============================
 
@@ -365,8 +370,8 @@ module PropagationTests =
                         lower = None
                     } }
         match resolveSampleMaterials standardProxy sample with
-        | Error (MaterialLibrary.UnknownMaterialId reason) -> Assert.Contains(string missing.value, reason)
-        | other -> Assert.Fail($"expected UnknownMaterialId, got %A{other}")
+        | Error (MaterialLibrary.UnknownMaterialIdErr reason) -> Assert.Contains(string missing.value, reason)
+        | other -> Assert.Fail($"expected UnknownMaterialIdErr, got %A{other}")
 
     [<Fact>]
     let ``resolveSampleMaterials returns a typed Error for an unknown lower half-space id`` () =
@@ -381,15 +386,15 @@ module PropagationTests =
                         lower = Some (MaterialLibrary.MaterialVersionId.firstOf missing)
                     } }
         match resolveSampleMaterials standardProxy sample with
-        | Error (MaterialLibrary.UnknownMaterialId reason) -> Assert.Contains(string missing.value, reason)
-        | other -> Assert.Fail($"expected UnknownMaterialId, got %A{other}")
+        | Error (MaterialLibrary.UnknownMaterialIdErr reason) -> Assert.Contains(string missing.value, reason)
+        | other -> Assert.Fail($"expected UnknownMaterialIdErr, got %A{other}")
 
     [<Fact>]
     let ``every seeded sample resolves against the standard material library`` () =
         for s in seededSamples do
             match resolveSampleMaterials standardProxy s with
             | Ok _ -> ()
-            | Error e -> Assert.Fail($"%s{s.name} did not resolve: %A{e}")
+            | Error e -> Assert.Fail($"%s{s.name.value} did not resolve: %A{e}")
 
     /// The 41-layer λ/4 films exactly as the PRE-0033 hand-built branch constructed them.
     let private legacyQwFilms : Layer list =
@@ -451,7 +456,7 @@ module PropagationTests =
             }
         elif s.id = SeedSamples.uniaxial.id then film OpticalProperties.uniaxialCrystal (Thickness.nm 1000.0<nm>)
         elif s.id = SeedSamples.biaxial.id then film OpticalProperties.biaxialCrystal (Thickness.nm 1000.0<nm>)
-        elif s.id = SeedSamples.activeCrystal.id then
+        elif s.id = SeedSamples.activeCrystalPlate.id then
             let e11 = RefractionIndex 2.315 |> EpsValue.fromRefractionIndex
             let e33 = RefractionIndex 2.226 |> EpsValue.fromRefractionIndex
             plate (OpticalProperties.planarCrystal e11 e33 (RhoValue 1.5e-6)) Thickness.oneCentiMeter
@@ -471,7 +476,7 @@ module PropagationTests =
                 substrate = None
                 lower = siliconOpticalProperties.getProperties w
             }
-        else failwith ($"no legacy expectation for sample %s{s.name}")
+        else failwith ($"no legacy expectation for sample %s{s.name.value}")
 
     [<Fact>]
     let ``every seeded sample's structurally-built system equals the previously hand-built system`` () =
@@ -489,7 +494,7 @@ module PropagationTests =
     let private uniaxialFilm (orientation : CrystalOrientation) : Sample =
         {
             id = SampleId.create ()
-            name = "Uniaxial film (oriented)"
+            name = MaterialLibrary.EntryName "Uniaxial film (oriented)"
             structure =
                 {
                     films = [ SingleLayer { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.uniaxialCrystal; thickness = Thickness.nm 1000.0<nm>; orientation = orientation } ]
@@ -497,8 +502,8 @@ module PropagationTests =
                     lower = None
                 }
             substrate = Library.ThinFilm
-            description = "Uniaxial crystal thin film at the given crystal orientation."
-            supportedEmission = Library.defaultSupportedEmission Library.ThinFilm
+            description = MaterialLibrary.EntryDescription "Uniaxial crystal thin film at the given crystal orientation."
+            supportedEmission = Library.ThinFilm.defaultSupportedEmission
         }
 
     /// A uniaxial-crystal PLATE sample (the substrate is a `SampleLayer` too, so it carries an
@@ -506,16 +511,16 @@ module PropagationTests =
     let private uniaxialPlate (orientation : CrystalOrientation) : Sample =
         {
             id = SampleId.create ()
-            name = "Uniaxial plate (oriented)"
+            name = MaterialLibrary.EntryName "Uniaxial plate (oriented)"
             structure =
                 {
                     films = []
                     substrate = Some { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.uniaxialCrystal; thickness = Thickness.mm 1.0<mm>; orientation = orientation }
                     lower = None
                 }
-            substrate = Library.Plate
-            description = "Uniaxial crystal plate at the given crystal orientation."
-            supportedEmission = Library.defaultSupportedEmission Library.Plate
+            substrate = Library.ThickPlate
+            description = MaterialLibrary.EntryDescription "Uniaxial crystal plate at the given crystal orientation."
+            supportedEmission = Library.ThickPlate.defaultSupportedEmission
         }
 
     [<Fact>]
@@ -523,7 +528,7 @@ module PropagationTests =
         // Spec 0033 step 020 acceptance: the system built from an EulerRotation-oriented layer MUST
         // equal applying `Layer.rotate` directly to the same (PrimaryAxes-built) layer.
         let phi, theta, psi = deg 30.0, deg 40.0, deg 50.0
-        let built = sampleToSystem (resolveOrFail (uniaxialFilm (EulerRotation (ZmXpZm, phi, theta, psi)))) orientationRunW
+        let built = sampleToSystem (resolveOrFail (uniaxialFilm (EulerRotation { Library.EulerAngles.convention = ZmXpZm; phi = phi; theta = theta; psi = psi }))) orientationRunW
         let unrotated = sampleToSystem (resolveOrFail (uniaxialFilm PrimaryAxes)) orientationRunW
         let rotation = Rotation.create ZmXpZm phi theta psi |> Rotation
         let expected = unrotated.films |> List.map (fun (l : Layer) -> l.rotate rotation)
@@ -545,7 +550,7 @@ module PropagationTests =
         // The named engine shortcuts (Rotation.rotatePiX / rotateHalfPiY) remain available for tests:
         // an EulerRotation carrying rotatePiX's own angles (ZmXpZm, 0, π, 0) builds the same system
         // as `Layer.rotatePiX` on the unrotated layer.
-        let built = sampleToSystem (resolveOrFail (uniaxialFilm (EulerRotation (ZmXpZm, Angle.zero, Angle.pi, Angle.zero)))) orientationRunW
+        let built = sampleToSystem (resolveOrFail (uniaxialFilm (EulerRotation { Library.EulerAngles.convention = ZmXpZm; phi = Angle.zero; theta = Angle.pi; psi = Angle.zero }))) orientationRunW
         let unrotated = sampleToSystem (resolveOrFail (uniaxialFilm PrimaryAxes)) orientationRunW
         let expected = unrotated.films |> List.map (fun (l : Layer) -> l.rotatePiX)
         Assert.Equal<Layer list>(expected, built.films)
@@ -555,7 +560,7 @@ module PropagationTests =
         // The substrate is a `SampleLayer` too — its orientation goes through the same
         // `Layer.rotate` path when the plate is assembled.
         let phi, theta, psi = deg 30.0, deg 40.0, deg 50.0
-        let built = sampleToSystem (resolveOrFail (uniaxialPlate (EulerRotation (ZmXpZm, phi, theta, psi)))) orientationRunW
+        let built = sampleToSystem (resolveOrFail (uniaxialPlate (EulerRotation { Library.EulerAngles.convention = ZmXpZm; phi = phi; theta = theta; psi = psi }))) orientationRunW
         let unrotated = sampleToSystem (resolveOrFail (uniaxialPlate PrimaryAxes)) orientationRunW
         let rotation = Rotation.create ZmXpZm phi theta psi |> Rotation
         match built.substrate, unrotated.substrate with

@@ -25,34 +25,34 @@ module CategoryControlsTests =
 
     /// A known flattened row set: one user category (editable AND removable) and one built-in category
     /// (editable name, but NO Remove verb — removed, not greyed).
-    let private userRowId : string = "9a1f0c33-user-category"
-    let private builtInRowId : string = "2a4b6c8d-glass-builtin"
+    let private userRowId : ConstructorUiKey = ConstructorUiKey "9a1f0c33-user-category"
+    let private builtInRowId : ConstructorUiKey = ConstructorUiKey "2a4b6c8d-glass-builtin"
 
-    let private knownRows : CategoryControls.Row list =
+    let private knownRows : CategoryControls.CategoryControlsRow list =
         [
-            { categoryId = userRowId; name = "My Category"; isBuiltIn = false }
-            { categoryId = builtInRowId; name = "Glass"; isBuiltIn = true }
+            { categoryId = userRowId; name = ControlCaption "My Category"; origin = CategoryControls.UserCategoryRow }
+            { categoryId = builtInRowId; name = ControlCaption "Glass"; origin = CategoryControls.BuiltInCategoryRow }
         ]
 
     /// The known State the structure test mounts: both rows plus a surfaced block message (so the
     /// `CategoryBlockMessage` slot renders).
-    let private knownState : CategoryControls.State =
+    let private knownState : CategoryControls.CategoryControlsState =
         {
             rows = knownRows
-            blockMessage = "This category is still referenced by 2 materials and cannot be removed."
+            blockMessage = Some (ControlCaption "This category is still referenced by 2 materials and cannot be removed.")
         }
 
     /// Recording stub handlers (the test substitutes the functional-proxy seam): every dispatch appends
     /// a tag, so a click's MATCHING handler is observable.
-    let private recorder () : ResizeArray<string> * CategoryControls.Handlers =
+    let private recorder () : ResizeArray<string> * CategoryControls.CategoryControlsHandlers =
         let calls = ResizeArray<string>()
-        let handlers : CategoryControls.Handlers =
+        let handlers : CategoryControls.CategoryControlsHandlers =
             {
                 addCategory = fun () -> calls.Add("add")
-                setCategoryName = fun id name -> calls.Add($"name:%s{id}=%s{name}")
-                saveCategory = fun id -> calls.Add("save:" + id)
-                removeCategory = fun id -> calls.Add("remove:" + id)
-                cancelCategory = fun id -> calls.Add("cancel:" + id)
+                setCategoryName = fun id name -> calls.Add($"name:%s{id.value}=%s{name.value}")
+                saveCategory = fun id -> calls.Add("save:" + id.value)
+                removeCategory = fun id -> calls.Add("remove:" + id.value)
+                cancelCategory = fun id -> calls.Add("cancel:" + id.value)
             }
         calls, handlers
 
@@ -60,24 +60,24 @@ module CategoryControlsTests =
 
     [<Fact>]
     let ``the empty Category state has no rows and no block message`` () =
-        let s = CategoryControls.empty
+        let s = CategoryControls.emptyCategoryControls
         Assert.Empty(s.rows)
-        Assert.Equal("", s.blockMessage)
+        Assert.Equal(None, s.blockMessage)
 
     [<Fact>]
     let ``the Category UiIds are the stable intent-named ids`` () =
-        Assert.Equal("CategoriesList", UiIds.Category.list)
-        Assert.Equal("AddCategoryButton", UiIds.Category.addButton)
-        Assert.Equal("CategoryNameBox", UiIds.Category.nameBox)
-        Assert.Equal("RemoveCategoryButton", UiIds.Category.removeButton)
-        Assert.Equal("CategorySaveButton", UiIds.Category.saveButton)
-        Assert.Equal("CategoryCancelButton", UiIds.Category.cancelButton)
-        Assert.Equal("CategoryBlockMessage", UiIds.Category.blockMessage)
+        Assert.Equal("CategoriesList", ConstructorUiId.categoriesList.value)
+        Assert.Equal("AddCategoryButton", ConstructorUiId.addCategoryButton.value)
+        Assert.Equal("CategoryNameBox", ConstructorUiId.categoryNameBox.value)
+        Assert.Equal("RemoveCategoryButton", ConstructorUiId.removeCategoryButton.value)
+        Assert.Equal("CategorySaveButton", ConstructorUiId.categorySaveButton.value)
+        Assert.Equal("CategoryCancelButton", ConstructorUiId.categoryCancelButton.value)
+        Assert.Equal("CategoryBlockMessage", ConstructorUiId.categoryBlockMessage.value)
         // The derived per-row ids are the base id prefixed with the row's category id (collision-safe).
-        Assert.Equal("CategoryNameBox_abc", UiIds.Category.rowNameBox "abc")
-        Assert.Equal("CategorySaveButton_abc", UiIds.Category.rowSaveButton "abc")
-        Assert.Equal("RemoveCategoryButton_abc", UiIds.Category.rowRemoveButton "abc")
-        Assert.Equal("CategoryCancelButton_abc", UiIds.Category.rowCancelButton "abc")
+        Assert.Equal("CategoryNameBox_abc", (ConstructorUiId.categoryRowNameBox (ConstructorUiKey "abc")).value)
+        Assert.Equal("CategorySaveButton_abc", (ConstructorUiId.categoryRowSaveButton (ConstructorUiKey "abc")).value)
+        Assert.Equal("RemoveCategoryButton_abc", (ConstructorUiId.categoryRowRemoveButton (ConstructorUiKey "abc")).value)
+        Assert.Equal("CategoryCancelButton_abc", (ConstructorUiId.categoryRowCancelButton (ConstructorUiKey "abc")).value)
 
     // ============================ headless structure proof ============================
 
@@ -107,35 +107,35 @@ module CategoryControlsTests =
         HeadlessSession.run (fun () ->
             let calls, handlers = recorder ()
             let window = Window(Width = 640.0, Height = 480.0)
-            window.Content <- Component(fun _ -> CategoryControls.view knownState handlers)
+            window.Content <- Component(fun _ -> CategoryControls.categoryControlsView knownState handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The singleton controls exist over the known State.
-            Assert.True(isPresent window UiIds.Category.list, "the categories list is missing")
-            Assert.True(isPresent window UiIds.Category.addButton, "the Add verb is missing")
-            Assert.True(isPresent window UiIds.Category.blockMessage, "the block-message slot is missing")
+            Assert.True(isPresent window ConstructorUiId.categoriesList.value, "the categories list is missing")
+            Assert.True(isPresent window ConstructorUiId.addCategoryButton.value, "the Add verb is missing")
+            Assert.True(isPresent window ConstructorUiId.categoryBlockMessage.value, "the block-message slot is missing")
             // Every row exposes an inline name box + Save + Cancel.
             for r in knownRows do
-                Assert.True(isPresent window (UiIds.Category.rowNameBox r.categoryId), $"row %s{r.categoryId} has no name box")
-                Assert.True(isPresent window (UiIds.Category.rowSaveButton r.categoryId), $"row %s{r.categoryId} has no Save verb")
-                Assert.True(isPresent window (UiIds.Category.rowCancelButton r.categoryId), $"row %s{r.categoryId} has no Cancel verb")
+                Assert.True(isPresent window (ConstructorUiId.categoryRowNameBox r.categoryId).value, $"row %s{r.categoryId.value} has no name box")
+                Assert.True(isPresent window (ConstructorUiId.categoryRowSaveButton r.categoryId).value, $"row %s{r.categoryId.value} has no Save verb")
+                Assert.True(isPresent window (ConstructorUiId.categoryRowCancelButton r.categoryId).value, $"row %s{r.categoryId.value} has no Cancel verb")
             // The user row exposes Remove; the built-in row OMITS it (removed, not greyed — a greyed
             // button would still be found in the tree).
             Assert.True(
-                isPresent window (UiIds.Category.rowRemoveButton userRowId),
+                isPresent window (ConstructorUiId.categoryRowRemoveButton userRowId).value,
                 "the user row must expose the Remove verb")
             Assert.False(
-                isPresent window (UiIds.Category.rowRemoveButton builtInRowId),
+                isPresent window (ConstructorUiId.categoryRowRemoveButton builtInRowId).value,
                 "the built-in row's Remove verb must be REMOVED (not greyed)")
             // The acceptance click: Add invokes the ADD handler — and no other verb handler.
             let count (tag : string) : int = calls |> Seq.filter ((=) tag) |> Seq.length
-            clickOn window UiIds.Category.addButton
+            clickOn window ConstructorUiId.addCategoryButton.value
             Assert.Equal(1, count "add")
             // Each per-row verb dispatches ITS handler with the row's id.
-            clickOn window (UiIds.Category.rowSaveButton userRowId)
-            Assert.Contains("save:" + userRowId, calls)
-            clickOn window (UiIds.Category.rowRemoveButton userRowId)
-            Assert.Contains("remove:" + userRowId, calls)
-            clickOn window (UiIds.Category.rowCancelButton builtInRowId)
-            Assert.Contains("cancel:" + builtInRowId, calls)
+            clickOn window (ConstructorUiId.categoryRowSaveButton userRowId).value
+            Assert.Contains("save:" + userRowId.value, calls)
+            clickOn window (ConstructorUiId.categoryRowRemoveButton userRowId).value
+            Assert.Contains("remove:" + userRowId.value, calls)
+            clickOn window (ConstructorUiId.categoryRowCancelButton builtInRowId).value
+            Assert.Contains("cancel:" + builtInRowId.value, calls)
             window.Close())

@@ -49,15 +49,4 @@
     <FSharpCoreImplicitPackageVersion>10.1.402</FSharpCoreImplicitPackageVersion>
   </PropertyGroup>
 
-  <!--
-    Spec 0046 - xunit.v3 4.x marks every test project a Microsoft Testing Platform application, and the
-    .NET 10 SDK then refuses the VSTest path `dotnet test` takes ("Testing with VSTest target is no longer
-    supported by Microsoft.Testing.Platform on .NET 10 SDK and later"). The gates run `dotnet test` and
-    read VSTest's "Passed: N" summary, so the test projects stay on VSTest (xunit.runner.visualstudio).
-    Set here, before xunit's own props, which only fill the property when it is empty.
-  -->
-  <PropertyGroup>
-    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
-  </PropertyGroup>
-
 </Project>

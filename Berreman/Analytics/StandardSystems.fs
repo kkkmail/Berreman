@@ -2,15 +2,55 @@
 
 open Berreman.MaterialProperties
 open Berreman.Media
+open Berreman.Fields
 open Berreman.Dispersion
 open OpticalProperties.Standard
 open OpticalProperties.Dispersive
 open Variables
 
 module StandardSystems =
-    /// Vacuum / standard transparent glass system with some incident light.
-    let transparentGlass light =
-        { incidentLightInfo = light; opticalSystem = BaseOpticalSystem.transparentGlassSystem.fullSystem.dispersive }
+
+    type FixedInfo with
+
+        /// Vacuum / standard transparent glass system with some incident light.
+        static member transparentGlass (light : IncidentLightInfo) : FixedInfo =
+            { incidentLightInfo = light; opticalSystem = BaseOpticalSystem.transparentGlassSystem.fullSystem.dispersive }
+
+
+    type OpticalSystemWithDisp with
+
+        /// Langasite thick plate on silicon substrate.
+        static member langasiteSubstrateOnSiliconSystem (thickness : Thickness) : OpticalSystemWithDisp =
+            {
+                description = Some (OpticalSystemDescription "Langasite thick plate on silicon substrate.")
+                upperWithDisp = OpticalProperties.vacuum.dispersive
+                filmsWithDisp = []
+                substrateWithDisp =
+                    {
+                        thickness = thickness
+                        propertiesWithDisp = langasiteOpticalProperties
+                    }
+                    |> PlateWithDisp
+                    |> Some
+                lowerWithDisp = siliconOpticalProperties
+            }
+
+
+        /// Langasite thin film on silicon substrate.
+        static member langasiteFilmOnSiliconSystem (thickness : Thickness) : OpticalSystemWithDisp =
+            {
+                description = Some (OpticalSystemDescription "Langasite thin film on silicon substrate.")
+                upperWithDisp = OpticalProperties.vacuum.dispersive
+                filmsWithDisp =
+                    [
+                        {
+                            thickness = thickness
+                            propertiesWithDisp = langasiteOpticalProperties
+                        }
+                    ]
+                substrateWithDisp = None
+                lowerWithDisp = siliconOpticalProperties
+            }
 
 
     /// Vacuum / standard transparent glass film / vacuum system with some incident light.
@@ -24,44 +64,10 @@ module StandardSystems =
 
 
     /// Langasite thick plate on silicon substrate.
-    let langasiteSubstrateOnSiliconSystem thickness =
-        {
-            description = Some "Langasite thick plate on silicon substrate."
-            upperWithDisp = OpticalProperties.vacuum.dispersive
-            filmsWithDisp = []
-            substrateWithDisp =
-                {
-                    thickness = thickness
-                    propertiesWithDisp = langasiteOpticalProperties
-                }
-                |> PlateWithDisp
-                |> Some
-            lowerWithDisp = siliconOpticalProperties
-        }
-
-
-    /// Langasite thin film on silicon substrate.
-    let langasiteFilmOnSiliconSystem thickness =
-        {
-            description = Some "Langasite thin film on silicon substrate."
-            upperWithDisp = OpticalProperties.vacuum.dispersive
-            filmsWithDisp =
-                [
-                    {
-                        thickness = thickness
-                        propertiesWithDisp = langasiteOpticalProperties
-                    }
-                ]
-            substrateWithDisp = None
-            lowerWithDisp = siliconOpticalProperties
-        }
-
-
-    /// Langasite thick plate on silicon substrate.
     let langasiteSubstrateOnSilicon thickness light =
         {
             incidentLightInfo = light
-            opticalSystem = langasiteSubstrateOnSiliconSystem thickness
+            opticalSystem = OpticalSystemWithDisp.langasiteSubstrateOnSiliconSystem thickness
         }
 
 
@@ -69,5 +75,5 @@ module StandardSystems =
     let langasiteFilmOnSilicon thickness light =
         {
             incidentLightInfo = light
-            opticalSystem = langasiteFilmOnSiliconSystem thickness
+            opticalSystem = OpticalSystemWithDisp.langasiteFilmOnSiliconSystem thickness
         }

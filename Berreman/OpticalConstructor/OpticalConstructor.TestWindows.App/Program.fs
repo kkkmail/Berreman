@@ -30,6 +30,7 @@ type App() =
 
 module Program =
 
+    [<Softellect.Sys.ElevationBoundary(nameof Softellect.Sys.IoBoundary, "the process entry point - argv in, exit code out, per the .NET contract")>]
     [<EntryPoint; STAThread>]
     let main (argv : string[]) : int =
         AppBuilder

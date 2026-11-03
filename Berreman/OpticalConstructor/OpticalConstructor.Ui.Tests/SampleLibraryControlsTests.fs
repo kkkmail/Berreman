@@ -25,39 +25,39 @@ module SampleLibraryControlsTests =
 
     /// A known flattened row set the host's search produced: a plate, a multilayer thin film, and
     /// a wedge (one per domain `SubstrateKind`, as the host would flatten them).
-    let private knownRows : SampleLibraryControls.Row list =
+    let private knownRows : SampleLibraryControls.SampleLibraryControlsRow list =
         [
-            { sampleId = "glass-plate"; label = "Glass plate" }
-            { sampleId = "multilayer-qw"; label = "Quarter-wave multilayer" }
-            { sampleId = "quartz-wedge"; label = "Quartz wedge" }
+            { sampleId = ConstructorUiKey "glass-plate"; label = ControlCaption "Glass plate" }
+            { sampleId = ConstructorUiKey "multilayer-qw"; label = ControlCaption "Quarter-wave multilayer" }
+            { sampleId = ConstructorUiKey "quartz-wedge"; label = ControlCaption "Quartz wedge" }
         ]
 
     /// The known State the structure tests mount: the substrate facet populated (the host includes
     /// its own "all" option) and a row selected, so every row-targeted verb is live.
-    let private knownState : SampleLibraryControls.State =
+    let private knownState : SampleLibraryControls.SampleLibraryControlsState =
         {
-            searchText = ""
+            searchText = ControlCaption ""
             substrateOptions =
                 [
-                    { code = "all"; label = "All substrates" }
-                    { code = "thin-film"; label = "Thin film" }
-                    { code = "plate"; label = "Plate" }
-                    { code = "wedge"; label = "Wedge" }
+                    { code = ConstructorUiKey "all"; label = ControlCaption "All substrates" }
+                    { code = ConstructorUiKey "thin-film"; label = ControlCaption "Thin film" }
+                    { code = ConstructorUiKey "plate"; label = ControlCaption "Plate" }
+                    { code = ConstructorUiKey "wedge"; label = ControlCaption "Wedge" }
                 ]
-            selectedSubstrate = "all"
+            selectedSubstrate = Some (ConstructorUiKey "all")
             rows = knownRows
-            selectedId = Some "glass-plate"
+            selectedId = Some (ConstructorUiKey "glass-plate")
         }
 
     /// Recording stub handlers (the test substitutes the functional-proxy seam): every dispatch
     /// appends a tag, so a click's MATCHING handler is observable.
-    let private recorder () : ResizeArray<string> * SampleLibraryControls.Handlers =
+    let private recorder () : ResizeArray<string> * SampleLibraryControls.SampleLibraryControlsHandlers =
         let calls = ResizeArray<string>()
-        let handlers : SampleLibraryControls.Handlers =
+        let handlers : SampleLibraryControls.SampleLibraryControlsHandlers =
             {
-                setSearchText = fun t -> calls.Add("search:" + t)
-                selectSubstrate = fun s -> calls.Add("substrate:" + s)
-                selectSample = fun id -> calls.Add("select:" + id)
+                setSearchText = fun t -> calls.Add("search:" + t.value)
+                selectSubstrate = fun s -> calls.Add("substrate:" + s.value)
+                selectSample = fun id -> calls.Add("select:" + id.value)
                 addSample = fun () -> calls.Add("add")
                 editSample = fun () -> calls.Add("edit")
                 removeSample = fun () -> calls.Add("remove")
@@ -70,35 +70,35 @@ module SampleLibraryControlsTests =
 
     [<Fact>]
     let ``the empty Samples state has no rows, no selection, an empty search and no facet options`` () =
-        let s = SampleLibraryControls.empty
-        Assert.Equal("", s.searchText)
+        let s = SampleLibraryControls.emptySampleLibraryControls
+        Assert.Equal("", s.searchText.value)
         Assert.Empty(s.rows)
         Assert.Empty(s.substrateOptions)
-        Assert.Equal("", s.selectedSubstrate)
+        Assert.Equal(None, s.selectedSubstrate)
         Assert.Equal(None, s.selectedId)
 
     [<Fact>]
     let ``the Samples UiIds are the stable intent-named ids`` () =
-        Assert.Equal("SampleSearchBox", UiIds.SampleLibrary.searchBox)
-        Assert.Equal("SampleSubstrateFilter", UiIds.SampleLibrary.substrateFilter)
-        Assert.Equal("SamplesList", UiIds.SampleLibrary.list)
-        Assert.Equal("AddSampleButton", UiIds.SampleLibrary.addButton)
-        Assert.Equal("EditSampleButton", UiIds.SampleLibrary.editButton)
-        Assert.Equal("RemoveSampleButton", UiIds.SampleLibrary.removeButton)
-        Assert.Equal("ViewSampleButton", UiIds.SampleLibrary.viewButton)
-        Assert.Equal("MakeMultilayerButton", UiIds.SampleLibrary.makeMultilayerButton)
+        Assert.Equal("SampleSearchBox", ConstructorUiId.sampleSearchBox.value)
+        Assert.Equal("SampleSubstrateFilter", ConstructorUiId.sampleSubstrateFilter.value)
+        Assert.Equal("SamplesList", ConstructorUiId.samplesList.value)
+        Assert.Equal("AddSampleButton", ConstructorUiId.addSampleButton.value)
+        Assert.Equal("EditSampleButton", ConstructorUiId.editSampleButton.value)
+        Assert.Equal("RemoveSampleButton", ConstructorUiId.removeSampleButton.value)
+        Assert.Equal("ViewSampleButton", ConstructorUiId.viewSampleButton.value)
+        Assert.Equal("MakeMultilayerButton", ConstructorUiId.makeMultilayerButton.value)
         // The derived per-row / per-facet-option ids are prefixed so they cannot collide.
-        Assert.Equal("SampleRow_abc", UiIds.SampleLibrary.row "abc")
-        Assert.Equal("SampleSubstrateOption_plate", UiIds.SampleLibrary.substrateOption "plate")
+        Assert.Equal("SampleRow_abc", (ConstructorUiId.sampleRow (ConstructorUiKey "abc")).value)
+        Assert.Equal("SampleSubstrateOption_plate", (ConstructorUiId.sampleSubstrateOption (ConstructorUiKey "plate")).value)
 
     [<Fact>]
     let ``selectedRow resolves the selected id to its listed row, and None otherwise`` () =
-        match SampleLibraryControls.selectedRow knownState with
-        | Some r -> Assert.Equal("glass-plate", r.sampleId)
+        match knownState.selectedRow with
+        | Some r -> Assert.Equal("glass-plate", r.sampleId.value)
         | None -> Assert.Fail("expected the selected row")
-        Assert.Equal(None, SampleLibraryControls.selectedRow { knownState with selectedId = None })
+        Assert.Equal(None, { knownState with selectedId = None }.selectedRow)
         // A selection the host's filter no longer lists resolves to no row (verbs then disable).
-        Assert.Equal(None, SampleLibraryControls.selectedRow { knownState with selectedId = Some "not-listed" })
+        Assert.Equal(None, { knownState with selectedId = Some (ConstructorUiKey "not-listed") }.selectedRow)
 
     // ============================ headless structure proof ============================
 
@@ -106,14 +106,14 @@ module SampleLibraryControlsTests =
     /// through the clicks below).
     let private allFixedIds : string list =
         [
-            UiIds.SampleLibrary.searchBox
-            UiIds.SampleLibrary.substrateFilter
-            UiIds.SampleLibrary.list
-            UiIds.SampleLibrary.addButton
-            UiIds.SampleLibrary.editButton
-            UiIds.SampleLibrary.removeButton
-            UiIds.SampleLibrary.viewButton
-            UiIds.SampleLibrary.makeMultilayerButton
+            ConstructorUiId.sampleSearchBox.value
+            ConstructorUiId.sampleSubstrateFilter.value
+            ConstructorUiId.samplesList.value
+            ConstructorUiId.addSampleButton.value
+            ConstructorUiId.editSampleButton.value
+            ConstructorUiId.removeSampleButton.value
+            ConstructorUiId.viewSampleButton.value
+            ConstructorUiId.makeMultilayerButton.value
         ]
 
     let private isPresent (window : Window) (id : string) : bool =
@@ -142,7 +142,7 @@ module SampleLibraryControlsTests =
         HeadlessSession.run (fun () ->
             let calls, handlers = recorder ()
             let window = Window(Width = 640.0, Height = 560.0)
-            window.Content <- Component(fun _ -> SampleLibraryControls.view knownState handlers)
+            window.Content <- Component(fun _ -> SampleLibraryControls.sampleLibraryControlsView knownState handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Every slice-mandated control exists over the known State.
@@ -150,25 +150,25 @@ module SampleLibraryControlsTests =
                 Assert.True(isPresent window id, $"%s{id} is missing from the mounted view")
             let count (tag : string) : int = calls |> Seq.filter ((=) tag) |> Seq.length
             // The acceptance click: Add invokes the ADD handler — and no other verb handler.
-            clickOn window UiIds.SampleLibrary.addButton
+            clickOn window ConstructorUiId.addSampleButton.value
             Assert.Equal(1, count "add")
             Assert.Equal(0, count "edit")
             Assert.Equal(0, count "remove")
             Assert.Equal(0, count "view")
             Assert.Equal(0, count "make-multilayer")
             // Each remaining verb dispatches ITS handler (a row is selected, so all are live).
-            clickOn window UiIds.SampleLibrary.editButton
+            clickOn window ConstructorUiId.editSampleButton.value
             Assert.Equal(1, count "edit")
-            clickOn window UiIds.SampleLibrary.removeButton
+            clickOn window ConstructorUiId.removeSampleButton.value
             Assert.Equal(1, count "remove")
-            clickOn window UiIds.SampleLibrary.viewButton
+            clickOn window ConstructorUiId.viewSampleButton.value
             Assert.Equal(1, count "view")
-            clickOn window UiIds.SampleLibrary.makeMultilayerButton
+            clickOn window ConstructorUiId.makeMultilayerButton.value
             Assert.Equal(1, count "make-multilayer")
             // A row click selects THAT sample; a facet-option click selects THAT substrate code.
-            clickOn window (UiIds.SampleLibrary.row "multilayer-qw")
+            clickOn window (ConstructorUiId.sampleRow (ConstructorUiKey "multilayer-qw")).value
             Assert.Contains("select:multilayer-qw", calls)
-            clickOn window (UiIds.SampleLibrary.substrateOption "plate")
+            clickOn window (ConstructorUiId.sampleSubstrateOption (ConstructorUiKey "plate")).value
             Assert.Contains("substrate:plate", calls)
             window.Close())
 
@@ -179,20 +179,20 @@ module SampleLibraryControlsTests =
             let calls, handlers = recorder ()
             let state = { knownState with selectedId = None }
             let window = Window(Width = 640.0, Height = 560.0)
-            window.Content <- Component(fun _ -> SampleLibraryControls.view state handlers)
+            window.Content <- Component(fun _ -> SampleLibraryControls.sampleLibraryControlsView state handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let count (tag : string) : int = calls |> Seq.filter ((=) tag) |> Seq.length
             // The row-targeted verbs are present but DISABLED — a click dispatches nothing.
-            clickOn window UiIds.SampleLibrary.editButton
-            clickOn window UiIds.SampleLibrary.removeButton
-            clickOn window UiIds.SampleLibrary.viewButton
+            clickOn window ConstructorUiId.editSampleButton.value
+            clickOn window ConstructorUiId.removeSampleButton.value
+            clickOn window ConstructorUiId.viewSampleButton.value
             Assert.Equal(0, count "edit")
             Assert.Equal(0, count "remove")
             Assert.Equal(0, count "view")
             // The two creation entry points need no selection.
-            clickOn window UiIds.SampleLibrary.addButton
+            clickOn window ConstructorUiId.addSampleButton.value
             Assert.Equal(1, count "add")
-            clickOn window UiIds.SampleLibrary.makeMultilayerButton
+            clickOn window ConstructorUiId.makeMultilayerButton.value
             Assert.Equal(1, count "make-multilayer")
             window.Close())

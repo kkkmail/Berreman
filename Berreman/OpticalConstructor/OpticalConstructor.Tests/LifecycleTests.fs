@@ -27,7 +27,7 @@ module LifecycleTests =
         : VersionDecision =
         let stored : VersionPayload<int, string> = { physics = storedPhysics; metadata = storedMeta }
         let incoming : VersionPayload<int, string> = { physics = incomingPhysics; metadata = incomingMeta }
-        decideVersioning (=) (=) stored incoming usage
+        decideVersioning stored incoming usage
 
     // ----- the decision table (used/unused × physics-changed/identical × metadata-only) -----
 
@@ -129,9 +129,9 @@ module LifecycleTests =
         let stored : VersionPayload<int, string> = { physics = 10; metadata = "langasite" }
         let incoming : VersionPayload<int, string> = { physics = 20; metadata = "langasite" }
 
-        let boundDecision = decideVersioning (=) (=) stored incoming (usageOf inUse boundRef)
+        let boundDecision = decideVersioning stored incoming (usageOf inUse boundRef)
         Assert.Equal(MintNextVersion, boundDecision)
 
         let unboundRef = MaterialVersionRef { materialId = MaterialIds.silicon; version = VersionNumber.first }
-        let unboundDecision = decideVersioning (=) (=) stored incoming (usageOf inUse unboundRef)
+        let unboundDecision = decideVersioning stored incoming (usageOf inUse unboundRef)
         Assert.Equal(MutateInPlace, unboundDecision)

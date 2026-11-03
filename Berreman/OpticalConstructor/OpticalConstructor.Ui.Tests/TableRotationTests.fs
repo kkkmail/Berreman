@@ -15,6 +15,7 @@ open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
 open OpticalConstructor.TestWindows.TableRotationView
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Tests for the table-rotation test window (Spec 0027, task 002-rotate-table). The rotation is
 /// CONSTRAINED to one axis at a time by the documented modifier+wheel gestures (§E.3/§E.5); a
@@ -27,154 +28,154 @@ open OpticalConstructor.Ui
 module TableRotationTests =
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
-    let private isTopDown (m : Model) : bool =
+    let private isTopDown (m : TableRotationModel) : bool =
         close m.view.r1.degrees 0.0 && close m.view.r2.degrees 0.0 && close m.view.r3.degrees 0.0
 
     /// `init` with the table selected (the table is only rotatable when selected, task 006 #1):
     /// a clean click on the plate centre selects it.
-    let private selectedModel () : Model =
-        TableRotationView.init ()
-        |> TableRotationView.update (PointerDown TableScene.center)
-        |> TableRotationView.update (PointerUp TableScene.center)
+    let private selectedModel () : TableRotationModel =
+        TableRotationView.initTableRotation ()
+        |> TableRotationView.updateTableRotation (TableRotationPointerDown TableScene.center)
+        |> TableRotationView.updateTableRotation (TableRotationPointerUp TableScene.center)
 
     // ============================ pure MVU ============================
 
     [<Fact>]
     let ``the table is rotatable ONLY when it is selected`` () =
         // Unselected: button and wheel rotation are both inert.
-        Assert.True(isTopDown (TableRotationView.update (RotateR1By 15.0) (TableRotationView.init ())), "an unselected table must not rotate by button")
-        Assert.True(isTopDown (TableRotationView.update (Wheel (Set.ofList [ ModShift ], 1)) (TableRotationView.init ())), "an unselected table must not rotate by wheel")
+        Assert.True(isTopDown (TableRotationView.updateTableRotation (TableRotationRotateR1By (BarDegrees 15.0)) (TableRotationView.initTableRotation ())), "an unselected table must not rotate by button")
+        Assert.True(isTopDown (TableRotationView.updateTableRotation (TableRotationWheel (Set.ofList [ TableRotationModShift ], WheelNotches 1)) (TableRotationView.initTableRotation ())), "an unselected table must not rotate by wheel")
         // Selected: it rotates.
-        let sel = TableRotationView.update (RotateR1By 15.0) (selectedModel ())
+        let sel = TableRotationView.updateTableRotation (TableRotationRotateR1By (BarDegrees 15.0)) (selectedModel ())
         Assert.True(close sel.view.r1.degrees 15.0, $"a selected table should rotate, got {sel.view.r1.degrees}")
 
     [<Fact>]
     let ``init starts straight top-down and unselected`` () =
-        let m = TableRotationView.init ()
-        Assert.True(isTopDown m && close m.view.zoom 1.0)
+        let m = TableRotationView.initTableRotation ()
+        Assert.True(isTopDown m && close m.view.zoom.value 1.0)
         Assert.Equal(TableUnselected, m.selection)
 
     [<Fact>]
     let ``the documented wheel map sends each modifier combo to exactly one action`` () =
-        Assert.Equal(RotateView1, wheelAction (Set.ofList [ ModShift ]))
-        Assert.Equal(RotateView2, wheelAction (Set.ofList [ ModCtrl; ModShift ]))
-        Assert.Equal(RotateView3, wheelAction (Set.ofList [ ModAlt ]))
-        Assert.Equal(ZoomView, wheelAction Set.empty)
-        Assert.Equal(ZoomView, wheelAction (Set.ofList [ ModCtrl ]))
+        Assert.Equal(RotateView1, tableRotationWheelAction (Set.ofList [ TableRotationModShift ]))
+        Assert.Equal(RotateView2, tableRotationWheelAction (Set.ofList [ TableRotationModCtrl; TableRotationModShift ]))
+        Assert.Equal(RotateView3, tableRotationWheelAction (Set.ofList [ TableRotationModAlt ]))
+        Assert.Equal(ZoomView, tableRotationWheelAction Set.empty)
+        Assert.Equal(ZoomView, tableRotationWheelAction (Set.ofList [ TableRotationModCtrl ]))
         // Undocumented combinations do NOTHING (one thing at a time, or nothing).
-        Assert.Equal(NoWheelAction, wheelAction (Set.ofList [ ModCtrl; ModAlt ]))
-        Assert.Equal(NoWheelAction, wheelAction (Set.ofList [ ModShift; ModAlt ]))
-        Assert.Equal(NoWheelAction, wheelAction (Set.ofList [ ModCtrl; ModShift; ModAlt ]))
+        Assert.Equal(TableRotationNoWheelAction, tableRotationWheelAction (Set.ofList [ TableRotationModCtrl; TableRotationModAlt ]))
+        Assert.Equal(TableRotationNoWheelAction, tableRotationWheelAction (Set.ofList [ TableRotationModShift; TableRotationModAlt ]))
+        Assert.Equal(TableRotationNoWheelAction, tableRotationWheelAction (Set.ofList [ TableRotationModCtrl; TableRotationModShift; TableRotationModAlt ]))
 
     [<Fact>]
     let ``Shift+wheel rotates ONLY R1 by one 5 degree step`` () =
-        let m = TableRotationView.update (Wheel (Set.ofList [ ModShift ], 1)) (selectedModel ())
+        let m = TableRotationView.updateTableRotation (TableRotationWheel (Set.ofList [ TableRotationModShift ], WheelNotches 1)) (selectedModel ())
         Assert.True(close m.view.r1.degrees 5.0, $"R1 = {m.view.r1.degrees}")
-        Assert.True(close m.view.r2.degrees 0.0 && close m.view.r3.degrees 0.0 && close m.view.zoom 1.0, "only R1 should move")
+        Assert.True(close m.view.r2.degrees 0.0 && close m.view.r3.degrees 0.0 && close m.view.zoom.value 1.0, "only R1 should move")
 
     [<Fact>]
     let ``Ctrl+Shift+wheel rotates ONLY R2, Alt+wheel rotates ONLY R3`` () =
-        let r2 = TableRotationView.update (Wheel (Set.ofList [ ModCtrl; ModShift ], 1)) (selectedModel ())
+        let r2 = TableRotationView.updateTableRotation (TableRotationWheel (Set.ofList [ TableRotationModCtrl; TableRotationModShift ], WheelNotches 1)) (selectedModel ())
         Assert.True(close r2.view.r2.degrees 5.0 && close r2.view.r1.degrees 0.0 && close r2.view.r3.degrees 0.0)
-        let r3 = TableRotationView.update (Wheel (Set.ofList [ ModAlt ], -1)) (selectedModel ())
+        let r3 = TableRotationView.updateTableRotation (TableRotationWheel (Set.ofList [ TableRotationModAlt ], WheelNotches -1)) (selectedModel ())
         Assert.True(close r3.view.r3.degrees 355.0 && close r3.view.r1.degrees 0.0 && close r3.view.r2.degrees 0.0, $"R3 = {r3.view.r3.degrees}")
 
     [<Fact>]
     let ``plain wheel zooms and changes no rotation`` () =
-        let m = TableRotationView.update (Wheel (Set.empty, 1)) (TableRotationView.init ())
-        Assert.True(m.view.zoom > 1.0, $"zoom = {m.view.zoom}")
+        let m = TableRotationView.updateTableRotation (TableRotationWheel (Set.empty, WheelNotches 1)) (TableRotationView.initTableRotation ())
+        Assert.True(m.view.zoom.value > 1.0, $"zoom = {m.view.zoom.value}")
         Assert.True(isTopDown m, "zoom must not rotate")
 
     [<Fact>]
     let ``an undocumented modifier combo does nothing`` () =
-        let init = TableRotationView.init ()
-        let m = TableRotationView.update (Wheel (Set.ofList [ ModCtrl; ModAlt ], 1)) init
-        Assert.Equal<Model>(init, m)
+        let init = TableRotationView.initTableRotation ()
+        let m = TableRotationView.updateTableRotation (TableRotationWheel (Set.ofList [ TableRotationModCtrl; TableRotationModAlt ], WheelNotches 1)) init
+        Assert.Equal<TableRotationModel>(init, m)
 
     [<Fact>]
     let ``angles wrap mod 360`` () =
-        Assert.True(close (normalizeDegrees 370.0) 10.0 && close (normalizeDegrees -15.0) 345.0)
-        let m = selectedModel () |> TableRotationView.update (RotateR1By 350.0) |> TableRotationView.update (RotateR1By 15.0)
+        Assert.True(close (BarDegrees 370.0).normalized.value 10.0 && close (BarDegrees -15.0).normalized.value 345.0)
+        let m = selectedModel () |> TableRotationView.updateTableRotation (TableRotationRotateR1By (BarDegrees 350.0)) |> TableRotationView.updateTableRotation (TableRotationRotateR1By (BarDegrees 15.0))
         Assert.True(close m.view.r1.degrees 5.0, $"R1 wrapped to {m.view.r1.degrees}")
 
     [<Fact>]
     let ``the button step is 15 degrees normally and 5 degrees with Shift`` () =
-        Assert.True(close (buttonStepDegrees false) 15.0 && close (buttonStepDegrees true) 5.0)
+        Assert.True(close (RotationControls.buttonStepDegrees KeyModifiers.None).value 15.0 && close (RotationControls.buttonStepDegrees KeyModifiers.Shift).value 5.0)
 
     [<Fact>]
     let ``a plain press - drag - release PANS the table (no rotation, no selection)`` () =
         let p0 = TableScene.center
         let p1 : ScreenPoint = { sx = p0.sx + 150.0; sy = p0.sy + 80.0 }
         let m =
-            TableRotationView.init ()
-            |> TableRotationView.update (PointerDown p0)
-            |> TableRotationView.update (PointerMove p1)
-            |> TableRotationView.update (PointerUp p1)
+            TableRotationView.initTableRotation ()
+            |> TableRotationView.updateTableRotation (TableRotationPointerDown p0)
+            |> TableRotationView.updateTableRotation (TableRotationPointerMove p1)
+            |> TableRotationView.updateTableRotation (TableRotationPointerUp p1)
         // The drag pans by the screen delta; it must NOT rotate, zoom, or select.
-        Assert.True(close m.view.panX 150.0 && close m.view.panY 80.0, $"pan = ({m.view.panX}, {m.view.panY})")
-        Assert.True(isTopDown m && close m.view.zoom 1.0, "a drag must not rotate or zoom")
+        Assert.True(close m.view.panX.value 150.0 && close m.view.panY.value 80.0, $"pan = ({m.view.panX.value}, {m.view.panY.value})")
+        Assert.True(isTopDown m && close m.view.zoom.value 1.0, "a drag must not rotate or zoom")
         Assert.Equal(TableUnselected, m.selection)
 
     [<Fact>]
     let ``a clean click (no drag) selects the table, a click off it deselects`` () =
         let selected =
-            TableRotationView.init ()
-            |> TableRotationView.update (PointerDown TableScene.center)
-            |> TableRotationView.update (PointerUp TableScene.center)
-        Assert.Equal(TableSelected, selected.selection)
+            TableRotationView.initTableRotation ()
+            |> TableRotationView.updateTableRotation (TableRotationPointerDown TableScene.center)
+            |> TableRotationView.updateTableRotation (TableRotationPointerUp TableScene.center)
+        Assert.Equal(TableRotationTableSelected, selected.selection)
         let far : ScreenPoint = { sx = 3.0; sy = 3.0 }
         let unselected =
             selected
-            |> TableRotationView.update (PointerDown far)
-            |> TableRotationView.update (PointerUp far)
+            |> TableRotationView.updateTableRotation (TableRotationPointerDown far)
+            |> TableRotationView.updateTableRotation (TableRotationPointerUp far)
         Assert.Equal(TableUnselected, unselected.selection)
 
     [<Fact>]
     let ``reset returns a rotated view to straight top-down`` () =
         let tumbled =
             selectedModel ()
-            |> TableRotationView.update (RotateR1By 30.0)
-            |> TableRotationView.update (RotateR2By 20.0)
-            |> TableRotationView.update (RotateR3By -45.0)
+            |> TableRotationView.updateTableRotation (TableRotationRotateR1By (BarDegrees 30.0))
+            |> TableRotationView.updateTableRotation (TableRotationRotateR2By (BarDegrees 20.0))
+            |> TableRotationView.updateTableRotation (TableRotationRotateR3By (BarDegrees -45.0))
         Assert.False(isTopDown tumbled, "the selected table should have tumbled before the reset")
-        Assert.True(isTopDown (TableRotationView.update ResetView tumbled))
+        Assert.True(isTopDown (TableRotationView.updateTableRotation ResetView tumbled))
 
     // --- rotation-controls bar behaviours (task 008) ---
 
     [<Fact>]
     let ``the table R3 is unlocked by default and the toggle flips it`` () =
-        Assert.False((init ()).r3Locked)
-        Assert.True((update ToggleR3Lock (init ())).r3Locked)
+        Assert.Equal(Placement.RotationFree, (initTableRotation ()).r3Locked)
+        Assert.Equal(Placement.RotationLocked, (updateTableRotation TableRotationToggleR3Lock (initTableRotation ())).r3Locked)
 
     [<Fact>]
     let ``locking R3 keeps its current value and then ignores rotation`` () =
-        let m = selectedModel () |> update (RotateR3By 30.0)
+        let m = selectedModel () |> updateTableRotation (TableRotationRotateR3By (BarDegrees 30.0))
         Assert.True(close m.view.r3.degrees 30.0)
-        let locked = update ToggleR3Lock m
-        Assert.True(locked.r3Locked && close locked.view.r3.degrees 30.0, "locking must not reset R3")
-        Assert.True(close (update (RotateR3By 15.0) locked).view.r3.degrees 30.0, "a locked R3 ignores rotation")
+        let locked = updateTableRotation TableRotationToggleR3Lock m
+        Assert.True(locked.r3Locked = Placement.RotationLocked && close locked.view.r3.degrees 30.0, "locking must not reset R3")
+        Assert.True(close (updateTableRotation (TableRotationRotateR3By (BarDegrees 15.0)) locked).view.r3.degrees 30.0, "a locked R3 ignores rotation")
 
     [<Fact>]
     let ``an axis can be set to an exact non-integer angle`` () =
-        let m = update (RotSetAxis (RotationControls.R1, 42.5)) (selectedModel ())
+        let m = updateTableRotation (TableRotationRotSetAxis (RotationControls.R1, BarDegrees 42.5)) (selectedModel ())
         Assert.True(close m.view.r1.degrees 42.5, $"R1 = {m.view.r1.degrees}")
         // The degree-field parser accepts non-integers and rejects garbage.
-        Assert.Equal(Some 12.5, RotationControls.parseDegrees "12.5")
-        Assert.Equal(None, RotationControls.parseDegrees "abc")
+        Assert.Equal(Some (BarDegrees 12.5), BarDegrees.tryCreate "12.5")
+        Assert.Equal(None, BarDegrees.tryCreate "abc")
 
     [<Fact>]
     let ``Reset is confirmation-gated and zeros the rotations only on confirm`` () =
-        let rotated = selectedModel () |> update (RotateR1By 30.0) |> update (RotateR2By 20.0)
-        let armed = update RotRequestReset rotated
+        let rotated = selectedModel () |> updateTableRotation (TableRotationRotateR1By (BarDegrees 30.0)) |> updateTableRotation (TableRotationRotateR2By (BarDegrees 20.0))
+        let armed = updateTableRotation TableRotationRotRequestReset rotated
         Assert.Equal(RotationControls.ConfirmReset, armed.rotationConfirm)
         Assert.True(close armed.view.r1.degrees 30.0, "not reset until confirmed")
-        Assert.True(close (update RotCancel armed).view.r1.degrees 30.0, "cancel leaves the rotation")
-        let reset = update RotConfirm armed
+        Assert.True(close (updateTableRotation TableRotationRotCancel armed).view.r1.degrees 30.0, "cancel leaves the rotation")
+        let reset = updateTableRotation TableRotationRotConfirm armed
         Assert.True(isTopDown reset && reset.rotationConfirm = RotationControls.NoConfirm, "confirm zeros the rotations")
 
     [<Fact>]
     let ``Reset All also zeros the table's rotations (after confirm)`` () =
-        let reset = selectedModel () |> update (RotateR2By 25.0) |> update RotRequestResetAll |> update RotConfirm
+        let reset = selectedModel () |> updateTableRotation (TableRotationRotateR2By (BarDegrees 25.0)) |> updateTableRotation TableRotationRotRequestResetAll |> updateTableRotation TableRotationRotConfirm
         Assert.True(isTopDown reset)
 
     // ================== real headless pointer injection ==================
@@ -182,11 +183,11 @@ module TableRotationTests =
     /// Build the real FuncUI view over a manual MVU loop (mutable model + capturing dispatch),
     /// show it headlessly, run `inject` (real pointer events), and return the final model. The
     /// handlers carry no model state, so they stay valid across a gesture without re-rendering.
-    let private withMouseHarnessFrom (initial : Model) (inject : Window -> unit) : Model =
+    let private withMouseHarnessFrom (initial : TableRotationModel) (inject : Window -> unit) : TableRotationModel =
         let mutable model = initial
-        let dispatch (m : Msg) = model <- TableRotationView.update m model
+        let dispatch (m : TableRotationMsg) = model <- TableRotationView.updateTableRotation m model
         let window = Window(Width = 920.0, Height = 760.0)
-        window.Content <- Component(fun _ -> TableRotationView.view model dispatch)
+        window.Content <- Component(fun _ -> TableRotationView.tableRotationView model dispatch)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         inject window
@@ -194,8 +195,8 @@ module TableRotationTests =
         window.Close()
         model
 
-    let private withMouseHarness (inject : Window -> unit) : Model =
-        withMouseHarnessFrom (TableRotationView.init ()) inject
+    let private withMouseHarness (inject : Window -> unit) : TableRotationModel =
+        withMouseHarnessFrom (TableRotationView.initTableRotation ()) inject
 
     let private at (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
 
@@ -247,8 +248,8 @@ module TableRotationTests =
                     Dispatcher.UIThread.RunJobs()
                     w.MouseUp(at p1, MouseButton.Left, RawInputModifiers.None))
             // The drag pans by the pointer delta — and must not rotate, zoom, or select.
-            Assert.True(close model.view.panX 160.0 && close model.view.panY 70.0, $"pan = ({model.view.panX}, {model.view.panY})")
-            Assert.True(isTopDown model && close model.view.zoom 1.0, $"a drag changed rotation/zoom: R1={model.view.r1.degrees} zoom={model.view.zoom}")
+            Assert.True(close model.view.panX.value 160.0 && close model.view.panY.value 70.0, $"pan = ({model.view.panX.value}, {model.view.panY.value})")
+            Assert.True(isTopDown model && close model.view.zoom.value 1.0, $"a drag changed rotation/zoom: R1={model.view.r1.degrees} zoom={model.view.zoom.value}")
             Assert.Equal(TableUnselected, model.selection))
 
     [<Fact>]
@@ -260,7 +261,7 @@ module TableRotationTests =
                     w.MouseDown(at TableScene.center, MouseButton.Left, RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
                     w.MouseUp(at TableScene.center, MouseButton.Left, RawInputModifiers.None))
-            Assert.Equal(TableSelected, model.selection))
+            Assert.Equal(TableRotationTableSelected, model.selection))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -272,7 +273,7 @@ module TableRotationTests =
                 withMouseHarnessFrom (selectedModel ()) (fun w ->
                     let button =
                         w.GetVisualDescendants()
-                        |> Seq.choose (fun v -> match v with | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = UiIds.Rotation.r2Plus -> Some b | _ -> None)
+                        |> Seq.choose (fun v -> match v with | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = ConstructorUiId.rotationR2PlusButton.value -> Some b | _ -> None)
                         |> Seq.tryHead
                     match button with
                     | Some b ->

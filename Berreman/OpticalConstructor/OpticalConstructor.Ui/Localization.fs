@@ -6,7 +6,7 @@
 /// The translatable strings live in ONE file, `strings.json` (I.1.1), shipped beside
 /// the assembly as a build-copied content item and read at run time from
 /// `AppContext.BaseDirectory` — mirroring the env-schema / project-schema load
-/// (`SchemaValidation.fs:17`, `UserEnvironment.schemaFullPath`). An operator or
+/// (`SchemaValidation.fs:17`, `UserEnvironment.schemaFileName`). An operator or
 /// translator can edit the strings, or add a further language, by editing that file:
 /// the loader reads it at run time, so NO rebuild is required.
 ///
@@ -23,10 +23,17 @@ module OpticalConstructor.Ui.Localization
 open System
 open System.IO
 open System.Text.Json
+open Softellect.Sys.Primitives
 
 // ---------------------------------------------------------------------------
 // Language (I.2) — the persisted/restored selection; a field of EnvironmentSettings.
 // ---------------------------------------------------------------------------
+
+/// A per-entry property name in `strings.json` (`"en"` / `"ru"`).
+type LanguageCode =
+    | LanguageCode of string
+
+    member this.value = let (LanguageCode c) = this in c
 
 /// The selectable UI language (I.2.1). A fieldless DU, so the shared
 /// `ProjectJson.options` serialize it as a bare string ("English"/"Russian") and the
@@ -37,36 +44,68 @@ type Language =
     | English
     | Russian
 
-/// The resource's language code for `language` — the per-entry property name in
-/// `strings.json` (`"en"` / `"ru"`).
-let languageCode (language : Language) : string =
-    match language with
-    | English -> "en"
-    | Russian -> "ru"
+    /// The resource's language code for this language.
+    member this.code : LanguageCode =
+        match this with
+        | English -> LanguageCode "en"
+        | Russian -> LanguageCode "ru"
 
-/// A human-readable language name for the copyable completeness message (I.3.1).
-let languageName (language : Language) : string =
-    match language with
-    | English -> "English"
-    | Russian -> "Russian"
+    /// A human-readable language name for the copyable completeness message (I.3.1).
+    member this.displayName : string =
+        match this with
+        | English -> "English"
+        | Russian -> "Russian"
 
 // ---------------------------------------------------------------------------
 // The parsed resource + error channel.
 // ---------------------------------------------------------------------------
+
+/// One interface string as the resource gives it for one language.
+type LocalizedText =
+    | LocalizedText of string
+
+    member this.value = let (LocalizedText t) = this in t
+
+/// A key of the string resource, e.g. `"app.title"`.
+type StringResourceKey =
+    | StringResourceKey of string
+
+    member this.value = let (StringResourceKey k) = this in k
+
+    /// The key itself, shown when no language carries a value for it (I.3.1).
+    member this.asFallbackText : LocalizedText = LocalizedText this.value
 
 /// A loaded string resource (I.1.1): each key maps to a per-language-code value map,
 /// e.g. `"app.title" -> { "en" -> "Optical Constructor"; "ru" -> "..." }`. Pure and
 /// serializable; carries no Avalonia handle (constraint 0.3).
 type Resource =
     {
-        entries : Map<string, Map<string, string>>
+        entries : Map<StringResourceKey, Map<LanguageCode, LocalizedText>>
     }
+
+/// A copyable message the app entry point surfaces (I.3.1).
+type LocalizationMessage =
+    | LocalizationMessage of string
+
+    member this.value = let (LocalizationMessage m) = this in m
+
+/// The shipped resource file name (I.1.1). Copied beside the assembly by the
+/// `OpticalConstructor.Ui.fsproj` content item, mirroring the env schema.
+let resourceFileName : FileName = FileName "strings.json"
 
 /// Why a resource load failed. Surfaced — never thrown — so the app entry point can
 /// render a copyable message rather than crash (I.3.1).
 type LocalizationError =
-    | ResourceMissing of path : string
-    | ResourceParseError of message : string
+    | ResourceMissingErr of path : FileName
+    | ResourceParseErr of message : string
+
+    /// This load failure as a copyable message (I.3.1), again without crashing.
+    member this.describe : LocalizationMessage =
+        match this with
+        | ResourceMissingErr path ->
+            LocalizationMessage $"Localization: the string resource '%s{resourceFileName.value}' was not found at %s{path.value}. Interface text falls back to the embedded keys."
+        | ResourceParseErr message ->
+            LocalizationMessage $"Localization: the string resource '%s{resourceFileName.value}' could not be read: %s{message}"
 
 /// The outcome of the startup completeness check (I.3.1): the keys that had no value
 /// for the active language (they fall back to English), plus a single copyable
@@ -74,62 +113,65 @@ type LocalizationError =
 type CompletenessReport =
     {
         language : Language
-        missingKeys : string list
-        message : string
+        missingKeys : StringResourceKey list
+        message : LocalizationMessage
     }
 
 // ---------------------------------------------------------------------------
 // Parsing & loading (I.1.1) — runtime-read, build-copied beside the assembly.
 // ---------------------------------------------------------------------------
 
-/// The shipped resource file name (I.1.1). Copied beside the assembly by the
-/// `OpticalConstructor.Ui.fsproj` content item, mirroring the env schema.
-[<Literal>]
-let resourceFileName = "strings.json"
+/// The text of a `strings.json` resource.
+type StringResourceText =
+    | StringResourceText of string
+
+    member this.value = let (StringResourceText t) = this in t
+
+    /// Parse the resource JSON `{ key: { "en": ..., "ru": ... } }` into a `Resource`.
+    /// Non-object entries / non-string values are skipped rather than throwing, so a
+    /// partially malformed file still yields the entries it can (the completeness check
+    /// then reports whatever is missing). A non-object ROOT is a parse error.
+    member this.parseResource : Result<Resource, LocalizationError> =
+        try
+            use doc = JsonDocument.Parse this.value
+            let root = doc.RootElement
+            if root.ValueKind <> JsonValueKind.Object then
+                Error (ResourceParseErr "the strings resource root must be a JSON object of key -> { language: value } entries")
+            else
+                let entries =
+                    [ for prop in root.EnumerateObject() ->
+                        let byLang =
+                            if prop.Value.ValueKind = JsonValueKind.Object then
+                                [ for langProp in prop.Value.EnumerateObject() do
+                                    if langProp.Value.ValueKind = JsonValueKind.String then
+                                        yield LanguageCode langProp.Name, LocalizedText (langProp.Value.GetString()) ]
+                                |> Map.ofList
+                            else
+                                Map.empty
+                        StringResourceKey prop.Name, byLang ]
+                    |> Map.ofList
+                Ok { entries = entries }
+        with e ->
+            Error (ResourceParseErr e.Message)
+
+type Resource with
+
+    /// Load and parse the resource at `path`. A missing file or read/parse failure is
+    /// returned, never thrown (I.3.1 — the entry point renders it copyably instead of
+    /// crashing).
+    static member tryLoad (path : FileName) : Result<Resource, LocalizationError> =
+        if File.Exists path.value then
+            try (StringResourceText (File.ReadAllText path.value)).parseResource
+            with e -> Error (ResourceParseErr e.Message)
+        else
+            Error (ResourceMissingErr path)
 
 /// The runtime resource path: `strings.json` beside the assembly. Read from
 /// `AppContext.BaseDirectory`, exactly as the env schema is loaded
-/// (`UserEnvironment.schemaFullPath`) — the SAME build-copied-content-item +
+/// (`UserEnvironment.schemaFileName`) — the SAME build-copied-content-item +
 /// base-directory pattern (`SchemaValidation.fs:17`, I.5).
-let resourcePath () : string =
-    Path.Combine(AppContext.BaseDirectory, resourceFileName)
-
-/// Parse the resource JSON `{ key: { "en": ..., "ru": ... } }` into a `Resource`.
-/// Non-object entries / non-string values are skipped rather than throwing, so a
-/// partially malformed file still yields the entries it can (the completeness check
-/// then reports whatever is missing). A non-object ROOT is a parse error.
-let parse (json : string) : Result<Resource, LocalizationError> =
-    try
-        use doc = JsonDocument.Parse json
-        let root = doc.RootElement
-        if root.ValueKind <> JsonValueKind.Object then
-            Error (ResourceParseError "the strings resource root must be a JSON object of key -> { language: value } entries")
-        else
-            let entries =
-                [ for prop in root.EnumerateObject() ->
-                    let byLang =
-                        if prop.Value.ValueKind = JsonValueKind.Object then
-                            [ for langProp in prop.Value.EnumerateObject() do
-                                if langProp.Value.ValueKind = JsonValueKind.String then
-                                    yield langProp.Name, langProp.Value.GetString() ]
-                            |> Map.ofList
-                        else
-                            Map.empty
-                    prop.Name, byLang ]
-                |> Map.ofList
-            Ok { entries = entries }
-    with e ->
-        Error (ResourceParseError e.Message)
-
-/// Load and parse the resource at `path`. A missing file or read/parse failure is
-/// returned, never thrown (I.3.1 — the entry point renders it copyably instead of
-/// crashing).
-let loadFromFile (path : string) : Result<Resource, LocalizationError> =
-    if File.Exists path then
-        try parse (File.ReadAllText path)
-        with e -> Error (ResourceParseError e.Message)
-    else
-        Error (ResourceMissing path)
+let resourcePath () : FileName =
+    resourceFileName.combine (FolderName AppContext.BaseDirectory)
 
 // ---------------------------------------------------------------------------
 // Lookup with English fallback (I.3.1).
@@ -139,16 +181,16 @@ let loadFromFile (path : string) : Result<Resource, LocalizationError> =
 /// value is absent or empty, fall back to the English entry; when English is also
 /// absent, fall back to the key itself — so a missing string is visible and
 /// debuggable but never crashes or shows blank.
-let lookup (resource : Resource) (language : Language) (key : string) : string =
+let lookup (resource : Resource) (language : Language) (key : StringResourceKey) : LocalizedText =
     match Map.tryFind key resource.entries with
-    | None -> key
+    | None -> key.asFallbackText
     | Some byLang ->
-        match Map.tryFind (languageCode language) byLang with
-        | Some v when v <> "" -> v
+        match Map.tryFind language.code byLang with
+        | Some (LocalizedText v as text) when v <> "" -> text
         | _ ->
-            match Map.tryFind (languageCode English) byLang with
-            | Some v when v <> "" -> v
-            | _ -> key
+            match Map.tryFind English.code byLang with
+            | Some (LocalizedText v as text) when v <> "" -> text
+            | _ -> key.asFallbackText
 
 // ---------------------------------------------------------------------------
 // Completeness check + copyable message (I.3.1).
@@ -159,47 +201,48 @@ let lookup (resource : Resource) (language : Language) (key : string) : string =
 /// English at lookup) and named in a single, copyable message. A complete resource
 /// yields an empty key list and an empty message (never a false alarm).
 let check (resource : Resource) (language : Language) : CompletenessReport =
-    let code = languageCode language
     let missingKeys =
         resource.entries
         |> Map.toList
         |> List.choose (fun (key, byLang) ->
-            match Map.tryFind code byLang with
-            | Some v when v <> "" -> None
+            match Map.tryFind language.code byLang with
+            | Some (LocalizedText v) when v <> "" -> None
             | _ -> Some key)
         |> List.sort
     let message =
-        if List.isEmpty missingKeys then ""
-        else
+        match missingKeys with
+        | [] -> LocalizationMessage ""
+        | _ ->
             let header =
-                $"Localization: %d{List.length missingKeys} interface string(s) are missing for the selected language (%s{languageName language}). The English text is shown instead. Missing keys:"
-            let lines = missingKeys |> List.map (fun k -> $"  - %s{k}")
-            String.concat "\n" (header :: lines)
+                $"Localization: %d{List.length missingKeys} interface string(s) are missing for the selected language (%s{language.displayName}). The English text is shown instead. Missing keys:"
+            let lines = missingKeys |> List.map (fun k -> $"  - %s{k.value}")
+            LocalizationMessage (String.concat "\n" (header :: lines))
     { language = language; missingKeys = missingKeys; message = message }
 
-/// Render a load failure as a copyable message (I.3.1) — surfaced when the resource is
-/// missing or malformed, again without crashing.
-let describeError (err : LocalizationError) : string =
-    match err with
-    | ResourceMissing path ->
-        $"Localization: the string resource '%s{resourceFileName}' was not found at %s{path}. Interface text falls back to the embedded keys."
-    | ResourceParseError message ->
-        $"Localization: the string resource '%s{resourceFileName}' could not be read: %s{message}"
+type Language with
 
-/// The startup completeness check the app entry point wires (I.3.1 / `Program.fs`):
-/// load the shipped resource and return a copyable error message when it is missing,
-/// malformed, or incomplete for `language`; `None` when it loads and is complete. The
-/// app still runs with the English fallback in every case (never crash, never silent).
-let startupCheck (language : Language) : string option =
-    match loadFromFile (resourcePath ()) with
-    | Error err -> Some (describeError err)
-    | Ok resource ->
-        let report = check resource language
-        if List.isEmpty report.missingKeys then None else Some report.message
+    /// The startup completeness check the app entry point wires (I.3.1 / `Program.fs`):
+    /// load the shipped resource and return a copyable error message when it is missing,
+    /// malformed, or incomplete for this language; `None` when it loads and is complete. The
+    /// app still runs with the English fallback in every case (never crash, never silent).
+    member this.startupCheck () : LocalizationMessage option =
+        match Resource.tryLoad (resourcePath ()) with
+        | Error err -> Some err.describe
+        | Ok resource ->
+            let report = check resource this
+            match report.missingKeys with
+            | [] -> None
+            | _ -> Some report.message
 
 // ---------------------------------------------------------------------------
 // Language-neutral scientific symbols (I.4.1).
 // ---------------------------------------------------------------------------
+
+/// A scientific glyph that stays identical in every language (I.4.1).
+type NeutralSymbol =
+    | NeutralSymbol of string
+
+    member this.value = let (NeutralSymbol s) = this in s
 
 /// Scientific symbols that MUST stay language-neutral and MUST NOT be translated
 /// (I.4.1): Ψ, Δ, °, R1/R2/R3, and the unit symbols. These are compiled constants —
@@ -208,28 +251,28 @@ let startupCheck (language : Language) : string option =
 /// making the language-neutral property explicit and testable.
 module Symbols =
     /// Ellipsometric & rotation symbols.
-    let psi = "Ψ"        // Ψ
-    let delta = "Δ"      // Δ
-    let degree = "°"     // °
-    let r1 = "R1"
-    let r2 = "R2"
-    let r3 = "R3"
+    let psi : NeutralSymbol = NeutralSymbol "Ψ"
+    let delta : NeutralSymbol = NeutralSymbol "Δ"
+    let degree : NeutralSymbol = NeutralSymbol "°"
+    let r1 : NeutralSymbol = NeutralSymbol "R1"
+    let r2 : NeutralSymbol = NeutralSymbol "R2"
+    let r3 : NeutralSymbol = NeutralSymbol "R3"
     /// Unit symbols — the language-neutral display glyphs for `UnitOfMeasure`.
-    let meter = "m"
-    let millimeter = "mm"
-    let micrometer = "µm"      // µm
-    let nanometer = "nm"
-    let angstrom = "Å"         // Å
-    let electronVolt = "eV"
-    let wavenumber = "cm⁻¹" // cm⁻¹
+    let meter : NeutralSymbol = NeutralSymbol "m"
+    let millimeter : NeutralSymbol = NeutralSymbol "mm"
+    let micrometer : NeutralSymbol = NeutralSymbol "µm"
+    let nanometer : NeutralSymbol = NeutralSymbol "nm"
+    let angstrom : NeutralSymbol = NeutralSymbol "Å"
+    let electronVolt : NeutralSymbol = NeutralSymbol "eV"
+    let wavenumber : NeutralSymbol = NeutralSymbol "cm⁻¹"
 
     /// The full no-translate set (I.4.1) — every glyph that stays identical in every
     /// language and is never read from the translatable resource.
-    let neutral =
+    let neutral : NeutralSymbol list =
         [ psi; delta; degree; r1; r2; r3
           meter; millimeter; micrometer; nanometer; angstrom; electronVolt; wavenumber ]
 
 /// Resolve a language-neutral scientific symbol (I.4.1). It ignores `language` by
 /// design: the same glyph is returned for every language and it is never read from
 /// the translatable `strings.json`, so the symbol cannot be localized.
-let neutralSymbol (_language : Language) (glyph : string) : string = glyph
+let neutralSymbol (_language : Language) (glyph : NeutralSymbol) : NeutralSymbol = glyph

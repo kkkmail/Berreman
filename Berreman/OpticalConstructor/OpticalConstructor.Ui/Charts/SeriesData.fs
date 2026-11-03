@@ -1,5 +1,5 @@
 /// §H.2 — the renderer-neutral series adapter over the engine's own data extraction
-/// (the Part A sweeps seam). Converts engine output into plain `(float*float)[]`
+/// (the Part A sweeps seam). Converts engine output into `ChartPoint` arrays
 /// (1D) and a `float[][]` grid (surface) WITHOUT re-implementing the solver call or
 /// the sweep loop, and WITHOUT the engine's terminal `Chart.show` wrappers. Every
 /// view consumes these arrays; no view re-runs the solver. Series caching is out of
@@ -14,16 +14,18 @@ open Berreman.Solvers
 open Analytics
 open Analytics.Variables
 open OpticalConstructor.Domain
+open OpticalConstructor.Controls.ExperimentControls
 
-/// A renderer-neutral 1D series: a legend name and the `(x, y)` points exactly as
+/// A renderer-neutral 1D series: a legend name and the points exactly as
 /// the engine's `Charting.plot` would choose them.
 type Series1D =
     {
-        name : string
-        points : (float * float) []
+        name : Charting.SeriesName
+        points : ChartPoint []
     }
 
 /// A renderer-neutral surface: the Z grid plus the X/Y plot-axis values.
+[<Softellect.Sys.NumericCarrier("a surface sweep grid (R3): the Z value at every grid point the solver ran and the plotted x and y axis values, handed whole to the surface renderer")>]
 type Surface =
     {
         z : float [] []
@@ -37,16 +39,15 @@ type Surface =
 /// project each point through `Solution.func` (`FieldFunctions.fs:192`). The legend
 /// name is the engine's `OpticalFunction.info.fullName` (`Charting.fs:31`).
 /// The choose-on-`Some` projection `Charting.plot` uses inside `getFuncData`
-/// (`Charting.fs:26-30`): map each `(x, Solution)` through `Solution.func` and keep
-/// only the `Some` results as `(x, y)` pairs. Shared by `series1D` and
+/// (`Charting.fs:26-30`): map each `SweepPoint` through `Solution.func` and keep
+/// only the `Some` results as points. Shared by `series1D` and
 /// `seriesComparison` so the projection is expressed once (F2).
-let private projectPoints (fn : OpticalFunction) (data : (float * Solution) []) : (float * float) [] =
+let private projectPoints (fn : OpticalFunction) (data : SweepPoint []) : ChartPoint [] =
     data
-    |> Array.map (fun (v, s) -> (v, s.func fn))
-    |> Array.choose (fun (xx, yo) -> match yo with | Some y -> Some (xx, y) | None -> None)
+    |> Array.choose (fun p -> p.solution.func fn |> Option.map (fun y -> { x = p.plotValue; y = y.value }))
 
 let series1D (f : FixedInfo) (fn : OpticalFunction) (x : RangedVariable) : Series1D =
-    { name = fn.info.fullName; points = projectPoints fn (calculate f x) }
+    { name = Charting.SeriesName fn.info.fullName; points = projectPoints fn (calculate f x) }
 
 /// §H.2/§H.3 — one `Series1D` per requested function over a single system.
 let series1DMany (f : FixedInfo) (fns : OpticalFunction list) (x : RangedVariable) : Series1D list =
@@ -61,51 +62,56 @@ let seriesComparison (systems : FixedInfo list) (fn : OpticalFunction) (x : Rang
     let data = systems |> List.map (fun e -> calculate e x)
     data
     |> List.mapi (fun i d ->
-        { name = fn.info.fullName + " (" + i.ToString() + ")"; points = projectPoints fn d })
+        { name = Charting.SeriesName (fn.info.fullName + " (" + i.ToString() + ")"); points = projectPoints fn d })
 
 /// §H.2/§H.5 — surface Z grid for one `OpticalFunction` over a FIXED `calculate3D`
 /// run, applying `Charting.mapFun` (`Charting.fs:57`) to the data array it is handed
 /// (Part H consumes whatever array it is given; it does not re-run the sweep). The
-/// X/Y axes carry the sweep plot-points; the engine's documented X/Y swap is applied
+/// X/Y axes carry the plot-points of the two swept ranges; the engine's documented X/Y swap is applied
 /// by the view (`Plot3DView`), mirroring `Charting.plot3D` (`Charting.fs:74-77`).
-let surfaceFromData (data : #seq<#seq<double * double * Solution>>) (fn : OpticalFunction) (xValues : float []) (yValues : float []) : Surface =
-    { z = Charting.mapFun data fn; xValues = xValues; yValues = yValues }
+let surfaceFromData (data : #seq<#seq<SurfacePoint>>) (fn : OpticalFunction) (x : RangedVariable) (y : RangedVariable) : Surface =
+    { z = Charting.mapFun data fn |> Array.map (Array.map (fun v -> v.value)); xValues = x.plotPoints; yValues = y.plotPoints }
 
 /// §H.2/§H.5 — convenience surface builder: run `calculate3D` (`Variables.fs:270`)
 /// once, then project it through `surfaceFromData`.
 let surface (f : FixedInfo) (fn : OpticalFunction) (x : RangedVariable) (y : RangedVariable) : Surface =
-    surfaceFromData (calculate3D f x y) fn x.plotPoints y.plotPoints
+    surfaceFromData (calculate3D f x y) fn x y
 
 /// §H.9 — field-depth profile as a 1D series. Consumes the
-/// `(float<meter> * float) list` produced by Part F §F.6 `fieldDepthProfile`
+/// `FieldDepthPoint` list produced by Part F §F.6 `fieldDepthProfile`
 /// (`Analytics/FieldProfile.fs`) and converts each canonical-SI depth to the layer's
 /// display unit at the boundary via the §A.10 `Units` seam (`Units.fromMeters`).
 /// Part H adds no in-layer field solver and does not re-sample the layer.
 let fieldDepthSeries
     (depthUnit : Units.UnitOfMeasure)
-    (profile : (float<meter> * float) list)
+    (profile : FieldProfile.FieldDepthPoint list)
     : Series1D =
 
     let points =
         profile
-        |> List.map (fun (depth, value) -> (Units.fromMeters depthUnit depth, value))
+        |> List.map (fun p -> { x = (Units.fromMeters depthUnit p.depth).value; y = p.electricFieldSquared })
         |> Array.ofList
-    { name = "|E|^2"; points = points }
+    { name = Charting.SeriesName "|E|^2"; points = points }
 
 /// §H.11 — n,k / ρ / ε-component dispersion series. Reuses the engine's dispersion
 /// data builders (`Variables.calculateN11Re`…`calculateRho33Im`, the bodies behind
 /// `Charting.plotN11`…`plotRho33`, `Charting.fs:95-107`) which already end in
-/// `(float*float)[]`; Part H drops only the terminal `Chart.show` (`Charting.fs:92`)
+/// a `DispersionPoint` array; Part H drops only the terminal `Chart.show` (`Charting.fs:92`)
 /// and re-derives none of the n/k/ρ formulas (owned by `OpticalPropertiesWithDisp`).
-let private dispersion name calc (o : OpticalPropertiesWithDisp) (r : Range<WaveLength>) : Series1D =
-    { name = name; points = calc o r }
+let private dispersion
+    (name : Charting.SeriesName)
+    (calc : OpticalPropertiesWithDisp -> Range<WaveLength> -> DispersionPoint [])
+    (o : OpticalPropertiesWithDisp)
+    (r : Range<WaveLength>)
+    : Series1D =
+    { name = name; points = calc o r |> Array.map (fun p -> { x = p.waveLengthPlotValue; y = p.propertyValue }) }
 
-let plotN11Series  o r = dispersion "Re[e11]" calculateN11Re  o r
-let plotXi11Series o r = dispersion "Im[e11]" calculateXi11Im o r
-let plotN22Series  o r = dispersion "Re[e22]" calculateN22Re  o r
-let plotXi22Series o r = dispersion "Im[e22]" calculateXi22Im o r
-let plotN33Series  o r = dispersion "Re[e33]" calculateN33Re  o r
-let plotXi33Series o r = dispersion "Im[e33]" calculateXi33Im o r
-let plotRho11Series o r = dispersion "rho11" calculateRho11Im o r
-let plotRho22Series o r = dispersion "rho22" calculateRho22Im o r
-let plotRho33Series o r = dispersion "rho33" calculateRho33Im o r
+let plotN11Series  o r = dispersion (Charting.SeriesName "Re[e11]") calculateN11Re  o r
+let plotXi11Series o r = dispersion (Charting.SeriesName "Im[e11]") calculateXi11Im o r
+let plotN22Series  o r = dispersion (Charting.SeriesName "Re[e22]") calculateN22Re  o r
+let plotXi22Series o r = dispersion (Charting.SeriesName "Im[e22]") calculateXi22Im o r
+let plotN33Series  o r = dispersion (Charting.SeriesName "Re[e33]") calculateN33Re  o r
+let plotXi33Series o r = dispersion (Charting.SeriesName "Im[e33]") calculateXi33Im o r
+let plotRho11Series o r = dispersion (Charting.SeriesName "rho11") calculateRho11Im o r
+let plotRho22Series o r = dispersion (Charting.SeriesName "rho22") calculateRho22Im o r
+let plotRho33Series o r = dispersion (Charting.SeriesName "rho33") calculateRho33Im o r

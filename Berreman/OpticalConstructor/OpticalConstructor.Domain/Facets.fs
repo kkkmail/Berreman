@@ -1,6 +1,8 @@
 namespace OpticalConstructor.Domain
 
 open System
+open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.MaterialLibrary
 
 /// Spec 0038 Part D (step 009): the generic faceted-navigation engine — pure,
 /// Avalonia-free, generic over the item type. Items + attribute definitions →
@@ -18,6 +20,10 @@ module Facets =
 
         member this.value = let (AttributeKey k) = this in k
 
+        /// The key read back from its text (a control's token); `None` for a blank text.
+        static member tryCreate (text : string) : AttributeKey option =
+            if String.IsNullOrWhiteSpace text then None else Some (AttributeKey text)
+
     /// The identity of one discrete value inside a facet — e.g. "uniaxial".
     /// At this layer the key doubles as the branch label; step 011's
     /// catalogues choose human-readable keys.
@@ -25,6 +31,10 @@ module Facets =
         | DiscreteKey of string
 
         member this.value = let (DiscreteKey k) = this in k
+
+        /// The key read back from its text (a control's token); `None` for a blank text.
+        static member tryCreate (text : string) : DiscreteKey option =
+            if String.IsNullOrWhiteSpace text then None else Some (DiscreteKey text)
 
     /// A plain-text filter query (the filter-box content). Matching is
     /// ordinal case-insensitive substring containment; the empty query
@@ -34,12 +44,18 @@ module Facets =
 
         member this.value = let (TextQuery q) = this in q
 
+    /// The display text of a facet (its name) or of one of its branches (its label).
+    type FacetCaption =
+        | FacetCaption of string
+
+        member this.value = let (FacetCaption c) = this in c
+
     /// One value an item carries for one attribute. Discrete values are keys
     /// into the facet's vocabulary; numeric values are raw magnitudes in the
     /// attribute's canonical unit (step 010 buckets them for display).
     type AttributeValue =
         | DiscreteValue of DiscreteKey
-        | NumericValue of double
+        | NumericValue of UnitMagnitude
 
         /// The branch display label of this value: a discrete key shows its
         /// key string; a raw numeric value shows its compact form (step 010's
@@ -47,7 +63,7 @@ module Facets =
         member this.label =
             match this with
             | DiscreteValue k -> k.value
-            | NumericValue v -> $"%g{v}"
+            | NumericValue v -> $"%g{v.value}"
 
     /// Whether an attribute offers itself for an item at all. Dependent
     /// facets vanish ENTIRELY when inapplicable (never an empty or greyed
@@ -56,6 +72,12 @@ module Facets =
     type Applicability =
         | ApplicableAttribute
         | InapplicableAttribute
+
+        /// Elevate a raw "applies" condition at its computation site (a catalogue's `appliesTo`).
+        static member ofBool (applies : bool) : Applicability =
+            match applies with
+            | true -> ApplicableAttribute
+            | false -> InapplicableAttribute
 
     /// The two facet shapes: a discrete vocabulary (branch per key) or a
     /// numeric magnitude (branch per value now; per bucket from step 010).
@@ -71,11 +93,19 @@ module Facets =
     type AttributeDef<'Item> =
         {
             key : AttributeKey
-            name : string
+            name : FacetCaption
             kind : AttributeKind
             appliesTo : 'Item -> Applicability
             extract : 'Item -> AttributeValue list
         }
+
+        /// The items this attribute applies to, in their order.
+        member this.applicableItems (items : 'Item list) : 'Item list =
+            items
+            |> List.filter (fun item ->
+                match this.appliesTo item with
+                | ApplicableAttribute -> true
+                | InapplicableAttribute -> false)
 
     /// The lower/upper pair of a numeric selection. Membership is half-open
     /// `[lower, upper)` — the step-010 bucket intervals, so a bucket applied
@@ -86,9 +116,15 @@ module Facets =
     /// every pair has a total meaning.
     type NumericRange =
         {
-            lower : double
-            upper : double
+            lower : UnitMagnitude
+            upper : UnitMagnitude
         }
+
+        /// Half-open `[lower, upper)` membership, with the degenerate
+        /// `lower = upper` pair meaning the exact value.
+        member this.contains (v : float) : bool =
+            if this.lower.value = this.upper.value then v = this.lower.value
+            else this.lower.value <= v && v < this.upper.value
 
     /// One facet's applied selection: a discrete key SET (OR within the
     /// facet — any selected key matches) or a numeric range. A manual
@@ -127,7 +163,7 @@ module Facets =
     type FacetBranch =
         {
             value : AttributeValue
-            label : string
+            label : FacetCaption
             count : ItemCount
         }
 
@@ -136,7 +172,7 @@ module Facets =
     type FacetNode =
         {
             key : AttributeKey
-            name : string
+            name : FacetCaption
             branches : FacetBranch list
         }
 
@@ -156,45 +192,31 @@ module Facets =
             afterCount : ItemCount
         }
 
-    /// Half-open `[lower, upper)` membership, with the degenerate
-    /// `lower = upper` pair meaning the exact value (see `NumericRange`).
-    let private rangeContains (range : NumericRange) (v : double) : bool =
-        if range.lower = range.upper then v = range.lower
-        else range.lower <= v && v < range.upper
-
-    /// Whether one extracted value satisfies a selection. Cross-kind pairs
-    /// (a numeric value against a discrete selection and vice versa) never
-    /// match — a mis-kinded constraint selects nothing rather than throwing.
-    let private valueMatches (selection : FacetSelection) (value : AttributeValue) : bool =
-        match selection, value with
-        | DiscreteSelection keys, DiscreteValue k -> keys |> Set.contains k
-        | NumericRangeSelection range, NumericValue v -> rangeContains range v
-        | DiscreteSelection _, NumericValue _ -> false
-        | NumericRangeSelection _, DiscreteValue _ -> false
-
-    let private isApplicable (def : AttributeDef<'Item>) (item : 'Item) : bool =
-        match def.appliesTo item with
-        | ApplicableAttribute -> true
-        | InapplicableAttribute -> false
-
-    /// Whether an item satisfies one applied constraint: the constrained
-    /// attribute must have a def, must apply to the item, and ANY extracted
-    /// value must match the selection (OR within the facet). Fail-closed on
-    /// an unknown key — a constraint no def explains matches NOTHING, so a
-    /// broken chip surfaces as zero results, never as a silently ignored
-    /// filter.
-    let private satisfiesConstraint (defs : AttributeDef<'Item> list) (item : 'Item) (applied : AppliedConstraint) : bool =
+    /// The items satisfying one applied constraint, in their order: the
+    /// constrained attribute must have a def, must apply to the item, and ANY
+    /// extracted value must match the selection (OR within the facet). A
+    /// cross-kind pair (a numeric value against a discrete selection and vice
+    /// versa) never matches — a mis-kinded constraint selects nothing rather
+    /// than throwing. Fail-closed on an unknown key — a constraint no def
+    /// explains matches NOTHING, so a broken chip surfaces as zero results,
+    /// never as a silently ignored filter.
+    let private surviving (defs : AttributeDef<'Item> list) (applied : AppliedConstraint) (items : 'Item list) : 'Item list =
         match defs |> List.tryFind (fun d -> d.key = applied.key) with
-        | None -> false
+        | None -> []
         | Some def ->
-            match def.appliesTo item with
-            | InapplicableAttribute -> false
-            | ApplicableAttribute -> def.extract item |> List.exists (valueMatches applied.selection)
+            let matches (value : AttributeValue) : bool =
+                match applied.selection, value with
+                | DiscreteSelection keys, DiscreteValue k -> keys |> Set.contains k
+                | NumericRangeSelection range, NumericValue v -> range.contains v.value
+                | DiscreteSelection _, NumericValue _ -> false
+                | NumericRangeSelection _, DiscreteValue _ -> false
+
+            def.applicableItems items |> List.filter (fun item -> def.extract item |> List.exists matches)
 
     /// The result set under the applied constraints: AND across facets, OR
     /// within one (the selection set). Corpus order is preserved.
     let filter (defs : AttributeDef<'Item> list) (applied : AppliedConstraint list) (items : 'Item list) : 'Item list =
-        items |> List.filter (fun item -> applied |> List.forall (satisfiesConstraint defs item))
+        applied |> List.fold (fun remaining c -> surviving defs c remaining) items
 
     /// The count-preview of ONE candidate constraint under the applied set:
     /// the result count if the candidate were applied on top of everything
@@ -212,8 +234,8 @@ module Facets =
         applied
         |> List.fold
             (fun (remaining : 'Item list, acc : BreadcrumbCount list) (c : AppliedConstraint) ->
-                let surviving = remaining |> List.filter (fun item -> satisfiesConstraint defs item c)
-                surviving, { applied = c; afterCount = ItemCount (List.length surviving) } :: acc)
+                let survivors = surviving defs c remaining
+                survivors, { applied = c; afterCount = ItemCount (List.length survivors) } :: acc)
             (items, [])
         |> fun (_, acc) -> List.rev acc
 
@@ -236,18 +258,17 @@ module Facets =
             | None -> None
             | Some def ->
                 let branches =
-                    filtered
-                    |> List.filter (isApplicable def)
+                    def.applicableItems filtered
                     |> List.collect (fun item -> def.extract item |> List.distinct)
                     |> List.groupBy id
                     |> List.map (fun (value : AttributeValue, occurrences : AttributeValue list) ->
                         {
                             value = value
-                            label = value.label
+                            label = FacetCaption value.label
                             count = ItemCount (List.length occurrences)
                         })
                     |> List.sortWith (fun (a : FacetBranch) (b : FacetBranch) ->
-                        String.Compare(a.label, b.label, StringComparison.OrdinalIgnoreCase))
+                        String.Compare(a.label.value, b.label.value, StringComparison.OrdinalIgnoreCase))
 
                 match branches with
                 | [] -> None
@@ -260,12 +281,12 @@ module Facets =
     let textMatchKey : DiscreteKey = DiscreteKey "text-match"
 
     /// The plain-text filter as an ORDINARY constraint (spec 0038 §D.0): a
-    /// def over a caller-supplied text extractor whose `extract` yields the
-    /// match sentinel exactly when the item's text contains the query
+    /// def over a caller-supplied name extractor whose `extract` yields the
+    /// match sentinel exactly when the item's name contains the query
     /// (ordinal, case-insensitive). Paired with `textFilterConstraint` it
     /// ANDs with the facet constraints, previews through `countFor`, and
     /// takes a breadcrumb after-count with zero special-casing in the engine.
-    let textFilterDef (key : AttributeKey) (name : string) (extractText : 'Item -> string) (query : TextQuery) : AttributeDef<'Item> =
+    let textFilterDef (key : AttributeKey) (name : FacetCaption) (extractName : 'Item -> EntryName) (query : TextQuery) : AttributeDef<'Item> =
         {
             key = key
             name = name
@@ -273,7 +294,7 @@ module Facets =
             appliesTo = fun _ -> ApplicableAttribute
             extract =
                 fun item ->
-                    if (extractText item).Contains(query.value, StringComparison.OrdinalIgnoreCase)
+                    if (extractName item).value.Contains(query.value, StringComparison.OrdinalIgnoreCase)
                     then [ DiscreteValue textMatchKey ]
                     else []
         }

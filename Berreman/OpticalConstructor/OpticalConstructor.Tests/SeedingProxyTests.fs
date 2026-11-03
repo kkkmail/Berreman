@@ -10,7 +10,7 @@ open OpticalConstructor.Seeding.Seeding           // SeedingProxy / SeedingError
 /// `saveLibraryEntry`, each `<X> -> Result<unit, SeedingError>`) and the pure `seedAll` orchestrator.
 /// This file supplies the recording STUB and the mock-driven test that proves `seedAll` pushes every
 /// EXISTING Domain seed value EXACTLY ONCE, in category → material → sample → entry order, through the
-/// record's EXACT signatures. It also pins the reference equality and the `SeedRejected` short-circuit.
+/// record's EXACT signatures. It also pins the reference equality and the `SeedRejectedErr` short-circuit.
 /// The real store lands in a later IMPLEMENT_CONTRACT.
 module SeedingProxyTests =
 
@@ -76,7 +76,7 @@ module SeedingProxyTests =
         let r = Recorder.create ()
         // Bind seedAll to an explicitly-typed local: the file fails to compile if seedAll drifts from
         // its declared `SeedingProxy -> Result<unit, SeedingError>` shape.
-        let runSeed : SeedingProxy -> Result<unit, SeedingError> = seedAll
+        let runSeed : SeedingProxy -> Result<unit, SeedingError> = fun proxy -> proxy.seedAll ()
 
         match runSeed (recordingProxy r) with
         | Ok () -> ()
@@ -85,7 +85,7 @@ module SeedingProxyTests =
         // Each channel received EXACTLY its seed list — same count, same instances, in order.
         assertPushedInOrder "categories" standardCategories r.categories
         assertPushedInOrder "materials" builtInEntries r.materials
-        assertPushedInOrder "samples" SeedSamples.all r.samples
+        assertPushedInOrder "samples" SeedSamples.allSeedSamples r.samples
         assertPushedInOrder "entries" seedEntries r.entries
 
         // The global tape proves the cross-channel order: all categories, then all materials, then all
@@ -94,7 +94,7 @@ module SeedingProxyTests =
             [
                 yield! List.replicate (List.length standardCategories) CategoryChannel
                 yield! List.replicate (List.length builtInEntries) MaterialChannel
-                yield! List.replicate (List.length SeedSamples.all) SampleChannel
+                yield! List.replicate (List.length SeedSamples.allSeedSamples) SampleChannel
                 yield! List.replicate (List.length seedEntries) EntryChannel
             ]
         Assert.Equal<Channel list>(expectedOrder, List.ofSeq r.order)
@@ -107,13 +107,13 @@ module SeedingProxyTests =
         let proxy : SeedingProxy =
             {
                 saveCategory = fun c -> r.categories.Add c; Ok ()
-                saveMaterial = fun _ -> Error (SeedRejected "the stub rejects every material")
+                saveMaterial = fun _ -> Error (SeedRejectedErr "the stub rejects every material")
                 saveSample = fun s -> r.samples.Add s; Ok ()
                 saveLibraryEntry = fun e -> r.entries.Add e; Ok ()
             }
 
-        match seedAll proxy with
-        | Error (SeedRejected reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        match proxy.seedAll () with
+        | Error (SeedRejectedErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | Ok () -> Assert.Fail("seedAll should surface the material rejection, not Ok ()")
 
         // Categories all pushed (they precede materials); no sample / entry reached after the reject.

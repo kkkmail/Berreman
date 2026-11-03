@@ -20,16 +20,17 @@ module SourceCombination =
     /// Scale a `StokesVector` by a non-negative scalar weight, component-wise. A
     /// `StokesVector` adds linearly under incoherent superposition, so a per-sample
     /// intensity weight is an honest component-wise scale (§E.8).
-    let scaleStokes (weight : float) (stokes : StokesVector) : StokesVector =
+    let scaleStokes (weight : IlluminationWeight) (stokes : StokesVector) : StokesVector =
         let (StokesVector v) = stokes
-        StokesVector.create [ weight * v.[0]; weight * v.[1]; weight * v.[2]; weight * v.[3] ]
+        let w = weight.value
+        StokesVector.create [ w * v.[0]; w * v.[1]; w * v.[2]; w * v.[3] ]
 
     /// Weighted incoherent sum of a list of expanded `(IncidentLightInfo, weight)`
     /// samples (§E.8): solve each to its `StokesVector` via `toStokes`, scale by
     /// its weight, and accumulate through `StokesVector.(+)` from `StokesVector.Zero`.
     let combine
         (toStokes : IncidentLightInfo -> StokesVector)
-        (samples : (IncidentLightInfo * float) list) : StokesVector =
+        (samples : (IncidentLightInfo * IlluminationWeight) list) : StokesVector =
         samples
         |> List.fold (fun acc (info, weight) -> acc + scaleStokes weight (toStokes info)) StokesVector.Zero
 

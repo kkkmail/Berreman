@@ -12,30 +12,77 @@ open Berreman.Dispersion
 
 module Variables =
 
-    /// https://stackoverflow.com/questions/35185143/how-to-create-new-line-in-plot-ly-js-title
-    //let lineBrake = "<br>" // Does not work in version 5.0
-    let lineBrake = " " + System.Environment.NewLine
+    /// How many intervals a range is cut into: a sweep over it visits one point more, both ends included.
+    type NumberOfPoints =
+        | NumberOfPoints of int
 
-    let private toNanometers w = w / 1.0e-09
+        member this.value = let (NumberOfPoints n) = this in n
+
+
+    /// The position of one point of a sweep, from 0 to its range's `NumberOfPoints` inclusive.
+    type PointIndex =
+        | PointIndex of int
+
+        member this.value = let (PointIndex i) = this in i
 
 
     type Range<'T> =
         {
             startValue : 'T
             endValue : 'T
-            numberOfPoints : int
+            numberOfPoints : NumberOfPoints
         }
 
-        static member create n s e = { startValue = s; endValue = e; numberOfPoints = n }
+        static member create (n : NumberOfPoints) (s : 'T) (e : 'T) : Range<'T> = { startValue = s; endValue = e; numberOfPoints = n }
+
+
+    /// The value of a user-defined swept parameter, in the unit its `getSys` reads.
+    type ArbitraryValue =
+        | ArbitraryValue of float
+
+        member this.value = let (ArbitraryValue v) = this in v
+
+
+    /// The name a user-defined variable's chart axis carries.
+    type VariableName =
+        | VariableName of string
+
+        member this.value = let (VariableName v) = this in v
+
+
+    /// The factor from a user-defined variable's value to the number its chart axis shows.
+    type PlotScale =
+        | PlotScale of float
+
+        member this.value = let (PlotScale v) = this in v
 
 
     type ArbitraryVariable =
         {
-            variableName : string
-            range : Range<double>
-            scale : double
-            getSys : OpticalSystem -> double -> OpticalSystem
+            variableName : VariableName
+            range : Range<ArbitraryValue>
+            scale : PlotScale
+            getSys : OpticalSystem -> ArbitraryValue -> OpticalSystem
         }
+
+
+    /// An incident-light parameter a sweep can vary; a chart's description leaves the varied ones out.
+    type LightParameter =
+        | LightWaveLength
+        | LightIncidenceAngle
+        | LightPolarization
+        | LightEllipticity
+
+
+    /// The text a chart prints above its plot: the system's description, then the light parameters the sweep holds fixed.
+    type ChartDescription =
+        | ChartDescription of string
+
+        member this.value = let (ChartDescription d) = this in d
+
+        /// Plotly.NET 5 no longer breaks a description line on "<br>", only on a newline
+        /// (https://stackoverflow.com/questions/35185143/how-to-create-new-line-in-plot-ly-js-title).
+        static member lineBreak : string = " " + System.Environment.NewLine
 
 
     /// Type to describe a single variable used in charts.
@@ -47,14 +94,16 @@ module Variables =
         | WedgeAngleRange of Range<WedgeAngle>
         | ArbitraryVariableRange of ArbitraryVariable
 
+        static member private toNanometers (w : float) : float = w / 1.0e-09
+
         member this.length =
             match this with
-            | IncidenceAngleRange v -> v.numberOfPoints
-            | PolarizationRange v -> v.numberOfPoints
-            | EllipticityRange v -> v.numberOfPoints
-            | WaveLengthRange v -> v.numberOfPoints
-            | WedgeAngleRange v -> v.numberOfPoints
-            | ArbitraryVariableRange v -> v.range.numberOfPoints
+            | IncidenceAngleRange v -> v.numberOfPoints.value
+            | PolarizationRange v -> v.numberOfPoints.value
+            | EllipticityRange v -> v.numberOfPoints.value
+            | WaveLengthRange v -> v.numberOfPoints.value
+            | WedgeAngleRange v -> v.numberOfPoints.value
+            | ArbitraryVariableRange v -> v.range.numberOfPoints.value
 
         member this.name =
             match this with
@@ -63,138 +112,150 @@ module Variables =
             | EllipticityRange _ -> "e"
             | WaveLengthRange _ -> "w (nm)"
             | WedgeAngleRange _ -> "c"
-            | ArbitraryVariableRange v -> v.variableName
+            | ArbitraryVariableRange v -> v.variableName.value
 
-        member this.value i =
+        /// The incident-light parameter this variable sweeps, if it sweeps one.
+        member this.lightParameter : LightParameter option =
+            match this with
+            | IncidenceAngleRange _ -> Some LightIncidenceAngle
+            | PolarizationRange _ -> Some LightPolarization
+            | EllipticityRange _ -> Some LightEllipticity
+            | WaveLengthRange _ -> Some LightWaveLength
+            | WedgeAngleRange _ -> None
+            | ArbitraryVariableRange _ -> None
+
+        member this.value (i : int) : float =
+            let n = double this.length
+
             match this with
             | IncidenceAngleRange r ->
                 let (IncidenceAngle (Angle s)) = r.startValue
                 let (IncidenceAngle (Angle e)) = r.endValue
-                s + (e - s) * (double i) / (double r.numberOfPoints)
+                s + (e - s) * (double i) / n
             | PolarizationRange r ->
                 let (Polarization (Angle s)) = r.startValue
                 let (Polarization (Angle e)) = r.endValue
-                s + (e - s) * (double i) / (double r.numberOfPoints)
+                s + (e - s) * (double i) / n
             | EllipticityRange r ->
                 let (Ellipticity s) = r.startValue
                 let (Ellipticity e) = r.endValue
-                s + (e - s) * (double i) / (double r.numberOfPoints)
+                s + (e - s) * (double i) / n
             | WaveLengthRange r ->
                 let s = r.startValue.value
                 let e = r.endValue.value
-                s + (e - s) * (double i) / (double r.numberOfPoints) |> double
+                s + (e - s) * (double i) / n |> double
             | WedgeAngleRange r ->
                 let (WedgeAngle (Angle s)) = r.startValue
                 let (WedgeAngle (Angle e)) = r.endValue
-                s + (e - s) * (double i) / (double r.numberOfPoints)
+                s + (e - s) * (double i) / n
             | ArbitraryVariableRange v ->
-                let s = v.range.startValue
-                let e = v.range.endValue
-                s + (e - s) * (double i) / (double v.range.numberOfPoints)
+                let (ArbitraryValue s) = v.range.startValue
+                let (ArbitraryValue e) = v.range.endValue
+                s + (e - s) * (double i) / n
 
-        member this.plotValue i =
+        member this.plotValue (i : int) : float =
             match this with
-            | IncidenceAngleRange _ -> (this.value i) |> toDegree
-            | PolarizationRange _ -> (this.value i) |> toDegree
+            | IncidenceAngleRange _ -> (this.value i) |> Angle.radiansToDegrees
+            | PolarizationRange _ -> (this.value i) |> Angle.radiansToDegrees
             | EllipticityRange _ -> this.value i
-            | WaveLengthRange _ -> (this.value i) |> toNanometers
-            | WedgeAngleRange _ -> (this.value i) |> toDegree
-            | ArbitraryVariableRange v -> (this.value i) * v.scale
+            | WaveLengthRange _ -> (this.value i) |> RangedVariable.toNanometers
+            | WedgeAngleRange _ -> (this.value i) |> Angle.radiansToDegrees
+            | ArbitraryVariableRange v -> (this.value i) * v.scale.value
 
         member this.plotMinValue =
             match this with
-            | IncidenceAngleRange r -> r.startValue.value |> toDegree
-            | PolarizationRange r -> r.startValue.value |> toDegree
+            | IncidenceAngleRange r -> r.startValue.value |> Angle.radiansToDegrees
+            | PolarizationRange r -> r.startValue.value |> Angle.radiansToDegrees
             | EllipticityRange r -> r.startValue.value
-            | WaveLengthRange r -> r.startValue.value / 1.0<meter> |> toNanometers
-            | WedgeAngleRange r -> r.startValue.value |> toDegree
-            | ArbitraryVariableRange v -> v.range.startValue * v.scale
+            | WaveLengthRange r -> r.startValue.value / 1.0<meter> |> RangedVariable.toNanometers
+            | WedgeAngleRange r -> r.startValue.value |> Angle.radiansToDegrees
+            | ArbitraryVariableRange v -> v.range.startValue.value * v.scale.value
 
         member this.plotMaxValue =
             match this with
-            | IncidenceAngleRange r -> r.endValue.value |> toDegree
-            | PolarizationRange r -> r.endValue.value |> toDegree
+            | IncidenceAngleRange r -> r.endValue.value |> Angle.radiansToDegrees
+            | PolarizationRange r -> r.endValue.value |> Angle.radiansToDegrees
             | EllipticityRange r -> r.endValue.value
-            | WaveLengthRange r -> r.endValue.value / 1.0<meter> |> toNanometers
-            | WedgeAngleRange r -> r.endValue.value |> toDegree
-            | ArbitraryVariableRange v -> v.range.endValue * v.scale
+            | WaveLengthRange r -> r.endValue.value / 1.0<meter> |> RangedVariable.toNanometers
+            | WedgeAngleRange r -> r.endValue.value |> Angle.radiansToDegrees
+            | ArbitraryVariableRange v -> v.range.endValue.value * v.scale.value
 
         member this.plotPoints = [| for i in 0..this.length -> this.plotValue i |]
+
+
+    /// One point of a sweep: where it sits on the chart's x axis, and the solver's solution there.
+    [<Softellect.Sys.NumericCarrier("an element of a sweep array (R3): the plotted x of every point the solver ran, read as a raw double by Plotly, the series adapter and the colorimetry integral")>]
+    type SweepPoint =
+        {
+            plotValue : float
+            solution : Solution
+        }
+
+
+    /// One point of a two-variable sweep: its plotted x and y, and the solver's solution there.
+    [<Softellect.Sys.NumericCarrier("an element of a surface sweep array (R3): the plotted x and y of every grid point the solver ran, read as raw doubles by Plotly and the series adapter")>]
+    type SurfacePoint =
+        {
+            xPlotValue : float
+            yPlotValue : float
+            solution : Solution
+        }
+
+
+    /// One point of a dispersion spectrum: the plotted wavelength and the optical property's component there.
+    [<Softellect.Sys.NumericCarrier("an element of a dispersion spectrum array (R3): the plotted wavelength and the property component at every sweep point, read as raw doubles by Plotly and the series adapter")>]
+    type DispersionPoint =
+        {
+            waveLengthPlotValue : float
+            propertyValue : float
+        }
 
 
     /// The wavelength at point `i` of a wavelength range, in the start value's own unit. `value i` is in
     /// METRES (the range is evaluated on `WaveLength.value`), so it is converted back before it is wrapped —
     /// wrapping the metre figure as nm (as this did before spec 0046) silently solved every wavelength sweep
     /// at ~10⁻⁷ nm while the x axis still read the right nm.
-    let getWaveLengthValue (v : Range<WaveLength>) i =
-        let metres = ((WaveLengthRange v).value i) * 1.0<meter>
+    let getWaveLengthValue (v : Range<WaveLength>) (i : PointIndex) : WaveLength =
+        let metres = ((WaveLengthRange v).value i.value) * 1.0<meter>
         match v.startValue with
         | Nm _ -> WaveLength.nm (metres / nmToMeter)
         | Mkm _ -> WaveLength.mkm (metres / mkmToMeter)
 
 
-    let waveLengthPlotMinValue (v : Range<WaveLength>) =
-        (WaveLengthRange v).plotMinValue
-
-
-    let waveLengthPlotMaxValue (v : Range<WaveLength>) =
-        (WaveLengthRange v).plotMaxValue
-
-
-    let waveLengthPlotPoints (v : Range<WaveLength>) =
-        (WaveLengthRange v).plotPoints
-
-
-    let getWaveLength (v : RangedVariable) i =
+    let getWaveLength (v : RangedVariable) (i : PointIndex) : WaveLength option =
         match v with
         | WaveLengthRange w -> getWaveLengthValue w i |> Some
         | _ -> None
 
 
-    let getIncidenceAngle (v : RangedVariable) i =
+    let getIncidenceAngle (v : RangedVariable) (i : PointIndex) : IncidenceAngle option =
         match v with
-        | IncidenceAngleRange _ -> v.value i |> Angle |> IncidenceAngle |> Some
+        | IncidenceAngleRange _ -> v.value i.value |> Angle |> IncidenceAngle |> Some
         | _ -> None
 
 
-    let getPolarization (v : RangedVariable) i =
+    let getPolarization (v : RangedVariable) (i : PointIndex) : Polarization option =
         match v with
-        | PolarizationRange _ -> v.value i |> Angle |> Polarization |> Some
+        | PolarizationRange _ -> v.value i.value |> Angle |> Polarization |> Some
         | _ -> None
 
 
-    let getEllipticity (v : RangedVariable) i =
+    let getEllipticity (v : RangedVariable) (i : PointIndex) : Ellipticity option =
         match v with
-        | EllipticityRange _ -> v.value i |> Ellipticity |> Some
+        | EllipticityRange _ -> v.value i.value |> Ellipticity |> Some
         | _ -> None
 
 
-    let getWedgeAngle (v : RangedVariable) i =
+    let getWedgeAngle (v : RangedVariable) (i : PointIndex) : WedgeAngle option =
         match v with
-        | WedgeAngleRange _ -> v.value i |> Angle |> WedgeAngle |> Some
+        | WedgeAngleRange _ -> v.value i.value |> Angle |> WedgeAngle |> Some
         | _ -> None
 
 
-    let getArbitraryVariable (v : RangedVariable) i =
+    let getArbitraryVariable (v : RangedVariable) (i : PointIndex) : ArbitraryValue option =
         match v with
-        | ArbitraryVariableRange _ -> v.value i |> Some
+        | ArbitraryVariableRange _ -> v.value i.value |> ArbitraryValue |> Some
         | _ -> None
-
-
-    /// Labels to distinguish variables in incident light. Refactor when nameof is available in F#.
-    let private incidentLightLabels = ("w", "r", "i", "p", "e")
-
-
-    let removeLightVariable x d =
-        let w, _, i, p, e = incidentLightLabels
-
-        match x with
-        | IncidenceAngleRange _ -> d |> List.choose (fun (k, v) -> if k = i then None else Some (k, v))
-        | PolarizationRange _ -> d |> List.choose (fun (k, v) -> if k = p then None else Some (k, v))
-        | EllipticityRange _ -> d |> List.choose (fun (k, v) -> if k = e then None else Some (k, v))
-        | WaveLengthRange _ -> d |> List.choose (fun (k, v) -> if k = w then None else Some (k, v))
-        | WedgeAngleRange _ -> d
-        | ArbitraryVariableRange _ -> d
 
 
     /// Combination of incident light and optical system with dispersion.
@@ -204,43 +265,42 @@ module Variables =
             opticalSystem : OpticalSystemWithDisp
         }
 
-        member private this.descriptionInfo =
-            let w, _, i, p, e = incidentLightLabels
+        /// The light parameters' descriptions, one per line, without those the `swept` variables vary.
+        member private this.lightDescription (swept : RangedVariable list) : ChartDescription =
+            let l = this.incidentLightInfo
+            let varied = swept |> List.choose (fun v -> v.lightParameter)
 
             [
-                (i, this.incidentLightInfo.incidenceAngle.description)
-                (p, this.incidentLightInfo.polarization.description)
-                (e, this.incidentLightInfo.ellipticity.description)
-                (w, this.incidentLightInfo.waveLength.description)
+                (LightIncidenceAngle, l.incidenceAngle.description)
+                (LightPolarization, l.polarization.description)
+                (LightEllipticity, l.ellipticity.description)
+                (LightWaveLength, l.waveLength.description)
             ]
+            |> List.choose (fun (p, d) -> if List.contains p varied then None else Some d)
+            |> List.fold (fun acc r -> acc + (if acc <> "" then ChartDescription.lineBreak else "") + r) ""
+            |> ChartDescription
 
-        member private _.toLightDescription d =
-            d
-            |> List.map snd
-            |> List.fold (fun acc r -> acc + (if acc <> "" then lineBrake else "") + r) ""
+        member this.getLightDescription (x : RangedVariable) : ChartDescription =
+            this.lightDescription [ x ]
 
-        member this.getLightDescription (x : RangedVariable) =
-            removeLightVariable x this.descriptionInfo |> this.toLightDescription
+        member this.getLightDescription (x : RangedVariable, y : RangedVariable) : ChartDescription =
+            this.lightDescription [ x; y ]
 
-        member this.getLightDescription (x : RangedVariable, y : RangedVariable) =
-            this.descriptionInfo
-            |> removeLightVariable x
-            |> removeLightVariable y
-            |> this.toLightDescription
+        member private this.toFullDescription (light : ChartDescription) : ChartDescription =
+            let lineBreak = ChartDescription.lineBreak
 
-        member private this.toFullDescription light =
             match this.opticalSystem.description with
-            | Some d -> d + lineBrake + light + lineBrake
-            | None -> light + lineBrake
+            | Some (OpticalSystemDescription d) -> d + lineBreak + light.value + lineBreak |> ChartDescription
+            | None -> light.value + lineBreak |> ChartDescription
 
-        member this.getDescription (x : RangedVariable) =
+        member this.getDescription (x : RangedVariable) : ChartDescription =
             this.getLightDescription x |> this.toFullDescription
 
-        member this.getDescription (x : RangedVariable, y : RangedVariable) =
+        member this.getDescription (x : RangedVariable, y : RangedVariable) : ChartDescription =
             this.getLightDescription (x, y) |> this.toFullDescription
 
 
-    let calculate (f: FixedInfo) (x : RangedVariable) =
+    let calculate (f : FixedInfo) (x : RangedVariable) : SweepPoint[] =
         let l = f.incidentLightInfo
 
         let getValue d g i =
@@ -263,17 +323,15 @@ module Variables =
             let v = getValue a getWedgeAngle i
             let s = f.opticalSystem.getSystem w v
 
-            match x with
-            | ArbitraryVariableRange v ->
-                let z = x.value i
-                v.getSys s z
+            match x, getArbitraryVariable x i with
+            | ArbitraryVariableRange v, Some z -> v.getSys s z
             | _ -> s
 
         let getSolution i = OpticalSystemSolver(getLight i, getOpticalSystem i, SolverParameters.defaultValue).solution
-        [| for i in 0..x.length -> (x.plotValue i, getSolution i) |]
+        [| for i in 0..x.length -> { SweepPoint.plotValue = x.plotValue i; solution = getSolution (PointIndex i) } |]
 
 
-    let calculate3D (f: FixedInfo) (x : RangedVariable) (y : RangedVariable) =
+    let calculate3D (f : FixedInfo) (x : RangedVariable) (y : RangedVariable) : SurfacePoint[][] =
         let l = f.incidentLightInfo
 
         let getValue d g i j =
@@ -302,7 +360,11 @@ module Variables =
         let getSolution i j = OpticalSystemSolver(getLight i j, getOpticalSystem i j, SolverParameters.defaultValue).solution
 
         [| for i in 0..x.length -> i |]
-        |> PSeq.map (fun i -> [| for j in 0..y.length -> (x.plotValue i, y.plotValue j, getSolution i j) |])
+        |> PSeq.map (fun i ->
+            [|
+                for j in 0..y.length ->
+                    { SurfacePoint.xPlotValue = x.plotValue i; yPlotValue = y.plotValue j; solution = getSolution (PointIndex i) (PointIndex j) }
+            |])
         |> Array.ofSeq
 
 
@@ -312,7 +374,8 @@ module Variables =
         (i : Index, j : Index)
         (u : UseReIm)
         (o : OpticalPropertiesWithDisp)
-        (r : Range<WaveLength>) =
+        (r : Range<WaveLength>)
+        : DispersionPoint[] =
 
         let f w =
             let p =((o.getProperties w).opticalComponent c)[i, j] |> t.transform
@@ -321,7 +384,7 @@ module Variables =
             | UseIm -> p.Imaginary
 
         let l = WaveLengthRange r
-        [| for i in 0..l.length -> (l.plotValue i, getWaveLengthValue r i |> f) |]
+        [| for k in 0..l.length -> { waveLengthPlotValue = l.plotValue k; propertyValue = getWaveLengthValue r (PointIndex k) |> f } |]
 
 
     let calculateN11Re = calculateOpticalProp EpsComp SquareRoot (One, One) UseRe

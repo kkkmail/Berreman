@@ -30,38 +30,62 @@ module Ribbon =
         | InRibbonPane
         | FullSurface
 
+    /// A bay's display name: the text of its tab, and what the ribbon selects it by.
+    type BayName =
+        | BayName of string
+
+        member this.value = let (BayName n) = this in n
+
+        /// The name as the key of the bay's tab and pane ids.
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
     /// One large control docked in the ribbon: a display `name` (shown in the top strip), its already
     /// bound `content` view, and the `mode` that decides whether the ribbon hosts that content in its own
     /// content pane or hands it to the host to fill the surface below the tab strip.
     type Bay =
         {
-            name : string
+            name : BayName
             content : IView
             mode : BayContentMode
         }
 
     /// The ribbon's state: the bays to offer and which one is selected (by name).
-    type State =
+    type RibbonState =
         {
             bays : Bay list
-            selected : string
+            selected : BayName
         }
 
-    let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
+        /// The bay currently shown — the selected one, falling back to the first bay if the selected name is
+        /// not present (so the ribbon always renders something while bays are added / removed).
+        member this.activeBay : Bay option =
+            match this.bays |> List.tryFind (fun b -> b.name = this.selected) with
+            | Some b -> Some b
+            | None -> List.tryHead this.bays
+
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
     // The same "selected / idle" treatment the rotation bar uses, so the ribbon tabs match the controls.
-    let private activeBackground = color 204 232 255      // #CCE8FF Windows selected/active light accent
-    let private activeBorder = color 0 120 212            // #0078D4 Fluent accent outline
-    let private idleBackground = color 232 232 232
-    let private idleBorder = color 120 120 120
-    let private textForeground = color 0 0 0
+    let private activeBackground = Color.FromRgb(204uy, 232uy, 255uy)     // #CCE8FF Windows selected/active light accent
+    let private activeBorder = Color.FromRgb(0uy, 120uy, 212uy)           // #0078D4 Fluent accent outline
+    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+    let private textForeground = Color.FromRgb(0uy, 0uy, 0uy)
+
+    /// Whether a tab is the selected bay's.
+    type private BayTabState =
+        | BayTabActive
+        | BayTabIdle
 
     /// One ribbon tab — a clickable, button-styled Border that lights up when it is the selected bay.
-    let private tab (name : string) (active : bool) (onSelect : string -> unit) : IView =
+    let private tab (name : BayName) (state : BayTabState) (onSelect : BayName -> unit) : IView =
+        let background, border, weight =
+            match state with
+            | BayTabActive -> activeBackground, activeBorder, FontWeight.Bold
+            | BayTabIdle -> idleBackground, idleBorder, FontWeight.Normal
         Border.create [
-            Border.name (UiIds.Ribbon.tab name)
-            Border.background (brush (if active then activeBackground else idleBackground))
-            Border.borderBrush (brush (if active then activeBorder else idleBorder))
+            Border.name (ConstructorUiId.ribbonTab name.uiKey).value
+            Border.background (brush background)
+            Border.borderBrush (brush border)
             Border.borderThickness 1.0
             Border.cornerRadius (CornerRadius 3.0)
             Border.padding (Thickness(12.0, 5.0))
@@ -71,21 +95,14 @@ module Ribbon =
             Border.verticalAlignment VerticalAlignment.Center
             Border.child (
                 TextBlock.create [
-                    TextBlock.text name
-                    TextBlock.fontWeight (if active then FontWeight.Bold else FontWeight.Normal)
+                    TextBlock.text name.value
+                    TextBlock.fontWeight weight
                     TextBlock.foreground (brush textForeground)
                 ])
             // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the active
             // flag flips so the tab never keeps a stale handler.
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onSelect name), SubPatchOptions.OnChangeOf (box active))
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onSelect name), SubPatchOptions.OnChangeOf (box state))
         ] :> IView
-
-    /// The bay currently shown — the selected one, falling back to the first bay if the selected name is
-    /// not present (so the ribbon always renders something while bays are added / removed).
-    let activeBay (state : State) : Bay option =
-        match state.bays |> List.tryFind (fun b -> b.name = state.selected) with
-        | Some b -> Some b
-        | None -> List.tryHead state.bays
 
     /// The ribbon — a top tab strip of bay names, then (for an IN-PANE bay) the ACTIVE bay's content in ONE
     /// keyed slot. Only the selected bay's content is realized (no hidden panes): the single slot is KEYED by
@@ -96,30 +113,30 @@ module Ribbon =
     /// one — so a pane is only ever patched against its own previous self. A `FullSurface` bay renders NO
     /// in-ribbon pane: the ribbon shows only its tab and the HOST fills the surface below this strip with the
     /// bay's content. `onSelect` is the host's "show this bay" seam.
-    let view (state : State) (onSelect : string -> unit) : IView =
-        let activeName = activeBay state |> Option.map (fun b -> b.name) |> Option.defaultValue ""
+    let ribbonView (state : RibbonState) (onSelect : BayName -> unit) : IView =
+        let activeName = state.activeBay |> Option.map (fun b -> b.name)
         let tabs =
             state.bays
-            |> List.map (fun b -> tab b.name (b.name = activeName) onSelect)
+            |> List.map (fun b -> tab b.name (if activeName = Some b.name then BayTabActive else BayTabIdle) onSelect)
         // The active-bay content region. An IN-PANE bay renders its content in ONE keyed slot, KEYED by the
         // active bay name so a bay change recreates the pane instead of recycling a styled, named control
-        // across two DIFFERENT bays (`UiIds.Ribbon.pane` names this slot). A FULL-SURFACE bay renders no pane here —
+        // across two DIFFERENT bays (`ConstructorUiId.ribbonPane` names this slot). A FULL-SURFACE bay renders no pane here —
         // the host places its content below the whole strip — so the content region stays empty for it (and
         // for the no-bays case, keeping exactly one realized pane, never two).
         let paneChildren : IView list =
-            match activeBay state with
+            match state.activeBay with
             | Some b ->
                 match b.mode with
                 | InRibbonPane ->
                     let pane =
                         Border.create [
-                            Border.name (UiIds.Ribbon.pane b.name)
+                            Border.name (ConstructorUiId.ribbonPane b.name.uiKey).value
                             Border.padding (Thickness(0.0, 4.0, 0.0, 0.0))
                             Border.child b.content
                         ]
                         // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
                         // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
-                        |> Avalonia.FuncUI.DSL.View.withKey b.name
+                        |> Avalonia.FuncUI.DSL.View.withKey b.name.value
                     [ pane :> IView ]
                 | FullSurface -> []
             | None -> []

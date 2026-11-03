@@ -1,0 +1,10 @@
+{
+  "workflow": "continuous-loop",
+  "task_file": "specs/0048/.manual/003-elev-full-loop-task.txt",
+  "queue_file": "specs/0048/.manual/002-elevation-ledger.jsonl",
+  "open_count_command": "python -m ai_strategy_generator.manual.queue_count specs/0048/.manual/002-elevation-ledger.jsonl",
+  "batch_size": 1,
+  "max_rounds": 60,
+  "worker_timeout_sec": 14400,
+  "worker_idle_sec": 3600
+}

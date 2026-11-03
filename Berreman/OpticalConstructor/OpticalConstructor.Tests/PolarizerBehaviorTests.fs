@@ -18,17 +18,19 @@ open OpticalConstructor.Domain.LibraryFacets
 /// seeded preset with every seeded sample `UserManaged`; and the polarizer-category facet.
 module PolarizerBehaviorTests =
 
-    let private deg (d : float) : Angle = Angle.degree d
+    let private deg (d : float) : Angle = Angle.degree (d * 1.0<Berreman.Constants.deg>)
+
+    let private stokesComponents (sv : StokesVector) : float * float * float * float = sv.s0, sv.s1, sv.s2, sv.s3
 
     /// The reference-orientation ideal LP (θ = 0) every compound test builds components from.
     let private lp0 : MuellerMatrix = analyzerMueller IdealLinear (deg 0.0)
 
-    /// Element-wise Mueller equality through the `muellerElement` read seam.
+    /// Element-wise Mueller equality through the `MuellerMatrix.element` read seam.
     let private assertMuellerEqual (expected : MuellerMatrix) (actual : MuellerMatrix) : unit =
         for i in 0 .. 3 do
             for j in 0 .. 3 do
-                let e = muellerElement expected i j
-                let a = muellerElement actual i j
+                let e = expected.element i j
+                let a = actual.element i j
                 Assert.True(abs (e - a) <= 1.0e-9, $"element ({i},{j}): expected %g{e}, got %g{a}")
 
     let private sampledDegrees : float list =
@@ -80,7 +82,7 @@ module PolarizerBehaviorTests =
         let anyElementDiffers =
             [
                 for i in 0 .. 3 do
-                    for j in 0 .. 3 -> abs (muellerElement forward i j - muellerElement reversed i j)
+                    for j in 0 .. 3 -> abs (forward.element i j - reversed.element i j)
             ]
             |> List.exists (fun d -> d > 1.0e-3)
         Assert.True(anyElementDiffers, "projectors onto different lines do not commute")
@@ -88,14 +90,14 @@ module PolarizerBehaviorTests =
     [<Fact>]
     let ``a crossed two-component compound extinguishes any input`` () =
         let crossed = compoundMueller [ { matrix = lp0; offset = deg 0.0 }; { matrix = lp0; offset = deg 90.0 } ]
-        Assert.True(abs (s0 (crossed * inputStokes IdealLinear (deg 30.0))) <= 1.0e-9)
-        Assert.True(abs (s0 (crossed * unpolarizedStokes)) <= 1.0e-9)
+        Assert.True(abs ((crossed * inputStokes IdealLinear (deg 30.0)).s0) <= 1.0e-9)
+        Assert.True(abs ((crossed * unpolarizedStokes).s0) <= 1.0e-9)
 
     [<Fact>]
     let ``unpolarized light through an LP-LP compound follows Malus over the offset difference`` () =
         // ½ through the first LP, then cos²(45°) through the second: S0 = ½·½ = 0.25.
         let compound = compoundMueller [ { matrix = lp0; offset = deg 0.0 }; { matrix = lp0; offset = deg 45.0 } ]
-        Assert.True(abs (s0 (compound * unpolarizedStokes) - 0.25) <= 1.0e-9)
+        Assert.True(abs ((compound * unpolarizedStokes).s0 - 0.25) <= 1.0e-9)
 
     // ============================ run-time orientation over a compound ============================
 
@@ -136,9 +138,9 @@ module PolarizerBehaviorTests =
         // The protected built-ins are exactly the seeded presets the spec names (F.0) plus, since spec
         // 0046, every seeded light source (the lasers and the UV / EUV lithography sources).
         Assert.Equal<string list>(
-            [ "det-ellipsometer"; "det-intensity"; "pol-cp-left"; "pol-cp-right"; "pol-lp" ] @ (SeedSources.all |> List.map (fun s -> s.id))
+            [ "det-ellipsometer"; "det-intensity"; "pol-cp-left"; "pol-cp-right"; "pol-lp" ] @ (SeedSources.allSeedSources |> List.map (fun s -> s.id.value))
             |> List.sort,
-            presets |> List.map (fun e -> e.entryId) |> List.sort)
+            presets |> List.map (fun e -> e.entryId.value) |> List.sort)
 
     [<Fact>]
     let ``the three seeded ideals are ComputedIdeal entries with their Lp and Cp categories`` () =
@@ -146,7 +148,7 @@ module PolarizerBehaviorTests =
             seedEntries
             |> List.pick (fun e ->
                 match e with
-                | PolarizerItem p when p.id = id -> Some p
+                | PolarizerItem p when p.id.value = id -> Some p
                 | _ -> None)
         Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealLinear, (polarizer "pol-lp").behavior)
         Assert.Equal<PolarizerCategory>(LpCategory, (polarizer "pol-lp").category)
@@ -170,7 +172,7 @@ module PolarizerBehaviorTests =
             Assert.Equal<Applicability>(expected, def.appliesTo entry)
         let extractedLabels (id : string) : string list =
             seedEntries
-            |> List.find (fun e -> e.entryId = id)
+            |> List.find (fun e -> e.entryId.value = id)
             |> def.extract
             |> List.map (fun v -> v.label)
         Assert.Equal<string list>([ "Linear" ], extractedLabels "pol-lp")

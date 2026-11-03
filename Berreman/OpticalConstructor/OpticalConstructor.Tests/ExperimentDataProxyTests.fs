@@ -19,21 +19,21 @@ module ExperimentDataProxyTests =
     /// (labels row ignored) — no file IO, deterministic across runs. A `failwith` on the impossible
     /// `Error` keeps the fixture total without an option dance.
     let private intensityFixture : IntensitySeries =
-        match parseIntensitySeries "wavelength_nm,intensity\n400.0,0.10\n500.0,0.42\n600.0,0.31" with
+        match (DataFileText "wavelength_nm,intensity\n400.0,0.10\n500.0,0.42\n600.0,0.31").parseIntensitySeries with
         | Ok s -> s
         | Error e -> failwith $"the canned intensity fixture unexpectedly failed to parse: %A{e}"
 
     /// A canned ellipsometric fixture, parsed from an in-memory `wavelength_nm,psi_deg,delta_deg`
     /// string through the step-34 parser (wavelength crosses the sole `Units` seam; Ψ/Δ are angles).
     let private ellipsometricFixture : EllipsometricSeries =
-        match parseEllipsometricSeries "wavelength_nm,psi_deg,delta_deg\n400.0,12.0,30.0\n500.0,15.0,45.0" with
+        match (DataFileText "wavelength_nm,psi_deg,delta_deg\n400.0,12.0,30.0\n500.0,15.0,45.0").parseEllipsometricSeries with
         | Ok s -> s
         | Error e -> failwith $"the canned ellipsometric fixture unexpectedly failed to parse: %A{e}"
 
     /// The MOCK: an inline `ExperimentDataProxy` whose canned series are keyed by the raw path
     /// (`DataFilePath.value`). A hit returns the canned series; a miss returns a typed
     /// `ExperimentDataError` (a mock has no such data file) — staying WITHIN the step-34 declared
-    /// four-case channel (`MalformedDataFile`), never a throw and never a fifth case. A later slice
+    /// four-case channel (`MalformedDataFileErr`), never a throw and never a fifth case. A later slice
     /// substitutes the real disk-backed store for this and exercises the exact same logic.
     let private makeMock
         (intensityByPath : Map<string, IntensitySeries>)
@@ -44,12 +44,12 @@ module ExperimentDataProxyTests =
                 fun (path : DataFilePath) ->
                     match Map.tryFind path.value intensityByPath with
                     | Some s -> Ok s
-                    | None -> Error (MalformedDataFile $"the mock has no canned intensity series for path '{path.value}'")
+                    | None -> Error (MalformedDataFileErr $"the mock has no canned intensity series for path '{path.value}'")
             tryLoadEllipsometric =
                 fun (path : DataFilePath) ->
                     match Map.tryFind path.value ellipsometricByPath with
                     | Some s -> Ok s
-                    | None -> Error (MalformedDataFile $"the mock has no canned ellipsometric series for path '{path.value}'")
+                    | None -> Error (MalformedDataFileErr $"the mock has no canned ellipsometric series for path '{path.value}'")
         }
 
     /// A mock seeded with one intensity file and one ellipsometric file at distinct paths.
@@ -83,12 +83,12 @@ module ExperimentDataProxyTests =
         let unknown = DataFilePath.create "C:/data/nowhere.csv"
 
         match proxy.tryLoadIntensity unknown with
-        | Error (MalformedDataFile reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (MalformedDataFile _) for an unknown intensity path, got %A{other}")
+        | Error (MalformedDataFileErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (MalformedDataFileErr _) for an unknown intensity path, got %A{other}")
 
         match proxy.tryLoadEllipsometric unknown with
-        | Error (MalformedDataFile reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (MalformedDataFile _) for an unknown ellipsometric path, got %A{other}")
+        | Error (MalformedDataFileErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (MalformedDataFileErr _) for an unknown ellipsometric path, got %A{other}")
 
     [<Fact>]
     let ``an ExperimentDataProxy compares by reference (the Elmish-required equality)`` () =

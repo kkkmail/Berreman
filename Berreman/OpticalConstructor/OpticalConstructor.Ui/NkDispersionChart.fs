@@ -33,143 +33,188 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MaterialComplexityEditor
+open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Controls
 open OpticalConstructor.Controls.ExperimentChart
 
 /// The grid the builders share: the display-unit x positions and the index-aligned canonical
 /// wavelengths (the `s + (e − s)·i/n` meter grid `SpectralAxis.axisTicks` walks — a display-unit x is
 /// a pure rescale of the same grid position, never a re-sample, AC-D7).
-let private grid (u : UnitOfMeasure) (range : Range<WaveLength>) : float list * WaveLength list =
+let private grid (u : UnitOfMeasure) (range : Range<WaveLength>) : UnitMagnitude list * WaveLength list =
     let xs = SpectralAxis.axisTicks u range
-    let ws = SpectralAxis.axisTicks Nanometer range |> List.map (fun nm -> WaveLength.Nm (nm * 1.0<nm>))
+    let ws = SpectralAxis.axisTicks Nanometer range |> List.map (fun nm -> WaveLength.Nm (nm.value * 1.0<nm>))
     xs, ws
 
 /// A single mid-band wavelength used to CLASSIFY a view-only preset's optional aspects (whether its
 /// assembled engine tensors carry gyration / a non-vacuum μ) when there is no ladder toggle to read.
 let private classifyWavelength : WaveLength = WaveLength.Nm 550.0<nm>
 
-/// Flip the named series indices onto the RIGHT axis of the chart's default paired seed; every other
+/// Flip the named series onto the RIGHT axis of the chart's default paired seed; every other
 /// series keeps the LEFT axis (the 018 spine births every series on the left). The per-side auto
 /// bounds then fit each axis independently (018 `dataBounds`).
-let private rightAxisSeries (indices : int list) (chart : ExperimentChart) : ChartStyle.ChartStyleState =
+let private rightAxisSeries (indices : ChartStyle.ChartSeriesIndex list) (chart : ExperimentChart) : ChartStyle.ChartStyleState =
     indices
-    |> List.fold (fun st i -> ChartStyle.setSeriesAxisSide i ChartStyle.RightAxis st) (ChartStyle.defaultState chart)
+    |> List.fold (fun st i -> ChartStyle.setSeriesAxisSide i ChartStyle.RightAxis st) (ChartStyle.defaultChartStyleState chart)
 
-/// Spec 0038 comment 007: the principal-axis n/k slots a given anisotropy DISTINGUISHES, each a
-/// (tensor diagonal index, n-series name, k-series name) triple — so the chart draws ONLY the curves
-/// applicable to the choice, named the way the ladder names its axes. Isotropic distinguishes one axis
-/// (a single n/k); uniaxial the ordinary vs the extraordinary; biaxial the three principal axes. The
-/// extraordinary axis is the MIDDLE diagonal (index 1): the engine assembles a uniaxial ε as
-/// `Eps.fromRefractionIndex (nO, nE, nO)` = diag(nₒ², nₑ², nₒ²) (`Dispersion.fs:297`).
-let private nkAxisSpec (anisotropy : Anisotropy) : (int * string * string) list =
-    match anisotropy with
-    | Isotropic -> [ (0, "n", "k") ]
-    | Uniaxial -> [ (0, "n_o", "k_o"); (1, "n_e", "k_e") ]
-    | Biaxial -> [ (0, "n₁", "k₁"); (1, "n₂", "k₂"); (2, "n₃", "k₃") ]
+/// One principal axis's pair of n / k curves: the tensor diagonal it reads and the two series names.
+type NkAxisCurves =
+    {
+        axis : PrincipalAxisSlot
+        nName : ControlCaption
+        kName : ControlCaption
+    }
 
-/// The anisotropy to draw a VIEW-ONLY material entry with (the Materials window's preview panel, which
-/// has no editor ladder to read): read from the entry's stored complexity value tree
-/// (`LibraryFacets.anisotropyOf` — data, no physics re-derived) when it has one, else — a coded engine
-/// preset whose physics is a closure, not data — fall back to all three principal axes (Biaxial), which
-/// is safe: coincident axes simply draw coincident curves, as before.
-let anisotropyOfEntry (entry : OpticalConstructor.Domain.MaterialLibrary.MaterialEntry) : Anisotropy =
-    match entry.complexity with
-    | Some complexity -> LibraryFacets.anisotropyOf complexity
-    | None -> Biaxial
+/// The (row, column) slot of a gyration component in the 3 × 3 ρ tensor.
+type GyrationTensorSlot =
+    {
+        row : PrincipalAxisSlot
+        column : PrincipalAxisSlot
+    }
+
+type PrincipalAxisSlot with
+
+    /// The zero-based row / column of this principal axis in a 3 × 3 engine tensor.
+    member this.tensorIndex : int =
+        match this with
+        | FirstAxis -> 0
+        | SecondAxis -> 1
+        | ThirdAxis -> 2
+
+type Anisotropy with
+
+    /// Spec 0038 comment 007: the principal-axis n/k curves this anisotropy DISTINGUISHES — so the chart
+    /// draws ONLY the curves applicable to the choice, named the way the ladder names its axes. Isotropic
+    /// distinguishes one axis (a single n/k); uniaxial the ordinary vs the extraordinary; biaxial the three
+    /// principal axes. The extraordinary axis is the MIDDLE diagonal: the engine assembles a uniaxial ε as
+    /// `Eps.fromRefractionIndex (nO, nE, nO)` = diag(nₒ², nₑ², nₒ²) (`Dispersion.fs:297`).
+    member this.nkAxisCurves : NkAxisCurves list =
+        match this with
+        | Isotropic -> [ { axis = FirstAxis; nName = ControlCaption "n"; kName = ControlCaption "k" } ]
+        | Uniaxial ->
+            [ { axis = FirstAxis; nName = ControlCaption "n_o"; kName = ControlCaption "k_o" }
+              { axis = SecondAxis; nName = ControlCaption "n_e"; kName = ControlCaption "k_e" } ]
+        | Biaxial ->
+            [ { axis = FirstAxis; nName = ControlCaption "n₁"; kName = ControlCaption "k₁" }
+              { axis = SecondAxis; nName = ControlCaption "n₂"; kName = ControlCaption "k₂" }
+              { axis = ThirdAxis; nName = ControlCaption "n₃"; kName = ControlCaption "k₃" } ]
+
+type OpticalConstructor.Domain.MaterialLibrary.MaterialEntry with
+
+    /// The anisotropy to draw a VIEW-ONLY material entry with (the Materials window's preview panel, which
+    /// has no editor ladder to read): read from the entry's stored complexity value tree
+    /// (`MaterialComplexity.anisotropy`, LibraryFacets — data, no physics re-derived) when it has one, else — a coded engine
+    /// preset whose physics is a closure, not data — fall back to all three principal axes (Biaxial), which
+    /// is safe: coincident axes simply draw coincident curves, as before.
+    member this.previewAnisotropy : Anisotropy =
+        match this.complexity with
+        | Some complexity -> complexity.anisotropy
+        | None -> Biaxial
 
 /// The per-axis n/k dispersion chart, restricted to the axes the anisotropy distinguishes
-/// (spec 0038 comment 007): for each slot, nᵢ = Re[√εᵢᵢ] and kᵢ = Im[√εᵢᵢ] through the engine `getEps`
+/// (spec 0038 comment 007): for each axis, nᵢ = Re[√εᵢᵢ] and kᵢ = Im[√εᵢᵢ] through the engine `getEps`
 /// seam. The n series come first (LEFT axis), then the k series (RIGHT). An isotropic medium draws one
 /// n and one k curve; a uniaxial one an ordinary and an extraordinary pair; a biaxial one three pairs.
 let nkDispersionChart (anisotropy : Anisotropy) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
     let xs, ws = grid u range
     // √εᵢᵢ sampled once per distinguished axis over the grid (exportCsv's n,k extraction, per axis).
-    let sqrtDiag (i : int) : Complex list =
+    let sqrtDiag (axis : PrincipalAxisSlot) : Complex list =
+        let i = axis.tensorIndex
         ws |> List.map (fun w -> Complex.Sqrt ((o.epsWithDisp.getEps w).[i, i]))
-    let sampled = nkAxisSpec anisotropy |> List.map (fun (i, nName, kName) -> nName, kName, sqrtDiag i)
-    let nSeries = sampled |> List.map (fun (nName, _, d) -> { name = nName; points = List.zip xs (d |> List.map (fun c -> c.Real)) })
-    let kSeries = sampled |> List.map (fun (_, kName, d) -> { name = kName; points = List.zip xs (d |> List.map (fun c -> c.Imaginary)) })
+    let sampled = anisotropy.nkAxisCurves |> List.map (fun curves -> curves, sqrtDiag curves.axis)
+    let curve (name : ControlCaption) (ys : float list) : ExperimentControls.ChartSeries =
+        { ExperimentControls.ChartSeries.name = name; points = List.map2 (fun (x : UnitMagnitude) y -> { ExperimentControls.ChartPoint.x = x.value; y = y }) xs ys }
+    let nSeries = sampled |> List.map (fun (curves, d) -> curve curves.nName (d |> List.map (fun c -> c.Real)))
+    let kSeries = sampled |> List.map (fun (curves, d) -> curve curves.kName (d |> List.map (fun c -> c.Imaginary)))
     {
         series = nSeries @ kSeries
-        xLabel = SpectralAxis.axisLabel u
-        yLabel = "n"
-        title = "n / k dispersion"
-        description = "n on the left axis, k on the right, per principal axis the anisotropy distinguishes (nᵢ = Re[√εᵢᵢ], kᵢ = Im[√εᵢᵢ]); a non-dispersive material draws flat lines."
-        angular = false
+        xLabel = ControlCaption u.axisLabel
+        yLabel = ControlCaption "n"
+        title = ControlCaption "n / k dispersion"
+        description = ControlCaption "n on the left axis, k on the right, per principal axis the anisotropy distinguishes (nᵢ = Re[√εᵢᵢ], kᵢ = Im[√εᵢᵢ]); a non-dispersive material draws flat lines."
+        xAxisKind = NonAngularXAxis
     }
 
 /// The n/k chart's paired style seed for a given anisotropy: the n series (the first half — one per
 /// distinguished axis) keep the LEFT axis; the k series (the second half) are flipped to the RIGHT.
 let nkDispersionStyle (anisotropy : Anisotropy) (chart : ExperimentChart) : ChartStyle.ChartStyleState =
-    let n = List.length (nkAxisSpec anisotropy)
-    rightAxisSeries [ n .. 2 * n - 1 ] chart
+    let n = List.length anisotropy.nkAxisCurves
+    rightAxisSeries [ for i in n .. 2 * n - 1 -> ChartStyle.ChartSeriesIndex i ] chart
 
-/// The (i, j) tensor slot a gyration component denotes — the diagonal g₁₁/g₂₂/g₃₃ at
-/// (0,0)/(1,1)/(2,2) and the upper-triangle g₁₂/g₁₃/g₂₃ at (0,1)/(0,2)/(1,2) — matching the
-/// `GyrationComponent` cases (`MaterialComplexityEditor.fs:88-94`) the editor and the value tree name.
-let private gyrationSlot (comp : GyrationComponent) : int * int =
-    match comp with
-    | G11 -> 0, 0
-    | G22 -> 1, 1
-    | G33 -> 2, 2
-    | G12 -> 0, 1
-    | G13 -> 0, 2
-    | G23 -> 1, 2
+type GyrationComponent with
+
+    /// The ρ tensor slot this component denotes — the diagonal g₁₁/g₂₂/g₃₃ and the upper-triangle
+    /// g₁₂/g₁₃/g₂₃ — matching the cases the editor and the value tree name.
+    member this.tensorSlot : GyrationTensorSlot =
+        match this with
+        | G11 -> { row = FirstAxis; column = FirstAxis }
+        | G22 -> { row = SecondAxis; column = SecondAxis }
+        | G33 -> { row = ThirdAxis; column = ThirdAxis }
+        | G12 -> { row = FirstAxis; column = SecondAxis }
+        | G13 -> { row = FirstAxis; column = ThirdAxis }
+        | G23 -> { row = SecondAxis; column = ThirdAxis }
 
 /// Every gyration component in the six-slot display order — the fallback set drawn for a coded
 /// engine preset with NO stored gyration class to read (preserving the pre-restriction rendering).
 let allGyrationComponents : GyrationComponent list = [ G11; G22; G33; G12; G13; G23 ]
 
 /// The gyration components a VIEW-ONLY entry's stored optical-activity value tree admits: the ones
-/// its `active` gyration CLASS carries (`gyrationComponents`, generic over the constant `RhoValue`
+/// its `active` gyration CLASS carries (`GyrationClass.components`, generic over the constant `RhoValue`
 /// vs the dispersive `DispersionFormula` payload) — data, no physics re-derived, mirroring
-/// `anisotropyOfEntry`. A tree with no activity falls back to every component.
+/// `MaterialEntry.previewAnisotropy`. A tree with no activity falls back to every component.
 let gyrationComponentsOfComplexity (complexity : MaterialComplexity) : GyrationComponent list =
     match complexity.active with
-    | Some (RhoWithoutDispValue g) -> gyrationComponents g.gyration |> List.map fst
-    | Some (RhoWithDispValue g) -> gyrationComponents g.gyration |> List.map fst
+    | Some (RhoWithoutDispValue g) -> g.gyration.components |> List.map fst
+    | Some (RhoWithDispValue g) -> g.gyration.components |> List.map fst
     | None -> allGyrationComponents
 
 /// The gyration chart (shown only when the entry is optically active), restricted to the components
 /// the entry's symmetry class admits (spec 0040 step 006): ONE series per component in `components`,
-/// named by `gyrationComponentLabel` and read as g₍ᵢⱼ₎ = Im[ρᵢⱼ] at the `gyrationSlot` (i,j). ρ is
+/// named by `GyrationComponent.label` and read as g₍ᵢⱼ₎ = Im[ρᵢⱼ] at its `tensorSlot`. ρ is
 /// sampled through the engine `rhoWithDisp.getRho` seam that `RhoWithDispValue.toRhoWithDisp` built.
 /// All components share ONE (left) axis — they are the same physical scale (~10⁻⁵). A uniaxial-active
 /// entry draws only g₁₁ and g₃₃; a coded preset with no stored class draws all six.
 let gyrationChart (components : GyrationComponent list) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
     let xs, ws = grid u range
     let rhos = ws |> List.map (fun w -> o.rhoWithDisp.getRho w)
-    let series (comp : GyrationComponent) : ChartSeries =
-        let i, j = gyrationSlot comp
-        { name = gyrationComponentLabel comp; points = List.zip xs (rhos |> List.map (fun r -> r.[i, j].Imaginary)) }
+    let series (comp : GyrationComponent) : ExperimentControls.ChartSeries =
+        let i = comp.tensorSlot.row.tensorIndex
+        let j = comp.tensorSlot.column.tensorIndex
+        {
+            ExperimentControls.ChartSeries.name = ControlCaption comp.label
+            points = List.map2 (fun (x : UnitMagnitude) (r : Rho) -> { ExperimentControls.ChartPoint.x = x.value; y = r.[i, j].Imaginary }) xs rhos
+        }
     {
         series = components |> List.map series
-        xLabel = SpectralAxis.axisLabel u
-        yLabel = "g"
-        title = "Gyration components"
-        description = "Optical-activity gyration tensor components g₍ᵢⱼ₎ = Im[ρᵢⱼ] vs wavelength, per the entry's symmetry class."
-        angular = false
+        xLabel = ControlCaption u.axisLabel
+        yLabel = ControlCaption "g"
+        title = ControlCaption "Gyration components"
+        description = ControlCaption "Optical-activity gyration tensor components g₍ᵢⱼ₎ = Im[ρᵢⱼ] vs wavelength, per the entry's symmetry class."
+        xAxisKind = NonAngularXAxis
     }
 
-/// The gyration chart's style seed: every g component on the LEFT axis (a single shared scale).
-let gyrationStyle (chart : ExperimentChart) : ChartStyle.ChartStyleState =
-    ChartStyle.defaultState chart
+type ExperimentChart with
+
+    /// The gyration chart's style seed: every g component on the LEFT axis (a single shared scale).
+    member this.gyrationStyle : ChartStyle.ChartStyleState =
+        ChartStyle.defaultChartStyleState this
 
 /// The series name of the Polder gyration magnitude (the one μ series flipped to the RIGHT axis) —
 /// ONE constant shared by `muChart` (which emits it for a gyromagnetic tensor) and `muStyle` (which
 /// sides it), so a scalar-μ chart that emits no such series simply keeps every series on the left.
-let private muGyrationSeriesName : string = "g"
+let private muGyrationSeriesName : ControlCaption = ControlCaption "g"
 
-/// The Polder-μ kind a VIEW-ONLY entry's stored magnetic value tree denotes: a scalar μ vs the
-/// gyromagnetic tensor (mirroring `anisotropyOfEntry`; data, no physics re-derived). The dispersive
-/// Polder case is always the full tensor — the engine's `MuWithDispValue` carries no scalar
-/// dispersive case. A tree with no magnetic facet falls back to the full gyromagnetic rendering.
-let muKindOfComplexity (complexity : MaterialComplexity) : MuKind =
-    match complexity.magnetic with
-    | Some (MuWithoutDispValue (ScalarMu _)) -> ScalarMuKind
-    | Some (MuWithoutDispValue (GyromagneticMu _)) -> GyromagneticMuKind
-    | Some (MuWithDispValue _) -> GyromagneticMuKind
-    | None -> GyromagneticMuKind
+type MaterialComplexity with
+
+    /// The Polder-μ kind a VIEW-ONLY entry's stored magnetic value tree denotes: a scalar μ vs the
+    /// gyromagnetic tensor (mirroring `MaterialEntry.previewAnisotropy`; data, no physics re-derived). The
+    /// dispersive Polder case is always the full tensor — the engine's `MuWithDispValue` carries no scalar
+    /// dispersive case. A tree with no magnetic facet falls back to the full gyromagnetic rendering.
+    member this.muKind : MuKind =
+        match this.magnetic with
+        | Some (MuWithoutDispValue (ScalarMu _)) -> ScalarMuKind
+        | Some (MuWithoutDispValue (GyromagneticMu _)) -> GyromagneticMuKind
+        | Some (MuWithDispValue _) -> GyromagneticMuKind
+        | None -> GyromagneticMuKind
 
 /// The Polder-μ chart (shown only when the entry is magnetic), restricted to the components the
 /// entry's `MuKind` distinguishes (spec 0040 step 006): a SINGLE scalar μ series for `ScalarMuKind`
@@ -181,28 +226,31 @@ let muKindOfComplexity (complexity : MaterialComplexity) : MuKind =
 let muChart (muKind : MuKind) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
     let xs, ws = grid u range
     let mus = ws |> List.map (fun w -> o.muWithDisp.getMu w)
-    let diagSeries (name : string) (i : int) : ChartSeries =
-        { name = name; points = List.zip xs (mus |> List.map (fun m -> m.[i, i].Real)) }
+    let curve (name : ControlCaption) (ys : float list) : ExperimentControls.ChartSeries =
+        { ExperimentControls.ChartSeries.name = name; points = List.map2 (fun (x : UnitMagnitude) y -> { ExperimentControls.ChartPoint.x = x.value; y = y }) xs ys }
+    let diagSeries (name : string) (axis : PrincipalAxisSlot) : ExperimentControls.ChartSeries =
+        let i = axis.tensorIndex
+        curve (ControlCaption name) (mus |> List.map (fun m -> m.[i, i].Real))
     let gyrationMag (m : Mu) : float =
         let im (i : int) (j : int) : float = m.[i, j].Imaginary
         sqrt (im 0 1 * im 0 1 + im 0 2 * im 0 2 + im 1 2 * im 1 2)
     let series =
         match muKind with
-        | ScalarMuKind -> [ diagSeries "μ" 0 ]
+        | ScalarMuKind -> [ diagSeries "μ" FirstAxis ]
         | GyromagneticMuKind ->
             [
-                diagSeries "μ₁₁" 0
-                diagSeries "μ₂₂" 1
-                diagSeries "μ₃₃" 2
-                { name = muGyrationSeriesName; points = List.zip xs (mus |> List.map gyrationMag) }
+                diagSeries "μ₁₁" FirstAxis
+                diagSeries "μ₂₂" SecondAxis
+                diagSeries "μ₃₃" ThirdAxis
+                curve muGyrationSeriesName (mus |> List.map gyrationMag)
             ]
     {
         series = series
-        xLabel = SpectralAxis.axisLabel u
-        yLabel = "μ"
-        title = "Polder μ components"
-        description = "Polder permeability diagonal μᵢᵢ (left axis) and the gyration magnitude (right axis) vs wavelength; a scalar μ draws its single component."
-        angular = false
+        xLabel = ControlCaption u.axisLabel
+        yLabel = ControlCaption "μ"
+        title = ControlCaption "Polder μ components"
+        description = ControlCaption "Polder permeability diagonal μᵢᵢ (left axis) and the gyration magnitude (right axis) vs wavelength; a scalar μ draws its single component."
+        xAxisKind = NonAngularXAxis
     }
 
 /// The Polder-μ chart's style seed: every diagonal μ component on the LEFT axis, the gyration
@@ -211,19 +259,23 @@ let muChart (muKind : MuKind) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure
 let muStyle (chart : ExperimentChart) : ChartStyle.ChartStyleState =
     let gyrationIndices =
         chart.series
-        |> List.mapi (fun i s -> i, s.name)
+        |> List.mapi (fun i s -> ChartStyle.ChartSeriesIndex i, s.name)
         |> List.choose (fun (i, name) -> if name = muGyrationSeriesName then Some i else None)
     rightAxisSeries gyrationIndices chart
 
 /// Whether the entry's ASSEMBLED engine ρ carries any gyration at the classify wavelength — used to
 /// decide the Gyration tab for a VIEW-ONLY preset, which has no activity toggle to read.
-let hasGyration (o : OpticalPropertiesWithDisp) : bool =
+let assembledActivity (o : OpticalPropertiesWithDisp) : ActivityChoice =
     let r = o.rhoWithDisp.getRho classifyWavelength
-    [ for i in 0 .. 2 do for j in 0 .. 2 -> r.[i, j].Magnitude ] |> List.exists (fun v -> v > 1e-12)
+    match [ for i in 0 .. 2 do for j in 0 .. 2 -> r.[i, j].Magnitude ] |> List.exists (fun v -> v > 1e-12) with
+    | true -> ActivityOn
+    | false -> ActivityOff
 
 /// Whether the entry's ASSEMBLED engine μ deviates from the vacuum identity at the classify
 /// wavelength — used to decide the μ tab for a VIEW-ONLY preset, which has no magnetic toggle to read.
-let hasMagnetic (o : OpticalPropertiesWithDisp) : bool =
+let assembledMagnetic (o : OpticalPropertiesWithDisp) : MagneticChoice =
     let m = o.muWithDisp.getMu classifyWavelength
     let ident (i : int) (j : int) : Complex = if i = j then Complex.One else Complex.Zero
-    [ for i in 0 .. 2 do for j in 0 .. 2 -> (m.[i, j] - ident i j).Magnitude ] |> List.exists (fun v -> v > 1e-12)
+    match [ for i in 0 .. 2 do for j in 0 .. 2 -> (m.[i, j] - ident i j).Magnitude ] |> List.exists (fun v -> v > 1e-12) with
+    | true -> MagneticOn
+    | false -> MagneticOff

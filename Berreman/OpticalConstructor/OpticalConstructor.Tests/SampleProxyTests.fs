@@ -50,7 +50,7 @@ module SampleProxyTests =
     /// A metadata-only change of `plate`: SAME structure, a different display name. Physics unchanged,
     /// metadata changed.
     let private plateRenamed : Sample =
-        { plate with name = "Renamed plate (metadata only)" }
+        { plate with name = EntryName "Renamed plate (metadata only)" }
 
     /// The version-1 reference of a sample — the key a live experiment binds.
     let private v1Ref (id : SampleId) : VersionRef =
@@ -61,7 +61,7 @@ module SampleProxyTests =
 
     /// A fresh sample under a MINTED id (not in the seeded map) over the plate's structure.
     let private minted () : Sample =
-        { plate with id = newSampleId (); name = "Test plate (minted)" }
+        { plate with id = newSampleId (); name = EntryName "Test plate (minted)" }
 
     /// A structurally-empty structure — no films AND no substrate (spec 0035 step 012): the engine
     /// mapping has nothing to expand, so the write-seam must reject a sample carrying it.
@@ -75,7 +75,7 @@ module SampleProxyTests =
         match (freshProxy ()).listSamples ActiveOnly with
         | Ok samples ->
             Assert.NotEmpty samples
-            Assert.Equal(List.length SeedSamples.all, List.length samples)
+            Assert.Equal(List.length SeedSamples.allSeedSamples, List.length samples)
             let ids = samples |> List.map (fun s -> s.id)
             Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
         | Error err -> Assert.Fail($"%A{err}")
@@ -83,31 +83,31 @@ module SampleProxyTests =
     [<Fact>]
     let ``searchSamples with the empty query matches every seeded sample`` () =
         match (freshProxy ()).searchSamples SampleQuery.empty with
-        | Ok samples -> Assert.Equal(List.length SeedSamples.all, List.length samples)
+        | Ok samples -> Assert.Equal(List.length SeedSamples.allSeedSamples, List.length samples)
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
     let ``searchSamples filters by name fragment case-insensitively`` () =
-        match (freshProxy ()).searchSamples { SampleQuery.empty with text = "GLASS" } with
+        match (freshProxy ()).searchSamples { SampleQuery.empty with text = NameFragment "GLASS" } with
         | Ok samples ->
             Assert.NotEmpty samples
             Assert.All(samples, fun s ->
-                Assert.True(s.name.IndexOf("glass", StringComparison.OrdinalIgnoreCase) >= 0, s.name))
+                Assert.True(s.name.value.IndexOf("glass", StringComparison.OrdinalIgnoreCase) >= 0, s.name.value))
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
     let ``searchSamples filters by substrate kind, composing with the text facet`` () =
         let proxy = freshProxy ()
-        match proxy.searchSamples { SampleQuery.empty with substrate = Some Plate } with
+        match proxy.searchSamples { SampleQuery.empty with substrate = Some ThickPlate } with
         | Ok plates ->
             Assert.NotEmpty plates
-            Assert.All(plates, fun s -> Assert.Equal(Plate, s.substrate))
+            Assert.All(plates, fun s -> Assert.Equal(ThickPlate, s.substrate))
             Assert.Equal(
-                SeedSamples.all |> List.filter (fun s -> s.substrate = Plate) |> List.length,
+                SeedSamples.allSeedSamples |> List.filter (fun s -> s.substrate = ThickPlate) |> List.length,
                 List.length plates)
         | Error err -> Assert.Fail($"%A{err}")
         // "langasite" matches only the dispersive langasite-on-silicon seed, a thin film.
-        match proxy.searchSamples { text = "langasite"; substrate = Some ThinFilm } with
+        match proxy.searchSamples { text = NameFragment "langasite"; substrate = Some ThinFilm } with
         | Ok [ only ] -> Assert.Equal<SampleId>(SeedSamples.langasiteSilicon.id, only.id)
         | other -> Assert.Fail($"expected exactly the langasite sample, got %A{other}")
 
@@ -145,7 +145,7 @@ module SampleProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.listSamples ActiveOnly with
         | Ok samples ->
-            Assert.Equal(List.length SeedSamples.all + 1, List.length samples)
+            Assert.Equal(List.length SeedSamples.allSeedSamples + 1, List.length samples)
             Assert.Contains(sample.id, samples |> List.map (fun s -> s.id))
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.resolveVersion (v1Id sample.id) with
@@ -155,10 +155,10 @@ module SampleProxyTests =
     [<Fact>]
     let ``saveSample rejects a blank name as InvalidSample and persists nothing`` () =
         let proxy = freshProxy ()
-        let blank = { minted () with name = "   " }
+        let blank = { minted () with name = EntryName "   " }
         match proxy.saveSample blank with
-        | Error (InvalidSample reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (InvalidSample _), got %A{other}")
+        | Error (InvalidSampleErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSampleErr _), got %A{other}")
         match proxy.tryGetSample blank.id with
         | Ok None -> ()
         | other -> Assert.Fail($"expected Ok None (nothing persisted), got %A{other}")
@@ -167,8 +167,8 @@ module SampleProxyTests =
     let ``saveSample rejects a structurally-empty sample (no films, no substrate) as InvalidSample even when named`` () =
         let proxy = freshProxy ()
         match proxy.saveSample { minted () with structure = emptyStructure } with
-        | Error (InvalidSample reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (InvalidSample _), got %A{other}")
+        | Error (InvalidSampleErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSampleErr _), got %A{other}")
 
     // ==================== validateSample: a Plate requires a substrate (spec 0040 D.1) ====================
 
@@ -177,25 +177,25 @@ module SampleProxyTests =
     /// structurally empty, so the ONLY rule that can reject it is the new D.1 Plate-requires-a-
     /// substrate rule — this isolates the new behaviour from the older structurally-empty reject.
     let private plateMissingSubstrate : Sample =
-        { SeedSamples.glassFilm600 with substrate = Plate }
+        { SeedSamples.glassFilm600 with substrate = ThickPlate }
 
     [<Fact>]
     let ``validateSample rejects a Plate whose structure.substrate is None as InvalidSample`` () =
-        match validateSample plateMissingSubstrate with
-        | Error (InvalidSample reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (InvalidSample _) for a Plate with no substrate, got %A{other}")
+        match plateMissingSubstrate.validate with
+        | Error (InvalidSampleErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSampleErr _) for a Plate with no substrate, got %A{other}")
 
     [<Fact>]
     let ``validateSample accepts a Plate that carries a substrate and a non-blank name`` () =
         // glassPlate1mm is a Plate whose structure carries `Some` substrate — D.1 leaves it Ok.
-        match validateSample SeedSamples.glassPlate1mm with
+        match SeedSamples.glassPlate1mm.validate with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () for a Plate with a substrate, got %A{other}")
 
     [<Fact>]
     let ``validateSample leaves a ThinFilm with no substrate Ok`` () =
         // glassFilm600 is a ThinFilm with `structure.substrate = None` — unaffected by the D.1 rule.
-        match validateSample SeedSamples.glassFilm600 with
+        match SeedSamples.glassFilm600.validate with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () for a ThinFilm with no substrate, got %A{other}")
 
@@ -204,9 +204,9 @@ module SampleProxyTests =
     [<Fact>]
     let ``defaultSupportedEmission pins a Mirror to EmitReflectedOnly; a ThinFilm and a Plate emit both`` () =
         // Spec 0046 (operator): locked R-only belongs to mirrors alone.
-        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, defaultSupportedEmission Mirror)
-        Assert.Equal<Placement.Emission>(Placement.EmitBoth, defaultSupportedEmission ThinFilm)
-        Assert.Equal<Placement.Emission>(Placement.EmitBoth, defaultSupportedEmission Plate)
+        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, Mirror.defaultSupportedEmission)
+        Assert.Equal<Placement.Emission>(Placement.EmitBoth, ThinFilm.defaultSupportedEmission)
+        Assert.Equal<Placement.Emission>(Placement.EmitBoth, ThickPlate.defaultSupportedEmission)
 
     [<Fact>]
     let ``the seeded EUV multilayer is the one Mirror; seeded thin films and plates support both`` () =
@@ -215,7 +215,7 @@ module SampleProxyTests =
         for s in [ SeedSamples.glassFilm600; SeedSamples.glassFilm200; SeedSamples.multilayerQw; SeedSamples.glassPlate1mm ] do
             Assert.Equal<Placement.Emission>(Placement.EmitBoth, s.supportedEmission)
         // Every seed carrying R-only is a Mirror.
-        for s in SeedSamples.all do
+        for s in SeedSamples.allSeedSamples do
             match s.supportedEmission with
             | Placement.EmitReflectedOnly -> Assert.Equal(Mirror, s.substrate)
             | Placement.EmitBoth | Placement.EmitTransmittedOnly -> ()
@@ -227,7 +227,7 @@ module SampleProxyTests =
             Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, constrainEmission Mirror candidate)
         // …and the Sample setter routes through it, so trying to clear R on a mirror is a no-op.
         let mirror = SeedSamples.euvMoSi
-        let clearedR = mirror.supportedEmission |> Placement.Emission.withReflected false
+        let clearedR = mirror.supportedEmission |> Placement.Emission.withReflected Placement.RayGroupOff
         let after = mirror |> withSupportedEmission clearedR
         Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, after.supportedEmission)
         // A thin film, by contrast, is constrainable like a plate (spec 0046).
@@ -235,18 +235,18 @@ module SampleProxyTests =
         Assert.Equal<Placement.Emission>(Placement.EmitTransmittedOnly, film.supportedEmission)
 
     [<Fact>]
-    let ``a Plate is constrainable: clearing R via Emission.withReflected false leaves T on`` () =
+    let ``a Plate is constrainable: clearing R via Emission.withReflected Placement.RayGroupOff leaves T on`` () =
         let plate = SeedSamples.glassPlate1mm
         Assert.Equal<Placement.Emission>(Placement.EmitBoth, plate.supportedEmission)
         // The existing Emission setter clears the reflected branch; the both-off state is
         // unrepresentable, so T stays on (EmitTransmittedOnly)…
-        let clearedR = plate.supportedEmission |> Placement.Emission.withReflected false
+        let clearedR = plate.supportedEmission |> Placement.Emission.withReflected Placement.RayGroupOff
         Assert.Equal<Placement.Emission>(Placement.EmitTransmittedOnly, clearedR)
         // …and a Plate's constraint passes the candidate through unchanged, so the setter takes effect.
         let tOnly = plate |> withSupportedEmission clearedR
         Assert.Equal<Placement.Emission>(Placement.EmitTransmittedOnly, tOnly.supportedEmission)
         // Symmetrically, clearing T through the existing setter constrains the plate to R-only.
-        let rOnly = plate |> withSupportedEmission (plate.supportedEmission |> Placement.Emission.withTransmitted false)
+        let rOnly = plate |> withSupportedEmission (plate.supportedEmission |> Placement.Emission.withTransmitted Placement.RayGroupOff)
         Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, rOnly.supportedEmission)
 
     // ============================ the version-creation decision table ============================
@@ -316,7 +316,7 @@ module SampleProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.listSamples ActiveOnly with
         | Ok samples ->
-            Assert.Equal(List.length SeedSamples.all, List.length samples)
+            Assert.Equal(List.length SeedSamples.allSeedSamples, List.length samples)
             let plateEntries = samples |> List.filter (fun s -> s.id = plate.id)
             Assert.Equal(1, List.length plateEntries)
             Assert.Equal(otherStructure.structure, plateEntries.Head.structure)
@@ -334,7 +334,7 @@ module SampleProxyTests =
         match proxy.listSamples ActiveOnly with
         | Ok samples -> Assert.DoesNotContain(plate.id, samples |> List.map (fun s -> s.id))
         | Error err -> Assert.Fail($"%A{err}")
-        match proxy.searchSamples { SampleQuery.empty with text = plate.name } with
+        match proxy.searchSamples { SampleQuery.empty with text = NameFragment plate.name.value } with
         | Ok samples -> Assert.DoesNotContain(plate.id, samples |> List.map (fun s -> s.id))
         | Error err -> Assert.Fail($"%A{err}")
         // …shown with the include-inactive switch…
@@ -375,8 +375,8 @@ module SampleProxyTests =
         let missing = (minted ()).id
         for verb in [ proxy.markSampleInactive; proxy.markSampleActive; proxy.supersedeSample ] do
             match verb missing with
-            | Error (UnknownSampleId reason) -> Assert.Contains(string missing.value, reason)
-            | other -> Assert.Fail($"expected Error (UnknownSampleId _), got %A{other}")
+            | Error (UnknownSampleIdErr reason) -> Assert.Contains(string missing.value, reason)
+            | other -> Assert.Fail($"expected Error (UnknownSampleIdErr _), got %A{other}")
 
     // ============================ removal: the used-version hard-block ============================
 
@@ -384,10 +384,10 @@ module SampleProxyTests =
     let ``removeSample on a sample with a used version is blocked with a typed refusal naming the version`` () =
         let proxy = proxyWithUsed [ v1Ref plate.id ]
         match proxy.removeSample plate.id with
-        | Error (SampleVersionInUse reason) ->
+        | Error (SampleVersionInUseErr reason) ->
             Assert.Contains(string plate.id.value, reason)
             Assert.Contains("v1", reason)
-        | other -> Assert.Fail($"expected Error (SampleVersionInUse _), got %A{other}")
+        | other -> Assert.Fail($"expected Error (SampleVersionInUseErr _), got %A{other}")
         // never silently deletes: the sample survives.
         match proxy.tryGetSample plate.id with
         | Ok (Some _) -> ()
@@ -403,8 +403,8 @@ module SampleProxyTests =
         | Ok None -> ()
         | other -> Assert.Fail($"expected Ok None after removal, got %A{other}")
         match proxy.removeSample SeedSamples.langasiteSilicon.id with
-        | Error (UnknownSampleId reason) -> Assert.Contains(string SeedSamples.langasiteSilicon.id.value, reason)
-        | other -> Assert.Fail($"expected Error (UnknownSampleId _), got %A{other}")
+        | Error (UnknownSampleIdErr reason) -> Assert.Contains(string SeedSamples.langasiteSilicon.id.value, reason)
+        | other -> Assert.Fail($"expected Error (UnknownSampleIdErr _), got %A{other}")
 
     // ============================ the seam (reference equality + the stub) ============================
 
@@ -421,34 +421,34 @@ module SampleProxyTests =
         // two-sample list — a test substitutes these for the real store and exercises the exact same
         // logic.
         let kept = plate
-        let free = { plate with id = newSampleId (); name = "Unreferenced test plate" }
+        let free = { plate with id = newSampleId (); name = EntryName "Unreferenced test plate" }
         let fixedSamples = [ kept; free ]
         let stub : SampleProxy =
             {
                 listSamples = fun _ -> Ok fixedSamples
                 searchSamples =
                     fun (q : SampleQuery) ->
-                        Ok (fixedSamples |> List.filter (fun s -> s.name.IndexOf(q.text, StringComparison.OrdinalIgnoreCase) >= 0))
+                        Ok (fixedSamples |> List.filter (fun s -> s.name.value.IndexOf(q.text.value, StringComparison.OrdinalIgnoreCase) >= 0))
                 tryGetSample = fun (id : SampleId) -> Ok (fixedSamples |> List.tryFind (fun s -> s.id = id))
                 resolveVersion =
                     fun (svid : SampleVersionId) ->
                         Ok (fixedSamples |> List.tryFind (fun s -> s.id = svid.sampleId))
                 saveSample =
                     fun (s : Sample) ->
-                        if String.IsNullOrWhiteSpace s.name then Error (InvalidSample "blank sample name") else Ok ()
+                        if String.IsNullOrWhiteSpace s.name.value then Error (InvalidSampleErr "blank sample name") else Ok ()
                 markSampleInactive = fun (_ : SampleId) -> Ok ()
                 markSampleActive = fun (_ : SampleId) -> Ok ()
                 supersedeSample = fun (_ : SampleId) -> Ok ()
                 removeSample =
                     fun (id : SampleId) ->
                         if id = kept.id
-                        then Error (SampleVersionInUse ($"sample '%s{(string id.value)}' has a version bound by a live experiment"))
+                        then Error (SampleVersionInUseErr ($"sample '%s{(string id.value)}' has a version bound by a live experiment"))
                         else Ok ()
             }
         match stub.listSamples ActiveOnly with
         | Ok l -> Assert.Equal(2, List.length l)
         | Error err -> Assert.Fail($"%A{err}")
-        match stub.searchSamples { SampleQuery.empty with text = "unreferenced" } with
+        match stub.searchSamples { SampleQuery.empty with text = NameFragment "unreferenced" } with
         | Ok [ hit ] -> Assert.Equal<SampleId>(free.id, hit.id)
         | other -> Assert.Fail($"expected exactly the unreferenced sample, got %A{other}")
         match stub.tryGetSample kept.id with
@@ -457,9 +457,9 @@ module SampleProxyTests =
         match stub.resolveVersion (v1Id free.id) with
         | Ok (Some s) -> Assert.Equal<SampleId>(free.id, s.id)
         | other -> Assert.Fail($"expected the free sample by version, got %A{other}")
-        match stub.saveSample { free with name = " " } with
-        | Error (InvalidSample _) -> ()
-        | other -> Assert.Fail($"expected Error (InvalidSample _), got %A{other}")
+        match stub.saveSample { free with name = EntryName " " } with
+        | Error (InvalidSampleErr _) -> ()
+        | other -> Assert.Fail($"expected Error (InvalidSampleErr _), got %A{other}")
         match stub.saveSample free with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok (), got %A{other}")
@@ -468,8 +468,8 @@ module SampleProxyTests =
             | Ok () -> ()
             | other -> Assert.Fail($"expected Ok (), got %A{other}")
         match stub.removeSample kept.id with
-        | Error (SampleVersionInUse reason) -> Assert.Contains(string kept.id.value, reason)
-        | other -> Assert.Fail($"expected Error (SampleVersionInUse _), got %A{other}")
+        | Error (SampleVersionInUseErr reason) -> Assert.Contains(string kept.id.value, reason)
+        | other -> Assert.Fail($"expected Error (SampleVersionInUseErr _), got %A{other}")
         match stub.removeSample free.id with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok (), got %A{other}")

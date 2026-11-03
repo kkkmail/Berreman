@@ -18,71 +18,56 @@
 module OpticalConstructor.Ui.Schematic
 
 open Berreman.Constants
+open Berreman.Geometry
 open Berreman.Fields
 open Berreman.Media
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Optimization.DesignParameters
+open OpticalConstructor.Controls
+open OpticalConstructor.Controls.LayerBandsControls
 
 // ---------------------------------------------------------------------------
 // Material colour (R-1 item 6). A deterministic, pure function of a material's
-// stable identity key (the `materialEntry` id, §A.7): the same id is the same
-// colour across every redraw. The table is a static map in this module; it is
-// NOT a config knob. Unknown ids fall back to a stable hash into the palette, so
-// the mapping is still deterministic for materials with no curated colour.
+// stable identity (its `MaterialId`, §A.7): the same id is the same colour across
+// every redraw. The table is a static map in this module; it is NOT a config knob.
+// Unknown ids fall back to a stable hash into the palette, so the mapping is still
+// deterministic for materials with no curated colour.
 // ---------------------------------------------------------------------------
 
-/// An sRGB colour as plain bytes — a pure value the deferred Avalonia view maps
-/// to `Avalonia.Media.Color`; this module takes no Avalonia drawing dependency.
-type SchematicColor =
-    {
-        red : byte
-        green : byte
-        blue : byte
-    }
-
-    /// The `#RRGGBB` hex form (handy for tests and the deferred view binding).
-    member c.toHex = $"#%02X{c.red}%02X{c.green}%02X{c.blue}"
-
-let private rgb (r : int) (g : int) (b : int) : SchematicColor =
-    { red = byte r; green = byte g; blue = byte b }
-
 /// The fallback palette unknown material ids hash into (a fixed, deterministic set).
-let private palette : SchematicColor [] =
+let private palette : BandColorHex [] =
     [|
-        rgb 31 119 180; rgb 255 127 14; rgb 44 160 44; rgb 214 39 40
-        rgb 148 103 189; rgb 140 86 75; rgb 227 119 194; rgb 188 189 34
+        BandColorHex "#1F77B4"; BandColorHex "#FF7F0E"; BandColorHex "#2CA02C"; BandColorHex "#D62728"
+        BandColorHex "#9467BD"; BandColorHex "#8C564B"; BandColorHex "#E377C2"; BandColorHex "#BCBD22"
     |]
 
 /// Curated colours for the built-in material ids (`MaterialLibrary.builtInEntries`), keyed by the
-/// elevated `MaterialId`'s Guid STRING form (spec 0033 step 002) — the identity key a library-backed
-/// caller supplies; synthetic per-layer keys (`layout`'s `materialKey`) fall through to the stable
-/// hash below.
-let private curated : Map<string, SchematicColor> =
+/// elevated `MaterialId` (spec 0033 step 002).
+let private curated : Map<MaterialId, BandColorHex> =
     Map
         [
-            string MaterialIds.silicon.value,         rgb 90 90 110
-            string MaterialIds.langasite.value,       rgb 120 200 220
-            string MaterialIds.glass152.value,        rgb 200 225 245
-            string MaterialIds.glass150.value,        rgb 205 230 250
-            string MaterialIds.glass175.value,        rgb 170 205 235
-            string MaterialIds.glass200.value,        rgb 140 185 225
-            string MaterialIds.uniaxialCrystal.value, rgb 175 225 175
-            string MaterialIds.biaxialCrystal.value,  rgb 150 210 150
+            MaterialIds.silicon,         BandColorHex "#5A5A6E"
+            MaterialIds.langasite,       BandColorHex "#78C8DC"
+            MaterialIds.glass152,        BandColorHex "#C8E1F5"
+            MaterialIds.glass150,        BandColorHex "#CDE6FA"
+            MaterialIds.glass175,        BandColorHex "#AACDEB"
+            MaterialIds.glass200,        BandColorHex "#8CB9E1"
+            MaterialIds.uniaxialCrystal, BandColorHex "#AFE1AF"
+            MaterialIds.biaxialCrystal,  BandColorHex "#96D296"
         ]
 
-/// Deterministic, process-independent hash of a string (FNV-1a-style fold). NOT
-/// `String.GetHashCode`, whose seed is randomised per process — that would change
-/// an unknown material's colour between runs.
-let private stableHash (s : string) : int =
-    (s |> Seq.fold (fun acc ch -> (acc ^^^ int ch) * 16777619) (int 2166136261u)) &&& 0x7fffffff
-
-/// The colour for a material's stable identity key (R-1 item 6): a curated colour
-/// when one exists, otherwise a deterministic palette slot from the id's stable
-/// hash. Pure and total — the same id always yields the same colour.
-let colorForMaterial (materialId : string) : SchematicColor =
+/// The colour for a material (R-1 item 6): a curated colour when one exists, otherwise a
+/// deterministic palette slot from a stable hash of the id's Guid string form. Pure and total —
+/// the same id always yields the same colour.
+let colorForMaterial (materialId : MaterialId) : BandColorHex =
     match Map.tryFind materialId curated with
     | Some c -> c
-    | None -> palette.[stableHash materialId % palette.Length]
+    | None ->
+        // An FNV-1a fold, NOT `String.GetHashCode`: its seed is randomised per process, which would
+        // change an unknown material's colour between runs.
+        let hash = (string materialId.value |> Seq.fold (fun acc ch -> (acc ^^^ int ch) * 16777619) (int 2166136261u)) &&& 0x7fffffff
+        palette.[hash % palette.Length]
 
 // ---------------------------------------------------------------------------
 // Band heights (R-1 item 1). Each film band's drawn height is a monotonic
@@ -92,31 +77,24 @@ let colorForMaterial (materialId : string) : SchematicColor =
 
 /// The fixed drawn height of a semi-infinite (`Thickness.Infinity`) band — the
 /// half-space case is NOT scaled by thickness (R-1 item 1).
-[<Literal>]
-let semiInfiniteBandHeight = 48.0
+let semiInfiniteBandHeight : BandWeight = BandWeight 48.0
 
 /// The fixed drawn height of an incident/exit half-space medium band (R-1 item 3).
-[<Literal>]
-let halfSpaceBandHeight = 32.0
-
-/// The minimum drawn height of a finite film band, so a very thin film is still
-/// visible; the scaled term is added on top, keeping the height strictly
-/// increasing in thickness.
-let private minFiniteBandHeight = 6.0
-
-/// Pixels per canonical meter for the scaled term. The drawn height is monotonic
-/// in thickness (the only property R-1 item 1 requires); a display-layout pass
-/// (the deferred view) normalises the band column to the available canvas height.
-let private pixelsPerMeter = 2.0e8
+let halfSpaceBandHeight : BandWeight = BandWeight 32.0
 
 /// The drawn band height for a layer thickness (R-1 item 1): `Thickness.Infinity`
 /// → the fixed semi-infinite height; a finite `Thickness d` → a strictly
 /// increasing function of `d` (`double<meter>`). No converted value is ever
 /// written back into the model (§A.3).
-let bandHeight (t : Thickness) : float =
+let bandHeight (t : Thickness) : BandWeight =
     match t with
     | Thickness.Infinity -> semiInfiniteBandHeight
-    | Thickness.Thickness d -> minFiniteBandHeight + pixelsPerMeter * (d / 1.0<meter>)
+    | Thickness.Thickness d ->
+        // A floor keeps a very thin film visible; the scaled term on top keeps the height strictly
+        // increasing in thickness, and the view normalises the band column to the canvas height.
+        let minFiniteBandHeight = 6.0
+        let pixelsPerMeter = 2.0e8
+        BandWeight (minFiniteBandHeight + pixelsPerMeter * (d / 1.0<meter>))
 
 // ---------------------------------------------------------------------------
 // Substrate band (R-1 item 4). A Plate draws as a parallel-edged band; a Wedge
@@ -124,23 +102,32 @@ let bandHeight (t : Thickness) : float =
 // making the wedge visually distinct from a plate.
 // ---------------------------------------------------------------------------
 
-/// The lower-edge slope (dy/dx) of a wedge substrate band, taken from the wedge's
-/// `WedgeAngle` (`Fields.fs:328`, reached via `w.angle`): `tan(angle)`, so a
-/// larger wedge angle tilts the edge more and a zero angle is flat.
-let wedgeSlope (a : WedgeAngle) : float = tan a.value
+/// The lower-edge slope (dy/dx) of a wedge substrate band.
+type WedgeEdgeSlope =
+    | WedgeEdgeSlope of float
+
+    member this.value = let (WedgeEdgeSlope s) = this in s
+
+type WedgeAngle with
+
+    /// The lower-edge slope of this wedge's substrate band (`Fields.fs:328`, reached via `w.angle`):
+    /// `tan(angle)`, so a larger wedge angle tilts the edge more and a zero angle is flat.
+    member this.edgeSlope : WedgeEdgeSlope = WedgeEdgeSlope (tan this.value)
 
 /// How a substrate band is drawn (R-1 item 4): a `Plate` has a flat (parallel)
 /// lower edge; a `Wedge` carries the non-zero lower-edge slope from its angle.
 type SubstrateBand =
     | PlateBand
-    | WedgeBand of slope : float
+    | WedgeBand of slope : WedgeEdgeSlope
 
-/// Classify a substrate into its drawn band shape. `Plate` → `PlateBand`; `Wedge`
-/// → `WedgeBand` carrying the angle-derived `wedgeSlope` (`Media.fs:40`).
-let substrateBand (s : Substrate) : SubstrateBand =
-    match s with
-    | Plate _ -> PlateBand
-    | Wedge w -> WedgeBand (wedgeSlope w.angle)
+type Substrate with
+
+    /// This substrate's drawn band shape. `Plate` → `PlateBand`; `Wedge` → `WedgeBand`
+    /// carrying the angle-derived `edgeSlope` (`Media.fs:40`).
+    member this.substrateBand : SubstrateBand =
+        match this with
+        | Plate _ -> PlateBand
+        | Wedge w -> WedgeBand w.angle.edgeSlope
 
 // ---------------------------------------------------------------------------
 // Incident-light ray (R-1 item 5). A line entering the upper medium at the active
@@ -155,27 +142,26 @@ let substrateBand (s : Substrate) : SubstrateBand =
 /// ray is merely indicated continuing into the stack (Snell refraction is Part B).
 type RayGeometry =
     {
-        angleRadians : float
-        incidentDx : float
-        incidentDy : float
-        reflectedDx : float
-        reflectedDy : float
-        transmittedDx : float
-        transmittedDy : float
+        incidenceAngle : IncidenceAngle
+        incidentDirection : RealVector2
+        reflectedDirection : RealVector2
+        transmittedDirection : RealVector2
     }
 
-/// Build the incident-ray geometry from the active source's
-/// `IncidentLightInfo.incidenceAngle` (`Fields.fs:342`, reached via `.value`).
-let rayGeometry (a : IncidenceAngle) : RayGeometry =
-    let theta = a.value
-    let sx = sin theta
-    let cy = cos theta
-    {
-        angleRadians = theta
-        incidentDx = sx;  incidentDy = cy        // descending into the stack
-        reflectedDx = sx; reflectedDy = -cy      // mirrored about the normal (upward)
-        transmittedDx = sx; transmittedDy = cy   // indicated continuation only
-    }
+type IncidenceAngle with
+
+    /// The incident-ray geometry at this angle — the active source's
+    /// `IncidentLightInfo.incidenceAngle` (`Fields.fs:342`).
+    member this.rayGeometry : RayGeometry =
+        let theta = this.value
+        let sx = sin theta
+        let cy = cos theta
+        {
+            incidenceAngle = this
+            incidentDirection = RealVector2.create [ sx; cy ]      // descending into the stack
+            reflectedDirection = RealVector2.create [ sx; -cy ]    // mirrored about the normal (upward)
+            transmittedDirection = RealVector2.create [ sx; cy ]   // indicated continuation only
+        }
 
 // ---------------------------------------------------------------------------
 // The whole-system band layout (R-1 items 1–4). A pure OpticalSystem -> band list
@@ -186,38 +172,42 @@ let rayGeometry (a : IncidenceAngle) : RayGeometry =
 // ---------------------------------------------------------------------------
 
 /// A single drawn band of the cross-section.
-type Band =
+type SchematicBand =
     {
-        label : string
-        height : float
-        color : SchematicColor
+        label : ControlCaption
+        height : BandWeight
+        color : BandColorHex
         substrate : SubstrateBand option   // Some only for the substrate band
     }
 
 /// The ordered band layout for a system (R-1 items 1–4). `materialKey` maps a film
-/// index to its stable material id for colouring (R-1 item 6) — the
-/// `OpticalSystem.films` `Layer` carries no id of its own, so the caller (which
-/// holds the project's per-layer material assignments, §A.7) supplies the key;
-/// `unit` is the element's per-element default unit for the thickness labels.
-let layout (unit : UnitOfMeasure) (materialKey : int -> string) (sys : OpticalSystem) : Band list =
-    let upper = { label = "Incident medium"; height = halfSpaceBandHeight; color = rgb 245 245 245; substrate = None }
-    let lower = { label = "Exit medium";     height = halfSpaceBandHeight; color = rgb 235 235 235; substrate = None }
+/// to its material for colouring (R-1 item 6) — the `OpticalSystem.films` `Layer`
+/// carries no id of its own, so the caller (which holds the project's per-layer
+/// material assignments, §A.7) supplies it; `unit` is the element's per-element
+/// default unit for the thickness labels.
+let layoutSchematic (unit : UnitOfMeasure) (materialKey : FilmIndex -> MaterialId) (sys : OpticalSystem) : SchematicBand list =
+    let upper : SchematicBand = { label = ControlCaption "Incident medium"; height = halfSpaceBandHeight; color = BandColorHex "#F5F5F5"; substrate = None }
+    let lower : SchematicBand = { label = ControlCaption "Exit medium";     height = halfSpaceBandHeight; color = BandColorHex "#EBEBEB"; substrate = None }
 
     let filmBands =
         sys.films
         |> List.mapi (fun i l ->
-            {
-                label = $"Layer %d{i} — %s{StackEditor.displayThickness unit l.thickness}"
-                height = bandHeight l.thickness
-                color = colorForMaterial (materialKey i)
-                substrate = None
-            })
+            let film = FilmIndex i
+            let band : SchematicBand =
+                {
+                    label = ControlCaption $"Layer %d{i} — %s{(StackEditor.displayThickness unit l.thickness).value}"
+                    height = bandHeight l.thickness
+                    color = colorForMaterial (materialKey film)
+                    substrate = None
+                }
+            band)
 
     let substrateBands =
         match sys.substrate with
         | None -> []
         | Some s ->
-            let label = match s with | Plate _ -> "Substrate (plate)" | Wedge _ -> "Substrate (wedge)"
-            [ { label = label; height = semiInfiniteBandHeight; color = rgb 220 220 225; substrate = Some (substrateBand s) } ]
+            let label = match s with | Plate _ -> ControlCaption "Substrate (plate)" | Wedge _ -> ControlCaption "Substrate (wedge)"
+            let band : SchematicBand = { label = label; height = semiInfiniteBandHeight; color = BandColorHex "#DCDCE1"; substrate = Some s.substrateBand }
+            [ band ]
 
     [ upper ] @ filmBands @ substrateBands @ [ lower ]

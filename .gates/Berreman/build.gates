@@ -1,6 +1,7 @@
 name: build
 description: dotnet build Berreman.slnx Release (F# numerical optics solver)
 kind: command
+phase: build
 command: dotnet build Berreman.slnx -c Release -nologo -v:m
 cwd: Berreman
 pass_when:

@@ -22,6 +22,8 @@ open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Optimization.DesignParameters
+open OpticalConstructor.Controls
 
 // ---------------------------------------------------------------------------
 // Pure, immutable layer-stack transforms over OpticalSystem.films (Media.fs:98).
@@ -29,46 +31,46 @@ open OpticalConstructor.Domain.MaterialLibrary
 // Layer/OpticalSystem records are never mutated (Part A constraint 1 / AC-B5).
 // ---------------------------------------------------------------------------
 
-let private removeAt (index : int) (xs : 'a list) : 'a list =
-    xs |> List.indexed |> List.filter (fun (i, _) -> i <> index) |> List.map snd
+let private removeFilm (index : FilmIndex) (films : Layer list) : Layer list =
+    films |> List.indexed |> List.filter (fun (i, _) -> i <> index.value) |> List.map snd
 
-let private insertAt (index : int) (item : 'a) (xs : 'a list) : 'a list =
-    let i = max 0 (min index (List.length xs))
-    (xs |> List.take i) @ [ item ] @ (xs |> List.skip i)
+let private insertFilm (index : FilmIndex) (layer : Layer) (films : Layer list) : Layer list =
+    let i = max 0 (min index.value (List.length films))
+    (films |> List.take i) @ [ layer ] @ (films |> List.skip i)
 
 /// Append a new layer to the bottom of the stack (§B.5 "add").
 let addLayer (layer : Layer) (sys : OpticalSystem) : OpticalSystem =
     { sys with films = sys.films @ [ layer ] }
 
 /// Delete the layer at `index`; an out-of-range index is a no-op (§B.5 "delete").
-let deleteLayer (index : int) (sys : OpticalSystem) : OpticalSystem =
-    if index < 0 || index >= List.length sys.films then sys
-    else { sys with films = removeAt index sys.films }
+let deleteLayer (index : FilmIndex) (sys : OpticalSystem) : OpticalSystem =
+    if index.value < 0 || index.value >= List.length sys.films then sys
+    else { sys with films = removeFilm index sys.films }
 
 /// Duplicate the layer at `index`, inserting the copy immediately below it
 /// (§B.5 "duplicate"). Because `Layer` is an immutable record the copy shares
 /// the same tensor/thickness value without aliasing any mutable state.
-let duplicateLayer (index : int) (sys : OpticalSystem) : OpticalSystem =
-    if index < 0 || index >= List.length sys.films then sys
-    else { sys with films = insertAt (index + 1) sys.films.[index] sys.films }
+let duplicateLayer (index : FilmIndex) (sys : OpticalSystem) : OpticalSystem =
+    if index.value < 0 || index.value >= List.length sys.films then sys
+    else { sys with films = insertFilm (FilmIndex (index.value + 1)) sys.films.[index.value] sys.films }
 
 /// Move the layer at `fromIndex` to `toIndex` (§B.5 "reorder"); out-of-range is
 /// a no-op. Indices are interpreted against the original list.
-let reorderLayer (fromIndex : int) (toIndex : int) (sys : OpticalSystem) : OpticalSystem =
+let reorderLayer (fromIndex : FilmIndex) (toIndex : FilmIndex) (sys : OpticalSystem) : OpticalSystem =
     let n = List.length sys.films
-    if fromIndex < 0 || fromIndex >= n || toIndex < 0 || toIndex >= n then sys
+    if fromIndex.value < 0 || fromIndex.value >= n || toIndex.value < 0 || toIndex.value >= n then sys
     else
-        let item = sys.films.[fromIndex]
-        { sys with films = sys.films |> removeAt fromIndex |> insertAt toIndex item }
+        let item = sys.films.[fromIndex.value]
+        { sys with films = sys.films |> removeFilm fromIndex |> insertFilm toIndex item }
 
 /// Group the selected layers into a contiguous block at the position of the
 /// first selected index, preserving their relative order (§B.5 "group").
 /// `films` is a flat `List<Layer>`, so grouping is the pure transformation that
 /// gathers a selection contiguously; the [Standard] repeat/period builder is
 /// NOT this (it is Part J §J.2). Duplicate/out-of-range indices are ignored.
-let groupLayers (indices : int list) (sys : OpticalSystem) : OpticalSystem =
+let groupLayers (indices : FilmIndex list) (sys : OpticalSystem) : OpticalSystem =
     let n = List.length sys.films
-    let valid = indices |> List.filter (fun i -> i >= 0 && i < n) |> List.distinct |> List.sort
+    let valid = indices |> List.map (fun i -> i.value) |> List.filter (fun i -> i >= 0 && i < n) |> List.distinct |> List.sort
     match valid with
     | [] -> sys
     | first :: _ ->
@@ -81,9 +83,9 @@ let groupLayers (indices : int list) (sys : OpticalSystem) : OpticalSystem =
 /// Crystal-axis ORIENTATION control for one layer ([Standard], 010 §1): REUSE
 /// the engine's own `Layer.rotate` (`Media.fs:30`) — no Euler rotation is
 /// re-derived here. Out-of-range index is a no-op.
-let rotateLayer (index : int) (r : Rotation) (sys : OpticalSystem) : OpticalSystem =
-    if index < 0 || index >= List.length sys.films then sys
-    else { sys with films = sys.films |> List.mapi (fun i l -> if i = index then l.rotate r else l) }
+let rotateLayer (index : FilmIndex) (r : Rotation) (sys : OpticalSystem) : OpticalSystem =
+    if index.value < 0 || index.value >= List.length sys.films then sys
+    else { sys with films = sys.films |> List.mapi (fun i l -> if i = index.value then l.rotate r else l) }
 
 /// Orientation control for the whole system ([Standard], 010 §1): REUSE the
 /// engine's `OpticalSystem.rotate` (`Media.fs:120`).
@@ -102,12 +104,6 @@ let setIncidentMedium (props : OpticalProperties) (sys : OpticalSystem) : Optica
 let setExitMedium (props : OpticalProperties) (sys : OpticalSystem) : OpticalSystem =
     { sys with lower = props }
 
-/// Resolve a medium by refractive-index entry, REUSING the engine's own
-/// `OpticalProperties.fromRefractionIndex` constructor — Part B consumes the
-/// engine tensor builder, it does NOT re-implement index→tensor construction (§B.6).
-let mediumFromRefractionIndex (n : float) : OpticalProperties =
-    OpticalProperties.fromRefractionIndex (RefractionIndex n)
-
 /// Resolve a medium by materials-library reference through slice 004's single
 /// by-id `resolveMaterial` seam (§D.8); dispersion resolution is NOT re-done here.
 let mediumFromMaterial (lib : MaterialLibrary) (id : MaterialId) (w : WaveLength) : Result<OpticalProperties, MaterialError> =
@@ -125,9 +121,9 @@ let mediumFromMaterial (lib : MaterialLibrary) (id : MaterialId) (w : WaveLength
 /// Replace the material of the layer at `index` with `props`, leaving every other
 /// layer (and `thickness`) unchanged (§J.4 / AC-J4). Out-of-range index is a
 /// no-op. Pure & immutable: a NEW OpticalSystem with a NEW Layer at `index`.
-let setLayerMaterial (index : int) (props : OpticalProperties) (sys : OpticalSystem) : OpticalSystem =
-    if index < 0 || index >= List.length sys.films then sys
-    else { sys with films = sys.films |> List.mapi (fun i l -> if i = index then { l with properties = props } else l) }
+let setLayerMaterial (index : FilmIndex) (props : OpticalProperties) (sys : OpticalSystem) : OpticalSystem =
+    if index.value < 0 || index.value >= List.length sys.films then sys
+    else { sys with films = sys.films |> List.mapi (fun i l -> if i = index.value then { l with properties = props } else l) }
 
 // ---------------------------------------------------------------------------
 // Three-state substrate switch (§B.7). Toggles the reused Substrate DU
@@ -158,32 +154,39 @@ let applySubstrate (choice : SubstrateChoice) (sys : OpticalSystem) : OpticalSys
 // This is the Avalonia-free seam the construction page and the tests drive.
 // ---------------------------------------------------------------------------
 
+/// A §B.5 reorder: the film moved, and the position it moves to.
+type FilmMove =
+    {
+        fromIndex : FilmIndex
+        toIndex : FilmIndex
+    }
+
 type StackMsg =
-    | AddLayer of Layer
-    | DeleteLayer of int
-    | DuplicateLayer of int
-    | ReorderLayer of int * int
-    | GroupLayers of int list
-    | RotateLayer of int * Rotation
+    | AddStackLayer of Layer
+    | DeleteLayer of FilmIndex
+    | DuplicateLayer of FilmIndex
+    | ReorderLayer of FilmMove
+    | GroupLayers of FilmIndex list
+    | RotateLayer of FilmIndex * Rotation
     | SetIncidentMedium of OpticalProperties
     | SetExitMedium of OpticalProperties
-    | SetSubstrate of SubstrateChoice
+    | SetStackSubstrate of SubstrateChoice
     /// §J.4 drag-drop: replace the material of the layer at `index` with the
     /// dragged material's RESOLVED `OpticalProperties` (thickness unchanged).
-    | SetLayerMaterial of index : int * properties : OpticalProperties
+    | SetLayerMaterial of index : FilmIndex * properties : OpticalProperties
 
 /// Pure editor update: apply a `StackMsg` to a system, yielding a NEW system.
 let applyStackMsg (msg : StackMsg) (sys : OpticalSystem) : OpticalSystem =
     match msg with
-    | AddLayer l -> addLayer l sys
+    | AddStackLayer l -> addLayer l sys
     | DeleteLayer i -> deleteLayer i sys
     | DuplicateLayer i -> duplicateLayer i sys
-    | ReorderLayer (a, b) -> reorderLayer a b sys
+    | ReorderLayer move -> reorderLayer move.fromIndex move.toIndex sys
     | GroupLayers idx -> groupLayers idx sys
     | RotateLayer (i, r) -> rotateLayer i r sys
     | SetIncidentMedium p -> setIncidentMedium p sys
     | SetExitMedium p -> setExitMedium p sys
-    | SetSubstrate c -> applySubstrate c sys
+    | SetStackSubstrate c -> applySubstrate c sys
     | SetLayerMaterial (i, p) -> setLayerMaterial i p sys
 
 /// §J.4 — turn a material dropped on the layer row at `index` into the `StackMsg`
@@ -194,7 +197,7 @@ let applyStackMsg (msg : StackMsg) (sys : OpticalSystem) : OpticalSystem =
 /// at the active wavelength `w` (REUSING `mediumFromMaterial`) — Part J re-resolves
 /// no dispersion. An unknown id returns `Error (UnknownMaterialId _)` (the drop is
 /// a no-op), never throwing.
-let layerMaterialDrop (lib : MaterialLibrary) (w : WaveLength) (index : int) (materialId : MaterialId) : Result<StackMsg, MaterialError> =
+let layerMaterialDrop (lib : MaterialLibrary) (w : WaveLength) (index : FilmIndex) (materialId : MaterialId) : Result<StackMsg, MaterialError> =
     mediumFromMaterial lib materialId w
     |> Result.map (fun props -> SetLayerMaterial (index, props))
 
@@ -209,12 +212,12 @@ let defaultNewLayer : Layer =
     { properties = OpticalProperties.vacuum; thickness = Thickness.nm 100.0<nm> }
 
 /// Human-facing thickness label for a layer row in the node's default unit.
-let displayThickness (u : UnitOfMeasure) (t : Thickness) : string =
+let displayThickness (u : UnitOfMeasure) (t : Thickness) : ControlCaption =
     match t with
-    | Thickness.Infinity -> "∞ (substrate)"
-    | Thickness.Thickness m -> $"%g{fromMeters u m} %A{u}"
+    | Thickness.Infinity -> ControlCaption "∞ (substrate)"
+    | Thickness.Thickness m -> ControlCaption $"%g{(fromMeters u m).value} %A{u}"
 
 /// Human-facing labels for the stack-editor toolbar rows a view will render
 /// (display metadata only; the view layer is deferred to a later UI-wiring slice).
-let layerRowLabels (u : UnitOfMeasure) (sys : OpticalSystem) : string list =
-    sys.films |> List.mapi (fun i l -> $"Layer %d{i} — %s{displayThickness u l.thickness}")
+let layerRowLabels (u : UnitOfMeasure) (sys : OpticalSystem) : ControlCaption list =
+    sys.films |> List.mapi (fun i l -> ControlCaption $"Layer %d{i} — %s{(displayThickness u l.thickness).value}")

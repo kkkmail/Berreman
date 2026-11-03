@@ -33,19 +33,19 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
     // The Elmish dispatch, captured by the init Cmd the moment the loop starts (Program.run is
     // synchronous in this constructor) — the host's Activated hook dispatches the step-019
     // material re-query through it into the pure update.
-    let mutable dispatch : SampleEditorView.Msg -> unit = ignore
+    let mutable dispatch : SampleEditorView.SampleEditorMsg -> unit = ignore
     // The latest model, mirrored on every step — the `OnClosing` chrome gate reads dirtiness off
     // it (spec 0038 step 033).
-    let mutable latestModel : SampleEditorView.Model option = None
+    let mutable latestModel : SampleEditorView.SampleEditorModel option = None
 
     do
         this.Title <-
             match intent with
-            | SampleEditorView.EditSample s -> $"Sample Editor — %s{s.name}"
+            | SampleEditorView.EditSample s -> $"Sample Editor — %s{s.name.value}"
             | SampleEditorView.NewSeededMultilayer _ -> "Sample Editor — new multilayer"
             | SampleEditorView.NewBlankSample _ -> "Sample Editor — new sample"
-        this.Name <- UiIds.SampleEditor.window
-        AutomationProperties.SetAutomationId(this, UiIds.SampleEditor.window)
+        this.Name <- ConstructorUiId.sampleEditorWindow.value
+        AutomationProperties.SetAutomationId(this, ConstructorUiId.sampleEditorWindow.value)
         this.Width <- 1080.0
         this.Height <- 900.0
         // Spec 0046: never larger than the screen it opens on (its content scrolls).
@@ -79,12 +79,12 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
                 openMaterialsSelect = openMaterialsSelect
                 requestClose = fun () -> this.Close()
             }
-        let initModel = SampleEditorView.init context entries intent
+        let initModel = SampleEditorView.initSampleEditor context entries intent
         latestModel <- Some initModel
         Program.mkProgram
             (fun () -> initModel, Cmd.ofEffect (fun d -> dispatch <- d))
-            (fun msg m -> let next = SampleEditorView.update msg m in latestModel <- Some next; next, Cmd.none)
-            SampleEditorView.view
+            (fun msg m -> let next = SampleEditorView.updateSampleEditor msg m in latestModel <- Some next; next, Cmd.none)
+            SampleEditorView.sampleEditorView
         |> Program.withHost this
         |> Program.run
         // Window activation re-queries the material list (spec 0038 step 019): a material
@@ -100,7 +100,7 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
     /// `CancelClicked` the Cancel button hits, so both exits are equally gated.
     member _.ChromeCloseIntercepted() : bool =
         match latestModel with
-        | Some m when SampleEditorView.isDirty m ->
+        | Some m when m.isDirty ->
             dispatch SampleEditorView.CancelClicked
             true
         | _ -> false

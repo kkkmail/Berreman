@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Ui.Tests
 
+open System.Numerics
 open Avalonia
 open OpticalConstructor.Controls
 open Avalonia.Controls
@@ -49,12 +50,12 @@ module OutOfBandBadgeTests =
     /// A dispersive material complexity DEFINED over 300–700 nm (the per-axis content is irrelevant to
     /// the diagnostic — only the segment interval is read).
     let private dispersiveComplexity : MaterialComplexity =
-        let axis = EpsAxisEvaluated (fun _ -> ComplexRefractionIndex (createComplex 1.5 0.0))
+        let axis = EpsAxisEvaluated (fun _ -> ComplexRefractionIndex (Complex.create 1.5 0.0))
         {
             eps =
                 EpsWithDispValue
                     (IsotropicDispersive
-                        [ { wavelengthInterval = { lower = toWaveLength Nanometer 300.0; upper = toWaveLength Nanometer 700.0 }; dispersion = axis } ])
+                        [ { wavelengthInterval = { lower = toWaveLength Nanometer (UnitMagnitude 300.0); upper = toWaveLength Nanometer (UnitMagnitude 700.0) }; dispersion = axis } ])
             magnetic = None
             active = None
         }
@@ -63,7 +64,7 @@ module OutOfBandBadgeTests =
     let private dispersiveMaterial (matId : MaterialId) : MaterialEntry =
         {
             id = matId
-            name = "Dispersive glass"
+            name = EntryName "Dispersive glass"
             category = CategoryIds.glass
             description = None
             properties = dispersiveComplexity.toProperties
@@ -74,22 +75,22 @@ module OutOfBandBadgeTests =
     let private dispersiveSample (matId : MaterialId) : Sample =
         {
             id = newSampleId ()
-            name = "Dispersive film"
+            name = EntryName "Dispersive film"
             structure =
                 {
                     films = [ SingleLayer { materialId = MaterialVersionId.firstOf matId; thickness = Thickness.mm 0.01<mm>; orientation = PrimaryAxes } ]
                     substrate = None
                     lower = None
                 }
-            substrate = Plate
-            description = "A single dispersive film for the out-of-band diagnostic test."
-            supportedEmission = defaultSupportedEmission Plate
+            substrate = ThickPlate
+            description = EntryDescription "A single dispersive film for the out-of-band diagnostic test."
+            supportedEmission = ThickPlate.defaultSupportedEmission
         }
 
     /// A Main-scene model with a bound-sample element reaching a 300–700 nm dispersive material, whose
     /// Experiments-bay draft sweeps `variable` over 200–800 nm. Returns the model plus the flagged
     /// element's index (it is appended after the seeded source/detector).
-    let private flaggedScene (variable : VariableParameter option) : Model * int =
+    let private flaggedScene (variable : VariableParameter option) : TableAndElementRotationModel * int =
         let matId = newMaterialId ()
         let entry = dispersiveMaterial matId
         let sample = dispersiveSample matId
@@ -107,15 +108,15 @@ module OutOfBandBadgeTests =
                 libraryTrees = fun () -> Ok []
                 tryGetEntry = fun id -> Ok (if id = entryId then Some (SampleItem sample) else None)
             }
-        let baseModel = initMainWith libStub (Experiments.createInMemory ()) materials samples categories
+        let baseModel = initMainWith libStub (Experiments.createInMemoryExperiments ()) materials samples categories
         let flagged : TestElement =
             {
-                id = Library.elementId "sample0"
+                id = Library.ElementId "sample0"
                 placement = { ElementPlacement.create Sample TablePoint.origin with valueId = Some entryId }
                 zoom = defaultElementZoom
                 beam = BeamLayout.OnMainBeam
             }
-        let draft = { baseModel.experimentCollection.draft with variable = variable; range = { min = 200.0; max = 800.0; points = 91 } }
+        let draft = { baseModel.experimentCollection.draft with variable = variable; range = { min = Propagation.SweptValue 200.0; max = Propagation.SweptValue 800.0; points = Propagation.CurvePointCount 91 } }
         let model =
             { baseModel with
                 elements = baseModel.elements @ [ flagged ]
@@ -123,7 +124,7 @@ module OutOfBandBadgeTests =
         model, List.length baseModel.elements
 
     /// Whether element `e` raises an out-of-band warning under model `m`.
-    let private isFlagged (m : Model) (e : TestElement) : bool =
+    let private isFlagged (m : TableAndElementRotationModel) (e : TestElement) : bool =
         match outOfBandWarningFor m e with
         | Some _ -> true
         | None -> false
@@ -137,11 +138,11 @@ module OutOfBandBadgeTests =
         // The bound-sample element flags, naming the material and both ranges.
         match outOfBandWarningFor model flagged with
         | Some text ->
-            Assert.Contains("Dispersive glass", text)
-            Assert.Contains("300", text)
-            Assert.Contains("700", text)
-            Assert.Contains("200", text)
-            Assert.Contains("800", text)
+            Assert.Contains("Dispersive glass", text.value)
+            Assert.Contains("300", text.value)
+            Assert.Contains("700", text.value)
+            Assert.Contains("200", text.value)
+            Assert.Contains("800", text.value)
         | None -> Assert.Fail("the wavelength sweep past the material's defined band must flag")
         // The seeded (unbound) source reaches no material, so it never flags.
         Assert.Equal(None, outOfBandWarningFor model (List.head model.elements))
@@ -164,18 +165,18 @@ module OutOfBandBadgeTests =
                 | None -> failwith "the scene must be flagged for this test"
             // The host builds the scene's warning badges (exactly one — the flagged sample); render them
             // on a canvas the same way the main workbench overlays them, and prove the control + tooltip.
-            let badges = outOfBandBadges model
+            let badges = model.outOfBandBadges
             Assert.NotEmpty(badges)
-            let window = Window(Width = canvasWidth, Height = canvasHeight)
+            let window = Window(Width = tableAndElementRotationCanvasWidth, Height = tableAndElementRotationCanvasHeight)
             window.Content <- Component(fun _ -> Canvas.create [ Canvas.children badges ] :> IView)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            match tryFindByPrefix window UiIds.TableAndElementRotation.badgePrefix with
+            match tryFindByPrefix window "OutOfBandBadge_" with
             | Some badge ->
-                Assert.Equal(UiIds.TableAndElementRotation.outOfBandBadge sampleIndex, Avalonia.Automation.AutomationProperties.GetAutomationId(badge))
+                Assert.Equal((ConstructorUiId.outOfBandBadge (ConstructorUiPosition sampleIndex)).value, Avalonia.Automation.AutomationProperties.GetAutomationId(badge))
                 // Its hover tooltip carries the SAME warning text the Details bay shows.
                 match ToolTip.GetTip badge with
-                | :? string as tip -> Assert.Equal(expected, tip)
+                | :? string as tip -> Assert.Equal(expected.value, tip)
                 | other -> Assert.Fail($"the badge tooltip must be the warning text, got %A{other}")
             | None -> Assert.Fail("the flagged element must render an out-of-band warning badge")
             window.Close())

@@ -40,7 +40,7 @@ module WindowLauncher =
         | SampleEditorKey of Library.SampleId
         /// Spec 0046: the Library's light-source editor, keyed by the source's entry id (a new
         /// source's id is minted at window open, like a sample's).
-        | SourceEditorKey of sourceEntryId : string
+        | SourceEditorKey of sourceEntryId : Placement.ElementValueId
 
     /// Whether an editor's entity already lives in its store (spec §0.1: the
     /// operator's "is-new flag" is a two-case DU, never a bool). `NewUnsaved` =
@@ -60,10 +60,10 @@ module WindowLauncher =
         /// per-key factory failed (or threw), or a windowing call on the open
         /// path (`Activate` / `Show` / `ShowDialog`) threw — platform throws are
         /// caught AT this boundary (step 008) and the `reason` names the phase.
-        | WindowFactoryFailed of key : WindowKey * reason : string
+        | WindowFactoryFailedErr of key : WindowKey * reason : string
         /// `forgetWindow` was asked to forget a key with no live window — a
         /// double-unregister or a close raced against an explicit forget.
-        | WindowNotRegistered of key : WindowKey
+        | WindowNotRegisteredErr of key : WindowKey
 
     /// What an open request did, carrying the live window either way (the modal
     /// owner wiring and the tests' distinct-instance proofs both need it).
@@ -126,7 +126,7 @@ module WindowLauncher =
             /// Forget `key` on window close, so the next open creates afresh
             /// (the real launcher calls this from the window's `Closed`
             /// unregister hook). Forgetting a key with no live window is the
-            /// typed `WindowNotRegistered` error.
+            /// typed `WindowNotRegisteredErr` error.
             forgetWindow : WindowKey -> Result<unit, WindowLauncherError>
             /// Decide how a Select-state window opens, from the step-005
             /// `SelectWindowModality` switch baked in at construction:
@@ -166,7 +166,7 @@ module WindowLauncher =
                         | Some _ ->
                             registry.Value <- Map.remove key registry.Value
                             Ok ()
-                        | None -> WindowNotRegistered key |> Error
+                        | None -> WindowNotRegisteredErr key |> Error
                 decideSelectModality = fun () -> Ok modality
             }
 
@@ -186,7 +186,7 @@ module WindowLauncher =
         /// `Show` under `ModelessSelectWindows`. Platform throws anywhere on the
         /// open path (a factory constructor, `Activate`, `Show`/`ShowDialog`)
         /// are caught HERE — the IO boundary — and mapped onto the typed
-        /// `WindowFactoryFailed`, unwinding the registration so the next open
+        /// `WindowFactoryFailedErr`, unwinding the registration so the next open
         /// retries through the factory.
         static member create
             (factory : WindowKey -> Result<Window, WindowLauncherError>)
@@ -203,7 +203,7 @@ module WindowLauncher =
                                 try
                                     window.Activate ()
                                     ActivatedWindow window |> Ok
-                                with ex -> WindowFactoryFailed (key, $"activate failed: {ex.Message}") |> Error
+                                with ex -> WindowFactoryFailedErr (key, $"activate failed: {ex.Message}") |> Error
                             | SelectOpen (_, retargetWindow) ->
                                 // Step 016: a Select-state open of a LIVE key RE-TARGETS the
                                 // single instance — the baked closure re-points the window at
@@ -213,11 +213,11 @@ module WindowLauncher =
                                     retargetWindow window
                                     window.Activate ()
                                     RetargetedWindow window |> Ok
-                                with ex -> WindowFactoryFailed (key, $"retarget failed: {ex.Message}") |> Error
+                                with ex -> WindowFactoryFailedErr (key, $"retarget failed: {ex.Message}") |> Error
                         | None ->
                             let built =
                                 try factory key
-                                with ex -> WindowFactoryFailed (key, $"factory threw: {ex.Message}") |> Error
+                                with ex -> WindowFactoryFailedErr (key, $"factory threw: {ex.Message}") |> Error
                             match built with
                             | Error e -> Error e
                             | Ok window ->
@@ -237,13 +237,13 @@ module WindowLauncher =
                                     CreatedWindow window |> Ok
                                 with ex ->
                                     WindowRegistry.live <- Map.remove key WindowRegistry.live
-                                    WindowFactoryFailed (key, $"show failed: {ex.Message}") |> Error
+                                    WindowFactoryFailedErr (key, $"show failed: {ex.Message}") |> Error
                 forgetWindow =
                     fun (key : WindowKey) ->
                         match Map.tryFind key WindowRegistry.live with
                         | Some _ ->
                             WindowRegistry.live <- Map.remove key WindowRegistry.live
                             Ok ()
-                        | None -> WindowNotRegistered key |> Error
+                        | None -> WindowNotRegisteredErr key |> Error
                 decideSelectModality = fun () -> Ok modality
             }

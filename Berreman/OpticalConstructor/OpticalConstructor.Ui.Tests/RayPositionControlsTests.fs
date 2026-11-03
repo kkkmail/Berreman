@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui.Tests
 
 open Avalonia.Controls
+open Avalonia.Input
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Avalonia.FuncUI
@@ -15,23 +16,23 @@ module RayPositionControlsTests =
 
     [<Fact>]
     let ``the along-ray step is 0.05 m, or a larger 0.20 m with Shift`` () =
-        Assert.Equal(0.05, RayPositionControls.stepMeters false)
-        Assert.Equal(0.20, RayPositionControls.stepMeters true)
+        Assert.Equal(BarMeters 0.05, RayPositionControls.stepMeters KeyModifiers.None)
+        Assert.Equal(BarMeters 0.20, RayPositionControls.stepMeters KeyModifiers.Shift)
 
     [<Fact>]
-    let ``parseMeters reads invariant-culture decimals and rejects junk`` () =
-        Assert.Equal(Some 1.5, RayPositionControls.parseMeters "1.5")
-        Assert.Equal(Some -0.25, RayPositionControls.parseMeters "-0.25")
-        Assert.Equal(None, RayPositionControls.parseMeters "abc")
+    let ``the metres parser reads invariant-culture decimals and rejects junk`` () =
+        Assert.Equal(Some (BarMeters 1.5), BarMeters.tryCreate "1.5")
+        Assert.Equal(Some (BarMeters -0.25), BarMeters.tryCreate "-0.25")
+        Assert.Equal(None, BarMeters.tryCreate "abc")
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the element-movement screen mounts the shared ray-position control`` () =
         HeadlessSession.run (fun () ->
-            let mutable model = ElementMovementView.init ()
-            let dispatch (m : ElementMovementView.Msg) = model <- ElementMovementView.update m model
+            let mutable model = ElementMovementView.initElementMovement ()
+            let dispatch (m : ElementMovementView.ElementMovementMsg) = model <- ElementMovementView.updateElementMovement m model
             let window = Window(Width = 820.0, Height = 660.0)
-            window.Content <- Component(fun _ -> ElementMovementView.view model dispatch)
+            window.Content <- Component(fun _ -> ElementMovementView.elementMovementView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The clickable boxes carry an `AutomationProperties.AutomationId` (spec 0038 sweep); the
@@ -49,7 +50,7 @@ module RayPositionControlsTests =
                     | _ -> Seq.empty)
                 |> Set.ofSeq
             window.Close()
-            Assert.Contains(UiIds.RayPosition.minus, ids)
-            Assert.Contains(UiIds.RayPosition.plus, ids)
-            Assert.Contains(UiIds.RayPosition.field, ids)
-            Assert.Contains(UiIds.RayPosition.reset, ids))
+            Assert.Contains(ConstructorUiId.rayPositionMinusButton.value, ids)
+            Assert.Contains(ConstructorUiId.rayPositionPlusButton.value, ids)
+            Assert.Contains(ConstructorUiId.rayPositionField.value, ids)
+            Assert.Contains(ConstructorUiId.rayPositionResetButton.value, ids))

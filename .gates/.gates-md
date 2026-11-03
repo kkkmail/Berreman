@@ -14,15 +14,19 @@ gate-keeper agent proposes which gates each spec should include.
 Two-level structure:
 
 - **Root-level gates** (this folder, `.gates/*.gates`) -- universal
-  checks that apply to every slice regardless of project. Today:
-  `impl-log-structure.gates`, `state-of-world-structure.gates`.
-  Each enforces a documentation shape the spec-writer relies on,
-  so excluding them would break the workflow itself.
+  checks that apply to every slice regardless of project. **There
+  are none today.** `impl-log-structure` and `state-of-world-structure`,
+  once listed here, name arc-runner built-ins the runtime no longer
+  implements (STL `specs/0200/.manual/040`); do not re-add a root gate
+  for a documentation shape nothing checks.
 - **Per-group gates** (`.gates/<group>/`) -- project-specific or
   subsystem-specific checks. Each group folder carries its own
   `.gates-md` describing the group's purpose and naming
-  conventions. Today: `.gates/Berreman/` (F# numerical optics
-  solver build / test gates).
+  conventions. Today: `.gates/Berreman/` (the solution build and
+  the solver tests), `.gates/OpticalConstructor/` (the constructor's
+  domain and headless UI tests) and `.gates/Elevation/` (the ELEV
+  analyzers). Every test gate runs on Microsoft.Testing.Platform
+  (spec 0048 `.manual/001`).
 
 ## When to add a new gate
 

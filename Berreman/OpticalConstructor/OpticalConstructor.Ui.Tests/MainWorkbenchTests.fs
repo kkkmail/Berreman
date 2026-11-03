@@ -76,20 +76,20 @@ module MainWorkbenchTests =
     /// The Main-scene model over the given stores (mock Library/Experiments proxies as in App).
     /// The category store (spec 0035 step 009) is composed here from the materials store — its
     /// `materialsReferencingCategory` lookup — exactly as the App root does.
-    let private mainWith (materials : MaterialProxy) (samples : SampleProxy) : Model =
+    let private mainWith (materials : MaterialProxy) (samples : SampleProxy) : TableAndElementRotationModel =
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
+        initMainWith (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
 
-    let private freshMain () : Model =
+    let private freshMain () : TableAndElementRotationModel =
         let materials, samples = freshStores ()
         mainWith materials samples
 
     /// Mount the REAL Main-screen MVU loop over `model0` in a headless `HostWindow`, so a click
     /// dispatches through `update` and the view re-renders in the same pass (the
     /// `MainConstructorWindow` shape, with injectable stores / launchers).
-    let private mountMain (model0 : Model) : HostWindow =
+    let private mountMain (model0 : TableAndElementRotationModel) : HostWindow =
         let window = HostWindow(Width = 980.0, Height = 1050.0)
-        Program.mkSimple (fun () -> model0) update mainView
+        Program.mkSimple (fun () -> model0) updateTableAndElementRotation mainView
         |> Program.withHost window
         |> Program.run
         window.Show()
@@ -121,13 +121,13 @@ module MainWorkbenchTests =
         // Spec 0038 steps 013/015: the Materials bay left the ribbon at step 013 and the
         // Library (samples workbench) bay leaves with step 015 — both workbenches are
         // single-instance WINDOWS now, and no full-surface bay remains.
-        Assert.DoesNotContain("Materials", BayNames.all)
-        Assert.DoesNotContain("Library", BayNames.all)
-        Assert.Contains(BayNames.selector, BayNames.all)
-        Assert.Equal(Some BayNames.details, List.tryLast BayNames.all)
+        Assert.DoesNotContain(Ribbon.BayName "Materials", BayNames.allBayNames)
+        Assert.DoesNotContain(Ribbon.BayName "Library", BayNames.allBayNames)
+        Assert.Contains(BayNames.selector, BayNames.allBayNames)
+        Assert.Equal(Some BayNames.details, List.tryLast BayNames.allBayNames)
         let m = freshMain ()
         let bays = mainBays m ignore
-        Assert.Equal<string list>(BayNames.all, bays |> List.map (fun b -> b.name))
+        Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
         for bay in bays do
             Assert.Equal(Ribbon.InRibbonPane, bay.mode)
 
@@ -136,7 +136,7 @@ module MainWorkbenchTests =
     /// Rename a built-in category through the proxy (built-ins ARE renamable — no origin guard on
     /// update), failing the test on a typed rejection.
     let private renameGlass (categories : CategoryProxy) (newName : string) : unit =
-        match categories.updateCategory { id = CategoryIds.glass; name = newName; visibility = SelectableOnCreate; origin = BuiltInCategory } with
+        match categories.updateCategory { id = CategoryIds.glass; name = CategoryName newName; visibility = SelectableOnCreate; origin = BuiltInCategory } with
         | Ok () -> ()
         | Error e -> Assert.Fail($"rename failed: %A{e}")
 
@@ -146,16 +146,16 @@ module MainWorkbenchTests =
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         let ctx : MaterialEditorView.MaterialEditorContext =
             { materials = materials; categories = categories; requestClose = ignore }
-        let em = MaterialEditorView.init ctx (MaterialEditorView.NewMaterial (newMaterialId ()))
-        let before = MaterialEditorView.selectableCategories em
+        let em = MaterialEditorView.initMaterialEditor ctx (MaterialEditorView.NewMaterial (newMaterialId ()))
+        let before = em.selectableCategories
         // The four SelectableOnCreate built-ins are offered; Vacuum (HiddenOnCreate) is excluded.
         Assert.Contains(before, fun (c : MaterialCategory) -> c.id = CategoryIds.glass)
-        Assert.DoesNotContain(before, fun (c : MaterialCategory) -> c.id = CategoryIds.vacuum)
+        Assert.DoesNotContain(before, fun (c : MaterialCategory) -> c.id = CategoryIds.vacuumCategory)
         // A rename through the shared proxy re-labels the picker on its next read.
         renameGlass categories "Glazing"
-        let after = MaterialEditorView.selectableCategories em
-        Assert.Contains(after, fun (c : MaterialCategory) -> c.name = "Glazing")
-        Assert.DoesNotContain(after, fun (c : MaterialCategory) -> c.name = "Glass")
+        let after = em.selectableCategories
+        Assert.Contains(after, fun (c : MaterialCategory) -> c.name.value = "Glazing")
+        Assert.DoesNotContain(after, fun (c : MaterialCategory) -> c.name.value = "Glass")
 
     // ============================ pure: the strip-button launcher seam ============================
 
@@ -164,27 +164,27 @@ module MainWorkbenchTests =
         let calls, launchers = recordingLaunchers ()
         let m = { freshMain () with launchers = launchers }
         // The Materials-window request (spec 0038 step 013): a pure launch over the model's stores.
-        let afterMaterials = update OpenMaterialsWindow m
+        let afterMaterials = updateTableAndElementRotation OpenMaterialsWindow m
         Assert.Equal<string list>([ "materials-window" ], List.ofSeq calls)
-        Assert.Equal<Model>(m, afterMaterials)
+        Assert.Equal<TableAndElementRotationModel>(m, afterMaterials)
         // The Library-window request (spec 0038 step 015): likewise pure — the retired samples
         // workbench bay's verbs live in the window's own model now.
         calls.Clear()
-        let afterLibrary = update OpenLibraryWindow m
+        let afterLibrary = updateTableAndElementRotation OpenLibraryWindow m
         Assert.Equal<string list>([ "library-window" ], List.ofSeq calls)
-        Assert.Equal<Model>(m, afterLibrary)
+        Assert.Equal<TableAndElementRotationModel>(m, afterLibrary)
 
     // ============================ pure: the Details-bay band projection ============================
 
     [<Fact>]
     let ``sampleBandsState collapses a period group to x-N bands (the Details-bay shape)`` () =
-        let st = sampleBandsState SeedSamples.multilayerQw
-        Assert.Contains("Quarter-wave", st.title)
+        let st = SeedSamples.multilayerQw.bandsState
+        Assert.Contains("Quarter-wave", st.title.value)
         // One band per unit-cell layer (kept collapsed, ×20) plus the closing single layer.
         Assert.Equal(3, List.length st.bands)
-        Assert.Contains("×20", st.bands.[0].label)
-        Assert.Contains("×20", st.bands.[1].label)
-        Assert.DoesNotContain("×", st.bands.[2].label)
+        Assert.Contains("×20", st.bands.[0].label.value)
+        Assert.Contains("×20", st.bands.[1].label.value)
+        Assert.DoesNotContain("×", st.bands.[2].label.value)
 
     // ============================ headless proofs (ui-smoke) ============================
 
@@ -196,19 +196,19 @@ module MainWorkbenchTests =
             let window = mountMain (mainWith materials samples)
             // Spec 0038 steps 013/015: NO Materials and NO Library ribbon tab any more — the
             // tab-strip row carries the two right-aligned window buttons instead.
-            Assert.False(isPresent window (UiIds.Ribbon.tab "Materials"),
+            Assert.False(isPresent window (ConstructorUiId.ribbonTab (ConstructorUiKey "Materials")).value,
                          "the Materials bay tab must be gone from the ribbon")
-            Assert.False(isPresent window (UiIds.Ribbon.tab "Library"),
+            Assert.False(isPresent window (ConstructorUiId.ribbonTab (ConstructorUiKey "Library")).value,
                          "the Library bay tab must be gone from the ribbon")
-            Assert.True(isPresent window WorkbenchIds.openMaterialsButton,
+            Assert.True(isPresent window ConstructorUiId.openMaterialsWindowButton.value,
                         "the ribbon strip row must carry the right-aligned Materials… button")
-            Assert.True(isPresent window WorkbenchIds.openLibraryButton,
+            Assert.True(isPresent window ConstructorUiId.openLibraryWindowButton.value,
                         "the ribbon strip row must carry the right-aligned Library… button")
             // With no full-surface bay left, every bay keeps the shared table canvas below the
             // strip — switching to the LAST bay (Details) and back never drops it.
-            Assert.True(isPresent window UiIds.TableAndElementRotation.canvas, "the default bay keeps the table canvas below the ribbon strip")
-            clickOn window (UiIds.Ribbon.tab BayNames.details)
-            Assert.True(isPresent window UiIds.TableAndElementRotation.canvas, "an in-pane bay keeps the table canvas below the strip")
-            clickOn window (UiIds.Ribbon.tab BayNames.rotation)
-            Assert.True(isPresent window UiIds.TableAndElementRotation.canvas, "returning to a table bay keeps the table canvas")
+            Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "the default bay keeps the table canvas below the ribbon strip")
+            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.details.value)).value
+            Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "an in-pane bay keeps the table canvas below the strip")
+            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.rotation.value)).value
+            Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "returning to a table bay keeps the table canvas")
             window.Close())

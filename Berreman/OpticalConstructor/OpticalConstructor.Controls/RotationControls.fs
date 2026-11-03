@@ -14,6 +14,54 @@ open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
+/// Whether a bar, or one control of it, is offered to the user (spec 0048, the shape of STL's
+/// `VncCommandAvailability`). Shared by the rotation, palette and position bars.
+type ControlAvailability =
+    | ControlOffered
+    | ControlWithheld
+
+    /// Whether the control is enabled: the one place this pair becomes Avalonia's own `bool`.
+    member this.isEnabled : bool =
+        match this with
+        | ControlOffered -> true
+        | ControlWithheld -> false
+
+/// The text a control shows: a button's caption, a knob's or a row's label, a title, a description, or
+/// the text in a text box.
+type ControlCaption =
+    | ControlCaption of string
+
+    member this.value = let (ControlCaption c) = this in c
+
+    /// This text as the key that tells its control apart from its siblings (a chart series' toggle).
+    member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
+/// Which way a − / + step button moves its value.
+type StepDirection =
+    | StepDecrease
+    | StepIncrease
+
+/// An angle in degrees, as the rotation bar shows and takes it.
+type BarDegrees =
+    | BarDegrees of float
+
+    member this.value = let (BarDegrees d) = this in d
+
+    /// At most two decimals, invariant culture: the text of the bar's degree field.
+    member this.text : string = String.Format(CultureInfo.InvariantCulture, "{0:0.##}", this.value)
+
+    /// This step, signed for `direction`.
+    member this.inDirection (direction : StepDirection) : BarDegrees =
+        match direction with
+        | StepDecrease -> BarDegrees -this.value
+        | StepIncrease -> this
+
+    /// A typed degree value (non-integers allowed), invariant culture; `None` if malformed.
+    static member tryCreate (text : string) : BarDegrees option =
+        match Double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture) with
+        | true, v -> Some (BarDegrees v)
+        | _ -> None
+
 /// The reusable bottom "rotation-controls" bar (Spec 0027, task 008): R1−/R1+/R2−/R2+/R3−/R3+
 /// with editable degree fields, a dynamic Lock/Unlock R3 button (spec 0046: and R1 / R2 ones where the
 /// host offers them), and confirmation-gated Reset /
@@ -23,10 +71,44 @@ open Avalonia.FuncUI.Types
 /// One bar is reused by the three rotation test windows and the main constructor screen.
 module RotationControls =
 
-    type Axis =
+    type RotationAxis =
         | R1
         | R2
         | R3
+
+        member this.name : string =
+            match this with
+            | R1 -> "R1"
+            | R2 -> "R2"
+            | R3 -> "R3"
+
+        member this.minusButtonId : ConstructorUiId =
+            match this with
+            | R1 -> ConstructorUiId.rotationR1MinusButton
+            | R2 -> ConstructorUiId.rotationR2MinusButton
+            | R3 -> ConstructorUiId.rotationR3MinusButton
+
+        member this.plusButtonId : ConstructorUiId =
+            match this with
+            | R1 -> ConstructorUiId.rotationR1PlusButton
+            | R2 -> ConstructorUiId.rotationR2PlusButton
+            | R3 -> ConstructorUiId.rotationR3PlusButton
+
+        member this.fieldId : ConstructorUiId =
+            match this with
+            | R1 -> ConstructorUiId.rotationR1Field
+            | R2 -> ConstructorUiId.rotationR2Field
+            | R3 -> ConstructorUiId.rotationR3Field
+
+        member this.lockButtonId : ConstructorUiId =
+            match this with
+            | R1 -> ConstructorUiId.rotationLockR1Button
+            | R2 -> ConstructorUiId.rotationLockR2Button
+            | R3 -> ConstructorUiId.rotationLockR3Button
+
+        /// The axis whose − or + button carries `id`, if any.
+        static member tryOfStepButton (id : ConstructorUiId) : RotationAxis option =
+            [ R1; R2; R3 ] |> List.tryFind (fun axis -> axis.minusButtonId = id || axis.plusButtonId = id)
 
     /// Whether an axis is held still (spec 0046 — R1 / R2 join the task-008 R3 lock).
     type AxisLock =
@@ -48,27 +130,27 @@ module RotationControls =
     /// The current rotation state the bar displays.
     type State =
         {
-            r1 : float          // degrees
-            r2 : float
-            r3 : float
+            r1 : BarDegrees
+            r2 : BarDegrees
+            r3 : BarDegrees
             /// Spec 0046: R1's / R2's Lock/Unlock toggle (absent for `NotLockable`); a locked axis disables
             /// its controls. Elements offer them (the light source starts with both locked).
             r1Lock : AxisLockOffer
             r2Lock : AxisLockOffer
             /// Drives the Lock/Unlock R3 label and disables the R3 controls. The table is unlocked
             /// by default (button reads "Lock R3"); elements are locked by default ("Unlock R3").
-            r3Locked : bool
-            /// `false` when nothing is selected → the whole bar is disabled (nothing to rotate).
-            enabled : bool
+            r3Lock : AxisLock
+            /// `ControlWithheld` when nothing is selected → the whole bar is disabled (nothing to rotate).
+            availability : ControlAvailability
             confirm : ResetConfirm
         }
 
     /// What the bar does. The host owns what "the selection" is and the confirm state.
     type Handlers =
         {
-            rotate : Axis -> float -> unit       // rotate the selection about Axis by N degrees
-            setAngle : Axis -> float -> unit     // set the selection's Axis to exactly N degrees
-            toggleLock : Axis -> unit            // lock (freezing the current value) / unlock an axis
+            rotate : RotationAxis -> BarDegrees -> unit     // rotate the selection about the axis by N degrees
+            setAngle : RotationAxis -> BarDegrees -> unit   // set the selection's axis to exactly N degrees
+            toggleLock : RotationAxis -> unit               // lock (freezing the current value) / unlock an axis
             requestReset : unit -> unit          // Reset clicked → host arms ConfirmReset
             requestResetAll : unit -> unit       // Reset All clicked → host arms ConfirmResetAll
             confirm : unit -> unit               // Yes → host performs the armed reset and disarms
@@ -76,11 +158,12 @@ module RotationControls =
         }
 
     /// The rotation step a +/- button applies: 15°, or 5° with Shift held.
-    let buttonStepDegrees (shiftHeld : bool) : float = if shiftHeld then 5.0 else 15.0
+    let buttonStepDegrees (modifiers : KeyModifiers) : BarDegrees =
+        if modifiers.HasFlag KeyModifiers.Shift then BarDegrees 5.0 else BarDegrees 15.0
 
     /// Which axis the currently-held modifiers arm for a wheel rotation — the SAME map the windows
     /// use (Shift → R1, Ctrl+Shift → R2, Alt → R3); anything else arms nothing. Drives the highlight.
-    let activeAxisForModifiers (modifiers : KeyModifiers) : Axis option =
+    let activeAxisForModifiers (modifiers : KeyModifiers) : RotationAxis option =
         let ctrl = modifiers.HasFlag KeyModifiers.Control
         let shift = modifiers.HasFlag KeyModifiers.Shift
         let alt = modifiers.HasFlag KeyModifiers.Alt
@@ -90,54 +173,48 @@ module RotationControls =
         | false, false, true -> Some R3
         | _ -> None
 
-    let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
 
     // An "active" (armed) button uses the standard Windows "selected/active" treatment — the light
     // accent fill (#CCE8FF) outlined by the Fluent / WinUI system accent (#0078D4). The text only
     // goes bold (it is NOT recoloured), so it stays legible on the light fill. The idle button is the
     // neutral light grey used elsewhere.
-    let private activeBackground = color 204 232 255      // #CCE8FF Windows selected/active light accent
-    let private activeBorder = color 0 120 212            // #0078D4 Fluent accent outline
-    let private idleBackground = color 232 232 232
-    let private idleBorder = color 120 120 120
-    let private textForeground = color 0 0 0
+    let private activeBackground = Color.FromRgb(204uy, 232uy, 255uy)     // #CCE8FF Windows selected/active light accent
+    let private activeBorder = Color.FromRgb(0uy, 120uy, 212uy)           // #0078D4 Fluent accent outline
+    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+    let private textForeground = Color.FromRgb(0uy, 0uy, 0uy)
 
-    /// Parse a typed degree value (non-integers allowed), invariant culture; `None` if malformed.
-    let parseDegrees (s : string) : float option =
-        match System.Double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture) with
-        | true, v -> Some v
-        | _ -> None
+    /// Whether an axis' +/- pair is lit up because its rotate modifier is held (task 009).
+    type private AxisHighlight =
+        | AxisArmed
+        | AxisIdle
 
-    let private formatDegrees (v : float) : string =
-        System.String.Format(CultureInfo.InvariantCulture, "{0:0.##}", v)
-
-    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
-    /// `Control.Name`) through FuncUI's attr builder. The reset pair swaps its label / action in
-    /// place while the bar re-renders per host update, so the boxes are regenerable — Avalonia
-    /// forbids renaming a styled control, and an AutomationId survives control reuse (the
-    /// `MaterialsControls` precedent).
-    let private automationId (autoId : string) : IAttr<Border> =
-        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
-
-    /// A small clickable, button-styled Border. `active` lights it up with the accent (task 009).
+    /// A small clickable, button-styled Border, its id set as the `AutomationProperties.AutomationId` (a
+    /// freely-mutable attached property — unlike `Control.Name`): the reset pair swaps its label / action in
+    /// place while the bar re-renders per host update, and Avalonia forbids renaming a styled control (the
+    /// `MaterialsControls` precedent). `AxisArmed` lights it up with the accent (task 009).
     /// `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble invocation so one click is one action.
-    let private clickBox (id : string) (label : string) (enabled : bool) (active : bool) (onClick : PointerPressedEventArgs -> unit) : IView =
+    let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (availability : ControlAvailability) (highlight : AxisHighlight) (onClick : PointerPressedEventArgs -> unit) : IView =
+        let background, border =
+            match highlight with
+            | AxisArmed -> activeBackground, activeBorder
+            | AxisIdle -> idleBackground, idleBorder
         Border.create [
-            automationId id
-            Border.isEnabled enabled
-            Border.opacity (if enabled then 1.0 else 0.4)
-            Border.background (brush (if active then activeBackground else idleBackground))
-            Border.borderBrush (brush (if active then activeBorder else idleBorder))
+            id.automationAttribute<Border> ()
+            Border.isEnabled availability.isEnabled
+            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
+            Border.background (brush background)
+            Border.borderBrush (brush border)
             Border.borderThickness 1.0
             Border.cornerRadius (CornerRadius 3.0)
             Border.padding (Thickness(10.0, 5.0))
             Border.verticalAlignment VerticalAlignment.Center
             Border.child (
                 TextBlock.create [
-                    TextBlock.text label
+                    TextBlock.text caption.value
                     // "The font can only become bold" — weight is the only text change; colour is fixed.
-                    TextBlock.fontWeight (if active then FontWeight.Bold else FontWeight.Normal)
+                    TextBlock.fontWeight (match highlight with AxisArmed -> FontWeight.Bold | AxisIdle -> FontWeight.Normal)
                     TextBlock.foreground (brush textForeground)
                 ])
             // FuncUI keeps the FIRST subscription forever by default (SubPatchOptions.Never). The two
@@ -145,39 +222,43 @@ module RotationControls =
             // confirmation arms, so re-subscribe whenever the label flips — otherwise "Yes"/"No" would
             // still run the original Reset/Reset All (re-arming, and crossing over). Stable-label buttons
             // (+/- , the angle steps) are unaffected, so they keep their cheap one-time subscription.
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box label))
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box caption.value))
         ] :> IView
 
-    let private stepButton (handlers : Handlers) (id : string) (label : string) (axis : Axis) (sign : float) (enabled : bool) (active : bool) : IView =
-        clickBox id label enabled active (fun e ->
-            handlers.rotate axis (sign * buttonStepDegrees (e.KeyModifiers.HasFlag KeyModifiers.Shift)))
+    let private stepButton (handlers : Handlers) (axis : RotationAxis) (direction : StepDirection) (availability : ControlAvailability) (highlight : AxisHighlight) : IView =
+        let id, caption =
+            match direction with
+            | StepDecrease -> axis.minusButtonId, ControlCaption $"{axis.name} −"
+            | StepIncrease -> axis.plusButtonId, ControlCaption $"{axis.name} +"
+        clickBox id caption availability highlight (fun e ->
+            handlers.rotate axis ((buttonStepDegrees e.KeyModifiers).inDirection direction))
 
-    let private field (handlers : Handlers) (id : string) (axis : Axis) (value : float) (enabled : bool) : IView =
+    let private field (handlers : Handlers) (axis : RotationAxis) (value : BarDegrees) (availability : ControlAvailability) : IView =
         let commit (src : obj) =
             match src with
-            | :? TextBox as tb when not (isNull tb.Text) -> parseDegrees tb.Text |> Option.iter (handlers.setAngle axis)
+            | :? TextBox as tb when not (isNull tb.Text) -> BarDegrees.tryCreate tb.Text |> Option.iter (handlers.setAngle axis)
             | _ -> ()
         TextBox.create [
-            TextBox.name id
+            TextBox.name axis.fieldId.value
             TextBox.width 60.0
-            TextBox.isEnabled enabled
+            TextBox.isEnabled availability.isEnabled
             // The text comes from the model; while the user types nothing re-renders it (the model
             // value is unchanged), so the edit is uncontrolled until it is committed on Enter or
             // blur — then it is parsed (non-integers allowed) and pushed back through `setAngle`.
-            TextBox.text (formatDegrees value)
+            TextBox.text value.text
             TextBox.onKeyDown (fun e -> if e.Key = Key.Enter then commit e.Source)
             TextBox.onLostFocus (fun e -> commit e.Source)
         ] :> IView
 
-    let private axisGroup (handlers : Handlers) (minusId, plusId, fieldId) (label : string) (axis : Axis) (value : float) (enabled : bool) (active : bool) : IView =
+    let private axisGroup (handlers : Handlers) (axis : RotationAxis) (value : BarDegrees) (availability : ControlAvailability) (highlight : AxisHighlight) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 3.0
             StackPanel.verticalAlignment VerticalAlignment.Center
             StackPanel.children [
-                stepButton handlers minusId (label + " −") axis -1.0 enabled active
-                stepButton handlers plusId (label + " +") axis 1.0 enabled active
-                field handlers fieldId axis value enabled
+                stepButton handlers axis StepDecrease availability highlight
+                stepButton handlers axis StepIncrease availability highlight
+                field handlers axis value availability
             ]
         ] :> IView
 
@@ -191,20 +272,18 @@ module RotationControls =
     // naturally per-window.
     // -----------------------------------------------------------------------------------------------
 
-    let mutable private armedAxis : Axis option = None
-
-    let private axisOfButtonId (autoId : string) : Axis option =
-        if autoId = UiIds.Rotation.r1Minus || autoId = UiIds.Rotation.r1Plus then Some R1
-        elif autoId = UiIds.Rotation.r2Minus || autoId = UiIds.Rotation.r2Plus then Some R2
-        elif autoId = UiIds.Rotation.r3Minus || autoId = UiIds.Rotation.r3Plus then Some R3
-        else None
+    let mutable private armedAxis : RotationAxis option = None
 
     /// Paint one axis +/- button (a `clickBox` Border with a `TextBlock` child) armed or idle.
-    let private styleButton (b : Border) (isArmed : bool) : unit =
-        b.Background <- brush (if isArmed then activeBackground else idleBackground)
-        b.BorderBrush <- brush (if isArmed then activeBorder else idleBorder)
+    let private styleButton (b : Border) (highlight : AxisHighlight) : unit =
+        let background, border, weight =
+            match highlight with
+            | AxisArmed -> activeBackground, activeBorder, FontWeight.Bold
+            | AxisIdle -> idleBackground, idleBorder, FontWeight.Normal
+        b.Background <- brush background
+        b.BorderBrush <- brush border
         match b.Child with
-        | :? TextBlock as t -> t.FontWeight <- (if isArmed then FontWeight.Bold else FontWeight.Normal)
+        | :? TextBlock as t -> t.FontWeight <- weight
         | _ -> ()
 
     /// Restyle every axis button currently in a window for the current `armedAxis`. The buttons are
@@ -214,8 +293,8 @@ module RotationControls =
         for v in top.GetVisualDescendants() do
             match v with
             | :? Border as b ->
-                match axisOfButtonId (AutomationProperties.GetAutomationId b) with
-                | Some axis -> styleButton b (b.IsEnabled && armedAxis = Some axis)
+                match RotationAxis.tryOfStepButton (ConstructorUiId (AutomationProperties.GetAutomationId b)) with
+                | Some axis -> styleButton b (if b.IsEnabled && armedAxis = Some axis then AxisArmed else AxisIdle)
                 | None -> ()
             | _ -> ()
 
@@ -243,31 +322,41 @@ module RotationControls =
         | WrapBetweenUnits
 
     /// The bar's visible tree: a pure projection of `state` plus which axis (if any) is armed.
-    let private renderBar (state : State) (handlers : Handlers) (activeAxis : Axis option) (layout : BarLayout) : IView =
-        let r3Enabled = state.enabled && not state.r3Locked
-        let offerEnabled (offer : AxisLockOffer) : bool =
+    let private renderBar (state : State) (handlers : Handlers) (activeAxis : RotationAxis option) (layout : BarLayout) : IView =
+        let unlessLocked (lock : AxisLock) : ControlAvailability =
+            match lock with
+            | AxisLocked -> ControlWithheld
+            | AxisFree -> state.availability
+        let offerAvailability (offer : AxisLockOffer) : ControlAvailability =
             match offer with
-            | Lockable AxisLocked -> false
-            | Lockable AxisFree | NotLockable -> state.enabled
-        let r1Enabled = offerEnabled state.r1Lock
-        let r2Enabled = offerEnabled state.r2Lock
+            | Lockable lock -> unlessLocked lock
+            | NotLockable -> state.availability
+        let r1Availability = offerAvailability state.r1Lock
+        let r2Availability = offerAvailability state.r2Lock
+        let r3Availability = unlessLocked state.r3Lock
         // An axis lights up only when its modifier is armed AND its buttons are actually live.
-        let armed (axis : Axis) (groupEnabled : bool) : bool = groupEnabled && activeAxis = Some axis
+        let armed (axis : RotationAxis) (group : ControlAvailability) : AxisHighlight =
+            match group with
+            | ControlOffered when activeAxis = Some axis -> AxisArmed
+            | ControlOffered | ControlWithheld -> AxisIdle
+        let lockCaption (lock : AxisLock) (axis : RotationAxis) : ControlCaption =
+            match lock with
+            | AxisLocked -> ControlCaption $"Unlock {axis.name}"
+            | AxisFree -> ControlCaption $"Lock {axis.name}"
         let lockButton =
-            clickBox UiIds.Rotation.lockR3 (if state.r3Locked then "Unlock R3" else "Lock R3") state.enabled false (fun _ -> handlers.toggleLock R3)
+            clickBox R3.lockButtonId (lockCaption state.r3Lock R3) state.availability AxisIdle (fun _ -> handlers.toggleLock R3)
         // Spec 0046: R1 / R2's toggles, right after their axis group, shown only where the host offers them.
         // The slot is ALWAYS present (hidden when not offered), so the bar's children keep their positions
         // and FuncUI never patches one axis group's named field into another's slot.
-        let offeredLock (id : string) (label : string) (axis : Axis) (offer : AxisLockOffer) : IView =
-            let shown, text =
+        let offeredLock (axis : RotationAxis) (offer : AxisLockOffer) : IView =
+            let availability, caption =
                 match offer with
-                | NotLockable -> false, $"Lock %s{label}"
-                | Lockable AxisLocked -> true, $"Unlock %s{label}"
-                | Lockable AxisFree -> true, $"Lock %s{label}"
+                | NotLockable -> ControlWithheld, lockCaption AxisFree axis
+                | Lockable lock -> state.availability, lockCaption lock axis
             Border.create [
-                Border.isVisible shown
+                Border.isVisible (match offer with Lockable _ -> true | NotLockable -> false)
                 Border.verticalAlignment VerticalAlignment.Center
-                Border.child (clickBox id text (state.enabled && shown) false (fun _ -> handlers.toggleLock axis))
+                Border.child (clickBox axis.lockButtonId caption availability AxisIdle (fun _ -> handlers.toggleLock axis))
             ] :> IView
         // Reset / Reset All become a Yes / No confirmation IN PLACE: the same two buttons (plus a
         // prompt) keep their stable automation ids across the swap — only the label / action / prompt
@@ -295,17 +384,17 @@ module RotationControls =
         let resetArea : IView =
             unit
                 [ TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text prompt; TextBlock.isVisible armedConfirm ] :> IView
-                  clickBox UiIds.Rotation.reset resetLabel state.enabled false (fun _ -> onReset ())
-                  clickBox UiIds.Rotation.resetAll resetAllLabel state.enabled false (fun _ -> onResetAll ()) ]
+                  clickBox ConstructorUiId.rotationResetButton (ControlCaption resetLabel) state.availability AxisIdle (fun _ -> onReset ())
+                  clickBox ConstructorUiId.rotationResetAllButton (ControlCaption resetAllLabel) state.availability AxisIdle (fun _ -> onResetAll ()) ]
         let units : IView list =
             [ unit
-                  [ axisGroup handlers (UiIds.Rotation.r1Minus, UiIds.Rotation.r1Plus, UiIds.Rotation.r1Field) "R1" R1 state.r1 r1Enabled (armed R1 r1Enabled)
-                    offeredLock UiIds.Rotation.lockR1 "R1" R1 state.r1Lock ]
+                  [ axisGroup handlers R1 state.r1 r1Availability (armed R1 r1Availability)
+                    offeredLock R1 state.r1Lock ]
               unit
-                  [ axisGroup handlers (UiIds.Rotation.r2Minus, UiIds.Rotation.r2Plus, UiIds.Rotation.r2Field) "R2" R2 state.r2 r2Enabled (armed R2 r2Enabled)
-                    offeredLock UiIds.Rotation.lockR2 "R2" R2 state.r2Lock ]
+                  [ axisGroup handlers R2 state.r2 r2Availability (armed R2 r2Availability)
+                    offeredLock R2 state.r2Lock ]
               unit
-                  [ axisGroup handlers (UiIds.Rotation.r3Minus, UiIds.Rotation.r3Plus, UiIds.Rotation.r3Field) "R3" R3 state.r3 r3Enabled (armed R3 r3Enabled)
+                  [ axisGroup handlers R3 state.r3 r3Availability (armed R3 r3Availability)
                     lockButton ]
               resetArea ]
         // Hook this window's keyboard once (guarded), so holding a rotate modifier lights up its axis.
@@ -323,8 +412,8 @@ module RotationControls =
                 StackPanel.spacing 10.0
                 StackPanel.margin (Thickness 8.0)
                 StackPanel.onLoaded hookKeys
-                StackPanel.isEnabled state.enabled
-                StackPanel.opacity (if state.enabled then 1.0 else 0.5)
+                StackPanel.isEnabled state.availability.isEnabled
+                StackPanel.opacity (match state.availability with ControlOffered -> 1.0 | ControlWithheld -> 0.5)
                 StackPanel.children units
             ] :> IView
         | WrapBetweenUnits ->
@@ -334,8 +423,8 @@ module RotationControls =
                 AttrBuilder<WrapPanel>.CreateProperty<float>(WrapPanel.LineSpacingProperty, 6.0, ValueNone)
                 WrapPanel.margin (Thickness 8.0)
                 WrapPanel.onLoaded hookKeys
-                WrapPanel.isEnabled state.enabled
-                WrapPanel.opacity (if state.enabled then 1.0 else 0.5)
+                WrapPanel.isEnabled state.availability.isEnabled
+                WrapPanel.opacity (match state.availability with ControlOffered -> 1.0 | ControlWithheld -> 0.5)
                 WrapPanel.children units
             ] :> IView
 

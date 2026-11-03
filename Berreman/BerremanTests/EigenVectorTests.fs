@@ -30,7 +30,7 @@ type EigenVectorTests(output : ITestOutputHelper) =
             {
                 description = "Vacuum, 7 degrees incidence angle."
                 opticalProperties = OpticalProperties.vacuum
-                n1SinFita = N1SinFita.create 7.0 (Angle.degree 0.0 |> IncidenceAngle)
+                n1SinFita = N1SinFita.create 7.0 (Angle.degree 0.0<deg> |> IncidenceAngle)
 
                 values = 
                     [ 0.9925461516413222; 0.9925461516413222; -0.992546151641322; -0.9925461516413219 ]
@@ -48,7 +48,7 @@ type EigenVectorTests(output : ITestOutputHelper) =
             {
                 description = "Standard transparent glass, 7 degrees incidence angle."
                 opticalProperties = OpticalProperties.transparentGlass
-                n1SinFita = N1SinFita.create 7.0 (Angle.degree 0.0 |> IncidenceAngle)
+                n1SinFita = N1SinFita.create 7.0 (Angle.degree 0.0<deg> |> IncidenceAngle)
 
                 values = 
                     [ 1.5151065517441338; -1.5151065517441336; -1.5151065517441333; 1.5151065517441322 ]

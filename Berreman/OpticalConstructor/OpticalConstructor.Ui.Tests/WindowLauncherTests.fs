@@ -44,7 +44,7 @@ module WindowLauncherTests =
 
     /// A stub factory that types-out every request as a construction failure.
     let private failingFactory : WindowKey -> Result<Window, WindowLauncherError> =
-        fun (key : WindowKey) -> WindowFactoryFailed(key, "stub factory refuses") |> Error
+        fun (key : WindowKey) -> WindowFactoryFailedErr(key, "stub factory refuses") |> Error
 
     /// A stub factory for tests that must never reach construction.
     let private unreachableFactory : WindowKey -> Result<Window, WindowLauncherError> =
@@ -73,23 +73,23 @@ module WindowLauncherTests =
         | other -> Assert.Fail($"expected Ok ModelessSelectWindows, got %A{other}")
 
     [<Fact>]
-    let ``forgetting a key with no live window is the typed WindowNotRegistered error — never a throw`` () =
+    let ``forgetting a key with no live window is the typed WindowNotRegisteredErr error — never a throw`` () =
         let launcher = WindowLauncher.createMock unreachableFactory ModelessSelectWindows
         match launcher.forgetWindow MaterialsWindowKey with
-        | Error (WindowNotRegistered MaterialsWindowKey) -> ()
-        | other -> Assert.Fail($"expected Error (WindowNotRegistered MaterialsWindowKey), got %A{other}")
+        | Error (WindowNotRegisteredErr MaterialsWindowKey) -> ()
+        | other -> Assert.Fail($"expected Error (WindowNotRegisteredErr MaterialsWindowKey), got %A{other}")
 
     [<Fact>]
     let ``a factory failure propagates as the typed error and the key is NOT registered — the next open retries`` () =
         let launcher = WindowLauncher.createMock failingFactory ModelessSelectWindows
         match launcher.openOrActivate LibraryWindowKey with
-        | Error (WindowFactoryFailed (LibraryWindowKey, reason)) -> Assert.Contains("refuses", reason)
-        | other -> Assert.Fail($"expected Error (WindowFactoryFailed (LibraryWindowKey, …)), got %A{other}")
+        | Error (WindowFactoryFailedErr (LibraryWindowKey, reason)) -> Assert.Contains("refuses", reason)
+        | other -> Assert.Fail($"expected Error (WindowFactoryFailedErr (LibraryWindowKey, …)), got %A{other}")
         // A failed create must not poison the registry: the key is still absent,
         // so the retry consults the factory again (and fails the same typed way)
         // rather than "activating" a window that was never built.
         match launcher.openOrActivate LibraryWindowKey with
-        | Error (WindowFactoryFailed (LibraryWindowKey, _)) -> ()
+        | Error (WindowFactoryFailedErr (LibraryWindowKey, _)) -> ()
         | other -> Assert.Fail($"the retry must reach the factory again, got %A{other}")
 
     [<Fact>]
@@ -258,30 +258,30 @@ module WindowLauncherTests =
         | other -> Assert.Fail($"expected Ok ModelessSelectWindows, got %A{other}")
 
     [<Fact>]
-    let ``the real launcher's forget of a never-registered key is the typed WindowNotRegistered error`` () =
+    let ``the real launcher's forget of a never-registered key is the typed WindowNotRegisteredErr error`` () =
         // A freshly minted id cannot be in the app-global registry.
         let key = MaterialEditorKey (MaterialLibrary.newMaterialId ())
         match (WindowLauncher.create unreachableFactory ModelessSelectWindows BrowseOpen).forgetWindow key with
-        | Error (WindowNotRegistered k) -> Assert.Equal(key, k)
-        | other -> Assert.Fail($"expected Error (WindowNotRegistered …), got %A{other}")
+        | Error (WindowNotRegisteredErr k) -> Assert.Equal(key, k)
+        | other -> Assert.Fail($"expected Error (WindowNotRegisteredErr …), got %A{other}")
 
     [<Fact>]
     let ``a real-launcher factory failure (or throw) is the typed error and the key stays unregistered`` () =
         let key = SampleEditorKey (Library.newSampleId ())
         let launcher = WindowLauncher.create failingFactory ModelessSelectWindows BrowseOpen
         match launcher.openOrActivate key with
-        | Error (WindowFactoryFailed (k, reason)) ->
+        | Error (WindowFactoryFailedErr (k, reason)) ->
             Assert.Equal(key, k)
             Assert.Contains("refuses", reason)
-        | other -> Assert.Fail($"expected Error (WindowFactoryFailed …), got %A{other}")
+        | other -> Assert.Fail($"expected Error (WindowFactoryFailedErr …), got %A{other}")
         // The retry consults the factory again — nothing was registered for the key.
         match launcher.openOrActivate key with
-        | Error (WindowFactoryFailed _) -> ()
+        | Error (WindowFactoryFailedErr _) -> ()
         | other -> Assert.Fail($"the retry must reach the factory again, got %A{other}")
         // A THROWING factory is caught at the launcher boundary and mapped, never rethrown.
         let throwing : WindowKey -> Result<Window, WindowLauncherError> = fun _ -> failwith "boom"
         match (WindowLauncher.create throwing ModelessSelectWindows BrowseOpen).openOrActivate key with
-        | Error (WindowFactoryFailed (_, reason)) -> Assert.Contains("boom", reason)
+        | Error (WindowFactoryFailedErr (_, reason)) -> Assert.Contains("boom", reason)
         | other -> Assert.Fail($"a factory throw must map to the typed error, got %A{other}")
 
     // ------------- real registry behaviour over shown windows (gate `ui-smoke`) -------------
@@ -430,7 +430,7 @@ module WindowLauncherTests =
     /// Commit `text` through the REAL faceted filter box (Enter is the commit gesture — the box
     /// has no text-change subscription, spec 0038 §0.4).
     let private commitFilter (window : Window) (text : string) : unit =
-        match tryFindControl window UiIds.FacetedTree.filterBox with
+        match tryFindControl window ConstructorUiId.facetFilterBox.value with
         | Some (:? TextBox as tb) ->
             tb.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
@@ -455,8 +455,8 @@ module WindowLauncherTests =
             Dispatcher.UIThread.RunJobs()
             commitFilter materialsWindow "1.52"
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
-            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
-            clickOn materialsWindow (MaterialsWindowView.entryNode MaterialLibrary.MaterialIds.glass152)
+            clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialLibrary.MaterialIds.glass152).value)
             // Observe the editors the real launcher opens (the WireUiComposition seam).
             let opened = ResizeArray<Window>()
             use _sub =
@@ -465,9 +465,9 @@ module WindowLauncherTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            clickOn materialsWindow UiIds.MaterialsWindow.editButton
+            clickOn materialsWindow ConstructorUiId.materialsEditButton.value
             Dispatcher.UIThread.RunJobs()
-            clickOn materialsWindow UiIds.MaterialsWindow.editButton
+            clickOn materialsWindow ConstructorUiId.materialsEditButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             Assert.True(opened.[0].IsVisible, "the one editor window must be live")
@@ -497,17 +497,17 @@ module WindowLauncherTests =
                     | _ -> ())
             // Each Add mints its own upfront id AT the verb dispatch (spec 0038 step 008), so
             // two Adds meet two DISTINCT registry keys: two NewUnsaved editor windows.
-            clickOn materialsWindow UiIds.MaterialsWindow.addButton
+            clickOn materialsWindow ConstructorUiId.materialsAddButton.value
             Dispatcher.UIThread.RunJobs()
-            clickOn materialsWindow UiIds.MaterialsWindow.addButton
+            clickOn materialsWindow ConstructorUiId.materialsAddButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             Assert.False(obj.ReferenceEquals(opened.[0], opened.[1]), "two Adds must open two windows")
             // Save each: the NewUnsaved freshness routes addMaterial under the id minted AT OPEN.
-            setText opened.[0] UiIds.MaterialEditor.nameBox "Launcher add A"
-            clickOn opened.[0] UiIds.MaterialEditor.saveButton
-            setText opened.[1] UiIds.MaterialEditor.nameBox "Launcher add B"
-            clickOn opened.[1] UiIds.MaterialEditor.saveButton
+            setText opened.[0] ConstructorUiId.materialNameBox.value "Launcher add A"
+            clickOn opened.[0] ConstructorUiId.materialEditorSaveButton.value
+            setText opened.[1] ConstructorUiId.materialNameBox.value "Launcher add B"
+            clickOn opened.[1] ConstructorUiId.materialEditorSaveButton.value
             Assert.False(opened.[0].IsVisible)
             Assert.False(opened.[1].IsVisible)
             // Both persisted, under two DISTINCT non-seeded ids.
@@ -515,8 +515,8 @@ module WindowLauncherTests =
             | Ok entries ->
                 let added = entries |> List.filter (fun e -> not (Set.contains e.id seededIds))
                 Assert.Equal(2, List.length added)
-                Assert.Contains(added, fun (e : MaterialLibrary.MaterialEntry) -> e.name = "Launcher add A")
-                Assert.Contains(added, fun (e : MaterialLibrary.MaterialEntry) -> e.name = "Launcher add B")
+                Assert.Contains(added, fun (e : MaterialLibrary.MaterialEntry) -> e.name.value = "Launcher add A")
+                Assert.Contains(added, fun (e : MaterialLibrary.MaterialEntry) -> e.name.value = "Launcher add B")
                 match added |> List.map (fun e -> e.id) with
                 | [ a; b ] -> Assert.NotEqual(a, b)
                 | other -> Assert.Fail($"expected two added ids, got %A{other}")
@@ -552,10 +552,10 @@ module WindowLauncherTests =
             // Name it and give it one layer (a valid stack — Add layer takes the first listed
             // material now that the inline picker is gone, step 019), then Save — NewUnsaved
             // → addSample.
-            setText editor UiIds.SampleEditor.nameBox "Launcher sample"
-            clickOn editor UiIds.SampleEditor.addLayerButton
-            clickOn editor UiIds.SampleEditor.saveButton
+            setText editor ConstructorUiId.sampleNameBox.value "Launcher sample"
+            clickOn editor ConstructorUiId.addLayerButton.value
+            clickOn editor ConstructorUiId.sampleEditorSaveButton.value
             Assert.False(editor.IsVisible)
             match samples.tryGetSample minted with
-            | Ok (Some s) -> Assert.Equal("Launcher sample", s.name)
+            | Ok (Some s) -> Assert.Equal("Launcher sample", s.name.value)
             | other -> Assert.Fail($"the sample Add must persist under its upfront-minted id, got %A{other}"))

@@ -53,6 +53,10 @@
     </Target>
 
     <ItemGroup>
+        <PackageReference Include="Softellect.Sys" />
+    </ItemGroup>
+
+    <ItemGroup>
         <ProjectReference Include="..\..\MathNetNumerics\FSharp\FSharp.fsproj" />
         <ProjectReference Include="..\..\MathNetNumerics\Numerics\Numerics.csproj" />
     </ItemGroup>

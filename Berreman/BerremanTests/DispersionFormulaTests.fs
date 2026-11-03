@@ -38,12 +38,12 @@ type DispersionFormulaTests() =
                         { lambda = 0.0; coefficients = [| 0.0; 0.0; 1.0 |]; power = -1; multiplier = b }
                         { lambda = 0.0; coefficients = [| 0.0; 0.0; 0.0; 0.0; 1.0 |]; power = -1; multiplier = c }
                     ]
-                wavelengthScale = 1.0e-6
+                wavelengthScale = 1.0e-6<meter>
             }
 
         let x = 0.5
         let expected = a + b / (x * x) + c / (x * x * x * x)   // = 1.52188
-        let result = formula.evaluate (WaveLength.nm 500.0<nm>)
+        let result = (formula.evaluate (WaveLength.nm 500.0<nm>)).value
         verifyValue result expected
 
 
@@ -62,12 +62,12 @@ type DispersionFormulaTests() =
                         { lambda = 0.0; coefficients = [| 1.0 + b |]; power = 1; multiplier = 1.0 }
                         { lambda = 0.0; coefficients = [| -c; 0.0; 1.0 |]; power = -1; multiplier = b * c }
                     ]
-                wavelengthScale = 1.0e-6
+                wavelengthScale = 1.0e-6<meter>
             }
 
         let x = 0.5876
         let expected = 1.0 + b * x * x / (x * x - c)
-        let result = formula.evaluate (WaveLength.nm 587.6<nm>)
+        let result = (formula.evaluate (WaveLength.nm 587.6<nm>)).value
         verifyValue result expected
 
 
@@ -78,12 +78,12 @@ type DispersionFormulaTests() =
         let formula : DispersionFormula =
             {
                 terms = [ { lambda = 0.4; coefficients = [| 0.3; 1.2 |]; power = 2; multiplier = 2.5 } ]
-                wavelengthScale = 1.0e-6
+                wavelengthScale = 1.0e-6<meter>
             }
 
         let inner = 0.3 + 1.2 * (0.6 - 0.4)
         let expected = 2.5 * inner * inner
-        let result = formula.evaluate (WaveLength.nm 600.0<nm>)
+        let result = (formula.evaluate (WaveLength.nm 600.0<nm>)).value
         verifyValue result expected
 
 
@@ -103,7 +103,7 @@ type DispersionFormulaTests() =
                         { lambda = Complex.Zero; coefficients = [| Complex.One |]; power = 1; multiplier = Complex.One }
                         { lambda = Complex.Zero; coefficients = [| Complex (x0Sq, 0.0); Complex (0.0, -gamma); Complex (-1.0, 0.0) |]; power = -1; multiplier = s }
                     ]
-                wavelengthScale = 1.0e-6
+                wavelengthScale = 1.0e-6<meter>
             }
 
         let x = Complex (0.5, 0.0)

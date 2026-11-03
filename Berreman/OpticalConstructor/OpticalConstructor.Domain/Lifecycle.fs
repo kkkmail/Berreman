@@ -105,10 +105,9 @@ module Lifecycle =
 
     /// THE version-creation rule (§H), expressed ONCE and shared by both stores. Inputs: the
     /// stored latest version's payload, the incoming save, and whether the stored version is
-    /// used. Structural comparison is INJECTED (`physicsEqual` / `metadataEqual`) rather than
-    /// imposed as an equality constraint, so the rule never dictates how a store defines
-    /// "structurally different" and stays trivially testable; the real stores pass `(=)` over
-    /// their value-tree physics and metadata. The decision table:
+    /// used. "Structurally different" is F# structural equality over the value-tree physics and
+    /// metadata (spec 0048 E018: every store injected `(=)`, and an injected `bool` comparer is
+    /// ELEV010). The decision table:
     ///
     /// - physics identical, metadata identical         -> `KeepCurrent`   (a no-op save)
     /// - physics identical, metadata changed           -> `MutateInPlace` (metadata-only edits
@@ -118,15 +117,13 @@ module Lifecycle =
     /// - physics changed, version USED                 -> `MintNextVersion` (a used version with
     ///                                                    structurally different physics mints
     ///                                                    the next; the new metadata rides along)
-    let decideVersioning
-        (physicsEqual : 'Physics -> 'Physics -> bool)
-        (metadataEqual : 'Metadata -> 'Metadata -> bool)
+    let decideVersioning<'Physics, 'Metadata when 'Physics : equality and 'Metadata : equality>
         (stored : VersionPayload<'Physics, 'Metadata>)
         (incoming : VersionPayload<'Physics, 'Metadata>)
         (usage : VersionUsage)
         : VersionDecision =
-        let physicsChanged = not (physicsEqual stored.physics incoming.physics)
-        let metadataChanged = not (metadataEqual stored.metadata incoming.metadata)
+        let physicsChanged = not (stored.physics = incoming.physics)
+        let metadataChanged = not (stored.metadata = incoming.metadata)
 
         match physicsChanged, metadataChanged, usage with
         | false, false, _ -> KeepCurrent

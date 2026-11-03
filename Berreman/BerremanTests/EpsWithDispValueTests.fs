@@ -29,14 +29,14 @@ type EpsWithDispValueTests() =
     let constFormula (value : double) : DispersionFormula =
         {
             terms = [ { lambda = 0.0; coefficients = [| value |]; power = 1; multiplier = 1.0 } ]
-            wavelengthScale = 1.0e-6
+            wavelengthScale = 1.0e-6<meter>
         }
 
     /// A linear real formula: a + b·x over the reduced wavelength x (µm).
     let linearFormula (a : double) (b : double) : DispersionFormula =
         {
             terms = [ { lambda = 0.0; coefficients = [| a; b |]; power = 1; multiplier = 1.0 } ]
-            wavelengthScale = 1.0e-6
+            wavelengthScale = 1.0e-6<meter>
         }
 
     /// A Cauchy-shaped real formula: a + b/x² over the reduced wavelength x (µm).
@@ -47,11 +47,11 @@ type EpsWithDispValueTests() =
                     { lambda = 0.0; coefficients = [| a |]; power = 1; multiplier = 1.0 }
                     { lambda = 0.0; coefficients = [| 0.0; 0.0; 1.0 |]; power = -1; multiplier = b }
                 ]
-            wavelengthScale = 1.0e-6
+            wavelengthScale = 1.0e-6<meter>
         }
 
     /// The zero formula — the k of a transparent medium.
-    let zeroFormula : DispersionFormula = { terms = []; wavelengthScale = 1.0e-6 }
+    let zeroFormula : DispersionFormula = { terms = []; wavelengthScale = 1.0e-6<meter> }
 
     let interval (lo : double<nm>) (hi : double<nm>) : WaveLengthInterval =
         { lower = WaveLength.nm lo; upper = WaveLength.nm hi }
@@ -67,8 +67,8 @@ type EpsWithDispValueTests() =
     /// distinguishable from clamping to the interval edge.
     let overlappingSegments : IsotropicEpsSegment list =
         [
-            { wavelengthInterval = interval 400.0<nm> 700.0<nm>; dispersion = RealNK (linearFormula 1.4 0.05, zeroFormula) }
-            { wavelengthInterval = interval 600.0<nm> 900.0<nm>; dispersion = RealNK (constFormula 2.0, zeroFormula) }
+            { wavelengthInterval = interval 400.0<nm> 700.0<nm>; dispersion = RealNK { nFormula = linearFormula 1.4 0.05; kFormula = zeroFormula } }
+            { wavelengthInterval = interval 600.0<nm> 900.0<nm>; dispersion = RealNK { nFormula = constFormula 2.0; kFormula = zeroFormula } }
         ]
 
 
@@ -90,7 +90,7 @@ type EpsWithDispValueTests() =
     member _.``Constant uniaxial transparent value maps to the n_o n_e n_o triple`` () =
         let nO = RefractionIndex 1.55
         let nE = RefractionIndex 1.78
-        let result = epsAt (EpsWithoutDispValue (UniaxialTransparent (nO, nE))) probe
+        let result = epsAt (EpsWithoutDispValue (UniaxialTransparent { ordinary = nO; extraordinary = nE })) probe
         verifyMatrixEqualityEps output result (Eps.fromRefractionIndex (nO, nE, nO))
 
 
@@ -98,7 +98,7 @@ type EpsWithDispValueTests() =
     member _.``Constant uniaxial absorbing value maps to the n_o n_e n_o triple`` () =
         let nO = ComplexRefractionIndex (Complex (2.1, 0.3))
         let nE = ComplexRefractionIndex (Complex (2.4, 0.1))
-        let result = epsAt (EpsWithoutDispValue (UniaxialAbsorbing (nO, nE))) probe
+        let result = epsAt (EpsWithoutDispValue (UniaxialAbsorbing { ordinaryComplex = nO; extraordinaryComplex = nE })) probe
         verifyMatrixEqualityEps output result (Eps.fromComplexRefractionIndex (nO, nE, nO))
 
 
@@ -107,7 +107,7 @@ type EpsWithDispValueTests() =
         let nx = RefractionIndex 1.5
         let ny = RefractionIndex 1.65
         let nz = RefractionIndex 1.75
-        let result = epsAt (EpsWithoutDispValue (BiaxialTransparent (nx, ny, nz))) probe
+        let result = epsAt (EpsWithoutDispValue (BiaxialTransparent { nx = nx; ny = ny; nz = nz })) probe
         verifyMatrixEqualityEps output result (Eps.fromRefractionIndex (nx, ny, nz))
 
 
@@ -116,7 +116,7 @@ type EpsWithDispValueTests() =
         let nx = ComplexRefractionIndex (Complex (1.6, 0.05))
         let ny = ComplexRefractionIndex (Complex (1.8, 0.15))
         let nz = ComplexRefractionIndex (Complex (2.0, 0.25))
-        let result = epsAt (EpsWithoutDispValue (BiaxialAbsorbing (nx, ny, nz))) probe
+        let result = epsAt (EpsWithoutDispValue (BiaxialAbsorbing { nxComplex = nx; nyComplex = ny; nzComplex = nz })) probe
         verifyMatrixEqualityEps output result (Eps.fromComplexRefractionIndex (nx, ny, nz))
 
 
@@ -158,8 +158,8 @@ type EpsWithDispValueTests() =
             [
                 {
                     wavelengthInterval = interval 400.0<nm> 700.0<nm>
-                    ordinaryDispersion = RealNK (cauchyFormula aO bO, zeroFormula)
-                    extraordinaryDispersion = RealNK (cauchyFormula aE bE, zeroFormula)
+                    ordinaryDispersion = RealNK { nFormula = cauchyFormula aO bO; kFormula = zeroFormula }
+                    extraordinaryDispersion = RealNK { nFormula = cauchyFormula aE bE; kFormula = zeroFormula }
                 }
             ]
 
@@ -184,15 +184,15 @@ type EpsWithDispValueTests() =
         let zFormula : ComplexDispersionFormula =
             {
                 terms = [ { lambda = Complex.Zero; coefficients = [| epsZ |]; power = 1; multiplier = Complex.One } ]
-                wavelengthScale = 1.0e-6
+                wavelengthScale = 1.0e-6<meter>
             }
 
         let segments : BiaxialEpsSegment list =
             [
                 {
                     wavelengthInterval = interval 400.0<nm> 700.0<nm>
-                    xDispersion = RealNK (cauchyFormula ax bx, constFormula kx)
-                    yDispersion = RealNK (constFormula 1.7, zeroFormula)
+                    xDispersion = RealNK { nFormula = cauchyFormula ax bx; kFormula = constFormula kx }
+                    yDispersion = RealNK { nFormula = constFormula 1.7; kFormula = zeroFormula }
                     zDispersion = ComplexEps zFormula
                 }
             ]

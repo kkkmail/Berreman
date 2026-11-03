@@ -49,7 +49,7 @@ module SolverHandoffWindowTests =
     // ---- fixtures: build real experiments (with captured setups) through the inverse model ----------
 
     /// Locate the seeded inverse endpoints by kind (the InverseConstructorTests precedent).
-    let private endpoints (m : Model) : TestElement * TestElement * TestElement =
+    let private endpoints (m : TableAndElementRotationModel) : TestElement * TestElement * TestElement =
         let byKind (k : Placement.CatalogueKind) : TestElement = m.elements |> List.find (fun e -> e.placement.catalogueKind = k)
         byKind Placement.LightSource, byKind Placement.Sample, byKind Placement.Detector
 
@@ -62,19 +62,19 @@ module SolverHandoffWindowTests =
         let samples = SampleProxy.createInMemory VersionsInUse.empty
         let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        let m0 = initInverse (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
+        let m0 = initInverse (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
         let src, sample, det = endpoints m0
-        let bindOne (elementId : Library.ElementId) (entryOpt : string option) (m : Model) : Model =
+        let bindOne (elementId : Library.ElementId) (entryOpt : string option) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
             match entryOpt with
-            | Some entryId -> update (BindValueIdTo (elementId, entryId)) m
+            | Some entryId -> updateTableAndElementRotation (BindValueIdTo (elementId, Placement.ElementValueId entryId)) m
             | None -> m
         let committed =
             m0
             |> bindOne src.id srcBind
             |> bindOne det.id detBind
-            |> update (ExpChooseElement sample.id.value)
-            |> update (ExpChooseVariable ExperimentControls.VaryR2)
-            |> update ExpCommit
+            |> updateTableAndElementRotation (ExpChooseElement sample.id)
+            |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
+            |> updateTableAndElementRotation ExpCommit
         committed.library, List.head committed.experimentCollection.experiments
 
     let private withId (n : int) (exp : Experiments.Experiment) : Experiments.Experiment =
@@ -101,16 +101,16 @@ module SolverHandoffWindowTests =
                 fun (p : Experiments.DataFilePath) ->
                     match byPath |> Map.tryFind p.value with
                     | Some r -> r
-                    | None -> Error (MeasuredData.MalformedDataFile $"no mock intensity registered for '%s{p.value}'")
-            tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFile "the mock has no ellipsometric data")
+                    | None -> Error (MeasuredData.MalformedDataFileErr $"no mock intensity registered for '%s{p.value}'")
+            tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data")
         }
 
     let private mockIntensity (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
         { tryLoadIntensity = fun _ -> result
-          tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFile "the mock has no ellipsometric data") }
+          tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data") }
 
     let private mockEllipsometric (result : Result<MeasuredData.EllipsometricSeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
-        { tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFile "the mock has no intensity data")
+        { tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no intensity data")
           tryLoadEllipsometric = fun _ -> result }
 
     /// An intensity proxy that COUNTS its loads — the "no computation beyond validation" proof.
@@ -118,7 +118,7 @@ module SolverHandoffWindowTests =
         let calls = ref 0
         let proxy : ExperimentData.ExperimentDataProxy =
             { tryLoadIntensity = fun _ -> calls.Value <- calls.Value + 1; result
-              tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFile "the mock has no ellipsometric data") }
+              tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data") }
         calls, proxy
 
     let private snapshotOf (experiments : Experiments.Experiment list) : ExperimentCollectionStore.ExperimentCollectionSnapshot =
@@ -135,7 +135,7 @@ module SolverHandoffWindowTests =
         let exp = exp0 |> withFile "good.csv"
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.6; 89.0, 0.2 ]))
         match SolverHandoffView.validateExperiment library proxy exp with
-        | SolverHandoffView.HandoffReady 3 -> ()
+        | SolverHandoffView.HandoffReady (MeasuredData.MeasuredPointCount 3) -> ()
         | other -> Assert.Fail($"expected HandoffReady 3, got %A{other}")
 
     [<Fact>]
@@ -146,7 +146,7 @@ module SolverHandoffWindowTests =
         let exp = exp0 |> withFile "good.csv"
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0 ]))
         match SolverHandoffView.validateExperiment library proxy exp with
-        | SolverHandoffView.UnspecifiedElements reason -> Assert.Contains("every element except the sample", reason)
+        | SolverHandoffView.UnspecifiedElements reason -> Assert.Contains("every element except the sample", reason.value)
         | other -> Assert.Fail($"expected UnspecifiedElements, got %A{other}")
 
     [<Fact>]
@@ -165,16 +165,16 @@ module SolverHandoffWindowTests =
         let exp = exp0 |> withFile "oor.csv"
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]))
         match SolverHandoffView.validateExperiment library proxy exp with
-        | SolverHandoffView.DataFileValidationError reason -> Assert.Contains("outside the experiment range", reason)
+        | SolverHandoffView.DataFileValidationError reason -> Assert.Contains("outside the experiment range", reason.value)
         | other -> Assert.Fail($"expected DataFileValidationError, got %A{other}")
 
     [<Fact>]
     let ``a malformed data file yields DataFileParseError`` () =
         let library, exp0 = baseExperiment (Some "src-600") (Some "det-intensity")
         let exp = exp0 |> withFile "bad.csv"
-        let proxy = mockIntensity (Error (MeasuredData.MalformedDataFile "row 3 is not a valid X,Y pair"))
+        let proxy = mockIntensity (Error (MeasuredData.MalformedDataFileErr "row 3 is not a valid X,Y pair"))
         match SolverHandoffView.validateExperiment library proxy exp with
-        | SolverHandoffView.DataFileParseError reason -> Assert.Contains("row 3", reason)
+        | SolverHandoffView.DataFileParseError reason -> Assert.Contains("row 3", reason.value)
         | other -> Assert.Fail($"expected DataFileParseError, got %A{other}")
 
     [<Fact>]
@@ -182,12 +182,12 @@ module SolverHandoffWindowTests =
         let library, exp0 = baseExperiment (Some "src-600") (Some "det-ellipsometer")
         let exp = exp0 |> withFile "ellipso.csv"
         let ellipsometric =
-            match MeasuredData.parseEllipsometricSeries "wavelength_nm,psi_deg,delta_deg\n500,20,120\n600,25,110" with
+            match (MeasuredData.DataFileText "wavelength_nm,psi_deg,delta_deg\n500,20,120\n600,25,110").parseEllipsometricSeries with
             | Ok series -> series
             | Error e -> failwith $"the fixture parser failed: %A{e}"
         let proxy = mockEllipsometric (Ok ellipsometric)
         match SolverHandoffView.validateExperiment library proxy exp with
-        | SolverHandoffView.HandoffReady 2 -> ()
+        | SolverHandoffView.HandoffReady (MeasuredData.MeasuredPointCount 2) -> ()
         | other -> Assert.Fail($"expected HandoffReady 2 from the ellipsometric path, got %A{other}")
 
     [<Fact>]
@@ -198,7 +198,7 @@ module SolverHandoffWindowTests =
         let calls, proxy = recordingIntensity (Ok (intensitySeries raw))
         match SolverHandoffView.validateExperiment library proxy exp with
         | SolverHandoffView.HandoffReady n ->
-            Assert.Equal(List.length raw, n)          // the raw point count — nothing normalized away
+            Assert.Equal(List.length raw, n.value)          // the raw point count — nothing normalized away
             Assert.Equal(1, calls.Value)              // exactly one load — the only computation the screen runs
         | other -> Assert.Fail($"expected HandoffReady, got %A{other}")
 
@@ -216,7 +216,7 @@ module SolverHandoffWindowTests =
         let proxy =
             mockIntensityByPath (Map.ofList [ "good.csv", Ok (intensitySeries [ 0.0, 1.0; 89.0, 0.2 ])
                                               "oor.csv", Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]) ])
-        let model : SolverHandoffView.Model = SolverHandoffView.init (contextOf library proxy experiments)
+        let model : SolverHandoffView.SolverHandoffModel = (contextOf library proxy experiments).initSolverHandoff
         Assert.Equal("run-A", model.collectionName.value)
         Assert.Equal(3, List.length model.rows)
         let statusById (n : int) : SolverHandoffView.ExperimentHandoffStatus =
@@ -242,12 +242,12 @@ module SolverHandoffWindowTests =
             let window = SolverHandoffWindow(library, proxy, snapshotOf experiments)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(matchesId UiIds.Handoff.window window, "the window itself carries the SolverHandoffWindow id")
-            Assert.True(isPresent window UiIds.Handoff.summaryList, "the summary list is missing")
-            Assert.True(isPresent window UiIds.Handoff.solverMessage, "the solver-comes-later message is missing")
-            Assert.Contains("separately", textOf window UiIds.Handoff.solverMessage)
-            Assert.True(isPresent window (UiIds.Handoff.statusRow 1), "experiment 1 status row is missing")
-            Assert.True(isPresent window (UiIds.Handoff.statusRow 2), "experiment 2 status row is missing")
+            Assert.True(matchesId ConstructorUiId.solverHandoffWindow.value window, "the window itself carries the SolverHandoffWindow id")
+            Assert.True(isPresent window ConstructorUiId.solverHandoffSummaryList.value, "the summary list is missing")
+            Assert.True(isPresent window ConstructorUiId.solverHandoffSolverMessage.value, "the solver-comes-later message is missing")
+            Assert.Contains("separately", textOf window ConstructorUiId.solverHandoffSolverMessage.value)
+            Assert.True(isPresent window (ConstructorUiId.solverHandoffStatus (Experiments.ExperimentId 1)).value, "experiment 1 status row is missing")
+            Assert.True(isPresent window (ConstructorUiId.solverHandoffStatus (Experiments.ExperimentId 2)).value, "experiment 2 status row is missing")
             window.Close())
 
     [<Fact>]
@@ -267,7 +267,7 @@ module SolverHandoffWindowTests =
             let window = SolverHandoffWindow(library, proxy, snapshotOf experiments)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.Contains("Ready", textOf window (UiIds.Handoff.statusRow 1))
-            Assert.Contains("Missing data file", textOf window (UiIds.Handoff.statusRow 2))
-            Assert.Contains("Validation error", textOf window (UiIds.Handoff.statusRow 3))
+            Assert.Contains("Ready", textOf window (ConstructorUiId.solverHandoffStatus (Experiments.ExperimentId 1)).value)
+            Assert.Contains("Missing data file", textOf window (ConstructorUiId.solverHandoffStatus (Experiments.ExperimentId 2)).value)
+            Assert.Contains("Validation error", textOf window (ConstructorUiId.solverHandoffStatus (Experiments.ExperimentId 3)).value)
             window.Close())

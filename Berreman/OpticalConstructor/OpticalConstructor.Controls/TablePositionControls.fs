@@ -24,108 +24,120 @@ module TablePositionControls =
         | AxisY
         | AxisZ
 
-    /// Whether moving along an axis is held still. A locked axis disables its steps and field.
-    type AxisLock =
-        | AxisLocked
-        | AxisFree
+        member this.name : string =
+            match this with
+            | AxisX -> "X"
+            | AxisY -> "Y"
+            | AxisZ -> "Z"
 
-    /// One axis row's value (metres) and lock.
+        member this.minusButtonId : ConstructorUiId =
+            match this with
+            | AxisX -> ConstructorUiId.tablePositionXMinusButton
+            | AxisY -> ConstructorUiId.tablePositionYMinusButton
+            | AxisZ -> ConstructorUiId.tablePositionZMinusButton
+
+        member this.plusButtonId : ConstructorUiId =
+            match this with
+            | AxisX -> ConstructorUiId.tablePositionXPlusButton
+            | AxisY -> ConstructorUiId.tablePositionYPlusButton
+            | AxisZ -> ConstructorUiId.tablePositionZPlusButton
+
+        member this.fieldId : ConstructorUiId =
+            match this with
+            | AxisX -> ConstructorUiId.tablePositionXField
+            | AxisY -> ConstructorUiId.tablePositionYField
+            | AxisZ -> ConstructorUiId.tablePositionZField
+
+        member this.lockButtonId : ConstructorUiId =
+            match this with
+            | AxisX -> ConstructorUiId.tablePositionXLockButton
+            | AxisY -> ConstructorUiId.tablePositionYLockButton
+            | AxisZ -> ConstructorUiId.tablePositionZLockButton
+
+    /// One axis row's value and lock (the rotation bar's `AxisLock`: a locked axis disables its steps and field).
     type AxisState =
         {
-            position : float
-            lock : AxisLock
+            position : BarMeters
+            lock : RotationControls.AxisLock
         }
 
     /// The position the bar displays.
-    type State =
+    type TablePositionControlsState =
         {
             x : AxisState
             y : AxisState
             z : AxisState
-            /// `false` when nothing movable is selected → the whole bar is disabled.
-            enabled : bool
+            /// `ControlWithheld` when nothing movable is selected → the whole bar is disabled.
+            availability : ControlAvailability
         }
+
+        /// The readout line: the three coordinates.
+        member this.readoutText : string =
+            $"at x = {this.x.position.signedText} m, y = {this.y.position.signedText} m, z = {this.z.position.signedText} m"
 
     /// What the bar does. The host owns the selection, the clamps and the locks.
-    type Handlers =
+    type TablePositionControlsHandlers =
         {
-            moveBy : Axis -> float -> unit      // nudge along an axis by N metres (the − / + buttons)
-            setPosition : Axis -> float -> unit // set an axis to exactly N metres (the field)
-            toggleLock : Axis -> unit           // lock / unlock moving along an axis
-            reset : unit -> unit                // Reset → host returns the element to its home position
+            moveBy : Axis -> BarMeters -> unit      // nudge along an axis by N metres (the − / + buttons)
+            setPosition : Axis -> BarMeters -> unit // set an axis to exactly N metres (the field)
+            toggleLock : Axis -> unit               // lock / unlock moving along an axis
+            reset : unit -> unit                    // Reset → host returns the element to its home position
         }
 
-    let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = color 232 232 232
-    let private idleBorder = color 120 120 120
-    let private textForeground = color 0 0 0
-
-    let private formatMeters (v : float) : string =
-        System.String.Format(CultureInfo.InvariantCulture, "{0:+0.000;-0.000;0.000}", v)
-
-    /// The readout line: the three coordinates.
-    let readoutText (state : State) : string =
-        $"at x = %s{formatMeters state.x.position} m, y = %s{formatMeters state.y.position} m, z = %s{formatMeters state.z.position} m"
-
-    let private automationId (autoId : string) : IAttr<Border> =
-        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+    let private textForeground = Color.FromRgb(0uy, 0uy, 0uy)
 
     /// A small clickable, button-styled Border, matching `RayPositionControls`. The subscription re-patches
     /// when the label flips (a lock toggle reads Lock / Unlock), so the action always matches the label.
-    let private clickBox (id : string) (label : string) (enabled : bool) (onClick : PointerPressedEventArgs -> unit) : IView =
+    let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (availability : ControlAvailability) (onClick : PointerPressedEventArgs -> unit) : IView =
         Border.create [
-            automationId id
-            Border.isEnabled enabled
-            Border.opacity (if enabled then 1.0 else 0.4)
+            id.automationAttribute<Border> ()
+            Border.isEnabled availability.isEnabled
+            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
             Border.background (brush idleBackground)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
             Border.cornerRadius (CornerRadius 3.0)
             Border.padding (Thickness(10.0, 5.0))
             Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label; TextBlock.foreground (brush textForeground) ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box label))
+            Border.child (TextBlock.create [ TextBlock.text caption.value; TextBlock.foreground (brush textForeground) ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box caption.value))
         ] :> IView
 
-    let private field (handlers : Handlers) (id : string) (axis : Axis) (value : float) (enabled : bool) : IView =
+    let private field (handlers : TablePositionControlsHandlers) (axis : Axis) (value : BarMeters) (availability : ControlAvailability) : IView =
         let commit (src : obj) =
             match src with
-            | :? TextBox as tb when not (isNull tb.Text) -> RayPositionControls.parseMeters tb.Text |> Option.iter (handlers.setPosition axis)
+            | :? TextBox as tb when not (isNull tb.Text) -> BarMeters.tryCreate tb.Text |> Option.iter (handlers.setPosition axis)
             | _ -> ()
         TextBox.create [
-            TextBox.name id
+            TextBox.name axis.fieldId.value
             TextBox.width 80.0
-            TextBox.isEnabled enabled
-            TextBox.text (formatMeters value)
+            TextBox.isEnabled availability.isEnabled
+            TextBox.text value.signedText
             TextBox.onKeyDown (fun e -> if e.Key = Key.Enter then commit e.Source)
             TextBox.onLostFocus (fun e -> commit e.Source)
         ] :> IView
 
     /// One axis row: its label, − / +, the field, "m", and the Lock / Unlock toggle.
-    let private axisRow
-        (handlers : Handlers) (enabled : bool) (minusId, plusId, fieldId, lockId) (label : string) (axis : Axis) (axisState : AxisState)
-        : IView =
-        let free =
+    let private axisRow (handlers : TablePositionControlsHandlers) (availability : ControlAvailability) (axis : Axis) (axisState : AxisState) : IView =
+        let free, lockCaption =
             match axisState.lock with
-            | AxisFree -> enabled
-            | AxisLocked -> false
-        let lockLabel =
-            match axisState.lock with
-            | AxisLocked -> $"Unlock %s{label}"
-            | AxisFree -> $"Lock %s{label}"
-        let step (sign : float) (e : PointerPressedEventArgs) =
-            handlers.moveBy axis (sign * RayPositionControls.stepMeters (e.KeyModifiers.HasFlag KeyModifiers.Shift))
+            | RotationControls.AxisFree -> availability, ControlCaption $"Lock {axis.name}"
+            | RotationControls.AxisLocked -> ControlWithheld, ControlCaption $"Unlock {axis.name}"
+        let step (direction : StepDirection) (e : PointerPressedEventArgs) =
+            handlers.moveBy axis ((RayPositionControls.stepMeters e.KeyModifiers).inDirection direction)
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 6.0
             StackPanel.children [
-                TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.width 16.0; TextBlock.text $"%s{label}:" ]
-                clickBox minusId "−" free (step -1.0)
-                clickBox plusId "+" free (step 1.0)
-                field handlers fieldId axis axisState.position free
+                TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.width 16.0; TextBlock.text $"{axis.name}:" ]
+                clickBox axis.minusButtonId (ControlCaption "−") free (step StepDecrease)
+                clickBox axis.plusButtonId (ControlCaption "+") free (step StepIncrease)
+                field handlers axis axisState.position free
                 TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text "m" ]
-                clickBox lockId lockLabel enabled (fun _ -> handlers.toggleLock axis)
+                clickBox axis.lockButtonId lockCaption availability (fun _ -> handlers.toggleLock axis)
             ]
         ] :> IView
 
@@ -133,11 +145,11 @@ module TablePositionControls =
     /// selection and locks.
     /// Spec 0046: a DockPanel (the axis rows docked left, the Reset + readout column filling the rest) so
     /// the readout WRAPS in a narrow window instead of running off its right edge.
-    let view (state : State) (handlers : Handlers) : IView =
+    let tablePositionControlsView (state : TablePositionControlsState) (handlers : TablePositionControlsHandlers) : IView =
         DockPanel.create [
             DockPanel.margin (Thickness 8.0)
-            DockPanel.isEnabled state.enabled
-            DockPanel.opacity (if state.enabled then 1.0 else 0.5)
+            DockPanel.isEnabled state.availability.isEnabled
+            DockPanel.opacity (match state.availability with ControlOffered -> 1.0 | ControlWithheld -> 0.5)
             DockPanel.children [
                 StackPanel.create [
                     StackPanel.dock Dock.Left
@@ -145,9 +157,9 @@ module TablePositionControls =
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.spacing 4.0
                     StackPanel.children [
-                        axisRow handlers state.enabled (UiIds.TablePosition.xMinus, UiIds.TablePosition.xPlus, UiIds.TablePosition.xField, UiIds.TablePosition.xLock) "X" AxisX state.x
-                        axisRow handlers state.enabled (UiIds.TablePosition.yMinus, UiIds.TablePosition.yPlus, UiIds.TablePosition.yField, UiIds.TablePosition.yLock) "Y" AxisY state.y
-                        axisRow handlers state.enabled (UiIds.TablePosition.zMinus, UiIds.TablePosition.zPlus, UiIds.TablePosition.zField, UiIds.TablePosition.zLock) "Z" AxisZ state.z
+                        axisRow handlers state.availability AxisX state.x
+                        axisRow handlers state.availability AxisY state.y
+                        axisRow handlers state.availability AxisZ state.z
                     ]
                 ]
                 StackPanel.create [
@@ -157,9 +169,9 @@ module TablePositionControls =
                     StackPanel.children [
                         Border.create [
                             Border.horizontalAlignment HorizontalAlignment.Left
-                            Border.child (clickBox UiIds.TablePosition.reset "Reset position" state.enabled (fun _ -> handlers.reset ()))
+                            Border.child (clickBox ConstructorUiId.tablePositionResetButton (ControlCaption "Reset position") state.availability (fun _ -> handlers.reset ()))
                         ]
-                        TextBlock.create [ TextBlock.name UiIds.TablePosition.readout; TextBlock.textWrapping TextWrapping.Wrap; TextBlock.text (readoutText state) ]
+                        TextBlock.create [ TextBlock.name ConstructorUiId.tablePositionReadout.value; TextBlock.textWrapping TextWrapping.Wrap; TextBlock.text state.readoutText ]
                     ]
                 ]
             ]

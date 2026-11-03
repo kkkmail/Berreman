@@ -22,125 +22,118 @@ open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.TableAndElementRotationView
 
-// The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
-let canvasWidth : float = TableScene.canvasWidth
-let canvasHeight : float = TableScene.canvasHeight
-let private drawZoom : float = 5.0
-let stepMeters : float = RayPositionControls.stepMeters false
-let bigStepMeters : float = RayPositionControls.stepMeters true
-let private selectRadiusPx : float = 70.0
+/// Whether a left-drag that began on the element is sliding it.
+type ElementMovementDragState =
+    | ElementSliding
+    | ElementNotSliding
 
-type Model =
+type ElementMovementModel =
     {
         table : OpticalTable
         view : TableViewState        // fixed top-down (movement test, not rotation)
         element : ElementPlacement   // the single element the test slides
-        dragging : bool              // true while a left-drag on the element is in progress
+        dragging : ElementMovementDragState
     }
 
 /// A single sample element in the MIDDLE of the table — the position the test slides.
-let init () : Model =
+let initElementMovement () : ElementMovementModel =
     {
         table = Table.defaultTable
         view = Table.defaultView
         element = ElementPlacement.create Sample { x = 0.0<meter>; y = 0.0<meter> }
-        dragging = false
+        dragging = ElementNotSliding
     }
 
-type Msg =
-    | SlideTo of float        // set the element's along-beam position x (table metres)
-    | SlideBy of float        // nudge x by a delta (the arrow keys)
+type ElementMovementMsg =
+    | SlideTo of BarMeters        // set the element's along-beam position x (table metres)
+    | SlideBy of BarMeters        // nudge x by a delta (the arrow keys)
     | BeginDrag of ScreenPoint
     | DragTo of ScreenPoint
     | EndDrag
     | ResetPosition
 
-let private halfLength (m : Model) : float = (m.table.length / 2.0) / 1.0<meter>
-let private clampX (m : Model) (x : float) : float = max (-(halfLength m)) (min (halfLength m) x)
-let elementX (m : Model) : float = m.element.placementPoint.x / 1.0<meter>
+/// A press this close to the element's projected centre grabs it.
+let private selectRadiusPx : CanvasLength = CanvasLength 70.0
 
-/// Move the element along the beam (its x), clamped to the plate; y stays 0 (it rides the central ray).
-let private setX (x : float) (m : Model) : Model =
-    { m with element = { m.element with placementPoint = { m.element.placementPoint with x = clampX m x * 1.0<meter> } } }
+type ElementMovementModel with
 
-/// Screen x → table x for the fixed top-down view (no pan / zoom): the inverse of `TableScene.project`.
-let private tableXOfScreen (sx : float) : float = (sx - TableScene.center.sx) / TableScene.pixelsPerMeter
+    /// The element's along-beam position (its table x).
+    member model.elementX : BarMeters = BarMeters (model.element.placementPoint.x / 1.0<meter>)
 
-let private elementCentreScreen (m : Model) : ScreenPoint =
-    TableScene.project m.view (Vector3.create (elementX m) 0.0 0.0)
+    /// The element slides within ± half the plate.
+    member internal model.slideRange : RayPositionControls.PositionRange =
+        let half = model.table.length / 2.0 / 1.0<meter>
+        RayPositionControls.BoundedRange { lowest = BarMeters -half; highest = BarMeters half }
 
-let private dist (a : ScreenPoint) (b : ScreenPoint) : float = sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
+    /// The element moved to along-beam `x`, clamped to the plate; y stays 0 (it rides the central ray).
+    member internal model.slidTo (x : BarMeters) : ElementMovementModel =
+        let clamped = model.slideRange.clampedPosition x
+        { model with element = { model.element with placementPoint = { model.element.placementPoint with x = clamped.value * 1.0<meter> } } }
 
-let update (msg : Msg) (model : Model) : Model =
+    member internal model.elementCentreScreen : ScreenPoint = TableScene.projectOnScene model.view model.element.placementPoint.toVector3
+
+let updateElementMovement (msg : ElementMovementMsg) (model : ElementMovementModel) : ElementMovementModel =
     match msg with
-    | SlideTo x -> setX x model
-    | SlideBy dx -> setX (elementX model + dx) model
+    | SlideTo x -> model.slidTo x
+    | SlideBy dx -> model.slidTo (BarMeters (model.elementX.value + dx.value))
     // A press starts a drag ONLY when it lands on the element; then the element follows the pointer's x.
-    | BeginDrag sp -> if dist sp (elementCentreScreen model) <= selectRadiusPx then { model with dragging = true } else model
-    | DragTo sp -> if model.dragging then setX (tableXOfScreen sp.sx) model else model
-    | EndDrag -> { model with dragging = false }
-    | ResetPosition -> setX 0.0 model
+    | BeginDrag sp -> if sp.distanceTo model.elementCentreScreen <= selectRadiusPx then { model with dragging = ElementSliding } else model
+    | DragTo sp ->
+        match model.dragging with
+        // Screen x → table x for the fixed top-down view (no pan / zoom): the inverse of `TableScene.projectOnScene`.
+        | ElementSliding -> model.slidTo (BarMeters ((sp.sx - TableScene.center.sx) / TableScene.pixelsPerMeter.value))
+        | ElementNotSliding -> model
+    | EndDrag -> { model with dragging = ElementNotSliding }
+    | ResetPosition -> model.slidTo (BarMeters 0.0)
 
 // ---------------------------------------------------------------------------
 // Colours + the FuncUI view.
 // ---------------------------------------------------------------------------
 
-let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
+/// The element's fill: (90, 140, 200) at 70 % opacity.
+let private elementFillColor : Color = Color.FromArgb(178uy, 90uy, 140uy, 200uy)
+let private elementStrokeColor : Color = Color.FromRgb(0uy, 60uy, 160uy)
+let private hintColor : Color = Color.FromRgb(100uy, 100uy, 100uy)
+let private canvasBackgroundColor : Color = Color.FromRgb(250uy, 250uy, 250uy)
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private brushA (a : float) (c : Color) : IBrush =
-    SolidColorBrush(Color.FromArgb(byte (255.0 * max 0.0 (min 1.0 a)), c.R, c.G, c.B)) :> IBrush
 
-let private plateColor = color 205 205 205
-let private edgeColor = color 50 50 50
-let private rayColor = color 30 90 200
-let private sourceColor = color 70 70 70
-let private detectorColor = color 20 20 20
-let private elementColor = color 90 140 200
-let private elementStroke = color 0 60 160
+type ElementMovementModel with
 
-let private toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
-let private projectPt (m : Model) (p : Vector3) : ScreenPoint = TableScene.project m.view p
+    /// The element's top-down footprint (depth `b` along the beam × face `a2` across it, magnified by the
+    /// default draw zoom), as a filled rectangle that highlights while dragging.
+    member internal model.elementView : IView =
+        let cx = model.elementX.value
+        let hb = defaultElementZoom.value * (model.element.box.b / 2.0 / 1.0<meter>)
+        let ha = defaultElementZoom.value * (model.element.box.a2 / 2.0 / 1.0<meter>)
+        let corners =
+            [ (cx - hb, -ha); (cx + hb, -ha); (cx + hb, ha); (cx - hb, ha) ]
+            |> List.map (fun (x, y) -> (TableScene.projectOnScene model.view (Vector3.create x y 0.0)).toPoint)
+        Polygon.create [
+            Polygon.points corners
+            Polygon.fill (brush elementFillColor)
+            Polygon.stroke (brush elementStrokeColor)
+            Polygon.strokeThickness (match model.dragging with ElementSliding -> 3.0 | ElementNotSliding -> 2.0)
+        ] :> IView
 
-/// The element's top-down footprint (depth `b` along the beam × face `a2` across it, magnified by the
-/// draw zoom), as a filled rectangle that highlights while dragging.
-let private elementView (m : Model) : IView =
-    let cx = elementX m
-    let hb = drawZoom * (m.element.box.b / 2.0 / 1.0<meter>)
-    let ha = drawZoom * (m.element.box.a2 / 2.0 / 1.0<meter>)
-    let corners =
-        [ (cx - hb, -ha); (cx + hb, -ha); (cx + hb, ha); (cx - hb, ha) ]
-        |> List.map (fun (x, y) -> toPoint (projectPt m (Vector3.create x y 0.0)))
-    Polygon.create [
-        Polygon.points corners
-        Polygon.fill (brushA 0.70 elementColor)
-        Polygon.stroke (brush elementStroke)
-        Polygon.strokeThickness (if m.dragging then 3.0 else 2.0)
-    ] :> IView
-
-let private tableCanvas (model : Model) : IView =
-    Canvas.create [
-        Canvas.name UiIds.ElementMovement.canvas
-        Canvas.width canvasWidth
-        Canvas.height canvasHeight
-        Canvas.horizontalAlignment HorizontalAlignment.Left
-        Canvas.verticalAlignment VerticalAlignment.Top
-        Canvas.children (TableScene.plateViews model.view model.table false @ TableScene.sourceDetectorRayViews model.view @ [ elementView model ])
-    ] :> IView
-
-let private kindName (k : CatalogueKind) : string =
-    match k with
-    | LightSource -> "Light source" | LinearPolarizer -> "Linear polarizer" | CircularPolarizer -> "Circular polarizer"
-    | Sample -> "Sample" | Lens -> "Lens" | FlatMirror -> "Flat mirror" | CurvedMirror -> "Curved mirror" | Detector -> "Detector"
+    member internal model.tableCanvas : IView =
+        Canvas.create [
+            Canvas.name ConstructorUiId.elementMovementCanvas.value
+            Canvas.width TableScene.canvasWidth.value
+            Canvas.height TableScene.canvasHeight.value
+            Canvas.horizontalAlignment HorizontalAlignment.Left
+            Canvas.verticalAlignment VerticalAlignment.Top
+            Canvas.children (TableScene.plateViews model.view model.table PlateNotSelected @ TableScene.sourceDetectorRayViews model.view @ [ model.elementView ])
+        ] :> IView
 
 /// The control bar IS the shared `RayPositionControls` (the standardized position-on-the-ray control),
 /// plus the element's name and a usage hint. The bar's − / + / field / Reset map straight onto the
 /// pure `SlideBy` / `SlideTo` / `ResetPosition` messages; the host owns the clamp (±half the plate).
-let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
-    let half = halfLength model
-    let state : RayPositionControls.State =
-        { position = elementX model; range = RayPositionControls.BoundedRange (-half, half); enabled = true }
-    let handlers : RayPositionControls.Handlers =
+let private controlBar (model : ElementMovementModel) (dispatch : ElementMovementMsg -> unit) : IView =
+    let state : RayPositionControls.RayPositionControlsState =
+        { position = model.elementX; range = model.slideRange; availability = ControlOffered }
+    let handlers : RayPositionControls.RayPositionControlsHandlers =
         {
             moveBy = fun dx -> dispatch (SlideBy dx)
             setPosition = fun x -> dispatch (SlideTo x)
@@ -155,35 +148,36 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
                 StackPanel.orientation Orientation.Horizontal
                 StackPanel.spacing 10.0
                 StackPanel.children [
-                    RayPositionControls.view state handlers
-                    TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text (kindName model.element.catalogueKind) ]
+                    RayPositionControls.rayPositionControlsView state handlers
+                    TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text model.element.catalogueKind.kindName ]
                 ]
             ]
             TextBlock.create [
-                TextBlock.foreground (brush (color 100 100 100))
+                TextBlock.foreground (brush hintColor)
                 TextBlock.text "drag the element to slide it along the beam · ←/→ nudge it (Shift = larger step) · it stays on the central ray"
             ]
         ]
     ] :> IView
 
-let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.ElementMovement.canvas e
+let elementMovementView (model : ElementMovementModel) (dispatch : ElementMovementMsg -> unit) : IView =
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.elementMovementCanvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]
             Border.create [
-                Border.background (brush (color 250 250 250))
+                Border.background (brush canvasBackgroundColor)
                 Border.focusable true
                 Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (BeginDrag (toScreen e)))
                 Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (DragTo (toScreen e)))
                 Border.onPointerReleased (fun e -> e.Handled <- true; dispatch EndDrag)
                 Border.onKeyDown (fun e ->
-                    let step = if e.KeyModifiers.HasFlag KeyModifiers.Shift then bigStepMeters else stepMeters
+                    // The ray-position bar's own step: 0.05 m, Shift = 0.20 m.
+                    let step = RayPositionControls.stepMeters e.KeyModifiers
                     match e.Key with
-                    | Key.Left -> e.Handled <- true; dispatch (SlideBy (-step))
-                    | Key.Right -> e.Handled <- true; dispatch (SlideBy step)
+                    | Key.Left -> e.Handled <- true; dispatch (SlideBy (step.inDirection StepDecrease))
+                    | Key.Right -> e.Handled <- true; dispatch (SlideBy (step.inDirection StepIncrease))
                     | _ -> ())
-                Border.child (tableCanvas model)
+                Border.child model.tableCanvas
             ]
         ]
     ] :> IView

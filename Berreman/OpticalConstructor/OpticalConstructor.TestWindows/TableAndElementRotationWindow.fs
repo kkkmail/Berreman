@@ -12,9 +12,9 @@ type TableAndElementRotationWindow() as this =
 
     do
         this.Title <- "Test — Table + Element Rotations"
-        this.Width <- TableAndElementRotationView.canvasWidth
-        this.Height <- TableAndElementRotationView.canvasHeight + 84.0
+        this.Width <- TableAndElementRotationView.tableAndElementRotationCanvasWidth
+        this.Height <- TableAndElementRotationView.tableAndElementRotationCanvasHeight + 84.0
         OpticalConstructor.Controls.WindowFit.keepOnScreen this
-        Program.mkSimple TableAndElementRotationView.init TableAndElementRotationView.update TableAndElementRotationView.view
+        Program.mkSimple TableAndElementRotationView.initTableAndElementRotation TableAndElementRotationView.updateTableAndElementRotation TableAndElementRotationView.tableAndElementRotationView
         |> Program.withHost this
         |> Program.run

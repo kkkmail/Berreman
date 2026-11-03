@@ -79,7 +79,7 @@ type LangasiteInverseTests() =
 
     /// Radians per degree, reached by its full module path (mirrors `MuellerInverseTests`). Bound here,
     /// ahead of the members (FS0960: in a class type every `let` binding precedes the first member).
-    let degree = Berreman.MathNetNumericsMath.degree
+    let degree = Angle.radiansPerDegree
 
     // =================================================================================================
     // The sample, the wavelength, and the FIXED material constants.
@@ -118,7 +118,7 @@ type LangasiteInverseTests() =
     /// Spec R4 physics choice, mirrored from MuellerInverseTests: the plate solver sums the Mueller
     /// matrices of the emerging beams (direct plus internally reflected), which is what a real plate
     /// with uncoated faces produces. Stated explicitly at the composition root, not defaulted.
-    let solverParameters : SolverParameters = { numberOfReflections = 3 }
+    let solverParameters : SolverParameters = { numberOfReflections = NumberOfReflections 3 }
 
     /// The single measurement configuration: z-cut, normal incidence, transmission. Six analyzer angles
     /// are six READINGS of this one configuration, not six configurations.
@@ -127,7 +127,7 @@ type LangasiteInverseTests() =
             cut = ZCut
             thickness = plateThickness
             incidenceAngle = IncidenceAngle.normal
-            azimuth = SampleAzimuth.degree 0.0
+            azimuth = SampleAzimuth.degree 0.0<Berreman.Constants.deg>
             observable = TransmittedMueller
             waveLength = waveLength
         }
@@ -173,9 +173,9 @@ type LangasiteInverseTests() =
 
     /// The transmitted intensity the detector records for one analyzer angle.
     let transmittedIntensity (sample : MuellerMatrix) (analyzerAngleDeg : float) : float =
-        let polarizer = Propagation.analyzerMueller Library.IdealLinear (Angle.degree polarizerAngleDeg)
-        let analyzer = Propagation.analyzerMueller Library.IdealLinear (Angle.degree analyzerAngleDeg)
-        analyzer * (sample * (polarizer * Propagation.unpolarizedStokes)) |> Propagation.s0
+        let polarizer = Propagation.analyzerMueller Library.IdealLinear (Angle.degree (polarizerAngleDeg * 1.0<deg>))
+        let analyzer = Propagation.analyzerMueller Library.IdealLinear (Angle.degree (analyzerAngleDeg * 1.0<deg>))
+        (analyzer * (sample * (polarizer * Propagation.unpolarizedStokes))).s0
 
     /// The model's six intensities for a material parameter set — one forward solve, six analyzer angles.
     let modelIntensities (p : UniaxialParameters) : Result<float[], ForwardModelError> =
@@ -262,14 +262,14 @@ type LangasiteInverseTests() =
             let solver = MuellerInverseSolver.createAlglibLevenbergMarquardt ()
             let request : NonlinearRequest =
                 {
-                    residual = fun (v : float[]) -> normalizedResidual (parametersOfScaledG11 v.[0])
-                    initial = [| 0.0 |]
+                    residual = fun (ScaledVector v) -> normalizedResidual (parametersOfScaledG11 v.[0]) |> ResidualVector
+                    initial = ScaledVector [| 0.0 |]
                     // +-50 scaled units = +-5e-4 in g11: brackets any physically sensible excursion while
                     // keeping the search far from any degenerate region.
-                    lowerBounds = [| -50.0 |]
-                    upperBounds = [| 50.0 |]
-                    maxIterations = 400
-                    epsX = 1.0e-12
+                    lowerBounds = ScaledVector [| -50.0 |]
+                    upperBounds = ScaledVector [| 50.0 |]
+                    maxIterations = IterationCount 400
+                    epsX = StepTolerance 1.0e-12
                 }
             match solver.solveNonlinearLeastSquares request with
             | Ok solution -> solution
@@ -277,7 +277,7 @@ type LangasiteInverseTests() =
             )
 
     /// The recovered g11 in physical units.
-    let fittedG11 = g11Start.value + g11Fit.Value.solution.[0] * g11Scale
+    let fittedG11 = g11Start.value + g11Fit.Value.solution.value.[0] * g11Scale
 
     /// The plate thickness in meters, for rotation-per-length reporting. Both lengths carry the engine's
     /// `meter` unit, so the ratio is dimensionless by construction.
@@ -366,7 +366,7 @@ type LangasiteInverseTests() =
         // intensities reads the sign directly.
         //
         // OBSERVED (and pinned): the engine's sample Mueller for g11 > 0 acts as
-        // Propagation.rotationMueller(+psi), which rotates the Stokes azimuth by -psi, so the maximum
+        // Angle.rotationMueller(+psi), which rotates the Stokes azimuth by -psi, so the maximum
         // moves toward SMALLER analyzer angles and I(60) > I(120). This is the sign the start guess and
         // the fitted g11 rely on.
         let g11ForThirtyDegrees = RhoValue ((System.Math.PI / 6.0) / (2.0 * System.Math.PI * platesPerWave))
@@ -441,7 +441,7 @@ type LangasiteInverseTests() =
         // than this; the band exists to catch a real regression (a changed forward model, a changed
         // optimizer), not to measure noise.
         let solution = g11Fit.Value
-        Assert.True(solution.iterations > 0, "the fit should have taken at least one step")
+        Assert.True(solution.iterations.value > 0, "the fit should have taken at least one step")
 
         let rotationDeg = rotationDegOfG11 fittedG11
         let rotationDegPerMm = rotationDeg / 3.0
@@ -457,7 +457,7 @@ type LangasiteInverseTests() =
 
         Assert.True(
             abs (fittedG11 - expectedG11.value) < 5.0e-10,
-            $"recovered g11 = {fittedG11:G17} (expected {expectedG11.value:G17}); rotation = {rotationDeg} deg over 3 mm = {rotationDegPerMm} deg/mm; iterations = {solution.iterations}")
+            $"recovered g11 = {fittedG11:G17} (expected {expectedG11.value:G17}); rotation = {rotationDeg} deg over 3 mm = {rotationDegPerMm} deg/mm; iterations = {solution.iterations.value}")
 
         // The crystallographic reading of the same recovered constant — pi * g / (n_o * lambda), the
         // literature-convention rotatory power (see crystallographicRotationDegPerMmOfG11 and the
@@ -498,7 +498,7 @@ type LangasiteInverseTests() =
                 "; ",
                 Array.map3 (fun a r m -> $"{a} deg: r = {r:G6}, measured = {m}") analyzerAnglesDeg residuals measuredIntensities)
 
-        Assert.True(solution.finalResiduals.Length = analyzerAnglesDeg.Length, "the fit residual vector must have one entry per analyzer angle")
+        Assert.True(solution.finalResiduals.value.Length = analyzerAnglesDeg.Length, "the fit residual vector must have one entry per analyzer angle")
         Assert.True(
             worst < allowedWorstNormalizedResidual,
             $"worst normalized residual at the solution = {worst:G17} (allowed {allowedWorstNormalizedResidual}); per-angle: {report}")
@@ -553,9 +553,12 @@ type LangasiteInverseTests() =
                (fittedG11 - g11CentreForJacobian) / g11Scale |]
         Assert.True(atSolution |> Array.forall (fun x -> abs x > 1.0e-6), "the Jacobian must not be evaluated at the origin of the scaled space")
 
-        let jacobian = FitQuality.residualJacobian residual2 atSolution
-        let norms = jacobianColumnNorms jacobian
-        let condition = jacobianCondition jacobian
+        let jacobian =
+            FitQuality.residualJacobian
+                (fun (OptimizationInterface.DesignVector v) -> residual2 v |> ResidualVector)
+                (OptimizationInterface.DesignVector atSolution)
+        let norms = jacobian.columnNorms
+        let condition = jacobian.conditionNumber.value
 
         // g11 must be strongly constrained — this is the channel the measurement measures. Observed
         // 0.172; the band is pinned two orders below.

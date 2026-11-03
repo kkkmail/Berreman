@@ -1,5 +1,6 @@
 ﻿namespace Berreman
 module Constants =
+    open System.Numerics
     open MathNetNumericsMath
 
     [<Measure>]
@@ -18,6 +19,11 @@ module Constants =
     type nm
 
 
+    /// Angle in degrees.
+    [<Measure>]
+    type deg
+
+
     let oneNanometer = 1.0<nm>
     let oneMicrometer = 1.0<mkm>
     let oneMillimeter = 1.0<mm>
@@ -34,12 +40,19 @@ module Constants =
 
 
     // let toNanometers w = w / nm
-    let cplxI = createComplex 0.0 1.0
+    let cplxI = Complex.create 0.0 1.0
+
+
+    /// A magnitude below which a value is treated as exact zero.
+    type ZeroTolerance =
+        | ZeroTolerance of double
+
+        member this.value = let (ZeroTolerance v) = this in v
 
 
     /// Treat positive numbers less than that as exact zero.
-    let almostZero = 1.0e-012
+    let almostZero = ZeroTolerance 1.0e-012
 
 
     /// Treat determinant less than that as exact zero.
-    let almostZeroDet = 1.0e-03
+    let almostZeroDet = ZeroTolerance 1.0e-03

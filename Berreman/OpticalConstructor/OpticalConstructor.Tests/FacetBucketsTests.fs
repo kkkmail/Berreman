@@ -3,6 +3,7 @@ namespace OpticalConstructor.Tests
 open Xunit
 open FsCheck
 open FsCheck.FSharp
+open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.FacetBuckets
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -22,38 +23,44 @@ module FacetBucketsTests =
         | Error e -> failwith $"test cap {raw} must be valid, got %A{e}"
 
     let private bucket (lo : double) (hi : double) (count : int) : NumericBucket =
-        { range = { lower = lo; upper = hi }; count = ItemCount count }
+        { range = { lower = UnitMagnitude lo; upper = UnitMagnitude hi }; count = ItemCount count }
+
+    let private ladderOf (lo : double) (hi : double) : double list =
+        ladderBoundaries (UnitMagnitude lo) (UnitMagnitude hi) |> List.map (fun m -> m.value)
+
+    let private bucketsOf (cap : ThicknessBucketCap) (magnitudes : double list) : NumericBucket list =
+        buildBuckets cap (magnitudes |> List.map UnitMagnitude)
 
     // ---- ladder boundary generation ----
 
     [<Fact>]
     let ``ladder boundaries step 1-2-5 per decade from the largest rung at or below min`` () =
-        Assert.Equal<double list>([ 10.0; 20.0; 50.0; 100.0; 200.0; 500.0 ], ladderBoundaries 10.0 450.0)
+        Assert.Equal<double list>([ 10.0; 20.0; 50.0; 100.0; 200.0; 500.0 ], ladderOf 10.0 450.0)
 
     [<Fact>]
     let ``a min between rungs starts at the rung below it`` () =
-        Assert.Equal<double list>([ 20.0; 50.0; 100.0; 200.0; 500.0 ], ladderBoundaries 30.0 400.0)
+        Assert.Equal<double list>([ 20.0; 50.0; 100.0; 200.0; 500.0 ], ladderOf 30.0 400.0)
 
     [<Fact>]
     let ``a max exactly on a rung extends one rung above so the half-open top admits it`` () =
-        Assert.Equal<double list>([ 10.0; 20.0; 50.0; 100.0; 200.0; 500.0; 1000.0 ], ladderBoundaries 10.0 500.0)
+        Assert.Equal<double list>([ 10.0; 20.0; 50.0; 100.0; 200.0; 500.0; 1000.0 ], ladderOf 10.0 500.0)
 
     [<Fact>]
     let ``an inverted or non-positive span yields no boundaries`` () =
-        Assert.Equal<double list>([], ladderBoundaries 20.0 10.0)
-        Assert.Equal<double list>([], ladderBoundaries 0.0 10.0)
-        Assert.Equal<double list>([], ladderBoundaries (-5.0) 10.0)
+        Assert.Equal<double list>([], ladderOf 20.0 10.0)
+        Assert.Equal<double list>([], ladderOf 0.0 10.0)
+        Assert.Equal<double list>([], ladderOf (-5.0) 10.0)
 
     // ---- buildBuckets: empties dropped, half-open membership ----
 
     [<Fact>]
     let ``empty buckets are dropped: only intervals holding population magnitudes survive`` () =
-        let buckets = buildBuckets ThicknessBucketCap.defaultValue [ 12.0; 15.0; 300.0 ]
+        let buckets = bucketsOf ThicknessBucketCap.defaultValue [ 12.0; 15.0; 300.0 ]
         Assert.Equal<NumericBucket list>([ bucket 10.0 20.0 2; bucket 200.0 500.0 1 ], buckets)
 
     [<Fact>]
     let ``bucket membership is half-open: the lower edge is in, the upper edge falls in the next bucket`` () =
-        let buckets = buildBuckets ThicknessBucketCap.defaultValue [ 10.0; 20.0; 20.0 ]
+        let buckets = bucketsOf ThicknessBucketCap.defaultValue [ 10.0; 20.0; 20.0 ]
         Assert.Equal<NumericBucket list>([ bucket 10.0 20.0 1; bucket 20.0 50.0 2 ], buckets)
 
     [<Fact>]
@@ -74,14 +81,14 @@ module FacetBucketsTests =
         // Non-empty buckets carry counts 5 / 1 / 2 / 7; cap 3 forces ONE
         // merge. Pair sums: 5+1=6, 1+2=3, 2+7=9 — the middle pair merges.
         let values = (List.replicate 5 10.0) @ [ 20.0 ] @ (List.replicate 2 50.0) @ (List.replicate 7 100.0)
-        let buckets = buildBuckets (capOf 3) values
+        let buckets = bucketsOf (capOf 3) values
         Assert.Equal<NumericBucket list>([ bucket 10.0 20.0 5; bucket 20.0 100.0 3; bucket 100.0 200.0 7 ], buckets)
 
     [<Fact>]
     let ``merging cascades fewest-first and breaks ties leftmost`` () =
         // Counts 1 / 1 / 1 / 1, cap 2: the leftmost tied pair merges first
         // (1+1 at the head), then the remaining 1+1 pair — never a 2+1 merge.
-        let buckets = buildBuckets (capOf 2) [ 10.0; 20.0; 50.0; 100.0 ]
+        let buckets = bucketsOf (capOf 2) [ 10.0; 20.0; 50.0; 100.0 ]
         Assert.Equal<NumericBucket list>([ bucket 10.0 50.0 2; bucket 50.0 200.0 2 ], buckets)
 
     [<Fact>]
@@ -90,24 +97,24 @@ module FacetBucketsTests =
         // between was dropped empty. Cap 2 merges the fewest pair (3+1=4
         // beats 1+5=6), and the union interval spans the empty decades.
         let values = (List.replicate 3 12.0) @ [ 300.0 ] @ (List.replicate 5 700.0)
-        let buckets = buildBuckets (capOf 2) values
+        let buckets = bucketsOf (capOf 2) values
         Assert.Equal<NumericBucket list>([ bucket 10.0 500.0 4; bucket 500.0 1000.0 5 ], buckets)
 
     [<Fact>]
     let ``a population already within the cap merges nothing`` () =
-        let buckets = buildBuckets ThicknessBucketCap.defaultValue [ 10.0; 30.0; 70.0 ]
+        let buckets = bucketsOf ThicknessBucketCap.defaultValue [ 10.0; 30.0; 70.0 ]
         Assert.Equal<NumericBucket list>([ bucket 10.0 20.0 1; bucket 20.0 50.0 1; bucket 50.0 100.0 1 ], buckets)
 
     // ---- single-distinct-value collapse ----
 
     [<Fact>]
     let ``a single distinct magnitude collapses to one exact-value bucket carrying the population count`` () =
-        let buckets = buildBuckets ThicknessBucketCap.defaultValue [ 42.0; 42.0; 42.0 ]
+        let buckets = bucketsOf ThicknessBucketCap.defaultValue [ 42.0; 42.0; 42.0 ]
         Assert.Equal<NumericBucket list>([ bucket 42.0 42.0 3 ], buckets)
 
     [<Fact>]
     let ``an empty population yields no buckets`` () =
-        Assert.Equal<NumericBucket list>([], buildBuckets ThicknessBucketCap.defaultValue [])
+        Assert.Equal<NumericBucket list>([], bucketsOf ThicknessBucketCap.defaultValue [])
 
     // ---- labels: nm below 1 µm, µm at or above ----
 
@@ -151,7 +158,7 @@ module FacetBucketsTests =
     let private familyDef : AttributeDef<Slab> =
         {
             key = familyKey
-            name = "Family"
+            name = FacetCaption "Family"
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
             extract = fun s -> [ DiscreteValue (DiscreteKey s.family) ]
@@ -160,10 +167,10 @@ module FacetBucketsTests =
     let private thicknessDef : AttributeDef<Slab> =
         {
             key = thicknessKey
-            name = "Thickness"
+            name = FacetCaption "Thickness"
             kind = NumericAttribute
             appliesTo = fun _ -> ApplicableAttribute
-            extract = fun s -> [ NumericValue s.thicknessNm ]
+            extract = fun s -> [ NumericValue (UnitMagnitude s.thicknessNm) ]
         }
 
     let private slabDefs : AttributeDef<Slab> list = [ familyDef; thicknessDef ]
@@ -196,7 +203,7 @@ module FacetBucketsTests =
     let ``a manual min-max entry is the same ordinary chip shape, never a special path`` () =
         // A hand-typed 12–250 nm range runs through the engine exactly like a
         // bucket chip: an ordinary NumericRangeSelection, half-open.
-        let manual = { key = thicknessKey; selection = NumericRangeSelection { lower = 12.0; upper = 250.0 } }
+        let manual = { key = thicknessKey; selection = NumericRangeSelection { lower = UnitMagnitude 12.0; upper = UnitMagnitude 250.0 } }
         Assert.Equal<string list>([ "thin2"; "mid" ], filter slabDefs [ manual ] slabs |> List.map (fun s -> s.slabName))
 
     [<Fact>]
@@ -204,10 +211,10 @@ module FacetBucketsTests =
         let doubledDef : AttributeDef<Slab> =
             {
                 key = thicknessKey
-                name = "Thickness"
+                name = FacetCaption "Thickness"
                 kind = NumericAttribute
                 appliesTo = fun _ -> ApplicableAttribute
-                extract = fun s -> [ NumericValue s.thicknessNm; NumericValue s.thicknessNm ]
+                extract = fun s -> [ NumericValue (UnitMagnitude s.thicknessNm); NumericValue (UnitMagnitude s.thicknessNm) ]
             }
         let buckets = bucketsFor ThicknessBucketCap.defaultValue doubledDef [ doubledDef ] [] [ thin; thin2 ]
         // 10 and 15 nm both land in [10,20): two ITEMS, not four extractions.
@@ -226,7 +233,7 @@ module FacetBucketsTests =
             }
 
         let landsInExactlyOneBucket (capRaw : int, magnitudes : double list) : bool =
-            let buckets = buildBuckets (capOf capRaw) magnitudes
+            let buckets = bucketsOf (capOf capRaw) magnitudes
             List.length buckets <= capRaw
             && magnitudes
                |> List.forall (fun v -> (buckets |> List.filter (fun b -> b.contains v) |> List.length) = 1)

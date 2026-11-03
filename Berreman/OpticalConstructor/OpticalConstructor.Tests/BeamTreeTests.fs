@@ -42,45 +42,45 @@ module BeamTreeTests =
 
     [<Fact>]
     let ``AC-B3 / AC-A4 mirror rejects Transmitted attach and accepts Reflected only`` () =
-        let mirror = node FlatMirror
-        let child = node Detector
+        let mirror = node FlatMirrorElement
+        let child = node DetectorElement
 
-        match BeamNode.attach BeamBranch.Transmitted child mirror with
-        | Error MirrorBranchMustBeReflected -> ()
+        match BeamNode.attach BeamBranch.TransmittedBeam child mirror with
+        | Error MirrorBranchMustBeReflectedErr -> ()
         | Ok _ -> Assert.Fail("a mirror MUST reject a Transmitted attachment")
 
-        match BeamNode.attach BeamBranch.Reflected child mirror with
+        match BeamNode.attach BeamBranch.ReflectedBeam child mirror with
         | Ok parent ->
-            Assert.True(parent.children.ContainsKey BeamBranch.Reflected)
-            Assert.False(parent.children.ContainsKey BeamBranch.Transmitted)
+            Assert.True(parent.children.ContainsKey BeamBranch.ReflectedBeam)
+            Assert.False(parent.children.ContainsKey BeamBranch.TransmittedBeam)
             Assert.Equal(1, parent.children.Count)
         | Error _ -> Assert.Fail("a mirror MUST accept a Reflected attachment")
 
     [<Fact>]
     let ``AC-B2 non-mirror node holds both Reflected and Transmitted children`` () =
-        let sample = node (Sample vacuumSystem)
-        let withR = sample |> BeamNode.attach BeamBranch.Reflected (node Detector) |> okOrFail
-        let withRT = withR |> BeamNode.attach BeamBranch.Transmitted (node Analyzer) |> okOrFail
+        let sample = node (SampleElement vacuumSystem)
+        let withR = sample |> BeamNode.attach BeamBranch.ReflectedBeam (node DetectorElement) |> okOrFail
+        let withRT = withR |> BeamNode.attach BeamBranch.TransmittedBeam (node AnalyzerElement) |> okOrFail
 
-        Assert.True(withRT.children.ContainsKey BeamBranch.Reflected)
-        Assert.True(withRT.children.ContainsKey BeamBranch.Transmitted)
+        Assert.True(withRT.children.ContainsKey BeamBranch.ReflectedBeam)
+        Assert.True(withRT.children.ContainsKey BeamBranch.TransmittedBeam)
         Assert.Equal(2, withRT.children.Count)
 
     [<Fact>]
     let ``AC-B2 linear chain is single-child-per-node on Transmitted`` () =
         // source -> polarizer -> sample -> analyzer -> detector
-        let detector = node Detector
-        let analyzer = node Analyzer |> BeamNode.attach BeamBranch.Transmitted detector |> okOrFail
-        let sample = node (Sample vacuumSystem) |> BeamNode.attach BeamBranch.Transmitted analyzer |> okOrFail
-        let polarizer = node Polarizer |> BeamNode.attach BeamBranch.Transmitted sample |> okOrFail
-        let source = node Source |> BeamNode.attach BeamBranch.Transmitted polarizer |> okOrFail
+        let detector = node DetectorElement
+        let analyzer = node AnalyzerElement |> BeamNode.attach BeamBranch.TransmittedBeam detector |> okOrFail
+        let sample = node (SampleElement vacuumSystem) |> BeamNode.attach BeamBranch.TransmittedBeam analyzer |> okOrFail
+        let polarizer = node PolarizerElement |> BeamNode.attach BeamBranch.TransmittedBeam sample |> okOrFail
+        let source = node SourceElement |> BeamNode.attach BeamBranch.TransmittedBeam polarizer |> okOrFail
 
         // Every node in the chain carries exactly one child, on the Transmitted branch.
         let rec walk (n : BeamNode) (depth : int) =
             Assert.True(n.children.Count <= 1)
-            match Map.tryFind BeamBranch.Transmitted n.children with
+            match Map.tryFind BeamBranch.TransmittedBeam n.children with
             | Some next ->
-                Assert.False(n.children.ContainsKey BeamBranch.Reflected)
+                Assert.False(n.children.ContainsKey BeamBranch.ReflectedBeam)
                 walk next (depth + 1)
             | None -> depth
         let depth = walk source 0
@@ -90,20 +90,20 @@ module BeamTreeTests =
     let ``AC-C4 curved fan: CurvedMirror is Reflected-only, Lens has both branches`` () =
         // The mirror special case (§C.6): a CurvedMirror zone node exposes the
         // Reflected branch ONLY and drops the transmitted field.
-        let mirrorZone = attachCurvedElement CurvedMirror (node CurvedMirror)
-        Assert.True(mirrorZone.children.ContainsKey BeamBranch.Reflected)
-        Assert.False(mirrorZone.children.ContainsKey BeamBranch.Transmitted)
+        let mirrorZone = attachCurvedElement CurvedMirrorElement (node CurvedMirrorElement)
+        Assert.True(mirrorZone.children.ContainsKey BeamBranch.ReflectedBeam)
+        Assert.False(mirrorZone.children.ContainsKey BeamBranch.TransmittedBeam)
         Assert.Equal(1, mirrorZone.children.Count)
 
         // A Lens zone node exposes BOTH branches.
-        let lensZone = attachCurvedElement Lens (node Lens)
-        Assert.True(lensZone.children.ContainsKey BeamBranch.Reflected)
-        Assert.True(lensZone.children.ContainsKey BeamBranch.Transmitted)
+        let lensZone = attachCurvedElement LensElement (node LensElement)
+        Assert.True(lensZone.children.ContainsKey BeamBranch.ReflectedBeam)
+        Assert.True(lensZone.children.ContainsKey BeamBranch.TransmittedBeam)
         Assert.Equal(2, lensZone.children.Count)
 
     [<Fact>]
     let ``AC-B8 changing defaultUnit leaves the stored SI system untouched`` () =
-        let n0 = node (Sample vacuumSystem)
+        let n0 = node (SampleElement vacuumSystem)
         let n1 = { n0 with defaultUnit = Millimeter }
         // The display-only hook changed; the stored stack is byte-identical.
         Assert.Equal(Millimeter, n1.defaultUnit)

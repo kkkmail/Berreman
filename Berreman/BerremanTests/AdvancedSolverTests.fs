@@ -42,7 +42,7 @@ type AdvancedSolverTests(output : ITestOutputHelper) =
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
-            description = OpticalSystem.totalReflGlass150System.description |> Option.defaultValue String.Empty
+            description = OpticalSystem.totalReflGlass150System.description |> Option.map (fun d -> d.value) |> Option.defaultValue String.Empty
             opticalSystem = OpticalSystem.wedgelGlass150System
             info =
                 {

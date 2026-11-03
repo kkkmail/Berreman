@@ -15,6 +15,8 @@ module OpticalConstructor.Ui.Validation
 open System
 open Berreman.Constants
 open Berreman.Media
+open OpticalConstructor.Domain
+open OpticalConstructor.Ui.UserEnvironment
 
 /// Whether a validation finding blocks commit (`Blocking`) or is an advisory
 /// physical-sanity note (`Warning`, 010 Part II §8). Named to avoid shadowing the
@@ -23,59 +25,86 @@ type Severity =
     | Blocking
     | Warning
 
+/// The boundary field a validation finding is about (§J.9).
+type ValidatedField =
+    | ThicknessField
+    | RepeatCountField
+    | WavelengthMinField
+    | WavelengthMaxField
+    | WavelengthRangeField
+    | RefractiveIndexKField
+
+/// The text of a validation finding, shown inline next to its field.
+type ValidationMessage =
+    | ValidationMessage of string
+
+    member this.value = let (ValidationMessage m) = this in m
+
 /// A single validation finding surfaced inline next to the offending field (§J.9).
 type ValidationError =
     {
-        field : string
+        field : ValidatedField
         severity : Severity
-        message : string
+        message : ValidationMessage
     }
 
-let private blocking field message = { field = field; severity = Blocking; message = message }
-let private advisory field message = { field = field; severity = Warning; message = message }
+let private blocking (field : ValidatedField) (message : ValidationMessage) : ValidationError =
+    { field = field; severity = Blocking; message = message }
+
+let private advisory (field : ValidatedField) (message : ValidationMessage) : ValidationError =
+    { field = field; severity = Warning; message = message }
 
 /// A finite positive canonical length (meters): finite (not NaN/±∞) and `> 0`.
-let private isFinitePositive (x : float<meter>) : bool =
-    Double.IsFinite(float x) && x > 0.0<meter>
+let private (|FinitePositiveLength|_|) (x : float<meter>) : unit option =
+    if Double.IsFinite(float x) && x > 0.0<meter> then Some () else None
 
-/// Validate a layer thickness (§J.9, `Media.fs:12`). A finite film MUST have a
-/// strictly positive thickness — `Thickness.Thickness d` with `d <= 0.0<meter>`
-/// (or a non-finite `d`) is rejected; the semi-infinite `Thickness.Infinity`
-/// half-space is valid. Returns the validated `Thickness` unchanged on `Ok` (no
-/// coercion).
-let validateThickness (t : Thickness) : Result<Thickness, ValidationError list> =
-    match t with
-    | Infinity -> Ok t
-    | Thickness d ->
-        if isFinitePositive d then Ok t
-        else Error [ blocking "thickness" "Film thickness must be a positive, finite length (meters > 0)." ]
+type Thickness with
 
-/// Validate a repeat/period count (§J.2 / §J.9). A unit cell MUST repeat at least
-/// once — a count `< 1` is rejected. This is the rejection slice 014's J.2 repeat
-/// builder defers to (AC-J9).
-let validateRepeatCount (count : int) : Result<int, ValidationError list> =
-    if count >= 1 then Ok count
-    else Error [ blocking "repeatCount" "Repeat count must be at least 1." ]
+    /// Validate a layer thickness (§J.9, `Media.fs:12`). A finite film MUST have a
+    /// strictly positive thickness — `Thickness.Thickness d` with `d <= 0.0<meter>`
+    /// (or a non-finite `d`) is rejected; the semi-infinite `Thickness.Infinity`
+    /// half-space is valid. Returns the validated `Thickness` unchanged on `Ok` (no
+    /// coercion).
+    member this.validateThickness : Result<Thickness, ValidationError list> =
+        match this with
+        | Infinity -> Ok this
+        | Thickness FinitePositiveLength -> Ok this
+        | Thickness _ ->
+            Error [ blocking ThicknessField (ValidationMessage "Film thickness must be a positive, finite length (meters > 0).") ]
+
+type Library.PeriodCount with
+
+    /// Validate a repeat/period count (§J.2 / §J.9). A unit cell MUST repeat at least
+    /// once — a count `< 1` is rejected. This is the rejection slice 014's J.2 repeat
+    /// builder defers to (AC-J9).
+    member this.validateRepeatCount : Result<Library.PeriodCount, ValidationError list> =
+        match this with
+        | Library.PeriodCount n when n >= 1 -> Ok this
+        | Library.PeriodCount _ -> Error [ blocking RepeatCountField (ValidationMessage "Repeat count must be at least 1.") ]
 
 /// Validate a wavelength range (§J.9). Both endpoints MUST be finite and strictly
 /// positive (canonical meters), and the range MUST be non-empty (`min < max`).
 /// Accumulates every violation so all are surfaced inline at once. Returns the
-/// validated `(min, max)` unchanged on `Ok` (no coercion, no reordering).
+/// validated range unchanged on `Ok` (no coercion, no reordering).
 let validateWavelengthRange
     (minM : float<meter>)
     (maxM : float<meter>)
-    : Result<float<meter> * float<meter>, ValidationError list> =
+    : Result<WavelengthRange, ValidationError list> =
     let errors =
         [
-            if not (isFinitePositive minM) then
-                blocking "wavelengthMin" "Wavelength range minimum must be a positive, finite length."
-            if not (isFinitePositive maxM) then
-                blocking "wavelengthMax" "Wavelength range maximum must be a positive, finite length."
-            if isFinitePositive minM && isFinitePositive maxM && minM >= maxM then
-                blocking "wavelengthRange" "Wavelength range must be non-empty (min < max)."
+            match minM with
+            | FinitePositiveLength -> ()
+            | _ -> yield blocking WavelengthMinField (ValidationMessage "Wavelength range minimum must be a positive, finite length.")
+            match maxM with
+            | FinitePositiveLength -> ()
+            | _ -> yield blocking WavelengthMaxField (ValidationMessage "Wavelength range maximum must be a positive, finite length.")
+            match minM, maxM with
+            | FinitePositiveLength, FinitePositiveLength when minM >= maxM ->
+                yield blocking WavelengthRangeField (ValidationMessage "Wavelength range must be non-empty (min < max).")
+            | _ -> ()
         ]
     match errors with
-    | [] -> Ok(minM, maxM)
+    | [] -> Ok { min = minM; max = maxM }
     | _ -> Error errors
 
 // ---------------------------------------------------------------------------
@@ -85,11 +114,14 @@ let validateWavelengthRange
 // conversion; this seam runs no unit conversion of its own.
 // ---------------------------------------------------------------------------
 
-/// Physical-sanity warning (010 Part II §8): a finite, negative imaginary
-/// refractive index implies optical GAIN (an amplifying medium) rather than
-/// absorption. Returns a non-blocking `Warning` (it does not gate commit); an
-/// absorbing (`k >= 0`) or non-finite `k` yields no warning.
-let imaginaryIndexGainWarning (k : float) : ValidationError list =
-    if Double.IsFinite k && k < 0.0 then
-        [ advisory "refractiveIndexK" "Imaginary refractive index k < 0 implies gain (an amplifying medium), not absorption." ]
-    else []
+type MaterialComplexityEditor.ExtinctionCoefficient with
+
+    /// Physical-sanity warning (010 Part II §8): a finite, negative imaginary
+    /// refractive index implies optical GAIN (an amplifying medium) rather than
+    /// absorption. Returns a non-blocking `Warning` (it does not gate commit); an
+    /// absorbing (`k >= 0`) or non-finite `k` yields no warning.
+    member this.imaginaryIndexGainWarning : ValidationError list =
+        match this with
+        | MaterialComplexityEditor.ExtinctionCoefficient k when Double.IsFinite k && k < 0.0 ->
+            [ advisory RefractiveIndexKField (ValidationMessage "Imaginary refractive index k < 0 implies gain (an amplifying medium), not absorption.") ]
+        | MaterialComplexityEditor.ExtinctionCoefficient _ -> []

@@ -16,11 +16,13 @@ open Xunit
 /// refractiveindex.info YAML / CSV import + CSV export (§D.9, AC-D3). Proves λ is
 /// reduced to the engine meter base on import (µm YAML, nm CSV), the resulting
 /// `getEps` reproduces the tabulated n,k, tabulated entries interpolate linearly,
-/// and `exportCsv` round-trips through `importCsv`.
+/// and `exportCsv` round-trips through `NkCsvText.importMaterial`.
 module MaterialImportTests =
 
     let private fixtures = Path.Combine(System.AppContext.BaseDirectory, "fixtures")
     let private readFixture name = File.ReadAllText(Path.Combine(fixtures, name))
+    let private readYaml (name : string) : RefractiveIndexInfoText = RefractiveIndexInfoText (readFixture name)
+    let private readCsv (name : string) : NkCsvText = NkCsvText (readFixture name)
 
     let private closeC (tol : float) (a : Complex) (b : Complex) =
         abs (a.Real - b.Real) <= tol && abs (a.Imaginary - b.Imaginary) <= tol
@@ -28,33 +30,33 @@ module MaterialImportTests =
     let private epsAt (entry : MaterialEntry) (w : WaveLength) = (entry.properties.epsWithDisp.getEps w).[0, 0]
 
     let private nkSquared n k =
-        (Eps.fromComplexRefractionIndex (ComplexRefractionIndex(createComplex n k))).[0, 0]
+        (Eps.fromComplexRefractionIndex (ComplexRefractionIndex(Complex.create n k))).[0, 0]
 
     [<Fact>]
     let ``AC-D3 refractiveindex.info µm YAML import reduces λ to meters and reproduces n,k`` () =
-        match importRefractiveIndexInfo (readFixture "Si.yml") with
+        match (readYaml "Si.yml").importMaterial with
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
             // 0.4 µm is a tabulated sample (n = 5.570, k = 0.387).
-            let got = epsAt entry (toWaveLength Micrometer 0.4)
+            let got = epsAt entry (toWaveLength Micrometer (UnitMagnitude 0.4))
             Assert.True(closeC 1e-9 got (nkSquared 5.570 0.387), $"got {got}")
 
     [<Fact>]
     let ``nm CSV import reduces λ to meters and reproduces n,k`` () =
-        match importCsv (readFixture "sample-nk.csv") with
+        match (readCsv "sample-nk.csv").importMaterial with
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
             // 500 nm is a tabulated sample (n = 1.480, k = 0.005).
-            let got = epsAt entry (toWaveLength Nanometer 500.0)
+            let got = epsAt entry (toWaveLength Nanometer (UnitMagnitude 500.0))
             Assert.True(closeC 1e-9 got (nkSquared 1.480 0.005), $"got {got}")
 
     [<Fact>]
     let ``tabulated import interpolates linearly between samples`` () =
-        match importRefractiveIndexInfo (readFixture "Si.yml") with
+        match (readYaml "Si.yml").importMaterial with
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
             // 0.55 µm is the midpoint of 0.5 (4.293, 0.045) and 0.6 (3.939, 0.025).
-            let got = epsAt entry (toWaveLength Micrometer 0.55)
+            let got = epsAt entry (toWaveLength Micrometer (UnitMagnitude 0.55))
             Assert.True(closeC 1e-9 got (nkSquared 4.116 0.035), $"got {got}")
 
     /// The imported entry MUST be editable (spec 0033 step 025): a `Some`
@@ -72,12 +74,12 @@ module MaterialImportTests =
     /// (hand-computed in each test from the fixture coefficients) at sample
     /// wavelengths in µm — plus the editable-complexity shape.
     let private assertFormulaIndex (fixture : string) (expectedN : float -> float) (samplesMkm : float list) =
-        match importRefractiveIndexInfo (readFixture fixture) with
+        match (readYaml fixture).importMaterial with
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
             assertEditableDispersive entry
             for lam in samplesMkm do
-                let got = epsAt entry (toWaveLength Micrometer lam)
+                let got = epsAt entry (toWaveLength Micrometer (UnitMagnitude lam))
                 let want = nkSquared (expectedN lam) 0.0
                 Assert.True(closeC 1e-9 got want, $"{fixture} at {lam} µm: got {got}, want {want}")
 
@@ -99,13 +101,13 @@ module MaterialImportTests =
 
     [<Fact>]
     let ``formula 2 segment carries the page's wavelength_range in µm`` () =
-        match importRefractiveIndexInfo (readFixture "formula2.yml") with
+        match (readYaml "formula2.yml").importMaterial with
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
             match entry.complexity with
             | Some { eps = EpsWithDispValue (IsotropicDispersive [ segment ]) } ->
-                Assert.Equal(toWaveLength Micrometer 0.3, segment.wavelengthInterval.lower)
-                Assert.Equal(toWaveLength Micrometer 2.5, segment.wavelengthInterval.upper)
+                Assert.Equal(toWaveLength Micrometer (UnitMagnitude 0.3), segment.wavelengthInterval.lower)
+                Assert.Equal(toWaveLength Micrometer (UnitMagnitude 2.5), segment.wavelengthInterval.upper)
             | other -> Assert.Fail($"expected a single isotropic dispersive segment, got {other}")
 
     [<Fact>]
@@ -151,25 +153,25 @@ module MaterialImportTests =
 
     [<Fact>]
     let ``formulas 8 and 9 produce the typed unsupported-formula error`` () =
-        match importRefractiveIndexInfo (readFixture "formula8.yml") with
-        | Error (UnsupportedFormula (8, _)) -> ()
-        | other -> Assert.Fail($"formula 8: expected UnsupportedFormula, got {other}")
-        match importRefractiveIndexInfo (readFixture "formula9.yml") with
-        | Error (UnsupportedFormula (9, _)) -> ()
-        | other -> Assert.Fail($"formula 9: expected UnsupportedFormula, got {other}")
+        match (readYaml "formula8.yml").importMaterial with
+        | Error (UnsupportedFormulaErr (RiiFormulaNumber 8, _)) -> ()
+        | other -> Assert.Fail($"formula 8: expected UnsupportedFormulaErr, got {other}")
+        match (readYaml "formula9.yml").importMaterial with
+        | Error (UnsupportedFormulaErr (RiiFormulaNumber 9, _)) -> ()
+        | other -> Assert.Fail($"formula 9: expected UnsupportedFormulaErr, got {other}")
 
     [<Fact>]
     let ``exportCsv samples n,k over the range and round-trips through importCsv`` () =
         let entry =
-            match importCsv (readFixture "sample-nk.csv") with
+            match (readCsv "sample-nk.csv").importMaterial with
             | Ok e -> e
             | Error e -> failwith (string e)
         let range : Range<WaveLength> =
-            { startValue = WaveLength.nm 450.0<nm>; endValue = WaveLength.nm 650.0<nm>; numberOfPoints = 4 }
+            { startValue = WaveLength.nm 450.0<nm>; endValue = WaveLength.nm 650.0<nm>; numberOfPoints = NumberOfPoints 4 }
         let csv = exportCsv entry range
-        Assert.Contains("wavelength_nm,n,k", csv)
-        match importCsv csv with
+        Assert.Contains("wavelength_nm,n,k", csv.value)
+        match csv.importMaterial with
         | Ok back ->
-            let w = toWaveLength Nanometer 500.0 // a shared sample of both tables
+            let w = toWaveLength Nanometer (UnitMagnitude 500.0) // a shared sample of both tables
             Assert.True(closeC 1e-6 (epsAt entry w) (epsAt back w), "round-trip n,k at 500 nm")
         | Error e -> Assert.Fail($"{e}")

@@ -116,9 +116,9 @@ module EmbeddedChartTests =
     /// The engine properties of a single-segment dispersive material whose model is `code` — the
     /// `MaterialComplexityTests` derive-and-evaluate recipe (used for the four transcendental models).
     let private modelProps (code : string) : OpticalPropertiesWithDisp =
-        let model = defaultModelChoices |> List.find (fun m -> modelKindCode m = code)
-        let st = [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, model) ] |> List.fold (fun s m -> applyOk m s) defaultState
-        match toComplexity st with
+        let model = defaultModelChoices |> List.find (fun m -> m.kindCode = code)
+        let st = [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, model) ] |> List.fold (fun s m -> applyOk m s) defaultState
+        match st.toComplexity with
         | Ok c -> c.toProperties
         | Error e -> failwith $"expected a derivable complexity for %s{code}, got %A{e}"
 
@@ -147,7 +147,7 @@ module EmbeddedChartTests =
     /// Commit `text` through the REAL faceted filter box (Enter is the commit gesture — the box
     /// has no text-change subscription).
     let private commitFilter (window : Window) (text : string) : unit =
-        match tryFindControl window UiIds.FacetedTree.filterBox with
+        match tryFindControl window ConstructorUiId.facetFilterBox.value with
         | Some (:? TextBox as tb) ->
             tb.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
@@ -160,7 +160,7 @@ module EmbeddedChartTests =
         | Some c -> Assert.Fail($"the filter box is a %s{c.GetType().Name}, not a TextBox")
         | None -> Assert.Fail("the filter box was not found")
 
-    let private hostId = "EmbeddedNkChartTestHost"
+    let private hostId = ConstructorUiId "EmbeddedNkChartTestHost"
 
     // -- the embedded control: dual axes + rasterization, over every model kind --------------------
 
@@ -168,9 +168,9 @@ module EmbeddedChartTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the embedded n/k chart renders one frame with n on the left and k on the right (non-dispersive)`` () =
         HeadlessSession.run (fun () ->
-            let chart = chartOf (builtInProps MaterialIds.vacuum)
-            let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
-            match avaUnder window hostId with
+            let chart = chartOf (builtInProps MaterialIds.vacuumMaterial)
+            let window = mount (EmbeddedChart.embeddedChartView hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
+            match avaUnder window hostId.value with
             | Some ava -> assertNkDualAxis "vacuum" ava
             | None -> Assert.Fail("no embedded AvaPlot for the non-dispersive entry")
             window.Close())
@@ -180,8 +180,8 @@ module EmbeddedChartTests =
     let ``the embedded n/k chart renders one frame for a dispersive built-in (silicon)`` () =
         HeadlessSession.run (fun () ->
             let chart = chartOf (builtInProps MaterialIds.silicon)
-            let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
-            match avaUnder window hostId with
+            let window = mount (EmbeddedChart.embeddedChartView hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
+            match avaUnder window hostId.value with
             | Some ava -> assertNkDualAxis "silicon" ava
             | None -> Assert.Fail("no embedded AvaPlot for the dispersive built-in")
             window.Close())
@@ -192,8 +192,8 @@ module EmbeddedChartTests =
         HeadlessSession.run (fun () ->
             for code in [ "TaucLorentz"; "GaussianOscillator"; "ForouhiBloomer"; "BrendelBormann" ] do
                 let chart = chartOf (modelProps code)
-                let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
-                match avaUnder window hostId with
+                let window = mount (EmbeddedChart.embeddedChartView hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
+                match avaUnder window hostId.value with
                 | Some ava -> assertNkDualAxis code ava
                 | None -> Assert.Fail($"no embedded AvaPlot for the transcendental model %s{code}")
                 window.Close())
@@ -208,15 +208,15 @@ module EmbeddedChartTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The default (isotropic, non-dispersive) editor derives a preview: the embedded AvaPlot renders.
-            Assert.True(isPresent window UiIds.MaterialEditor.previewChart, "the editor must embed the preview chart host")
-            match avaUnder window UiIds.MaterialEditor.previewChart with
+            Assert.True(isPresent window ConstructorUiId.materialPreviewChart.value, "the editor must embed the preview chart host")
+            match avaUnder window ConstructorUiId.materialPreviewChart.value with
             | Some ava -> Assert.True(rasterizes ava, "the non-dispersive editor preview rendered no image bytes")
             | None -> Assert.Fail("no embedded AvaPlot under the non-dispersive editor preview")
             // A transcendental pick (ForouhiBloomer) still derives and draws n/k through the SAME embedded chart.
-            clickOn window UiIds.MaterialEditor.dispersiveToggle
-            clickOn window (UiIds.MaterialEditor.modelOption 0 "ForouhiBloomer")
+            clickOn window ConstructorUiId.dispersiveToggle.value
+            clickOn window (ConstructorUiId.dispersionModelOption (ConstructorUiPosition 0) (ConstructorUiKey "ForouhiBloomer")).value
             Dispatcher.UIThread.RunJobs()
-            match avaUnder window UiIds.MaterialEditor.previewChart with
+            match avaUnder window ConstructorUiId.materialPreviewChart.value with
             | Some ava -> Assert.True(rasterizes ava, "the transcendental editor preview rendered no image bytes")
             | None -> Assert.Fail("no embedded AvaPlot under the transcendental editor preview")
             window.Close())
@@ -232,10 +232,10 @@ module EmbeddedChartTests =
         Dispatcher.UIThread.RunJobs()
         commitFilter window search
         // The tree opens collapsed (spec 0040 step 002) — expand the entries group to reach the leaf.
-        clickOn window (UiIds.FacetedTree.treeNodeChevron "entries")
-        clickOn window (MW.entryNode entryId)
-        Assert.True(isPresent window UiIds.MaterialsWindow.viewPanelChart, $"%s{label}: the view panel must embed the n/k chart host")
-        match avaUnder window UiIds.MaterialsWindow.viewPanelChart with
+        clickOn window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
+        clickOn window ((ConstructorUiId.materialsEntryNode entryId).value)
+        Assert.True(isPresent window ConstructorUiId.materialsViewPanelNkChart.value, $"%s{label}: the view panel must embed the n/k chart host")
+        match avaUnder window ConstructorUiId.materialsViewPanelNkChart.value with
         | Some ava -> Assert.True(rasterizes ava, $"%s{label}: the view-panel embedded chart rendered no image bytes")
         | None -> Assert.Fail($"%s{label}: no embedded AvaPlot under the Materials view panel n/k chart host")
         window.Close()

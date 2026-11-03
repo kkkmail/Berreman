@@ -120,7 +120,7 @@ module WireUi0040CompositionTests =
     /// Commit `text` through the REAL faceted filter box (the Materials / Library windows commit on
     /// Enter/LostFocus only — never per keystroke — so a bare text set dispatches nothing).
     let private commitFilter (window : Window) (text : string) : unit =
-        match tryFindControl window UiIds.FacetedTree.filterBox with
+        match tryFindControl window ConstructorUiId.facetFilterBox.value with
         | Some (:? TextBox as tb) ->
             tb.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
@@ -137,7 +137,7 @@ module WireUi0040CompositionTests =
     /// The tree opens collapsed, so a node's leaves render only after this — and the expansion
     /// PERSISTS across the window's later re-renders (a filter commit does not re-collapse it).
     let private expandNode (window : Window) (code : string) : unit =
-        clickOn window (UiIds.FacetedTree.treeNodeChevron code)
+        clickOn window (ConstructorUiId.facetTreeChevron (ConstructorUiKey code)).value
 
     /// The clickable label Border of the tree row carrying `id` (the chevron carries a DISTINCT id,
     /// so this is unambiguously the label box).
@@ -184,10 +184,10 @@ module WireUi0040CompositionTests =
     let private openMaterialsWindow (root : Window) : Window =
         let opened, sub = trackOpened ()
         use _sub = sub
-        clickOn root WorkbenchIds.openMaterialsButton
+        clickOn root ConstructorUiId.openMaterialsWindowButton.value
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
-        Assert.True(matchesId UiIds.MaterialsWindow.window opened.[0], "the strip button must open the Materials window")
+        Assert.True(matchesId ConstructorUiId.materialsWindow.value opened.[0], "the strip button must open the Materials window")
         Assert.True(opened.[0].IsVisible, "the Materials window must be shown")
         opened.[0]
 
@@ -197,10 +197,10 @@ module WireUi0040CompositionTests =
     let private openLibraryWindow (root : Window) : Window =
         let opened, sub = trackOpened ()
         use _sub = sub
-        clickOn root WorkbenchIds.openLibraryButton
+        clickOn root ConstructorUiId.openLibraryWindowButton.value
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
-        Assert.True(matchesId UiIds.LibraryWindow.window opened.[0], "the strip button must open the Library window")
+        Assert.True(matchesId ConstructorUiId.libraryWindow.value opened.[0], "the strip button must open the Library window")
         Assert.True(opened.[0].IsVisible, "the Library window must be shown")
         opened.[0]
 
@@ -210,11 +210,11 @@ module WireUi0040CompositionTests =
     let private filmlessPlate () : Sample =
         {
             id = newSampleId ()
-            name = "Bare plate"
+            name = EntryName "Bare plate"
             structure = { films = []; substrate = None; lower = None }
-            substrate = Plate
-            description = "film-less Plate — substrate set via the Materials Select window (spec 0040 step 011)"
-            supportedEmission = defaultSupportedEmission Plate
+            substrate = ThickPlate
+            description = EntryDescription "film-less Plate — substrate set via the Materials Select window (spec 0040 step 011)"
+            supportedEmission = ThickPlate.defaultSupportedEmission
         }
 
     // ============================ the headless wiring assertion (gate `ui-smoke`) ============================
@@ -227,19 +227,19 @@ module WireUi0040CompositionTests =
             // ---- Materials window (steps 002/003) over the app scope ----
             let materialsWindow = openMaterialsWindow root
             // Collapsed by default (step 002): the entries group renders a chevron, but no leaf.
-            Assert.True(isPresent materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries"),
+            Assert.True(isPresent materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value,
                         "the Materials tree's entries group must carry a disclosure chevron")
-            Assert.False(isPresent materialsWindow (MW.entryNode MaterialIds.glass152),
+            Assert.False(isPresent materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value),
                          "a collapsed Materials tree must hide its entry leaves on first open")
             // Expanding reveals the leaves in the same render pass (expansion persists across the filter).
             expandNode materialsWindow "entries"
             commitFilter materialsWindow "glass"
-            Assert.True(isPresent materialsWindow (MW.entryNode MaterialIds.glass152),
+            Assert.True(isPresent materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value),
                         "the expanded Materials tree lists the seeded glass152 leaf from the root-wired store")
             // Visible selection (step 003): exactly the clicked row reads the chosen fill; a sibling stays idle.
-            clickOn materialsWindow (MW.entryNode MaterialIds.glass152)
-            let mSelected = labelBorderOf materialsWindow (MW.entryNode MaterialIds.glass152)
-            let mSibling = labelBorderOf materialsWindow (MW.entryNode MaterialIds.glass200)
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
+            let mSelected = labelBorderOf materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
+            let mSibling = labelBorderOf materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass200).value)
             Assert.Equal(Some chosenFill, backgroundColorOf mSelected)
             Assert.Equal(Some idleFill, backgroundColorOf mSibling)
             Assert.True(mSelected.BorderThickness.Top > mSibling.BorderThickness.Top,
@@ -248,17 +248,17 @@ module WireUi0040CompositionTests =
             Dispatcher.UIThread.RunJobs()
             // ---- Library window (steps 002/003) over the same app scope ----
             let libraryWindow = openLibraryWindow root
-            Assert.True(isPresent libraryWindow (UiIds.FacetedTree.treeNodeChevron "entries"),
+            Assert.True(isPresent libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value,
                         "the Library tree's entries group must carry a disclosure chevron")
-            Assert.False(isPresent libraryWindow (LW.entryNode "src-600"),
+            Assert.False(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "src-600")).value),
                          "a collapsed Library tree must hide its entry leaves on first open")
             expandNode libraryWindow "entries"
             commitFilter libraryWindow "polarizer"
-            Assert.True(isPresent libraryWindow (LW.entryNode "pol-lp"),
+            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-lp")).value),
                         "the expanded Library tree lists the seeded polarizer preset from the root-wired proxy")
-            clickOn libraryWindow (LW.entryNode "pol-lp")
-            let lSelected = labelBorderOf libraryWindow (LW.entryNode "pol-lp")
-            let lSibling = labelBorderOf libraryWindow (LW.entryNode "pol-cp-left")
+            clickOn libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-lp")).value)
+            let lSelected = labelBorderOf libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-lp")).value)
+            let lSibling = labelBorderOf libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-cp-left")).value)
             Assert.Equal(Some chosenFill, backgroundColorOf lSelected)
             Assert.Equal(Some idleFill, backgroundColorOf lSibling)
             Assert.True(lSelected.BorderThickness.Top > lSibling.BorderThickness.Top,
@@ -281,7 +281,7 @@ module WireUi0040CompositionTests =
             Dispatcher.UIThread.RunJobs()
             Assert.True(window.IsVisible, "the Material editor must render one frame headless over the app scope")
             // Wrapping description (step 007): the box wraps and accepts returns so it grows multiline.
-            match tryFindControl window UiIds.MaterialEditor.descriptionBox with
+            match tryFindControl window ConstructorUiId.materialDescriptionBox.value with
             | Some (:? TextBox as tb) ->
                 Assert.Equal(TextWrapping.Wrap, tb.TextWrapping)
                 Assert.True(tb.AcceptsReturn, "the description box must accept returns so it grows multiline")
@@ -289,12 +289,12 @@ module WireUi0040CompositionTests =
             | None -> Assert.Fail("the description box was not found in the mounted editor")
             // Restricted gyration/μ tabs (step 006): the Gyration tab appears exactly when active,
             // the μ tab exactly when magnetic — the restricted preview surface composes and renders.
-            Assert.False(isPresent window UiIds.MaterialEditor.gyrationTab, "no Gyration tab before activity is enabled")
-            clickOn window UiIds.MaterialEditor.activeToggle
-            Assert.True(isPresent window UiIds.MaterialEditor.gyrationTab, "the Gyration tab appears when optically active")
-            Assert.False(isPresent window UiIds.MaterialEditor.muTab, "no μ tab before magnetic is enabled")
-            clickOn window UiIds.MaterialEditor.magneticToggle
-            Assert.True(isPresent window UiIds.MaterialEditor.muTab, "the μ tab appears when magnetic")
+            Assert.False(isPresent window ConstructorUiId.materialPreviewGyrationTab.value, "no Gyration tab before activity is enabled")
+            clickOn window ConstructorUiId.activeToggle.value
+            Assert.True(isPresent window ConstructorUiId.materialPreviewGyrationTab.value, "the Gyration tab appears when optically active")
+            Assert.False(isPresent window ConstructorUiId.materialPreviewMuTab.value, "no μ tab before magnetic is enabled")
+            clickOn window ConstructorUiId.magneticToggle.value
+            Assert.True(isPresent window ConstructorUiId.materialPreviewMuTab.value, "the μ tab appears when magnetic")
             window.Close())
 
     [<Fact>]
@@ -308,36 +308,36 @@ module WireUi0040CompositionTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // R/T checkboxes for a Plate (step 010): both render, both checked (EmitBoth), T enabled.
-            Assert.True(isPresent window UiIds.SampleEditor.emitReflectedCheck, "the R checkbox must render for a Plate")
-            Assert.True(isPresent window UiIds.SampleEditor.emitTransmittedCheck, "the T checkbox must render for a Plate")
-            Assert.True((checkBox window UiIds.SampleEditor.emitReflectedCheck).IsChecked.GetValueOrDefault false, "R starts checked")
-            Assert.True((checkBox window UiIds.SampleEditor.emitTransmittedCheck).IsChecked.GetValueOrDefault false, "T starts checked")
-            Assert.True((checkBox window UiIds.SampleEditor.emitTransmittedCheck).IsEnabled, "the Plate T checkbox is enabled")
-            clickControl window UiIds.SampleEditor.emitTransmittedCheck
-            Assert.False((checkBox window UiIds.SampleEditor.emitTransmittedCheck).IsChecked.GetValueOrDefault true, "the T click cleared T")
-            Assert.True((checkBox window UiIds.SampleEditor.emitReflectedCheck).IsChecked.GetValueOrDefault false, "R remains on after clearing T")
+            Assert.True(isPresent window ConstructorUiId.sampleEmitReflectedCheck.value, "the R checkbox must render for a Plate")
+            Assert.True(isPresent window ConstructorUiId.sampleEmitTransmittedCheck.value, "the T checkbox must render for a Plate")
+            Assert.True((checkBox window ConstructorUiId.sampleEmitReflectedCheck.value).IsChecked.GetValueOrDefault false, "R starts checked")
+            Assert.True((checkBox window ConstructorUiId.sampleEmitTransmittedCheck.value).IsChecked.GetValueOrDefault false, "T starts checked")
+            Assert.True((checkBox window ConstructorUiId.sampleEmitTransmittedCheck.value).IsEnabled, "the Plate T checkbox is enabled")
+            clickControl window ConstructorUiId.sampleEmitTransmittedCheck.value
+            Assert.False((checkBox window ConstructorUiId.sampleEmitTransmittedCheck.value).IsChecked.GetValueOrDefault true, "the T click cleared T")
+            Assert.True((checkBox window ConstructorUiId.sampleEmitReflectedCheck.value).IsChecked.GetValueOrDefault false, "R remains on after clearing T")
             // Substrate Set… via the Materials Select window (step 011): the film-less Plate has no
             // films, so the substrate Set… verb is its only route to the Materials window.
-            Assert.Equal("none", textOf window UiIds.SampleEditor.substrateSummary)
+            Assert.Equal("none", textOf window ConstructorUiId.sampleSubstrateSummary.value)
             let opened, sub = trackOpened ()
             use _sub = sub
-            clickOn window UiIds.SampleEditor.setSubstrateButton
+            clickOn window ConstructorUiId.setSubstrateButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let materialsWindow = opened.[0]
-            Assert.True(matchesId UiIds.MaterialsWindow.window materialsWindow, "the substrate Set… verb must open the Materials window")
-            Assert.True(isPresent materialsWindow UiIds.MaterialsWindow.selectButton, "the Materials window must be in Select state")
-            Assert.Contains("substrate", textOf materialsWindow UiIds.MaterialsWindow.selectConstraint)
+            Assert.True(matchesId ConstructorUiId.materialsWindow.value materialsWindow, "the substrate Set… verb must open the Materials window")
+            Assert.True(isPresent materialsWindow ConstructorUiId.materialsSelectButton.value, "the Materials window must be in Select state")
+            Assert.Contains("substrate", textOf materialsWindow ConstructorUiId.materialsSelectConstraint.value)
             // Pick the seeded 1.75 glass: filter → expand → select. The targeted return sets the
             // substrate plate and closes the window.
             commitFilter materialsWindow "1.75"
             expandNode materialsWindow "entries"
-            clickOn materialsWindow (MW.entryNode MaterialIds.glass175)
-            clickOn materialsWindow UiIds.MaterialsWindow.selectButton
+            clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass175).value)
+            clickOn materialsWindow ConstructorUiId.materialsSelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(materialsWindow.IsVisible, "Select must close the Materials window")
-            Assert.Contains("Transparent glass (n = 1.75)", textOf window UiIds.SampleEditor.substrateSummary)
-            Assert.Equal("", textOf window UiIds.SampleEditor.statusText)
+            Assert.Contains("Transparent glass (n = 1.75)", textOf window ConstructorUiId.sampleSubstrateSummary.value)
+            Assert.Equal("", textOf window ConstructorUiId.sampleEditorStatus.value)
             window.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -353,9 +353,9 @@ module WireUi0040CompositionTests =
                     ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample SeedSamples.euvMoSi)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(isPresent window UiIds.SampleEditor.emitReflectedCheck, "the R checkbox must render for a Mirror")
-            let rBox = checkBox window UiIds.SampleEditor.emitReflectedCheck
+            Assert.True(isPresent window ConstructorUiId.sampleEmitReflectedCheck.value, "the R checkbox must render for a Mirror")
+            let rBox = checkBox window ConstructorUiId.sampleEmitReflectedCheck.value
             Assert.True(rBox.IsChecked.GetValueOrDefault false, "the Mirror R checkbox is fixed on")
             Assert.False(rBox.IsEnabled, "the Mirror R checkbox is disabled (fixed)")
-            Assert.False(isPresent window UiIds.SampleEditor.emitTransmittedCheck, "a Mirror shows no T control")
+            Assert.False(isPresent window ConstructorUiId.sampleEmitTransmittedCheck.value, "a Mirror shows no T control")
             window.Close())

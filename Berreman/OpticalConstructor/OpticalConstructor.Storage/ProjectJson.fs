@@ -16,10 +16,71 @@ open OpticalConstructor.Storage.Errors
 module ProjectJson =
 
     /// The single shipped schema version (§I.2). A document whose `schemaVersion`
-    /// differs surfaces as `SchemaValidationError` (no migration; AC-I3). Pinned
+    /// differs surfaces as `SchemaValidationErr` (no migration; AC-I3). Pinned
     /// with `const` in the schema and injected into the serialized envelope.
     [<Literal>]
     let schemaVersion = "1.0"
+
+    /// Keeps `BeamBranch` on the wire as the schema's `"Reflected"` / `"Transmitted"`: the cases were
+    /// renamed apart from the engine's `RT` (spec 0048 `.manual/005`), the stored format was not.
+    type private BeamBranchConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.BeamTree.BeamBranch>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.BeamTree.ReflectedBeam -> writer.WriteStringValue "Reflected"
+            | OpticalConstructor.Domain.BeamTree.TransmittedBeam -> writer.WriteStringValue "Transmitted"
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetString() with
+            | "Reflected" -> OpticalConstructor.Domain.BeamTree.ReflectedBeam
+            | "Transmitted" -> OpticalConstructor.Domain.BeamTree.TransmittedBeam
+            | other -> raise (JsonException $"unknown beam branch '{other}'")
+
+    /// Keeps a rotation lock on the wire as the schema's boolean, `true` for locked: the
+    /// lock became a union (spec 0048 E013), the stored format did not.
+    type private RotationLockConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Placement.RotationLock>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Placement.RotationLocked -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Placement.RotationFree -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Placement.RotationLocked
+            | false -> OpticalConstructor.Domain.Placement.RotationFree
+
+    /// Keeps a group member's presence on the wire as the groups schema's boolean `inBeam`, `true`
+    /// for in the beam: it became a union (spec 0048 E014), the stored format did not.
+    type private BeamPresenceConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Groups.BeamPresence>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Groups.InBeam -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Groups.OutOfBeam -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Groups.InBeam
+            | false -> OpticalConstructor.Domain.Groups.OutOfBeam
+
+    /// Keeps a toggle's state on the wire as the groups schema's boolean `enabled`, `true` for
+    /// enabled: it became a union (spec 0048 E014), the stored format did not.
+    type private ToggleStateConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Groups.ToggleState>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Groups.ToggleEnabled -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Groups.ToggleDisabled -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Groups.ToggleEnabled
+            | false -> OpticalConstructor.Domain.Groups.ToggleDisabled
 
     /// Custom converter for the engine's Math.NET complex matrix
     /// (`Matrix<Complex>`). FSharp.SystemTextJson unwraps the single-case
@@ -70,6 +131,10 @@ module ProjectJson =
     let options : JsonSerializerOptions =
         let o = JsonSerializerOptions(WriteIndented = true)
         o.Converters.Add(ComplexMatrixConverter())
+        o.Converters.Add(BeamBranchConverter())
+        o.Converters.Add(RotationLockConverter())
+        o.Converters.Add(BeamPresenceConverter())
+        o.Converters.Add(ToggleStateConverter())
         let fsharpOptions =
             JsonFSharpOptions
                 .Default()
@@ -79,33 +144,39 @@ module ProjectJson =
         o.Converters.Add(JsonFSharpConverter(fsharpOptions))
         o
 
+    /// A project's canonical JSON text (§I.1): what an `.ocproj` file and a history snapshot hold.
+    type ProjectJsonText =
+        | ProjectJsonText of string
+
+        member this.value = let (ProjectJsonText t) = this in t
+
+        /// Parse and validate-on-load, then bind (§I.1 / §I.2 / R-1, R-2). Schema
+        /// validation ALWAYS runs before the domain model is admitted; on any
+        /// validation failure the result is `SchemaValidationErr` and nothing is
+        /// bound. A `schemaVersion` mismatch fails the schema's `const` and so
+        /// surfaces as `SchemaValidationErr`, never a migration (AC-I3).
+        member this.parseProject : Result<OpticalConstructorProject, StorageError> =
+            let parsed =
+                try Ok(JsonDocument.Parse this.value)
+                with e -> Error(MalformedJsonErr e.Message)
+
+            match parsed with
+            | Error e -> Error e
+            | Ok doc ->
+                use doc = doc
+                match SchemaValidation.validate doc.RootElement with
+                | Error e -> Error e
+                | Ok () ->
+                    try Ok(doc.RootElement.Deserialize<OpticalConstructorProject>(options))
+                    with e -> Error(MalformedJsonErr e.Message)
+
     /// Serialize a project to canonical JSON text (§I.1 / R-1), injecting the
     /// envelope's `schemaVersion`. The aggregate carries no `schemaVersion` field
     /// of its own; it is an envelope concern, added here and validated on load.
-    let serializeProject (project : OpticalConstructorProject) : Result<string, StorageError> =
+    let serializeProject (project : OpticalConstructorProject) : Result<ProjectJsonText, StorageError> =
         try
             let node = JsonSerializer.SerializeToNode(project, options)
             let envelope = node.AsObject()
             envelope.["schemaVersion"] <- JsonValue.Create(schemaVersion)
-            Ok(envelope.ToJsonString(options))
-        with e -> Error(JsonParseError e.Message)
-
-    /// Parse and validate-on-load, then bind (§I.1 / §I.2 / R-1, R-2). Schema
-    /// validation ALWAYS runs before the domain model is admitted; on any
-    /// validation failure the function returns `SchemaValidationError` and binds
-    /// nothing. A `schemaVersion` mismatch fails the schema's `const` and so
-    /// surfaces as `SchemaValidationError`, never a migration (AC-I3).
-    let deserializeProject (json : string) : Result<OpticalConstructorProject, StorageError> =
-        let parsed =
-            try Ok(JsonDocument.Parse json)
-            with e -> Error(JsonParseError e.Message)
-
-        match parsed with
-        | Error e -> Error e
-        | Ok doc ->
-            use doc = doc
-            match SchemaValidation.validate doc.RootElement with
-            | Error e -> Error e
-            | Ok () ->
-                try Ok(doc.RootElement.Deserialize<OpticalConstructorProject>(options))
-                with e -> Error(JsonParseError e.Message)
+            Ok(ProjectJsonText (envelope.ToJsonString(options)))
+        with e -> Error(MalformedJsonErr e.Message)

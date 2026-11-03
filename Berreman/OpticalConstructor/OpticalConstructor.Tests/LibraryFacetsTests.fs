@@ -40,7 +40,7 @@ module LibraryFacetsTests =
 
     let private siliconEntry = entryOf MaterialIds.silicon
     let private langasiteEntry = entryOf MaterialIds.langasite
-    let private vacuumEntry = entryOf MaterialIds.vacuum
+    let private vacuumEntry = entryOf MaterialIds.vacuumMaterial
     let private glass152Entry = entryOf MaterialIds.glass152
     let private glass150Entry = entryOf MaterialIds.glass150
     let private euvMolybdenumEntry = entryOf MaterialIds.euvMolybdenum
@@ -59,20 +59,20 @@ module LibraryFacetsTests =
         |> List.map (fun value ->
             match value with
             | DiscreteValue k -> k.value
-            | NumericValue v -> $"%g{v}")
+            | NumericValue v -> $"%g{v.value}")
 
     let private numericValues (def : AttributeDef<'Item>) (item : 'Item) : double list =
         def.extract item
         |> List.choose (fun value ->
             match value with
-            | NumericValue v -> Some v
+            | NumericValue v -> Some v.value
             | DiscreteValue _ -> None)
 
     let private discrete (key : AttributeKey) (values : string list) : AppliedConstraint =
         { key = key; selection = DiscreteSelection (values |> List.map DiscreteKey |> Set.ofList) }
 
     let private branchSummary (node : FacetNode) : (string * int) list =
-        node.branches |> List.map (fun b -> b.label, b.count.value)
+        node.branches |> List.map (fun b -> b.label.value, b.count.value)
 
     let private materialRepresentation : Representation =
         Representation (materialFacets |> List.map (fun d -> d.key))
@@ -85,7 +85,7 @@ module LibraryFacetsTests =
     let private materialEntryWith (idText : string) (name : string) (complexity : MaterialComplexity) : MaterialEntry =
         {
             id = Guid.Parse idText |> MaterialId
-            name = name
+            name = EntryName name
             category = CategoryIds.crystal
             description = None
             properties = complexity.toProperties
@@ -93,10 +93,10 @@ module LibraryFacetsTests =
         }
 
     let private modelOfKind (kindCode : string) : DispersionModel =
-        defaultModelChoices |> List.find (fun m -> modelKindCode m = kindCode)
+        defaultModelChoices |> List.find (fun m -> m.kindCode = kindCode)
 
     let private nmInterval (lowerNm : float) (upperNm : float) : WaveLengthInterval =
-        { lower = toWaveLength Nanometer lowerNm; upper = toWaveLength Nanometer upperNm }
+        { lower = toWaveLength Nanometer (UnitMagnitude lowerNm); upper = toWaveLength Nanometer (UnitMagnitude upperNm) }
 
     /// A uniaxial two-segment dispersive entry whose axis models lower to all
     /// three storable shapes: Cauchy → real n/k terms, Sellmeier → complex ε
@@ -106,14 +106,14 @@ module LibraryFacetsTests =
         let seg1 : UniaxialEpsSegment =
             {
                 wavelengthInterval = nmInterval 400.0 700.0
-                ordinaryDispersion = toEpsAxis (modelOfKind "Cauchy")
-                extraordinaryDispersion = toEpsAxis (modelOfKind "Sellmeier")
+                ordinaryDispersion = (modelOfKind "Cauchy").toEpsAxis
+                extraordinaryDispersion = (modelOfKind "Sellmeier").toEpsAxis
             }
         let seg2 : UniaxialEpsSegment =
             {
                 wavelengthInterval = nmInterval 700.0 1000.0
-                ordinaryDispersion = toEpsAxis (modelOfKind "TaucLorentz")
-                extraordinaryDispersion = toEpsAxis (modelOfKind "TaucLorentz")
+                ordinaryDispersion = (modelOfKind "TaucLorentz").toEpsAxis
+                extraordinaryDispersion = (modelOfKind "TaucLorentz").toEpsAxis
             }
         materialEntryWith
             "6b0e6b9e-1a2f-4c3d-8e5a-9f0b1c2d3e4f"
@@ -174,11 +174,11 @@ module LibraryFacetsTests =
     let private filmSample (idText : string) (name : string) (films : StackItem list) : Sample =
         {
             id = Guid.Parse idText |> SampleId
-            name = name
+            name = EntryName name
             structure = { films = films; substrate = None; lower = None }
             substrate = ThinFilm
-            description = name
-            supportedEmission = defaultSupportedEmission ThinFilm
+            description = EntryDescription name
+            supportedEmission = ThinFilm.defaultSupportedEmission
         }
 
     /// Glass + EUV-molybdenum films: one Transparent and one Absorbing
@@ -198,7 +198,7 @@ module LibraryFacetsTests =
     let private repeatedFilmSample : Sample =
         {
             id = Guid.Parse "d275d205-8196-43a4-85d1-067283940516" |> SampleId
-            name = "Repeated film"
+            name = EntryName "Repeated film"
             structure =
                 {
                     films =
@@ -206,15 +206,15 @@ module LibraryFacetsTests =
                             Repeated
                                 {
                                     cell = [ layer MaterialIds.glass152 12.0; layer MaterialIds.glass152 30.0 ]
-                                    count = 5
+                                    count = PeriodCount 5
                                 }
                         ]
                     substrate = None
                     lower = None
                 }
             substrate = ThinFilm
-            description = "Repeated film"
-            supportedEmission = defaultSupportedEmission ThinFilm
+            description = EntryDescription "Repeated film"
+            supportedEmission = ThinFilm.defaultSupportedEmission
         }
 
     let private polarizerEntry : LibraryEntry =
@@ -275,7 +275,7 @@ module LibraryFacetsTests =
         // CASE, with NO engine-tensor evaluation.
         let anisotropyOfEntry (entry : MaterialEntry) : Anisotropy =
             match entry.complexity with
-            | Some c -> anisotropyOf c
+            | Some c -> c.anisotropy
             | None -> failwith $"{entry.name} must carry a complexity value tree"
         Assert.Equal(Isotropic, anisotropyOfEntry siliconEntry)
         Assert.Equal(Uniaxial, anisotropyOfEntry langasiteEntry)
@@ -292,7 +292,7 @@ module LibraryFacetsTests =
         // engine uniaxial shape), so the facet classifies the encoding.
         Assert.Equal<string list>([ "Biaxial" ], extractedKeys def uniaxialEntry)
         // The Uniaxial vocabulary key exists even though no seed extracts it.
-        Assert.Equal("Uniaxial", (anisotropyKey Uniaxial).value)
+        Assert.Equal("Uniaxial", Uniaxial.facetKey.value)
 
     [<Fact>]
     let ``the constant-vs-dispersive facet applies to every entry including coded presets`` () =
@@ -348,7 +348,7 @@ module LibraryFacetsTests =
         // constant transparent value).
         let def = materialDef materialTransparencyKey
         let dispersiveEntries =
-            builtInEntries |> List.filter (fun e -> materialDispersion e = DispersiveMaterial)
+            builtInEntries |> List.filter (fun e -> e.dispersion = DispersiveMaterial)
         // The seed corpus does carry dispersive materials (silicon / langasite / the EUV metals).
         Assert.NotEmpty(dispersiveEntries)
         for entry in dispersiveEntries do
@@ -358,7 +358,7 @@ module LibraryFacetsTests =
         let node = List.exactlyOne tree.facets
         let absorbingCount =
             node.branches
-            |> List.filter (fun b -> b.label = (transparencyKey Absorbing).value)
+            |> List.filter (fun b -> b.label.value = Absorbing.facetKey.value)
             |> List.sumBy (fun b -> b.count.value)
         Assert.True(absorbingCount >= List.length dispersiveEntries)
 
@@ -442,7 +442,7 @@ module LibraryFacetsTests =
         Assert.Equal(7, offeredGyrationClassKeys |> List.distinct |> List.length)
         for anisotropy in [ Isotropic; Uniaxial; Biaxial ] do
             for gyration in availableGyrationClasses anisotropy do
-                Assert.Contains(gyrationClassKey gyration, offeredGyrationClassKeys)
+                Assert.Contains(gyration.facetKey, offeredGyrationClassKeys)
 
     [<Fact>]
     let ``the magnetic facet is offered only when magnetic and classifies scalar vs gyromagnetic`` () =
@@ -479,7 +479,7 @@ module LibraryFacetsTests =
         // defaultModelChoices carries one representative of each of the ten kinds.
         Assert.Equal(10, List.length defaultModelChoices)
         for model in defaultModelChoices do
-            Assert.Equal(expected[modelKindCode model], (modelDispersionKey model).value)
+            Assert.Equal(expected[model.kindCode], model.facetKey.value)
 
     [<Fact>]
     let ``the dispersion-model facet applies only to data-dispersive entries`` () =
@@ -527,7 +527,7 @@ module LibraryFacetsTests =
         let tree = buildTree (Representation [ entryKindFacetKey ]) libraryDefs [] seedEntries
         let node = List.exactlyOne tree.facets
         Assert.Equal<(string * int) list>(
-            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length SeedSources.all ],
+            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length SeedSources.allSeedSources ],
             branchSummary node)
 
     [<Fact>]
@@ -544,10 +544,10 @@ module LibraryFacetsTests =
             filter libraryDefs [ discrete materialCategoryKey [ name ] ] seedEntries
             |> List.map (fun e -> e.displayName)
         // Only the quarter-wave multilayer carries the vacuum spacer.
-        Assert.Equal<string list>([ SeedSamples.multilayerQw.name ], byCategory "Vacuum")
+        Assert.Equal<string list>([ SeedSamples.multilayerQw.name.value ], byCategory "Vacuum")
         // Only the EUV stack carries a metal (molybdenum) — its OTHER layer is
         // a semiconductor; either constituent alone makes the sample match.
-        Assert.Equal<string list>([ SeedSamples.euvMoSi.name ], byCategory "Metal")
+        Assert.Equal<string list>([ SeedSamples.euvMoSi.name.value ], byCategory "Metal")
 
     [<Fact>]
     let ``lifted material facets never offer themselves on non-sample entries`` () =
@@ -617,7 +617,7 @@ module LibraryFacetsTests =
             extractedKeys def (SampleItem SeedSamples.glassPlate1mm))
         Assert.Equal<string list>(
             [ "Active (gyrotropic) crystal" ],
-            extractedKeys def (SampleItem SeedSamples.activeCrystal))
+            extractedKeys def (SampleItem SeedSamples.activeCrystalPlate))
 
     [<Fact>]
     let ``has-thin-films derives from films alone, independent of the substrate kind`` () =
@@ -654,7 +654,7 @@ module LibraryFacetsTests =
         let node = List.exactlyOne tree.facets
         Assert.Equal<string list>(
             [ "Molybdenum (Mo, EUV)"; "Silicon (Si, EUV)"; "Transparent glass (n = 1.52)"; "Vacuum" ],
-            node.branches |> List.map (fun b -> b.label))
+            node.branches |> List.map (fun b -> b.label.value))
 
     // =======================================================================
     // Per-film thickness → the step-10 buckets.
@@ -695,7 +695,7 @@ module LibraryFacetsTests =
         // over [12, 700]: 10, 20, 50, 100, 200, 500, 1000; empty buckets drop.
         Assert.Equal<(float * float * int) list>(
             [ 10.0, 20.0, 2; 20.0, 50.0, 2; 500.0, 1000.0, 1 ],
-            buckets |> List.map (fun b -> b.range.lower, b.range.upper, b.count.value))
+            buckets |> List.map (fun b -> b.range.lower.value, b.range.upper.value, b.count.value))
 
     [<Fact>]
     let ``a thickness bucket applies as an ordinary constraint chip reproducing its count`` () =

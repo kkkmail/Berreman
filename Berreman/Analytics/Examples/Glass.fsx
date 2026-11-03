@@ -13,8 +13,8 @@ open Berreman.Constants
 //===========================================================
 let fn = [ R; T ]
 
-let numberOfPoints = 2000
-let incidenceAngleDegree = 79.0
+let numberOfPoints = NumberOfPoints 2000
+let incidenceAngleDegree = 79.0<deg>
 
 type RefractionIndexThickness =
     | RefractionIndexThickness of RefractionIndex * Thickness
@@ -79,7 +79,7 @@ let getGlassInfo useThickPlate nh1 nh2Opt light =
         incidentLightInfo = light
         opticalSystem =
             {
-                description = Some ("Glass " + (if useThickPlate then "substrate" else "film"))
+                description = Some (OpticalSystemDescription ("Glass " + (if useThickPlate then "substrate" else "film")))
                 upperWithDisp = OpticalProperties.vacuum.dispersive
                 filmsWithDisp = films
                 substrateWithDisp = substr

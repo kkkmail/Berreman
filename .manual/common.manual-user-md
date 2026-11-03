@@ -1,0 +1,210 @@
+# `common.manual-user-md` — Berreman repo override
+
+**This file wins.** Where it contradicts `common.manual-system-md` or a workflow
+file, follow this file.
+
+Everything here is a fact about this repository, re-derived from the tree on
+2026-11-02. Nothing here is a rule about how agents and operators take turns —
+that lives in the ASG halves — and nothing here belongs to one spec: what a
+single assignment adds or permits is in its task file, and a rule that needs its
+provenance is `AGENTS.md`'s business.
+
+---
+
+## 1. Identity
+
+- **Repo root:** `C:/GitHub/Berreman`
+- **Auto-loaded instructions:** `AGENTS.md` — **binding**, and it is the
+  authority on F# style, the elevation discipline (the ELEV rules), comment
+  discipline, the build rules and the gotchas. `CLAUDE.md` is a pointer that
+  imports it; keep new rules in `AGENTS.md` so the two cannot drift.
+- **Naming reference:** `naming_conventions.md` (repo root, the same file as
+  STL's) — authoritative for the `Param` / `Data` / `Info` / `State` /
+  `Context` / `Proxy` vocabulary.
+- **Spec folders live at:** `specs/<NNNN>/`. Operator files are numbered `.txt`
+  under `specs/<NNNN>/.manual/`; agent-authored documents are numbered `.md` in
+  the same folder.
+- **Branch:** whichever the task file names. This file names none.
+
+---
+
+## 2. Build
+
+**The build tool is `dotnet`, never MSBuild.** One solution, `Berreman/Berreman.slnx`,
+x64 only. From `Berreman/`:
+
+```
+dotnet build Berreman.slnx -c Release -nologo -v:m
+```
+
+That is exactly the `build` gate (`.gates/Berreman/build.gates`). A green build
+has **zero warnings from our code** (`AGENTS.md`, "Zero warnings"); only
+`NU1701` and `NU1901`–`NU1904` are exempt.
+
+- **Release only.** The root `Directory.Build.props` defaults `Configuration` to
+  Release and the root `Directory.Build.targets` fails any other with
+  `RELEASEONLY`.
+- **x64 only.** Never add `AnyCPU`. Output lands in `bin/x64/Release/<tfm>/`.
+- **`Directory.Build.props` / `.targets` live at the repo root** and also govern
+  the vendored `MathNetNumerics/`. Never add a nested one.
+- **Central package versions.** Every third-party version is ONE `PackageVersion`
+  item in the root `Directory.Build.targets`; a project writes
+  `<PackageReference Include="X" />` with no version.
+
+### 2.1 STL packages, and the one prerequisite of this machine
+
+`Softellect.*` packages restore from the local feed `../Packages`
+(`C:/GitHub/Packages`, which STL's slow-ring build publishes into) **and** from
+nuget.org (root `nuget.config`). `Softellect.Sys` and `Softellect.Analyzers` ride
+STL's current slow ring, `10.1.402.136` (STL's `Sys/BuildInfo.ps1`); that ring is
+**local-feed only** — it is not on nuget.org.
+
+**If a restore says `NU1102: Unable to find package Softellect.Sys` (or
+`Softellect.Analyzers`) with version 10.1.402.x, the local feed does not hold
+STL's current slow ring.** That is an operator prerequisite, never something a
+batch repairs: escalate and stop. Never build, pack or bump STL from here, never
+lower a pin, never point `nuget.config` elsewhere.
+
+### 2.2 The version
+
+One version for the whole app, in `Berreman/Berreman/BuildInfo.fs` and its mirror
+`BuildInfo.ps1`. The bump is skipped while `Berreman/Berreman/.version-update-lock`
+exists. **No manual batch bumps**: the lock stays, and neither file is edited.
+
+### 2.3 Known build traps
+
+- **A stale reference assembly compiles the OLD signature.** After a public
+  signature change, if a caller fails on a member that plainly exists (or a green
+  build behaves as if the change is absent), rebuild with `-t:Rebuild`.
+- **A moved pin is invisible to a build that does not restore.** After a pin
+  edit, check that the project's `obj/project.assets.json` names the new version.
+- **`--warnaserror+:25`** on the core projects: an uninstantiated generic is an
+  error.
+
+---
+
+## 3. Suites and gates
+
+Gate descriptors live in `.gates/<family>/*.gates`. They are YAML descriptors,
+not scripts: for manual work, read the descriptor and run the `command` it
+declares from its `cwd` (the repo root when it declares none).
+
+| gate | descriptor | runs | about |
+|---|---|---|---|
+| `build` | `.gates/Berreman/build.gates` | `dotnet build Berreman.slnx -c Release` from `Berreman/` | 2 min |
+| `unit-tests` | `.gates/Berreman/unit-tests.gates` | `BerremanTests` from its folder | **~30 min whole** — run by class |
+| `constructor-unit-tests` | `.gates/OpticalConstructor/constructor-unit-tests.gates` | `OpticalConstructor.Tests` | < 1 min |
+| `ui-smoke` | `.gates/OpticalConstructor/ui-smoke.gates` | `OpticalConstructor.Ui.Tests`, trait `Category=ui-smoke` | < 1 min |
+| `ui-tests` | `.gates/OpticalConstructor/ui-tests.gates` | `OpticalConstructor.Ui.Tests`, not `ui-smoke` | ~3 min |
+| `elevation` | `.gates/Elevation/elevation.gates` | `Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004` from the repo root | ~4 min |
+| `elevation-full` | `.gates/Elevation/elevation-full.gates` | the same with `-All` | ~4 min, can be silent for long |
+
+- Tests run on **Microsoft.Testing.Platform** with xUnit v3, after the build:
+  `dotnet test --no-build -c Release` from the test project's folder.
+- **Filters are xUnit v3's own**: `--filter-class`, `--filter-method`,
+  `--filter-trait`, `--filter-not-trait`. One class with its theory rows:
+  `--filter-method "<Ns>.<Class>.*" --filter-method "<Ns>.<Class>"`. Never VSTest's
+  `--filter`.
+- The gates read the MTP summary (`Test run summary: Passed!`, `succeeded: N`).
+  A count never regresses.
+- **The ELEV gates read the working tree.** The scoped `elevation` gate analyzes
+  every product project that compiles a changed `.fs` (git status, untracked
+  included) plus every project that references it, so run it **before** the
+  commit. A finding recorded in `Elevation/elevation-known-findings.json` does not
+  fail; a new one does, and **so does a recorded one that is gone** — a fix deletes
+  or lowers its entry in the same change. `ELEV-GATE: OK` is green.
+- The analyzers' rule configuration is `.elevation-analyzers.json`. **Never edit it,
+  never edit the analyzers, never add an entry to the known-findings list, never
+  re-record it.** ELEV004 is excluded in the command, not in the rules.
+- Out of the ELEV scope by the analyzers' own configuration: the test projects and
+  the vendored `MathNetNumerics/`.
+
+### 3.1 Known flakes
+
+None is recorded. A test that fails once is re-run once before it is called red.
+
+---
+
+## 4. Committing
+
+- **Commit endpoint:** `http://127.0.0.1:7351/git_commit` (the tool server
+  `claude-agent.yolo` names; `GET http://127.0.0.1:7351/health` reports
+  `"repo_root": "C:\\GitHub\\Berreman"` when it serves this repo).
+- **Payload:** as `common.manual-system-md` §7 —
+  `{"files": [...], "message": "..."}`. No repo-specific extra field.
+- **Response:** HTTP 200 with a `sha` is success. HTTP 400 with an `error` is a
+  rejection and the body says why.
+- **Subject convention:** `<NNNN>-manual`, the spec folder's number. Arc commits
+  use `<NNNN>-arc-slice: …` and the spec writer `<NNNN>-spec-cycle: …`; do not
+  imitate those from a manual batch.
+- **How to tell the tool is down:** the POST fails to connect at all, or
+  `/health` names another repository. Only one repo can commit at a time, so that
+  is normal. Escalate and stop; do not shell out to `git commit`.
+
+Two traps:
+
+- **The file list is not a sandbox.** The tool commits every dirty path in the
+  tree even when you pass an explicit list. Run `git status --porcelain` first.
+  Unrelated dirt is a legitimate stop.
+- **Past roughly 600 dirty paths the endpoint returns a bare HTTP 500** (the
+  host's argument-length limit). Escalate and say how many paths were dirty.
+
+`.tool-server-data/` is gitignored and untracked. Never read it, never pass it to
+the commit tool.
+
+---
+
+## 5. Scratch
+
+- **Scratch folder:** `specs/<NNNN>/.artifacts/` — gitignored by
+  `/specs/*/.artifacts/`. Analyzer reports, build logs and captures go there.
+- **`C:/Temp`** is writable and has no git. Fine for throwaway work.
+- **The repository's `Temp/`, `!Temp/`, `specs_copy/` and `legacy/` are TRACKED.**
+  Anything written there is dirt and rides along in the next commit. Do not put
+  scratch there, and do not put product code there. `data/` is gitignored and is
+  not the product either.
+
+---
+
+## 6. Walls
+
+- **STL (`C:/GitHub/Softellect`) and ASG (`C:/GitHub/AI-Strategy-Generator`)
+  are read-only from this repository.** Read them freely as the model; never
+  edit, build, pack or bump them. STL's documents disagreeing with the analyzers
+  is not ours to fix (spec 0048 `.manual/002` R6).
+- **`MathNetNumerics/`** is a vendored, customized MathNet.Numerics built from
+  source and referenced as projects. It is outside the ELEV scope; do not edit
+  it, and never replace it with the NuGet package.
+- **`BerremanRunner/` and `BerremanModelGenerator/`** are stale and not in
+  `Berreman.slnx`. They are not elevated and not touched.
+- **Never touch `*.nb` files** (Mathematica, binary), nor the `.docx` files at
+  the root.
+- **One `.fsproj` per folder.** Share sources by `<Compile Include … Link=… />`.
+- **No new comments in `.fsproj` / `.csproj`.**
+- **There are no deferrals.** Nothing is staged, held back, or promised to a
+  later spec. Work that cannot be finished is escalated, never postponed.
+- **LF is King.** `core.autocrlf` is `false`; `.gitattributes` stores text as
+  LF. Check `git diff --numstat` against `--ignore-cr-at-eol` after editing. When
+  appending, match the **blob's** endings.
+- **F# discipline is binding on every change**, per `AGENTS.md`: elevate every
+  primitive, `camelCase` values and record fields, a space before every colon,
+  `{` on its own line, interpolated strings never `sprintf`, pattern-match rather
+  than `.Value` / `.IsSome`, errors as `Result` values, explicit concrete types on
+  public signatures, unique names (no `[<RequireQualifiedAccess>]` to dodge a
+  collision).
+- **Git is forward-only.** No `checkout` / `reset` / `rebase` / `amend` /
+  `revert` / `stash`. To recover a file, `git show <ref>:<path>`.
+- **Keep `.ps1` files ASCII** outside `<# #>` blocks.
+- **No build step, gate, test or fixture may depend on a OneDrive folder**
+  (`AGENTS.md`, operator ruling 2026-11-01).
+
+---
+
+## 7. Read-only mode
+
+The operator declares read-only mode; never detect it yourself.
+
+- **Why it happens here:** an arc-runner may run in this tree, and a second
+  writer in the same working copy corrupts its ledger. When the operator says
+  read-only, that is why.
+- **Mirror root:** the operator nominates one per round.

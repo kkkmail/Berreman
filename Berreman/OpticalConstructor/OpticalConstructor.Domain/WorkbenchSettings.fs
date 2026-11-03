@@ -13,9 +13,9 @@ module WorkbenchSettings =
     /// offending raw value — never a throw). All three thresholds are counts/caps, so
     /// zero and negative values are meaningless and rejected at the parse boundary.
     type WorkbenchSettingsError =
-        | NonPositiveQuickPickThreshold of value : int
-        | NonPositiveTreeAutoBuildThreshold of value : int
-        | NonPositiveThicknessBucketCap of value : int
+        | NonPositiveQuickPickThresholdErr of value : int
+        | NonPositiveTreeAutoBuildThresholdErr of value : int
+        | NonPositiveThicknessBucketCapErr of value : int
 
     /// Select-state window policy (§5.3): Select-state windows open modal
     /// (`ShowDialog`, owner = requesting window) under `ModalSelectWindows`,
@@ -52,7 +52,7 @@ module WorkbenchSettings =
 
         static member tryCreate (v : int) : Result<QuickPickThreshold, WorkbenchSettingsError> =
             if v > 0 then QuickPickThreshold v |> Ok
-            else NonPositiveQuickPickThreshold v |> Error
+            else NonPositiveQuickPickThresholdErr v |> Error
 
     /// The faceted-tree materialization gate (§7.6): the tree auto-builds only when
     /// the result count is at most this value; above it a Show/Search prompt gates
@@ -65,7 +65,7 @@ module WorkbenchSettings =
 
         static member tryCreate (v : int) : Result<TreeAutoBuildThreshold, WorkbenchSettingsError> =
             if v > 0 then TreeAutoBuildThreshold v |> Ok
-            else NonPositiveTreeAutoBuildThreshold v |> Error
+            else NonPositiveTreeAutoBuildThresholdErr v |> Error
 
     /// The maximum bucket count of the 1–2–5 log-ladder thickness bucketing (§7.5):
     /// empty buckets drop and the fewest-first merge runs until at most this many
@@ -78,11 +78,11 @@ module WorkbenchSettings =
 
         static member tryCreate (v : int) : Result<ThicknessBucketCap, WorkbenchSettingsError> =
             if v > 0 then ThicknessBucketCap v |> Ok
-            else NonPositiveThicknessBucketCap v |> Error
+            else NonPositiveThicknessBucketCapErr v |> Error
 
     /// The workbench settings record: every field an elevated type — no naked bool,
     /// no raw int. `defaults` is the single source of the built-in values (the
-    /// composition root passes `.defaultValue.value` as each provider default, so
+    /// composition root reads each key with its field of `defaults` as the default, so
     /// 5 / 100 / 8 / modeless appear exactly once, here).
     type WorkbenchSettings =
         {

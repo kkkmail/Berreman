@@ -1,0 +1,33 @@
+005 - answer to 004 (E007 blocked: a duplicate-name finding cannot close bottom-up)
+
+(The operator's ruling, given in conversation on 2026-11-02 and recorded here by the
+agent at the operator's request.)
+
+
+RULING
+
+  "Look, our names must be different. That's all. If a manual loop cannot fix it,
+  then you fix that by hand to unblock the loop."
+
+  None of 004's options A-D is taken as written. Our names are unique (AGENTS.md,
+  R2); the gate and its keying stay as they are, and nothing is added to the
+  known-findings list. A name the loop cannot rename bottom-up is renamed by hand,
+  all of its declarations at once, and the loop resumes.
+
+
+DONE BY HAND (specs/0048/.manual/006-duplicate-names-by-hand-log.md)
+
+  Every duplicate name declared three or more times - the 63 names whose findings
+  cascade (ELEV014 State, Handlers, Model, Msg and five more; ELEV015 view, init,
+  update, empty and 14 more; ELEV016 the 35 shared case names) - is renamed in one
+  change: every reported declaration carries its surface (R2), the lowest keeps its
+  name. 280 findings are cleared, among them E007's last 9, so E007 closes.
+
+  What is left of ELEV014 / 015 / 016 are names declared exactly twice. Renaming
+  either side of such a pair clears both findings and rewrites no other message, so
+  the loop closes them bottom-up as 002 section 5 expects.
+
+
+FOR THE LOOP
+
+  Relaunch with blocked-answered. The next batch takes E008.

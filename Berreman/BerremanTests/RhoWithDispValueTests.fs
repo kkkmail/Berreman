@@ -32,14 +32,14 @@ type RhoWithDispValueTests() =
     let constFormula (value : double) : DispersionFormula =
         {
             terms = [ { lambda = 0.0; coefficients = [| value |]; power = 1; multiplier = 1.0 } ]
-            wavelengthScale = 1.0e-6
+            wavelengthScale = 1.0e-6<meter>
         }
 
     /// A linear real formula: a + b·x over the reduced wavelength x (µm).
     let linearFormula (a : double) (b : double) : DispersionFormula =
         {
             terms = [ { lambda = 0.0; coefficients = [| a; b |]; power = 1; multiplier = 1.0 } ]
-            wavelengthScale = 1.0e-6
+            wavelengthScale = 1.0e-6<meter>
         }
 
     /// Quartz, class 32 (24 °C): g11 = +5.9e-5, g33 = −10.1e-5.

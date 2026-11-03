@@ -173,14 +173,14 @@ module MaterialComplexityTests =
     let private constFormula (value : double) : DispersionFormula =
         {
             terms = [ { lambda = 0.0; coefficients = [| value |]; power = 1; multiplier = 1.0 } ]
-            wavelengthScale = 1.0e-6
+            wavelengthScale = 1.0e-6<meter>
         }
 
     /// A linear real formula a + b·x over the reduced wavelength x (µm).
     let private linearFormula (a : double) (b : double) : DispersionFormula =
         {
             terms = [ { lambda = 0.0; coefficients = [| a; b |]; power = 1; multiplier = 1.0 } ]
-            wavelengthScale = 1.0e-6
+            wavelengthScale = 1.0e-6<meter>
         }
 
     let private applyOk (msg : MaterialComplexityMsg) (s : MaterialComplexityEditState) : MaterialComplexityEditState =
@@ -192,7 +192,7 @@ module MaterialComplexityTests =
         msgs |> List.fold (fun s m -> applyOk m s) defaultState
 
     let private derived (s : MaterialComplexityEditState) : MaterialComplexity =
-        match toComplexity s with
+        match s.toComplexity with
         | Ok c -> c
         | Error e -> failwith $"expected a derivable complexity, got %A{e}"
 
@@ -235,7 +235,7 @@ module MaterialComplexityTests =
             // overall sign for the enantiomorph.
             for w in visibleGrid do
                 let s = LeftHanded.sign
-                let expected = Rho.type_3_4_6_Crystal (RhoValue (s * fG11.evaluate w)) (RhoValue (s * fG33.evaluate w))
+                let expected = Rho.type_3_4_6_Crystal (RhoValue (s * (fG11.evaluate w).value)) (RhoValue (s * (fG33.evaluate w).value))
                 Assert.True(rhoClose 1e-12 (rhoValue.toRhoWithDisp.getRho w) expected, $"gyration assembly at λ={w}")
         | other -> Assert.Fail($"expected a dispersive gyration rho, got %A{other}")
 
@@ -265,7 +265,7 @@ module MaterialComplexityTests =
             // the SAME Polder tensor assembly the constant GyromagneticMu case uses,
             // over each formula evaluated at the wavelength.
             for w in visibleGrid do
-                let expected = (GyromagneticMu (polderF.map (fun f -> f.evaluate w |> MuValue))).toMu
+                let expected = (GyromagneticMu (polderF.map (fun f -> (f.evaluate w).toMuValue))).toMu
                 Assert.True(muClose 1e-12 (muValue.toMuWithDisp.getMu w) expected, $"Polder assembly at λ={w}")
         | other -> Assert.Fail($"expected a dispersive Polder mu, got %A{other}")
 
@@ -279,7 +279,7 @@ module MaterialComplexityTests =
             { muDiagonal = linearFormula 1.0 0.05; muParallel = constFormula 1.1; gyration = linearFormula 0.1 0.02; axis = AlongY }
         let c =
             {
-                eps = EpsWithoutDispValue (UniaxialTransparent (RefractionIndex 1.5, RefractionIndex 1.55))
+                eps = EpsWithoutDispValue (UniaxialTransparent { ordinary = RefractionIndex 1.5; extraordinary = RefractionIndex 1.55 })
                 magnetic = Some (MuWithDispValue dispersivePolder)
                 active = Some (RhoWithDispValue { gyration = dispersiveGyration; hand = LeftHanded })
             }
@@ -324,8 +324,8 @@ module MaterialComplexityTests =
         // from the segment picker's default choices) now LOWERS to the evaluated
         // case — toComplexity DERIVES it (no SegmentNotLowerable), and the derived
         // eps reproduces `evaluate` across the grid.
-        let model = defaultModelChoices |> List.find (fun m -> modelKindCode m = "ForouhiBloomer")
-        let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, model) ]
+        let model = defaultModelChoices |> List.find (fun m -> m.kindCode = "ForouhiBloomer")
+        let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, model) ]
         let c = derived st
         match c.eps with
         | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
@@ -333,7 +333,7 @@ module MaterialComplexityTests =
             | EpsAxisEvaluated _ -> ()
             | other -> Assert.Fail($"the transcendental segment must lower to the evaluated case, got %A{other}")
         | other -> Assert.Fail($"expected one isotropic dispersive segment, got %A{other}")
-        let f = evaluate model
+        let f = model.evaluate
         for w in visibleGrid do
             let expected = Eps.fromComplexRefractionIndex (f w)
             Assert.True(epsClose 1e-12 (c.toProperties.epsWithDisp.getEps w) expected, $"derived eps at λ={w}")

@@ -1,0 +1,46 @@
+old	new	package	row
+Berreman.MathNetNumericsMath.cplx	System.Numerics.Complex.ofReal (extension, Berreman.MathNetNumericsMath)	Softellect.Berreman.Core	E003
+Berreman.MathNetNumericsMath.createComplex	System.Numerics.Complex.create (extension, Berreman.MathNetNumericsMath)	Softellect.Berreman.Core	E003
+Berreman.MathNetNumericsMath.pi	System.Math.PI	Softellect.Berreman.Core	E003
+Berreman.MathNetNumericsMath.degree	Berreman.Geometry.Angle.radiansPerDegree	Softellect.Berreman.Core	E003
+Berreman.MathNetNumericsMath.toDegree	Berreman.Geometry.Angle.radiansToDegrees	Softellect.Berreman.Core	E003
+Berreman.FourierTransformPrimitives.maxSize	Berreman.FourierTransformPrimitives.FftPointCount.maxValue	Softellect.Berreman.Core	E003
+Berreman.FourierTransform.Details.ilog2	Berreman.FourierTransformPrimitives.FftPointCount.log2	Softellect.Berreman.Core	E003
+Berreman.SimpleFourierTransform.fft	Berreman.SimpleFourierTransform.simpleFft	Softellect.Berreman.Core	E003
+Berreman.BerremanMatrix.normalize	Berreman.BerremanMatrix.l2Normalize	Softellect.Berreman.Core	E003
+Berreman.Geometry.xRotation	Berreman.Geometry.Angle.xRotation	Softellect.Berreman.Core	E003
+Berreman.Geometry.yRotation	Berreman.Geometry.Angle.yRotation	Softellect.Berreman.Core	E003
+Berreman.Geometry.zRotation	Berreman.Geometry.Angle.zRotation	Softellect.Berreman.Core	E003
+Berreman.Geometry.Angle.radian	Berreman.Geometry.Angle (the union case)	Softellect.Berreman.Core	E003
+RefractionIndex.getTransparentGlass (extension, OpticalProperties.Standard)	Berreman.MaterialProperties.RefractionIndex (the union case)	Softellect.Berreman.OpticalProperties	E003
+Analytics.Variables.lineBrake	Analytics.Variables.ChartDescription.lineBreak (static member)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.incidenceAngle40	Analytics.Variables.NumberOfPoints.incidenceAngle40 (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.incidenceAngle60	Analytics.Variables.NumberOfPoints.incidenceAngle60 (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.incidenceAngle80	Analytics.Variables.NumberOfPoints.incidenceAngle80 (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.incidenceAngle	Analytics.Variables.NumberOfPoints.incidenceAngle (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.incidenceAngleRange40	Analytics.Variables.NumberOfPoints.incidenceAngleRange40 (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.incidenceAngleRange60	Analytics.Variables.NumberOfPoints.incidenceAngleRange60 (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.incidenceAngleRange80	Analytics.Variables.NumberOfPoints.incidenceAngleRange80 (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.incidenceAngleRange	Analytics.Variables.NumberOfPoints.incidenceAngleRange (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.ellipticity	Analytics.Variables.NumberOfPoints.ellipticity (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.ellipticityRange	Analytics.Variables.NumberOfPoints.ellipticityRange (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.polarization	Analytics.Variables.NumberOfPoints.polarization (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.polarizationRange	Analytics.Variables.NumberOfPoints.polarizationRange (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.wavelength200to800	Analytics.Variables.NumberOfPoints.wavelength200to800 (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.wavelength200to800Range	Analytics.Variables.NumberOfPoints.wavelength200to800Range (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.wavelength500to700	Analytics.Variables.NumberOfPoints.wavelength500to700 (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.wavelength500to700Range	Analytics.Variables.NumberOfPoints.wavelength500to700Range (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.wavelength250to600	Analytics.Variables.NumberOfPoints.wavelength250to600 (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.wavelength250to600Range	Analytics.Variables.NumberOfPoints.wavelength250to600Range (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.wavelength05to20	Analytics.Variables.NumberOfPoints.wavelength05to20 (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardLightVariables.wavelength05to20Range	Analytics.Variables.NumberOfPoints.wavelength05to20Range (extension property, Analytics.StandardLightVariables)	Softellect.Berreman.Analytics	E004
+Analytics.StandardSystems.transparentGlass	Analytics.Variables.FixedInfo.transparentGlass (static extension, Analytics.StandardSystems)	Softellect.Berreman.Analytics	E004
+Analytics.StandardSystems.langasiteSubstrateOnSiliconSystem	Berreman.Dispersion.OpticalSystemWithDisp.langasiteSubstrateOnSiliconSystem (static extension, Analytics.StandardSystems)	Softellect.Berreman.Analytics	E004
+Analytics.StandardSystems.langasiteFilmOnSiliconSystem	Berreman.Dispersion.OpticalSystemWithDisp.langasiteFilmOnSiliconSystem (static extension, Analytics.StandardSystems)	Softellect.Berreman.Analytics	E004
+Analytics.AnalysisFunctions.absorptance	Berreman.Solvers.Solution.absorptance (extension, Analytics.AnalysisFunctions)	Softellect.Berreman.Analytics	E005
+Analytics.AnalysisFunctions.stokesSystem	Berreman.Solvers.Solution.stokesSystem (extension, Analytics.AnalysisFunctions)	Softellect.Berreman.Analytics	E005
+Analytics.AnalysisFunctions.degreeOfPolarization	Berreman.Fields.StokesVector.degreeOfPolarization (extension, Analytics.AnalysisFunctions)	Softellect.Berreman.Analytics	E005
+Analytics.AnalysisFunctions.psiDelta	Berreman.Solvers.Solution.psiDelta (extension, Analytics.AnalysisFunctions)	Softellect.Berreman.Analytics	E005
+Analytics.AnalysisFunctions.ncs	Berreman.Solvers.Solution.ncs (extension, Analytics.AnalysisFunctions)	Softellect.Berreman.Analytics	E005
+Analytics.Colorimetry.xyzToLab	Analytics.Colorimetry.CieXyz.toLab (member)	Softellect.Berreman.Analytics	E005
+Analytics.Colorimetry.xyzToSrgb	Analytics.Colorimetry.CieXyz.toSrgb (member)	Softellect.Berreman.Analytics	E005

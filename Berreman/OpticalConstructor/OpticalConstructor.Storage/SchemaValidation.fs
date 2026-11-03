@@ -3,42 +3,42 @@ namespace OpticalConstructor.Storage
 open System.IO
 open System.Text.Json
 open Json.Schema
+open Softellect.Sys.Primitives
 open OpticalConstructor.Storage.Errors
 
 /// JSON-Schema validate-on-load (§I.2 / R-2) via JsonSchema.Net. The published
 /// schema is a build-copied content item shipped beside the assembly; it is
 /// loaded and `Evaluate`d against the parsed document BEFORE the domain model is
-/// bound. Compiled before `ProjectJson` so `deserializeProject` can call it.
+/// bound. Compiled before `ProjectJson` so `ProjectJsonText.parseProject` can call it.
 module SchemaValidation =
 
-    /// Location of the build-copied schema content item, relative to the assembly
-    /// base directory (the fsproj copies `schema/...schema.json` preserving this
-    /// relative path).
-    let schemaRelativePath =
-        Path.Combine("schema", "optical-constructor-project.schema.json")
+    type FileName with
 
-    let private schemaFullPath =
-        Path.Combine(System.AppContext.BaseDirectory, schemaRelativePath)
-
-    /// Load the published schema ONCE (§I.2 — "load the schema once into a
-    /// `JsonSchema` value"). `JsonSchema.FromText` registers the document by its
-    /// `$id` in a process-global registry, so re-loading the same `$id` throws;
-    /// caching behind `lazy` makes validate-on-load idempotent across calls.
-    /// Returns `SchemaMissing` when the content item is absent at runtime,
-    /// `FileIoError` on a read failure.
-    let private schema : Result<JsonSchema, StorageError> Lazy =
-        lazy
-            if File.Exists schemaFullPath then
+        /// Read and parse the build-copied schema content item at this path, relative to the assembly base
+        /// directory (the fsproj copies `schema/*.schema.json` preserving it): `SchemaMissingErr` when the item
+        /// is absent at runtime, `FileIoExn` on a read failure. `JsonSchema.FromText` registers the document by
+        /// its `$id` in a process-global registry and throws on a second load of the same `$id`, so each owner
+        /// loads its schema once, behind a `lazy`.
+        member this.tryLoadSchema () : Result<JsonSchema, StorageError> =
+            let fullPath = this.combine (FolderName System.AppContext.BaseDirectory)
+            if File.Exists fullPath.value then
                 try
-                    File.ReadAllText schemaFullPath |> JsonSchema.FromText |> Ok
-                with e -> Error (FileIoError e)
+                    File.ReadAllText fullPath.value |> JsonSchema.FromText |> Ok
+                with e -> Error (FileIoExn e)
             else
-                Error SchemaMissing
+                Error SchemaMissingErr
+
+    let private projectSchemaFile : FileName =
+        FileName (Path.Combine("schema", "optical-constructor-project.schema.json"))
+
+    /// The project schema, loaded ONCE (§I.2 — "load the schema once into a `JsonSchema` value"), so
+    /// validate-on-load is idempotent across calls.
+    let private schema : Result<JsonSchema, StorageError> Lazy = lazy (projectSchemaFile.tryLoadSchema ())
 
     /// Flatten a JsonSchema.Net evaluation tree into a list of human-readable
     /// messages (`<instance-location>: <keyword> -> <message>`), preserving the
     /// library's own wording verbatim (§I.2 — the messages travel into
-    /// `SchemaValidationError`). Walks `results.Details` recursively so a NESTED
+    /// `SchemaValidationErr`). Walks `results.Details` recursively so a NESTED
     /// violation keeps its precise instance location. Public so the groups store
     /// reuses this exact seam (slice 007 / R-4) instead of re-implementing a
     /// shallower, top-level-only collector that drops nested detail.
@@ -59,7 +59,7 @@ module SchemaValidation =
         walk results |> Seq.toList
 
     /// Validate `element` against the published schema. On any evaluation failure
-    /// returns `SchemaValidationError` carrying the JsonSchema.Net messages; the
+    /// returns `SchemaValidationErr` carrying the JsonSchema.Net messages; the
     /// caller MUST NOT bind a project on `Error`.
     let validate (element : JsonElement) : Result<unit, StorageError> =
         match schema.Value with
@@ -73,4 +73,4 @@ module SchemaValidation =
                 let messages =
                     if List.isEmpty messages then [ "schema validation failed" ]
                     else messages
-                Error (SchemaValidationError messages)
+                Error (SchemaValidationErr messages)

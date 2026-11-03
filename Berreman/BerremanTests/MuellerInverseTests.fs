@@ -50,7 +50,7 @@ type MuellerInverseTests() =
 
     /// Radians per degree, reached by its full module path (mirrors `MuellerReconstructionTests`). Bound
     /// here, ahead of the members (FS0960: in a class type every `let` binding precedes the first member).
-    let degree = Berreman.MathNetNumericsMath.degree
+    let degree = Angle.radiansPerDegree
 
     // =================================================================================================
     // Ground truth: quartz at 632.8 nm.
@@ -125,7 +125,7 @@ type MuellerInverseTests() =
     /// closed-form analytic inversion is used for starting values rather than as the reported answer.
     /// At quartz's ~4.55 % surface reflectance the second transmitted beam carries only ~0.2 % of the
     /// first, so the effect is small but real.
-    let solverParameters : SolverParameters = { numberOfReflections = 3 }
+    let solverParameters : SolverParameters = { numberOfReflections = NumberOfReflections 3 }
 
     /// The real Berreman-backed forward model, wired once for the whole class.
     let forward = createBerremanForward buildUniaxialGyrotropic solverParameters
@@ -288,7 +288,7 @@ type MuellerInverseTests() =
         (box : SearchBox)
         (observations : MuellerObservation list)
         (start : UniaxialParameters)
-        : ParameterScaling<UniaxialParameters> * (float[] -> float[]) * NonlinearSolution =
+        : ParameterScaling<UniaxialParameters> * (ScaledVector -> ResidualVector) * NonlinearSolution =
         let fit = InverseFitHarness.fitObservations forward box observations (scalingAround start)
         fit.scaling, fit.residual, fit.solution
 
@@ -381,13 +381,13 @@ type MuellerInverseTests() =
         // components OPPOSITELY. The forward-model fact below measures the engine's own law exactly and
         // documents the gap; nothing in this suite uses this function to predict the engine.
         let atAxis = gyrationProjection Angle.zero quartzG11 quartzG33
-        let acrossAxis = gyrationProjection (Angle.degree 90.0) quartzG11 quartzG33
+        let acrossAxis = gyrationProjection (Angle.degree 90.0<Berreman.Constants.deg>) quartzG11 quartzG33
         Assert.True(abs (atAxis.value - quartzG33.value) < allowedDiff, $"G(0) = {atAxis.value}")
         Assert.True(abs (acrossAxis.value - quartzG11.value) < allowedDiff, $"G(90) = {acrossAxis.value}")
 
         // At 45 deg the two contribute equally — the only angle at which a single measurement constrains
         // their SUM but neither individually.
-        let atHalf = gyrationProjection (Angle.degree 45.0) quartzG11 quartzG33
+        let atHalf = gyrationProjection (Angle.degree 45.0<Berreman.Constants.deg>) quartzG11 quartzG33
         let expectedHalf = 0.5 * (quartzG11.value + quartzG33.value)
         Assert.True(abs (atHalf.value - expectedHalf) < allowedDiff, $"G(45) = {atHalf.value}")
 
@@ -397,7 +397,7 @@ type MuellerInverseTests() =
         // However far a z-cut plate is tilted, the internal angle saturates at arcsin(1/n_o) = 40.41 deg,
         // where sin^2 t = 0.42 — so g11 can never carry more than 42 % of the projection weight from a
         // z-cut sample. This fact is the quantitative justification for C3 and C4 existing.
-        let grazing = internalAngle quartzOrdinaryIndex (Angle.degree 89.0 |> IncidenceAngle.create)
+        let grazing = internalAngle quartzOrdinaryIndex (Angle.degree 89.0<Berreman.Constants.deg> |> IncidenceAngle.create)
         let expectedCap = asin (1.0 / quartzOrdinaryIndex.value) / degree
         Assert.True(grazing.degrees < expectedCap + 1.0e-9, $"internal angle at grazing = {grazing.degrees}")
         Assert.True(grazing.degrees > expectedCap - 0.1, $"internal angle at grazing = {grazing.degrees}, cap = {expectedCap}")
@@ -429,7 +429,7 @@ type MuellerInverseTests() =
             [ r.[0, 0].Imaginary; r.[1, 1].Imaginary; r.[2, 2].Imaginary ]
 
         // z-cut at zero azimuth: the crystal frame IS the lab frame.
-        let zCut = orientForCut ZCut (SampleAzimuth.degree 0.0) props
+        let zCut = orientForCut ZCut (SampleAzimuth.degree 0.0<Berreman.Constants.deg>) props
         let assertClose (label : string) (expected : float list) (actual : float list) =
             List.zip expected actual
             |> List.iteri (fun i (e, a) -> Assert.True(abs (e - a) < 1.0e-9, $"{label}[{i}]: expected {e}, got {a}"))
@@ -441,7 +441,7 @@ type MuellerInverseTests() =
         // extraordinary component moves from the third diagonal slot to the first — and, critically, the
         // GYRATION tensor moves with it. Rotating eps without rotating rho is precisely the bug that
         // routing both through the engine's own OpticalProperties.rotate makes impossible.
-        let xCut = orientForCut XCut (SampleAzimuth.degree 0.0) props
+        let xCut = orientForCut XCut (SampleAzimuth.degree 0.0<Berreman.Constants.deg>) props
         assertClose "x-cut eps" [ nExtSq; nOrdSq; nOrdSq ] (epsDiagonal xCut)
         assertClose "x-cut rho" [ quartzG33.value; quartzG11.value; quartzG11.value ] (rhoDiagonalImaginary xCut)
 
@@ -471,7 +471,7 @@ type MuellerInverseTests() =
 
         // Round trip through the scaled space is exact for the centre itself (the zero vector) ...
         let atCentre = toScaled scaling quartz
-        Assert.Equal<float[]>([| 0.0; 0.0; 0.0; 0.0 |], atCentre)
+        Assert.Equal<float[]>([| 0.0; 0.0; 0.0; 0.0 |], atCentre.value)
 
         // ... and for an arbitrary offset.
         let offset : UniaxialParameters =
@@ -482,10 +482,10 @@ type MuellerInverseTests() =
                 g33 = RhoValue (quartzG33.value - 4.0e-5)
             }
         let scaled = toScaled scaling offset
-        Assert.True(abs (scaled.[0] - 3.5) < 1.0e-9, $"scaled n_o = {scaled.[0]}")
-        Assert.True(abs (scaled.[1] + 1.25) < 1.0e-9, $"scaled n_e = {scaled.[1]}")
-        Assert.True(abs (scaled.[2] - 2.0) < 1.0e-9, $"scaled g11 = {scaled.[2]}")
-        Assert.True(abs (scaled.[3] + 4.0) < 1.0e-9, $"scaled g33 = {scaled.[3]}")
+        Assert.True(abs (scaled.value.[0] - 3.5) < 1.0e-9, $"scaled n_o = {scaled.value.[0]}")
+        Assert.True(abs (scaled.value.[1] + 1.25) < 1.0e-9, $"scaled n_e = {scaled.value.[1]}")
+        Assert.True(abs (scaled.value.[2] - 2.0) < 1.0e-9, $"scaled g11 = {scaled.value.[2]}")
+        Assert.True(abs (scaled.value.[3] + 4.0) < 1.0e-9, $"scaled g33 = {scaled.value.[3]}")
 
         let back = ofScaled scaling scaled
         Assert.True(abs (back.ordinaryIndex.value - offset.ordinaryIndex.value) < 1.0e-15, "n_o round trip")
@@ -496,7 +496,7 @@ type MuellerInverseTests() =
         // A UNIT step in each scaled coordinate must move exactly that one physical parameter, by exactly
         // its scale. This is the property the optimizer actually relies on: it is what makes a 1e-6 step
         // in the scaled space a 1e-9 step in n and a 1e-11 step in g rather than a 1e-6 step in both.
-        let unitStep = ofScaled scaling [| 1.0; 0.0; 0.0; 0.0 |]
+        let unitStep = ofScaled scaling (ScaledVector [| 1.0; 0.0; 0.0; 0.0 |])
         Assert.True(abs (unitStep.ordinaryIndex.value - (quartzOrdinaryIndex.value + 1.0e-3)) < 1.0e-15, "unit step moves n_o by its scale")
         Assert.True(abs (unitStep.extraordinaryIndex.value - quartzExtraordinaryIndex.value) < 1.0e-15, "unit step in n_o leaves n_e alone")
         Assert.True(abs (unitStep.g11.value - quartzG11.value) < 1.0e-18, "unit step in n_o leaves g11 alone")
@@ -511,19 +511,19 @@ type MuellerInverseTests() =
         // not against a paper. If muellerOfBirefringence and retarderMueller / rotationMueller ever
         // disagree, the inversion is producing coefficients in some other convention and every starting
         // value derived from it is silently wrong.
-        let lb = Retardance.degree 37.0
+        let lb = Retardance.degree 37.0<Berreman.Constants.deg>
         let zero = Retardance 0.0
 
         // A pure linear retardance with fast axis at 0 deg IS retarderMueller at azimuth 0.
         assertMuellerEqual (retarderMueller Angle.zero lb) (muellerOfBirefringence lb zero zero)
 
         // A pure linear retardance with fast axis at 45 deg IS retarderMueller at azimuth 45.
-        assertMuellerEqual (retarderMueller (Angle.degree 45.0) lb) (muellerOfBirefringence zero lb zero)
+        assertMuellerEqual (retarderMueller (Angle.degree 45.0<Berreman.Constants.deg>) lb) (muellerOfBirefringence zero lb zero)
 
         // A pure circular retardance of cb IS the Stokes frame rotation through cb / 2: an optical rotator
         // turns the polarization azimuth by half its circular retardance.
-        let cb = Retardance.degree 50.0
-        assertMuellerEqual (Propagation.rotationMueller (Angle (cb.value / 2.0))) (muellerOfBirefringence zero zero cb)
+        let cb = Retardance.degree 50.0<Berreman.Constants.deg>
+        assertMuellerEqual ((Angle (cb.value / 2.0)).rotationMueller) (muellerOfBirefringence zero zero cb)
 
         // Zero everywhere is the identity — the rotation vector vanishes and the Rodrigues short-circuit
         // must not divide by its own zero norm.
@@ -533,13 +533,13 @@ type MuellerInverseTests() =
     member _.``analyticInversion inverts muellerOfBirefringence exactly and reports zero dichroism`` () =
         // The round trip that makes Stage A trustworthy as a starting-value generator.
         let cases =
-            [ "pure linear at 0", Retardance.degree 37.0, Retardance 0.0, Retardance 0.0
-              "pure linear at 45", Retardance 0.0, Retardance.degree -22.0, Retardance 0.0
-              "pure circular", Retardance 0.0, Retardance 0.0, Retardance.degree 50.0
-              "mixed", Retardance.degree 31.0, Retardance.degree 12.0, Retardance.degree -44.0 ]
+            [ "pure linear at 0", Retardance.degree 37.0<Berreman.Constants.deg>, Retardance 0.0, Retardance 0.0
+              "pure linear at 45", Retardance 0.0, Retardance.degree (-22.0<Berreman.Constants.deg>), Retardance 0.0
+              "pure circular", Retardance 0.0, Retardance 0.0, Retardance.degree 50.0<Berreman.Constants.deg>
+              "mixed", Retardance.degree 31.0<Berreman.Constants.deg>, Retardance.degree 12.0<Berreman.Constants.deg>, Retardance.degree (-44.0<Berreman.Constants.deg>) ]
 
         for (label, lb, lbPrime, cb) in cases do
-            match analyticInversion (muellerOfBirefringence lb lbPrime cb) with
+            match (muellerOfBirefringence lb lbPrime cb).analyticInversion with
             | Ok a ->
                 Assert.True(abs (a.lb.value - lb.value) < 1.0e-12, $"{label}: lb {a.lb.value} vs {lb.value}")
                 Assert.True(abs (a.lbPrime.value - lbPrime.value) < 1.0e-12, $"{label}: lbPrime {a.lbPrime.value} vs {lbPrime.value}")
@@ -547,7 +547,7 @@ type MuellerInverseTests() =
                 // A pure birefringence has no dichroism at all, so the transparency residual is exactly the
                 // number that tells a caller whether a MEASURED matrix is the transparent, non-depolarizing
                 // object the inversion assumes.
-                Assert.True(transparencyResidual a < 1.0e-12, $"{label}: transparency residual = {transparencyResidual a}")
+                Assert.True(a.transparencyResidual.value < 1.0e-12, $"{label}: transparency residual = {a.transparencyResidual.value}")
             | Error e -> Assert.Fail($"{label}: expected an inversion, got %A{e}")
 
     [<Fact>]
@@ -556,14 +556,14 @@ type MuellerInverseTests() =
         // rotation is not interpretable at all. Both must be typed errors: returning a plausible-looking
         // coefficient for either would corrupt the starting values silently, which is far worse than
         // failing.
-        match analyticInversion (muellerOfBirefringence (Retardance.degree 180.0) (Retardance 0.0) (Retardance 0.0)) with
-        | Error (DegenerateRotation reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        match (muellerOfBirefringence (Retardance.degree 180.0<Berreman.Constants.deg>) (Retardance 0.0) (Retardance 0.0)).analyticInversion with
+        | Error (DegenerateRotationErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected a DegenerateRotation for a half-turn, got %A{other}")
 
         // A matrix with non-positive m00 carries no usable intensity to normalize by.
-        let dark = Propagation.muellerOfRows [ for _ in 0 .. 3 -> [ for _ in 0 .. 3 -> 0.0 ] ]
-        match analyticInversion dark with
-        | Error (NonPositiveIntensity m00) -> Assert.Equal(0.0, m00)
+        let dark = MuellerMatrix (RealMatrix4x4.create [ for _ in 0 .. 3 -> [ for _ in 0 .. 3 -> 0.0 ] ])
+        match dark.analyticInversion with
+        | Error (NonPositiveIntensityErr m00) -> Assert.Equal(0.0, m00)
         | other -> Assert.Fail($"expected a NonPositiveIntensity for a zero matrix, got %A{other}")
 
     [<Fact>]
@@ -572,29 +572,30 @@ type MuellerInverseTests() =
         // physically realizable, and has exactly ONE non-zero eigenvalue when the matrix is
         // non-depolarizing. Both properties are pinned here on matrices whose answer is known a priori, so
         // that the same functions can be trusted as a realizability check on solver output below.
-        let nonDepolarizing = muellerOfBirefringence (Retardance.degree 31.0) (Retardance.degree 12.0) (Retardance.degree -44.0)
-        match cloudeEigenvalues nonDepolarizing with
+        let nonDepolarizing = muellerOfBirefringence (Retardance.degree 31.0<Berreman.Constants.deg>) (Retardance.degree 12.0<Berreman.Constants.deg>) (Retardance.degree (-44.0<Berreman.Constants.deg>))
+        match (nonDepolarizing.cloudeEigenvalues |> List.map (fun e -> e.value)) with
         | [ l0; l1; l2; l3 ] ->
             Assert.True(abs (l0 - 1.0) < 1.0e-9, $"dominant Cloude eigenvalue = {l0}")
             for (i, l) in List.indexed [ l1; l2; l3 ] do
                 Assert.True(abs l < 1.0e-9, $"Cloude eigenvalue {i + 1} = {l}, expected ~0 for a non-depolarizing matrix")
         | other -> Assert.Fail($"expected four Cloude eigenvalues, got %A{other}")
 
-        match depolarizationIndex nonDepolarizing with
-        | Ok di -> Assert.True(abs (di - 1.0) < 1.0e-9, $"depolarization index of a pure retarder = {di}")
+        match nonDepolarizing.depolarizationIndex with
+        | Ok (DepolarizationIndex di) -> Assert.True(abs (di - 1.0) < 1.0e-9, $"depolarization index of a pure retarder = {di}")
         | Error e -> Assert.Fail($"expected a depolarization index, got %A{e}")
 
         // The ideal depolarizer is the opposite extreme: it survives realizability (all four eigenvalues
         // equal and positive) but has a depolarization index of 0.
         let depolarizer =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 0.0; 0.0; 0.0 ] ]
-        Assert.True(cloudeEigenvalues depolarizer |> List.forall (fun l -> l > -1.0e-12), "the ideal depolarizer must stay realizable")
-        match depolarizationIndex depolarizer with
-        | Ok di -> Assert.True(abs di < 1.0e-12, $"depolarization index of an ideal depolarizer = {di}")
+            |> MuellerMatrix
+        Assert.True((depolarizer.cloudeEigenvalues |> List.map (fun e -> e.value)) |> List.forall (fun l -> l > -1.0e-12), "the ideal depolarizer must stay realizable")
+        match depolarizer.depolarizationIndex with
+        | Ok (DepolarizationIndex di) -> Assert.True(abs di < 1.0e-12, $"depolarization index of an ideal depolarizer = {di}")
         | Error e -> Assert.Fail($"expected a depolarization index, got %A{e}")
 
     // =================================================================================================
@@ -631,7 +632,7 @@ type MuellerInverseTests() =
         let observations = observe c1
         let m = (List.exactlyOne observations).measured
 
-        match analyticInversion m with
+        match m.analyticInversion with
         | Ok a ->
             // A pure rotator has no linear birefringence in either basis: along the optic axis the two
             // transverse directions are equivalent, so there is nothing to retard against anything else.
@@ -657,7 +658,7 @@ type MuellerInverseTests() =
                 $"C1 rotation = {rotationDeg} deg; closed form 2*pi*g11*d/lambda = {predictedDeg} deg (relative deviation {relative})")
 
             // And it is transparent: no dichroism of any kind.
-            Assert.True(transparencyResidual a < 1.0e-9, $"C1 transparency residual = {transparencyResidual a}")
+            Assert.True(a.transparencyResidual.value < 1.0e-9, $"C1 transparency residual = {a.transparencyResidual.value}")
         | Error e -> Assert.Fail($"C1 should invert to a pure rotator, got %A{e}")
 
     [<Fact>]
@@ -723,14 +724,14 @@ type MuellerInverseTests() =
         let mutable worstTransmitted = 0.0
         let mutable worstOverall = 0.0
         for o in observations do
-            let eigenvalues = cloudeEigenvalues o.measured
+            let eigenvalues = (o.measured.cloudeEigenvalues |> List.map (fun e -> e.value))
             let smallest = List.min eigenvalues
             Assert.True(
                 smallest > -1.0e-9,
                 $"%A{o.configuration.cut} at {o.configuration.incidenceAngle.value / degree} deg: negative Cloude eigenvalue {smallest} — the matrix is not physically realizable")
 
-            match depolarizationIndex o.measured with
-            | Ok di ->
+            match o.measured.depolarizationIndex with
+            | Ok (DepolarizationIndex di) ->
                 Assert.True(di <= 1.0 + 1.0e-9, $"depolarization index {di} exceeds 1, which is impossible")
                 worstOverall <- max worstOverall (1.0 - di)
                 if o.configuration.observable = TransmittedMueller then
@@ -755,14 +756,14 @@ type MuellerInverseTests() =
         // optimizer: every piece of Stage-B logic - scaling, forward evaluation, normalization, residual
         // assembly - must be exercisable with no numerical machinery present at all. If this fact needs a
         // real solver to pass, the logic and the physics are entangled.
-        let cannedModel = muellerOfBirefringence (Retardance.degree 20.0) (Retardance 0.0) (Retardance.degree 5.0)
-        let cannedMeasurement = muellerOfBirefringence (Retardance.degree 20.0) (Retardance 0.0) (Retardance.degree 5.0)
+        let cannedModel = muellerOfBirefringence (Retardance.degree 20.0<Berreman.Constants.deg>) (Retardance 0.0) (Retardance.degree 5.0<Berreman.Constants.deg>)
+        let cannedMeasurement = muellerOfBirefringence (Retardance.degree 20.0<Berreman.Constants.deg>) (Retardance 0.0) (Retardance.degree 5.0<Berreman.Constants.deg>)
 
         let mockForward : ForwardModelProxy<UniaxialParameters> =
             { muellerOf = fun _ _ -> Ok cannedModel }
 
         let mockSolver : NonlinearSolverProxy =
-            { solveNonlinearLeastSquares = fun request -> Ok { solution = request.initial; finalResiduals = request.residual request.initial; iterations = 7 } }
+            { solveNonlinearLeastSquares = fun request -> Ok { solution = request.initial; finalResiduals = request.residual request.initial; iterations = IterationCount 7 } }
 
         let observations =
             [ for c in c1 -> { configuration = c; measured = cannedMeasurement } ]
@@ -772,7 +773,7 @@ type MuellerInverseTests() =
         | Ok models ->
             Assert.Equal(observations.Length, models.Length)
             match residualVector observations models with
-            | Ok residuals ->
+            | Ok (ResidualVector residuals) ->
                 // 15 residual entries per observation: the normalized elements other than m00, which
                 // normalization has forced to 1 in both and which would therefore contribute a residual
                 // entry that is identically zero.
@@ -785,17 +786,17 @@ type MuellerInverseTests() =
         // The solver proxy is driven through its exact declared signature.
         let request =
             {
-                residual = fun v -> Array.map (fun x -> x - 1.0) v
-                initial = [| 0.0; 0.0; 0.0; 0.0 |]
-                lowerBounds = Array.create 4 -10.0
-                upperBounds = Array.create 4 10.0
-                maxIterations = 100
-                epsX = 1.0e-10
+                residual = fun (ScaledVector v) -> Array.map (fun x -> x - 1.0) v |> ResidualVector
+                initial = ScaledVector [| 0.0; 0.0; 0.0; 0.0 |]
+                lowerBounds = Array.create 4 -10.0 |> ScaledVector
+                upperBounds = Array.create 4 10.0 |> ScaledVector
+                maxIterations = IterationCount 100
+                epsX = StepTolerance 1.0e-10
             }
         match mockSolver.solveNonlinearLeastSquares request with
         | Ok solution ->
-            Assert.Equal(7, solution.iterations)
-            Assert.Equal<float[]>(request.initial, solution.solution)
+            Assert.Equal(7, solution.iterations.value)
+            Assert.Equal<float[]>(request.initial.value, solution.solution.value)
         | Error e -> Assert.Fail($"expected the canned mock solution, got %A{e}")
 
     [<Fact>]
@@ -808,8 +809,8 @@ type MuellerInverseTests() =
         Assert.True((f = f))
         Assert.False((f = g))
 
-        let s : NonlinearSolverProxy = { solveNonlinearLeastSquares = fun _ -> Error (DidNotConverge "mock") }
-        let t : NonlinearSolverProxy = { solveNonlinearLeastSquares = fun _ -> Error (DidNotConverge "mock") }
+        let s : NonlinearSolverProxy = { solveNonlinearLeastSquares = fun _ -> Error (DidNotConvergeErr "mock") }
+        let t : NonlinearSolverProxy = { solveNonlinearLeastSquares = fun _ -> Error (DidNotConvergeErr "mock") }
         Assert.True((s = s))
         Assert.False((s = t))
 
@@ -826,31 +827,31 @@ type MuellerInverseTests() =
             { quartz with ordinaryIndex = RefractionIndex 0.0; extraordinaryIndex = RefractionIndex 0.0 }
 
         match forward.muellerOf (List.exactlyOne c1) degenerate with
-        | Error (ForwardSolveFailed (_, reason)) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | Error (ForwardSolveFailedErr (_, reason)) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | Ok _ -> ()   // If the engine happens to survive it, that is fine — the requirement is "no throw".
 
         // The residual assembler rejects a model list that does not line up with the observations, rather
         // than silently fitting a truncated problem.
         let observations = [ for c in c1 -> { configuration = c; measured = Propagation.identityMueller } ]
         match residualVector observations [] with
-        | Error (MismatchedObservations (measured, model)) ->
-            Assert.Equal(observations.Length, measured)
-            Assert.Equal(0, model)
+        | Error (MismatchedObservationsErr counts) ->
+            Assert.Equal(observations.Length, counts.measuredCount.value)
+            Assert.Equal(0, counts.modelCount.value)
         | other -> Assert.Fail($"expected a MismatchedObservations error, got %A{other}")
 
         // The real ALGLIB-backed solver proxy rejects a malformed request without reaching ALGLIB at all.
         let solver = MuellerInverseSolver.createAlglibLevenbergMarquardt ()
         let malformed =
             {
-                residual = fun v -> v
-                initial = [| 0.0; 0.0 |]
-                lowerBounds = [| 0.0 |]
-                upperBounds = [| 1.0; 1.0 |]
-                maxIterations = 10
-                epsX = 1.0e-9
+                residual = fun (ScaledVector v) -> ResidualVector v
+                initial = ScaledVector [| 0.0; 0.0 |]
+                lowerBounds = ScaledVector [| 0.0 |]
+                upperBounds = ScaledVector [| 1.0; 1.0 |]
+                maxIterations = IterationCount 10
+                epsX = StepTolerance 1.0e-9
             }
         match solver.solveNonlinearLeastSquares malformed with
-        | Error (InvalidNonlinearRequest reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | Error (InvalidNonlinearRequestErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected an InvalidNonlinearRequest, got %A{other}")
 
     [<Fact>]
@@ -862,7 +863,7 @@ type MuellerInverseTests() =
 
         // The fit must actually have moved: a "recovery" that never left the start point would pass a
         // sloppy tolerance while proving nothing.
-        Assert.True(solution.iterations > 0, "the fit should have taken at least one step")
+        Assert.True(solution.iterations.value > 0, "the fit should have taken at least one step")
 
         let errors = recoveryErrors scaling quartz recovered
         let report = describeErrors errors
@@ -876,14 +877,14 @@ type MuellerInverseTests() =
 
         // The residual at the solution must be essentially zero: the data is noiseless and was generated
         // by the very model being fitted, so anything else means the fit stopped short of the truth.
-        let finalChiSquared = solution.finalResiduals |> Array.sumBy (fun r -> r * r)
+        let finalChiSquared = solution.finalResiduals.value |> Array.sumBy (fun r -> r * r)
         Assert.True(finalChiSquared < 1.0e-18, $"final chi-squared = {finalChiSquared}; {report}")
 
         // And the recovered parameters must REPRODUCE THE MEASUREMENTS, not merely sit near the truth.
         match forwardModels forward recovered observations with
         | Ok models ->
             match residualVector observations models with
-            | Ok r ->
+            | Ok (ResidualVector r) ->
                 let worst = r |> Array.map abs |> Array.max
                 Assert.True(worst < 1.0e-9, $"worst normalized Mueller element residual at the solution = {worst}")
             | Error e -> Assert.Fail($"expected a residual vector, got %A{e}")
@@ -925,11 +926,11 @@ type MuellerInverseTests() =
         let scaling = scalingAround perturbedStart
         let residual = residualFor forward observations scaling
         let truthPoint = toScaled scaling quartz
-        Assert.True(truthPoint |> Array.forall (fun x -> abs x > 1.0e-6), "the Jacobian must not be evaluated at the origin of the scaled space")
+        Assert.True(truthPoint.value |> Array.forall (fun x -> abs x > 1.0e-6), "the Jacobian must not be evaluated at the origin of the scaled space")
 
-        let jacobian = FitQuality.residualJacobian residual truthPoint
-        let norms = jacobianColumnNorms jacobian
-        let condition = jacobianCondition jacobian
+        let jacobian = residualJacobianAt residual truthPoint
+        let norms = jacobian.columnNorms
+        let condition = jacobian.conditionNumber.value
         let report = System.String.Join("; ", [ for i in 0 .. 3 -> $"{parameterNames.[i]} |J| = {norms.[i]}" ])
 
         // Every parameter must actually move the residual - this is what "observable" means, and it is the
@@ -962,8 +963,8 @@ type MuellerInverseTests() =
         // chi-squared is ~1e-30, the covariance diagonal underflows, and the report's zero-guard returns a
         // flat 0.0 for every off-diagonal - a value indistinguishable from "perfectly independent" and so
         // actively misleading. This was measured, not assumed. FitQuality is still the right tool once
-        // real noise is present; jacobianCorrelation is the diagnostic for the noiseless case.
-        let correlation = jacobianCorrelation jacobian
+        // real noise is present; ResidualJacobian.correlation is the diagnostic for the noiseless case.
+        let correlation = jacobian.correlation
         let pairs =
             [ for i in 0 .. 3 do
                 for j in i + 1 .. 3 ->
@@ -1004,8 +1005,8 @@ type MuellerInverseTests() =
         let scaling = scalingAround perturbedStart
         let truthPoint = toScaled scaling quartz
         let residual = residualFor forward (observe c1) scaling
-        let jacobian = FitQuality.residualJacobian residual truthPoint
-        let norms = jacobianColumnNorms jacobian
+        let jacobian = residualJacobianAt residual truthPoint
+        let norms = jacobian.columnNorms
         let report = System.String.Join("; ", [ for i in 0 .. 3 -> $"{parameterNames.[i]} |J| = {norms.[i]}" ])
 
         // g11 is what C1 measures, and it must be strongly constrained.
@@ -1024,7 +1025,7 @@ type MuellerInverseTests() =
             $"n_o must be far more weakly constrained than g11 from C1 alone: {report}")
 
         // With two dead directions the problem is singular, not merely ill conditioned.
-        let condition = jacobianCondition jacobian
+        let condition = jacobian.conditionNumber.value
         Assert.True(
             condition > 1.0e12,
             $"C1 alone must be singular, got condition number {condition}; {report}")
@@ -1032,7 +1033,7 @@ type MuellerInverseTests() =
         // Adding C3 - the second crystal cut - restores the other three, which is precisely the design
         // claim: it is the CUT that buys observability, not more angles on the same sample.
         let restoredResidual = residualFor forward (observe (c1 @ c3)) scaling
-        let restoredNorms = jacobianColumnNorms (FitQuality.residualJacobian restoredResidual truthPoint)
+        let restoredNorms = (residualJacobianAt restoredResidual truthPoint).columnNorms
         let restoredReport = System.String.Join("; ", [ for i in 0 .. 3 -> $"{parameterNames.[i]} |J| = {restoredNorms.[i]}" ])
         for i in 0 .. 3 do
             Assert.True(restoredNorms.[i] > 1.0e-6, $"adding the second cut must make {parameterNames.[i]} observable: {restoredReport}")
@@ -1095,15 +1096,15 @@ type MuellerInverseTests() =
         // DETECTOR ERROR — every normalized element moved, by no more than the budget, except m00 which
         // is left at exactly 1 because normalization has already removed everything it could carry.
         let clean = observe c1 |> List.exactlyOne
-        match normalizeMueller clean.measured with
+        match clean.measured.normalized with
         | Ok trueNormalized ->
             let reported = misread (UniformDeviateProvider.fromSeed (NoiseSeed 5)) NoiseParam.decentLab clean.measured
-            Assert.True(abs (Propagation.muellerElement reported 0 0 - 1.0) < 1.0e-15, "m00 must stay at exactly 1")
+            Assert.True(abs (reported.element 0 0 - 1.0) < 1.0e-15, "m00 must stay at exactly 1")
             let deviations =
                 [ for i in 0 .. 3 do
                     for j in 0 .. 3 do
                         if not (i = 0 && j = 0) then
-                            abs (Propagation.muellerElement reported i j - Propagation.muellerElement trueNormalized i j) ]
+                            abs (reported.element i j - trueNormalized.element i j) ]
             Assert.True(List.max deviations <= NoiseParam.decentLab.element.value, $"an element error escaped the budget: worst {List.max deviations}, budget {NoiseParam.decentLab.element.value}")
             Assert.True(List.min deviations > 0.0, "every element other than m00 must actually have been misread")
         | Error e -> Assert.Fail($"the C1 ground-truth matrix should normalize, got %A{e}")
@@ -1112,7 +1113,7 @@ type MuellerInverseTests() =
         // the ground truth itself (normalized, which is what every residual compares anyway). This is
         // what proves the noisy machinery adds noise and changes nothing else.
         let quiet = noisyObserve NoiseParam.noiseless (NoiseSeed 1) c1 |> List.exactlyOne
-        match normalizeMueller clean.measured with
+        match clean.measured.normalized with
         | Ok trueNormalized -> assertMuellerEqual trueNormalized quiet.measured
         | Error e -> Assert.Fail($"the C1 ground-truth matrix should normalize, got %A{e}")
 
@@ -1128,7 +1129,7 @@ type MuellerInverseTests() =
             List.zip runA runOther
             |> List.collect (fun (x, y) ->
                 [ for i in 0 .. 3 do
-                    for j in 0 .. 3 -> abs (Propagation.muellerElement x.measured i j - Propagation.muellerElement y.measured i j) ])
+                    for j in 0 .. 3 -> abs (x.measured.element i j - y.measured.element i j) ])
             |> List.max
         Assert.True(biggestGap > 1.0e-4, $"two different seeds must give different data, biggest element gap = {biggestGap}")
         Assert.Equal<MeasurementConfiguration list>(c3, runA |> List.map (fun o -> o.configuration))
@@ -1152,10 +1153,10 @@ type MuellerInverseTests() =
         let (scaling, _, solution) = fitObservations wideBox observations blindStart
         let recovered = ofScaled scaling solution.solution
 
-        let finalChiSquared = solution.finalResiduals |> Array.sumBy (fun r -> r * r)
+        let finalChiSquared = solution.finalResiduals.value |> Array.sumBy (fun r -> r * r)
         let errors = recoveryErrors scaling quartz recovered
-        let report = describeErrors errors + $"; chi2 {finalChiSquared}; {solution.iterations} iterations"
-        Assert.True(solution.iterations > 0, $"the fit should have taken at least one step: {report}")
+        let report = describeErrors errors + $"; chi2 {finalChiSquared}; {solution.iterations.value} iterations"
+        Assert.True(solution.iterations.value > 0, $"the fit should have taken at least one step: {report}")
 
         // Bands pinned per the spec §9 protocol from the observed values — the SAME bands the perturbed-
         // start fact uses, because the outcome is the same: with noiseless data generated by the very
@@ -1203,12 +1204,12 @@ type MuellerInverseTests() =
         let experiments = ensembleSeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
 
         for e in experiments do
-            Assert.True(e.fit.solution.iterations > 0, $"the fit for seed {e.seed.value} never took a step")
+            Assert.True(e.fit.solution.iterations.value > 0, $"the fit for seed {e.seed.value} never took a step")
 
         let table = recoveredQuantities |> List.map (statisticsFor quartz (experiments |> List.map (fun e -> e.fit.recovered)))
         let residualLevels =
             [ for e in experiments ->
-                $"seed {e.seed.value}: chi2 {e.fit.chiSquared}, rms {e.fit.rmsResidual}, {e.fit.solution.iterations} iterations" ]
+                $"seed {e.seed.value}: chi2 {e.fit.chiSquared}, rms {e.fit.rmsResidual}, {e.fit.solution.iterations.value} iterations" ]
         let report =
             System.String.Join("; ", [ for row in table -> row.describe ])
             + " || "
@@ -1307,7 +1308,7 @@ type MuellerInverseTests() =
         // The report lives in the SCALED space the fit searches, so each standard error is converted back
         // through that parameter's own scale before being compared with a relative scatter.
         let first = List.head experiments
-        let quality = FitQuality.reportFrom first.fit.residual first.fit.solution.solution first.fit.solution.finalResiduals
+        let quality = fitReportOf first.fit
 
         let predictions = predictedRelativeErrors quartz first.fit quality
         let observedScatter (name : ParameterName) : RelativeError = (rowFor table name.value).scatter
@@ -1323,8 +1324,8 @@ type MuellerInverseTests() =
         for (name, predicted) in predictions do
             Assert.True(System.Double.IsFinite predicted.value && predicted.value > 0.0, $"{name.value} has no usable standard error: {comparison}")
         Assert.True(
-            quality.reducedChiSquared > 1.0e-12,
-            $"reduced chi-squared = {quality.reducedChiSquared}, which is the underflowing noiseless regime F3 describes")
+            quality.reducedChiSquared.value > 1.0e-12,
+            $"reduced chi-squared = {quality.reducedChiSquared.value}, which is the underflowing noiseless regime F3 describes")
 
         // And it is not merely usable, it is RIGHT. Band pinned per the §9 protocol from the observed
         // ratios (0.98, 0.98, 1.43, 0.85); a factor of two is the honest tolerance, because the
@@ -1371,7 +1372,8 @@ type MuellerInverseTests() =
         let truthPoint = toScaled first.fit.scaling quartz
         let intervals =
             [ for (i, a) in List.indexed first.fit.scaling.axes ->
-                let (lo, hi) = quality.confidenceIntervals.[i]
-                a.name, lo <= truthPoint.[i] && truthPoint.[i] <= hi ]
+                let lo = quality.confidenceIntervals.lower.value.[i]
+                let hi = quality.confidenceIntervals.upper.value.[i]
+                a.name, lo <= truthPoint.value.[i] && truthPoint.value.[i] <= hi ]
         let missed = System.String.Join(", ", [ for (name, covered) in intervals do if not covered then name.value ])
         Assert.True(intervals |> List.forall snd, $"the 95%% intervals missed {missed}: {comparison}")

@@ -31,7 +31,7 @@ open OpticalConstructor.Domain.MaterialComplexityEditor
 ///     `MuWithDispValue`), so an entry that carries no such sub-tree offers none
 ///     of them — its absence is data, not a closure.
 ///   • Physics-derived vocabularies REUSE the editor's seams
-///     (`availableGyrationClasses`, `gyrationClassLabel`, `Anisotropy`,
+///     (`availableGyrationClasses`, `GyrationClass.classLabel`, `Anisotropy`,
 ///     `Transparency`, `MuKind`) — never re-derived (§D.0).
 module LibraryFacets =
 
@@ -52,61 +52,72 @@ module LibraryFacets =
     // Discrete-value vocabularies (each key doubles as the branch label).
     // =======================================================================
 
-    /// The branch key of an anisotropy (the editor's `Anisotropy` DU).
-    let anisotropyKey (anisotropy : Anisotropy) : DiscreteKey =
-        match anisotropy with
-        | Isotropic -> DiscreteKey "Isotropic"
-        | Uniaxial -> DiscreteKey "Uniaxial"
-        | Biaxial -> DiscreteKey "Biaxial"
+    type Anisotropy with
 
-    /// The branch key of the constant-vs-dispersive classification
-    /// (`MaterialLibrary.MaterialDispersion`).
-    let dispersionKey (dispersion : MaterialDispersion) : DiscreteKey =
-        match dispersion with
-        | ConstantMaterial -> DiscreteKey "Constant"
-        | DispersiveMaterial -> DiscreteKey "Dispersive"
+        /// The branch key of an anisotropy (the editor's `Anisotropy` DU).
+        member this.facetKey : DiscreteKey =
+            match this with
+            | Isotropic -> DiscreteKey "Isotropic"
+            | Uniaxial -> DiscreteKey "Uniaxial"
+            | Biaxial -> DiscreteKey "Biaxial"
 
-    /// The branch key of a transparency (the editor's `Transparency` DU).
-    let transparencyKey (transparency : Transparency) : DiscreteKey =
-        match transparency with
-        | Transparent -> DiscreteKey "Transparent"
-        | Absorbing -> DiscreteKey "Absorbing"
+    type MaterialDispersion with
 
-    /// The branch key of one per-axis/segment dispersion. A stored entry does
-    /// NOT carry the ten `DispersionModel` kinds: the editor lowers every
-    /// model through `toEpsAxis` at save (spec 0033), so the segments hold
-    /// `EpsAxisDispersion` term data and the analytic kind is not recoverable
-    /// (Sellmeier lowers to complex-ε terms, the transcendental four to an
-    /// opaque closure); recognizing term shapes back into model kinds would
-    /// re-derive physics (§D.0 forbids it). The facet therefore classifies
-    /// the three storable shapes; `modelDispersionKey` (below) pins how each
-    /// `DispersionModel` case maps onto this vocabulary.
-    let dispersionModelKey (axis : EpsAxisDispersion) : DiscreteKey =
-        match axis with
-        | RealNK _ -> DiscreteKey "Real n/k terms"
-        | ComplexEps _ -> DiscreteKey "Complex ε terms"
-        | EpsAxisEvaluated _ -> DiscreteKey "Evaluated (transcendental)"
+        /// The branch key of the constant-vs-dispersive classification.
+        member this.facetKey : DiscreteKey =
+            match this with
+            | ConstantMaterial -> DiscreteKey "Constant"
+            | DispersiveMaterial -> DiscreteKey "Dispersive"
 
-    /// The vocabulary key a `DispersionModel` case lands on once lowered
-    /// (`toEpsAxis` — the same lowering the editor performs at save):
-    /// `ConstantNK`/`Cauchy`/raw real-n/k `SumOfTerms` → real n/k terms;
-    /// `Sellmeier`/`Lorentz`/`Drude`/raw complex-ε `SumOfTerms` → complex ε
-    /// terms; the transcendental four (`TaucLorentz`/`GaussianOscillator`/
-    /// `ForouhiBloomer`/`BrendelBormann`) → evaluated.
-    let modelDispersionKey (model : DispersionModel) : DiscreteKey =
-        dispersionModelKey (toEpsAxis model)
+    type Transparency with
 
-    /// The branch key of a handedness (`Berreman.Dispersion.Handedness`).
-    let handednessKey (hand : Handedness) : DiscreteKey =
-        match hand with
-        | LeftHanded -> DiscreteKey "Left-handed"
-        | RightHanded -> DiscreteKey "Right-handed"
+        /// The branch key of a transparency (the editor's `Transparency` DU).
+        member this.facetKey : DiscreteKey =
+            match this with
+            | Transparent -> DiscreteKey "Transparent"
+            | Absorbing -> DiscreteKey "Absorbing"
 
-    /// The branch key of a gyration symmetry class — the editor's picker
-    /// label (`gyrationClassLabel`), so the facet names classes exactly as
-    /// the Material editor does.
-    let gyrationClassKey (gyration : GyrationClass<'g>) : DiscreteKey =
-        DiscreteKey (gyrationClassLabel gyration)
+    type EpsAxisDispersion with
+
+        /// The branch key of one per-axis/segment dispersion. A stored entry does
+        /// NOT carry the ten `DispersionModel` kinds: the editor lowers every
+        /// model through `toEpsAxis` at save (spec 0033), so the segments hold
+        /// `EpsAxisDispersion` term data and the analytic kind is not recoverable
+        /// (Sellmeier lowers to complex-ε terms, the transcendental four to an
+        /// opaque closure); recognizing term shapes back into model kinds would
+        /// re-derive physics (§D.0 forbids it). The facet therefore classifies
+        /// the three storable shapes; `DispersionModel.facetKey` (below) pins how
+        /// each `DispersionModel` case maps onto this vocabulary.
+        member this.facetKey : DiscreteKey =
+            match this with
+            | RealNK _ -> DiscreteKey "Real n/k terms"
+            | ComplexEps _ -> DiscreteKey "Complex ε terms"
+            | EpsAxisEvaluated _ -> DiscreteKey "Evaluated (transcendental)"
+
+    type DispersionModel with
+
+        /// The vocabulary key the model lands on once lowered
+        /// (`toEpsAxis` — the same lowering the editor performs at save):
+        /// `ConstantNK`/`Cauchy`/raw real-n/k `SumOfTerms` → real n/k terms;
+        /// `Sellmeier`/`Lorentz`/`Drude`/raw complex-ε `SumOfTerms` → complex ε
+        /// terms; the transcendental four (`TaucLorentz`/`GaussianOscillator`/
+        /// `ForouhiBloomer`/`BrendelBormann`) → evaluated.
+        member this.facetKey : DiscreteKey = this.toEpsAxis.facetKey
+
+    type Handedness with
+
+        /// The branch key of a handedness (`Berreman.Dispersion.Handedness`).
+        member this.facetKey : DiscreteKey =
+            match this with
+            | LeftHanded -> DiscreteKey "Left-handed"
+            | RightHanded -> DiscreteKey "Right-handed"
+
+    type GyrationClass<'g> with
+
+        /// The branch key of a gyration symmetry class — the editor's picker
+        /// label (`classLabel`), so the facet names classes exactly as the
+        /// Material editor does.
+        member this.facetKey : DiscreteKey = DiscreteKey this.classLabel
 
     /// The class-key vocabulary the gyration facet can ever offer: the union
     /// of the classes `availableGyrationClasses` offers across the three
@@ -115,90 +126,81 @@ module LibraryFacets =
     let offeredGyrationClassKeys : DiscreteKey list =
         [ Isotropic; Uniaxial; Biaxial ]
         |> List.collect availableGyrationClasses
-        |> List.map gyrationClassKey
+        |> List.map (fun gyration -> gyration.facetKey)
         |> List.distinct
 
-    /// The branch key of the magnetic shape (the editor's `MuKind` DU).
-    let muKindKey (muKind : MuKind) : DiscreteKey =
-        match muKind with
-        | ScalarMuKind -> DiscreteKey "Scalar"
-        | GyromagneticMuKind -> DiscreteKey "Gyromagnetic"
+    type MuKind with
+
+        /// The branch key of the magnetic shape (the editor's `MuKind` DU).
+        member this.facetKey : DiscreteKey =
+            match this with
+            | ScalarMuKind -> DiscreteKey "Scalar"
+            | GyromagneticMuKind -> DiscreteKey "Gyromagnetic"
 
     // =======================================================================
-    // Value-tree readers (private): what a facet classifies, when present.
+    // Value-tree readers: what a facet classifies, when present.
     // =======================================================================
 
-    /// The anisotropy an eps VALUE TREE denotes — the shape is data
-    /// (`ConstantEpsValue` / `EpsDispersiveValue` cases), no physics is
-    /// re-derived. Note the classification is of the ENCODING: the seeded
-    /// "Uniaxial crystal" built-in is stored as per-axis `BiaxialTransparent`
-    /// values (`MaterialLibrary.fs` seed comment) and so classifies Biaxial.
-    let anisotropyOf (complexity : MaterialComplexity) : Anisotropy =
-        match complexity.eps with
-        | EpsWithoutDispValue constant ->
-            match constant with
-            | IsotropicTransparent _ | IsotropicAbsorbing _ -> Isotropic
-            | UniaxialTransparent _ | UniaxialAbsorbing _ -> Uniaxial
-            | BiaxialTransparent _ | BiaxialAbsorbing _ -> Biaxial
-        | EpsWithDispValue dispersive ->
-            match dispersive with
-            | IsotropicDispersive _ -> Isotropic
-            | UniaxialDispersive _ -> Uniaxial
-            | BiaxialDispersive _ -> Biaxial
+    type MaterialComplexity with
 
-    /// The transparency a CONSTANT eps value denotes (the editor's
-    /// `Transparency` DU over the `ConstantEpsValue` case).
-    let transparencyOf (constant : ConstantEpsValue) : Transparency =
-        match constant with
-        | IsotropicTransparent _ | UniaxialTransparent _ | BiaxialTransparent _ -> Transparent
-        | IsotropicAbsorbing _ | UniaxialAbsorbing _ | BiaxialAbsorbing _ -> Absorbing
+        /// The anisotropy the eps VALUE TREE denotes — the shape is data
+        /// (`ConstantEpsValue` / `EpsDispersiveValue` cases), no physics is
+        /// re-derived. Note the classification is of the ENCODING: the seeded
+        /// "Uniaxial crystal" built-in is stored as per-axis `BiaxialTransparent`
+        /// values (`MaterialLibrary.fs` seed comment) and so classifies Biaxial.
+        member this.anisotropy : Anisotropy =
+            match this.eps with
+            | EpsWithoutDispValue constant ->
+                match constant with
+                | IsotropicTransparent _ | IsotropicAbsorbing _ -> Isotropic
+                | UniaxialTransparent _ | UniaxialAbsorbing _ -> Uniaxial
+                | BiaxialTransparent _ | BiaxialAbsorbing _ -> Biaxial
+            | EpsWithDispValue dispersive ->
+                match dispersive with
+                | IsotropicDispersive _ -> Isotropic
+                | UniaxialDispersive _ -> Uniaxial
+                | BiaxialDispersive _ -> Biaxial
 
-    /// The constant eps value tree of an entry, when it carries one.
-    let private constantEpsOf (entry : MaterialEntry) : ConstantEpsValue option =
-        match entry.complexity with
-        | Some complexity ->
-            match complexity.eps with
-            | EpsWithoutDispValue constant -> Some constant
-            | EpsWithDispValue _ -> None
-        | None -> None
+    type ConstantEpsValue with
 
-    /// The dispersive eps segment tree of an entry, when it carries one.
-    let private dispersiveEpsOf (entry : MaterialEntry) : EpsDispersiveValue option =
-        match entry.complexity with
-        | Some complexity ->
-            match complexity.eps with
-            | EpsWithDispValue dispersive -> Some dispersive
-            | EpsWithoutDispValue _ -> None
-        | None -> None
+        /// The transparency the CONSTANT eps value denotes (the editor's
+        /// `Transparency` DU over the `ConstantEpsValue` case).
+        member this.transparency : Transparency =
+            match this with
+            | IsotropicTransparent _ | UniaxialTransparent _ | BiaxialTransparent _ -> Transparent
+            | IsotropicAbsorbing _ | UniaxialAbsorbing _ | BiaxialAbsorbing _ -> Absorbing
 
-    /// The optical-activity value tree of an entry, when it carries one.
-    let private activeOf (entry : MaterialEntry) : RhoWithDispValue option =
-        match entry.complexity with
-        | Some complexity -> complexity.active
-        | None -> None
+    type MaterialEntry with
 
-    /// The magnetic (Polder μ) value tree of an entry, when it carries one.
-    let private magneticOf (entry : MaterialEntry) : MuWithDispValue option =
-        match entry.complexity with
-        | Some complexity -> complexity.magnetic
-        | None -> None
+        /// The constant eps value tree of the entry, when it carries one.
+        member private entry.constantEpsOpt : ConstantEpsValue option =
+            match entry.complexity with
+            | Some complexity ->
+                match complexity.eps with
+                | EpsWithoutDispValue constant -> Some constant
+                | EpsWithDispValue _ -> None
+            | None -> None
 
-    /// Every per-axis/segment dispersion of a dispersive eps, in segment
-    /// order — the symmetry decides how many axes each segment carries
-    /// (isotropic 1, uniaxial 2, biaxial 3), exactly the slots the editor's
-    /// `toComplexity` writes. The MULTI-VALUED source of the dispersion-model
-    /// facet, so branch counts need not sum to the total.
-    let private axisDispersions (dispersive : EpsDispersiveValue) : EpsAxisDispersion list =
-        match dispersive with
-        | IsotropicDispersive segments ->
-            segments |> List.map (fun s -> s.dispersion)
-        | UniaxialDispersive segments ->
-            segments |> List.collect (fun s -> [ s.ordinaryDispersion; s.extraordinaryDispersion ])
-        | BiaxialDispersive segments ->
-            segments |> List.collect (fun s -> [ s.xDispersion; s.yDispersion; s.zDispersion ])
+        /// The dispersive eps segment tree of the entry, when it carries one.
+        member private entry.dispersiveEpsOpt : EpsDispersiveValue option =
+            match entry.complexity with
+            | Some complexity ->
+                match complexity.eps with
+                | EpsWithDispValue dispersive -> Some dispersive
+                | EpsWithoutDispValue _ -> None
+            | None -> None
 
-    let private applicableWhen (condition : bool) : Applicability =
-        if condition then ApplicableAttribute else InapplicableAttribute
+        /// The optical-activity value tree of the entry, when it carries one.
+        member private entry.activeOpt : RhoWithDispValue option =
+            match entry.complexity with
+            | Some complexity -> complexity.active
+            | None -> None
+
+        /// The magnetic (Polder μ) value tree of the entry, when it carries one.
+        member private entry.magneticOpt : MuWithDispValue option =
+            match entry.complexity with
+            | Some complexity -> complexity.magnetic
+            | None -> None
 
     // =======================================================================
     // The MATERIAL facet catalogue (over MaterialEntry).
@@ -206,51 +208,51 @@ module LibraryFacets =
 
     /// Category — applies to every entry; the value set is corpus-derived
     /// (branches come from the filtered population), names resolved through
-    /// the seeded catalogue (`standardCategories` via `categoryName`).
+    /// the seeded catalogue (`standardCategories` via `CategoryId.categoryName`).
     let private materialCategoryDef : AttributeDef<MaterialEntry> =
         {
             key = materialCategoryKey
-            name = "Category"
+            name = (FacetCaption "Category")
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
-            extract = fun entry -> [ DiscreteValue (DiscreteKey (categoryName entry.category)) ]
+            extract = fun entry -> [ DiscreteValue (DiscreteKey entry.category.categoryName) ]
         }
 
     /// Anisotropy — Isotropic/Uniaxial/Biaxial from the eps value tree. TOTAL
     /// (spec 0040 Part B / operator 010/Q2): every entry carries a `complexity`
     /// value tree after step 004, so the facet applies to ALL of them and
-    /// `extract` reads `anisotropyOf complexity` for each; the defensive `None`
+    /// `extract` reads `complexity.anisotropy` for each; the defensive `None`
     /// (no value tree) yields `[]` but never fires over the seed corpus.
     let private materialAnisotropyDef : AttributeDef<MaterialEntry> =
         {
             key = materialAnisotropyKey
-            name = "Anisotropy"
+            name = (FacetCaption "Anisotropy")
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
             extract =
                 fun entry ->
                     match entry.complexity with
-                    | Some complexity -> [ DiscreteValue (anisotropyKey (anisotropyOf complexity)) ]
+                    | Some complexity -> [ DiscreteValue complexity.anisotropy.facetKey ]
                     | None -> []
         }
 
     /// Constant vs dispersive — from the engine `properties`
-    /// (`materialDispersion`), so it applies to EVERY entry, coded presets
+    /// (`MaterialEntry.dispersion`), so it applies to EVERY entry, coded presets
     /// included (silicon/langasite classify Dispersive, the vacuum spacer
     /// Constant).
     let private materialDispersionDef : AttributeDef<MaterialEntry> =
         {
             key = materialDispersionKey
-            name = "Dispersion"
+            name = (FacetCaption "Dispersion")
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
-            extract = fun entry -> [ DiscreteValue (dispersionKey (materialDispersion entry)) ]
+            extract = fun entry -> [ DiscreteValue entry.dispersion.facetKey ]
         }
 
     /// Transparent vs absorbing — TOTAL (spec 0040 Part B / operator 010/Q2),
-    /// classified via `materialDispersion` (the constant-vs-dispersive
+    /// classified via `MaterialEntry.dispersion` (the constant-vs-dispersive
     /// discriminator): a CONSTANT material reads Transparent/Absorbing from its
-    /// `ConstantEpsValue` case (`transparencyOf`), while every DISPERSIVE
+    /// `ConstantEpsValue` case (`ConstantEpsValue.transparency`), while every DISPERSIVE
     /// material lands under Absorbing (its wavelength-dependent eps is a segment
     /// tree, not a single value, so it cannot be a constant transparent). The
     /// defensive constant-without-value-tree case also folds to Absorbing, so
@@ -258,55 +260,55 @@ module LibraryFacets =
     let private materialTransparencyDef : AttributeDef<MaterialEntry> =
         {
             key = materialTransparencyKey
-            name = "Transparency"
+            name = (FacetCaption "Transparency")
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
             extract =
                 fun entry ->
-                    match materialDispersion entry, constantEpsOf entry with
-                    | ConstantMaterial, Some constant -> [ DiscreteValue (transparencyKey (transparencyOf constant)) ]
+                    match entry.dispersion, entry.constantEpsOpt with
+                    | ConstantMaterial, Some constant -> [ DiscreteValue constant.transparency.facetKey ]
                     | ConstantMaterial, None
-                    | DispersiveMaterial, _ -> [ DiscreteValue (transparencyKey Absorbing) ]
+                    | DispersiveMaterial, _ -> [ DiscreteValue Absorbing.facetKey ]
         }
 
     /// Dispersion model — MULTI-VALUED per axis/segment (a dispersive
     /// biaxial entry carries one classification per axis per segment, so
     /// counts need not sum to the total); offered only when the entry
-    /// carries a dispersive eps segment tree. See `dispersionModelKey` for
+    /// carries a dispersive eps segment tree. See `EpsAxisDispersion.facetKey` for
     /// why the vocabulary is the three storable `EpsAxisDispersion` shapes
     /// rather than the ten analytic kinds.
     let private materialDispersionModelDef : AttributeDef<MaterialEntry> =
         {
             key = materialDispersionModelKey
-            name = "Dispersion model"
+            name = (FacetCaption "Dispersion model")
             kind = DiscreteAttribute
-            appliesTo = fun entry -> applicableWhen (dispersiveEpsOf entry |> Option.isSome)
+            appliesTo = fun entry -> Applicability.ofBool (entry.dispersiveEpsOpt |> Option.isSome)
             extract =
                 fun entry ->
-                    match dispersiveEpsOf entry with
+                    match entry.dispersiveEpsOpt with
                     | Some dispersive ->
-                        axisDispersions dispersive
-                        |> List.map (fun axis -> DiscreteValue (dispersionModelKey axis))
+                        dispersive.axisDispersions
+                        |> List.map (fun axis -> DiscreteValue axis.facetKey)
                     | None -> []
         }
 
     /// Optical-activity symmetry class — offered only when active; the
     /// branch keys are the editor picker's class labels and the offerable
     /// vocabulary is `offeredGyrationClassKeys` (via
-    /// `availableGyrationClasses` — never re-derived). `gyrationClassKey` is
+    /// `availableGyrationClasses` — never re-derived). `GyrationClass.facetKey` is
     /// generic over the component, so the constant and dispersive gyration
     /// facets classify identically.
     let private materialGyrationClassDef : AttributeDef<MaterialEntry> =
         {
             key = materialGyrationClassKey
-            name = "Optical activity"
+            name = (FacetCaption "Optical activity")
             kind = DiscreteAttribute
-            appliesTo = fun entry -> applicableWhen (activeOf entry |> Option.isSome)
+            appliesTo = fun entry -> Applicability.ofBool (entry.activeOpt |> Option.isSome)
             extract =
                 fun entry ->
-                    match activeOf entry with
-                    | Some (RhoWithoutDispValue gyrotropic) -> [ DiscreteValue (gyrationClassKey gyrotropic.gyration) ]
-                    | Some (RhoWithDispValue gyrotropic) -> [ DiscreteValue (gyrationClassKey gyrotropic.gyration) ]
+                    match entry.activeOpt with
+                    | Some (RhoWithoutDispValue gyrotropic) -> [ DiscreteValue gyrotropic.gyration.facetKey ]
+                    | Some (RhoWithDispValue gyrotropic) -> [ DiscreteValue gyrotropic.gyration.facetKey ]
                     | None -> []
         }
 
@@ -315,14 +317,14 @@ module LibraryFacets =
     let private materialHandednessDef : AttributeDef<MaterialEntry> =
         {
             key = materialHandednessKey
-            name = "Handedness"
+            name = (FacetCaption "Handedness")
             kind = DiscreteAttribute
-            appliesTo = fun entry -> applicableWhen (activeOf entry |> Option.isSome)
+            appliesTo = fun entry -> Applicability.ofBool (entry.activeOpt |> Option.isSome)
             extract =
                 fun entry ->
-                    match activeOf entry with
-                    | Some (RhoWithoutDispValue gyrotropic) -> [ DiscreteValue (handednessKey gyrotropic.hand) ]
-                    | Some (RhoWithDispValue gyrotropic) -> [ DiscreteValue (handednessKey gyrotropic.hand) ]
+                    match entry.activeOpt with
+                    | Some (RhoWithoutDispValue gyrotropic) -> [ DiscreteValue gyrotropic.hand.facetKey ]
+                    | Some (RhoWithDispValue gyrotropic) -> [ DiscreteValue gyrotropic.hand.facetKey ]
                     | None -> []
         }
 
@@ -333,15 +335,15 @@ module LibraryFacets =
     let private materialMagneticDef : AttributeDef<MaterialEntry> =
         {
             key = materialMagneticKey
-            name = "Magnetic"
+            name = (FacetCaption "Magnetic")
             kind = DiscreteAttribute
-            appliesTo = fun entry -> applicableWhen (magneticOf entry |> Option.isSome)
+            appliesTo = fun entry -> Applicability.ofBool (entry.magneticOpt |> Option.isSome)
             extract =
                 fun entry ->
-                    match magneticOf entry with
-                    | Some (MuWithoutDispValue (ScalarMu _)) -> [ DiscreteValue (muKindKey ScalarMuKind) ]
-                    | Some (MuWithoutDispValue (GyromagneticMu _)) -> [ DiscreteValue (muKindKey GyromagneticMuKind) ]
-                    | Some (MuWithDispValue _) -> [ DiscreteValue (muKindKey GyromagneticMuKind) ]
+                    match entry.magneticOpt with
+                    | Some (MuWithoutDispValue (ScalarMu _)) -> [ DiscreteValue ScalarMuKind.facetKey ]
+                    | Some (MuWithoutDispValue (GyromagneticMu _)) -> [ DiscreteValue GyromagneticMuKind.facetKey ]
+                    | Some (MuWithDispValue _) -> [ DiscreteValue GyromagneticMuKind.facetKey ]
                     | None -> []
         }
 
@@ -369,18 +371,26 @@ module LibraryFacets =
     let sampleFilmMaterialKey : AttributeKey = AttributeKey "sample-film-material"
     let sampleFilmThicknessKey : AttributeKey = AttributeKey "sample-film-thickness"
 
-    /// The branch key of a library entry's kind.
-    let entryKindKey (entry : LibraryEntry) : DiscreteKey =
-        match entry with
-        | SampleItem _ -> DiscreteKey "Sample"
-        | SourceItem _ -> DiscreteKey "Source"
-        | DetectorItem _ -> DiscreteKey "Detector"
-        | PolarizerItem _ -> DiscreteKey "Polarizer"
+    type LibraryEntry with
 
-    /// The branch key of a polarizer category (spec 0038 Part F — `PolarizerCategory` is the
-    /// polarizer facet value; the DU's own label doubles as the branch label).
-    let polarizerCategoryKey (category : PolarizerCategory) : DiscreteKey =
-        DiscreteKey category.label
+        /// The branch key of the entry's kind.
+        member this.kindFacetKey : DiscreteKey =
+            match this with
+            | SampleItem _ -> DiscreteKey "Sample"
+            | SourceItem _ -> DiscreteKey "Source"
+            | DetectorItem _ -> DiscreteKey "Detector"
+            | PolarizerItem _ -> DiscreteKey "Polarizer"
+
+    type PolarizerCategory with
+
+        /// The branch key of a polarizer category (spec 0038 Part F — `PolarizerCategory` is the
+        /// polarizer facet value; the DU's own label doubles as the branch label).
+        member this.facetKey : DiscreteKey = DiscreteKey this.label
+
+    type EntryName with
+
+        /// A material's display name as the branch key of a material facet.
+        member this.facetKey : DiscreteKey = DiscreteKey this.value
 
     /// The two vocabulary keys of the thin-films facet.
     let hasThinFilmsValue : DiscreteKey = DiscreteKey "Has thin films"
@@ -400,32 +410,31 @@ module LibraryFacets =
         |> Set.toList
         |> List.choose (fun id -> materials |> List.tryFind (fun m -> m.id = id))
 
-    /// The film layers of a structure, a `Repeated` group's cell counted
-    /// once — repetition adds no new material and no new thickness value
-    /// (the engine dedups per item anyway).
-    let private filmLayers (structure : SampleStructure) : SampleLayer list =
-        structure.films
-        |> List.collect (fun item ->
-            match item with
-            | SingleLayer layer -> [ layer ]
-            | Repeated group -> group.cell)
+    type SampleStructure with
+
+        /// The film layers of the structure, a `Repeated` group's cell counted
+        /// once — repetition adds no new material and no new thickness value
+        /// (the engine dedups per item anyway).
+        member private structure.facetFilmLayers : SampleLayer list =
+            structure.films
+            |> List.collect (fun item ->
+                match item with
+                | SingleLayer layer -> [ layer ]
+                | Repeated group -> group.cell)
 
     /// The display name a material id resolves to through the corpus.
-    let private materialName (materials : MaterialEntry list) (id : MaterialId) : string option =
+    let private materialName (materials : MaterialEntry list) (id : MaterialId) : EntryName option =
         materials |> List.tryFind (fun m -> m.id = id) |> Option.map (fun m -> m.name)
 
-    let private isApplicableTo (def : AttributeDef<MaterialEntry>) (entry : MaterialEntry) : bool =
-        match def.appliesTo entry with
-        | ApplicableAttribute -> true
-        | InapplicableAttribute -> false
+    type SampleLayer with
 
-    /// A layer's finite thickness as a length in NANOMETERS (the magnitude
-    /// unit step 010's buckets label with) through the sole `Units` seam;
-    /// a semi-infinite layer has no bucketable magnitude.
-    let private thicknessNm (layer : SampleLayer) : double option =
-        match layer.thickness with
-        | Thickness.Thickness meters -> Some (fromMeters Nanometer meters)
-        | Thickness.Infinity -> None
+        /// The layer's finite thickness as a length in NANOMETERS (the magnitude
+        /// unit step 010's buckets label with) through the sole `Units` seam;
+        /// a semi-infinite layer has no bucketable magnitude.
+        member private layer.thicknessMagnitude : UnitMagnitude option =
+            match layer.thickness with
+            | Thickness.Thickness meters -> Some (fromMeters Nanometer meters)
+            | Thickness.Infinity -> None
 
     // =======================================================================
     // The LIBRARY-ENTRY facet catalogue (over LibraryEntry).
@@ -435,10 +444,10 @@ module LibraryFacets =
     let private entryKindDef : AttributeDef<LibraryEntry> =
         {
             key = entryKindFacetKey
-            name = "Kind"
+            name = (FacetCaption "Kind")
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
-            extract = fun entry -> [ DiscreteValue (entryKindKey entry) ]
+            extract = fun entry -> [ DiscreteValue entry.kindFacetKey ]
         }
 
     /// The polarizer-category facet (spec 0038 Part F): `PolarizerCategory` as the facet value,
@@ -447,7 +456,7 @@ module LibraryFacets =
     let private polarizerCategoryDef : AttributeDef<LibraryEntry> =
         {
             key = polarizerCategoryFacetKey
-            name = "Polarizer type"
+            name = (FacetCaption "Polarizer type")
             kind = DiscreteAttribute
             appliesTo =
                 fun entry ->
@@ -457,7 +466,7 @@ module LibraryFacets =
             extract =
                 fun entry ->
                     match entry with
-                    | PolarizerItem p -> [ DiscreteValue (polarizerCategoryKey p.category) ]
+                    | PolarizerItem p -> [ DiscreteValue p.category.facetKey ]
                     | SampleItem _ | SourceItem _ | DetectorItem _ -> []
         }
 
@@ -475,14 +484,13 @@ module LibraryFacets =
                 fun entry ->
                     match entry with
                     | SampleItem sample ->
-                        applicableWhen (constituentEntries materials sample |> List.exists (isApplicableTo def))
+                        Applicability.ofBool (not (List.isEmpty (def.applicableItems (constituentEntries materials sample))))
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> InapplicableAttribute
             extract =
                 fun entry ->
                     match entry with
                     | SampleItem sample ->
-                        constituentEntries materials sample
-                        |> List.filter (isApplicableTo def)
+                        def.applicableItems (constituentEntries materials sample)
                         |> List.collect def.extract
                         |> List.distinct
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
@@ -495,14 +503,14 @@ module LibraryFacets =
     let private substrateMaterialDef (materials : MaterialEntry list) : AttributeDef<LibraryEntry> =
         {
             key = sampleSubstrateMaterialKey
-            name = "Substrate material"
+            name = (FacetCaption "Substrate material")
             kind = DiscreteAttribute
             appliesTo =
                 fun entry ->
                     match entry with
                     | SampleItem sample ->
                         match sample.substrate with
-                        | Plate -> ApplicableAttribute
+                        | ThickPlate -> ApplicableAttribute
                         | ThinFilm
                         | Mirror -> InapplicableAttribute
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> InapplicableAttribute
@@ -513,7 +521,7 @@ module LibraryFacets =
                         sample.structure.substrate
                         |> Option.toList
                         |> List.choose (fun layer -> materialName materials layer.materialId.materialId)
-                        |> List.map (fun name -> DiscreteValue (DiscreteKey name))
+                        |> List.map (fun name -> DiscreteValue name.facetKey)
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
         }
 
@@ -523,7 +531,7 @@ module LibraryFacets =
     let private hasThinFilmsDef : AttributeDef<LibraryEntry> =
         {
             key = sampleHasThinFilmsKey
-            name = "Thin films"
+            name = (FacetCaption "Thin films")
             kind = DiscreteAttribute
             appliesTo =
                 fun entry ->
@@ -547,21 +555,21 @@ module LibraryFacets =
     let private filmMaterialDef (materials : MaterialEntry list) : AttributeDef<LibraryEntry> =
         {
             key = sampleFilmMaterialKey
-            name = "Film material"
+            name = (FacetCaption "Film material")
             kind = DiscreteAttribute
             appliesTo =
                 fun entry ->
                     match entry with
-                    | SampleItem sample -> applicableWhen (not (List.isEmpty sample.structure.films))
+                    | SampleItem sample -> Applicability.ofBool (not (List.isEmpty sample.structure.films))
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> InapplicableAttribute
             extract =
                 fun entry ->
                     match entry with
                     | SampleItem sample ->
-                        filmLayers sample.structure
+                        sample.structure.facetFilmLayers
                         |> List.choose (fun layer -> materialName materials layer.materialId.materialId)
                         |> List.distinct
-                        |> List.map (fun name -> DiscreteValue (DiscreteKey name))
+                        |> List.map (fun name -> DiscreteValue name.facetKey)
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
         }
 
@@ -573,19 +581,19 @@ module LibraryFacets =
     let private filmThicknessDef : AttributeDef<LibraryEntry> =
         {
             key = sampleFilmThicknessKey
-            name = "Film thickness"
+            name = (FacetCaption "Film thickness")
             kind = NumericAttribute
             appliesTo =
                 fun entry ->
                     match entry with
-                    | SampleItem sample -> applicableWhen (not (List.isEmpty sample.structure.films))
+                    | SampleItem sample -> Applicability.ofBool (not (List.isEmpty sample.structure.films))
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> InapplicableAttribute
             extract =
                 fun entry ->
                     match entry with
                     | SampleItem sample ->
-                        filmLayers sample.structure
-                        |> List.choose thicknessNm
+                        sample.structure.facetFilmLayers
+                        |> List.choose (fun layer -> layer.thicknessMagnitude)
                         |> List.map NumericValue
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
         }

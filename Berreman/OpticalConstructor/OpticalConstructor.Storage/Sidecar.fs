@@ -16,42 +16,43 @@ module Sidecar =
 
     /// The sidecar file extension, taken from the Softellect format itself
     /// (`Primitives.fs:267`) rather than hand-written, so it cannot drift.
-    let extension =
-        let (FileExtension e) = BinaryZippedFormat.fileExtension
-        e
+    let sidecarExtension : FileExtension = BinaryZippedFormat.fileExtension
 
-    /// The single sidecar-location seam (§I.4 / §J.10-item-6 / §G.10-item-6): the
-    /// `.sidecars` subfolder beside a project's own directory where ALL derived/bulk
-    /// `.binz` artefacts live — sweep/field-map results AND fit/design histories —
-    /// NEVER the repository root. Every derived-artefact writer routes through here so
-    /// the flat-vs-subfolder choice is decided once (reuse finding F2 of the cycle-1
-    /// review): `JobRunner.derivedArtefactPath` (sweeps/fits) and
-    /// `SynthesisFitPage.fitHistorySidecarPath` (Part G fit history) both call it.
-    let sidecarDirectory (projectDir : string) : string =
-        Path.Combine(projectDir, ".sidecars")
+    type FolderName with
 
-    /// A derived-artefact `.binz` path under `sidecarDirectory projectDir`, appending
-    /// the drift-proof `extension` so the `.binz` suffix is never hand-written. The
+        /// The single sidecar-location seam (§I.4 / §J.10-item-6 / §G.10-item-6): the
+        /// `.sidecars` subfolder of a project's own folder, where ALL derived/bulk
+        /// `.binz` artefacts live — sweep/field-map results AND fit/design histories —
+        /// NEVER the repository root. Every derived-artefact writer routes through here so
+        /// the flat-vs-subfolder choice is decided once (reuse finding F2 of the cycle-1
+        /// review): `derivedArtefactPath` (the §J.10 job artefacts: sweeps/fits) and
+        /// `SynthesisFitPage.fitHistorySidecarPath` (Part G fit history) both reach it.
+        member this.sidecarFolder : FolderName = this.combine (FolderName ".sidecars")
+
+    /// A derived-artefact `.binz` path under `projectDir.sidecarFolder`, appending
+    /// the drift-proof `sidecarExtension` so the `.binz` suffix is never hand-written. The
     /// path is ALWAYS under the project's `.sidecars` folder, never the repo root.
-    let derivedArtefactPath (projectDir : string) (name : string) : string =
-        Path.Combine(sidecarDirectory projectDir, name + extension)
+    let derivedArtefactPath (projectDir : FolderName) (name : FileName) : FileName =
+        (name.addExtension sidecarExtension).combine projectDir.sidecarFolder
 
-    /// Persist a derived artefact `value` as a zipped-FsPickler `.binz` sidecar.
-    let writeSidecar<'T> (path : string) (value : 'T) : Result<unit, StorageError> =
-        try
-            let bytes = serialize BinaryZippedFormat value
-            File.WriteAllBytes(path, bytes.value)
-            Ok()
-        with e -> Error(BinzError e)
+    type FileName with
 
-    /// Read a `.binz` sidecar back to its value. A missing file surfaces as
-    /// `SidecarMissing` (§I.4 / AC-I5) rather than throwing; a corrupt/incompatible
-    /// payload surfaces as `BinzError`.
-    let readSidecar<'T> (path : string) : Result<'T, StorageError> =
-        if not (File.Exists path) then
-            Error(SidecarMissing path)
-        else
+        /// Persist a derived artefact `value` here as a zipped-FsPickler `.binz` sidecar.
+        member this.writeSidecar<'Artefact> (value : 'Artefact) : Result<unit, StorageError> =
             try
-                let bytes = File.ReadAllBytes path
-                Ok(deserialize BinaryZippedFormat (SerializedData bytes) : 'T)
-            with e -> Error(BinzError e)
+                let bytes = serialize BinaryZippedFormat value
+                File.WriteAllBytes(this.value, bytes.value)
+                Ok()
+            with e -> Error(BinzExn e)
+
+        /// Read the `.binz` sidecar here back to its value. A missing file surfaces as
+        /// `SidecarMissingErr` (§I.4 / AC-I5) rather than throwing; a corrupt/incompatible
+        /// payload surfaces as `BinzExn`.
+        member this.readSidecar<'Artefact> () : Result<'Artefact, StorageError> =
+            if not (File.Exists this.value) then
+                Error(SidecarMissingErr this)
+            else
+                try
+                    let bytes = File.ReadAllBytes this.value
+                    Ok(deserialize BinaryZippedFormat (SerializedData bytes) : 'Artefact)
+                with e -> Error(BinzExn e)

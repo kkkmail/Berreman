@@ -18,16 +18,16 @@ open Berreman.Constants
 let fn = [ Rp; Rs; ]
 //let fn = [ Tp; Ts; ]
 
-let numberOfPoints = 2000
-let incidenceAngleDegree = 0.0
-let polarization = 90.0 |> Angle.degree |> Polarization.create
+let numberOfPoints = NumberOfPoints 2000
+let incidenceAngleDegree = 0.0<deg>
+let polarization = 90.0<deg> |> Angle.degree |> Polarization.create
 //let polarization = Polarization.p
 
 let incidentLight = { light600nmInclinedDegreeLPs incidenceAngleDegree with refractionIndex = RefractionIndex.transparentGlass150 }
 
 
 let incidenceAngleRange =
-    Range<_>.create numberOfPoints IncidenceAngle.normal (60.0 |> Angle.degree |> IncidenceAngle)
+    Range<_>.create numberOfPoints IncidenceAngle.normal (60.0<deg> |> Angle.degree |> IncidenceAngle)
     |> IncidenceAngleRange
 
 

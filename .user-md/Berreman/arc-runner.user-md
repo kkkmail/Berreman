@@ -31,25 +31,24 @@ location on the host machine.
 
 ## Project shape
 
-Berreman is a pure F# numerical optics solver. The solution
-file is `Berreman/Berreman.slnx`; the test project is
-`Berreman/BerremanTests/BerremanTests.fsproj`. Related projects
-under `Berreman/`:
+**Canonical source:** `./AGENTS.md` (repo root; `CLAUDE.md` only
+imports it). Read it in full before the first edit: it is the
+restart point, the style guide and the rule book.
 
-- `Berreman/Berreman/` -- the core solver (matrix math, eigen
-  decomposition, Fourier transforms, field functions).
-- `Berreman/OpticalModel/`, `Berreman/OpticalProperties/` --
-  data types for optical stacks and materials.
-- `Berreman/BerremanRunner/` -- the CLI / batch runner.
-- `Berreman/BerremanModelGenerator/` -- generates model
-  parameter sets.
-- `Berreman/Analytics/` -- analytics helpers.
-- `Berreman/BerremanTests/` -- F# unit tests covering the core
-  solver and adjacent modules.
+In short, one solution, `Berreman/Berreman.slnx` (x64 only), holds two things:
 
-There is no UI, no Android, no A/V harness, no emulator. Worker
-sessions only need `dotnet` on PATH (which is the case on this
-machine).
+- **the solver**: `Berreman/Berreman/` (Core), `Berreman/OpticalModel/`,
+  `Berreman/OpticalProperties/` and `Berreman/Analytics/`, shipped as
+  NuGet packages, over the vendored `MathNetNumerics/` projects;
+- **Optical Constructor**: `Berreman/OpticalConstructor/` (Domain,
+  Optimization, Storage, Seeding, Database, Controls, Ui, App, and the
+  TestWindows diagnostic heads), an Avalonia FuncUI desktop app.
+
+The test projects are `Berreman/BerremanTests/`,
+`OpticalConstructor.Tests/` and `OpticalConstructor.Ui.Tests/`
+(Avalonia.Headless). There is no Android, no device and no emulator.
+`BerremanRunner/` and `BerremanModelGenerator/` are stale and are not
+in the solution.
 
 ---
 
@@ -59,32 +58,41 @@ machine).
 dotnet build Berreman.slnx -c Release
 ```
 
-Run from the `Berreman/` subdirectory (the `build` gate's `cwd`
-is set there). The same `dotnet build` invocation is what the
-`build` gate runs -- if your local build is green, that gate
-will be green too (modulo environment drift).
+Run it from the `Berreman/` subdirectory, which is where the `build` gate's `cwd`
+is set. It is exactly what the gate runs.
 
-There is no MSBuild requirement for this project -- `dotnet
-build` resolves and builds the `.slnx` directly.
+- **Release only and x64 only.** Use `dotnet`, never MSBuild.
+- **Zero warnings from our code.** The only exempt warnings are the NuGet
+  advisories that AGENTS.md lists.
 
 ---
 
 ## Testing procedure
 
+Tests run on **Microsoft.Testing.Platform** (xUnit v3), from each test
+project's own folder, over what the build produced:
+
 ```
 dotnet test --no-build -c Release
+dotnet test --no-build -c Release --filter-method "BerremanTests.SolverTests.*" --filter-method "BerremanTests.SolverTests"
+dotnet test --no-build -c Release --filter-trait "Category=ui-smoke"
 ```
 
-Run from the `Berreman/BerremanTests/` subdirectory (the
-`unit-tests` gate's `cwd` is set there). The tests are pure F#
-unit tests across numerical kernels (matrix ops, eigenvectors,
-Fourier transforms, rotation matrices, advanced solver, etc.).
-Run them after every code change to the core solver or its
-adjacent projects.
+- Filter with xUnit v3's own options only (`--filter-class`,
+  `--filter-method`, `--filter-trait`, `--filter-not-trait`). VSTest's
+  `--filter` does not exist here.
+- `BerremanTests` takes about 30 minutes whole, so run the classes you
+  touched. The two constructor suites take under a minute, and
+  `ui-tests` about three.
+- The ELEV analyzers run over what you changed, from the repo root,
+  after the build:
 
-There is no separate integration-test or smoke-test suite for
-this project yet. If a slice introduces one, propose a new
-`.gates/Berreman/<name>.gates` descriptor first.
+  ```
+  powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004
+  ```
+
+- Build machines have no OneDrive. No test, fixture or kit may live
+  under Documents or depend on a OneDrive folder.
 
 ---
 
@@ -93,36 +101,75 @@ this project yet. If a slice introduces one, propose a new
 (Data version 7.) The arc-runner reads each step's gate roster from
 the per-step snapshot `specs/<NNN>/.slices/<step>.gates`, which the
 step-compiler regenerates at boot from the spec's frozen
-`.spec-gates`. For Berreman, the default set is:
+`.spec-gates`. The descriptors live under `.gates/`:
 
-- `build` (`Berreman/`) -- `dotnet build` of the solution.
-- `unit-tests` (`Berreman/`) -- `dotnet test` against `BerremanTests`.
+- `build` -- `dotnet build` of the solution;
+- `unit-tests` -- `BerremanTests`;
+- `constructor-unit-tests` -- `OpticalConstructor.Tests`;
+- `ui-smoke` and `ui-tests` -- `OpticalConstructor.Ui.Tests`, split by
+  the `Category=ui-smoke` trait;
+- `elevation` and `elevation-full` -- the ELEV analyzers over the
+  projects a step touches (plus their dependents), and over every
+  project.
 
-What you need to know while implementing:
+The step's `.gates` snapshot is the truth for the step; do not
+duplicate it here. What you need to know while implementing:
 
 - **Every step runs every gate in its roster**, in the order
-  declared. First failure short-circuits.
-- **`count_at_least` gates** (unit tests) pass when the captured
+  declared. The first failure short-circuits.
+- **`count_at_least` gates** (the test gates) pass when the captured
   count is at least the baseline from the prior green step's
   checkpoint record (`.checkpoints-json`, maintained by the
-  arc-runner). For the first step of an arc, the baseline is 0,
-  so any passing count works. You never author baselines yourself.
+  arc-runner). You never author baselines yourself.
+- **The known-findings list** (`Elevation/elevation-known-findings.json`):
+  - a recorded finding does not fail `elevation`, but a new one does;
+  - a recorded finding that is gone fails as stale, so a fix deletes its
+    entry (or lowers its count) in the same step. That includes entries in
+    other files your change cleared, such as the higher side of a
+    duplicate name whose lower side you renamed;
+  - never add an entry, never re-record the list, and never edit
+    `.elevation-analyzers.json` to silence a finding.
+
+---
+
+## The ELEV ledger
+
+The ELEV cleanup is the ledger
+`specs/0048/.manual/002-elevation-ledger.jsonl`, one JSON row per unit of
+work. Its plan, with the operator's rulings R1-R7, is
+`specs/0048/.manual/002-elevation-plan.md`, and that plan binds over a
+row's own text.
+
+- A step works inside ONE row: the whole row, or some of its files in
+  the row's order. Rows close in id order.
+- The step that clears a row's last file flips the row, in the same
+  change as its code: `state` becomes `done`, `closedIn` names the step,
+  and the note is written as plan section 5 lists.
+- A public rename in a shipped package goes in
+  `specs/0048/.manual/renames.tsv`, and a changed stored shape in
+  `specs/0048/.manual/stored-format-changes.md`.
+- The ledger is never regenerated.
 
 ---
 
 ## Code style
 
-This project does not yet carry a top-level `CLAUDE.MD` /
-`AGENTS.md` style guide. Default to standard F# conventions:
-PascalCase for module / function / type names, camelCase for
-locals, four-space indent, no `open` of project-internal
-namespaces unless the file uses 3+ symbols from them. Numerical
-code should preserve the existing precedent for floating-point
-tolerance (look at `MatrixComparison.fs` for the project's
-chosen comparison helpers).
+**Canonical source:** `./AGENTS.md`, with `./naming_conventions.md` for
+names. The rules every edit is held to include:
 
-If the user adds a top-level style guide later, this section
-should defer to it.
+- elevate every primitive;
+- unique names;
+- interpolated strings;
+- `name : Type`;
+- explicit public signatures;
+- short comments that cite the spec;
+- no new comments in project files.
+
+Gates run post-hoc, so a style breach may pass a gate, but the operator
+reads every commit at arc end.
+
+For floating-point comparisons in tests, reuse the tolerance helpers in
+`BerremanTests/MatrixComparison.fs`.
 
 ---
 
@@ -161,6 +208,34 @@ critics: []
 No project may add a second judge (the `code_judge` is the single
 decision point per cycle); the supervisor refuses to start when an
 entry's `id` is reserved.
+
+---
+
+## Standing operator rulings (every spec)
+
+These bind every role on every step of every spec, a post-mortem's
+proposals included. A project prompt states its own rulings because
+ASG cannot; these are the ones STL's prompt carries (ASG spec 0090
+`.manual/014` section 6), plus the operator's ruling on deferral.
+
+1. **Nothing is deferred** (operator, 2026-11-01; STL spec 0229
+   `.manual/006`). A step finishes what its brief asks for. Work that
+   cannot be finished is a blocked step, or a blocked ledger row, naming
+   the question. It is never a "later", never a follow-up, and never an
+   entry left for another step.
+2. **A published spec is not amended.** An operator ruling in the
+   spec's `.manual/`, or an operator note, is the amendment.
+3. **Committed green work resumes with `--accept-current-slice`**, not
+   with a relaunch that re-runs the worker.
+4. **No failure allowance, waiver or carried red.**
+
+The repository's own walls, from AGENTS.md:
+
+- **Never bump a version ring**, Berreman's or STL's.
+- **STL (`C:\GitHub\Softellect`) and ASG are read-only from here.**
+  Never build them or edit them.
+- **Never touch `*.nb` files.**
+- **LF line endings.**
 
 ---
 

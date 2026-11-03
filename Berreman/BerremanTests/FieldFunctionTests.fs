@@ -1,6 +1,6 @@
 ﻿namespace BerremanTests
 
-open Xunit.Abstractions
+open Xunit
 
 type FieldFunctionTests(output : ITestOutputHelper) =
 

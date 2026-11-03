@@ -18,20 +18,20 @@ module TableViewTests =
     let private tol = 1.0e-9
     let private close (a : float) (b : float) : bool = abs (a - b) <= tol
 
-    let private ppm = 200.0
+    let private ppm = PixelsPerMeter 200.0
     let private center : ScreenPoint = { sx = 400.0; sy = 300.0 }
     let private table = Table.defaultTable
     let private vec (x : float) (y : float) (z : float) : Vector3 = Vector3.create x y z
 
     let private viewWith (r1 : float) (r2 : float) (r3 : float) : TableViewState =
-        { Table.defaultView with r1 = Angle.degree r1; r2 = Angle.degree r2; r3 = Angle.degree r3 }
+        { Table.defaultView with r1 = Angle.degree (r1 * 1.0<deg>); r2 = Angle.degree (r2 * 1.0<deg>); r3 = Angle.degree (r3 * 1.0<deg>) }
 
     // --- Default view is exactly the straight top-down layout --------------------------
 
     [<Fact>]
     let ``at the default top-down view a plane point projects to scale + Y-flip about the centre`` () =
         let p = vec 0.3 0.2 0.0
-        let s = ppm * Table.defaultView.zoom
+        let s = ppm.value * Table.defaultView.zoom.value
         let projected = TableView.project ppm center Table.defaultView p
         Assert.True(close projected.sx (center.sx + s * 0.3), $"sx = {projected.sx}")
         // Screen Y runs DOWN, so +Y maps above the centre (smaller sy).
@@ -49,7 +49,7 @@ module TableViewTests =
     [<Fact>]
     let ``R1 spins the +X axis toward screen up`` () =
         // A 90 deg in-plane spin sends +X (right) to +Y (up): screen x back to centre, y above.
-        let s = ppm * Table.defaultView.zoom
+        let s = ppm.value * Table.defaultView.zoom.value
         let projected = TableView.project ppm center (viewWith 90.0 0.0 0.0) (vec 1.0 0.0 0.0)
         Assert.True(close projected.sx center.sx, $"sx = {projected.sx}")
         Assert.True(close projected.sy (center.sy - s * 1.0), $"sy = {projected.sy}")
@@ -98,11 +98,11 @@ module TableViewTests =
 
     [<Fact>]
     let ``the plate is a 1.2 x 2.0 x 0.10 m box with eight corners and twelve edges`` () =
-        Assert.Equal(8, List.length (TableView.plateCorners3D table))
+        Assert.Equal(8, List.length table.plateCorners3D)
         Assert.Equal(12, List.length TableView.plateEdges)
-        let xs = TableView.plateCorners3D table |> List.map (fun c -> c.x)
-        let ys = TableView.plateCorners3D table |> List.map (fun c -> c.y)
-        let zs = TableView.plateCorners3D table |> List.map (fun c -> c.z)
+        let xs = table.plateCorners3D |> List.map (fun c -> c.x)
+        let ys = table.plateCorners3D |> List.map (fun c -> c.y)
+        let zs = table.plateCorners3D |> List.map (fun c -> c.z)
         Assert.True(close (List.max xs - List.min xs) 2.0, "length (X) should be 2.0 m")
         Assert.True(close (List.max ys - List.min ys) 1.2, "width (Y) should be 1.2 m")
         Assert.True(close (List.max zs - List.min zs) 0.10, "thickness (Z) should be 0.10 m")
@@ -112,16 +112,16 @@ module TableViewTests =
     [<Fact>]
     let ``a click on the projected table hits it and a click far outside misses`` () =
         let view = Table.defaultView
-        Assert.True(TableView.tableHit ppm center view table center, "centre of the plate should hit")
-        Assert.False(TableView.tableHit ppm center view table { sx = center.sx + 10000.0; sy = center.sy },
-                     "a click far off the plate should miss")
+        Assert.True((TableView.tableHit ppm center view table center = InsidePolygon), "centre of the plate should hit")
+        Assert.True((TableView.tableHit ppm center view table { sx = center.sx + 10000.0; sy = center.sy } = OutsidePolygon),
+                    "a click far off the plate should miss")
 
     [<Fact>]
     let ``the projected plate is still hittable after the table is tumbled in 3-D`` () =
         let view = viewWith 30.0 20.0 15.0
         // The centroid of the projected top face is, by convexity, inside the projected plate.
-        let face = TableView.plateTopFace table |> List.map (TableView.project ppm center view)
+        let face = table.plateTopFace |> List.map (TableView.project ppm center view)
         let cx = face |> List.averageBy (fun p -> p.sx)
         let cy = face |> List.averageBy (fun p -> p.sy)
-        Assert.True(TableView.tableHit ppm center view table { sx = cx; sy = cy },
+        Assert.True((TableView.tableHit ppm center view table { sx = cx; sy = cy } = InsidePolygon),
                     "the tumbled plate's own centre should still select it")

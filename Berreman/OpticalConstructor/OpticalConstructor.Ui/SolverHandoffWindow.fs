@@ -21,8 +21,8 @@ type SolverHandoffWindow(library : Library.LibraryProxy, experimentData : Experi
 
     do
         this.Title <- "Solver handoff"
-        this.Name <- UiIds.Handoff.window
-        AutomationProperties.SetAutomationId(this, UiIds.Handoff.window)
+        this.Name <- ConstructorUiId.solverHandoffWindow.value
+        AutomationProperties.SetAutomationId(this, ConstructorUiId.solverHandoffWindow.value)
         this.Width <- 920.0
         this.Height <- 760.0
         // Spec 0046: never larger than the screen it opens on (its content scrolls).
@@ -34,6 +34,6 @@ type SolverHandoffWindow(library : Library.LibraryProxy, experimentData : Experi
                 collection = collection
                 requestClose = fun () -> this.Close()
             }
-        Program.mkSimple (fun () -> SolverHandoffView.init context) SolverHandoffView.update SolverHandoffView.view
+        Program.mkSimple (fun () -> context.initSolverHandoff) SolverHandoffView.updateSolverHandoff SolverHandoffView.solverHandoffView
         |> Program.withHost this
         |> Program.run

@@ -5,6 +5,7 @@ open System.IO
 open System.Text.Json
 open Json.Schema
 open Giraffe.ViewEngine
+open Softellect.Sys.Primitives
 open Berreman.MathNetNumericsMath
 open Berreman.MaterialProperties
 open Berreman.Dispersion
@@ -30,9 +31,10 @@ module MaterialLibrary =
     /// closed `MaterialCategory` union became a seeded catalogue keyed by `CategoryId`
     /// (spec 0035 step 001), the `category` field carries the category's DISPLAY NAME
     /// (`"Glass"`/`"Metal"`/… — exactly the schema's `category` enum): export resolves
-    /// the id to its name through `categoryName`, import resolves the name back through
+    /// the id to its name through `CategoryId.categoryName`, import resolves the name back through
     /// `tryFindCategoryByName`. A plain string here needs no custom converter — the one
     /// JSON stack round-trips it as-is (§I.5/§I.8 "one stack only").
+    [<Softellect.Sys.ElevationBoundary(nameof Softellect.Sys.StorageBoundary, "the library file's materialEntry shape: System.Text.Json binds these fields by name from the file, and dtoToEntry elevates each one at the read")>]
     type private MaterialEntryDto =
         {
             id : string
@@ -46,11 +48,12 @@ module MaterialLibrary =
     /// the full `OpticalPropertiesWithDisp` from a persisted dispersion model is the
     /// §D.9 mapping (Part D); this module owns only the metadata boundary.
     let private vacuumProperties : OpticalPropertiesWithDisp =
-        createComplex 1.0 0.0
-        |> ComplexRefractionIndex
-        |> Eps.fromComplexRefractionIndex
-        |> EpsWithoutDisp
-        |> isotropicProperties
+        let eps =
+            System.Numerics.Complex.create 1.0 0.0
+            |> ComplexRefractionIndex
+            |> Eps.fromComplexRefractionIndex
+            |> EpsWithoutDisp
+        eps.isotropicProperties
 
     /// A standalone JSON-Schema that validates a single `materialEntry` document.
     /// Built from the published project schema (the slice-003 build-copied content
@@ -62,7 +65,7 @@ module MaterialLibrary =
         lazy
             let schemaPath =
                 Path.Combine(AppContext.BaseDirectory, "schema", "optical-constructor-project.schema.json")
-            if not (File.Exists schemaPath) then Error SchemaMissing
+            if not (File.Exists schemaPath) then Error SchemaMissingErr
             else
                 try
                     let text = File.ReadAllText schemaPath
@@ -71,7 +74,7 @@ module MaterialLibrary =
                     let wrapper =
                         $"""{{"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/materialEntry","$defs":%s{defsText}}}"""
                     Ok (JsonSchema.FromText wrapper)
-                with e -> Error (FileIoError e)
+                with e -> Error (FileIoExn e)
 
     /// Validate a single material-entry JSON element against the `materialEntry`
     /// `$def` (§I.8 / AC-I10), reusing the slice-003 schema document.
@@ -82,7 +85,7 @@ module MaterialLibrary =
             let options = EvaluationOptions(OutputFormat = OutputFormat.List)
             let results = schema.Evaluate(element, options)
             if results.IsValid then Ok ()
-            else Error (SchemaValidationError [ "document violated the materialEntry $def" ])
+            else Error (SchemaValidationErr [ "document violated the materialEntry $def" ])
 
     /// Parse a persisted DTO back to a domain entry. The persisted `id` is the `MaterialId`'s Guid
     /// STRING form (spec 0033 step 002); a non-Guid id is a typed error — no legacy string-id path,
@@ -91,93 +94,95 @@ module MaterialLibrary =
         // Both the elevated id and the category name are IO-boundary parses: an id that is
         // not a Guid and a category name absent from the seeded catalogue are typed errors
         // (spec 0033 step 002 / 0035 step 001), never a throw or a silent default.
-        match MaterialId.tryCreate dto.id, tryFindCategoryByName dto.category with
+        match MaterialId.tryCreate dto.id, tryFindCategoryByName (CategoryName dto.category) with
         | Some id, Some category ->
             Ok
                 {
                     id = id
-                    name = dto.name
+                    name = EntryName dto.name
                     category = category.id
-                    description = dto.description
+                    description = dto.description |> Option.map EntryDescription
                     properties = vacuumProperties
                     // The metadata-only library file carries no dispersion data; the
                     // rebuilt entry is view-only until the §D.9 mapping lands.
                     complexity = None
                 }
-        | None, _ -> Error (JsonParseError $"materialEntry id '%s{dto.id}' is not a Guid")
-        | _, None -> Error (JsonParseError $"materialEntry category '%s{dto.category}' is not a known category")
+        | None, _ -> Error (MalformedJsonErr $"materialEntry id '%s{dto.id}' is not a Guid")
+        | _, None -> Error (MalformedJsonErr $"materialEntry category '%s{dto.category}' is not a known category")
 
-    /// Import a material library (§I.8 / AC-I10). A document that begins with `[`/`{`
-    /// is the canonical library JSON `exportMaterials` wrote (deserialized through the
-    /// shared `ProjectJson.options` — no second JSON stack); anything else is treated
-    /// as refractiveindex.info-style tabulated CSV and parsed by `MaterialImport`
-    /// (FSharp.Data). Returns `MaterialEntry list`; file/parse failures are values,
-    /// never thrown.
-    let importMaterials (path : string) : Result<MaterialEntry list, StorageError> =
-        let read =
-            try Ok(File.ReadAllText path)
-            with e -> Error(FileIoError e)
-        match read with
-        | Error e -> Error e
-        | Ok text ->
-            let trimmed = text.TrimStart()
-            if trimmed.StartsWith "[" || trimmed.StartsWith "{" then
-                try
-                    let dtos = JsonSerializer.Deserialize<MaterialEntryDto list>(text, ProjectJson.options)
-                    let rec toEntries (pending : MaterialEntryDto list) (acc : MaterialEntry list) : Result<MaterialEntry list, StorageError> =
-                        match pending with
-                        | [] -> Ok(List.rev acc)
-                        | dto :: rest ->
-                            match dtoToEntry dto with
-                            | Ok entry -> toEntries rest (entry :: acc)
-                            | Error e -> Error e
-                    toEntries dtos []
-                with e -> Error(JsonParseError e.Message)
-            else
-                match MaterialImport.importCsv text with
-                | Ok entry -> Ok [ entry ]
-                | Error e -> Error(JsonParseError(string e))
+    type FileName with
 
-    /// Export a material library to canonical JSON (§I.8 / AC-I10). Each entry is
-    /// projected to its `materialEntry` display fields (a `description = None` field
-    /// is omitted, never written as `null`, so the `$def`'s string-typed `description`
-    /// is satisfied), validated against the `$def`, and the array is written through
-    /// the shared `ProjectJson.options` formatting. A validation failure short-circuits
-    /// to `SchemaValidationError` so an `Ok` guarantees a schema-checked file.
-    let exportMaterials (path : string) (entries : MaterialEntry list) : Result<unit, StorageError> =
-        try
-            let nodes =
-                entries
-                |> List.map (fun e ->
-                    let dict = System.Collections.Generic.Dictionary<string, obj>()
-                    // The elevated MaterialId crosses the JSON boundary as its Guid string form.
-                    dict.["id"] <- box (string e.id.value)
-                    dict.["name"] <- box e.name
-                    // The category id resolves to its display name through the seeded
-                    // catalogue (spec 0035 step 001), writing "Glass"/"Metal"/… — exactly
-                    // the schema's `category` enum (§I.5/§I.8 one-stack rule).
-                    dict.["category"] <- box (categoryName e.category)
-                    match e.description with
-                    | Some d -> dict.["description"] <- box d
-                    | None -> ()
-                    dict)
-            // Validate each entry against the materialEntry $def before writing.
-            let rec validateAll (ds : System.Collections.Generic.Dictionary<string, obj> list) : Result<unit, StorageError> =
-                match ds with
-                | [] -> Ok()
-                | d :: rest ->
-                    let json = JsonSerializer.Serialize(d, ProjectJson.options)
-                    use doc = JsonDocument.Parse json
-                    match validateEntryElement doc.RootElement with
-                    | Ok() -> validateAll rest
-                    | Error e -> Error e
-            match validateAll nodes with
+        /// Import the material library in this file (§I.8 / AC-I10). A document that begins with `[`/`{`
+        /// is the canonical library JSON `exportMaterials` wrote (deserialized through the
+        /// shared `ProjectJson.options` — no second JSON stack); anything else is treated
+        /// as refractiveindex.info-style tabulated CSV and parsed by `MaterialImport`
+        /// (FSharp.Data). Returns `MaterialEntry list`; file/parse failures are values,
+        /// never thrown.
+        member this.importMaterials () : Result<MaterialEntry list, StorageError> =
+            let read =
+                try Ok(File.ReadAllText this.value)
+                with e -> Error(FileIoExn e)
+            match read with
             | Error e -> Error e
-            | Ok() ->
-                let json = JsonSerializer.Serialize(nodes, ProjectJson.options)
-                File.WriteAllText(path, json, System.Text.UTF8Encoding false)
-                Ok()
-        with e -> Error(FileIoError e)
+            | Ok text ->
+                let trimmed = text.TrimStart()
+                if trimmed.StartsWith "[" || trimmed.StartsWith "{" then
+                    try
+                        let dtos = JsonSerializer.Deserialize<MaterialEntryDto list>(text, ProjectJson.options)
+                        let rec toEntries (pending : MaterialEntryDto list) (acc : MaterialEntry list) : Result<MaterialEntry list, StorageError> =
+                            match pending with
+                            | [] -> Ok(List.rev acc)
+                            | dto :: rest ->
+                                match dtoToEntry dto with
+                                | Ok entry -> toEntries rest (entry :: acc)
+                                | Error e -> Error e
+                        toEntries dtos []
+                    with e -> Error(MalformedJsonErr e.Message)
+                else
+                    match (MaterialImport.NkCsvText text).importMaterial with
+                    | Ok entry -> Ok [ entry ]
+                    | Error e -> Error(MalformedJsonErr(string e))
+
+        /// Export a material library to canonical JSON in this file (§I.8 / AC-I10). Each entry is
+        /// projected to its `materialEntry` display fields (a `description = None` field
+        /// is omitted, never written as `null`, so the `$def`'s string-typed `description`
+        /// is satisfied), validated against the `$def`, and the array is written through
+        /// the shared `ProjectJson.options` formatting. A validation failure short-circuits
+        /// to `SchemaValidationErr` so an `Ok` guarantees a schema-checked file.
+        member this.exportMaterials (entries : MaterialEntry list) : Result<unit, StorageError> =
+            try
+                let nodes =
+                    entries
+                    |> List.map (fun e ->
+                        let dict = System.Collections.Generic.Dictionary<string, obj>()
+                        // The elevated MaterialId crosses the JSON boundary as its Guid string form.
+                        dict.["id"] <- box (string e.id.value)
+                        dict.["name"] <- box e.name.value
+                        // The category id resolves to its display name through the seeded
+                        // catalogue (spec 0035 step 001), writing "Glass"/"Metal"/… — exactly
+                        // the schema's `category` enum (§I.5/§I.8 one-stack rule).
+                        dict.["category"] <- box e.category.categoryName
+                        match e.description with
+                        | Some d -> dict.["description"] <- box d.value
+                        | None -> ()
+                        dict)
+                // Validate each entry against the materialEntry $def before writing.
+                let rec validateAll (ds : System.Collections.Generic.Dictionary<string, obj> list) : Result<unit, StorageError> =
+                    match ds with
+                    | [] -> Ok()
+                    | d :: rest ->
+                        let json = JsonSerializer.Serialize(d, ProjectJson.options)
+                        use doc = JsonDocument.Parse json
+                        match validateEntryElement doc.RootElement with
+                        | Ok() -> validateAll rest
+                        | Error e -> Error e
+                match validateAll nodes with
+                | Error e -> Error e
+                | Ok() ->
+                    let json = JsonSerializer.Serialize(nodes, ProjectJson.options)
+                    File.WriteAllText(this.value, json, System.Text.UTF8Encoding false)
+                    Ok()
+            with e -> Error(FileIoExn e)
 
 /// Append-only design history + structural diff (§I.8 / R-4). `appendRevision`
 /// persists each revision as a numbered canonical-JSON snapshot under a `history/`
@@ -194,11 +199,17 @@ module DesignHistory =
         | Removed
         | Changed
 
-    /// One structural difference, keyed by a stable identity (the item's positional
-    /// index path in the project aggregate).
+    /// A diffed item's stable identity: its positional index path in the project aggregate
+    /// (`system[0].layer[1]`).
+    type DiffIdentity =
+        | DiffIdentity of string
+
+        member this.value = let (DiffIdentity i) = this in i
+
+    /// One structural difference, keyed by a stable identity.
     type DiffItem =
         {
-            identity : string
+            identity : DiffIdentity
             change : ChangeKind
         }
 
@@ -219,30 +230,18 @@ module DesignHistory =
     /// Persist `project` as the next numbered canonical-JSON snapshot under
     /// `<projectFolder>/history/` (§I.8 / AC-I11), reusing `serializeProject`. The
     /// number is the count of existing `rev-*.json` snapshots plus one, zero-padded.
-    let appendRevision (projectFolder : string) (project : OpticalConstructorProject) : Result<unit, StorageError> =
+    let appendRevision (projectFolder : FolderName) (project : OpticalConstructorProject) : Result<unit, StorageError> =
         match ProjectJson.serializeProject project with
         | Error e -> Error e
         | Ok json ->
             try
-                let dir = Path.Combine(projectFolder, historyFolder)
-                Directory.CreateDirectory dir |> ignore
-                let next = (Directory.GetFiles(dir, "rev-*.json") |> Array.length) + 1
-                let file = Path.Combine(dir, $"rev-%04d{next}.json")
-                File.WriteAllText(file, json, System.Text.UTF8Encoding false)
+                let dir = projectFolder.combine (FolderName historyFolder)
+                Directory.CreateDirectory dir.value |> ignore
+                let next = (Directory.GetFiles(dir.value, "rev-*.json") |> Array.length) + 1
+                let file = (FileName $"rev-%04d{next}.json").combine dir
+                File.WriteAllText(file.value, json.value, System.Text.UTF8Encoding false)
                 Ok()
-            with e -> Error(FileIoError e)
-
-    /// Positional diff of two value-comparable lists: an item present only in the new
-    /// list is `Added`, only in the old is `Removed`, present in both but unequal is
-    /// `Changed`, equal is omitted. Identity is `<label>[<index>]`.
-    let private diffByIndex (label : string) (oldItems : 'a list) (newItems : 'a list) : DiffItem list =
-        let o = List.toArray oldItems
-        let n = List.toArray newItems
-        [ for i in 0 .. (max o.Length n.Length) - 1 do
-            let ident = $"%s{label}[%d{i}]"
-            if i >= o.Length then yield { identity = ident; change = Added }
-            elif i >= n.Length then yield { identity = ident; change = Removed }
-            elif o.[i] <> n.[i] then yield { identity = ident; change = Changed } ]
+            with e -> Error(FileIoExn e)
 
     let private layerDiff (oldSystems : Berreman.Media.OpticalSystem list) (newSystems : Berreman.Media.OpticalSystem list) : DiffItem list =
         let o = List.toArray oldSystems
@@ -251,7 +250,7 @@ module DesignHistory =
             let oldFilms = if i < o.Length then List.toArray o.[i].films else [||]
             let newFilms = if i < n.Length then List.toArray n.[i].films else [||]
             for j in 0 .. (max oldFilms.Length newFilms.Length) - 1 do
-                let ident = $"system[%d{i}].layer[%d{j}]"
+                let ident = DiffIdentity $"system[%d{i}].layer[%d{j}]"
                 if j >= oldFilms.Length then yield { identity = ident; change = Added }
                 elif j >= newFilms.Length then yield { identity = ident; change = Removed }
                 elif oldFilms.[j] <> newFilms.[j] then yield { identity = ident; change = Changed } ]
@@ -262,6 +261,17 @@ module DesignHistory =
     /// `beamTree`/`systems`/`sources` but no top-level materials list yet, so the
     /// `materials` diff is empty until a later slice adds that field.
     let diffRevisions (oldProject : OpticalConstructorProject) (newProject : OpticalConstructorProject) : ProjectDiff =
+        // Positional diff of two value-comparable lists: an item present only in the new
+        // list is `Added`, only in the old is `Removed`, present in both but unequal is
+        // `Changed`, equal is omitted. Identity is `<label>[<index>]`.
+        let diffByIndex (label : string) (oldItems : 'Item list) (newItems : 'Item list) : DiffItem list =
+            let o = List.toArray oldItems
+            let n = List.toArray newItems
+            [ for i in 0 .. (max o.Length n.Length) - 1 do
+                let ident = DiffIdentity $"%s{label}[%d{i}]"
+                if i >= o.Length then yield { identity = ident; change = Added }
+                elif i >= n.Length then yield { identity = ident; change = Removed }
+                elif o.[i] <> n.[i] then yield { identity = ident; change = Changed } ]
         {
             systems = diffByIndex "system" oldProject.systems newProject.systems
             layers = layerDiff oldProject.systems newProject.systems
@@ -281,34 +291,42 @@ module Report =
 
     /// The report output format (§I.8). Net-new DU.
     type ReportFormat =
-        | Pdf
-        | Html
+        | PdfReport
+        | HtmlReport
 
     /// Conventional per-user reports folder. `generate` carries no output-path
     /// parameter in its spec signature, so it writes to this fixed location and the
     /// UI host (Part J §J.10) owns final placement / "offer the produced file".
-    let private reportsDir () =
+    let private reportsDir () : FolderName =
         Path.Combine(
             Environment.GetFolderPath Environment.SpecialFolder.ApplicationData,
             "Softellect", "Berreman", "OpticalConstructor", "reports")
+        |> FolderName
 
-    let private buildHtml
+    /// One chart a report embeds: its section heading and the image exported beside the report.
+    type private ReportChart =
+        {
+            heading : ChartTitle
+            image : FileName
+        }
+
+    let private reportDocument
         (project : OpticalConstructorProject)
-        (chartImages : (string * string) list)
-        : string =
+        (charts : ReportChart list)
+        : XmlNode =
 
         let systemRows =
             project.systems
             |> List.mapi (fun i s ->
                 tr [] [
                     td [] [ str $"system[%d{i}]" ]
-                    td [] [ str (defaultArg s.description "(no description)") ]
+                    td [] [ str (match s.description with | Some (Berreman.Media.OpticalSystemDescription d) -> d | None -> "(no description)") ]
                 ])
 
         let chartNodes =
-            chartImages
-            |> List.map (fun (title, imgPath) ->
-                div [] [ h2 [] [ str title ]; img [ _src imgPath ] ])
+            charts
+            |> List.map (fun chart ->
+                div [] [ h2 [] [ str chart.heading.value ]; img [ _src chart.image.value ] ])
 
         let bodyNodes =
             [
@@ -321,12 +339,10 @@ module Report =
             ]
             @ chartNodes
 
-        let doc =
-            html [] [
-                head [] [ title [] [ str "Optical Constructor Report" ] ]
-                body [] bodyNodes
-            ]
-        RenderView.AsString.htmlDocument doc
+        html [] [
+            head [] [ title [] [ str "Optical Constructor Report" ] ]
+            body [] bodyNodes
+        ]
 
     /// Produce a single report document (§I.8 / R-4). Each supplied chart is exported
     /// to a sibling PNG through I.7 `exportChartImage` (the chart library's own writer)
@@ -340,19 +356,19 @@ module Report =
         : Result<unit, StorageError> =
         try
             let dir = reportsDir ()
-            Directory.CreateDirectory dir |> ignore
+            Directory.CreateDirectory dir.value |> ignore
             let images =
                 charts
                 |> List.mapi (fun i h ->
-                    let imgPath = Path.Combine(dir, $"chart-%d{i}.png")
+                    let image = (FileName $"chart-%d{i}.png").combine dir
                     // Best-effort image export; the actual render is the chart
                     // library's own writer (UI/WebView2-hosted) and is referenced by
                     // path in the HTML regardless of headless availability.
-                    exportChartImage imgPath Png h |> ignore
-                    (h.title, imgPath))
-            let htmlText = buildHtml project images
-            let ext = match format with | Html -> "html" | Pdf -> "pdf"
-            let outPath = Path.Combine(dir, $"report.%s{ext}")
-            File.WriteAllText(outPath, htmlText, System.Text.UTF8Encoding false)
+                    exportChartImage image PngImage h |> ignore
+                    { heading = h.title; image = image })
+            let htmlText = RenderView.AsString.htmlDocument (reportDocument project images)
+            let ext = match format with | HtmlReport -> "html" | PdfReport -> "pdf"
+            let outPath = (FileName $"report.%s{ext}").combine dir
+            File.WriteAllText(outPath.value, htmlText, System.Text.UTF8Encoding false)
             Ok()
-        with e -> Error(FileIoError e)
+        with e -> Error(FileIoExn e)

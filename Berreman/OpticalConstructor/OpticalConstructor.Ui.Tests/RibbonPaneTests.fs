@@ -36,7 +36,7 @@ module RibbonPaneTests =
     let private bays : Ribbon.Bay list =
         bayNames
         |> List.map (fun n ->
-            ({ name = n
+            ({ name = Ribbon.BayName n
                content = TextBlock.create [ TextBlock.name (marker n); TextBlock.text n ] :> IView
                mode = Ribbon.InRibbonPane } : Ribbon.Bay))
 
@@ -50,7 +50,7 @@ module RibbonPaneTests =
     /// Elmish loop so the view re-renders in the same pass — the patch path that would recycle a
     /// styled control if the content slot were not keyed.
     let private clickTab (window : Window) (bayName : string) : unit =
-        let id = UiIds.Ribbon.tab bayName
+        let id = (ConstructorUiId.ribbonTab (ConstructorUiKey bayName)).value
         let found =
             window.GetVisualDescendants()
             |> Seq.tryPick (function :? Control as c when c.Name = id && c.IsEffectivelyVisible -> Some c | _ -> None)
@@ -71,7 +71,7 @@ module RibbonPaneTests =
         let window = HostWindow(Width = 640.0, Height = 480.0)
         let update (name : string) (_ : string) : string = name
         let view (selected : string) (dispatch : string -> unit) : IView =
-            Ribbon.view ({ bays = bays; selected = selected } : Ribbon.State) dispatch
+            Ribbon.ribbonView ({ bays = bays; selected = Ribbon.BayName selected } : Ribbon.RibbonState) (fun name -> dispatch name.value)
         Program.mkSimple (fun () -> initial) update view
         |> Program.withHost window
         |> Program.run
@@ -83,14 +83,14 @@ module RibbonPaneTests =
     /// content is, while every bay's TAB stays present (the tab strip is unchanged).
     let private assertOnlyBayRealized (window : Window) (bayName : string) : unit =
         let names = realizedNames window
-        Assert.Contains(UiIds.Ribbon.pane bayName, names)
+        Assert.Contains((ConstructorUiId.ribbonPane (ConstructorUiKey bayName)).value, names)
         Assert.Contains(marker bayName, names)
         for other in bayNames do
             if other <> bayName then
-                Assert.DoesNotContain(UiIds.Ribbon.pane other, names)
+                Assert.DoesNotContain((ConstructorUiId.ribbonPane (ConstructorUiKey other)).value, names)
                 Assert.DoesNotContain(marker other, names)
         for b in bayNames do
-            Assert.Contains(UiIds.Ribbon.tab b, names)
+            Assert.Contains((ConstructorUiId.ribbonTab (ConstructorUiKey b)).value, names)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

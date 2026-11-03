@@ -2,6 +2,7 @@ namespace OpticalConstructor.Optimization
 
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.OptimizationInterface
+open OpticalConstructor.Optimization.AlglibAdapter
 
 /// Spec 0044 §5.3 — the REAL nonlinear-solve backend behind the `NonlinearSolverProxy` seam that
 /// `OpticalConstructor.Domain.MuellerInverse` declares.
@@ -20,7 +21,7 @@ module MuellerInverseSolver =
     /// Build the real ALGLIB Levenberg–Marquardt-backed `NonlinearSolverProxy`.
     ///
     /// The request's residual, start point and bounds are passed straight through to the existing
-    /// `AlglibAdapter.optimize` entry point, which already traps every exception — ALGLIB's or otherwise —
+    /// `OptimizationRequest.optimize` entry point (`AlglibAdapter`), which already traps every exception — ALGLIB's or otherwise —
     /// and returns a `Result`. No ALGLIB type crosses this function in either direction.
     ///
     /// A CRITICAL precondition, and the reason `ParameterScaling` exists at all: `AlglibAdapter.runLm`
@@ -31,39 +32,43 @@ module MuellerInverseSolver =
     /// Jacobian and a confident, wrong answer.
     ///
     /// `terminationReason` is folded into the `Result`: a run that ALGLIB reports as unsuccessful becomes
-    /// `DidNotConverge` carrying that reason, rather than a solution the caller might mistake for converged.
+    /// `DidNotConvergeErr` carrying that reason, rather than a solution the caller might mistake for converged.
     let createAlglibLevenbergMarquardt () : NonlinearSolverProxy =
         {
             solveNonlinearLeastSquares =
                 fun (request : NonlinearRequest) ->
-                    if request.initial.Length = 0 then
-                        Error (InvalidNonlinearRequest "the initial parameter vector is empty")
-                    elif request.lowerBounds.Length <> request.initial.Length
-                         || request.upperBounds.Length <> request.initial.Length then
+                    let (ScaledVector initial) = request.initial
+                    let (ScaledVector lower) = request.lowerBounds
+                    let (ScaledVector upper) = request.upperBounds
+                    if initial.Length = 0 then
+                        Error (InvalidNonlinearRequestErr "the initial parameter vector is empty")
+                    elif lower.Length <> initial.Length || upper.Length <> initial.Length then
                         Error (
-                            InvalidNonlinearRequest
-                                $"the bounds must match the parameter count: {request.initial.Length} parameters, {request.lowerBounds.Length} lower, {request.upperBounds.Length} upper")
+                            InvalidNonlinearRequestErr
+                                $"the bounds must match the parameter count: {initial.Length} parameters, {lower.Length} lower, {upper.Length} upper")
                     else
                         let optimizationRequest : OptimizationRequest =
                             {
-                                residual = request.residual
+                                residual = fun (DesignVector x) -> request.residual (ScaledVector x)
                                 jacobian = None
-                                initial = Array.copy request.initial
-                                bounds = { lower = Array.copy request.lowerBounds; upper = Array.copy request.upperBounds }
+                                initial = DesignVector (Array.copy initial)
+                                bounds = { lower = DesignVector (Array.copy lower); upper = DesignVector (Array.copy upper) }
                                 inequalityTargets = []
                                 method = LevenbergMarquardt
                                 maxIterations = request.maxIterations
                                 epsX = request.epsX
                             }
-                        match AlglibAdapter.optimize optimizationRequest with
-                        | Error reason -> Error (DidNotConverge reason)
+                        match optimizationRequest.optimize () with
+                        | Error (OptimizationRunExn reason) -> Error (DidNotConvergeErr reason)
                         | Ok result ->
-                            if result.success then
+                            match result.outcome with
+                            | OptimizationSucceeded ->
+                                let (DesignVector solution) = result.solution
                                 Ok
                                     {
-                                        solution = result.solution
+                                        solution = ScaledVector solution
                                         finalResiduals = result.finalResiduals
                                         iterations = result.iterations
                                     }
-                            else Error (DidNotConverge $"%A{result.terminationReason}")
+                            | OptimizationFailed -> Error (DidNotConvergeErr $"%A{result.terminationReason}")
         }

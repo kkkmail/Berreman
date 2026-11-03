@@ -7,9 +7,11 @@ open Berreman.Media
 open Berreman.Fields
 open Berreman.Solvers
 open Berreman.FieldFunctions
-open Analytics
+open Analytics.AnalysisFunctions
+open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.OptimizationInterface
+open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Optimization.Ellipsometry
 open OpticalConstructor.Optimization.MeritFunction
 open Xunit
@@ -53,12 +55,12 @@ module LocalRefinementTests =
     /// s: on isotropic media the reflected p-amplitude is 0, so ρ ≡ 0 and Ψ ≡ 0
     /// regardless of thickness — useless as a fit target. See impl-log Gotchas.
     let private diagonalLight (a : IncidenceAngle) (w : WaveLength) : IncidentLightInfo =
-        { IncidentLightInfo.createInclined w a with polarization = Polarization.create (Angle.degree 45.0) }
+        { IncidentLightInfo.createInclined w a with polarization = Polarization.create (Angle.degree 45.0<deg>) }
 
     let private reflectanceOf (system : OpticalSystem) (w : WaveLength) : float =
-        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.get
+        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.map (fun v -> v.value) |> Option.get
 
-    let private ssr (r : float[]) = r |> Array.sumBy (fun v -> v * v)
+    let private ssr (ResidualVector r) = r |> Array.sumBy (fun v -> v * v)
 
     // ----------------------------------------------------------------- AC-G3
 
@@ -66,9 +68,9 @@ module LocalRefinementTests =
     let ``AC-G3 bounded refinement yields no negative thickness and drives the inequality hinge to zero`` () =
         // Lower-bounded thickness of 0 (the negative-thickness prohibition IS the
         // §G.3 lower bound), upper bound 1 µm.
-        let parameters = [ DesignParameters.layerThickness 0 1.0e-6 ]
+        let parameters = [ DesignParameters.layerThickness (FilmIndex 0) (Thickness.mkm 1.0<mkm>) ]
         let baseSystem = mkSystem 150.0<nm>
-        let initial = [| 150.0e-9 |]   // canonical meters
+        let initial = DesignVector [| 150.0e-9 |]   // canonical meters
 
         // One-sided target: R ≤ 0.5% at 600 nm. The half-wave thickness drives R
         // to ~0, so the hinge is satisfiable.
@@ -77,15 +79,15 @@ module LocalRefinementTests =
             {
                 quantity = Photometric R
                 samplePoint = IncidentLightInfo.create (WaveLength.nm 600.0<nm>)
-                desiredValue = 0.0
-                weight = 1.0
-                tolerance = 1.0
-                kind = Inequality (LessOrEqual bound)
+                desiredValue = TargetValue 0.0
+                weight = TargetWeight 1.0
+                tolerance = TargetTolerance 1.0
+                kind = Inequality (LessOrEqual (TargetValue bound))
             }
 
         match LocalRefinement.refine baseSystem parameters initial [ target ] with
         | Ok (refined, result) ->
-            Assert.True(result.success)
+            Assert.Equal(OptimizationSucceeded, result.outcome)
 
             // No negative thickness in the refined system (the lower-bound-0
             // ParameterBounds, honoured by minlm, guarantees this).
@@ -96,7 +98,7 @@ module LocalRefinementTests =
 
             // The inequality target's hinge is driven to zero within tolerance:
             // evaluate the SAME modelValue path at the refined solution.
-            let model = MeritFunction.modelValue baseSystem parameters result.solution target
+            let model = (MeritFunction.modelValue baseSystem parameters result.solution target).value
             let hinge = max 0.0 (model - bound)
             Assert.True(hinge < 1.0e-2, $"expected hinge ~0, got %g{hinge} (R = %g{model})")
         | Error e -> failwith $"expected a refined system, got Error {e}"
@@ -114,12 +116,12 @@ module LocalRefinementTests =
                 |> List.map (fun nm ->
                     let r = reflectanceOf trueSystem (WaveLength.nm (nm * 1.0<nm>))
                     $"%g{nm},%g{r}")
-            String.concat "\n" ("wavelength_nm,R" :: rows)
+            String.concat "\n" ("wavelength_nm,R" :: rows) |> OpticalConstructor.Domain.MeasuredData.DataFileText
 
         let baseLight = IncidentLightInfo.create (WaveLength.nm 500.0<nm>)
         let baseSystem = mkSystem 1.0<nm>   // thickness slot; applyVector overrides it
-        let parameters = [ DesignParameters.layerThickness 0 1.0e-6 ]
-        let initial = [| 200.0e-9 |]        // start away from the true 250 nm
+        let parameters = [ DesignParameters.layerThickness (FilmIndex 0) (Thickness.mkm 1.0<mkm>) ]
+        let initial = DesignVector [| 200.0e-9 |]        // start away from the true 250 nm
 
         match InverseFit.parseMeasurementCsv (Photometric R) baseLight csvText with
         | Ok targets ->
@@ -151,14 +153,14 @@ module LocalRefinementTests =
     let ``G6 the Psi/Delta evaluator shares the F5 psiDelta derivation`` () =
         // Off-normal, 45°-polarized incidence so r_p and r_s differ and ρ = r_p/r_s
         // is non-trivial (a pure-s default would collapse ρ to 0 — see fixtures).
-        let light = diagonalLight (Angle.degree 50.0 |> IncidenceAngle) (WaveLength.nm 600.0<nm>)
+        let light = diagonalLight (Angle.degree 50.0<deg> |> IncidenceAngle) (WaveLength.nm 600.0<nm>)
         let solution = OpticalSystemSolver(light, mkSystem 250.0<nm>).solution
-        let (psi, delta) = AnalysisFunctions.psiDelta solution
+        let pd = solution.psiDelta
 
         // The net-new EllipsometricFunction evaluator returns exactly the shared
         // §F.5 quantities — it does not re-derive an independent Ψ/Δ.
-        Assert.Equal(psi, Psi.evaluate solution, 12)
-        Assert.Equal(delta, Delta.evaluate solution, 12)
+        Assert.Equal(pd.psi.value, (Psi.evaluate solution).value, 12)
+        Assert.Equal(pd.delta.value, (Delta.evaluate solution).value, 12)
 
     // ------------------------------------------------ §G.6/§G.4 ellipsometric residual
 
@@ -169,22 +171,22 @@ module LocalRefinementTests =
         // AND refine (the net-new surface the photometric ACs do not exercise).
         // Off-normal, 45°-polarized incidence so ρ = r_p/r_s — hence Ψ — varies
         // with thickness (a pure-s default would collapse ρ to 0 — see fixtures).
-        let angle = Angle.degree 50.0 |> IncidenceAngle
+        let angle = Angle.degree 50.0<deg> |> IncidenceAngle
         let light = diagonalLight angle (WaveLength.nm 600.0<nm>)
         let trueSystem = mkSystem 250.0<nm>
         let desiredPsi = Psi.evaluate (OpticalSystemSolver(light, trueSystem).solution)
 
         let baseSystem = mkSystem 1.0<nm>
-        let parameters = [ DesignParameters.layerThickness 0 1.0e-6 ]
-        let initial = [| 220.0e-9 |]   // start away from the true 250 nm
+        let parameters = [ DesignParameters.layerThickness (FilmIndex 0) (Thickness.mkm 1.0<mkm>) ]
+        let initial = DesignVector [| 220.0e-9 |]   // start away from the true 250 nm
 
         let target =
             {
                 quantity = Ellipsometric Psi
                 samplePoint = light
                 desiredValue = desiredPsi
-                weight = 1.0
-                tolerance = 1.0
+                weight = TargetWeight 1.0
+                tolerance = TargetTolerance 1.0
                 kind = Equality
             }
 
@@ -206,20 +208,20 @@ module LocalRefinementTests =
         // R-4's MeasuredEllipsometric import case (InverseFit.fs) is net-new
         // surface the photometric AC-G4 does not touch. Synthesize a Ψ spectrum
         // from a known 250 nm film at fixed off-normal geometry, then fit thickness.
-        let angle = Angle.degree 50.0 |> IncidenceAngle
+        let angle = Angle.degree 50.0<deg> |> IncidenceAngle
         let trueSystem = mkSystem 250.0<nm>
         let waveNm = [ 450.0; 500.0; 550.0; 600.0; 650.0 ]
         let psiAt (nm : float) =
             let light = diagonalLight angle (WaveLength.nm (nm * 1.0<nm>))
-            Psi.evaluate (OpticalSystemSolver(light, trueSystem).solution)
+            (Psi.evaluate (OpticalSystemSolver(light, trueSystem).solution)).value
         let csvText =
             let rows = waveNm |> List.map (fun nm -> $"%g{nm},%g{(psiAt nm)}")
-            String.concat "\n" ("wavelength_nm,Psi" :: rows)
+            String.concat "\n" ("wavelength_nm,Psi" :: rows) |> OpticalConstructor.Domain.MeasuredData.DataFileText
 
         let baseLight = diagonalLight angle (WaveLength.nm 500.0<nm>)
         let baseSystem = mkSystem 1.0<nm>
-        let parameters = [ DesignParameters.layerThickness 0 1.0e-6 ]
-        let initial = [| 220.0e-9 |]   // start away from the true 250 nm
+        let parameters = [ DesignParameters.layerThickness (FilmIndex 0) (Thickness.mkm 1.0<mkm>) ]
+        let initial = DesignVector [| 220.0e-9 |]   // start away from the true 250 nm
 
         match InverseFit.parseMeasurementCsv (Ellipsometric Psi) baseLight csvText with
         | Ok targets ->
@@ -241,8 +243,8 @@ module LocalRefinementTests =
             // composition through buildResidual is real, not stubbed. (LM descent
             // itself is proven by the G6 single-point fit and AC-G4; fit quality
             // over the full multi-point path is slice 011, §G.8.)
-            let chiAtStart = MeritFunction.buildResidual baseSystem parameters targets [| 220.0e-9 |] |> ssr
-            let chiAtTrue = MeritFunction.buildResidual baseSystem parameters targets [| 250.0e-9 |] |> ssr
+            let chiAtStart = MeritFunction.buildResidual baseSystem parameters targets (DesignVector [| 220.0e-9 |]) |> ssr
+            let chiAtTrue = MeritFunction.buildResidual baseSystem parameters targets (DesignVector [| 250.0e-9 |]) |> ssr
             Assert.True(chiAtTrue < chiAtStart, $"ellipsometric residual must be sensitive to thickness: true %g{chiAtTrue}, start %g{chiAtStart}")
             Assert.True(chiAtTrue < 1.0e-9, $"synthetic data must be reproduced at the true thickness, got χ² %g{chiAtTrue}")
 

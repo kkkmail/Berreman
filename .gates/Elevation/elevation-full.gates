@@ -1,0 +1,22 @@
+name: elevation-full
+description: "The same elevation analyzers over EVERY in-scope project (Run-ElevationGate.ps1 -All): the 13 F# product projects of Berreman.slnx, with every entry of Elevation/elevation-known-findings.json judged, so a fixed finding still recorded there fails even when no scoped run reached its file. ELEV004 stays excluded, as in elevation. Select it instead of the scoped gate when a step edits .elevation-analyzers.json, the Softellect.Analyzers pin or the known-findings list, renames across projects, or as the proof that the ledger (specs/0048/.manual/002-elevation-ledger.jsonl) closed what it claims: its first row confirms the list, and its PART A closing row runs it over an empty list, where it must report 0. Measured 240 s at throttle 4 (specs/0048/.manual/001)."
+kind: command
+phase: verify
+command: powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -All -ExcludeRules ELEV004
+requires_path: ["Elevation/Run-ElevationGate.ps1"]
+pass_when:
+  exit_code: 0
+  stdout_match: '(?m)^ELEV-GATE: OK\b'
+  failure_capture: '(?m)^FAILED:\s+(.+?)\r?$'
+runtime_estimate_seconds: 600
+priority: 10
+silent_for_seconds: 600
+tags: [lint, elevation, slow]
+applies_to:
+  - paths:
+      - ".elevation-analyzers.json"
+      - "Elevation/elevation-known-findings.json"
+      - "Directory.Build.targets"
+qualifier: source
+requires_gates: [build]
+stage: final

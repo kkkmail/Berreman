@@ -15,9 +15,9 @@ type SnapToReflectedWindow() as this =
 
     do
         this.Title <- "Test — Snap to Reflected Light"
-        this.Width <- TableScene.canvasWidth
-        this.Height <- TableScene.canvasHeight + 110.0
+        this.Width <- TableScene.canvasWidth.value
+        this.Height <- TableScene.canvasHeight.value + 110.0
         OpticalConstructor.Controls.WindowFit.keepOnScreen this
-        Program.mkSimple SnapToReflectedView.init SnapToReflectedView.update SnapToReflectedView.view
+        Program.mkSimple SnapToReflectedView.initSnapToReflected SnapToReflectedView.updateSnapToReflected SnapToReflectedView.snapToReflectedView
         |> Program.withHost this
         |> Program.run

@@ -6,6 +6,7 @@ open Berreman.Media
 open Berreman.BerremanMatrix
 open Berreman.FieldFunctions
 open Berreman.Solvers
+open Analytics.AnalysisFunctions
 
 /// In-layer field / EFI depth profile and per-layer energy breakdown (Part F §F.6, §F.7).
 /// Both walks reuse the existing inter-element propagation seam `EmField.propagate`
@@ -19,6 +20,22 @@ open Berreman.Solvers
 /// the |E|² and per-layer magnitudes are structural, not physically validated, here.
 module FieldProfile =
 
+    /// How many sub-steps `fieldDepthProfile` cuts each film into; below 1 counts as 1.
+    type SamplesPerLayer =
+        | SamplesPerLayer of int
+
+        member this.value = let (SamplesPerLayer n) = this in n
+
+
+    /// One sample of the in-layer field profile: its depth below the top of the first film, and |E|² there.
+    [<Softellect.Sys.NumericCarrier("an element of the field depth profile (R3, a profile array): the depth and |E|² at every sub-step of the walk, read as raw numbers by the series adapter")>]
+    type FieldDepthPoint =
+        {
+            depth : float<meter>
+            electricFieldSquared : float
+        }
+
+
     /// §F.6 — |E|² versus depth, sampled by stepping the transmitted base-solution
     /// `EmField` through each film. Each `Layer` is cut into `samplesPerLayer` sub-steps
     /// of its `Thickness`; the field is propagated one sub-step at a time and |E|² read
@@ -27,13 +44,13 @@ module FieldProfile =
     let fieldDepthProfile
         (system : OpticalSystem)
         (info : IncidentLightInfo)
-        (samplesPerLayer : int)
-        : (double<meter> * float) list =
+        (samplesPerLayer : SamplesPerLayer)
+        : FieldDepthPoint list =
 
         let entry = BaseOpticalSystemSolver(info, system.baseSystem).emSys.transmitted
-        let n = max 1 samplesPerLayer
+        let n = max 1 samplesPerLayer.value
 
-        let stepLayer (acc : (double<meter> * float) list, depth : double<meter>, field : EmField) (layer : Layer) =
+        let stepLayer (acc : FieldDepthPoint list, depth : float<meter>, field : EmField) (layer : Layer) =
             let subThickness =
                 match layer.thickness with
                 | Thickness h -> h / float n
@@ -41,14 +58,14 @@ module FieldProfile =
 
             let subLayer = { layer with thickness = Thickness subThickness }
 
-            let rec loop i (acc, depth : double<meter>, field : EmField) =
+            let rec loop i (acc, depth : float<meter>, field : EmField) =
                 if i >= n then (acc, depth, field)
                 else
                     let field = field.propagate subLayer
                     let depth = depth + subThickness
                     let (E e) = field.e
                     let eSq = e.norm * e.norm
-                    loop (i + 1) ((depth, eSq) :: acc, depth, field)
+                    loop (i + 1) ({ depth = depth; electricFieldSquared = eSq } :: acc, depth, field)
 
             loop 0 (acc, depth, field)
 
@@ -64,17 +81,17 @@ module FieldProfile =
     let layerAbsorptance
         (system : OpticalSystem)
         (info : IncidentLightInfo)
-        : (Layer * float) list =
+        : (Layer * AbsorptanceValue) list =
 
         let emSys = BaseOpticalSystemSolver(info, system.baseSystem).emSys
         let incident = emSys.incident
         let entry = emSys.transmitted
 
-        let stepLayer (acc : (Layer * float) list, field : EmField) (layer : Layer) =
-            let before = field.intensity incident
+        let stepLayer (acc : (Layer * AbsorptanceValue) list, field : EmField) (layer : Layer) =
+            let (OpticalFunctionValue before) = field.intensity incident
             let field = field.propagate layer
-            let after = field.intensity incident
-            ((layer, before - after) :: acc, field)
+            let (OpticalFunctionValue after) = field.intensity incident
+            ((layer, AbsorptanceValue (before - after)) :: acc, field)
 
         let (results, _) =
             system.films
@@ -83,14 +100,13 @@ module FieldProfile =
         results |> List.rev
 
     /// §F.7 — total absorbed power. Anchored to the §F.1 system-level absorptance
-    /// A = 1 − R − T (`AnalysisFunctions.absorptance`) so it equals the system-level A
+    /// A = 1 − R − T (`Solution.absorptance`) so it equals the system-level A
     /// within solver tolerance and introduces NO second absorption definition divergent
     /// from §F.1 (the per-layer flux walk above is reported separately by
     /// `layerAbsorptance`, which honours the carried-forward `propagate` limitation).
     let totalAbsorbedPower
         (system : OpticalSystem)
         (info : IncidentLightInfo)
-        : float =
+        : AbsorptanceValue =
 
-        OpticalSystemSolver(info, system).solution
-        |> AnalysisFunctions.absorptance
+        OpticalSystemSolver(info, system).solution.absorptance

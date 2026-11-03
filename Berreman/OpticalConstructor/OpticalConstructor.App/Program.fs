@@ -24,13 +24,15 @@ open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
 
+open OpticalConstructor.Controls
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.AppShell
 
 /// Load the persisted user environment once at startup (J.6). `load` is total and
 /// falls back to the built-in `defaults` on a missing/invalid settings file, so the
 /// app always has a usable theme to apply (AC-J6).
 module private Startup =
-    let settings = UserEnvironment.load (UserEnvironment.settingsPath ())
+    let settings = UserEnvironment.EnvironmentSettings.load (UserEnvironment.settingsPath ())
 
     /// The typed appsettings.json values (spec 0038 Part C, step 005): the provider
     /// is created ONCE here — `AppConfig.loadWorkbenchSettings` opens the
@@ -56,29 +58,6 @@ module private Startup =
     /// parameterless `DefaultStores` default in `TableAndElementRotationView`.)
     let context = AppContext.create workbenchSettings
 
-/// Spec 0038 step 045: the stable automation ids for the product launcher's FOUR surface buttons —
-/// Main / Inverse / Materials / Library. Centralized here (the Controls `UiIds` / workbench
-/// `WorkbenchIds` precedent) so the `LauncherWindow` and its headless tests share ONE source of
-/// truth. The product-launcher ids live with the App composition root that OWNS the launcher; the
-/// in-window ids stay in the Controls `UiIds` module. Each id is set as BOTH the button's `Name`
-/// and its `AutomationProperties.AutomationId`, so meaning-based automation finds it by a
-/// layout-independent handle ("automate by meaning, not by pixels"). Distinct from the workbench
-/// strip's `OpenMaterialsWindowButton` / `OpenLibraryWindowButton` — those are different controls
-/// that open the SAME single-instance windows over the shared registry.
-[<RequireQualifiedAccess>]
-module LauncherIds =
-    [<Literal>]
-    let openMainButton = "OpenMainButton"
-    [<Literal>]
-    let openInverseButton = "OpenInverseButton"
-    [<Literal>]
-    let openMaterialsButton = "OpenMaterialsButton"
-    [<Literal>]
-    let openLibraryButton = "OpenLibraryButton"
-    /// Spec 0046: the footer line showing the app version (`Berreman.BuildInfo.version`).
-    [<Literal>]
-    let versionText = "LauncherVersionText"
-
 /// Spec 0038 step 045: the shared body of the two constructor windows. The forward Main scene and
 /// the inverse scene are the SAME dynamic "Lego constructor" (`mainView` over
 /// `TableAndElementRotationView.update`) run over the SAME app scope — they differ ONLY in the seed
@@ -89,13 +68,13 @@ module LauncherIds =
 /// collection proxies (STORE_XDUO_0006 / 0005) onto the seed by record update, so every constructor
 /// window the launcher or the strip opens shares the ONE collection store built in `AppContext.create`.
 module private ConstructorScene =
-    let mount (window : HostWindow) (seed : unit -> TableAndElementRotationView.Model) : unit =
-        window.Width <- TableAndElementRotationView.canvasWidth
-        window.Height <- TableAndElementRotationView.canvasHeight + 210.0
+    let mount (window : HostWindow) (seed : unit -> TableAndElementRotationView.TableAndElementRotationModel) : unit =
+        window.Width <- TableAndElementRotationView.tableAndElementRotationCanvasWidth
+        window.Height <- TableAndElementRotationView.tableAndElementRotationCanvasHeight + 210.0
         // Spec 0046: never larger than the screen it opens on — on a laptop the design height can exceed
         // the working area, which put the bottom of the scrolling page (the table) off-screen.
         OpticalConstructor.Controls.WindowFit.keepOnScreen window
-        Program.mkSimple seed TableAndElementRotationView.update TableAndElementRotationView.mainView
+        Program.mkSimple seed TableAndElementRotationView.updateTableAndElementRotation TableAndElementRotationView.mainView
         |> Program.withHost window
         |> Program.run
 
@@ -170,13 +149,13 @@ type LauncherWindow(context : AppContext) as this =
         // Every surface button carries its stable id as BOTH its `Name` and its
         // `AutomationProperties.AutomationId` (meaning-based automation, not pixels), plus the human
         // label as its accessible name.
-        let surfaceButton (id : string) (label : string) (onClick : unit -> unit) : Button =
+        let surfaceButton (id : ConstructorUiId) (label : string) (onClick : unit -> unit) : Button =
             let button =
                 Button(
-                    Name = id,
+                    Name = id.value,
                     Content = label,
                     HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
-            AutomationProperties.SetAutomationId(button, id)
+            AutomationProperties.SetAutomationId(button, id.value)
             AutomationProperties.SetName(button, label)
             button.Click.Add(fun _ -> onClick ())
             button
@@ -185,27 +164,27 @@ type LauncherWindow(context : AppContext) as this =
         // single-instance window.
         let launchers = TableAndElementRotationView.EditorLaunchers.defaults
         let mainButton =
-            surfaceButton LauncherIds.openMainButton "Main" (fun () -> MainConstructorWindow(context).Show())
+            surfaceButton ConstructorUiId.openMainButton "Main" (fun () -> MainConstructorWindow(context).Show())
         let inverseButton =
-            surfaceButton LauncherIds.openInverseButton "Inverse" (fun () -> InverseConstructorWindow(context).Show())
+            surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun () -> InverseConstructorWindow(context).Show())
         let materialsButton =
-            surfaceButton LauncherIds.openMaterialsButton "Materials" (fun () ->
+            surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun () ->
                 launchers.openMaterialsWindow context.materials context.categories)
         let libraryButton =
-            surfaceButton LauncherIds.openLibraryButton "Library" (fun () ->
+            surfaceButton ConstructorUiId.openLibraryButton "Library" (fun () ->
                 launchers.openLibraryWindow context.library context.samples context.sources context.materials context.categories)
         // Spec 0046: the app version (the STL slow-ring scheme, one ring for the whole app) as a footer
         // line at the bottom of the form, read from the ONE F# source of it (`Berreman.BuildInfo`).
         let versionText = $"Version {Berreman.BuildInfo.version.value}"
         let version =
             TextBlock(
-                Name = LauncherIds.versionText,
+                Name = ConstructorUiId.launcherVersionText.value,
                 Text = versionText,
                 FontSize = 11.0,
                 Opacity = 0.7,
                 HorizontalAlignment = Layout.HorizontalAlignment.Right,
                 Margin = Thickness(20.0, 0.0, 20.0, 10.0))
-        AutomationProperties.SetAutomationId(version, LauncherIds.versionText)
+        AutomationProperties.SetAutomationId(version, ConstructorUiId.launcherVersionText.value)
         AutomationProperties.SetName(version, versionText)
         DockPanel.SetDock(version, Dock.Bottom)
         let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
@@ -220,13 +199,13 @@ type LauncherWindow(context : AppContext) as this =
         this.Content <- form
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
-/// (§J.8 — `AppShell.themeVariant` is the only theme-label → Avalonia seam).
+/// (§J.8 — `Theme.themeVariant` is the only theme-label → Avalonia seam).
 type App() =
     inherit Application()
 
     override this.Initialize() =
         this.Styles.Add(FluentTheme())
-        this.RequestedThemeVariant <- AppShell.themeVariant Startup.settings.theme
+        this.RequestedThemeVariant <- Startup.settings.theme.themeVariant
 
     override this.OnFrameworkInitializationCompleted() =
         match this.ApplicationLifetime with
@@ -239,6 +218,7 @@ type App() =
 
 module Program =
 
+    [<Softellect.Sys.ElevationBoundary(nameof Softellect.Sys.IoBoundary, "the process entry point - argv in, exit code out, per the .NET contract")>]
     [<EntryPoint; STAThread>]
     let main (argv : string[]) : int =
         AppBuilder

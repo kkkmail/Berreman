@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Domain
 
+open System.Text.Json.Serialization
 open Berreman.Constants
 open Berreman.Fields
 open Berreman.MaterialProperties
@@ -19,28 +20,30 @@ module BeamTree =
     /// The two attachment points of a non-mirror element (§A.4 / B.2). A simple
     /// comparable DU so it can key a child-attachment `Map`.
     type BeamBranch =
-        | Reflected
-        | Transmitted
+        | ReflectedBeam
+        | TransmittedBeam
 
     /// NET-NEW validation error DU (§B.3 / R-11). Mirror nodes carry the
     /// reflected branch ONLY; attaching on `Transmitted` is rejected with a
     /// `Result.Error` of this type — never an exception.
     type BeamTreeError =
-        | MirrorBranchMustBeReflected
+        | MirrorBranchMustBeReflectedErr
 
-    /// A placed element (§A.4). The mirror cases (`FlatMirror`, and — owned by
-    /// Part C — `CurvedMirror`) are the deliberate special case: they carry the
-    /// reflected branch only, by design ignoring transmitted light. `Sample`
-    /// carries the engine `OpticalSystem` (`Media.fs:94`) it represents.
+    /// A placed element (§A.4). The mirror cases (`FlatMirrorElement`, and — owned by
+    /// Part C — `CurvedMirrorElement`) are the deliberate special case: they carry the
+    /// reflected branch only, by design ignoring transmitted light. `SampleElement`
+    /// carries the engine `OpticalSystem` (`Media.fs:94`) it represents. The cases
+    /// were renamed apart from `Placement.CatalogueKind` (spec 0048 E013); the project
+    /// file keeps the old names (`JsonPropertyName`).
     type ConstructorElement =
-        | Source
-        | Polarizer
-        | Sample of OpticalSystem
-        | Lens
-        | CurvedMirror
-        | FlatMirror
-        | Analyzer
-        | Detector
+        | [<JsonPropertyName "Source">] SourceElement
+        | [<JsonPropertyName "Polarizer">] PolarizerElement
+        | [<JsonPropertyName "Sample">] SampleElement of OpticalSystem
+        | [<JsonPropertyName "Lens">] LensElement
+        | [<JsonPropertyName "CurvedMirror">] CurvedMirrorElement
+        | [<JsonPropertyName "FlatMirror">] FlatMirrorElement
+        | [<JsonPropertyName "Analyzer">] AnalyzerElement
+        | [<JsonPropertyName "Detector">] DetectorElement
 
     /// A node of the beam tree. Carries one `ConstructorElement`; its
     /// `OpticalSystem` (the stack solved here, `Media.fs:94`); its solver inputs
@@ -63,18 +66,26 @@ module BeamTree =
         /// case of §B.3.
         member node.isMirror =
             match node.element with
-            | FlatMirror | CurvedMirror -> true
-            | Source | Polarizer | Sample _ | Lens | Analyzer | Detector -> false
+            | FlatMirrorElement | CurvedMirrorElement -> true
+            | SourceElement | PolarizerElement | SampleElement _ | LensElement | AnalyzerElement | DetectorElement -> false
 
         /// Smart constructor (§B.3 / R-11). Attaches `child` on `branch` of
-        /// `parent`, returning a `Result.Error MirrorBranchMustBeReflected` when
+        /// `parent`, returning a `Result.Error MirrorBranchMustBeReflectedErr` when
         /// the parent is a mirror and the branch is `Transmitted` (the child is
         /// NOT added); a `Reflected` attach on a mirror, and either branch on a
         /// non-mirror, succeed. Immutable: a new parent node is returned.
         static member attach (branch : BeamBranch) (child : BeamNode) (parent : BeamNode) : Result<BeamNode, BeamTreeError> =
             match parent.isMirror, branch with
-            | true, Transmitted -> Error MirrorBranchMustBeReflected
+            | true, TransmittedBeam -> Error MirrorBranchMustBeReflectedErr
             | _ -> Ok { parent with children = parent.children |> Map.add branch child }
+
+        /// Evaluate the node by the EXISTING engine solver (§A.4 / AC-A3): build the
+        /// `OpticalSystemSolver` (`Solvers.fs:199`) over the node's incident light
+        /// and stack and read its `Solution.emSys` (`Solvers.fs:156`) — the
+        /// `EmFieldSystem` whose `reflected`/`transmitted` (`Fields.fs:553-554`) are
+        /// the two outgoing beams. No parallel solver is invoked.
+        member node.solve : EmFieldSystem =
+            OpticalSystemSolver(node.incident, node.system).solution.emSys
 
     /// The beam tree orchestration aggregate: a tree rooted at a single
     /// `BeamNode`. This is the carrier the project aggregate (§A.7) holds.
@@ -83,22 +94,14 @@ module BeamTree =
             root : BeamNode
         }
 
-    /// Evaluate a node by the EXISTING engine solver (§A.4 / AC-A3): build the
-    /// `OpticalSystemSolver` (`Solvers.fs:199`) over the node's incident light
-    /// and stack and read its `Solution.emSys` (`Solvers.fs:156`) — the
-    /// `EmFieldSystem` whose `reflected`/`transmitted` (`Fields.fs:553-554`) are
-    /// the two outgoing beams. No parallel solver is invoked.
-    let solve (node : BeamNode) : EmFieldSystem =
-        OpticalSystemSolver(node.incident, node.system).solution.emSys
-
     /// The outgoing beam on `branch` of a solved node: `reflected` for
     /// `Reflected`, `transmitted` for `Transmitted` (`Fields.fs:552-554`). Each
     /// branch carries its own field state, so detectors on different branches
     /// report independent results.
     let branchEmField (branch : BeamBranch) (ems : EmFieldSystem) : EmField =
         match branch with
-        | Reflected -> ems.reflected
-        | Transmitted -> ems.transmitted
+        | ReflectedBeam -> ems.reflected
+        | TransmittedBeam -> ems.transmitted
 
     /// The incident field driving a child attached on `branch` (§B.4 / AC-B4):
     /// the parent's branch field advanced across the intervening element/gap
@@ -117,6 +120,12 @@ module BeamTree =
     let routeAndSolve (branch : BeamBranch) (gap : Layer) (parentEms : EmFieldSystem) (childSystem : ShortOpticalSystem) : EmFieldSystem =
         BaseOpticalSystemSolver(childIncidentField branch gap parentEms, childSystem).emSys
 
+    /// The number of equal sub-layers a gradient-index layer is sliced into (§B.11).
+    type SubLayerCount =
+        | SubLayerCount of int
+
+        member this.value = let (SubLayerCount n) = this in n
+
     /// A continuously-varying-index layer (§B.11 / R-14). `indexProfile` maps a
     /// depth (in canonical meters) to the engine tensor model `OpticalProperties`
     /// (`MaterialProperties.fs:165`). This is NOT an engine type and is never
@@ -124,28 +133,28 @@ module BeamTree =
     type GradientLayer =
         {
             totalThickness : float<meter>
-            subLayerCount : int
+            subLayerCount : SubLayerCount
             indexProfile : float<meter> -> OpticalProperties
         }
 
-    /// Auto-discretize a gradient-index layer into a flat list of ordinary,
-    /// reused `Layer` records (§B.11 / AC-B11): slice `totalThickness` into
-    /// exactly `subLayerCount` equal-`Thickness` sub-layers (`Media.fs:12,24`),
-    /// each sampling `indexProfile` at its mid-depth. The result is
-    /// indistinguishable from manually entered layers and assignable straight
-    /// into `OpticalSystem.films` (`Media.fs:98`) — no gradient-specific engine
-    /// type, no solve-time discretization. Uniform slicing only; the count is
-    /// caller-supplied and validated `>= 1`.
-    let discretize (g : GradientLayer) : Layer list =
-        if g.subLayerCount < 1 then
-            invalidArg "subLayerCount" "GradientLayer.subLayerCount must be >= 1."
+        /// Auto-discretize the layer into a flat list of ordinary, reused `Layer`
+        /// records (§B.11 / AC-B11): slice `totalThickness` into exactly
+        /// `subLayerCount` equal-`Thickness` sub-layers (`Media.fs:12,24`), each
+        /// sampling `indexProfile` at its mid-depth. The result is indistinguishable
+        /// from manually entered layers and assignable straight into
+        /// `OpticalSystem.films` (`Media.fs:98`) — no gradient-specific engine type,
+        /// no solve-time discretization. Uniform slicing only; the count is
+        /// caller-supplied and validated `>= 1`.
+        member g.discretize : Layer list =
+            let n = g.subLayerCount.value
+            if n < 1 then
+                invalidArg "subLayerCount" "GradientLayer.subLayerCount must be >= 1."
 
-        let n = g.subLayerCount
-        let dz = g.totalThickness / float n
+            let dz = g.totalThickness / float n
 
-        [ for i in 0 .. n - 1 ->
-            let midDepth = (float i + 0.5) * dz
-            {
-                properties = g.indexProfile midDepth
-                thickness = Thickness.Thickness dz
-            } ]
+            [ for i in 0 .. n - 1 ->
+                let midDepth = (float i + 0.5) * dz
+                {
+                    properties = g.indexProfile midDepth
+                    thickness = Thickness.Thickness dz
+                } ]

@@ -91,7 +91,7 @@ type AppContext =
         let sources = Library.SourceProxy.createInMemory ()
         {
             library = Library.liveLibrary (Library.createInMemory ()) samples sources
-            experiments = Experiments.createInMemory ()
+            experiments = Experiments.createInMemoryExperiments ()
             materials = materials
             samples = samples
             sources = sources
@@ -109,7 +109,7 @@ type AppContext =
             experimentExport =
                 let documents = System.Environment.GetFolderPath System.Environment.SpecialFolder.MyDocuments
                 OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
-                    (System.IO.Path.Combine(documents, "Optical Constructor", "Exports"))
-                    (fun () -> System.DateTime.Now)
+                    (Softellect.Sys.Primitives.FolderName (System.IO.Path.Combine(documents, "Optical Constructor", "Exports")))
+                    (fun () -> OpticalConstructor.Storage.ExperimentExportFile.ExportTime System.DateTime.Now)
             settings = settings
         }

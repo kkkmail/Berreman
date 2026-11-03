@@ -25,8 +25,8 @@ type AnalysisFunctionsTests() =
     let tol = 1.0e-9
 
     let info =
-        { light600nmInclinedDegreeLPs 19.0 with
-            polarization = Angle.degree 27.0 |> Polarization
+        { light600nmInclinedDegreeLPs 19.0<deg> with
+            polarization = Angle.degree 27.0<deg> |> Polarization
             ellipticity = Ellipticity 0.58 }
 
     let baseSolution () =
@@ -37,9 +37,9 @@ type AnalysisFunctionsTests() =
     [<Fact>]
     member _.``AC-F1 absorptance equals 1 - R - T from Solution.func`` () =
         let sol = baseSolution ()
-        let a = absorptance sol
-        let r = sol.func R |> Option.defaultValue 0.0
-        let t = sol.func T |> Option.defaultValue 0.0
+        let a = sol.absorptance.value
+        let r = sol.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
+        let t = sol.func T |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
         Assert.True(abs (a - (1.0 - r - t)) < tol, $"A={a}, 1-R-T={1.0 - r - t}")
 
     /// AC-F4: `degreeOfPolarization` returns √(s1²+s2²+s3²)/s0 from the reflected
@@ -47,11 +47,11 @@ type AnalysisFunctionsTests() =
     [<Fact>]
     member _.``AC-F4 degreeOfPolarization equals sqrt(s1^2+s2^2+s3^2)/s0 in [0,1]`` () =
         let sol = baseSolution ()
-        let dop = degreeOfPolarization sol.stokesR
+        let dop = sol.stokesR.degreeOfPolarization.value
 
         let (StokesVector v) = sol.stokesR
         let manual =
-            if abs v.[0] < almostZero then 0.0
+            if abs v.[0] < almostZero.value then 0.0
             else sqrt (v.[1] * v.[1] + v.[2] * v.[2] + v.[3] * v.[3]) / v.[0]
 
         Assert.True(abs (dop - manual) < tol, $"dop={dop}, manual={manual}")
@@ -65,12 +65,12 @@ type AnalysisFunctionsTests() =
     [<Fact>]
     member _.``AC-F6 fieldDepthProfile shape and monotonic meter depths`` () =
         let sys = (BaseOpticalSystem.transparentGlassFilmSystem (Thickness.nm 100.0<nm>)).fullSystem
-        let samplesPerLayer = 4
+        let samplesPerLayer = SamplesPerLayer 4
         let profile = fieldDepthProfile sys info samplesPerLayer
 
-        Assert.Equal(samplesPerLayer * sys.films.Length, List.length profile)
+        Assert.Equal(samplesPerLayer.value * sys.films.Length, List.length profile)
 
-        let depths = profile |> List.map fst
+        let depths = profile |> List.map (fun p -> p.depth)
         let rec nonDecreasing =
             function
             | a :: b :: rest -> a <= b && nonDecreasing (b :: rest)
@@ -83,10 +83,10 @@ type AnalysisFunctionsTests() =
     /// substrate without altering any other threshold.
     [<Fact>]
     member _.``AC-F9 default numberOfReflections is 3 and caller value threads through`` () =
-        Assert.Equal(3, SolverParameters.defaultValue.numberOfReflections)
+        Assert.Equal(3, SolverParameters.defaultValue.numberOfReflections.value)
 
         let plateSys = OpticalSystem.biaxialCrystalSubstrateSystem (Thickness.nm 1000.0<nm>)
-        let custom = { numberOfReflections = 5 }
+        let custom = { numberOfReflections = NumberOfReflections 5 }
         let sol = OpticalSystemSolver(info, plateSys, custom).solution
 
         match sol with
@@ -94,7 +94,7 @@ type AnalysisFunctionsTests() =
         | Single _ -> Assert.Fail "expected a Multiple solution for a thick Plate substrate"
 
     /// AC-F2: a small `ArbitraryVariableRange` sweep driven through `Variables.calculate`
-    /// persists its bulk `array<float * Solution>` via `Softellect.Sys.Core.serialize`/
+    /// persists its bulk `SweepPoint` array via `Softellect.Sys.Core.serialize`/
     /// `deserialize` with `BinaryZippedFormat` (Core.fs:257) and round-trips with fidelity
     /// (float keys and the R channel preserved). The bulk array is NOT placed on the
     /// canonical JSON path — the payload is the zipped binary format (gzip magic), not JSON.
@@ -106,30 +106,32 @@ type AnalysisFunctionsTests() =
 
         let arb : ArbitraryVariable =
             {
-                variableName = "filmThickness"
-                range = Range<_>.create 3 50.0 200.0
-                scale = 1.0
+                variableName = VariableName "filmThickness"
+                range = Range<_>.create (NumberOfPoints 3) (ArbitraryValue 50.0) (ArbitraryValue 200.0)
+                scale = PlotScale 1.0
                 getSys =
-                    fun (sys : OpticalSystem) (z : float) ->
+                    fun (sys : OpticalSystem) (ArbitraryValue z) ->
                         match sys.films with
                         | film :: rest ->
                             { sys with films = { film with thickness = Thickness.nm (z * 1.0<nm>) } :: rest }
                         | [] -> sys
             }
 
-        let sweep : (float * Solution)[] = calculate fixedInfo (ArbitraryVariableRange arb)
+        let sweep : SweepPoint[] = calculate fixedInfo (ArbitraryVariableRange arb)
         Assert.True(sweep.Length >= 2, "sweep should produce multiple points")
 
         let bytes = serialize BinaryZippedFormat sweep
-        let restored : (float * Solution)[] = deserialize BinaryZippedFormat bytes
+        let restored : SweepPoint[] = deserialize BinaryZippedFormat bytes
 
         Assert.Equal(sweep.Length, restored.Length)
 
         Array.iter2
-            (fun (k1 : float, s1 : Solution) (k2 : float, s2 : Solution) ->
+            (fun (p1 : SweepPoint) (p2 : SweepPoint) ->
+                let k1 = p1.plotValue
+                let k2 = p2.plotValue
                 Assert.True(abs (k1 - k2) < tol, $"key mismatch {k1} vs {k2}")
-                let r1 = s1.func R |> Option.defaultValue 0.0
-                let r2 = s2.func R |> Option.defaultValue 0.0
+                let r1 = p1.solution.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
+                let r2 = p2.solution.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
                 Assert.True(abs (r1 - r2) < tol, $"R mismatch {r1} vs {r2}"))
             sweep
             restored

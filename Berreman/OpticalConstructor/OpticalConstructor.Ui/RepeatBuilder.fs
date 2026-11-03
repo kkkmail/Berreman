@@ -16,10 +16,11 @@
 module OpticalConstructor.Ui.RepeatBuilder
 
 open Berreman.Media
+open OpticalConstructor.Domain.Library
 
 /// Expand a unit cell of `Layer`s repeated `count` times into a flat `List<Layer>`
 /// in cell order (§J.2 / AC-J2). `count` copies of the `count`-length-`cell`
 /// concatenated, so `expand cell count` has length `count * List.length cell` and
 /// preserves cell order across every period. Pure: no IO, no validation seam.
-let expand (cell : Layer list) (count : int) : Layer list =
-    List.replicate count cell |> List.concat
+let expand (cell : Layer list) (count : PeriodCount) : Layer list =
+    List.replicate count.value cell |> List.concat

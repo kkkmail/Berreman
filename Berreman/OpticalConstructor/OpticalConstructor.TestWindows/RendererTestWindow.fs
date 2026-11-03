@@ -12,10 +12,10 @@ type RendererTestWindow() as this =
 
     do
         this.Title <- "Test — Renderers"
-        this.Width <- RendererTestView.canvasWidth
+        this.Width <- OpticalConstructor.Ui.TableScene.canvasWidth.value
         // Three rows of controls now (swap+rails, cap circles/radials, the three transparency knobs).
-        this.Height <- RendererTestView.canvasHeight + 150.0
+        this.Height <- OpticalConstructor.Ui.TableScene.canvasHeight.value + 150.0
         OpticalConstructor.Controls.WindowFit.keepOnScreen this
-        Program.mkSimple RendererTestView.init RendererTestView.update RendererTestView.view
+        Program.mkSimple RendererTestView.initRendererTest RendererTestView.updateRendererTest RendererTestView.rendererTestView
         |> Program.withHost this
         |> Program.run

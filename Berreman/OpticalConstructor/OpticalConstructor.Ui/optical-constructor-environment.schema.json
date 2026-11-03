@@ -99,7 +99,7 @@
         "panel": { "type": "string", "description": "Panel id (stack, materials, sources, chart, results)." },
         "dock": { "$ref": "#/$defs/dockSide" },
         "size": { "type": "number", "description": "Size along the dock axis (device-independent pixels)." },
-        "visible": { "type": "boolean" }
+        "visible": { "type": "string", "enum": ["PanelShown", "PanelHidden"], "description": "Whether the panel is shown (the PanelVisibility DU, a bare string)." }
       },
       "additionalProperties": false
     },

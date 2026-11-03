@@ -24,99 +24,152 @@ module RendererControls =
         | Wireframe
         | Shapes
 
-    let nextRenderer (k : RendererKind) : RendererKind =
-        match k with
-        | Wireframe -> Shapes
-        | Shapes -> Wireframe
+        /// The other renderer: what Swap turns this one into.
+        member this.next : RendererKind =
+            match this with
+            | Wireframe -> Shapes
+            | Shapes -> Wireframe
 
-    let rendererName (k : RendererKind) : string =
-        match k with
-        | Wireframe -> "Wireframe"
-        | Shapes -> "Shapes + codes"
+        /// The renderer's name, as the bay's readout shows it.
+        member this.text : string =
+            match this with
+            | Wireframe -> "Wireframe"
+            | Shapes -> "Shapes + codes"
 
     // ----- the discrete "how it looks" knobs (pure; shared by every screen that draws shapes) -----
 
-    /// The cylinder side-rail count is DISCRETE — these presets only; 72 is the default.
-    let railOptions : int list = [ 4; 8; 12; 24; 36; 72 ]
-    let defaultRails : int = 72
-    let snapRails (n : int) : int = railOptions |> List.minBy (fun o -> abs (o - n))
-    let railIndex (n : int) : int = railOptions |> List.findIndex (fun o -> o = snapRails n)
-    let railsAtIndex (i : int) : int = List.item (max 0 (min (List.length railOptions - 1) i)) railOptions
+    /// A tick of a preset slider: the position of a value in its preset list.
+    type RendererPresetIndex =
+        | RendererPresetIndex of int
+
+        member this.value = let (RendererPresetIndex i) = this in i
+
+        /// The preset at this tick, the tick clamped to the list.
+        member this.pick<'Preset> (presets : 'Preset list) : 'Preset =
+            List.item (max 0 (min (List.length presets - 1) this.value)) presets
+
+        /// The tick of `preset` in `presets`.
+        static member ofPreset<'Preset when 'Preset : equality> (presets : 'Preset list) (preset : 'Preset) : RendererPresetIndex =
+            RendererPresetIndex (List.findIndex (fun candidate -> candidate = preset) presets)
+
+    /// The cylinder side-rail count. It is DISCRETE — the presets only; 72 is the default.
+    type RailCount =
+        | RailCount of int
+
+        member this.value = let (RailCount n) = this in n
+
+        static member presets : RailCount list = [ 4; 8; 12; 24; 36; 72 ] |> List.map RailCount
+
+        /// The preset nearest this count.
+        member this.snapped : RailCount = RailCount.presets |> List.minBy (fun preset -> abs (preset.value - this.value))
+
+        /// The tick of the nearest preset.
+        member this.presetIndex : RendererPresetIndex = RendererPresetIndex.ofPreset RailCount.presets this.snapped
+
+        static member atPresetIndex (index : RendererPresetIndex) : RailCount = index.pick RailCount.presets
+
+        /// The text the bay shows beside its slider.
+        member this.valueCaption : ControlCaption = ControlCaption (string this.value)
 
     /// Inner latitude CIRCLES on a spherical cap — 1 (default) … 8.
-    let capCirclesMin : int = 1
-    let capCirclesMax : int = 8
-    let defaultCapCircles : int = 1
+    type CapCircles =
+        | CapCircles of int
+
+        member this.value = let (CapCircles n) = this in n
+
+        static member fewest : CapCircles = CapCircles 1
+        static member most : CapCircles = CapCircles 8
+
+        /// This count, clamped to `fewest` … `most`.
+        member this.clamped : CapCircles = CapCircles (max CapCircles.fewest.value (min CapCircles.most.value this.value))
+
+        member this.valueCaption : ControlCaption = ControlCaption (string this.value)
 
     /// Meridian RADIALS on a spherical cap — discrete presets, 4 the default.
-    let radialOptions : int list = [ 4; 8; 12; 24; 36 ]
-    let defaultCapRadials : int = 4
-    let snapRadials (n : int) : int = radialOptions |> List.minBy (fun o -> abs (o - n))
-    let radialIndex (n : int) : int = radialOptions |> List.findIndex (fun o -> o = snapRadials n)
-    let radialsAtIndex (i : int) : int = List.item (max 0 (min (List.length radialOptions - 1) i)) radialOptions
+    type CapRadials =
+        | CapRadials of int
 
-    /// The three transparency defaults (the current look). The yellow / blue normals are never affected.
-    let defaultRailOpacity : float = 0.35
-    let defaultFaceOpacity : float = 0.85
-    let defaultLineOpacity : float = 0.70
-    let clamp01 (x : float) : float = max 0.0 (min 1.0 x)
+        member this.value = let (CapRadials n) = this in n
+
+        static member presets : CapRadials list = [ 4; 8; 12; 24; 36 ] |> List.map CapRadials
+
+        /// The preset nearest this count.
+        member this.snapped : CapRadials = CapRadials.presets |> List.minBy (fun preset -> abs (preset.value - this.value))
+
+        /// The tick of the nearest preset.
+        member this.presetIndex : RendererPresetIndex = RendererPresetIndex.ofPreset CapRadials.presets this.snapped
+
+        static member atPresetIndex (index : RendererPresetIndex) : CapRadials = index.pick CapRadials.presets
+
+        member this.valueCaption : ControlCaption = ControlCaption (string this.value)
+
+    /// How opaque a drawn part is: 0 (invisible) … 1 (solid). The yellow / blue normals are never affected.
+    type RendererOpacity =
+        | RendererOpacity of float
+
+        member this.value = let (RendererOpacity o) = this in o
+
+        /// This opacity, clamped to 0 … 1.
+        member this.clamped : RendererOpacity = RendererOpacity (max 0.0 (min 1.0 this.value))
+
+        /// Two decimals: the text the bay shows beside its slider.
+        member this.valueCaption : ControlCaption = ControlCaption $"%.2f{this.value}"
 
     /// The renderer config the screen draws with — the on-screen knobs, all serializable.
-    type State =
+    type RendererControlsState =
         {
             kind : RendererKind
-            rails : int
-            circles : int
-            radials : int
-            railOpacity : float
-            faceOpacity : float
-            lineOpacity : float
+            rails : RailCount
+            circles : CapCircles
+            radials : CapRadials
+            railOpacity : RendererOpacity
+            faceOpacity : RendererOpacity
+            lineOpacity : RendererOpacity
         }
 
-    let defaultState : State =
+        // Pure updaters, so a host's `update` just delegates (and the values always stay valid).
+        member this.swapped : RendererControlsState = { this with kind = this.kind.next }
+        member this.withRails (rails : RailCount) : RendererControlsState = { this with rails = rails.snapped }
+        member this.withRailsIndex (index : RendererPresetIndex) : RendererControlsState = { this with rails = RailCount.atPresetIndex index }
+        member this.withCircles (circles : CapCircles) : RendererControlsState = { this with circles = circles.clamped }
+        member this.withRadials (radials : CapRadials) : RendererControlsState = { this with radials = radials.snapped }
+        member this.withRadialsIndex (index : RendererPresetIndex) : RendererControlsState = { this with radials = CapRadials.atPresetIndex index }
+        member this.withRailOpacity (opacity : RendererOpacity) : RendererControlsState = { this with railOpacity = opacity.clamped }
+        member this.withFaceOpacity (opacity : RendererOpacity) : RendererControlsState = { this with faceOpacity = opacity.clamped }
+        member this.withLineOpacity (opacity : RendererOpacity) : RendererControlsState = { this with lineOpacity = opacity.clamped }
+
+    let defaultState : RendererControlsState =
         {
             kind = Wireframe
-            rails = defaultRails
-            circles = defaultCapCircles
-            radials = defaultCapRadials
-            railOpacity = defaultRailOpacity
-            faceOpacity = defaultFaceOpacity
-            lineOpacity = defaultLineOpacity
+            rails = RailCount 72
+            circles = CapCircles 1
+            radials = CapRadials 4
+            railOpacity = RendererOpacity 0.35
+            faceOpacity = RendererOpacity 0.85
+            lineOpacity = RendererOpacity 0.70
         }
-
-    // Pure updaters, so a host's `update` just delegates (and the values always stay valid).
-    let swap (s : State) : State = { s with kind = nextRenderer s.kind }
-    let withRails (n : int) (s : State) : State = { s with rails = snapRails n }
-    let withRailsIndex (i : int) (s : State) : State = { s with rails = railsAtIndex i }
-    let withCircles (n : int) (s : State) : State = { s with circles = max capCirclesMin (min capCirclesMax n) }
-    let withRadials (n : int) (s : State) : State = { s with radials = snapRadials n }
-    let withRadialsIndex (i : int) (s : State) : State = { s with radials = radialsAtIndex i }
-    let withRailOpacity (v : float) (s : State) : State = { s with railOpacity = clamp01 v }
-    let withFaceOpacity (v : float) (s : State) : State = { s with faceOpacity = clamp01 v }
-    let withLineOpacity (v : float) (s : State) : State = { s with lineOpacity = clamp01 v }
 
     /// The behaviour the bar drives — a record of functions injected by the host (the functional-proxy
     /// seam; a test substitutes stubs).
-    type Handlers =
+    type RendererControlsHandlers =
         {
             swap : unit -> unit
-            setRailsIndex : int -> unit
-            setCircles : int -> unit
-            setRadialsIndex : int -> unit
-            setRailOpacity : float -> unit
-            setFaceOpacity : float -> unit
-            setLineOpacity : float -> unit
+            setRailsIndex : RendererPresetIndex -> unit
+            setCircles : CapCircles -> unit
+            setRadialsIndex : RendererPresetIndex -> unit
+            setRailOpacity : RendererOpacity -> unit
+            setFaceOpacity : RendererOpacity -> unit
+            setLineOpacity : RendererOpacity -> unit
         }
 
     // ----- view helpers -----
-    let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = color 232 232 232
-    let private idleBorder = color 120 120 120
+    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
 
-    let private clickBox (id : string) (label : string) (onClick : unit -> unit) : IView =
+    let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (onClick : unit -> unit) : IView =
         Border.create [
-            Border.name id
+            Border.name id.value
             Border.background (brush idleBackground)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
@@ -124,15 +177,15 @@ module RendererControls =
             Border.padding (Thickness(10.0, 5.0))
             Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
             Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box label))
+            Border.child (TextBlock.create [ TextBlock.text caption.value ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box caption.value))
         ] :> IView
 
-    let private fixedLabel (text : string) : IView =
-        TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.margin (Thickness(14.0, 0.0, 6.0, 0.0)); TextBlock.text text ] :> IView
-
-    let private valueLabel (text : string) : IView =
-        TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.margin (Thickness(6.0, 0.0, 0.0, 0.0)); TextBlock.text text ] :> IView
+    /// One labelled knob: its label, the knob, and the knob's current value beside it.
+    let private knobUnit (label : ControlCaption) (knob : IView) (value : ControlCaption) : IView list =
+        [ TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.margin (Thickness(14.0, 0.0, 6.0, 0.0)); TextBlock.text label.value ] :> IView
+          knob
+          TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.margin (Thickness(6.0, 0.0, 0.0, 0.0)); TextBlock.text value.value ] :> IView ]
 
     /// Spec 0046: a row WRAPS its labelled units (a label + its knob + its value stay together) onto a new
     /// line in a narrow window, instead of running the knobs off its right edge.
@@ -142,83 +195,91 @@ module RendererControls =
             WrapPanel.children (units |> List.map (fun unit -> StackPanel.create [ StackPanel.orientation Orientation.Horizontal; StackPanel.children unit ] :> IView))
         ] :> IView
 
+    /// The bay's two preset knobs: the slider each one is, how wide, and how many ticks it has.
+    type private PresetKnob =
+        | RailsKnob
+        | RadialsKnob
+
+        member this.id : ConstructorUiId =
+            match this with
+            | RailsKnob -> ConstructorUiId.rendererRailsSlider
+            | RadialsKnob -> ConstructorUiId.rendererCapRadialsSlider
+
+        member this.width : float =
+            match this with
+            | RailsKnob -> 170.0
+            | RadialsKnob -> 150.0
+
+        member this.presetCount : int =
+            match this with
+            | RailsKnob -> List.length RailCount.presets
+            | RadialsKnob -> List.length CapRadials.presets
+
     /// A DISCRETE slider riding the INDEX of a preset list, snapping to whole ticks.
-    let private presetSlider (id : string) (width : float) (options : int list) (value : int) (indexOf : int -> int) (onIndex : int -> unit) : IView =
+    let private presetSlider (knob : PresetKnob) (current : RendererPresetIndex) (onIndex : RendererPresetIndex -> unit) : IView =
         Slider.create [
-            Slider.name id
-            Slider.width width
+            Slider.name knob.id.value
+            Slider.width knob.width
             Slider.minimum 0.0
-            Slider.maximum (float (List.length options - 1))
+            Slider.maximum (float (knob.presetCount - 1))
             Slider.smallChange 1.0
             Slider.largeChange 1.0
             Slider.isSnapToTickEnabled true
             Slider.tickFrequency 1.0
             Slider.tickPlacement TickPlacement.BottomRight
             Slider.verticalAlignment VerticalAlignment.Center
-            Slider.value (float (indexOf value))
-            Slider.onValueChanged (fun v -> onIndex (int (System.Math.Round v)))
+            Slider.value (float current.value)
+            Slider.onValueChanged (fun v -> onIndex (RendererPresetIndex (int (System.Math.Round v))))
         ] :> IView
 
-    let private intSlider (id : string) (lo : int) (hi : int) (value : int) (onValue : int -> unit) : IView =
+    let private circlesSlider (circles : CapCircles) (onCircles : CapCircles -> unit) : IView =
         Slider.create [
-            Slider.name id
+            Slider.name ConstructorUiId.rendererCapCirclesSlider.value
             Slider.width 120.0
-            Slider.minimum (float lo)
-            Slider.maximum (float hi)
+            Slider.minimum (float CapCircles.fewest.value)
+            Slider.maximum (float CapCircles.most.value)
             Slider.smallChange 1.0
             Slider.largeChange 1.0
             Slider.isSnapToTickEnabled true
             Slider.tickFrequency 1.0
             Slider.tickPlacement TickPlacement.BottomRight
             Slider.verticalAlignment VerticalAlignment.Center
-            Slider.value (float value)
-            Slider.onValueChanged (fun v -> onValue (int (System.Math.Round v)))
+            Slider.value (float circles.value)
+            Slider.onValueChanged (fun v -> onCircles (CapCircles (int (System.Math.Round v))))
         ] :> IView
 
-    let private opacitySlider (id : string) (value : float) (onValue : float -> unit) : IView =
+    let private opacitySlider (id : ConstructorUiId) (opacity : RendererOpacity) (onOpacity : RendererOpacity -> unit) : IView =
         Slider.create [
-            Slider.name id
+            Slider.name id.value
             Slider.width 110.0
             Slider.minimum 0.0
             Slider.maximum 1.0
             Slider.smallChange 0.05
             Slider.verticalAlignment VerticalAlignment.Center
-            Slider.value value
-            Slider.onValueChanged onValue
+            Slider.value opacity.value
+            Slider.onValueChanged (fun v -> onOpacity (RendererOpacity v))
         ] :> IView
 
     /// The renderer control — swap + the cap / rail / transparency knobs, as a compact self-contained
     /// unit (a Bay's content). The yellow / blue normals are never transparency-controlled.
-    let view (state : State) (handlers : Handlers) : IView =
+    let rendererControlsView (state : RendererControlsState) (handlers : RendererControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 6.0
             StackPanel.children [
                 row [
-                    [ clickBox UiIds.Renderer.swapRenderer "Swap renderer" (fun () -> handlers.swap ())
-                      TextBlock.create [ TextBlock.name UiIds.Renderer.readout; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: %s{rendererName state.kind}" ] ]
-                    [ fixedLabel "Cylinder rails:"
-                      presetSlider UiIds.Renderer.railsSlider 170.0 railOptions state.rails railIndex handlers.setRailsIndex
-                      valueLabel (string state.rails) ]
+                    [ clickBox ConstructorUiId.rendererSwapButton (ControlCaption "Swap renderer") (fun () -> handlers.swap ())
+                      TextBlock.create [ TextBlock.name ConstructorUiId.rendererReadout.value; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: {state.kind.text}" ] ]
+                    knobUnit (ControlCaption "Cylinder rails:") (presetSlider RailsKnob state.rails.presetIndex handlers.setRailsIndex) state.rails.valueCaption
                 ]
                 row [
-                    [ fixedLabel "Cap circles:"
-                      intSlider UiIds.Renderer.capCirclesSlider capCirclesMin capCirclesMax state.circles handlers.setCircles
-                      valueLabel (string state.circles) ]
-                    [ fixedLabel "Cap radials:"
-                      presetSlider UiIds.Renderer.capRadialsSlider 150.0 radialOptions state.radials radialIndex handlers.setRadialsIndex
-                      valueLabel (string state.radials) ]
+                    knobUnit (ControlCaption "Cap circles:") (circlesSlider state.circles handlers.setCircles) state.circles.valueCaption
+                    knobUnit (ControlCaption "Cap radials:") (presetSlider RadialsKnob state.radials.presetIndex handlers.setRadialsIndex) state.radials.valueCaption
                 ]
                 row [
-                    [ fixedLabel "Rail opacity:"
-                      opacitySlider UiIds.Renderer.railOpacitySlider state.railOpacity handlers.setRailOpacity
-                      valueLabel $"%.2f{state.railOpacity}" ]
-                    [ fixedLabel "Face opacity:"
-                      opacitySlider UiIds.Renderer.faceOpacitySlider state.faceOpacity handlers.setFaceOpacity
-                      valueLabel $"%.2f{state.faceOpacity}" ]
-                    [ fixedLabel "Line opacity:"
-                      opacitySlider UiIds.Renderer.lineOpacitySlider state.lineOpacity handlers.setLineOpacity
-                      valueLabel $"%.2f{state.lineOpacity}" ]
+                    knobUnit (ControlCaption "Rail opacity:") (opacitySlider ConstructorUiId.rendererRailOpacitySlider state.railOpacity handlers.setRailOpacity) state.railOpacity.valueCaption
+                    knobUnit (ControlCaption "Face opacity:") (opacitySlider ConstructorUiId.rendererFaceOpacitySlider state.faceOpacity handlers.setFaceOpacity) state.faceOpacity.valueCaption
+                    knobUnit (ControlCaption "Line opacity:") (opacitySlider ConstructorUiId.rendererLineOpacitySlider state.lineOpacity handlers.setLineOpacity) state.lineOpacity.valueCaption
                 ]
             ]
         ] :> IView

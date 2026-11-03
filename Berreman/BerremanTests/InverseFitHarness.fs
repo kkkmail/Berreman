@@ -46,15 +46,15 @@ type InverseFit<'Parameters> =
         recovered : 'Parameters
         solution : NonlinearSolution
         scaling : ParameterScaling<'Parameters>
-        residual : float[] -> float[]
+        residual : ScaledVector -> ResidualVector
     }
 
     /// Σ residualᵢ² at the solution.
-    member this.chiSquared : double = this.solution.finalResiduals |> Array.sumBy (fun r -> r * r)
+    member this.chiSquared : double = this.solution.finalResiduals.value |> Array.sumBy (fun r -> r * r)
 
     /// The root-mean-square residual entry at the solution — the noise level, when there is noise.
     member this.rmsResidual : double =
-        sqrt (this.chiSquared / float (max 1 this.solution.finalResiduals.Length))
+        sqrt (this.chiSquared / float (max 1 this.solution.finalResiduals.value.Length))
 
 // =====================================================================================================
 // The MEASUREMENT-ERROR model (manual task 010, generalized for task 014).
@@ -132,7 +132,7 @@ type AngleUncertainty =
     member this.degrees = let (AngleUncertainty a) = this in a.degrees
 
     /// Build an `AngleUncertainty` from a value given in degrees.
-    static member degree (d : double) : AngleUncertainty = Angle.degree d |> AngleUncertainty
+    static member degree (d : double) : AngleUncertainty = Angle.degree (d * 1.0<Berreman.Constants.deg>) |> AngleUncertainty
 
 /// The half-width of the uniform distribution the DETECTOR's error on one NORMALIZED Mueller element is
 /// drawn from. Normalized elements are bounded by 1, so this is directly a fraction of full scale: 0.005
@@ -315,8 +315,8 @@ module InverseFitHarness =
         {
             cut = cut
             thickness = thickness
-            incidenceAngle = Angle.degree incidenceDeg |> IncidenceAngle.create
-            azimuth = SampleAzimuth.degree azimuthDeg
+            incidenceAngle = Angle.degree (incidenceDeg * 1.0<Berreman.Constants.deg>) |> IncidenceAngle.create
+            azimuth = SampleAzimuth.degree (azimuthDeg * 1.0<Berreman.Constants.deg>)
             observable = observable
             waveLength = waveLength
         }
@@ -345,15 +345,15 @@ module InverseFitHarness =
         (forward : ForwardModelProxy<'Parameters>)
         (observations : MuellerObservation list)
         (scaling : ParameterScaling<'Parameters>)
-        : float[] -> float[] =
+        : ScaledVector -> ResidualVector =
         let width = 15 * List.length observations
-        fun (v : float[]) ->
+        fun (v : ScaledVector) ->
             match forwardModels forward (ofScaled scaling v) observations with
-            | Error _ -> Array.create width 1.0e3
+            | Error _ -> Array.create width 1.0e3 |> ResidualVector
             | Ok models ->
                 match residualVector observations models with
                 | Ok r -> r
-                | Error _ -> Array.create width 1.0e3
+                | Error _ -> Array.create width 1.0e3 |> ResidualVector
 
     /// The residual closure for an ABSORBING sample: the 15 normalized Mueller element differences per
     /// observation, PLUS one log-throughput term per observation.
@@ -375,18 +375,18 @@ module InverseFitHarness =
         (forward : ForwardModelProxy<'Parameters>)
         (observations : MuellerObservation list)
         (scaling : ParameterScaling<'Parameters>)
-        : float[] -> float[] =
+        : ScaledVector -> ResidualVector =
         let width = 16 * List.length observations
         let logThroughput (m : MuellerMatrix) =
-            let m00 = Propagation.muellerElement m 0 0
+            let m00 = m.element 0 0
             if m00 <= 0.0 || not (System.Double.IsFinite m00) then None else Some (log m00)
-        fun (v : float[]) ->
+        fun (v : ScaledVector) ->
             match forwardModels forward (ofScaled scaling v) observations with
-            | Error _ -> Array.create width 1.0e3
+            | Error _ -> Array.create width 1.0e3 |> ResidualVector
             | Ok models ->
                 match residualVector observations models with
-                | Error _ -> Array.create width 1.0e3
-                | Ok normalized ->
+                | Error _ -> Array.create width 1.0e3 |> ResidualVector
+                | Ok (ResidualVector normalized) ->
                     let throughput =
                         List.zip observations models
                         |> List.map (fun (o, model) ->
@@ -394,7 +394,21 @@ module InverseFitHarness =
                             | Some measured, Some predicted -> predicted - measured
                             | _ -> 1.0e3)
                         |> Array.ofList
-                    Array.append normalized throughput
+                    Array.append normalized throughput |> ResidualVector
+
+    /// The residual Jacobian of a typed residual closure at a scaled point, by FitQuality's finite
+    /// differences (which speak the optimizer's design vector).
+    let residualJacobianAt (residual : ScaledVector -> ResidualVector) (point : ScaledVector) : ResidualJacobian =
+        let (ScaledVector x) = point
+        FitQuality.residualJacobian (fun (OptimizationInterface.DesignVector v) -> residual (ScaledVector v)) (OptimizationInterface.DesignVector x)
+
+    /// FitQuality's report on a fit, at its solution.
+    let fitReportOf (fit : InverseFit<'Parameters>) : FitQuality.FitReport =
+        let (ScaledVector solution) = fit.solution.solution
+        FitQuality.reportFrom
+            (fun (OptimizationInterface.DesignVector v) -> fit.residual (ScaledVector v))
+            (OptimizationInterface.DesignVector solution)
+            fit.solution.finalResiduals
 
     /// How hard the residual pushes back along ONE DIRECTION in parameter space — `‖J·v‖` for a unit
     /// direction `v`, computed from the residual Jacobian.
@@ -403,10 +417,10 @@ module InverseFitHarness =
     /// question "is this COMBINATION of parameters observable?", which is what an identifiability claim
     /// about a null direction needs: the isotropic part of an absorption tensor is not any one parameter,
     /// it is the sum of three of them, and it can be invisible while every individual column is alive.
-    let directionalSensitivity (jacobian : float[][]) (direction : float[]) : double =
+    let directionalSensitivity (jacobian : ResidualJacobian) (direction : float[]) : double =
         let norm = sqrt (direction |> Array.sumBy (fun x -> x * x))
         let unit = direction |> Array.map (fun x -> x / norm)
-        jacobian
+        jacobian.value
         |> Array.sumBy (fun row -> (Array.map2 (*) row unit |> Array.sum) ** 2.0)
         |> sqrt
 
@@ -450,18 +464,18 @@ module InverseFitHarness =
     /// and read back by a slightly wrong detector, and nothing about the fit itself changes.
     let fitWithResidual
         (box : SearchBox)
-        (residual : float[] -> float[])
+        (residual : ScaledVector -> ResidualVector)
         (scaling : ParameterScaling<'Parameters>)
         : InverseFit<'Parameters> =
         let solver = MuellerInverseSolver.createAlglibLevenbergMarquardt ()
         let request =
             {
                 residual = residual
-                initial = Array.zeroCreate scaling.dimension
-                lowerBounds = Array.create scaling.dimension -box.halfWidth
-                upperBounds = Array.create scaling.dimension box.halfWidth
-                maxIterations = 400
-                epsX = 1.0e-12
+                initial = Array.zeroCreate scaling.dimension |> ScaledVector
+                lowerBounds = Array.create scaling.dimension -box.halfWidth |> ScaledVector
+                upperBounds = Array.create scaling.dimension box.halfWidth |> ScaledVector
+                maxIterations = IterationCount 400
+                epsX = StepTolerance 1.0e-12
             }
         match solver.solveNonlinearLeastSquares request with
         | Ok solution ->
@@ -516,8 +530,8 @@ module InverseFitHarness =
     let assertMuellerEqual (expected : MuellerMatrix) (actual : MuellerMatrix) : unit =
         for i in 0 .. 3 do
             for j in 0 .. 3 do
-                let e = Propagation.muellerElement expected i j
-                let a = Propagation.muellerElement actual i j
+                let e = expected.element i j
+                let a = actual.element i j
                 Assert.True(abs (e - a) < allowedDiff, $"M[{i},{j}]: expected {e}, got {a}")
 
     // -------------------------------------------------------------------------------- the noise model
@@ -537,7 +551,7 @@ module InverseFitHarness =
     /// come back as ~89.8 deg rather than as a plate tilted 0.2 deg the other way. A signed excursion is
     /// the physically correct object here, and the operator is the seam that preserves it.
     let disturb (draws : UniformDeviateProvider) (noise : NoiseParam) (c : MeasurementConfiguration) : MeasurementConfiguration =
-        let wobble () = noise.rotation.value * draws.nextDeviate () |> Angle.radian
+        let wobble () = noise.rotation.value * draws.nextDeviate () |> Angle
         {
             c with
                 incidenceAngle = c.incidenceAngle + wobble ()
@@ -551,13 +565,14 @@ module InverseFitHarness =
     /// at all once normalized — an error in it is an error in absolute throughput, which every
     /// comparison in `MuellerInverse` divides out exactly.
     let misread (draws : UniformDeviateProvider) (noise : NoiseParam) (m : MuellerMatrix) : MuellerMatrix =
-        match normalizeMueller m with
+        match m.normalized with
         | Ok n ->
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ for i in 0 .. 3 ->
                     [ for j in 0 .. 3 ->
                         if i = 0 && j = 0 then 1.0
-                        else Propagation.muellerElement n i j + noise.element.value * draws.nextDeviate () ] ]
+                        else n.element i j + noise.element.value * draws.nextDeviate () ] ]
+            |> MuellerMatrix
         | Error e -> failwith $"a ground-truth matrix could not be normalized: %A{e}"
 
     /// What the receiver reports for an ABSORBING sample, where the absolute throughput is a datum
@@ -572,15 +587,16 @@ module InverseFitHarness =
     /// The throughput draw is taken FIRST, before the fifteen element draws. That ordering is arbitrary
     /// but fixed: it is what makes an absorbing noisy experiment reproducible from its seed.
     let misreadAbsolute (draws : UniformDeviateProvider) (noise : NoiseParam) (m : MuellerMatrix) : MuellerMatrix =
-        match normalizeMueller m with
+        match m.normalized with
         | Ok n ->
-            let trueThroughput = Propagation.muellerElement m 0 0
+            let trueThroughput = m.element 0 0
             let reportedThroughput = trueThroughput * (1.0 + noise.throughput.value * draws.nextDeviate ())
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ for i in 0 .. 3 ->
                     [ for j in 0 .. 3 ->
                         if i = 0 && j = 0 then reportedThroughput
-                        else reportedThroughput * (Propagation.muellerElement n i j + noise.element.value * draws.nextDeviate ()) ] ]
+                        else reportedThroughput * (n.element i j + noise.element.value * draws.nextDeviate ()) ] ]
+            |> MuellerMatrix
         | Error e -> failwith $"a ground-truth matrix could not be normalized: %A{e}"
 
     /// ONE noisy realization of a whole ABSORBING experiment. Identical in structure to
@@ -675,7 +691,7 @@ module InverseFitHarness =
         fit.scaling.axes
         |> List.mapi (fun i a ->
             a.name,
-            quality.standardErrors.[i] * abs (a.read fit.scaling.scale) / abs (a.read truth) |> RelativeError)
+            quality.standardErrors.value.[i] * abs (a.read fit.scaling.scale) / abs (a.read truth) |> RelativeError)
 
     /// The variance a fit's covariance predicts for a LINEAR COMBINATION of the fitted parameters,
     /// `wᵀ C w` — the only route this report offers to an error bar on a DERIVED quantity such as a
@@ -688,7 +704,7 @@ module InverseFitHarness =
     let combinationVariance (quality : FitQuality.FitReport) (weights : float[]) : double =
         let n = weights.Length
         [ for i in 0 .. n - 1 do
-            for j in 0 .. n - 1 -> weights.[i] * quality.covariance.[i].[j] * weights.[j] ]
+            for j in 0 .. n - 1 -> weights.[i] * quality.covariance.value.[i].[j] * weights.[j] ]
         |> List.sum
 
     /// The weight vector that picks out the DIFFERENCE of two named parameters, `plus − minus`, in the

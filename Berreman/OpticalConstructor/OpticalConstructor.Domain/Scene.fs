@@ -19,12 +19,12 @@ module Scene =
     /// store deems invalid). The later real store MAY grow the channel (missing file, IO failure)
     /// without breaking this declared shape — a new case is a compiler-guided addition.
     type SceneStoreError =
-        | InvalidScene of reason : string
+        | InvalidSceneErr of reason : string
 
     /// A saved scene's name — the persistence key `saveScene` / `tryLoadScene` address and
     /// `listScenes` enumerates. Elevated single-case string DU; `.value` is the raw key (reached
     /// only at the storage boundary), and `tryCreate` rejects a blank name at the parse boundary
-    /// (a scene with no name has no addressable key), returning the typed `InvalidScene`.
+    /// (a scene with no name has no addressable key), returning the typed `InvalidSceneErr`.
     type SceneName =
         | SceneName of string
 
@@ -32,7 +32,7 @@ module Scene =
 
         static member tryCreate (name : string) : Result<SceneName, SceneStoreError> =
             if System.String.IsNullOrWhiteSpace name
-            then Error (InvalidScene "a scene name must not be blank")
+            then Error (InvalidSceneErr "a scene name must not be blank")
             else Ok (SceneName name)
 
     /// Whether the scene's elements SNAP onto the beam chain (the Main "Lego constructor": the
@@ -71,7 +71,7 @@ module Scene =
         {
             id : Library.ElementId
             placement : Placement.ElementPlacement
-            zoom : float
+            zoom : BeamLayout.ElementZoom
             beam : BeamLayout.BeamHost
         }
 
@@ -119,7 +119,7 @@ module Scene =
         /// (the IO boundary), so logic holding the proxy stays pure and a test substitutes this whole
         /// `create` (or a stub of the same shape). Starts EMPTY — a fresh session has no saved scenes.
         /// `saveScene` upserts (insert or overwrite under the name), RE-validating the name through
-        /// `SceneName.tryCreate` so a directly-constructed blank key is rejected as `InvalidScene`
+        /// `SceneName.tryCreate` so a directly-constructed blank key is rejected as `InvalidSceneErr`
         /// rather than silently stored; `tryLoadScene` / `listScenes` read the map. This is an
         /// INTRINSIC augmentation staying in this file (the `CategoryProxy.createInMemory` precedent,
         /// `MaterialLibrary.fs`): it needs no type compiled after `Scene.fs`, unlike the versioned

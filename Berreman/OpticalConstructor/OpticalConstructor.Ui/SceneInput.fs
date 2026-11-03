@@ -4,6 +4,7 @@ open Avalonia
 open Avalonia.Controls
 open Avalonia.Input
 open Avalonia.VisualTree
+open OpticalConstructor.Controls
 open OpticalConstructor.Domain.TableView
 
 /// Shared pointer→canvas mapping for the test scenes (Spec 0027, task 010 fix). The control bar is now
@@ -13,14 +14,14 @@ open OpticalConstructor.Domain.TableView
 /// canvas in the visual tree and asking for the position relative to it.
 module SceneInput =
 
-    let canvasPoint (canvasName : string) (e : PointerEventArgs) : ScreenPoint =
+    let canvasPoint (canvasId : ConstructorUiId) (e : PointerEventArgs) : ScreenPoint =
         let canvas =
             match e.Source with
             | :? Visual as v ->
                 // The hit visual is the canvas itself (empty click), a child shape (canvas is an
                 // ancestor), or the surrounding border (canvas is a descendant) — check all three.
                 Seq.concat [ Seq.singleton v; v.GetVisualAncestors(); v.GetVisualDescendants() ]
-                |> Seq.tryPick (function :? Canvas as c when c.Name = canvasName -> Some c | _ -> None)
+                |> Seq.tryPick (function :? Canvas as c when c.Name = canvasId.value -> Some c | _ -> None)
             | _ -> None
         let p =
             match canvas with

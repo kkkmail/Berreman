@@ -1,5 +1,6 @@
 ﻿namespace BerremanTests
 
+open System.Numerics
 open Berreman.Constants
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
@@ -32,7 +33,7 @@ type IncidentLightTests() =
     let data =
         [
             (
-                let incidenceAngle = Angle.degree 7.0 |> IncidenceAngle
+                let incidenceAngle = Angle.degree 7.0<deg> |> IncidenceAngle
                 let n1SinFita = getN1SinFita incidenceAngle
 
                 {
@@ -60,7 +61,7 @@ type IncidentLightTests() =
             )
 
             (
-                let incidenceAngle = Angle.degree 7.0 |> IncidenceAngle
+                let incidenceAngle = Angle.degree 7.0<deg> |> IncidenceAngle
                 let n1SinFita = getN1SinFita incidenceAngle
 
                 {
@@ -78,19 +79,19 @@ type IncidentLightTests() =
                                 waveLength = waveLength
                                 opticalProperties = OpticalProperties.vacuum
                                 e =
-                                    [ createComplex 0.97327157603087 0.; createComplex 0. 0.19611613513818404; createComplex -0.11950272310222826 0. ]
+                                    [ Complex.create 0.97327157603087 0.; Complex.create 0. 0.19611613513818404; Complex.create -0.11950272310222826 0. ]
                                     |> E.create
                                 h =
-                                    [ createComplex 0. -0.194654315206174; createComplex 0.9805806756909199 0.; createComplex 0. 0.02390054462044566 ]
+                                    [ Complex.create 0. -0.194654315206174; Complex.create 0.9805806756909199 0.; Complex.create 0. 0.02390054462044566 ]
                                     |> H.create
                             }
                 }
             )
 
             (
-                let incidenceAngle = Angle.degree 7.0 |> IncidenceAngle
+                let incidenceAngle = Angle.degree 7.0<deg> |> IncidenceAngle
                 let n1SinFita = getN1SinFita incidenceAngle
-                let beta = Angle.degree 25.0
+                let beta = Angle.degree 25.0<deg>
 
                 {
                     description = "Linear polarization, 25 degrees polarization angle."
@@ -117,9 +118,9 @@ type IncidentLightTests() =
             )
 
             (
-                let incidenceAngle = Angle.degree 11.0 |> IncidenceAngle
+                let incidenceAngle = Angle.degree 11.0<deg> |> IncidenceAngle
                 let n1SinFita = getN1SinFita incidenceAngle
-                let beta = Angle.degree -34.0
+                let beta = Angle.degree -34.0<deg>
                 let ellipticity = Ellipticity.create 0.38
 
                 {
@@ -137,10 +138,10 @@ type IncidentLightTests() =
                                 waveLength = waveLength
                                 opticalProperties = OpticalProperties.vacuum
                                 e =
-                                    [ createComplex 0.7607323158175443 0.1949857619013546; createComplex -0.5227243445459797 0.2944888699958045; createComplex -0.14787138271966674 -0.03790139267583888 ]
+                                    [ Complex.create 0.7607323158175443 0.1949857619013546; Complex.create -0.5227243445459797 0.2944888699958045; Complex.create -0.14787138271966674 -0.03790139267583888 ]
                                     |> E.create
                                 h =
-                                    [ createComplex 0.5131204260561963 -0.2890782800106668; createComplex 0.774970710515275 0.1986352509274723; createComplex -0.09974050704168126 0.05619112543347336 ]
+                                    [ Complex.create 0.5131204260561963 -0.2890782800106668; Complex.create 0.774970710515275 0.1986352509274723; Complex.create -0.09974050704168126 0.05619112543347336 ]
                                     |> H.create
                             }
                 }

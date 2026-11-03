@@ -25,46 +25,46 @@ module MaterialsControlsTests =
 
     /// A known flattened row set: two editable materials and one view-only (no edit model — the
     /// spec-0033 step-013 `complexity = None` shape the host flattens to `ViewOnly`).
-    let private knownRows : MaterialsControls.Row list =
+    let private knownRows : MaterialsControls.MaterialsControlsRow list =
         [
-            { materialId = "bk7"; label = "BK7 glass"; editability = MaterialsControls.Editable }
-            { materialId = "gold"; label = "Gold"; editability = MaterialsControls.Editable }
-            { materialId = "silicon"; label = "Silicon (tabulated)"; editability = MaterialsControls.ViewOnly }
+            { materialId = ConstructorUiKey "bk7"; label = ControlCaption "BK7 glass"; editability = MaterialsControls.Editable }
+            { materialId = ConstructorUiKey "gold"; label = ControlCaption "Gold"; editability = MaterialsControls.Editable }
+            { materialId = ConstructorUiKey "silicon"; label = ControlCaption "Silicon (tabulated)"; editability = MaterialsControls.ViewOnly }
         ]
 
     /// The known State the structure tests mount: both facets populated, an EDITABLE row selected
     /// (so every verb — including Edit — is present).
-    let private knownState : MaterialsControls.State =
+    let private knownState : MaterialsControls.MaterialsControlsState =
         {
-            searchText = ""
+            searchText = ControlCaption ""
             categoryOptions =
                 [
-                    { code = "all"; label = "All categories" }
-                    { code = "glass"; label = "Glass" }
-                    { code = "metal"; label = "Metal" }
+                    { code = ConstructorUiKey "all"; label = ControlCaption "All categories" }
+                    { code = ConstructorUiKey "glass"; label = ControlCaption "Glass" }
+                    { code = ConstructorUiKey "metal"; label = ControlCaption "Metal" }
                 ]
-            selectedCategory = "all"
+            selectedCategory = Some (ConstructorUiKey "all")
             dispersionOptions =
                 [
-                    { code = "any"; label = "Any" }
-                    { code = "dispersive"; label = "Dispersive" }
-                    { code = "non-dispersive"; label = "Non-dispersive" }
+                    { code = ConstructorUiKey "any"; label = ControlCaption "Any" }
+                    { code = ConstructorUiKey "dispersive"; label = ControlCaption "Dispersive" }
+                    { code = ConstructorUiKey "non-dispersive"; label = ControlCaption "Non-dispersive" }
                 ]
-            selectedDispersion = "any"
+            selectedDispersion = Some (ConstructorUiKey "any")
             rows = knownRows
-            selectedId = Some "bk7"
+            selectedId = Some (ConstructorUiKey "bk7")
         }
 
     /// Recording stub handlers (the test substitutes the functional-proxy seam): every dispatch
     /// appends a tag, so a click's MATCHING handler is observable.
-    let private recorder () : ResizeArray<string> * MaterialsControls.Handlers =
+    let private recorder () : ResizeArray<string> * MaterialsControls.MaterialsControlsHandlers =
         let calls = ResizeArray<string>()
-        let handlers : MaterialsControls.Handlers =
+        let handlers : MaterialsControls.MaterialsControlsHandlers =
             {
-                setSearchText = fun t -> calls.Add("search:" + t)
-                selectCategory = fun c -> calls.Add("category:" + c)
-                selectDispersion = fun d -> calls.Add("dispersion:" + d)
-                selectMaterial = fun id -> calls.Add("select:" + id)
+                setSearchText = fun t -> calls.Add("search:" + t.value)
+                selectCategory = fun c -> calls.Add("category:" + c.value)
+                selectDispersion = fun d -> calls.Add("dispersion:" + d.value)
+                selectMaterial = fun id -> calls.Add("select:" + id.value)
                 addMaterial = fun () -> calls.Add("add")
                 editMaterial = fun () -> calls.Add("edit")
                 removeMaterial = fun () -> calls.Add("remove")
@@ -76,38 +76,38 @@ module MaterialsControlsTests =
 
     [<Fact>]
     let ``the empty Materials state has no rows, no selection, an empty search and no facet options`` () =
-        let s = MaterialsControls.empty
-        Assert.Equal("", s.searchText)
+        let s = MaterialsControls.emptyMaterialsControls
+        Assert.Equal("", s.searchText.value)
         Assert.Empty(s.rows)
         Assert.Empty(s.categoryOptions)
         Assert.Empty(s.dispersionOptions)
-        Assert.Equal("", s.selectedCategory)
-        Assert.Equal("", s.selectedDispersion)
+        Assert.Equal(None, s.selectedCategory)
+        Assert.Equal(None, s.selectedDispersion)
         Assert.Equal(None, s.selectedId)
 
     [<Fact>]
     let ``the Materials UiIds are the stable intent-named ids`` () =
-        Assert.Equal("MaterialSearchBox", UiIds.Materials.searchBox)
-        Assert.Equal("MaterialCategoryFilter", UiIds.Materials.categoryFilter)
-        Assert.Equal("MaterialDispersionFilter", UiIds.Materials.dispersionFilter)
-        Assert.Equal("MaterialsList", UiIds.Materials.list)
-        Assert.Equal("AddMaterialButton", UiIds.Materials.addButton)
-        Assert.Equal("EditMaterialButton", UiIds.Materials.editButton)
-        Assert.Equal("RemoveMaterialButton", UiIds.Materials.removeButton)
-        Assert.Equal("ViewMaterialButton", UiIds.Materials.viewButton)
+        Assert.Equal("MaterialSearchBox", ConstructorUiId.materialSearchBox.value)
+        Assert.Equal("MaterialCategoryFilter", ConstructorUiId.materialCategoryFilter.value)
+        Assert.Equal("MaterialDispersionFilter", ConstructorUiId.materialDispersionFilter.value)
+        Assert.Equal("MaterialsList", ConstructorUiId.materialsList.value)
+        Assert.Equal("AddMaterialButton", ConstructorUiId.addMaterialButton.value)
+        Assert.Equal("EditMaterialButton", ConstructorUiId.editMaterialButton.value)
+        Assert.Equal("RemoveMaterialButton", ConstructorUiId.removeMaterialButton.value)
+        Assert.Equal("ViewMaterialButton", ConstructorUiId.viewMaterialButton.value)
         // The derived per-row / per-facet-option ids are prefixed so they cannot collide.
-        Assert.Equal("MaterialRow_abc", UiIds.Materials.row "abc")
-        Assert.Equal("MaterialCategoryOption_glass", UiIds.Materials.categoryOption "glass")
-        Assert.Equal("MaterialDispersionOption_any", UiIds.Materials.dispersionOption "any")
+        Assert.Equal("MaterialRow_abc", (ConstructorUiId.materialRow (ConstructorUiKey "abc")).value)
+        Assert.Equal("MaterialCategoryOption_glass", (ConstructorUiId.materialCategoryOption (ConstructorUiKey "glass")).value)
+        Assert.Equal("MaterialDispersionOption_any", (ConstructorUiId.materialDispersionOption (ConstructorUiKey "any")).value)
 
     [<Fact>]
     let ``selectedRow resolves the selected id to its listed row, and None otherwise`` () =
-        match MaterialsControls.selectedRow knownState with
-        | Some r -> Assert.Equal("bk7", r.materialId)
+        match knownState.selectedRow with
+        | Some r -> Assert.Equal("bk7", r.materialId.value)
         | None -> Assert.Fail("expected the selected row")
-        Assert.Equal(None, MaterialsControls.selectedRow { knownState with selectedId = None })
+        Assert.Equal(None, { knownState with selectedId = None }.selectedRow)
         // A selection the host's filter no longer lists resolves to no row (verbs then disable).
-        Assert.Equal(None, MaterialsControls.selectedRow { knownState with selectedId = Some "not-listed" })
+        Assert.Equal(None, { knownState with selectedId = Some (ConstructorUiKey "not-listed") }.selectedRow)
 
     // ============================ headless structure proof ============================
 
@@ -115,14 +115,14 @@ module MaterialsControlsTests =
     /// through the clicks below).
     let private allFixedIds : string list =
         [
-            UiIds.Materials.searchBox
-            UiIds.Materials.categoryFilter
-            UiIds.Materials.dispersionFilter
-            UiIds.Materials.list
-            UiIds.Materials.addButton
-            UiIds.Materials.editButton
-            UiIds.Materials.removeButton
-            UiIds.Materials.viewButton
+            ConstructorUiId.materialSearchBox.value
+            ConstructorUiId.materialCategoryFilter.value
+            ConstructorUiId.materialDispersionFilter.value
+            ConstructorUiId.materialsList.value
+            ConstructorUiId.addMaterialButton.value
+            ConstructorUiId.editMaterialButton.value
+            ConstructorUiId.removeMaterialButton.value
+            ConstructorUiId.viewMaterialButton.value
         ]
 
     let private isPresent (window : Window) (id : string) : bool =
@@ -151,7 +151,7 @@ module MaterialsControlsTests =
         HeadlessSession.run (fun () ->
             let calls, handlers = recorder ()
             let window = Window(Width = 640.0, Height = 560.0)
-            window.Content <- Component(fun _ -> MaterialsControls.view knownState handlers)
+            window.Content <- Component(fun _ -> MaterialsControls.materialsControlsView knownState handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Every slice-mandated control exists over the known State.
@@ -159,24 +159,24 @@ module MaterialsControlsTests =
                 Assert.True(isPresent window id, $"%s{id} is missing from the mounted view")
             let count (tag : string) : int = calls |> Seq.filter ((=) tag) |> Seq.length
             // The acceptance click: Add invokes the ADD handler — and no other verb handler.
-            clickOn window UiIds.Materials.addButton
+            clickOn window ConstructorUiId.addMaterialButton.value
             Assert.Equal(1, count "add")
             Assert.Equal(0, count "edit")
             Assert.Equal(0, count "remove")
             Assert.Equal(0, count "view")
             // Each remaining verb dispatches ITS handler (the selected row is editable, so Edit is live).
-            clickOn window UiIds.Materials.editButton
+            clickOn window ConstructorUiId.editMaterialButton.value
             Assert.Equal(1, count "edit")
-            clickOn window UiIds.Materials.removeButton
+            clickOn window ConstructorUiId.removeMaterialButton.value
             Assert.Equal(1, count "remove")
-            clickOn window UiIds.Materials.viewButton
+            clickOn window ConstructorUiId.viewMaterialButton.value
             Assert.Equal(1, count "view")
             // A row click selects THAT material; a facet-option click selects THAT facet code.
-            clickOn window (UiIds.Materials.row "gold")
+            clickOn window (ConstructorUiId.materialRow (ConstructorUiKey "gold")).value
             Assert.Contains("select:gold", calls)
-            clickOn window (UiIds.Materials.categoryOption "metal")
+            clickOn window (ConstructorUiId.materialCategoryOption (ConstructorUiKey "metal")).value
             Assert.Contains("category:metal", calls)
-            clickOn window (UiIds.Materials.dispersionOption "dispersive")
+            clickOn window (ConstructorUiId.materialDispersionOption (ConstructorUiKey "dispersive")).value
             Assert.Contains("dispersion:dispersive", calls)
             window.Close())
 
@@ -185,17 +185,17 @@ module MaterialsControlsTests =
     let ``a view-only selection carries no Edit affordance — the button is removed, not greyed`` () =
         HeadlessSession.run (fun () ->
             let _, handlers = recorder ()
-            let state = { knownState with selectedId = Some "silicon" }   // the view-only row
+            let state = { knownState with selectedId = Some (ConstructorUiKey "silicon") }   // the view-only row
             let window = Window(Width = 640.0, Height = 560.0)
-            window.Content <- Component(fun _ -> MaterialsControls.view state handlers)
+            window.Content <- Component(fun _ -> MaterialsControls.materialsControlsView state handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // REMOVED means absent from the tree entirely — a greyed/hidden button would still be found.
             Assert.False(
-                isPresent window UiIds.Materials.editButton,
+                isPresent window ConstructorUiId.editMaterialButton.value,
                 "the Edit verb must be REMOVED (not greyed) for a view-only selection")
             // The other verbs remain for the view-only entry.
-            Assert.True(isPresent window UiIds.Materials.addButton)
-            Assert.True(isPresent window UiIds.Materials.removeButton)
-            Assert.True(isPresent window UiIds.Materials.viewButton)
+            Assert.True(isPresent window ConstructorUiId.addMaterialButton.value)
+            Assert.True(isPresent window ConstructorUiId.removeMaterialButton.value)
+            Assert.True(isPresent window ConstructorUiId.viewMaterialButton.value)
             window.Close())

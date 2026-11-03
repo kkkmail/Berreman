@@ -1,13 +1,11 @@
 namespace OpticalConstructor.Controls
 
 open Avalonia
-open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Controls.Shapes
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
-open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
@@ -30,8 +28,8 @@ module ExperimentControls =
     /// is a human-readable display (e.g. "Linear polarizer #2").
     type SweepCandidate =
         {
-            elementId : string
-            label : string
+            elementId : ConstructorUiKey
+            label : ControlCaption
         }
 
     /// The quantity to vary — a domain-free mirror of the domain `VariableParameter` (a DU, not an enum).
@@ -41,80 +39,171 @@ module ExperimentControls =
         | VaryR1
         | VaryR2
 
+        /// The stable code (drives its automation id).
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | VaryWaveLength -> ConstructorUiKey "wavelength"
+            | VaryR1 -> ConstructorUiKey "r1"
+            | VaryR2 -> ConstructorUiKey "r2"
+
+        /// A short label (the selector button text).
+        member this.caption : ControlCaption =
+            match this with
+            | VaryWaveLength -> ControlCaption "Wavelength"
+            | VaryR1 -> ControlCaption "Rotation R1"
+            | VaryR2 -> ControlCaption "Incidence R2"
+
     /// What the experiment captures — a domain-free mirror of the domain `MeasurementMode`.
     type MeasurementChoice =
         | CaptureT
         | CaptureR
         | CaptureBoth
 
-    /// The stable code for a variable choice (drives its automation id and the host's mapping).
-    let variableCode (v : VariableChoice) : string =
-        match v with
-        | VaryWaveLength -> "wavelength"
-        | VaryR1 -> "r1"
-        | VaryR2 -> "r2"
+        /// The stable code (drives its automation id).
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | CaptureT -> ConstructorUiKey "t"
+            | CaptureR -> ConstructorUiKey "r"
+            | CaptureBoth -> ConstructorUiKey "both"
 
-    /// A short label for a variable choice (the selector button text).
-    let variableLabel (v : VariableChoice) : string =
-        match v with
-        | VaryWaveLength -> "Wavelength"
-        | VaryR1 -> "Rotation R1"
-        | VaryR2 -> "Incidence R2"
-
-    /// The stable code for a measurement choice (drives its automation id and the host's mapping).
-    let measurementCode (m : MeasurementChoice) : string =
-        match m with
-        | CaptureT -> "t"
-        | CaptureR -> "r"
-        | CaptureBoth -> "both"
-
-    /// A short label for a measurement choice (the selector button text).
-    let measurementLabel (m : MeasurementChoice) : string =
-        match m with
-        | CaptureT -> "Transmitted (T)"
-        | CaptureR -> "Reflected (R)"
-        | CaptureBoth -> "Both (T + R)"
+        /// A short label (the selector button text, unless a detector's offer labels it).
+        member this.caption : ControlCaption =
+            match this with
+            | CaptureT -> ControlCaption "Transmitted (T)"
+            | CaptureR -> ControlCaption "Reflected (R)"
+            | CaptureBoth -> ControlCaption "Both (T + R)"
 
     /// Spec 0046: one capture the scene's detectors offer — the branch choice and what its detector reads
     /// there (e.g. "Transmitted (T) — intensity", "Reflected (R) — Ψ, Δ (ellipsometer)").
     type MeasurementOffer =
         {
             choice : MeasurementChoice
-            label : string
+            label : ControlCaption
+        }
+
+    /// A wavelength in nanometres, as the bay shows and takes the run's source wavelength.
+    type BayNanometers =
+        | BayNanometers of float
+
+        member this.value = let (BayNanometers nm) = this in nm
+
+        /// The general (`%g`) form, as the field and the tunable-limits note show it.
+        member this.text : string = $"%g{this.value}"
+
+        member this.valueCaption : ControlCaption = ControlCaption this.text
+
+        /// A typed wavelength (invariant culture); `None` if malformed.
+        static member tryCreate (text : string) : BayNanometers option =
+            match System.Double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture) with
+            | true, v -> Some (BayNanometers v)
+            | _ -> None
+
+    /// A tunable source's limits.
+    type SourceWaveLengthLimits =
+        {
+            lowest : BayNanometers
+            highest : BayNanometers
         }
 
     /// Spec 0046: the source wavelength the run uses, shown below the range while the wavelength is NOT the
     /// varied quantity: a fixed line (read only), or a tunable source's setting (editable within its limits).
     type SourceWaveLengthState =
         | NoSourceWaveLength
-        | FixedSourceWaveLength of nm : float
-        | TunableSourceWaveLength of nm : float * minNm : float * maxNm : float
+        | FixedSourceWaveLength of setting : BayNanometers
+        | TunableSourceWaveLength of setting : BayNanometers * limits : SourceWaveLengthLimits
 
-    /// One drawn chart series: a display name (legend) and its (x, y) points in axis-display units.
+    /// One point of a drawn series, in axis-display units.
+    [<Softellect.Sys.NumericCarrier("an element of a chart series (R3, a sweep array): the plotted x and y of every point of the run, mapped to the screen in the inline chart's per-point loop")>]
+    type ChartPoint =
+        {
+            x : float
+            y : float
+        }
+
+        /// This angular point (x the angle in degrees, y the radius) on the cartesian plane: the pure
+        /// counterpart of ScottPlot's `PolarAxis.GetCoordinates` (spec 0027/030). The chart window draws
+        /// through ScottPlot's own, so its polar grid lines up with the plotted points.
+        member this.polarXY : ChartPoint =
+            let t = this.x * System.Math.PI / 180.0
+            { x = this.y * cos t; y = this.y * sin t }
+
+    /// One drawn chart series: a display name (legend) and its points.
     type ChartSeries =
         {
-            name : string
-            points : (float * float) list
+            name : ControlCaption
+            points : ChartPoint list
         }
+
+    /// Whether an added experiment is the one loaded in the editor (its row is highlighted).
+    type ExperimentRowFocus =
+        | LoadedInEditor
+        | NotLoadedInEditor
 
     /// One added experiment shown in the collection (the host flattens the domain `Experiment`s to these).
     type ExperimentRow =
         {
-            /// The experiment's stable id, rendered as a string (the host maps it back to `ExperimentId`).
-            id : string
+            /// The experiment's stable id (the host maps it back to `ExperimentId`).
+            id : ConstructorUiKey
             /// A human-readable one-line description of the experiment.
-            description : string
-            /// Whether this experiment is the one currently loaded in the editor (highlighted).
-            isEditing : bool
+            description : ControlCaption
+            focus : ExperimentRowFocus
+        }
+
+    /// Whether Add appends a new experiment or updates the one being edited (the button reads "Update").
+    type ExperimentEditorMode =
+        | EditorAddsNew
+        | EditorUpdatesExisting
+
+    /// One end of the variation range, in the varied quantity's display unit (nm or °).
+    type ExperimentRangeEnd =
+        | ExperimentRangeEnd of float
+
+        member this.value = let (ExperimentRangeEnd v) = this in v
+
+        member this.valueCaption : ControlCaption = ControlCaption $"%g{this.value}"
+
+        /// A typed range end (invariant culture); `None` if malformed.
+        static member tryCreate (text : string) : ExperimentRangeEnd option =
+            match System.Double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture) with
+            | true, v -> Some (ExperimentRangeEnd v)
+            | _ -> None
+
+    /// How many points the range is sampled at.
+    type ExperimentPointCount =
+        | ExperimentPointCount of int
+
+        member this.value = let (ExperimentPointCount n) = this in n
+
+        member this.valueCaption : ControlCaption = ControlCaption $"%d{this.value}"
+
+        /// A typed count (invariant culture); `None` if malformed or below two.
+        static member tryCreate (text : string) : ExperimentPointCount option =
+            match System.Int32.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
+            | true, v when v >= 2 -> Some (ExperimentPointCount v)
+            | _ -> None
+
+    /// An ellipsometric angle (Ψ or Δ) in degrees, as the single-point readout shows it.
+    type EllipsometricDegrees =
+        | EllipsometricDegrees of float
+
+        member this.value = let (EllipsometricDegrees d) = this in d
+
+        member this.text : string = $"%.2f{this.value}"
+
+    /// The ellipsometer's single-point reading.
+    type PsiDeltaReadout =
+        {
+            psi : EllipsometricDegrees
+            delta : EllipsometricDegrees
         }
 
     /// The bay's pure, serializable state.
-    type State =
+    type ExperimentControlsState =
         {
             /// The present elements, each offered as a candidate element-to-vary.
             candidates : SweepCandidate list
             /// The currently-chosen element-to-vary (by id), if any.
-            chosenId : string option
+            chosenId : ConstructorUiKey option
             /// The variables the CHOSEN element permits varying (host-supplied per its kind; empty when the
             /// element exposes nothing to vary).
             variableChoices : VariableChoice list
@@ -129,35 +218,34 @@ module ExperimentControls =
             /// Spec 0046: the source wavelength the run uses while the wavelength is not varied.
             sourceWaveLength : SourceWaveLengthState
             /// The variation range (in the variable's display unit) and its point count.
-            rangeMin : float
-            rangeMax : float
-            rangePoints : int
+            rangeMin : ExperimentRangeEnd
+            rangeMax : ExperimentRangeEnd
+            rangePoints : ExperimentPointCount
             /// The variable's display unit ("nm" / "°"), shown next to the range inputs.
-            rangeUnitLabel : string
+            rangeUnitLabel : ControlCaption
             /// Whether the draft can be committed (an element + a variable are chosen).
-            canAdd : bool
-            /// Whether the editor is UPDATING an existing experiment (the button reads "Update" not "Add").
-            isEditing : bool
+            addAvailability : ControlAvailability
+            editorMode : ExperimentEditorMode
             /// The added experiments (the persistent collection).
             collection : ExperimentRow list
-            /// The built-experiment readout text.
-            readout : string
-            /// `false` when there are no elements to vary.
-            enabled : bool
+            /// The built-experiment readout, once the draft is complete.
+            readout : ControlCaption option
+            /// `ControlWithheld` when there are no elements to vary.
+            availability : ControlAvailability
             /// The inline chart's series (one intensity series, two Ψ/Δ series, or two T/R series for a
             /// both-capture intensity run), drawn as polylines. Empty when there is no run to show.
             series : ChartSeries list
             /// Axis labels for the inline chart (and the pop-out window).
-            xLabel : string
-            yLabel : string
+            xLabel : ControlCaption
+            yLabel : ControlCaption
             /// A prose description of what the chart is about (the bound elements + what is varied).
-            description : string
-            /// The ellipsometer Ψ/Δ single-point readout (in DEGREES) for the RotateR1 kind; `None` for an
-            /// intensity detector or a sweep that produces series instead.
-            psiDelta : (float * float) option
+            description : ControlCaption
+            /// The ellipsometer Ψ/Δ single-point readout for the RotateR1 kind; `None` for an intensity
+            /// detector or a sweep that produces series instead.
+            psiDelta : PsiDeltaReadout option
         }
 
-    let empty : State =
+    let emptyExperimentControls : ExperimentControlsState =
         {
             candidates = []
             chosenId = None
@@ -166,48 +254,48 @@ module ExperimentControls =
             measurement = CaptureT
             measurementOffers = []
             sourceWaveLength = NoSourceWaveLength
-            rangeMin = 0.0
-            rangeMax = 360.0
-            rangePoints = 73
-            rangeUnitLabel = "°"
-            canAdd = false
-            isEditing = false
+            rangeMin = ExperimentRangeEnd 0.0
+            rangeMax = ExperimentRangeEnd 360.0
+            rangePoints = ExperimentPointCount 73
+            rangeUnitLabel = ControlCaption "°"
+            addAvailability = ControlWithheld
+            editorMode = EditorAddsNew
             collection = []
-            readout = ""
-            enabled = false
+            readout = None
+            availability = ControlWithheld
             series = []
-            xLabel = ""
-            yLabel = ""
-            description = ""
+            xLabel = ControlCaption ""
+            yLabel = ControlCaption ""
+            description = ControlCaption ""
             psiDelta = None
         }
 
     /// Behaviour injected by the host (the functional-proxy seam; tests pass stubs).
-    type Handlers =
+    type ExperimentControlsHandlers =
         {
             /// Pick which present element to vary (by its id).
-            chooseElement : string -> unit
+            chooseElement : ConstructorUiKey -> unit
             /// Pick the varied quantity.
             chooseVariable : VariableChoice -> unit
             /// Pick the capture mode.
             chooseMeasurement : MeasurementChoice -> unit
             /// Set the range minimum / maximum (in the variable's display unit) and the point count.
-            setRangeMin : float -> unit
-            setRangeMax : float -> unit
-            setRangePoints : int -> unit
-            /// Spec 0046: set a tunable source's wavelength (nm) for the run.
-            setSourceWaveLength : float -> unit
+            setRangeMin : ExperimentRangeEnd -> unit
+            setRangeMax : ExperimentRangeEnd -> unit
+            setRangePoints : ExperimentPointCount -> unit
+            /// Spec 0046: set a tunable source's wavelength for the run.
+            setSourceWaveLength : BayNanometers -> unit
             /// Confirm the draft: Add a new experiment, or Update the one being edited.
             addOrUpdate : unit -> unit
             /// Start a brand-new experiment (clears the editor).
             newExperiment : unit -> unit
             /// Load an experiment (by id) into the editor for editing.
-            editExperiment : string -> unit
+            editExperiment : ConstructorUiKey -> unit
             /// Remove an experiment (by id) from the collection.
-            removeExperiment : string -> unit
+            removeExperiment : ConstructorUiKey -> unit
             /// VIEW an experiment (by id): open the pop-out chart window for that collected experiment. The
             /// per-row "View" button and a double-click on the row both call this — the same testable action.
-            viewExperiment : string -> unit
+            viewExperiment : ConstructorUiKey -> unit
             /// Open the pop-out interactive chart window for the current DRAFT (double-click the inline chart).
             /// Spec 0046: the separate "Open chart window" button is gone — a collected experiment's "View"
             /// is the explicit way to open its chart.
@@ -215,174 +303,178 @@ module ExperimentControls =
         }
 
     // -- The button look, identical to the other bars' idle button (so they MATCH). --
-    let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = color 232 232 232
-    let private chosenBackground = color 150 185 235
-    let private editingBackground = color 255 224 160
-    let private idleBorder = color 120 120 120
+    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+    let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
+    let private editingBackground = Color.FromRgb(255uy, 224uy, 160uy)
+    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
 
-    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike `Control.Name`)
-    /// through FuncUI's attr builder, so a reused control in a reorderable list can take a new id. Every
-    /// generated or regenerable clickable box here carries one (never a write-once `Name`): Avalonia
-    /// forbids renaming a styled control, and an AutomationId survives control reuse. Tests query it via
-    /// `AutomationProperties.GetAutomationId` (the automation contract CLAUDE.md prescribes).
-    let private automationId (autoId : string) : IAttr<Border> =
-        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+    /// Whether a control of the bay is shown, or kept at its stable slot but hidden.
+    type private BayPresence =
+        | ShownInBay
+        | HiddenInBay
 
-    /// A clickable, styled Border, highlighted when it is the chosen option. `visible` toggles the
-    /// box in place (rather than adding / removing it from the list): a bounded selector whose MEMBERS
-    /// change (e.g. the variable set per element kind) keeps every box present at a STABLE slot and only
-    /// flips visibility, so the boxes' click subscriptions stay coherent across kind changes (and the
-    /// child-list length stays stable — see `rangeRow`). The id is a reuse-safe AutomationId.
-    let private optionBoxV (id : string) (label : string) (chosen : bool) (enabled : bool) (visible : bool) (onClick : unit -> unit) : IView =
+    /// A clickable, styled Border, highlighted by `background` when it is the chosen option. `presence`
+    /// toggles the box in place (rather than adding / removing it from the list): a bounded selector whose
+    /// MEMBERS change (e.g. the variable set per element kind) keeps every box present at a STABLE slot and
+    /// only flips visibility, so the boxes' click subscriptions stay coherent across kind changes (and the
+    /// child-list length stays stable — see `rangeRow`). A hidden box is never enabled. The id is a
+    /// reuse-safe AutomationId (never a write-once `Name`: Avalonia forbids renaming a styled control).
+    let private optionBoxV (id : ConstructorUiId) (label : ControlCaption) (background : Color) (bay : ControlAvailability) (presence : BayPresence) (onClick : unit -> unit) : IView =
+        let availability =
+            match bay, presence with
+            | ControlOffered, ShownInBay -> ControlOffered
+            | ControlOffered, HiddenInBay | ControlWithheld, _ -> ControlWithheld
         Border.create [
-            automationId id
-            Border.isVisible visible
-            Border.isEnabled enabled
-            Border.opacity (if enabled then 1.0 else 0.4)
-            Border.background (brush (if chosen then chosenBackground else idleBackground))
+            id.automationAttribute<Border> ()
+            Border.isVisible (match presence with ShownInBay -> true | HiddenInBay -> false)
+            Border.isEnabled availability.isEnabled
+            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
+            Border.background (brush background)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
             Border.cornerRadius (CornerRadius 3.0)
             Border.padding (Thickness(10.0, 5.0))
             Border.margin (Thickness(0.0, 0.0, 8.0, 6.0))
             Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
+            Border.child (TextBlock.create [ TextBlock.text label.value ])
             // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the
-            // chosen flag flips so a reused box can't keep a stale handler.
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (chosen, visible)))
+            // highlight or the presence flips so a reused box can't keep a stale handler.
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (background, presence)))
         ] :> IView
 
     /// A clickable option box for a REORDERABLE list (candidates, collection rows). Such a list shifts a
     /// control onto a different item's slot when an item is removed, so the box carries a reuse-safe
     /// AutomationId AND is KEYED by it (`View.withKey`) — a membership change recreates the box at the
     /// shifted slot instead of patching another item's styled control in place.
-    let private idOptionBox (autoId : string) (label : string) (chosen : bool) (enabled : bool) (onClick : unit -> unit) : IView =
+    let private idOptionBox (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
         let keyedBox =
             Border.create [
-                automationId autoId
-                Border.isEnabled enabled
-                Border.opacity (if enabled then 1.0 else 0.4)
-                Border.background (brush (if chosen then chosenBackground else idleBackground))
+                id.automationAttribute<Border> ()
+                Border.isEnabled availability.isEnabled
+                Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
+                Border.background (brush background)
                 Border.borderBrush (brush idleBorder)
                 Border.borderThickness 1.0
                 Border.cornerRadius (CornerRadius 3.0)
                 Border.padding (Thickness(10.0, 5.0))
                 Border.margin (Thickness(0.0, 0.0, 8.0, 6.0))
                 Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text label ])
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, chosen)))
+                Border.child (TextBlock.create [ TextBlock.text label.value ])
+                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, background)))
             ]
             // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
             // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
-            |> Avalonia.FuncUI.DSL.View.withKey autoId
+            |> Avalonia.FuncUI.DSL.View.withKey id.value
         keyedBox :> IView
 
-    /// A section heading (the numbered step labels).
-    let private heading (text : string) : IView =
-        TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0)) ] :> IView
+    /// A section heading (the numbered step labels), shown only while `presence` says so (stable slot).
+    let private heading (text : ControlCaption) (presence : BayPresence) : IView =
+        TextBlock.create [
+            TextBlock.text text.value
+            TextBlock.fontWeight FontWeight.SemiBold
+            TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0))
+            TextBlock.isVisible (match presence with ShownInBay -> true | HiddenInBay -> false)
+        ] :> IView
 
     // -- The inline result area: axes, major gridlines, multi-series polylines, and a description. --
-    let private chartWidth = 240.0
-    let private chartHeight = 120.0
-    let private chartMarginLeft = 30.0
-    let private chartMarginBottom = 18.0
-    let private chartMarginTop = 6.0
-    let private chartMarginRight = 8.0
+    let private chartFrame : Size = Size(240.0, 120.0)
+    // Room for the y label on the left and the x label below.
+    let private plotArea : Rect = Rect(chartFrame).Deflate(Thickness(30.0, 6.0, 8.0, 18.0))
     let private seriesColors =
-        [| color 30 90 200; color 220 120 20; color 40 150 70 |]
+        [| Color.FromRgb(30uy, 90uy, 200uy); Color.FromRgb(220uy, 120uy, 20uy); Color.FromRgb(40uy, 150uy, 70uy) |]
 
-    let private plotWidth = chartWidth - chartMarginLeft - chartMarginRight
-    let private plotHeight = chartHeight - chartMarginTop - chartMarginBottom
+    /// The data window the inline chart shows: the lowest and the highest corner over every series.
+    type private PlotWindow =
+        {
+            lowest : ChartPoint
+            highest : ChartPoint
+        }
 
-    /// The combined (x, y) data range over all series (falls back to a unit box when empty / degenerate).
-    let private dataRange (series : ChartSeries list) : (float * float) * (float * float) =
-        let pts = series |> List.collect (fun s -> s.points)
-        match pts with
-        | [] -> (0.0, 1.0), (0.0, 1.0)
-        | _ ->
-            let xs = pts |> List.map fst
-            let ys = pts |> List.map snd
-            let xlo, xhi = List.min xs, List.max xs
-            let ylo, yhi = List.min ys, List.max ys
-            let fixSpan lo hi = if hi - lo > 1e-12 then lo, hi else lo - 0.5, hi + 0.5
-            fixSpan xlo xhi, fixSpan ylo yhi
+        /// Map a data point to the inner plot rectangle (screen y-down).
+        member this.toScreen (p : ChartPoint) : Point =
+            let px = plotArea.X + plotArea.Width * (p.x - this.lowest.x) / (this.highest.x - this.lowest.x)
+            let py = plotArea.Y + plotArea.Height * (1.0 - (p.y - this.lowest.y) / (this.highest.y - this.lowest.y))
+            Point(px, py)
 
-    /// Map a data point to the inner plot rectangle (screen y-down).
-    let private toPlot ((xlo, xhi) : float * float) ((ylo, yhi) : float * float) (x : float) (y : float) : Point =
-        let px = chartMarginLeft + plotWidth * (x - xlo) / (xhi - xlo)
-        let py = chartMarginTop + plotHeight * (1.0 - (y - ylo) / (yhi - ylo))
-        Point(px, py)
+        /// The combined data range over all series (falls back to a unit box when empty / degenerate).
+        static member over (series : ChartSeries list) : PlotWindow =
+            let pts = series |> List.collect (fun s -> s.points)
+            match pts with
+            | [] -> { lowest = { x = 0.0; y = 0.0 }; highest = { x = 1.0; y = 1.0 } }
+            | _ ->
+                let fixSpan lo hi = if hi - lo > 1e-12 then lo, hi else lo - 0.5, hi + 0.5
+                let xlo, xhi = fixSpan (pts |> List.map (fun p -> p.x) |> List.min) (pts |> List.map (fun p -> p.x) |> List.max)
+                let ylo, yhi = fixSpan (pts |> List.map (fun p -> p.y) |> List.min) (pts |> List.map (fun p -> p.y) |> List.max)
+                { lowest = { x = xlo; y = ylo }; highest = { x = xhi; y = yhi } }
 
     /// The L-shaped axis lines (bottom + left).
     let private axisLines () : IView list =
-        let line (x1, y1) (x2, y2) : IView =
+        let line (a : Point) (b : Point) : IView =
             Line.create [
-                Line.startPoint (Point(x1, y1))
-                Line.endPoint (Point(x2, y2))
+                Line.startPoint a
+                Line.endPoint b
                 Line.stroke (brush idleBorder)
                 Line.strokeThickness 1.0
             ] :> IView
         [
-            line (chartMarginLeft, chartMarginTop) (chartMarginLeft, chartMarginTop + plotHeight)             // left
-            line (chartMarginLeft, chartMarginTop + plotHeight) (chartMarginLeft + plotWidth, chartMarginTop + plotHeight)  // bottom
+            line plotArea.TopLeft plotArea.BottomLeft
+            line plotArea.BottomLeft plotArea.BottomRight
         ]
 
     /// Light-grey major gridlines (4 across, 3 up) inside the plot rectangle.
     let private gridLines () : IView list =
-        let grid = brush (color 220 220 220)
+        let grid = brush (Color.FromRgb(220uy, 220uy, 220uy))
         let vert =
             [ 1 .. 4 ]
             |> List.map (fun k ->
-                let px = chartMarginLeft + plotWidth * float k / 5.0
+                let px = plotArea.X + plotArea.Width * float k / 5.0
                 Line.create [
-                    Line.startPoint (Point(px, chartMarginTop))
-                    Line.endPoint (Point(px, chartMarginTop + plotHeight))
+                    Line.startPoint (Point(px, plotArea.Y))
+                    Line.endPoint (Point(px, plotArea.Bottom))
                     Line.stroke grid
                     Line.strokeThickness 0.5
                 ] :> IView)
         let horiz =
             [ 1 .. 3 ]
             |> List.map (fun k ->
-                let py = chartMarginTop + plotHeight * float k / 4.0
+                let py = plotArea.Y + plotArea.Height * float k / 4.0
                 Line.create [
-                    Line.startPoint (Point(chartMarginLeft, py))
-                    Line.endPoint (Point(chartMarginLeft + plotWidth, py))
+                    Line.startPoint (Point(plotArea.X, py))
+                    Line.endPoint (Point(plotArea.Right, py))
                     Line.stroke grid
                     Line.strokeThickness 0.5
                 ] :> IView)
         vert @ horiz
 
     /// One series as a coloured polyline; the FIRST series carries the stable chart automation id.
-    let private seriesPolyline (xr : float * float) (yr : float * float) (index : int) (s : ChartSeries) : IView =
-        let pts = s.points |> List.map (fun (x, y) -> toPlot xr yr x y)
+    let private seriesPolyline (window : PlotWindow) (stroke : Color) (s : ChartSeries) : IView =
         Polyline.create [
-            Polyline.name UiIds.Experiment.chart
-            Polyline.points pts
-            Polyline.stroke (brush seriesColors.[index % seriesColors.Length])
+            Polyline.name ConstructorUiId.experimentChart.value
+            Polyline.points (s.points |> List.map window.toScreen)
+            Polyline.stroke (brush stroke)
             Polyline.strokeThickness 1.5
         ] :> IView
 
     /// The axis labels (x centred under the bottom axis, y at the top-left).
-    let private axisLabels (xLabel : string) (yLabel : string) : IView list =
+    let private axisLabels (xLabel : ControlCaption) (yLabel : ControlCaption) : IView list =
         [
-            (if xLabel = "" then None
+            (if xLabel.value = "" then None
              else
                  Some (
                      TextBlock.create [
-                         TextBlock.text xLabel
+                         TextBlock.text xLabel.value
                          TextBlock.fontSize 9.0
-                         TextBlock.left chartMarginLeft
-                         TextBlock.top (chartMarginTop + plotHeight + 4.0)
-                         TextBlock.width plotWidth
+                         TextBlock.left plotArea.X
+                         TextBlock.top (plotArea.Bottom + 4.0)
+                         TextBlock.width plotArea.Width
                          TextBlock.textAlignment TextAlignment.Center
                      ] :> IView))
-            (if yLabel = "" then None
+            (if yLabel.value = "" then None
              else
                  Some (
                      TextBlock.create [
-                         TextBlock.text yLabel
+                         TextBlock.text yLabel.value
                          TextBlock.fontSize 9.0
                          TextBlock.left 1.0
                          TextBlock.top 0.0
@@ -391,34 +483,34 @@ module ExperimentControls =
         |> List.choose id
 
     /// The inline chart Canvas (axes + gridlines + series polylines + axis labels).
-    let private chartCanvas (state : State) : IView =
-        let xr, yr = dataRange state.series
+    let private chartCanvas (state : ExperimentControlsState) : IView =
+        let window = PlotWindow.over state.series
         let children =
             gridLines ()
             @ axisLines ()
-            @ (state.series |> List.mapi (fun i s -> seriesPolyline xr yr i s))
+            @ (state.series |> List.mapi (fun i s -> seriesPolyline window seriesColors.[i % seriesColors.Length] s))
             @ axisLabels state.xLabel state.yLabel
         Canvas.create [
-            Canvas.width chartWidth
-            Canvas.height chartHeight
+            Canvas.width chartFrame.Width
+            Canvas.height chartFrame.Height
             Canvas.children children
         ] :> IView
 
     /// The result block under the editor: the ellipsometer single-point Ψ/Δ text when present, plus the
     /// inline chart (double-click opens the pop-out window) and the prose description.
-    let private resultBlock (state : State) (handlers : Handlers) : IView list =
+    let private resultBlock (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView list =
         // Both sub-blocks come and go with the state (variable membership in the bay's child list), so
         // every item is KEYED: when the Ψ/Δ readout toggles and the chart items shift a slot, FuncUI
         // recreates them instead of cross-patching one styled control into another.
         let psiBlock =
             match state.psiDelta with
-            | Some (psiDeg, deltaDeg) ->
+            | Some reading ->
                 let psiText =
                     TextBlock.create [
-                        TextBlock.name UiIds.Experiment.psiDelta
-                        TextBlock.text $"Ψ = %.2f{psiDeg}°   Δ = %.2f{deltaDeg}°"
+                        TextBlock.name ConstructorUiId.ellipsometerReadout.value
+                        TextBlock.text $"Ψ = {reading.psi.text}°   Δ = {reading.delta.text}°"
                     ]
-                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.Experiment.psiDelta
+                    |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.ellipsometerReadout.value
                 [ psiText :> IView ]
             | None -> []
         let chartBlock =
@@ -429,9 +521,9 @@ module ExperimentControls =
                     Border.create [
                         Border.borderBrush (brush idleBorder)
                         Border.borderThickness 1.0
-                        Border.background (brush (color 248 248 248))
-                        Border.width chartWidth
-                        Border.height chartHeight
+                        Border.background (brush (Color.FromRgb(248uy, 248uy, 248uy)))
+                        Border.width chartFrame.Width
+                        Border.height chartFrame.Height
                         Border.horizontalAlignment HorizontalAlignment.Left
                         Border.child (chartCanvas state)
                         // A double-click opens the draft's pop-out window — via Avalonia's built-in DoubleTapped
@@ -441,29 +533,29 @@ module ExperimentControls =
                     |> Avalonia.FuncUI.DSL.View.withKey "ExperimentChartBox"
                 let descriptionText =
                     TextBlock.create [
-                        TextBlock.name UiIds.Experiment.description
-                        TextBlock.text state.description
+                        TextBlock.name ConstructorUiId.experimentChartDescription.value
+                        TextBlock.text state.description.value
                         TextBlock.fontSize 11.0
                         TextBlock.textWrapping TextWrapping.Wrap
                         TextBlock.maxWidth 360.0
                     ]
-                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.Experiment.description
+                    |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.experimentChartDescription.value
                 [ chartBox :> IView; descriptionText :> IView ]
         psiBlock @ chartBlock
 
     /// The element-selection row (step 1 of the editor).
-    let private elementRow (state : State) (handlers : Handlers) : IView =
+    let private elementRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         WrapPanel.create [
-            WrapPanel.name UiIds.Experiment.candidates
+            WrapPanel.name ConstructorUiId.experimentCandidates.value
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children (
                 state.candidates
                 |> List.map (fun c ->
                     idOptionBox
-                        (UiIds.Experiment.candidate c.elementId)
+                        (ConstructorUiId.experimentCandidate c.elementId)
                         c.label
-                        (state.chosenId = Some c.elementId)
-                        state.enabled
+                        (if state.chosenId = Some c.elementId then chosenBackground else idleBackground)
+                        state.availability
                         (fun () -> handlers.chooseElement c.elementId)))
         ] :> IView
 
@@ -473,14 +565,14 @@ module ExperimentControls =
     /// The variable-selection row (step 2). ALL variable boxes are always present (stable names) and only
     /// the ones the chosen element permits are shown — see `optionBoxV` for why the set is toggled by
     /// visibility rather than by adding / removing boxes.
-    let private variableRow (state : State) (handlers : Handlers) : IView =
+    let private variableRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         let hasChoices = not (List.isEmpty state.variableChoices)
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.children [
                 TextBlock.create [
                     TextBlock.text "(this element has nothing to vary — pick a source, polarizer, or sample)"
-                    TextBlock.foreground (brush (color 120 120 120))
+                    TextBlock.foreground (brush (Color.FromRgb(120uy, 120uy, 120uy)))
                     TextBlock.isVisible (not hasChoices)
                 ]
                 WrapPanel.create [
@@ -489,13 +581,12 @@ module ExperimentControls =
                     WrapPanel.children (
                         allVariables
                         |> List.map (fun v ->
-                            let allowed = List.contains v state.variableChoices
                             optionBoxV
-                                (UiIds.Experiment.variable (variableCode v))
-                                (variableLabel v)
-                                (state.chosenVariable = Some v)
-                                (state.enabled && allowed)
-                                allowed
+                                (ConstructorUiId.experimentVariable v.uiKey)
+                                v.caption
+                                (if state.chosenVariable = Some v then chosenBackground else idleBackground)
+                                state.availability
+                                (if List.contains v state.variableChoices then ShownInBay else HiddenInBay)
                                 (fun () -> handlers.chooseVariable v)))
                 ]
             ]
@@ -505,30 +596,28 @@ module ExperimentControls =
     /// captures they offer are shown, each labelled by what its detector reads (`measurementOffers`); every
     /// box stays at its stable slot and only its visibility flips (the `variableRow` discipline); with none,
     /// a hint says why. The whole row appears only once something to vary is chosen.
-    let private measurementRow (state : State) (handlers : Handlers) : IView =
+    let private measurementRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         let hasVariable = match state.chosenVariable with Some _ -> true | None -> false
-        let offerOf (m : MeasurementChoice) : MeasurementOffer option = state.measurementOffers |> List.tryFind (fun o -> o.choice = m)
         let noneOffered = List.isEmpty state.measurementOffers
         let one (m : MeasurementChoice) : IView =
-            let offer = offerOf m
-            let offered = Option.isSome offer
+            let offer = state.measurementOffers |> List.tryFind (fun o -> o.choice = m)
             optionBoxV
-                (UiIds.Experiment.measurement (measurementCode m))
-                (offer |> Option.map (fun o -> o.label) |> Option.defaultValue (measurementLabel m))
-                (state.measurement = m)
-                (state.enabled && offered)
-                offered
+                (ConstructorUiId.experimentMeasurement m.uiKey)
+                (offer |> Option.map (fun o -> o.label) |> Option.defaultValue m.caption)
+                (if state.measurement = m then chosenBackground else idleBackground)
+                state.availability
+                (match offer with Some _ -> ShownInBay | None -> HiddenInBay)
                 (fun () -> handlers.chooseMeasurement m)
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.isVisible hasVariable
             StackPanel.children [
                 TextBlock.create [
-                    TextBlock.name UiIds.Experiment.noCapture
+                    TextBlock.name ConstructorUiId.experimentNoCapture.value
                     TextBlock.text "(no detector captures this element's light — put a detector on its transmitted beam or on its reflected ray: right-click an element for its rays)"
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.maxWidth 420.0
-                    TextBlock.foreground (brush (color 120 120 120))
+                    TextBlock.foreground (brush (Color.FromRgb(120uy, 120uy, 120uy)))
                     TextBlock.isVisible noneOffered
                 ]
                 WrapPanel.create [
@@ -539,24 +628,13 @@ module ExperimentControls =
             ]
         ] :> IView
 
-    /// Parse a plain decimal (invariant culture).
-    let private parseFloat (text : string) : float option =
-        match System.Double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture) with
-        | true, v -> Some v
-        | _ -> None
-
-    let private parseInt (text : string) : int option =
-        match System.Int32.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
-        | true, v when v >= 2 -> Some v
-        | _ -> None
-
     /// A numeric text field; commits on Enter / blur.
-    let private numberField (id : string) (text : string) (enabled : bool) (commit : obj -> unit) : IView =
+    let private numberField (id : ConstructorUiId) (text : ControlCaption) (availability : ControlAvailability) (commit : obj -> unit) : IView =
         TextBox.create [
-            TextBox.name id
+            TextBox.name id.value
             TextBox.width 70.0
-            TextBox.isEnabled enabled
-            TextBox.text text
+            TextBox.isEnabled availability.isEnabled
+            TextBox.text text.value
             TextBox.onKeyDown (fun e -> if e.Key = Key.Enter then commit e.Source)
             TextBox.onLostFocus (fun e -> commit e.Source)
         ] :> IView
@@ -564,106 +642,107 @@ module ExperimentControls =
     /// The range inputs (step 3b): min / max (in the variable's unit) and the point count. Always present
     /// (its visibility toggles with whether a variable is chosen) so the bay's child list length stays
     /// stable — a varying list length would shift named controls onto one another's slots (see `optionBoxV`).
-    let private rangeRow (state : State) (handlers : Handlers) : IView =
+    let private rangeRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         let hasVariable = match state.chosenVariable with Some _ -> true | None -> false
-        let commitFloat (onCommit : float -> unit) (src : obj) : unit =
+        let commitRangeEnd (onCommit : ExperimentRangeEnd -> unit) (src : obj) : unit =
             match src with
-            | :? TextBox as tb when not (isNull tb.Text) -> parseFloat tb.Text |> Option.iter onCommit
+            | :? TextBox as tb when not (isNull tb.Text) -> ExperimentRangeEnd.tryCreate tb.Text |> Option.iter onCommit
             | _ -> ()
-        let commitInt (onCommit : int -> unit) (src : obj) : unit =
+        let commitPointCount (onCommit : ExperimentPointCount -> unit) (src : obj) : unit =
             match src with
-            | :? TextBox as tb when not (isNull tb.Text) -> parseInt tb.Text |> Option.iter onCommit
+            | :? TextBox as tb when not (isNull tb.Text) -> ExperimentPointCount.tryCreate tb.Text |> Option.iter onCommit
             | _ -> ()
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 6.0
             StackPanel.isVisible hasVariable
             StackPanel.children [
-                TextBlock.create [ TextBlock.text $"min (%s{state.rangeUnitLabel}):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.Experiment.rangeMin $"%g{state.rangeMin}" state.enabled (commitFloat handlers.setRangeMin)
-                TextBlock.create [ TextBlock.text $"max (%s{state.rangeUnitLabel}):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.Experiment.rangeMax $"%g{state.rangeMax}" state.enabled (commitFloat handlers.setRangeMax)
+                TextBlock.create [ TextBlock.text $"min ({state.rangeUnitLabel.value}):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField ConstructorUiId.experimentRangeMin state.rangeMin.valueCaption state.availability (commitRangeEnd handlers.setRangeMin)
+                TextBlock.create [ TextBlock.text $"max ({state.rangeUnitLabel.value}):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField ConstructorUiId.experimentRangeMax state.rangeMax.valueCaption state.availability (commitRangeEnd handlers.setRangeMax)
                 TextBlock.create [ TextBlock.text "points:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.Experiment.rangePoints $"%d{state.rangePoints}" state.enabled (commitInt handlers.setRangePoints)
+                numberField ConstructorUiId.experimentRangePoints state.rangePoints.valueCaption state.availability (commitPointCount handlers.setRangePoints)
             ]
         ] :> IView
 
     /// Spec 0046: the source-wavelength row — always present (stable slots), shown while the run's source
     /// wavelength is not the varied quantity: a fixed line read only, a tunable source's setting editable
     /// (the host clamps it to the source's limits).
-    let private sourceWaveLengthRow (state : State) (handlers : Handlers) : IView =
-        let shown, editable, valueText, note =
+    let private sourceWaveLengthRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
+        let presence, availability, valueText, note =
             match state.sourceWaveLength with
-            | NoSourceWaveLength -> false, false, "", ""
-            | FixedSourceWaveLength nm -> true, false, $"%g{nm}", "nm (a fixed line)"
-            | TunableSourceWaveLength (nm, lo, hi) -> true, true, $"%g{nm}", $"nm (tunable %g{lo} … %g{hi} nm)"
+            | NoSourceWaveLength -> HiddenInBay, ControlWithheld, ControlCaption "", ControlCaption ""
+            | FixedSourceWaveLength setting -> ShownInBay, ControlWithheld, setting.valueCaption, ControlCaption "nm (a fixed line)"
+            | TunableSourceWaveLength (setting, limits) ->
+                ShownInBay, state.availability, setting.valueCaption, ControlCaption $"nm (tunable {limits.lowest.text} … {limits.highest.text} nm)"
         let commit (src : obj) : unit =
             match src with
-            | :? TextBox as tb when not (isNull tb.Text) -> parseFloat tb.Text |> Option.iter handlers.setSourceWaveLength
+            | :? TextBox as tb when not (isNull tb.Text) -> BayNanometers.tryCreate tb.Text |> Option.iter handlers.setSourceWaveLength
             | _ -> ()
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 6.0
-            StackPanel.isVisible shown
+            StackPanel.isVisible (match presence with ShownInBay -> true | HiddenInBay -> false)
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Source wavelength:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.Experiment.sourceWaveLength valueText (state.enabled && editable) commit
-                TextBlock.create [ TextBlock.name UiIds.Experiment.sourceWaveLengthNote; TextBlock.text note; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField ConstructorUiId.experimentSourceWaveLength valueText availability commit
+                TextBlock.create [ TextBlock.name ConstructorUiId.experimentSourceWaveLengthNote.value; TextBlock.text note.value; TextBlock.verticalAlignment VerticalAlignment.Center ]
             ]
         ] :> IView
 
-    /// A step heading shown only once something to vary is chosen (stable slot, visibility toggled).
-    let private stepHeading (text : string) (visible : bool) : IView =
-        TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0)); TextBlock.isVisible visible ] :> IView
-
     // -- A plain action button (Add / Update / New). Regenerable (the Add label swaps to "Update
     // experiment" in place), so it carries a reuse-safe AutomationId, never a write-once `Name`. --
-    let private actionButton (id : string) (label : string) (accent : bool) (enabled : bool) (onClick : unit -> unit) : IView =
+    let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
         Border.create [
-            automationId id
-            Border.isEnabled enabled
-            Border.opacity (if enabled then 1.0 else 0.4)
-            Border.background (brush (if accent then chosenBackground else idleBackground))
+            id.automationAttribute<Border> ()
+            Border.isEnabled availability.isEnabled
+            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
+            Border.background (brush background)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
             Border.cornerRadius (CornerRadius 3.0)
             Border.padding (Thickness(12.0, 5.0))
             Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
             Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label, enabled)))
+            Border.child (TextBlock.create [ TextBlock.text label.value ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label, availability)))
         ] :> IView
 
     /// The Add / Update + New action row.
-    let private actionRow (state : State) (handlers : Handlers) : IView =
+    let private actionRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
+        let addCaption =
+            match state.editorMode with
+            | EditorUpdatesExisting -> ControlCaption "Update experiment"
+            | EditorAddsNew -> ControlCaption "Add experiment"
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [
-                actionButton UiIds.Experiment.addButton (if state.isEditing then "Update experiment" else "Add experiment") true state.canAdd handlers.addOrUpdate
-                actionButton UiIds.Experiment.newButton "New" false state.enabled handlers.newExperiment
+                actionButton ConstructorUiId.experimentAddButton addCaption chosenBackground state.addAvailability handlers.addOrUpdate
+                actionButton ConstructorUiId.experimentNewButton (ControlCaption "New") idleBackground state.availability handlers.newExperiment
             ]
         ] :> IView
 
     // A small row action button (View / Remove), styled to stand out (accent) or plain.
-    let private rowActionButton (autoId : string) (label : string) (accent : bool) (onClick : unit -> unit) : IView =
+    let private rowActionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
         Border.create [
-            automationId autoId
-            Border.background (brush (if accent then chosenBackground else idleBackground))
+            id.automationAttribute<Border> ()
+            Border.background (brush background)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
             Border.cornerRadius (CornerRadius 3.0)
             Border.padding (Thickness(10.0, 4.0))
             Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
             Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, label)))
+            Border.child (TextBlock.create [ TextBlock.text label.value ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label)))
         ] :> IView
 
     /// One collection row: the experiment description (single-click Edit, highlighted while editing;
     /// double-click = View), then a "View" action (open the chart window for this experiment) and a Remove.
     /// The row is KEYED by its experiment id, so removing an item recreates the rows that shift slots
     /// instead of patching one row's controls into another's.
-    let private collectionRow (handlers : Handlers) (r : ExperimentRow) : IView =
+    let private collectionRow (handlers : ExperimentControlsHandlers) (r : ExperimentRow) : IView =
         let row =
             StackPanel.create [
                 StackPanel.orientation Orientation.Horizontal
@@ -671,36 +750,36 @@ module ExperimentControls =
                 StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
                 StackPanel.children [
                     Border.create [
-                        automationId (UiIds.Experiment.editButton r.id)
-                        Border.background (brush (if r.isEditing then editingBackground else idleBackground))
+                        (ConstructorUiId.experimentEditButton r.id).automationAttribute<Border> ()
+                        Border.background (brush (match r.focus with LoadedInEditor -> editingBackground | NotLoadedInEditor -> idleBackground))
                         Border.borderBrush (brush idleBorder)
                         Border.borderThickness 1.0
                         Border.cornerRadius (CornerRadius 3.0)
                         Border.padding (Thickness(10.0, 4.0))
                         Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
                         Border.maxWidth 300.0
-                        Border.child (TextBlock.create [ TextBlock.text r.description; TextBlock.textWrapping TextWrapping.Wrap ])
+                        Border.child (TextBlock.create [ TextBlock.text r.description.value; TextBlock.textWrapping TextWrapping.Wrap ])
                         // Single-click edits; double-click opens the chart window for this experiment (the same
                         // "View" action as the button beside it — Avalonia's DoubleTapped gesture).
-                        Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.isEditing)))
-                        Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id))
+                        Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.focus)))
+                        Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id.value))
                     ] :> IView
-                    rowActionButton (UiIds.Experiment.viewButton r.id) "View ↗" true (fun () -> handlers.viewExperiment r.id)
-                    rowActionButton (UiIds.Experiment.removeButton r.id) "Remove" false (fun () -> handlers.removeExperiment r.id)
+                    rowActionButton (ConstructorUiId.experimentViewButton r.id) (ControlCaption "View ↗") chosenBackground (fun () -> handlers.viewExperiment r.id)
+                    rowActionButton (ConstructorUiId.experimentRemoveButton r.id) (ControlCaption "Remove") idleBackground (fun () -> handlers.removeExperiment r.id)
                 ]
             ]
-            |> Avalonia.FuncUI.DSL.View.withKey r.id
+            |> Avalonia.FuncUI.DSL.View.withKey r.id.value
         row :> IView
 
     /// The collection block: a heading and the added-experiment rows (or a hint when empty).
-    let private collectionBlock (state : State) (handlers : Handlers) : IView list =
+    let private collectionBlock (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView list =
         [
-            heading "Experiments:"
+            heading (ControlCaption "Experiments:") ShownInBay
             (match state.collection with
-             | [] -> TextBlock.create [ TextBlock.text "(none added yet — build one above and click Add)"; TextBlock.foreground (brush (color 120 120 120)) ] :> IView
+             | [] -> TextBlock.create [ TextBlock.text "(none added yet — build one above and click Add)"; TextBlock.foreground (brush (Color.FromRgb(120uy, 120uy, 120uy))) ] :> IView
              | rows ->
                  StackPanel.create [
-                     StackPanel.name UiIds.Experiment.collection
+                     StackPanel.name ConstructorUiId.experimentCollection.value
                      StackPanel.orientation Orientation.Vertical
                      StackPanel.children (rows |> List.map (collectionRow handlers))
                  ] :> IView)
@@ -708,24 +787,26 @@ module ExperimentControls =
 
     /// The Experiments bay — a multi-step editor (choose element → variable → capture → range → Add) and
     /// the persistent collection of added experiments, with the inline chart of the current editor's run.
-    let view (state : State) (handlers : Handlers) : IView =
+    let experimentControlsView (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         let readoutText =
-            if state.readout = "" then "Experiment: (choose an element, a variable to vary, and click Add)"
-            else state.readout
-        let hasVariable = match state.chosenVariable with Some _ -> true | None -> false
+            match state.readout with
+            | Some readout -> readout.value
+            | None -> "Experiment: (choose an element, a variable to vary, and click Add)"
+        // The later steps appear once something to vary is chosen (stable slots, visibility toggled).
+        let laterSteps = match state.chosenVariable with Some _ -> ShownInBay | None -> HiddenInBay
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    TextBlock.create [ TextBlock.name UiIds.Experiment.readout; TextBlock.text readoutText ] :> IView
-                    heading "1. Element to vary:"
+                    TextBlock.create [ TextBlock.name ConstructorUiId.experimentReadout.value; TextBlock.text readoutText ] :> IView
+                    heading (ControlCaption "1. Element to vary:") ShownInBay
                     elementRow state handlers
-                    heading "2. Vary:"
+                    heading (ControlCaption "2. Vary:") ShownInBay
                     variableRow state handlers
-                    stepHeading "3. Capture (the detectors decide what):" hasVariable
+                    heading (ControlCaption "3. Capture (the detectors decide what):") laterSteps
                     measurementRow state handlers
-                    stepHeading "4. Range:" hasVariable
+                    heading (ControlCaption "4. Range:") laterSteps
                 ]
                 @ [ rangeRow state handlers; sourceWaveLengthRow state handlers ]
                 @ [ actionRow state handlers ]

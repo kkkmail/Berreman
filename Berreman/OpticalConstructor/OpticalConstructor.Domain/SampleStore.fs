@@ -19,7 +19,7 @@ module SampleStore =
     /// sample frozen at that version. The store keeps a per-`SampleId` history of these, ascending
     /// by version number and non-empty; the LATEST (highest-numbered) version is the one the library
     /// edits and the offers surface, older versions are view-only resolution targets.
-    type private VersionRecord =
+    type private SampleVersionRecord =
         {
             versionNo : VersionNumber
             lifecycle : EntryLifecycle
@@ -34,8 +34,8 @@ module SampleStore =
     /// it carries no function case, so structural equality is direct.
     type private SampleMetadata =
         {
-            name : string
-            description : string
+            name : EntryName
+            description : EntryDescription
             substrate : SubstrateKind
         }
 
@@ -61,10 +61,10 @@ module SampleStore =
             let store = ref seeded
 
             let unknown (id : SampleId) : SampleError =
-                UnknownSampleId $"unknown sample id '%s{string id.value}'"
+                UnknownSampleIdErr $"unknown sample id '%s{string id.value}'"
 
             /// The latest (highest-numbered) version of a non-empty history.
-            let latestOf (versions : VersionRecord list) : VersionRecord =
+            let latestOf (versions : SampleVersionRecord list) : SampleVersionRecord =
                 versions |> List.maxBy (fun v -> v.versionNo.value)
 
             /// The payload the shared rule sees: physics = the structure tree, metadata = the display
@@ -110,7 +110,7 @@ module SampleStore =
                     fun q ->
                         let byText =
                             currentSamples ActiveOnly
-                            |> List.filter (fun s -> s.name.IndexOf(q.text, StringComparison.OrdinalIgnoreCase) >= 0)
+                            |> List.filter (fun s -> s.name.value.IndexOf(q.text.value, StringComparison.OrdinalIgnoreCase) >= 0)
                         match q.substrate with
                         | Some kind -> Ok (byText |> List.filter (fun s -> s.substrate = kind))
                         | None -> Ok byText
@@ -128,7 +128,7 @@ module SampleStore =
 
                 saveSample =
                     fun sample ->
-                        validateSample sample
+                        sample.validate
                         |> Result.bind (fun () ->
                             match store.Value |> Map.tryFind sample.id with
                             | None ->
@@ -140,7 +140,7 @@ module SampleStore =
                             | Some versions ->
                                 let latest = latestOf versions
                                 let usage = usageAt sample.id latest.versionNo
-                                match decideVersioning (=) (=) (payloadOf latest.sample) (payloadOf sample) usage with
+                                match decideVersioning (payloadOf latest.sample) (payloadOf sample) usage with
                                 | KeepCurrent -> Ok ()
                                 | MutateInPlace ->
                                     let updated =
@@ -176,7 +176,7 @@ module SampleStore =
                                 Ok ()
                             | _ ->
                                 let versionList = usedVersions |> List.map (fun n -> $"v%d{n}") |> String.concat ", "
-                                Error (SampleVersionInUse $"sample '%s{(latestOf versions).sample.name}' ('%s{string id.value}') has %d{List.length usedVersions} version(s) bound by a live experiment: %s{versionList}")
+                                Error (SampleVersionInUseErr $"sample '%s{(latestOf versions).sample.name.value}' ('%s{string id.value}') has %d{List.length usedVersions} version(s) bound by a live experiment: %s{versionList}")
                         | None -> Error (unknown id)
             }
 
@@ -184,7 +184,7 @@ module SampleStore =
         /// composition root keeps calling this unchanged): seeds `SeedSamples.all` (the SampleItem
         /// entries of `seedEntries`) as version 1 active.
         static member createInMemory (versionsInUse : VersionsInUse) : SampleProxy =
-            SampleProxy.createInMemoryStore SeedSamples.all versionsInUse
+            SampleProxy.createInMemoryStore SeedSamples.allSeedSamples versionsInUse
 
         /// The EMPTY versioned in-memory sample store (spec 0038 step 042): a BLANK store the seeding
         /// pipeline (`SeedingProxy`) fills through `saveSample`. Same versioning/remove behaviour as

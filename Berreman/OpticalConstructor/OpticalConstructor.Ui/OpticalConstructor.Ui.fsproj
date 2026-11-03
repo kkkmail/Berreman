@@ -24,6 +24,7 @@
          block after UserEnvironment.fs below). -->
     <ItemGroup>
         <Compile Include="Ui.fs" />
+        <Compile Include="ConstructorUiIdOfDomain.fs" />
         <Compile Include="MaterialPreview.fs" />
         <Compile Include="StackEditor.fs" />
         <Compile Include="Sources\SourceEditorView.fs" />

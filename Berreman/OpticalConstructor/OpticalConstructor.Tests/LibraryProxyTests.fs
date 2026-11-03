@@ -17,7 +17,7 @@ module LibraryProxyTests =
 
     [<Fact>]
     let ``ElementId round-trips through its value accessor`` () =
-        let id = Library.elementId "abc-123"
+        let id = Library.ElementId "abc-123"
         Assert.Equal("abc-123", id.value)
         Assert.Equal<ElementId>(ElementId "abc-123", id)
 
@@ -61,10 +61,10 @@ module LibraryProxyTests =
 
     [<Fact>]
     let ``tryGetEntry hits a known id and misses an unknown id`` () =
-        match proxy.tryGetEntry "src-600" with
-        | Ok (Some (SourceItem s)) -> Assert.Equal("src-600", s.id)
+        match proxy.tryGetEntry (ElementValueId "src-600") with
+        | Ok (Some (SourceItem s)) -> Assert.Equal("src-600", s.id.value)
         | other -> Assert.Fail($"expected the 600 nm source, got %A{other}")
-        match proxy.tryGetEntry "no-such-id" with
+        match proxy.tryGetEntry (ElementValueId "no-such-id") with
         | Ok None -> ()
         | other -> Assert.Fail($"expected Ok None, got %A{other}")
 
@@ -73,7 +73,7 @@ module LibraryProxyTests =
         match proxy.libraryTrees () with
         | Ok trees ->
             Assert.NotEmpty trees
-            let rec leafIds (node : LibraryTreeNode) : string list =
+            let rec leafIds (node : LibraryTreeNode) : ElementValueId list =
                 match node with
                 | Leaf (_, id) -> [ id ]
                 | Group (_, children) -> children |> List.collect leafIds
@@ -82,30 +82,30 @@ module LibraryProxyTests =
             for id in ids do
                 match proxy.tryGetEntry id with
                 | Ok (Some _) -> ()
-                | other -> Assert.Fail($"tree leaf %s{id} did not resolve: %A{other}")
+                | other -> Assert.Fail($"tree leaf %s{id.value} did not resolve: %A{other}")
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
     let ``forKinds maps each entry case to its valid catalogue kinds`` () =
-        let lp = PolarizerItem { id = "x"; name = "lp"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = UserManaged }
-        let cpL = PolarizerItem { id = "y"; name = "cpL"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = UserManaged }
-        let cpR = PolarizerItem { id = "z"; name = "cpR"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = UserManaged }
-        let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm>; tuning = FixedLine; protection = UserManaged }
-        let det = DetectorItem { id = "d"; name = "d"; kind = Intensity; protection = UserManaged }
+        let lp = PolarizerItem { id = ElementValueId "x"; name = MaterialLibrary.EntryName "lp"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = UserManaged }
+        let cpL = PolarizerItem { id = ElementValueId "y"; name = MaterialLibrary.EntryName "cpL"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = UserManaged }
+        let cpR = PolarizerItem { id = ElementValueId "z"; name = MaterialLibrary.EntryName "cpR"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = UserManaged }
+        let src = SourceItem { id = ElementValueId "s"; name = MaterialLibrary.EntryName "s"; waveLength = WaveLength.nm 500.0<nm>; tuning = FixedLine; protection = UserManaged }
+        let det = DetectorItem { id = ElementValueId "d"; name = MaterialLibrary.EntryName "d"; kind = Intensity; protection = UserManaged }
         let smp =
             SampleItem
                 {
                     id = SampleId.create ()
-                    name = "p"
+                    name = MaterialLibrary.EntryName "p"
                     structure =
                         {
                             films = []
                             substrate = Some { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm>; orientation = PrimaryAxes }
                             lower = None
                         }
-                    substrate = Plate
-                    description = "a glass plate"
-                    supportedEmission = defaultSupportedEmission Plate
+                    substrate = ThickPlate
+                    description = MaterialLibrary.EntryDescription "a glass plate"
+                    supportedEmission = ThickPlate.defaultSupportedEmission
                 }
         Assert.Equal<CatalogueKind list>([ LinearPolarizer ], lp.forKinds)
         Assert.Equal<CatalogueKind list>([ CircularPolarizer ], cpL.forKinds)
@@ -126,16 +126,16 @@ module LibraryProxyTests =
             seedEntries
             |> List.choose (function SampleItem s -> Some (s, (SampleItem s).fullDescription) | _ -> None)
         Assert.NotEmpty sampleDescriptions
-        Assert.All(sampleDescriptions, fun (s, full) -> Assert.Equal(s.description, full))
+        Assert.All(sampleDescriptions, fun (s, full) -> Assert.Equal(s.description.value, full))
 
     [<Fact>]
     let ``a non-Sample entry's fullDescription is prose built from its kind`` () =
         // The detectors / polarizers / source describe what they DO (so a bare name is never the whole story).
-        let det = DetectorItem { id = "d"; name = "d"; kind = Ellipsometer; protection = UserManaged }
+        let det = DetectorItem { id = ElementValueId "d"; name = MaterialLibrary.EntryName "d"; kind = Ellipsometer; protection = UserManaged }
         Assert.Contains("Ψ", det.fullDescription)
-        let lp = PolarizerItem { id = "x"; name = "lp"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = UserManaged }
+        let lp = PolarizerItem { id = ElementValueId "x"; name = MaterialLibrary.EntryName "lp"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = UserManaged }
         Assert.Contains("linear", lp.fullDescription)
-        let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm>; tuning = FixedLine; protection = UserManaged }
+        let src = SourceItem { id = ElementValueId "s"; name = MaterialLibrary.EntryName "s"; waveLength = WaveLength.nm 500.0<nm>; tuning = FixedLine; protection = UserManaged }
         Assert.Contains("500", src.fullDescription)
 
     [<Fact>]
@@ -144,11 +144,11 @@ module LibraryProxyTests =
         // order, before/after any single layers — the same `List.replicate count cell |> List.concat`
         // shape as `RepeatBuilder.expand`.
         let a = { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.glass152; thickness = Thickness.nm 100.0<nm>; orientation = PrimaryAxes }
-        let b = { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.vacuum; thickness = Thickness.nm 150.0<nm>; orientation = PrimaryAxes }
+        let b = { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.vacuumMaterial; thickness = Thickness.nm 150.0<nm>; orientation = PrimaryAxes }
         let c = { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.silicon; thickness = Thickness.nm 25.0<nm>; orientation = PrimaryAxes }
         let structure =
             {
-                films = [ Repeated { cell = [ a; b ]; count = 3 }; SingleLayer c ]
+                films = [ Repeated { cell = [ a; b ]; count = PeriodCount 3 }; SingleLayer c ]
                 substrate = None
                 lower = None
             }
@@ -161,13 +161,13 @@ module LibraryProxyTests =
         // Spec 0033 step 002 acceptance: `Sample.id` is a Guid-backed `SampleId`; it crosses the
         // Selector valueId seam as its Guid STRING form (`entryId`) and `tryGetEntry` resolves that
         // string back to the SAME sample.
-        Assert.NotEmpty SeedSamples.all
-        for s in SeedSamples.all do
+        Assert.NotEmpty SeedSamples.allSeedSamples
+        for s in SeedSamples.allSeedSamples do
             let entryId = (SampleItem s).entryId
-            Assert.Equal(string s.id.value, entryId)
+            Assert.Equal(string s.id.value, entryId.value)
             match proxy.tryGetEntry entryId with
             | Ok (Some (SampleItem found)) -> Assert.Equal<SampleId>(s.id, found.id)
-            | other -> Assert.Fail($"sample %s{s.name} did not round-trip by entry id %s{entryId}: %A{other}")
+            | other -> Assert.Fail($"sample %s{s.name.value} did not round-trip by entry id %s{entryId.value}: %A{other}")
 
     [<Fact>]
     let ``a MINTED SampleId round-trips create-store-lookup through a proxy of the same shape`` () =
@@ -175,16 +175,16 @@ module LibraryProxyTests =
         let sample =
             {
                 id = SampleId.create ()
-                name = "Round-trip sample"
+                name = MaterialLibrary.EntryName "Round-trip sample"
                 structure =
                     {
                         films = []
                         substrate = Some { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm>; orientation = PrimaryAxes }
                         lower = None
                     }
-                substrate = Plate
-                description = "A minted-id glass plate."
-                supportedEmission = defaultSupportedEmission Plate
+                substrate = ThickPlate
+                description = MaterialLibrary.EntryDescription "A minted-id glass plate."
+                supportedEmission = ThickPlate.defaultSupportedEmission
             }
         let entries = [ SampleItem sample ]
         let stub : LibraryProxy =
@@ -201,22 +201,22 @@ module LibraryProxyTests =
     let ``the seeded sample ids are distinct, non-empty Guids`` () =
         // The seeds parse fixed literal Guids (never Guid.NewGuid), so every id is distinct and no
         // seed carries the empty Guid (a Guid.Parse typo would surface here).
-        let ids = SeedSamples.all |> List.map (fun s -> s.id)
+        let ids = SeedSamples.allSeedSamples |> List.map (fun s -> s.id)
         Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
-        Assert.All(SeedSamples.all, fun s -> Assert.NotEqual(System.Guid.Empty, s.id.value))
+        Assert.All(SeedSamples.allSeedSamples, fun s -> Assert.NotEqual(System.Guid.Empty, s.id.value))
 
     [<Fact>]
     let ``a STUB proxy of the same shape drives the same kind-constraint logic`` () =
         // The functional-proxy seam: a test substitutes in-memory stub functions for the proxy fields.
-        let onlyDetector = DetectorItem { id = "stub-det"; name = "Stub detector"; kind = Intensity; protection = UserManaged }
+        let onlyDetector = DetectorItem { id = ElementValueId "stub-det"; name = MaterialLibrary.EntryName "Stub detector"; kind = Intensity; protection = UserManaged }
         let stub : LibraryProxy =
             {
                 entriesForKind = fun kind -> if kind = Detector then Ok [ onlyDetector ] else Ok []
                 libraryTrees = fun () -> Ok []
-                tryGetEntry = fun id -> Ok (if id = "stub-det" then Some onlyDetector else None)
+                tryGetEntry = fun id -> Ok (if id = ElementValueId "stub-det" then Some onlyDetector else None)
             }
         Assert.Equal<LibraryEntry list>([ onlyDetector ], (match stub.entriesForKind Detector with Ok e -> e | Error _ -> []))
         Assert.Equal<LibraryEntry list>([], (match stub.entriesForKind LinearPolarizer with Ok e -> e | Error _ -> [ onlyDetector ]))
-        match stub.tryGetEntry "stub-det" with
-        | Ok (Some (DetectorItem d)) -> Assert.Equal("stub-det", d.id)
+        match stub.tryGetEntry (ElementValueId "stub-det") with
+        | Ok (Some (DetectorItem d)) -> Assert.Equal("stub-det", d.id.value)
         | other -> Assert.Fail($"%A{other}")

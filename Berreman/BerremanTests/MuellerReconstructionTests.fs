@@ -2,11 +2,14 @@ namespace BerremanTests
 
 open System.IO
 open System.IO.Compression                             // ZipArchive — used ONLY to build a throwaway archive for a failure-path test
+open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Storage                        // MuellerDataStore — the REAL parseMuellerCsv / createArchiveBacked
+open OpticalConstructor.Storage.MuellerDataStore       // DataFileText.parseMuellerCsv
 open Xunit
 open BerremanTests.MatrixComparison
 
@@ -46,29 +49,30 @@ type MuellerReconstructionTests() =
     // the transpose guard. Bound here, ahead of the members: in an F# class type every `let` binding must
     // precede the first member (FS0960), so this fixture cannot sit down among the [<Fact>] members below.
     let asymmetricM =
-        Propagation.muellerOfRows
+        RealMatrix4x4.create
             [ [ 1.0; 0.2; -0.3; 0.4 ]
               [ 0.5; 0.6; 0.7; -0.8 ]
               [ -0.9; 1.0; 0.1; 0.2 ]
               [ 0.3; -0.4; 0.5; 0.6 ] ]
+        |> MuellerMatrix
 
     // Spec 0042 (003, ADD_CONTRACT SVC_XDUO_0002) — the least-squares SOLVE seam. The MOCK and its canned
     // solution are bound here, ahead of the members (FS0960: in a class type every `let` binding precedes the
     // first member). `makeMockSolver` is an inline `MuellerSolverProxy` stub whose `solveLinearLeastSquares`
     // keys off the design HEIGHT (16 = the Mueller-vec unknown count): a full-height design returns the canned
-    // `LeastSquaresSolution`; fewer rows than unknowns returns `Error (RankDeficient rows)`; an empty design
-    // returns `Error (SingularDesign _)`. This exercises the exact signature and BOTH typed error cases with
+    // `LeastSquaresSolution`; fewer rows than unknowns returns `Error (RankDeficientErr rows)`; an empty design
+    // returns `Error (SingularDesignErr _)`. This exercises the exact signature and BOTH typed error cases with
     // no real linear algebra — the real MathNet-SVD proxy (`createMathNetSvd ()`) lands in step 004.
     let cannedSolution : LeastSquaresSolution =
-        { solution = Array.init 16 (fun k -> 0.1 * float k); rank = 16; rmse = 0.0 }
+        { solution = RealVector.create (Array.init 16 (fun k -> 0.1 * float k)); rank = MatrixRank 16; rmse = ResidualRmse 0.0 }
 
     let makeMockSolver () : MuellerSolverProxy =
         {
             solveLinearLeastSquares =
-                fun (design : float[][]) (_rhs : float[]) ->
-                    match design with
-                    | [||] -> Error (SingularDesign "the mock rejects an empty design matrix")
-                    | rows when rows.Length < 16 -> Error (RankDeficient rows.Length)
+                fun (system : LeastSquaresSystem) ->
+                    match system.design with
+                    | [||] -> Error (SingularDesignErr "the mock rejects an empty design matrix")
+                    | rows when rows.Length < 16 -> Error (RankDeficientErr (MatrixRank rows.Length))
                     | _ -> Ok cannedSolution
         }
 
@@ -79,14 +83,14 @@ type MuellerReconstructionTests() =
     //
     // `makeMockData` is an inline `MuellerDataProxy` stub whose `tryLoadDataSet` keys the canned
     // `MuellerRawRow` list off the `MuellerDataSet` case itself: a seeded data set returns its rows; an
-    // unseeded one returns `Error (EmptyFile _)`, never a throw. Keying on the DU rather than on a path
+    // unseeded one returns `Error (EmptyFileErr _)`, never a throw. Keying on the DU rather than on a path
     // string is the whole point of the re-key — the mock, like the real store, is asked WHICH data set is
     // wanted and is never told where anything lives. This exercises the exact signature and the typed-error
     // case with no filesystem IO at all. The `capturedAt` timestamps are fixed literals (deterministic across
     // runs — no ambient clock read).
     let cannedRows : MuellerRawRow list =
-        [ { experiment = "E1"; captureIndex = 0; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero); description = Angle.degree 0.0; avgTotal = 0.42 }
-          { experiment = "E1"; captureIndex = 1; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 5, 0, System.TimeSpan.Zero); description = Angle.degree 45.0; avgTotal = 0.31 } ]
+        [ { experiment = MuellerExperimentLabel "E1"; captureIndex = CaptureIndex 0; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero); description = Angle.degree 0.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 0.42 }
+          { experiment = MuellerExperimentLabel "E1"; captureIndex = CaptureIndex 1; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 5, 0, System.TimeSpan.Zero); description = Angle.degree 45.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 0.31 } ]
 
     let makeMockData (rowsByDataSet : Map<MuellerDataSet, MuellerRawRow list>) : MuellerDataProxy =
         {
@@ -94,7 +98,7 @@ type MuellerReconstructionTests() =
                 fun (dataSet : MuellerDataSet) ->
                     match Map.tryFind dataSet rowsByDataSet with
                     | Some rows -> Ok rows
-                    | None -> Error (EmptyFile $"the mock has no canned capture rows for data set %A{dataSet}")
+                    | None -> Error (EmptyFileErr $"the mock has no canned capture rows for data set %A{dataSet}")
         }
 
     let seededDataMock () : MuellerDataProxy =
@@ -107,25 +111,27 @@ type MuellerReconstructionTests() =
     // required columns BY NAME is exactly what is under test. The `captured_at` timestamps carry an explicit
     // UTC offset — deterministic across runs, no ambient-clock or local-timezone dependence. Bound here, ahead
     // of the members (FS0960: in a class type every `let` binding precedes the first member).
-    let muellerCsvFixture : string =
-        string (char 0xFEFF)
-        + "experiment,capture_index,captured_at,description,iso,exposure_ns,avg_R,avg_G,avg_B,avg_total\n"
-        + "CPL-(AIR#0)-CPL,0,2026-07-15T12:00:00+00:00,0,100,5000,10.0,11.0,12.0,869.5\n"
-        + "CPL-(AIR#0)-CPL,1,2026-07-15T12:05:00+00:00,45,100,5000,20.0,21.0,22.0,912.25\n"
+    let muellerCsvFixture : DataFileText =
+        DataFileText (
+            string (char 0xFEFF)
+            + "experiment,capture_index,captured_at,description,iso,exposure_ns,avg_R,avg_G,avg_B,avg_total\n"
+            + "CPL-(AIR#0)-CPL,0,2026-07-15T12:00:00+00:00,0,100,5000,10.0,11.0,12.0,869.5\n"
+            + "CPL-(AIR#0)-CPL,1,2026-07-15T12:05:00+00:00,45,100,5000,20.0,21.0,22.0,912.25\n")
 
     // A malformed fixture: the `capture_index` cell is not an integer, so parseMuellerCsv must map it to a
-    // typed MalformedRow (never a throw across into the pure Domain).
-    let malformedMuellerCsv : string =
-        "experiment,capture_index,captured_at,description,avg_total\n"
-        + "E1,not-an-int,2026-07-15T12:00:00+00:00,0,869.5\n"
+    // typed MalformedRowErr (never a throw across into the pure Domain).
+    let malformedMuellerCsv : DataFileText =
+        DataFileText (
+            "experiment,capture_index,captured_at,description,avg_total\n"
+            + "E1,not-an-int,2026-07-15T12:00:00+00:00,0,869.5\n")
 
     // Spec 0042 (007, IMPLEMENT) — component-wise closeness helpers for the effective-state +90/−90 invariance,
     // over the shared `allowedDiff` (no hand-rolled epsilon). Bound here, ahead of the members (FS0960: in a
     // class type every `let` binding precedes the first member). StokesVector is read through the
-    // `Propagation.stokesComponents` seam; RealVector4 through its indexer.
+    // `StokesVector.s0` … `s3` members; RealVector4 through its indexer.
     let assertStokesClose (a : StokesVector) (b : StokesVector) =
-        let (a0, a1, a2, a3) = Propagation.stokesComponents a
-        let (b0, b1, b2, b3) = Propagation.stokesComponents b
+        let (a0, a1, a2, a3) = a.s0, a.s1, a.s2, a.s3
+        let (b0, b1, b2, b3) = b.s0, b.s1, b.s2, b.s3
         Assert.True(abs (a0 - b0) < allowedDiff, $"S0 differs by {abs (a0 - b0)}")
         Assert.True(abs (a1 - b1) < allowedDiff, $"S1 differs by {abs (a1 - b1)}")
         Assert.True(abs (a2 - b2) < allowedDiff, $"S2 differs by {abs (a2 - b2)}")
@@ -138,7 +144,7 @@ type MuellerReconstructionTests() =
     // Spec 0042 (008, IMPLEMENT) — Stage-1 AIR calibration helpers. Bound here, ahead of the members (FS0960:
     // in a class type every `let` binding precedes the first member). Radians-per-degree reached by its full
     // module path (no extra `open` of the numeric-wrapper module, which would drag unrelated names into scope).
-    let degree = Berreman.MathNetNumericsMath.degree
+    let degree = Angle.radiansPerDegree
 
     // ---------------------------------------------------------------------------------------------------
     // Spec 0044 §8.5 / §9 — acceptance bands for the measured-data facts, against the reference pipeline's
@@ -191,37 +197,40 @@ type MuellerReconstructionTests() =
     /// `load_air_traces` + `prepare_normalized_traces` (matrix_step1_air_fit.py:78, :85): keep only the AIR#0
     /// rows, group by experiment; within each experiment average `avgTotal` per dial `description`, dark-subtract
     /// (`signal = avg − darkMean`), and normalize by that experiment's own mean signal; concatenate all
-    /// experiments' points. Returns the `(dialAngleDeg[], norm[])` pair `freeCosineFit` consumes.
-    let reduceAirTraces (darkMean : float) (rows : MuellerRawRow list) : float[] * float[] =
+    /// experiments' points. Returns the `AirTrace` `freeCosineFit` consumes.
+    let reduceAirTraces (darkMean : float) (rows : MuellerRawRow list) : AirTrace =
         let reduced =
             rows
-            |> List.filter (fun r -> r.experiment.Contains("(AIR#0)"))
+            |> List.filter (fun r -> r.experiment.value.Contains("(AIR#0)"))
             |> List.groupBy (fun r -> r.experiment)
             |> List.collect (fun (_, expRows) ->
                 let byDescription =
                     expRows
                     |> List.groupBy (fun r -> r.description.degrees)
-                    |> List.map (fun (descDeg, g) -> descDeg, (g |> List.averageBy (fun r -> r.avgTotal)) - darkMean)
+                    |> List.map (fun (descDeg, g) -> descDeg, (g |> List.averageBy (fun r -> r.avgTotal.value)) - darkMean)
                     |> List.sortBy fst
                 let meanSignal = byDescription |> List.averageBy snd
                 byDescription |> List.map (fun (descDeg, signal) -> descDeg, signal / meanSignal))
-        reduced |> List.map fst |> List.toArray,
-        reduced |> List.map snd |> List.toArray
+        {
+            anglesDeg = reduced |> List.map fst |> List.toArray
+            norm = reduced |> List.map snd |> List.toArray
+        }
 
     /// The Stage-1 LP-frame fit coefficients `(qLp, uLp)` — the reference `fit_lp_frame_coeffs`
     /// (matrix_step1_air_fit.py:132): the same 2-column least squares as `freeCosineFit` but with the design
     /// phased on the source LP zero (`[cos 2(α − zeroDeg), sin 2(α − zeroDeg)]`), returning the raw coefficients
     /// (not a zero/visibility readout) that feed `sourceCplFromLpFrame`. Solved through the real proxy exactly
     /// as `freeCosineFit` does; a well-formed AIR trace is full column rank 2, so `Ok` is expected.
-    let lpFrameCoeffs (solver : MuellerSolverProxy) (anglesDeg : float[]) (norm : float[]) (zeroDeg : float) : float * float =
+    let lpFrameCoeffs (solver : MuellerSolverProxy) (trace : AirTrace) (zero : Angle) : CosineCoefficient * CosineCoefficient =
+        let zeroDeg = zero.degrees
         let design =
-            anglesDeg
+            trace.anglesDeg
             |> Array.map (fun a ->
                 let twoAlpha = 2.0 * (a - zeroDeg) * degree
-                [| cos twoAlpha; sin twoAlpha |])
-        let rhs = norm |> Array.map (fun n -> n - 1.0)
-        match solver.solveLinearLeastSquares design rhs with
-        | Ok sol -> sol.solution.[0], sol.solution.[1]
+                DesignRow [| cos twoAlpha; sin twoAlpha |])
+        let rhs = trace.norm |> Array.map (fun n -> n - 1.0)
+        match solver.solveLinearLeastSquares { design = design; rhs = rhs } with
+        | Ok sol -> CosineCoefficient sol.solution.[0], CosineCoefficient sol.solution.[1]
         | Error e -> failwith $"the LP-frame calibration least squares failed: %A{e}"
 
     /// Unwrap a `freeCosineFit` result in the data-dependent cross-check, failing the test (never a silent
@@ -234,48 +243,50 @@ type MuellerReconstructionTests() =
     [<Fact>]
     member _.``zero retardance is the identity Mueller matrix (arbitrary azimuth)`` () =
         // A wave plate with no phase delay is a pass-through, whatever its azimuth: R(-θ)·I·R(θ) = I.
-        let actual = retarderMueller (Angle.degree 37.0) (Retardance.degree 0.0)
+        let actual = retarderMueller (Angle.degree 37.0<Berreman.Constants.deg>) (Retardance.degree 0.0<Berreman.Constants.deg>)
         assertMuellerEqual Propagation.identityMueller actual
 
     [<Fact>]
     member _.``zero retardance at zero azimuth is the identity Mueller matrix`` () =
-        let actual = retarderMueller Angle.zero (Retardance.degree 0.0)
+        let actual = retarderMueller Angle.zero (Retardance.degree 0.0<Berreman.Constants.deg>)
         assertMuellerEqual Propagation.identityMueller actual
 
     [<Fact>]
     member _.``quarter-wave retarder at azimuth 0 is the standard QWP Mueller form`` () =
         // Standard QWP, fast axis horizontal: [[1,0,0,0],[0,1,0,0],[0,0,0,1],[0,0,-1,0]].
         let expected =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 1.0; 0.0; 0.0 ]
                   [ 0.0; 0.0; 0.0; 1.0 ]
                   [ 0.0; 0.0; -1.0; 0.0 ] ]
-        let actual = retarderMueller Angle.zero (Retardance.degree 90.0)
+            |> MuellerMatrix
+        let actual = retarderMueller Angle.zero (Retardance.degree 90.0<Berreman.Constants.deg>)
         assertMuellerEqual expected actual
 
     [<Fact>]
     member _.``quarter-wave retarder at azimuth 45 is the standard rotated QWP Mueller form`` () =
         // Standard QWP, fast axis at 45°: [[1,0,0,0],[0,0,0,-1],[0,0,1,0],[0,1,0,0]] — exercises rotateMueller.
         let expected =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 0.0; 0.0; -1.0 ]
                   [ 0.0; 0.0; 1.0; 0.0 ]
                   [ 0.0; 1.0; 0.0; 0.0 ] ]
-        let actual = retarderMueller (Angle.degree 45.0) (Retardance.degree 90.0)
+            |> MuellerMatrix
+        let actual = retarderMueller (Angle.degree 45.0<Berreman.Constants.deg>) (Retardance.degree 90.0<Berreman.Constants.deg>)
         assertMuellerEqual expected actual
 
     [<Fact>]
     member _.``Retardance degrees and value round-trip`` () =
-        let r = Retardance.degree 90.0
+        let r = Retardance.degree 90.0<Berreman.Constants.deg>
         Assert.True(abs (r.degrees - 90.0) < allowedDiff, $"degrees = {r.degrees}")
         Assert.True(abs (r.value - (System.Math.PI / 2.0)) < allowedDiff, $"value = {r.value}")
 
     [<Fact>]
     member _.``vecColumnMajor round-trips through muellerOfVecColumnMajor`` () =
-        // muellerOfVecColumnMajor (vecColumnMajor M) = M for every 4×4 (the vec round-trip acceptance).
-        let actual = muellerOfVecColumnMajor (vecColumnMajor asymmetricM)
+        // M.vecColumnMajor.columnMajorMueller = M for every 4×4 (the vec round-trip acceptance).
+        let actual = asymmetricM.vecColumnMajor.columnMajorMueller
         assertMuellerEqual asymmetricM actual
 
     [<Fact>]
@@ -284,7 +295,8 @@ type MuellerReconstructionTests() =
         // under a row-major flatten, so the identity pins the column-major (order F) convention.
         let s = StokesVector.create [ 1.0; 0.3; -0.7; 0.5 ]
         let a = RealVector4.create [ 0.2; -1.1; 0.4; 0.9 ]
-        let lhs = Array.map2 (*) (kron4 s a) (vecColumnMajor asymmetricM) |> Array.sum
+        let (RealVector vec) = asymmetricM.vecColumnMajor
+        let lhs = Array.map2 (*) (kron4 s a).value (vec.ToArray()) |> Array.sum
         let (StokesVector ms) = asymmetricM * s
         let rhs = [ 0 .. 3 ] |> List.sumBy (fun j -> a.[j] * ms.[j])
         Assert.True(abs (lhs - rhs) < allowedDiff, $"lhs = {lhs}, rhs = {rhs}, diff = {abs (lhs - rhs)}")
@@ -292,26 +304,27 @@ type MuellerReconstructionTests() =
     [<Fact>]
     member _.``frobeniusDiff of a matrix with itself is zero`` () =
         let d = frobeniusDiff asymmetricM asymmetricM
-        Assert.True(d.frobenius < allowedDiff, $"frobenius = {d.frobenius}")
-        Assert.True(d.maxAbs < allowedDiff, $"maxAbs = {d.maxAbs}")
-        Assert.True(d.meanAbs < allowedDiff, $"meanAbs = {d.meanAbs}")
+        Assert.True(d.frobenius.value < allowedDiff, $"frobenius = {d.frobenius.value}")
+        Assert.True(d.maxAbs.value < allowedDiff, $"maxAbs = {d.maxAbs.value}")
+        Assert.True(d.meanAbs.value < allowedDiff, $"meanAbs = {d.meanAbs.value}")
 
     [<Fact>]
     member _.``frobeniusDiff localizes the largest element difference and its index`` () =
         // Perturb the single element at (2,1) from 1.0 to 3.0 (a diff of 2.0); the readout must localize it.
         let perturbed =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.2; -0.3; 0.4 ]
                   [ 0.5; 0.6; 0.7; -0.8 ]
                   [ -0.9; 3.0; 0.1; 0.2 ]
                   [ 0.3; -0.4; 0.5; 0.6 ] ]
+            |> MuellerMatrix
         let d = frobeniusDiff asymmetricM perturbed
         let (mi, mj) = d.argMax
-        Assert.Equal(2, mi)
-        Assert.Equal(1, mj)
-        Assert.True(abs (d.maxAbs - 2.0) < allowedDiff, $"maxAbs = {d.maxAbs}")
-        Assert.True(abs (d.frobenius - 2.0) < allowedDiff, $"frobenius = {d.frobenius}")
-        Assert.True(abs (d.meanAbs - (2.0 / 16.0)) < allowedDiff, $"meanAbs = {d.meanAbs}")
+        Assert.Equal(MuellerRowIndex 2, mi)
+        Assert.Equal(MuellerColumnIndex 1, mj)
+        Assert.True(abs (d.maxAbs.value - 2.0) < allowedDiff, $"maxAbs = {d.maxAbs.value}")
+        Assert.True(abs (d.frobenius.value - 2.0) < allowedDiff, $"frobenius = {d.frobenius.value}")
+        Assert.True(abs (d.meanAbs.value - (2.0 / 16.0)) < allowedDiff, $"meanAbs = {d.meanAbs.value}")
 
     [<Fact>]
     member _.``a mock MuellerSolverProxy solves through its exact signature, returning a canned solution and typed SolverErrors`` () =
@@ -321,29 +334,30 @@ type MuellerReconstructionTests() =
 
         // Pin the EXACT signature the acceptance names by binding the field to an explicitly-typed local:
         // the compiler rejects the file if `solveLinearLeastSquares` drifts from its declared shape.
-        let solve : float[][] -> float[] -> Result<LeastSquaresSolution, SolverError> = proxy.solveLinearLeastSquares
+        let solve : LeastSquaresSystem -> Result<LeastSquaresSolution, SolverError> = proxy.solveLinearLeastSquares
 
         // A full-height design (16 rows for the 16 Mueller unknowns) returns the canned solution.
-        let fullDesign : float[][] = Array.init 16 (fun r -> Array.init 16 (fun c -> if r = c then 1.0 else 0.0))
+        let fullDesign : DesignRow[] = Array.init 16 (fun r -> DesignRow (Array.init 16 (fun c -> if r = c then 1.0 else 0.0)))
         let rhs : float[] = Array.init 16 (fun r -> 0.1 * float r)
-        match solve fullDesign rhs with
+        match solve { design = fullDesign; rhs = rhs } with
         | Ok sol ->
-            Assert.Equal(16, sol.solution.Length)
+            let (RealVector solution) = sol.solution
+            Assert.Equal(16, solution.Count)
             for k in 0 .. 15 do
                 Assert.True(abs (sol.solution.[k] - 0.1 * float k) < allowedDiff, $"solution[{k}] = {sol.solution.[k]}")
-            Assert.Equal(16, sol.rank)
-            Assert.True(abs sol.rmse < allowedDiff, $"rmse = {sol.rmse}")
+            Assert.Equal(MatrixRank 16, sol.rank)
+            Assert.True(abs sol.rmse.value < allowedDiff, $"rmse = {sol.rmse.value}")
         | Error e -> Assert.Fail($"expected the canned LeastSquaresSolution, got %A{e}")
 
-        // An under-determined design (fewer rows than the 16 unknowns) returns a typed RankDeficient — never a throw.
-        match solve [| [| 1.0; 0.0 |]; [| 0.0; 1.0 |] |] rhs with
-        | Error (RankDeficient rank) -> Assert.Equal(2, rank)
-        | other -> Assert.Fail($"expected Error (RankDeficient _), got %A{other}")
+        // An under-determined design (fewer rows than the 16 unknowns) returns a typed RankDeficientErr — never a throw.
+        match solve { design = [| DesignRow [| 1.0; 0.0 |]; DesignRow [| 0.0; 1.0 |] |]; rhs = rhs } with
+        | Error (RankDeficientErr rank) -> Assert.Equal(MatrixRank 2, rank)
+        | other -> Assert.Fail($"expected Error (RankDeficientErr _), got %A{other}")
 
-        // An empty design returns a typed SingularDesign carrying a non-empty reason — never a throw.
-        match solve [||] rhs with
-        | Error (SingularDesign reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (SingularDesign _), got %A{other}")
+        // An empty design returns a typed SingularDesignErr carrying a non-empty reason — never a throw.
+        match solve { design = [||]; rhs = rhs } with
+        | Error (SingularDesignErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (SingularDesignErr _), got %A{other}")
 
     [<Fact>]
     member _.``a MuellerSolverProxy compares by reference (the ReferenceEquality convention)`` () =
@@ -363,22 +377,23 @@ type MuellerReconstructionTests() =
         let proxy = createMathNetSvd ()
 
         // A is 4×2 with independent columns (full column rank 2); x = [3; -2]; b = A·x (a consistent system).
-        let design : float[][] =
-            [| [| 1.0;  0.0 |]
-               [| 0.0;  1.0 |]
-               [| 1.0;  1.0 |]
-               [| 2.0; -1.0 |] |]
+        let design : DesignRow[] =
+            [| DesignRow [| 1.0;  0.0 |]
+               DesignRow [| 0.0;  1.0 |]
+               DesignRow [| 1.0;  1.0 |]
+               DesignRow [| 2.0; -1.0 |] |]
         let known : float[] = [| 3.0; -2.0 |]
         let rhs : float[] = [| 3.0; -2.0; 1.0; 8.0 |]
 
-        match proxy.solveLinearLeastSquares design rhs with
+        match proxy.solveLinearLeastSquares { design = design; rhs = rhs } with
         | Ok sol ->
-            Assert.Equal(2, sol.solution.Length)
+            let (RealVector solution) = sol.solution
+            Assert.Equal(2, solution.Count)
             for k in 0 .. 1 do
                 Assert.True(abs (sol.solution.[k] - known.[k]) < allowedDiff, $"solution[{k}] = {sol.solution.[k]}, expected {known.[k]}")
             // Rank equals the column count on a full-rank solve — the observability check the acceptance names.
-            Assert.Equal(2, sol.rank)
-            Assert.True(sol.rmse < allowedDiff, $"rmse = {sol.rmse}")
+            Assert.Equal(MatrixRank 2, sol.rank)
+            Assert.True(sol.rmse.value < allowedDiff, $"rmse = {sol.rmse.value}")
         | Error e -> Assert.Fail($"expected the known least-squares solution, got %A{e}")
 
     [<Fact>]
@@ -387,19 +402,19 @@ type MuellerReconstructionTests() =
         // an exception across the proxy boundary.
         let proxy = createMathNetSvd ()
 
-        // An empty design → SingularDesign carrying a non-empty reason.
-        match proxy.solveLinearLeastSquares [||] [||] with
-        | Error (SingularDesign reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (SingularDesign _), got %A{other}")
+        // An empty design → SingularDesignErr carrying a non-empty reason.
+        match proxy.solveLinearLeastSquares { design = [||]; rhs = [||] } with
+        | Error (SingularDesignErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (SingularDesignErr _), got %A{other}")
 
         // A rank-deficient design (column 2 = 2× column 1, so the numerical rank is 1 < the 2 columns).
-        let dependent : float[][] =
-            [| [| 1.0; 2.0 |]
-               [| 2.0; 4.0 |]
-               [| 3.0; 6.0 |] |]
-        match proxy.solveLinearLeastSquares dependent [| 1.0; 2.0; 3.0 |] with
-        | Error (RankDeficient rank) -> Assert.True(rank < 2, $"rank = {rank}")
-        | other -> Assert.Fail($"expected Error (RankDeficient _), got %A{other}")
+        let dependent : DesignRow[] =
+            [| DesignRow [| 1.0; 2.0 |]
+               DesignRow [| 2.0; 4.0 |]
+               DesignRow [| 3.0; 6.0 |] |]
+        match proxy.solveLinearLeastSquares { design = dependent; rhs = [| 1.0; 2.0; 3.0 |] } with
+        | Error (RankDeficientErr rank) -> Assert.True(rank.value < 2, $"rank = {rank.value}")
+        | other -> Assert.Fail($"expected Error (RankDeficientErr _), got %A{other}")
 
     [<Fact>]
     member _.``a mock MuellerDataProxy loads canned capture rows through its exact tryLoadDataSet signature`` () =
@@ -427,8 +442,8 @@ type MuellerReconstructionTests() =
         // seam keyed by a DU there is no such thing as an unparseable key.
         let proxy = seededDataMock ()
         match proxy.tryLoadDataSet CplCplDay2 with
-        | Error (EmptyFile reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (EmptyFile _) for an unseeded data set, got %A{other}")
+        | Error (EmptyFileErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (EmptyFileErr _) for an unseeded data set, got %A{other}")
 
     [<Fact>]
     member _.``a MuellerDataProxy compares by reference (the ReferenceEquality convention)`` () =
@@ -445,29 +460,29 @@ type MuellerReconstructionTests() =
         // Spec 0042 (006) acceptance: parse a committed multi-column, BOM-prefixed CSV fixture through the REAL
         // MuellerDataStore.parseMuellerCsv (not a mock), yielding MuellerRawRow values whose `description` is
         // elevated to the engine Angle. Reading the five required columns BY NAME ignores the unread columns.
-        match MuellerDataStore.parseMuellerCsv muellerCsvFixture with
+        match muellerCsvFixture.parseMuellerCsv with
         | Ok rows ->
             Assert.Equal(2, rows.Length)
             let r0 = rows.[0]
-            Assert.Equal("CPL-(AIR#0)-CPL", r0.experiment)
-            Assert.Equal(0, r0.captureIndex)
+            Assert.Equal(MuellerExperimentLabel "CPL-(AIR#0)-CPL", r0.experiment)
+            Assert.Equal(CaptureIndex 0, r0.captureIndex)
             Assert.Equal(System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero), r0.capturedAt)
             // `description` elevated to Angle: read back its `degrees` view (the raw analyzer dial angle).
             Assert.True(abs r0.description.degrees < allowedDiff, $"description = {r0.description.degrees}")
-            Assert.True(abs (r0.avgTotal - 869.5) < allowedDiff, $"avgTotal = {r0.avgTotal}")
+            Assert.True(abs (r0.avgTotal.value - 869.5) < allowedDiff, $"avgTotal = {r0.avgTotal.value}")
             let r1 = rows.[1]
-            Assert.Equal(1, r1.captureIndex)
+            Assert.Equal(CaptureIndex 1, r1.captureIndex)
             Assert.True(abs (r1.description.degrees - 45.0) < allowedDiff, $"description = {r1.description.degrees}")
-            Assert.True(abs (r1.avgTotal - 912.25) < allowedDiff, $"avgTotal = {r1.avgTotal}")
+            Assert.True(abs (r1.avgTotal.value - 912.25) < allowedDiff, $"avgTotal = {r1.avgTotal.value}")
         | Error e -> Assert.Fail($"expected the parsed capture rows, got %A{e}")
 
     [<Fact>]
     member _.``the real parseMuellerCsv maps a malformed file to a typed MuellerDataError, never a throw`` () =
         // Spec 0042 (006) acceptance: a malformed file (capture_index is not an integer) yields a typed
         // MuellerDataError — no exception crosses into the pure Domain.
-        match MuellerDataStore.parseMuellerCsv malformedMuellerCsv with
-        | Error (MalformedRow reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (MalformedRow _) for a malformed file, got %A{other}")
+        match malformedMuellerCsv.parseMuellerCsv with
+        | Error (MalformedRowErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (MalformedRowErr _) for a malformed file, got %A{other}")
 
     [<Fact>]
     member _.``createArchiveBacked produces a MuellerDataProxy that loads every committed data set`` () =
@@ -508,12 +523,12 @@ type MuellerReconstructionTests() =
         // This is the one place a location is named at all, and deliberately so: the failure paths must stay
         // reachable from a test without any production caller ever knowing where the data lives, which is
         // exactly why `tryLoadFromArchive` is public while `createArchiveBacked ()` takes no argument.
-        let absent = MuellerDataStore.MuellerArchivePath "C:/data/definitely-missing-mueller-archive-0044.zip"
+        let absent = MuellerArchivePath "C:/data/definitely-missing-mueller-archive-0044.zip"
         match MuellerDataStore.tryLoadFromArchive absent LpLpFamily with
-        | Error (ArchiveUnreadable (archive, reason)) ->
-            Assert.Equal("C:/data/definitely-missing-mueller-archive-0044.zip", archive)
+        | Error (ArchiveUnreadableErr (archive, reason)) ->
+            Assert.Equal("C:/data/definitely-missing-mueller-archive-0044.zip", archive.value)
             Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (ArchiveUnreadable _) for a missing archive, got %A{other}")
+        | other -> Assert.Fail($"expected Error (ArchiveUnreadableErr _) for a missing archive, got %A{other}")
 
     [<Fact>]
     member _.``tryLoadFromArchive maps an archive without the requested entry to a typed DataSetMissing, never a throw`` () =
@@ -532,11 +547,11 @@ type MuellerReconstructionTests() =
             zip.Dispose()
             stream.Dispose()
 
-            match MuellerDataStore.tryLoadFromArchive (MuellerDataStore.MuellerArchivePath tempArchive) CplCplDay1 with
-            | Error (DataSetMissing (dataSet, archive)) ->
+            match MuellerDataStore.tryLoadFromArchive (MuellerArchivePath tempArchive) CplCplDay1 with
+            | Error (DataSetMissingErr (dataSet, archive)) ->
                 Assert.Equal(CplCplDay1, dataSet)
-                Assert.Equal(tempArchive, archive)
-            | other -> Assert.Fail($"expected Error (DataSetMissing _) for an archive without the entry, got %A{other}")
+                Assert.Equal(tempArchive, archive.value)
+            | other -> Assert.Fail($"expected Error (DataSetMissingErr _) for an archive without the entry, got %A{other}")
         finally
             if File.Exists tempArchive then File.Delete tempArchive
 
@@ -544,18 +559,18 @@ type MuellerReconstructionTests() =
     member _.``parseExperiment decodes CPL-(QZ#90-LR#90)-CPL and the +90 / -90 object rotation is inert (R(2 phi) invariance)`` () =
         // Spec 0042 (007) acceptance. The label decodes to the CPL-CPL family, the QZ·LR product kind, and an
         // object frame rotation phi = 90 deg.
-        let parsed = parseExperiment "CPL-(QZ#90-LR#90)-CPL"
-        Assert.Equal(CplCpl, family parsed)
-        Assert.Equal(QzLrProduct, matrixKind parsed)
-        Assert.True(abs ((objectPhi parsed).degrees - 90.0) < allowedDiff, $"phi = {(objectPhi parsed).degrees}")
+        let parsed = (MuellerExperimentLabel "CPL-(QZ#90-LR#90)-CPL").parsed
+        Assert.Equal(CplCpl, parsed.family)
+        Assert.Equal(QzLrProduct, parsed.matrixKind)
+        Assert.True(abs (parsed.objectPhi.degrees - 90.0) < allowedDiff, $"phi = {parsed.objectPhi.degrees}")
 
         // R(phi) depends on 2*phi, so +90 deg and -90 deg differ by a full 180 deg in 2*phi and are physically
         // identical: the effective source Stokes state and the effective analyzer row built at +90 MUST equal
         // those at -90 within allowedDiff. Non-symmetric base states (the 2*phi=+/-180 flip is observable).
         let sBase = StokesVector.create [ 1.0; 0.7; -0.4; 0.2 ]
         let aBase = RealVector4.create [ 0.5; 0.25; -0.3; 0.1 ]
-        assertStokesClose (effectiveSource (Angle.degree 90.0) sBase) (effectiveSource (Angle.degree (-90.0)) sBase)
-        assertVec4Close (effectiveAnalyzer (Angle.degree 90.0) aBase) (effectiveAnalyzer (Angle.degree (-90.0)) aBase)
+        assertStokesClose (effectiveSource (Angle.degree 90.0<Berreman.Constants.deg>) sBase) (effectiveSource (Angle.degree (-90.0<Berreman.Constants.deg>)) sBase)
+        assertVec4Close (effectiveAnalyzer (Angle.degree 90.0<Berreman.Constants.deg>) aBase) (effectiveAnalyzer (Angle.degree (-90.0<Berreman.Constants.deg>)) aBase)
 
     [<Fact>]
     member _.``freeCosineFit recovers a synthetic cosine zero and visibility within tolerance (always-run)`` () =
@@ -567,11 +582,11 @@ type MuellerReconstructionTests() =
         let knownVisibility = 0.6
         let anglesDeg = [| for k in 0 .. 17 -> 10.0 * float k |]     // 0,10,…,170 — >2 distinct doubled angles
         let norm = anglesDeg |> Array.map (fun a -> 1.0 + knownVisibility * cos (2.0 * (a - knownZeroDeg) * degree))
-        match freeCosineFit solver anglesDeg norm with
+        match freeCosineFit solver { anglesDeg = anglesDeg; norm = norm } with
         | Ok fit ->
-            Assert.True(abs (fit.zeroDeg - knownZeroDeg) < 1e-6, $"zeroDeg = {fit.zeroDeg}")
-            Assert.True(abs (fit.visibility - knownVisibility) < 1e-6, $"visibility = {fit.visibility}")
-            Assert.True(fit.rmse < 1e-6, $"rmse = {fit.rmse}")
+            Assert.True(abs (fit.zeroAzimuth.degrees - knownZeroDeg) < 1e-6, $"zeroAzimuth = {fit.zeroAzimuth.degrees}")
+            Assert.True(abs (fit.visibility.value - knownVisibility) < 1e-6, $"visibility = {fit.visibility.value}")
+            Assert.True(fit.rmse.value < 1e-6, $"rmse = {fit.rmse.value}")
         | Error e -> Assert.Fail($"expected a CosineFit for the synthetic trace, got %A{e}")
 
     [<Fact>]
@@ -593,28 +608,28 @@ type MuellerReconstructionTests() =
         let load = loadDataSet data
 
         // dark_mean = mean avg_total over the darkness checks.
-        let darkMean = load DarknessChecks |> List.averageBy (fun r -> r.avgTotal)
+        let darkMean = load DarknessChecks |> List.averageBy (fun r -> r.avgTotal.value)
 
         // LP-LP AIR → free cosine fit → the LP analyzer's zero dial z_LP.
-        let (anglesLpLp, normLpLp) = reduceAirTraces darkMean (load LpLpFamily)
-        let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver anglesLpLp normLpLp)
+        let traceLpLp = reduceAirTraces darkMean (load LpLpFamily)
+        let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver traceLpLp)
 
         // LP-CPL AIR → free cosine fit → the CPL analyzer's zero dial z_CPL; δ_an = arccos(visibility).
-        let (anglesLpCpl, normLpCpl) = reduceAirTraces darkMean (load LpCplFamily)
-        let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver anglesLpCpl normLpCpl)
-        let deltaAnDeg = (retardanceFromVisibility lpCplFit.visibility).degrees
+        let traceLpCpl = reduceAirTraces darkMean (load LpCplFamily)
+        let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver traceLpCpl)
+        let deltaAnDeg = lpCplFit.visibility.retardance.degrees
 
         // CPL-LP AIR, fit in the source LP frame (phased on z_LP) → the closed-form source model.
-        let (anglesCplLp, normCplLp) = reduceAirTraces darkMean (load CplLpFamily)
-        let (qLp, uLp) = lpFrameCoeffs solver anglesCplLp normCplLp lpLpFit.zeroDeg
+        let traceCplLp = reduceAirTraces darkMean (load CplLpFamily)
+        let (qLp, uLp) = lpFrameCoeffs solver traceCplLp lpLpFit.zeroAzimuth
         let source = sourceCplFromLpFrame qLp uLp
 
         // Every constant is compared in ONE assertion reporting all six deviations, so a regression message
         // shows which constants moved and by how much rather than stopping at the first one out of band.
         let constants =
             [ "dark_mean", darkMean, 869.666
-              "z_LP", lpLpFit.zeroDeg, 155.44011830109392
-              "z_CPL", lpCplFit.zeroDeg, 96.99613336321012
+              "z_LP", lpLpFit.zeroAzimuth.degrees, 155.44011830109392
+              "z_CPL", lpCplFit.zeroAzimuth.degrees, 96.99613336321012
               "δ_an", deltaAnDeg, 83.66804489441891
               "θ_src", source.thetaRel.degrees, 39.31100224361002
               "δ_src", source.retardance.degrees, 82.55344158462403 ]
@@ -629,60 +644,64 @@ type MuellerReconstructionTests() =
         // pin the Stage-3 reduction primitives on known values, and familyGain firing each per-family rule.
 
         // scalarGain — a proportional pair signal = 2·model has best scalar gain exactly 2 …
-        let model = [| 1.0; 2.0; 3.0; 4.0 |]
-        let signalProp = model |> Array.map (fun m -> 2.0 * m)
-        Assert.True(abs (scalarGain signalProp model - 2.0) < allowedDiff, $"scalarGain (proportional) = {scalarGain signalProp model}")
+        let modelValues = [| 1.0; 2.0; 3.0; 4.0 |]
+        let model = modelValues |> Array.map DetectorIntensity
+        let signalProp = modelValues |> Array.map (fun m -> MeasuredIntensity (2.0 * m))
+        Assert.True(abs ((scalarGain signalProp model).value - 2.0) < allowedDiff, $"scalarGain (proportional) = {(scalarGain signalProp model).value}")
         // … and a general pair matches the closed form Σ(s·m)/Σ(m²).
-        let signalGen = [| 3.0; 1.0; 4.0; 1.0 |]
-        let expectedGain = (Array.map2 (*) signalGen model |> Array.sum) / (Array.map2 (*) model model |> Array.sum)
-        Assert.True(abs (scalarGain signalGen model - expectedGain) < allowedDiff, $"scalarGain (general) = {scalarGain signalGen model}, expected {expectedGain}")
+        let signalGenValues = [| 3.0; 1.0; 4.0; 1.0 |]
+        let signalGen = signalGenValues |> Array.map MeasuredIntensity
+        let expectedGain = (Array.map2 (*) signalGenValues modelValues |> Array.sum) / (Array.map2 (*) modelValues modelValues |> Array.sum)
+        Assert.True(abs ((scalarGain signalGen model).value - expectedGain) < allowedDiff, $"scalarGain (general) = {(scalarGain signalGen model).value}, expected {expectedGain}")
 
         // darkSubtract — avg_total − dark_mean, with the ≈ 869.666 measured dark mean passed in as data.
         let darkMean = DarkMean 869.666
-        Assert.True(abs (darkSubtract darkMean 1000.0 - (1000.0 - 869.666)) < allowedDiff, $"darkSubtract = {darkSubtract darkMean 1000.0}")
+        let avgTotal = MeasuredIntensity 1000.0
+        Assert.True(abs ((darkSubtract darkMean avgTotal).value - (1000.0 - 869.666)) < allowedDiff, $"darkSubtract = {(darkSubtract darkMean avgTotal).value}")
 
         // correctSignal — (avg_total − dark_mean) / gain (dark-subtract composed with the gain divide).
-        Assert.True(abs (correctSignal darkMean 1000.0 2.0 - ((1000.0 - 869.666) / 2.0)) < allowedDiff, $"correctSignal = {correctSignal darkMean 1000.0 2.0}")
+        let gain = AirGain 2.0
+        Assert.True(abs ((correctSignal darkMean avgTotal gain).value - ((1000.0 - 869.666) / 2.0)) < allowedDiff, $"correctSignal = {(correctSignal darkMean avgTotal gain).value}")
 
         // airIdentityPred — a·s, the effective-analyzer row dotted with the effective source Stokes state.
         let s = StokesVector.create [ 1.0; 0.5; -0.3; 0.2 ]
         let a = RealVector4.create [ 2.0; -1.0; 0.4; 0.8 ]
         let expectedDot = 2.0 * 1.0 + (-1.0) * 0.5 + 0.4 * (-0.3) + 0.8 * 0.2
-        Assert.True(abs (airIdentityPred s a - expectedDot) < allowedDiff, $"airIdentityPred = {airIdentityPred s a}, expected {expectedDot}")
+        Assert.True(abs ((airIdentityPred s a).value - expectedDot) < allowedDiff, $"airIdentityPred = {(airIdentityPred s a).value}, expected {expectedDot}")
 
         // familyGain — one calibration bundle, then assert each per-family rule fires (fixed-literal times).
         let t0 = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero)
         let cal =
             {
-                lpLp = { gainA = 10.0; gainB = 20.0 }                            // mean → 15.0
-                lpCpl = { gainA = 4.0; gainB = 6.0 }                             // mean → 5.0
-                cplLp = { gainPre = 100.0; gainPost = 200.0; splitTime = t0 }    // split at t0
-                cplCpl = Day2Single 42.0                                         // single AIR block → 42.0
+                lpLp = { gainA = AirGain 10.0; gainB = AirGain 20.0 }                            // mean → 15.0
+                lpCpl = { gainA = AirGain 4.0; gainB = AirGain 6.0 }                             // mean → 5.0
+                cplLp = { gainPre = AirGain 100.0; gainPost = AirGain 200.0; splitTime = t0 }    // split at t0
+                cplCpl = Day2Single (AirGain 42.0)                                               // single AIR block → 42.0
             }
 
         // LP-LP / LP-CPL — the mean of the two AIR repeats (time-independent).
-        Assert.True(abs (familyGain LpLp cal t0 - 15.0) < allowedDiff, $"familyGain LpLp = {familyGain LpLp cal t0}")
-        Assert.True(abs (familyGain LpCpl cal t0 - 5.0) < allowedDiff, $"familyGain LpCpl = {familyGain LpCpl cal t0}")
+        Assert.True(abs ((familyGain LpLp cal t0).value - 15.0) < allowedDiff, $"familyGain LpLp = {(familyGain LpLp cal t0).value}")
+        Assert.True(abs ((familyGain LpCpl cal t0).value - 5.0) < allowedDiff, $"familyGain LpCpl = {(familyGain LpCpl cal t0).value}")
 
         // CPL-LP — split at the BullshitCheck timestamp: strictly before → pre, at/after → post.
         let before = t0.AddMinutes(-5.0)
         let after = t0.AddMinutes(5.0)
-        Assert.True(abs (familyGain CplLp cal before - 100.0) < allowedDiff, $"familyGain CplLp (before) = {familyGain CplLp cal before}")
-        Assert.True(abs (familyGain CplLp cal after - 200.0) < allowedDiff, $"familyGain CplLp (after) = {familyGain CplLp cal after}")
-        Assert.True(abs (familyGain CplLp cal t0 - 200.0) < allowedDiff, $"familyGain CplLp (at split) = {familyGain CplLp cal t0}")
+        Assert.True(abs ((familyGain CplLp cal before).value - 100.0) < allowedDiff, $"familyGain CplLp (before) = {(familyGain CplLp cal before).value}")
+        Assert.True(abs ((familyGain CplLp cal after).value - 200.0) < allowedDiff, $"familyGain CplLp (after) = {(familyGain CplLp cal after).value}")
+        Assert.True(abs ((familyGain CplLp cal t0).value - 200.0) < allowedDiff, $"familyGain CplLp (at split) = {(familyGain CplLp cal t0).value}")
 
         // CPL-CPL day2 — the single AIR block's gain.
-        Assert.True(abs (familyGain CplCpl cal t0 - 42.0) < allowedDiff, $"familyGain CplCpl (day2) = {familyGain CplCpl cal t0}")
+        Assert.True(abs ((familyGain CplCpl cal t0).value - 42.0) < allowedDiff, $"familyGain CplCpl (day2) = {(familyGain CplCpl cal t0).value}")
 
         // CPL-CPL day1 — time-interpolated between the two AIR blocks (10:00 → 14:00, gains 30 → 50).
         let tStart = System.DateTimeOffset(2026, 7, 15, 10, 0, 0, System.TimeSpan.Zero)
         let tEnd = System.DateTimeOffset(2026, 7, 15, 14, 0, 0, System.TimeSpan.Zero)
-        let calDay1 = { cal with cplCpl = Day1Interp (30.0, tStart, 50.0, tEnd) }
-        Assert.True(abs (familyGain CplCpl calDay1 t0 - 40.0) < allowedDiff, $"familyGain CplCpl (day1 midpoint) = {familyGain CplCpl calDay1 t0}")   // 12:00 → 0.5·30 + 0.5·50
-        Assert.True(abs (familyGain CplCpl calDay1 tStart - 30.0) < allowedDiff, $"familyGain CplCpl (day1 start) = {familyGain CplCpl calDay1 tStart}")
-        Assert.True(abs (familyGain CplCpl calDay1 tEnd - 50.0) < allowedDiff, $"familyGain CplCpl (day1 end) = {familyGain CplCpl calDay1 tEnd}")
-        Assert.True(abs (familyGain CplCpl calDay1 (tStart.AddHours(-1.0)) - 30.0) < allowedDiff, $"familyGain CplCpl (day1 clamp below) = {familyGain CplCpl calDay1 (tStart.AddHours(-1.0))}")
-        Assert.True(abs (familyGain CplCpl calDay1 (tEnd.AddHours(1.0)) - 50.0) < allowedDiff, $"familyGain CplCpl (day1 clamp above) = {familyGain CplCpl calDay1 (tEnd.AddHours(1.0))}")
+        let calDay1 = { cal with cplCpl = Day1Interp { gainStart = AirGain 30.0; timeStart = tStart; gainEnd = AirGain 50.0; timeEnd = tEnd } }
+        Assert.True(abs ((familyGain CplCpl calDay1 t0).value - 40.0) < allowedDiff, $"familyGain CplCpl (day1 midpoint) = {(familyGain CplCpl calDay1 t0).value}")   // 12:00 → 0.5·30 + 0.5·50
+        Assert.True(abs ((familyGain CplCpl calDay1 tStart).value - 30.0) < allowedDiff, $"familyGain CplCpl (day1 start) = {(familyGain CplCpl calDay1 tStart).value}")
+        Assert.True(abs ((familyGain CplCpl calDay1 tEnd).value - 50.0) < allowedDiff, $"familyGain CplCpl (day1 end) = {(familyGain CplCpl calDay1 tEnd).value}")
+        Assert.True(abs ((familyGain CplCpl calDay1 (tStart.AddHours(-1.0))).value - 30.0) < allowedDiff, $"familyGain CplCpl (day1 clamp below) = {(familyGain CplCpl calDay1 (tStart.AddHours(-1.0))).value}")
+        Assert.True(abs ((familyGain CplCpl calDay1 (tEnd.AddHours(1.0))).value - 50.0) < allowedDiff, $"familyGain CplCpl (day1 clamp above) = {(familyGain CplCpl calDay1 (tEnd.AddHours(1.0))).value}")
 
     [<Fact>]
     member _.``reconstruct recovers a seeded MuellerMatrix from a synthetic full-rank design at rank 16 (always-run)`` () =
@@ -692,12 +711,14 @@ type MuellerReconstructionTests() =
         // the seeded MuellerMatrix, so `reconstruct` MUST recover the seed within tolerance at rank 16. The seed
         // is ASYMMETRIC with distinct entries so a row/column-major transpose bug is observable.
         let seed =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0;  2.0;  3.0;  4.0 ]
                   [ 5.0;  6.0;  7.0;  8.0 ]
                   [ 9.0; 10.0; 11.0; 12.0 ]
                   [ 13.0; 14.0; 15.0; 16.0 ] ]
-        let vSeed = vecColumnMajor seed
+            |> MuellerMatrix
+        let (RealVector vSeedVector) = seed.vecColumnMajor
+        let vSeed = vSeedVector.ToArray()
         // Four independent Stokes states and four independent analyzer rows; every (s, a) pair is one designRow,
         // so the 16 rows span the tensor space (rank = rank{s}·rank{a} = 4·4 = 16).
         let stokesStates =
@@ -716,13 +737,13 @@ type MuellerReconstructionTests() =
             |> List.toArray
         // The measurement identity: each row's signal is designRow · vec_F(M_seed) = a·(M_seed·s) (a consistent
         // system, so the full-rank solve recovers the seed exactly).
-        let target = design |> Array.map (fun row -> Array.map2 (*) row vSeed |> Array.sum)
+        let target = design |> Array.map (fun row -> Array.map2 (*) row.value vSeed |> Array.sum)
 
-        match reconstruct (createMathNetSvd ()) design target with
+        match reconstruct (createMathNetSvd ()) { design = design; rhs = target } with
         | Ok recon ->
             // The observability check §7.2 asserts: full rank 16 and a ~zero residual.
-            Assert.Equal(16, recon.rank)
-            Assert.True(recon.rmse < allowedDiff, $"rmse = {recon.rmse}")
+            Assert.Equal(MatrixRank 16, recon.rank)
+            Assert.True(recon.rmse.value < allowedDiff, $"rmse = {recon.rmse.value}")
             assertMuellerEqual seed recon.matrix
         | Error e -> Assert.Fail($"expected a full-rank reconstruction of the seed, got %A{e}")
 
@@ -733,17 +754,19 @@ type MuellerReconstructionTests() =
         // MuellerMatrix `*` operator. Non-commuting operands (rotation vs a general matrix) make the ordering
         // observable — a swapped product would differ.
         let mQz =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.0; 0.0; 0.0 ]
                   [ 0.0; 0.6; 0.8; 0.0 ]
                   [ 0.0; -0.8; 0.6; 0.0 ]
                   [ 0.0; 0.0; 0.0; 1.0 ] ]
+            |> MuellerMatrix
         let mLr =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [ 1.0; 0.2; -0.3; 0.4 ]
                   [ 0.5; 0.6; 0.7; -0.8 ]
                   [ -0.9; 1.0; 0.1; 0.2 ]
                   [ 0.3; -0.4; 0.5; 0.6 ] ]
+            |> MuellerMatrix
         assertMuellerEqual (mLr * mQz) (cascadeProduct mLr mQz)
 
     [<Fact>]
@@ -753,26 +776,27 @@ type MuellerReconstructionTests() =
         // 17 — supplied here as BerremanTests data per spec §0), and assembles one designRow + one corrected
         // signal per kept row via the injected per-row projection.
         let excluded : ExcludedPoint list =
-            [ { experiment = "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0; captureIndex = 17 } ]
+            [ { experiment = MuellerExperimentLabel "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0<Berreman.Constants.deg>; captureIndex = CaptureIndex 17 } ]
         // A stub per-row projection: unit effective states (one 16-wide designRow) and the row's avgTotal as the
-        // corrected signal, so the assembled target identifies exactly which rows survived, in order.
-        let prepareRow (r : MuellerRawRow) : StokesVector * RealVector4 * float =
+        // corrected signal (no dark floor, unit gain), so the assembled target identifies exactly which rows
+        // survived, in order.
+        let prepareRow (r : MuellerRawRow) : StokesVector * RealVector4 * DetectorIntensity =
             StokesVector.create [ 1.0; 0.0; 0.0; 0.0 ],
             RealVector4.create [ 1.0; 0.0; 0.0; 0.0 ],
-            r.avgTotal
+            correctSignal (DarkMean 0.0) r.avgTotal (AirGain 1.0)
         let t = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero)
         let rows : MuellerRawRow list =
-            [ { experiment = "LP-(LR#90)-LP"; captureIndex = 0; capturedAt = t; description = Angle.degree 10.0; avgTotal = 1.0 }        // LR — kept
-              { experiment = "LP-(AIR#0)-LP"; captureIndex = 1; capturedAt = t; description = Angle.degree 20.0; avgTotal = 2.0 }         // AIR — dropped
-              { experiment = "LP-(QZ#0)-LP"; captureIndex = 2; capturedAt = t; description = Angle.degree 30.0; avgTotal = 3.0 }          // QZ — wrong kind, dropped
-              { experiment = "LP-(LR#90)-CPL-2"; captureIndex = 17; capturedAt = t; description = Angle.degree 140.0; avgTotal = 4.0 }    // contaminated — dropped
-              { experiment = "LP-(LR#0)-LP"; captureIndex = 3; capturedAt = t; description = Angle.degree 40.0; avgTotal = 5.0 } ]        // LR — kept
-        let (design, target) = buildDesign prepareRow excluded rows Lr
+            [ { experiment = MuellerExperimentLabel "LP-(LR#90)-LP"; captureIndex = CaptureIndex 0; capturedAt = t; description = Angle.degree 10.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 1.0 }        // LR — kept
+              { experiment = MuellerExperimentLabel "LP-(AIR#0)-LP"; captureIndex = CaptureIndex 1; capturedAt = t; description = Angle.degree 20.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 2.0 }         // AIR — dropped
+              { experiment = MuellerExperimentLabel "LP-(QZ#0)-LP"; captureIndex = CaptureIndex 2; capturedAt = t; description = Angle.degree 30.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 3.0 }          // QZ — wrong kind, dropped
+              { experiment = MuellerExperimentLabel "LP-(LR#90)-CPL-2"; captureIndex = CaptureIndex 17; capturedAt = t; description = Angle.degree 140.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 4.0 }    // contaminated — dropped
+              { experiment = MuellerExperimentLabel "LP-(LR#0)-LP"; captureIndex = CaptureIndex 3; capturedAt = t; description = Angle.degree 40.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 5.0 } ]        // LR — kept
+        let system = buildDesign prepareRow excluded rows Lr
         // Only the two LR science rows survive (avgTotal 1.0 and 5.0), in order; each contributes one 16-wide row.
-        Assert.Equal(2, design.Length)
-        Assert.Equal(2, target.Length)
-        Assert.Equal<float[]>([| 1.0; 5.0 |], target)
-        Assert.Equal(16, design.[0].Length)
+        Assert.Equal(2, system.design.Length)
+        Assert.Equal(2, system.rhs.Length)
+        Assert.Equal<float[]>([| 1.0; 5.0 |], system.rhs)
+        Assert.Equal(16, system.design.[0].value.Length)
 
     [<Fact>]
     member _.``section 7.2 end-to-end: the Stage 1 to 2 to 3 pipeline reconstructs M_QZ, M_LR and M_{QZ+LR} at rank 16 and reproduces the reference pipeline exactly`` () =
@@ -811,7 +835,7 @@ type MuellerReconstructionTests() =
         let cplCplDay2Rows = load CplCplDay2
 
         // ---- Stage-3 procedure constants supplied as DATA (spec section 0): dark mean + the CPL-LP split time. ----
-        let darkMeanValue = load DarknessChecks |> List.averageBy (fun r -> r.avgTotal)
+        let darkMeanValue = load DarknessChecks |> List.averageBy (fun r -> r.avgTotal.value)
         let darkMean = DarkMean darkMeanValue
         // The CPL-LP AIR gain splits at the FIRST BullshitCheck timestamp (matrix_fit_linear.py:82 reads the
         // diagnostics[0] capture; the earliest bullshit-check capture is that same first check).
@@ -821,17 +845,17 @@ type MuellerReconstructionTests() =
             | rows -> (rows |> List.minBy (fun r -> r.capturedAt)).capturedAt
 
         // ---- Stage 1 (calibration): RE-derive the AIR constants through the real solver (matrix_step1_air_fit.py). ----
-        let (anglesLpLp, normLpLp) = reduceAirTraces darkMeanValue lpLpRows
-        let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver anglesLpLp normLpLp)
-        let lpZeroDeg = lpLpFit.zeroDeg                                             // LP analyzer zero dial (z_LP)
+        let traceLpLp = reduceAirTraces darkMeanValue lpLpRows
+        let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver traceLpLp)
+        let lpZero = lpLpFit.zeroAzimuth                                            // LP analyzer zero dial (z_LP)
 
-        let (anglesLpCpl, normLpCpl) = reduceAirTraces darkMeanValue lpCplRows
-        let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver anglesLpCpl normLpCpl)
-        let cplZeroDeg = lpCplFit.zeroDeg                                           // CPL analyzer zero dial (z_CPL)
-        let analyzerDeltaMagDeg = (retardanceFromVisibility lpCplFit.visibility).degrees   // |delta_an|
+        let traceLpCpl = reduceAirTraces darkMeanValue lpCplRows
+        let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver traceLpCpl)
+        let cplZero = lpCplFit.zeroAzimuth                                          // CPL analyzer zero dial (z_CPL)
+        let analyzerDeltaMagDeg = lpCplFit.visibility.retardance.degrees            // |delta_an|
 
-        let (anglesCplLp, normCplLp) = reduceAirTraces darkMeanValue cplLpRows
-        let (qLp, uLp) = lpFrameCoeffs solver anglesCplLp normCplLp lpZeroDeg
+        let traceCplLp = reduceAirTraces darkMeanValue cplLpRows
+        let (qLp, uLp) = lpFrameCoeffs solver traceCplLp lpZero
         let sourceCplModel = sourceCplFromLpFrame qLp uLp                           // { thetaRel; retardance }
 
         // ---- Stage 2 (glue): the per-family calibrated SOURCE and ANALYZER models (matrix_glue.py:182). ----
@@ -842,7 +866,7 @@ type MuellerReconstructionTests() =
         let analyzerLp : AnalyzerModel =
             {
                 kind = Library.IdealLinear
-                zeroDial = Angle.degree lpZeroDeg
+                zeroDial = lpZero
                 dialSign = DialNegative
                 thetaRelOpt = None
                 retardanceOpt = None
@@ -850,20 +874,20 @@ type MuellerReconstructionTests() =
         let analyzerCpl : AnalyzerModel =
             {
                 kind = Library.IdealCircularLeft
-                zeroDial = Angle.degree cplZeroDeg
+                zeroDial = cplZero
                 dialSign = DialPositive
-                thetaRelOpt = Some (Angle.degree 45.0)
-                retardanceOpt = Some (Retardance.degree (- analyzerDeltaMagDeg))
+                thetaRelOpt = Some (Angle.degree 45.0<Berreman.Constants.deg>)
+                retardanceOpt = Some (Retardance.degree (- analyzerDeltaMagDeg * 1.0<Berreman.Constants.deg>))
             }
 
         // ---- Stage 3 (reduction): the per-family AIR scalar gains (matrix_fit_linear.py assign_gain_model). ----
-        let airRowsOf (rows : MuellerRawRow list) (experiment : string) : MuellerRawRow list =
+        let airRowsOf (rows : MuellerRawRow list) (experiment : MuellerExperimentLabel) : MuellerRawRow list =
             rows |> List.filter (fun r -> r.experiment = experiment)
         // The AIR#0 scalar gain fitting `signal_dark_sub ~ gain * (a_eff . s_eff)` over one AIR experiment's
         // rows (fit_air_gain + fit_scalar_gain). An AIR row carries no object (phi = 0), so its effective
         // states equal its base states, and `airIdentityPred base base` is the per-row identity prediction.
-        let fitAirGain (source : SourceModel) (analyzer : AnalyzerModel) (rows : MuellerRawRow list) : float =
-            let sBase = sourceBaseStokes source
+        let fitAirGain (source : SourceModel) (analyzer : AnalyzerModel) (rows : MuellerRawRow list) : AirGain =
+            let sBase = source.baseStokes
             let preds =
                 rows |> List.map (fun r -> airIdentityPred sBase (analyzerBaseRow analyzer r.description)) |> List.toArray
             let signals = rows |> List.map (fun r -> darkSubtract darkMean r.avgTotal) |> List.toArray
@@ -878,51 +902,55 @@ type MuellerReconstructionTests() =
                 let meanDelta = rows |> List.averageBy (fun r -> float (r.capturedAt.UtcTicks - t0))
                 System.DateTimeOffset(t0 + int64 (System.Math.Round meanDelta), System.TimeSpan.Zero)
 
-        let day1Start = airRowsOf cplCplDay1Rows "CPL-(AIR#0)-CPL"
-        let day1End = airRowsOf cplCplDay1Rows "CPL-(AIR#0)-CPL-BR"
+        let day1Start = airRowsOf cplCplDay1Rows (MuellerExperimentLabel "CPL-(AIR#0)-CPL")
+        let day1End = airRowsOf cplCplDay1Rows (MuellerExperimentLabel "CPL-(AIR#0)-CPL-BR")
         // The per-family AIR gain calibration bundle. LP-LP / LP-CPL take the mean of two AIR repeats; CPL-LP
         // splits at the bullshit-check time; CPL-CPL day 2 is one AIR block (the `cplCpl` default below).
         let calibration : GainCalibration =
             {
                 lpLp =
                     {
-                        gainA = fitAirGain sourceLp analyzerLp (airRowsOf lpLpRows "LP-(AIR#0)-LP-2")
-                        gainB = fitAirGain sourceLp analyzerLp (airRowsOf lpLpRows "LP-(AIR#0)-LP-2R")
+                        gainA = fitAirGain sourceLp analyzerLp (airRowsOf lpLpRows (MuellerExperimentLabel "LP-(AIR#0)-LP-2"))
+                        gainB = fitAirGain sourceLp analyzerLp (airRowsOf lpLpRows (MuellerExperimentLabel "LP-(AIR#0)-LP-2R"))
                     }
                 lpCpl =
                     {
-                        gainA = fitAirGain sourceLp analyzerCpl (airRowsOf lpCplRows "LP-(AIR#0)-CPL-2")
-                        gainB = fitAirGain sourceLp analyzerCpl (airRowsOf lpCplRows "LP-(AIR#0)-CPL-2R")
+                        gainA = fitAirGain sourceLp analyzerCpl (airRowsOf lpCplRows (MuellerExperimentLabel "LP-(AIR#0)-CPL-2"))
+                        gainB = fitAirGain sourceLp analyzerCpl (airRowsOf lpCplRows (MuellerExperimentLabel "LP-(AIR#0)-CPL-2R"))
                     }
                 cplLp =
                     {
-                        gainPre = fitAirGain sourceCpl analyzerLp (airRowsOf cplLpRows "CPL-(AIR#0)-LP-2")
-                        gainPost = fitAirGain sourceCpl analyzerLp (airRowsOf cplLpRows "CPL-(AIR#0)-LP-2R")
+                        gainPre = fitAirGain sourceCpl analyzerLp (airRowsOf cplLpRows (MuellerExperimentLabel "CPL-(AIR#0)-LP-2"))
+                        gainPost = fitAirGain sourceCpl analyzerLp (airRowsOf cplLpRows (MuellerExperimentLabel "CPL-(AIR#0)-LP-2R"))
                         splitTime = splitTime
                     }
-                cplCpl = Day2Single (fitAirGain sourceCpl analyzerCpl (airRowsOf cplCplDay2Rows "CPL-(AIR#0)-CPL-2"))
+                cplCpl = Day2Single (fitAirGain sourceCpl analyzerCpl (airRowsOf cplCplDay2Rows (MuellerExperimentLabel "CPL-(AIR#0)-CPL-2")))
             }
         // CPL-CPL day 1 is a distinct FILE with the time-INTERPOLATED rule (AIR start -> AIR end); day 2 keeps
         // the single-block rule in `calibration` above.
         let day1Cal =
             { calibration with
                 cplCpl =
-                    Day1Interp (
-                        fitAirGain sourceCpl analyzerCpl day1Start, meanTime day1Start,
-                        fitAirGain sourceCpl analyzerCpl day1End, meanTime day1End) }
+                    Day1Interp
+                        {
+                            gainStart = fitAirGain sourceCpl analyzerCpl day1Start
+                            timeStart = meanTime day1Start
+                            gainEnd = fitAirGain sourceCpl analyzerCpl day1End
+                            timeEnd = meanTime day1End
+                        } }
 
         // ---- The per-row Stage-2+3 projection each family closes over its models + gain (enrich_frame). ----
         let prepareRow (source : SourceModel) (analyzer : AnalyzerModel) (fam : Family) (cal : GainCalibration)
-                       (r : MuellerRawRow) : StokesVector * RealVector4 * float =
-            let phi = objectPhi (parseExperiment r.experiment)
-            let sEff = effectiveSource phi (sourceBaseStokes source)
+                       (r : MuellerRawRow) : StokesVector * RealVector4 * DetectorIntensity =
+            let phi = r.experiment.parsed.objectPhi
+            let sEff = effectiveSource phi source.baseStokes
             let aEff = effectiveAnalyzer phi (analyzerBaseRow analyzer r.description)
             let signal = correctSignal darkMean r.avgTotal (familyGain fam cal r.capturedAt)
             sEff, aEff, signal
 
         // Every science file maps to exactly one family; CPL-CPL day1/day2 are distinct files with distinct
         // gain rules (interpolated vs single block), so each carries its own calibration.
-        let families : (MuellerRawRow list * (MuellerRawRow -> StokesVector * RealVector4 * float)) list =
+        let families : (MuellerRawRow list * (MuellerRawRow -> StokesVector * RealVector4 * DetectorIntensity)) list =
             [ lpLpRows,       prepareRow sourceLp  analyzerLp  LpLp   calibration
               lpCplRows,      prepareRow sourceLp  analyzerCpl LpCpl  calibration
               cplLpRows,      prepareRow sourceCpl analyzerLp  CplLp  calibration
@@ -932,15 +960,18 @@ type MuellerReconstructionTests() =
         // The one contaminated point excluded from every fit (matrix_glue.py EXCLUDED_POINTS[0]), supplied
         // here as BerremanTests data (spec section 0).
         let excluded : ExcludedPoint list =
-            [ { experiment = "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0; captureIndex = 17 } ]
+            [ { experiment = MuellerExperimentLabel "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0<Berreman.Constants.deg>; captureIndex = CaptureIndex 17 } ]
 
         // Assemble the full n*16 design + corrected-signal target for one kind across every family, then solve
         // through the real SVD proxy (buildDesign drops AIR rows and the excluded point per file).
         let reconstructKind (kind : MatrixKind) : ReconstructedMatrix =
             let parts = families |> List.map (fun (rows, prep) -> buildDesign prep excluded rows kind)
-            let design = parts |> List.collect (fun (d, _) -> List.ofArray d) |> List.toArray
-            let target = parts |> List.collect (fun (_, t) -> List.ofArray t) |> List.toArray
-            match reconstruct solver design target with
+            let system =
+                {
+                    design = parts |> List.collect (fun p -> List.ofArray p.design) |> List.toArray
+                    rhs = parts |> List.collect (fun p -> List.ofArray p.rhs) |> List.toArray
+                }
+            match reconstruct solver system with
             | Ok recon -> recon
             | Error e -> failwith $"the %A{kind} reconstruction failed: %A{e}"
 
@@ -970,27 +1001,30 @@ type MuellerReconstructionTests() =
             worst, $"{label} worst {worst} at M[{i},{j}]"
 
         let expectedQz =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [  0.9412063946;  0.0409543238; -0.0259356814; -0.1220013287 ]
                   [  0.0525351141;  0.6606049231; -0.3659862371; -0.1421373359 ]
                   [ -0.0129854586;  0.4061015401;  0.6094438915; -0.0169558310 ]
                   [ -0.0957187769;  0.0752040278;  0.0184691606;  1.0306648444 ] ]
+            |> MuellerMatrix
         let expectedLr =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [  0.9931797644; -0.0046529422;  0.0596850441; -0.1036207527 ]
                   [  0.3531940843;  0.1474307188; -0.0954724381; -0.6568249890 ]
                   [  0.3425940212; -0.3946501705;  0.6900321099; -0.5968927113 ]
                   [ -0.0104722933;  0.1247347199;  0.4614122160;  0.5910486653 ] ]
+            |> MuellerMatrix
         let expectedComb =
-            Propagation.muellerOfRows
+            RealMatrix4x4.create
                 [ [  0.9001173290;  0.0831007067;  0.0350162173; -0.1712567077 ]
                   [  0.3413132788; -0.1694202380; -0.1576526274; -0.5502997288 ]
                   [  0.3377633308; -0.1048712506;  0.7681312510; -0.5366531986 ]
                   [  0.0999436274;  0.0459751884;  0.3292576266;  0.3168329794 ] ]
+            |> MuellerMatrix
 
-        Assert.Equal(16, mQz.rank)
-        Assert.Equal(16, mLr.rank)
-        Assert.Equal(16, mComb.rank)
+        Assert.Equal(MatrixRank 16, mQz.rank)
+        Assert.Equal(MatrixRank 16, mLr.rank)
+        Assert.Equal(MatrixRank 16, mComb.rank)
         // One assertion over ALL THREE matrices, reporting every matrix's worst element so a regression run
         // shows the whole picture in a single message instead of stopping at the first element out of band.
         let matrixDeviations =
@@ -1007,13 +1041,13 @@ type MuellerReconstructionTests() =
         let cascade = cascadeProduct mLr.matrix mQz.matrix
         let d = frobeniusDiff mComb.matrix cascade
         let worstMetricDeviation =
-            [ abs (d.frobenius - 0.5714178795538456)
-              abs (d.meanAbs - 0.11328628636347338)
-              abs (d.maxAbs - 0.26806464658062423) ]
+            [ abs (d.frobenius.value - 0.5714178795538456)
+              abs (d.meanAbs.value - 0.11328628636347338)
+              abs (d.maxAbs.value - 0.26806464658062423) ]
             |> List.max
         Assert.True(
             worstMetricDeviation < dataMatrixTol,
-            $"cascade metrics: worst deviation {worstMetricDeviation} (frobenius = {d.frobenius}, meanAbs = {d.meanAbs}, maxAbs = {d.maxAbs}, tol {dataMatrixTol})")
+            $"cascade metrics: worst deviation {worstMetricDeviation} (frobenius = {d.frobenius.value}, meanAbs = {d.meanAbs.value}, maxAbs = {d.maxAbs.value}, tol {dataMatrixTol})")
 
         // The two largest element differences both live in the 4th row (1-indexed) — at columns 4 and 2, each
         // ~0.268 and near-tied. (The slice text names (4,2) and (2,2) 1-indexed; the real data's runner-up to
@@ -1026,7 +1060,7 @@ type MuellerReconstructionTests() =
         let topTwoDiffPositions =
             [ for i in 0 .. 3 do
                 for j in 0 .. 3 ->
-                    (i, j), abs (Propagation.muellerElement mComb.matrix i j - Propagation.muellerElement cascade i j) ]
+                    (i, j), abs (mComb.matrix.element i j - cascade.element i j) ]
             |> List.sortByDescending snd
             |> List.truncate 2
             |> List.map fst

@@ -22,21 +22,21 @@ let r12 = 1.5e-6 |> RhoValue
 let r12MaxVal = 5.0e-04
 let thickness = Thickness.oneCentiMeter
 
-let wedgeAngle = 23.0 |> Angle.degree |> WedgeAngle
-//let wedgeAngle = 25.592 |> Angle.degree |> WedgeAngle
-//let wedgeAngle = 25.5925 |> Angle.degree |> WedgeAngle
+let wedgeAngle = 23.0<deg> |> Angle.degree |> WedgeAngle
+//let wedgeAngle = 25.592<deg> |> Angle.degree |> WedgeAngle
+//let wedgeAngle = 25.5925<deg> |> Angle.degree |> WedgeAngle
 
-let numberOfPoints = 2000
-//let polarization = 45.0 |> Angle.degree |> Polarization.create
+let numberOfPoints = NumberOfPoints 2000
+//let polarization = 45.0<deg> |> Angle.degree |> Polarization.create
 let polarization = Polarization.s
 
 let light = { light600nmNormalLPs with polarization = polarization }
-let d = $"Planar active crystal wedge %A{wedgeAngle.degrees} degrees, r12 = %A{r12.value}, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
-let d1 = $"Planar active crystal wedge %A{wedgeAngle.degrees} degrees, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
+let d = OpticalSystemDescription $"Planar active crystal wedge %A{wedgeAngle.degrees} degrees, r12 = %A{r12.value}, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
+let d1 = OpticalSystemDescription $"Planar active crystal wedge %A{wedgeAngle.degrees} degrees, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
 let p = OpticalProperties.planarCrystal e11 e33 r12
 
 let wedgeAngleRange =
-    Range<_>.create numberOfPoints (0.0 |> Angle.degree |> WedgeAngle) (85.0 |> Angle.degree |> WedgeAngle)
+    Range<_>.create numberOfPoints (0.0<deg> |> Angle.degree |> WedgeAngle) (85.0<deg> |> Angle.degree |> WedgeAngle)
     |> WedgeAngleRange
 
 let polarizationRange =
@@ -44,7 +44,7 @@ let polarizationRange =
     |> PolarizationRange
 
 
-let updateG12 (o: OpticalSystem) r =
+let updateG12 (o: OpticalSystem) (ArbitraryValue r) =
     match o.substrate with
     | Some (Wedge w) ->
         { o with substrate = { w with layer = { w.layer with properties = { w.layer.properties with rho = r |> RhoValue |> Rho.planarCrystal } } } |> Wedge |> Some}
@@ -52,9 +52,9 @@ let updateG12 (o: OpticalSystem) r =
 
 let g12Range =
     {
-        variableName = "g12"
-        range =  Range<_>.create numberOfPoints 0.0 r12MaxVal
-        scale = 1.0
+        variableName = VariableName "g12"
+        range =  Range<_>.create numberOfPoints (ArbitraryValue 0.0) (ArbitraryValue r12MaxVal)
+        scale = PlotScale 1.0
         getSys = updateG12
     }
     |> ArbitraryVariableRange

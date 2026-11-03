@@ -18,8 +18,8 @@ type CategoryEditorWindow(categories : CategoryProxy) as this =
 
     do
         this.Title <- "Category Editor"
-        this.Name <- UiIds.CategoryEditor.window
-        AutomationProperties.SetAutomationId(this, UiIds.CategoryEditor.window)
+        this.Name <- ConstructorUiId.categoryEditorWindow.value
+        AutomationProperties.SetAutomationId(this, ConstructorUiId.categoryEditorWindow.value)
         this.Width <- 720.0
         this.Height <- 640.0
         // Spec 0046: never larger than the screen it opens on (its content scrolls).
@@ -29,6 +29,6 @@ type CategoryEditorWindow(categories : CategoryProxy) as this =
                 categories = categories
                 requestClose = fun () -> this.Close()
             }
-        Program.mkSimple (fun () -> CategoryEditorView.init context) CategoryEditorView.update CategoryEditorView.view
+        Program.mkSimple (fun () -> context.initCategoryEditor) CategoryEditorView.updateCategoryEditor CategoryEditorView.categoryEditorView
         |> Program.withHost this
         |> Program.run

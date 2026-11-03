@@ -6,11 +6,16 @@ open Berreman.Media
 open Berreman.Fields
 open Berreman.Solvers
 open Berreman.FieldFunctions
+open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.OptimizationInterface
+open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Optimization.MeritFunction
 open OpticalConstructor.Optimization.FitQuality
+open OpticalConstructor.Controls
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.SynthesisFitPage
 open Xunit
 
 /// Part G §G.8 / §G.10 page-level ACs (slice 011), in the gated, UI-less
@@ -39,13 +44,13 @@ module SynthesisFitPageTests =
         }
 
     let private reflectanceOf (system : OpticalSystem) (w : WaveLength) : float =
-        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.get
+        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.map (fun v -> v.value) |> Option.get
 
     /// A small R-fit problem and the resulting (refined system, FitReport).
     let private fittedProblem () =
         let trueSystem = mkSystem 250.0<nm>
         let baseSystem = mkSystem 1.0<nm>
-        let parameters = [ DesignParameters.layerThickness 0 1.0e-6 ]
+        let parameters = [ DesignParameters.layerThickness (FilmIndex 0) (Thickness.mkm 1.0<mkm>) ]
         let targets =
             [ 450.0; 520.0; 590.0; 660.0 ]
             |> List.map (fun nm ->
@@ -53,12 +58,12 @@ module SynthesisFitPageTests =
                 {
                     quantity = Photometric R
                     samplePoint = IncidentLightInfo.create w
-                    desiredValue = reflectanceOf trueSystem w
-                    weight = 1.0
-                    tolerance = 1.0
+                    desiredValue = TargetValue (reflectanceOf trueSystem w)
+                    weight = TargetWeight 1.0
+                    tolerance = TargetTolerance 1.0
                     kind = Equality
                 })
-        let initial = [| 220.0e-9 |]
+        let initial = DesignVector [| 220.0e-9 |]
         match LocalRefinement.refine baseSystem parameters initial targets with
         | Ok (refined, result) ->
             let residual = MeritFunction.buildResidual baseSystem parameters targets
@@ -72,31 +77,36 @@ module SynthesisFitPageTests =
         let (_, _, _, targets, _, report) = fittedProblem ()
 
         // Quality metrics are present and well-shaped.
-        Assert.True(report.chiSquared >= 0.0)
-        Assert.True(System.Double.IsFinite report.mse)
-        Assert.True(System.Double.IsFinite report.reducedChiSquared)
-        Assert.Equal(1, report.parameters.Length)
-        Assert.Equal(1, report.standardErrors.Length)
-        Assert.Equal(1, report.confidenceIntervals.Length)
+        Assert.True(report.chiSquared.value >= 0.0)
+        Assert.True(System.Double.IsFinite report.mse.value)
+        Assert.True(System.Double.IsFinite report.reducedChiSquared.value)
+        Assert.Equal(1, report.parameters.value.Length)
+        Assert.Equal(1, report.standardErrors.value.Length)
+        Assert.Equal(1, report.confidenceIntervals.lower.value.Length)
+        Assert.Equal(1, report.confidenceIntervals.upper.value.Length)
         // Correlation matrix is n×n with a unit diagonal.
-        Assert.Equal(report.parameters.Length, report.correlation.Length)
-        report.correlation |> Array.iter (fun row -> Assert.Equal(report.parameters.Length, row.Length))
-        Assert.True(abs (report.correlation.[0].[0] - 1.0) < 1.0e-9)
+        Assert.Equal(report.parameters.value.Length, report.correlation.value.Length)
+        report.correlation.value |> Array.iter (fun row -> Assert.Equal(report.parameters.value.Length, row.Length))
+        Assert.True(abs (report.correlation.value.[0].[0] - 1.0) < 1.0e-9)
         // Per-sample residuals retained for the residual plot / overlay.
-        Assert.Equal(targets.Length, report.residuals.Length)
+        Assert.Equal(targets.Length, report.residuals.value.Length)
         // Each CI brackets its parameter estimate.
-        let (lo, hi) = report.confidenceIntervals.[0]
-        Assert.True(lo <= report.parameters.[0] && report.parameters.[0] <= hi)
+        let lo = report.confidenceIntervals.lower.value.[0]
+        let hi = report.confidenceIntervals.upper.value.[0]
+        Assert.True(lo <= report.parameters.value.[0] && report.parameters.value.[0] <= hi)
 
         // .binz round-trip: derived sidecar payload, NOT canonical JSON.
-        let bytes = FitQuality.toBinz report
+        let binz = report.toBinz
+        let bytes = binz.value
         Assert.Equal(0x1fuy, bytes.[0])              // gzip magic — the .binz payload
         Assert.Equal(0x8buy, bytes.[1])
         Assert.NotEqual(byte '{', bytes.[0])         // never the canonical JSON '{'
-        let restored = FitQuality.fromBinz bytes
-        Assert.Equal(report.chiSquared, restored.chiSquared, 12)
-        Assert.Equal(report.parameters.[0], restored.parameters.[0], 15)
-        Assert.Equal(report.residuals.Length, restored.residuals.Length)
+        match FitReport.tryFromBinz binz with
+        | Ok restored ->
+            Assert.Equal(report.chiSquared.value, restored.chiSquared.value, 12)
+            Assert.Equal(report.parameters.value.[0], restored.parameters.value.[0], 15)
+            Assert.Equal(report.residuals.value.Length, restored.residuals.value.Length)
+        | Error e -> failwith $"expected the .binz payload to read back, got Error {e}"
 
     // -------------------------------------- mis-scaled-Jacobian regression (R-1)
 
@@ -119,11 +129,11 @@ module SynthesisFitPageTests =
         // Known small residuals at the solution: dᵢ = sin(baseᵢ) + epsᵢ ⇒ rᵢ(x0) = −epsᵢ.
         let eps = [| 0.01; -0.02; 0.015; -0.005; 0.012 |]
         let data = Array.map2 (fun b e -> sin b + e) bases eps
-        let residual (x : float[]) = Array.map2 (fun om d -> sin (om * x.[0]) - d) omegas data
+        let residual (DesignVector x) = Array.map2 (fun om d -> sin (om * x.[0]) - d) omegas data |> ResidualVector
 
         // Analytic Jacobian column at x0: drᵢ/dx = ωᵢ cos(ωᵢ x0) = ωᵢ cos(baseᵢ).
         let analyticJac = Array.map2 (fun om b -> om * cos b) omegas bases
-        let jac = FitQuality.residualJacobian residual [| x0 |]
+        let jac = (FitQuality.residualJacobian residual (DesignVector [| x0 |])).value
         Assert.Equal(omegas.Length, jac.Length)
         jac |> Array.iteri (fun i row ->
             Assert.Equal(1, row.Length)
@@ -132,16 +142,16 @@ module SynthesisFitPageTests =
 
         // Analytic standard error of the single parameter:
         //   reducedχ² = Σeps²/(m−1);  Cov = reducedχ²/Σ(ωᵢ cos baseᵢ)²;  σ = √Cov.
-        let finalResiduals = residual [| x0 |]
-        let m = finalResiduals.Length
+        let finalResiduals = residual (DesignVector [| x0 |])
+        let m = finalResiduals.value.Length
         let reduced = (eps |> Array.sumBy (fun v -> v * v)) / float (m - 1)
         let analyticStdErr = sqrt (reduced / (analyticJac |> Array.sumBy (fun v -> v * v)))
 
-        let report = FitQuality.reportFrom residual [| x0 |] finalResiduals
-        let sigma = report.standardErrors.[0]
+        let report = FitQuality.reportFrom residual (DesignVector [| x0 |]) finalResiduals
+        let sigma = report.standardErrors.value.[0]
         // Non-degenerate covariance: finite and strictly positive.
         Assert.True(System.Double.IsFinite sigma && sigma > 0.0, "std error must be finite and positive")
-        Assert.True(System.Double.IsFinite report.covariance.[0].[0] && report.covariance.[0].[0] > 0.0)
+        Assert.True(System.Double.IsFinite report.covariance.value.[0].[0] && report.covariance.value.[0].[0] > 0.0)
         // And it matches the analytic closed form — a mis-scaled Jacobian misses this.
         let relSigma = abs (sigma - analyticStdErr) / analyticStdErr
         Assert.True(relSigma < 1.0e-3, $"std error {sigma} vs analytic {analyticStdErr} (rel {relSigma}) — mis-scaled Jacobian")
@@ -151,35 +161,35 @@ module SynthesisFitPageTests =
     [<Fact>]
     let ``AC-G7 Cancel is distinct from Start and Revert restores the pre-fit system`` () =
         let (baseSystem, parameters, initial, targets, _, _) = fittedProblem ()
-        let model0 = SynthesisFitPage.init baseSystem parameters initial targets LevenbergMarquardt "C:/work"
+        let model0 = SynthesisFitPage.initSynthesisFit baseSystem parameters initial targets LevenbergMarquardt (FolderName "C:/work")
 
         // Start is one-click and non-destructive: snapshots the pre-fit system and
         // does NOT overwrite the working system.
-        let started = SynthesisFitPage.update SynthesisFitPage.StartFit model0
-        Assert.True(started.running)
+        let started = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.StartFit model0
+        Assert.Equal(FitRunning, started.running)
         Assert.Equal<OpticalSystem>(model0.workingSystem, started.workingSystem)
         Assert.Equal(Some model0.workingSystem, started.preFit)
 
         // Cancel is a DISTINCT message from Start; it sets the cooperative flag the
         // G.9 loop observes, and is not the same control as Start.
-        let cancelled = SynthesisFitPage.update SynthesisFitPage.CancelFit started
-        Assert.True(cancelled.cancelRequested)
+        let cancelled = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.CancelFit started
+        Assert.Equal(Synthesis.SearchCancelRequested, cancelled.cancelRequested)
         Assert.NotEqual<SynthesisFitPage.Msg>(SynthesisFitPage.StartFit, SynthesisFitPage.CancelFit)
 
         // A completed-then-accepted fit replaces the working system only after an
         // explicit confirm (Accept is gated, Start is not).
         let candidateSystem = mkSystem 250.0<nm>
         let report = (let (_, _, _, _, _, r) = fittedProblem () in r)
-        let completed = SynthesisFitPage.update (SynthesisFitPage.FitCompleted(candidateSystem, report)) cancelled
-        Assert.False(completed.running)
-        let requested = SynthesisFitPage.update SynthesisFitPage.RequestAccept completed
-        Assert.True((SynthesisFitPage.acceptConfirmationPrompt requested).IsSome)   // confirm gate
+        let completed = SynthesisFitPage.updateSynthesisFit (SynthesisFitPage.FitCompleted(candidateSystem, report)) cancelled
+        Assert.Equal(FitNotRunning, completed.running)
+        let requested = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.RequestAccept completed
+        Assert.True(Option.isSome requested.acceptConfirmationPrompt)   // confirm gate
         Assert.Equal<OpticalSystem>(model0.workingSystem, requested.workingSystem)  // not yet replaced
-        let confirmed = SynthesisFitPage.update SynthesisFitPage.ConfirmAccept requested
+        let confirmed = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.ConfirmAccept requested
         Assert.Equal<OpticalSystem>(candidateSystem, confirmed.workingSystem)       // now replaced
 
         // Revert restores the pre-fit working system.
-        let reverted = SynthesisFitPage.update SynthesisFitPage.Revert confirmed
+        let reverted = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.Revert confirmed
         Assert.Equal<OpticalSystem>(model0.workingSystem, reverted.workingSystem)
 
     [<Fact>]
@@ -187,41 +197,41 @@ module SynthesisFitPageTests =
         let (baseSystem, parameters, _, targets, _, _) = fittedProblem ()
         let residual = MeritFunction.buildResidual baseSystem parameters targets
         let bounds = DesignParameters.bounds parameters
-        let initial = [| 220.0e-9 |]
-        let saConfig = { Synthesis.AnnealingConfig.defaultValue with iterations = 5000 }
+        let initial = DesignVector [| 220.0e-9 |]
+        let saConfig = { Synthesis.AnnealingConfig.defaultValue with iterations = IterationCount 5000 }
 
         // Cancel immediately: the SA loop must stop without exhausting its iterations.
-        let cancelledRun = Synthesis.simulatedAnnealing saConfig (fun () -> true) bounds residual initial
-        Assert.True(cancelledRun.iterations < saConfig.iterations, "the loop must stop early on cancel")
-        Assert.Equal(Failed "cancelled", cancelledRun.terminationReason)
-        Assert.False(cancelledRun.success)
+        let cancelledRun = Synthesis.simulatedAnnealing saConfig (fun () -> Synthesis.SearchCancelRequested) bounds residual initial
+        Assert.True(cancelledRun.iterations.value < saConfig.iterations.value, "the loop must stop early on cancel")
+        Assert.Equal(SearchCancelled, cancelledRun.terminationReason)
+        Assert.Equal(OptimizationFailed, cancelledRun.outcome)
 
         // The GA loop observes the same flag.
-        let gaConfig = { Synthesis.GeneticConfig.defaultValue with generations = 5000 }
-        let cancelledGa = Synthesis.geneticAlgorithm gaConfig (fun () -> true) bounds residual initial
-        Assert.True(cancelledGa.iterations < gaConfig.generations)
-        Assert.Equal(Failed "cancelled", cancelledGa.terminationReason)
+        let gaConfig = { Synthesis.GeneticConfig.defaultValue with generations = IterationCount 5000 }
+        let cancelledGa = Synthesis.geneticAlgorithm gaConfig (fun () -> Synthesis.SearchCancelRequested) bounds residual initial
+        Assert.True(cancelledGa.iterations.value < gaConfig.generations.value)
+        Assert.Equal(SearchCancelled, cancelledGa.terminationReason)
 
         // With no cancellation the same loop runs to completion — proving the flag
         // (not some other early-exit) is what stopped it above.
-        let fullRun = Synthesis.simulatedAnnealing { saConfig with iterations = 50 } (fun () -> false) bounds residual initial
-        Assert.Equal(50, fullRun.iterations)
+        let fullRun = Synthesis.simulatedAnnealing { saConfig with iterations = IterationCount 50 } (fun () -> Synthesis.SearchNotCancelled) bounds residual initial
+        Assert.Equal(50, fullRun.iterations.value)
 
     // ----------------------------------------------------------------- AC-G8
 
     [<Fact>]
     let ``AC-G8 the fit-vs-measured overlay refreshes from the model on completion without a manual reload`` () =
         let (baseSystem, parameters, initial, targets, refined, report) = fittedProblem ()
-        let model0 = SynthesisFitPage.init baseSystem parameters initial targets LevenbergMarquardt "C:/work"
+        let model0 = SynthesisFitPage.initSynthesisFit baseSystem parameters initial targets LevenbergMarquardt (FolderName "C:/work")
 
         // No candidate yet: no overlay.
-        Assert.True((SynthesisFitPage.comparisonOverlay model0).IsNone)
+        Assert.True(Option.isNone model0.comparisonOverlay)
 
         // Start then complete — the overlay refreshes WITHOUT any extra reload message.
-        let running = SynthesisFitPage.update SynthesisFitPage.StartFit model0
-        let completed = SynthesisFitPage.update (SynthesisFitPage.FitCompleted(refined, report)) running
+        let running = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.StartFit model0
+        let completed = SynthesisFitPage.updateSynthesisFit (SynthesisFitPage.FitCompleted(refined, report)) running
 
-        match SynthesisFitPage.comparisonOverlay completed with
+        match completed.comparisonOverlay with
         | Some (infos, funcs) ->
             // Two models overlaid (pre-fit reference + fitted candidate) for the
             // targets' photometric channel — the exact `plotComparison` inputs.
@@ -233,4 +243,4 @@ module SynthesisFitPageTests =
 
     [<Fact>]
     let ``G10 the page exposes a named Synthesis/Fit navigation entry`` () =
-        Assert.Equal("Synthesis / Fit", SynthesisFitPage.navEntry.title)
+        Assert.Equal(ControlCaption "Synthesis / Fit", SynthesisFitPage.navEntry.title)

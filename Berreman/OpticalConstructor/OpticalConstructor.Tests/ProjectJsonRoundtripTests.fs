@@ -24,7 +24,7 @@ module ProjectJsonRoundtripTests =
 
     let private vacuumSystem : OpticalSystem =
         {
-            description = Some "test stack"
+            description = Some (OpticalSystemDescription "test stack")
             upper = OpticalProperties.vacuum
             films = [ { properties = OpticalProperties.vacuum; thickness = Thickness.Thickness filmThickness } ]
             substrate = None
@@ -45,8 +45,8 @@ module ProjectJsonRoundtripTests =
     /// A small but representative project: a sample with a transmitted detector
     /// child (exercises the `Map<BeamBranch, BeamNode>` and the engine stack).
     let private sampleProject (defaultUnit : UnitOfMeasure) : OpticalConstructorProject =
-        let detector = node Detector Map.empty Nanometer
-        let root = node (Sample vacuumSystem) (Map.ofList [ BeamBranch.Transmitted, detector ]) defaultUnit
+        let detector = node DetectorElement Map.empty Nanometer
+        let root = node (SampleElement vacuumSystem) (Map.ofList [ BeamBranch.TransmittedBeam, detector ]) defaultUnit
         { beamTree = { root = root }; systems = [ vacuumSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
 
     let private okOr (r : Result<'a, _>) : 'a =
@@ -63,18 +63,17 @@ module ProjectJsonRoundtripTests =
     let ``AC-A2 a valid canonical project validates on load`` () =
         let json = sampleProject Nanometer |> ProjectJson.serializeProject |> okOr
         // The canonical artefact is JSON text (never a .binz pickle).
-        Assert.StartsWith("{", json.TrimStart())
-        Assert.Contains("schemaVersion", json)
+        Assert.StartsWith("{", json.value.TrimStart())
+        Assert.Contains("schemaVersion", json.value)
         // Validate-on-load admits the document.
-        sampleProject Nanometer |> ProjectJson.serializeProject |> okOr
-        |> ProjectJson.deserializeProject
+        (sampleProject Nanometer |> ProjectJson.serializeProject |> okOr).parseProject
         |> okOr
         |> ignore
 
     [<Fact>]
     let ``AC-D6 round-trip preserves the defaultUnit label and the canonical SI datum`` () =
         let project = sampleProject Micrometer
-        let back = project |> ProjectJson.serializeProject |> okOr |> ProjectJson.deserializeProject |> okOr
+        let back = (project |> ProjectJson.serializeProject |> okOr).parseProject |> okOr
         // The display-only label survives the round-trip ...
         Assert.Equal(Micrometer, back.beamTree.root.defaultUnit)
         // ... and the stored SI magnitude is byte-identical (no conversion applied).
@@ -83,11 +82,11 @@ module ProjectJsonRoundtripTests =
     [<Fact>]
     let ``AC-A5 the canonical SI magnitudes are stored verbatim`` () =
         let project = sampleProject Nanometer
-        let back = project |> ProjectJson.serializeProject |> okOr |> ProjectJson.deserializeProject |> okOr
+        let back = (project |> ProjectJson.serializeProject |> okOr).parseProject |> okOr
         Assert.Equal(filmThickness, rootThickness back)
         Assert.Equal(light.waveLength.value, back.beamTree.root.incident.waveLength.value)
         // The transmitted detector child survived the Map round-trip.
-        Assert.True(back.beamTree.root.children.ContainsKey BeamBranch.Transmitted)
+        Assert.True(back.beamTree.root.children.ContainsKey BeamBranch.TransmittedBeam)
 
     // --- AC-B9 (slice 005): the beam tree and its constructed systems round-trip
     // through the JSON-canonical project, schema-validated on load, exercising the
@@ -95,7 +94,7 @@ module ProjectJsonRoundtripTests =
     // `$defs` — the mirror Reflected child, a Plate substrate, and a Wedge system.
     let private plateSystem : OpticalSystem =
         { vacuumSystem with substrate = Some (Plate { properties = OpticalProperties.vacuum; thickness = Thickness.Infinity }) }
-    let private wedgeAngle = WedgeAngle (Angle.degree 2.0)
+    let private wedgeAngle = WedgeAngle (Angle.degree 2.0<deg>)
     let private wedgeSystem : OpticalSystem =
         { vacuumSystem with substrate = Some (Wedge { layer = { properties = OpticalProperties.vacuum; thickness = Thickness.mm 1.0<mm> }; angle = wedgeAngle }) }
 
@@ -103,29 +102,29 @@ module ProjectJsonRoundtripTests =
     /// Plate-substrate system, a mirror Reflected child, a detector Transmitted
     /// child, plus a Plate and a Wedge entry in `systems`.
     let private richProject : OpticalConstructorProject =
-        let mirror = { (node FlatMirror Map.empty Nanometer) with system = plateSystem }
-        let detector = node Detector Map.empty Nanometer
-        let root = { (node (Sample plateSystem) (Map.ofList [ BeamBranch.Reflected, mirror; BeamBranch.Transmitted, detector ]) Micrometer) with system = plateSystem }
+        let mirror = { (node FlatMirrorElement Map.empty Nanometer) with system = plateSystem }
+        let detector = node DetectorElement Map.empty Nanometer
+        let root = { (node (SampleElement plateSystem) (Map.ofList [ BeamBranch.ReflectedBeam, mirror; BeamBranch.TransmittedBeam, detector ]) Micrometer) with system = plateSystem }
         { beamTree = { root = root }; systems = [ plateSystem; wedgeSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
 
     [<Fact>]
     let ``AC-B9 beam tree and systems round-trip through the schema-validated canonical project`` () =
         let json = richProject |> ProjectJson.serializeProject |> okOr
         // The canonical artefact is JSON text and is NEVER a .binz pickle (Part A constraint 4).
-        Assert.StartsWith("{", json.TrimStart())
-        Assert.DoesNotContain(".binz", json)
+        Assert.StartsWith("{", json.value.TrimStart())
+        Assert.DoesNotContain(".binz", json.value)
         // Validate-on-load admits the document against the published schema and binds it.
-        let back = json |> ProjectJson.deserializeProject |> okOr
+        let back = json.parseProject |> okOr
         // The Sample root, its Plate substrate, and both branch children survived.
         match back.beamTree.root.element with
-        | Sample _ -> ()
+        | SampleElement _ -> ()
         | other -> failwith $"unexpected root element: {other}"
         match back.beamTree.root.system.substrate with
         | Some (Plate _) -> ()
         | other -> failwith $"unexpected root substrate: {other}"
-        Assert.True(back.beamTree.root.children.ContainsKey BeamBranch.Reflected)
-        Assert.True(back.beamTree.root.children.ContainsKey BeamBranch.Transmitted)
-        Assert.Equal(FlatMirror, back.beamTree.root.children.[BeamBranch.Reflected].element)
+        Assert.True(back.beamTree.root.children.ContainsKey BeamBranch.ReflectedBeam)
+        Assert.True(back.beamTree.root.children.ContainsKey BeamBranch.TransmittedBeam)
+        Assert.Equal(FlatMirrorElement, back.beamTree.root.children.[BeamBranch.ReflectedBeam].element)
         // The systems list (Plate + Wedge) round-trips with the wedge angle preserved.
         Assert.Equal(2, List.length back.systems)
         match back.systems.[1].substrate with
@@ -137,11 +136,12 @@ module ProjectJsonRoundtripTests =
         // A real serialized document with the incident refractionIndex corrupted to a
         // non-number; the filled beamNode `$def` MUST reject it on validate-on-load.
         let bad =
-            (richProject |> ProjectJson.serializeProject |> okOr)
-                .Replace("\"refractionIndex\": 1", "\"refractionIndex\": \"not-a-number\"")
-        match ProjectJson.deserializeProject bad with
-        | Error (SchemaValidationError _) -> ()
-        | other -> failwith $"expected SchemaValidationError, got: {other}"
+            ProjectJson.ProjectJsonText
+                ((richProject |> ProjectJson.serializeProject |> okOr)
+                    .value.Replace("\"refractionIndex\": 1", "\"refractionIndex\": \"not-a-number\""))
+        match bad.parseProject with
+        | Error (SchemaValidationErr _) -> ()
+        | other -> failwith $"expected SchemaValidationErr, got: {other}"
 
     // --- AC-C1 (slice 004): the optical table plate round-trips through the
     // schema-validated canonical project. A fresh table is 1.2 x 2.0 x 0.10 m; an
@@ -161,8 +161,8 @@ module ProjectJsonRoundtripTests =
         // ... serialize -> validate-on-load -> bind: the table validates against the
         // opticalTable $def and the edited size survives byte-identically (no conversion).
         let json = project |> ProjectJson.serializeProject |> okOr
-        Assert.Contains("\"table\"", json)
-        let back = json |> ProjectJson.deserializeProject |> okOr
+        Assert.Contains("\"table\"", json.value)
+        let back = json.parseProject |> okOr
         Assert.Equal(1.5<meter>, back.table.width)
         Assert.Equal(2.5<meter>, back.table.length)
         Assert.Equal(0.125<meter>, back.table.thickness)

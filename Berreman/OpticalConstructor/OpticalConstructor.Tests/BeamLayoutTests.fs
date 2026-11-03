@@ -21,28 +21,28 @@ module BeamLayoutTests =
     let private close (a : float) (b : float) : bool = abs (a - b) <= tol
 
     let private sub (a : Vector3) (b : Vector3) : Vector3 = Vector3.create (a.x - b.x) (a.y - b.y) (a.z - b.z)
-    let private areParallel (a : Vector3) (b : Vector3) : bool = close (a.normalized.dot b.normalized) 1.0
+    let private areParallel (a : Vector3) (b : Vector3) : bool = close ((a.normalized.dot b.normalized).value) 1.0
     let private dirOf (s : RaySegment) : Vector3 = (sub s.finish s.start).normalized
 
     let private el (id : string) (kind : CatalogueKind) (x : float) : LayoutElement =
         {
-            id = Library.elementId id
+            id = Library.ElementId id
             placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }
             host = OnMainBeam
-            zoom = 5.0
+            zoom = ElementZoom 5.0
         }
 
     let private tilted (r2 : float) (e : LayoutElement) : LayoutElement =
-        { e with placement = withR2 (Angle.degree r2) e.placement }
+        { e with placement = withR2 (Angle.degree (r2 * 1.0<deg>)) e.placement }
 
     let private tiltedOut (r3 : float) (e : LayoutElement) : LayoutElement =
-        { e with placement = withR3 (Angle.degree r3) { e.placement with r3Locked = false } }
+        { e with placement = withR3 (Angle.degree (r3 * 1.0<deg>)) { e.placement with r3Locked = RotationFree } }
 
     let private onReflectedOf (host : string) (e : LayoutElement) : LayoutElement =
-        { e with host = OnReflectedBeamOf (Library.elementId host) }
+        { e with host = OnReflectedBeamOf (Library.ElementId host) }
 
     let private placedOf (id : string) (scene : SceneLayout) : PlacedElement =
-        scene.elements |> List.find (fun p -> p.id = Library.elementId id)
+        scene.elements |> List.find (fun p -> p.id = Library.ElementId id)
 
     /// The element with its reflected ray switched off, so only its transmitted path is drawn.
     let private transmitting (e : LayoutElement) : LayoutElement =
@@ -68,19 +68,19 @@ module BeamLayoutTests =
         let c = RayModel.crossElement centre d n (h * 1.0<meter>)
         // The entry is on the FRONT face plane and on the incoming line through the centre; the exit on
         // the BACK face plane.
-        Assert.True(close ((sub c.entry centre).dot n) -h, "entry on the front face")
-        Assert.True(close ((sub c.exit centre).dot n) h, "exit on the back face")
+        Assert.True(close (((sub c.entry centre).dot n).value) -h, "entry on the front face")
+        Assert.True(close (((sub c.exit centre).dot n).value) h, "exit on the back face")
         Assert.True(close ((sub c.entry centre).cross d).norm 0.0, "entry on the incoming line through the centre")
         // Inside: Snell with n = 1.0 → 1.5; the run entry → exit follows the inside direction.
-        let theta2 = acos (c.inside.dot n)
-        Assert.True(close (sin theta1) (RayModel.refractiveIndexInside * sin theta2), "Snell's law inside")
+        let theta2 = acos ((c.inside.dot n).value)
+        Assert.True(close (sin theta1) (RayModel.refractiveIndexInside.value * sin theta2), "Snell's law inside")
         Assert.True(areParallel (sub c.exit c.entry) c.inside, "the inside run follows the refracted direction")
         // Out: areParallel to the incoming ray, laterally shifted by t·sin(θ1 − θ2) / cos θ2 (t = 2h).
         Assert.True(areParallel c.transmitted d, "the exit ray is areParallel to the incoming ray")
         let shift = ((sub c.exit centre).cross d).norm
         Assert.True(abs (shift - 2.0 * h * sin (theta1 - theta2) / cos theta2) < 1.0e-12, $"lateral shift {shift}")
         // The reflected ray leaves the entry at the mirror angle: equal angles to the normal.
-        Assert.True(close (c.reflected.dot n) (-(d.dot n)), "angle of reflection = angle of incidence")
+        Assert.True(close ((c.reflected.dot n).value) (-((d.dot n).value)), "angle of reflection = angle of incidence")
 
     [<Fact>]
     let ``a zero-depth element is crossed at its centre and normal incidence goes straight through`` () =
@@ -139,8 +139,8 @@ module BeamLayoutTests =
         | Some dir -> Assert.True(close dir.x 0.0 && close (abs dir.y) 1.0, $"the detector is on the reflected ray ({dir.x}, {dir.y})")
         | None -> Assert.Fail("the detector must receive a beam")
         Assert.Equal<PathStep list>(
-            [ { element = Library.elementId "src"; branch = BeamTree.Transmitted }
-              { element = Library.elementId "m"; branch = BeamTree.Reflected } ],
+            [ { element = Library.ElementId "src"; branch = BeamTree.TransmittedBeam }
+              { element = Library.ElementId "m"; branch = BeamTree.ReflectedBeam } ],
             det.path)
 
     // --- reflected side beams ------------------------------------------------------------------
@@ -151,14 +151,14 @@ module BeamLayoutTests =
         let scene = layout elements
         let rdet = placedOf "rdet" scene
         let crossing = RayModel.crossElement (placedOf "s" scene).centre centralRayDirection (RayModel.faceNormal centralRayDirection (tilted 30.0 (el "s" Sample 0.0)).placement) 0.025<meter>
-        Assert.Equal(OnReflectedBeamOf (Library.elementId "s"), rdet.beam)
+        Assert.Equal(OnReflectedBeamOf (Library.ElementId "s"), rdet.beam)
         match rdet.incoming with
         | Some dir -> Assert.True(areParallel dir crossing.reflected, "the detector receives the sample's reflected ray")
         | None -> Assert.Fail("the reflected detector must receive a beam")
         Assert.True(close ((sub rdet.centre crossing.entry).cross crossing.reflected).norm 0.0, "its centre is on the reflected ray")
-        Assert.Contains({ element = Library.elementId "s"; branch = BeamTree.Reflected }, rdet.path)
+        Assert.Contains({ element = Library.ElementId "s"; branch = BeamTree.ReflectedBeam }, rdet.path)
         // The main detector still receives the TRANSMITTED beam.
-        Assert.Contains({ element = Library.elementId "s"; branch = BeamTree.Transmitted }, (placedOf "det" scene).path)
+        Assert.Contains({ element = Library.ElementId "s"; branch = BeamTree.TransmittedBeam }, (placedOf "det" scene).path)
 
     [<Fact>]
     let ``a reflected ray with nothing on it is still drawn, open-ended, so there is something to attach to`` () =
@@ -190,9 +190,9 @@ module BeamLayoutTests =
         let scene = layout elements
         let entryOf (id : string) : Vector3 =
             let p = placedOf id scene
-            let e = elements |> List.find (fun x -> x.id = Library.elementId id)
+            let e = elements |> List.find (fun x -> x.id = Library.ElementId id)
             match p.incoming with
-            | Some d -> (RayModel.crossElement p.centre d (RayModel.faceNormal d e.placement) (halfDepthOf e)).entry
+            | Some d -> (RayModel.crossElement p.centre d (RayModel.faceNormal d e.placement) (e.halfDepth)).entry
             | None -> p.centre
         let sampleExit =
             let p = placedOf "s" scene
@@ -237,17 +237,17 @@ module BeamLayoutTests =
     let private crossingOf (pivot : RotationPivot) (elements : LayoutElement list) (id : string) : RayModel.ElementCrossing * Vector3 =
         let scene = layoutWith pivot elements
         let p = placedOf id scene
-        let e = elements |> List.find (fun x -> x.id = Library.elementId id)
+        let e = elements |> List.find (fun x -> x.id = Library.ElementId id)
         match p.incoming with
         | Some d ->
             let n = RayModel.faceNormal d e.placement
             let crossing =
                 match pivot with
-                | PivotAtCentre -> RayModel.crossElement p.centre d n (halfDepthOf e)
+                | PivotAtCentre -> RayModel.crossElement p.centre d n (e.halfDepth)
                 | PivotAtIncidentFace ->
                     // The incident face's middle: half a depth back from the centre, against the light.
-                    let halfDepthAlongLight = RayModel.centreBehindIncidentFace (Vector3.create 0.0 0.0 0.0) d n (halfDepthOf e)
-                    RayModel.crossElementThrough (sub p.centre halfDepthAlongLight) p.centre d n (halfDepthOf e)
+                    let halfDepthAlongLight = RayModel.centreBehindIncidentFace (Vector3.create 0.0 0.0 0.0) d n (e.halfDepth)
+                    RayModel.crossElementThrough (sub p.centre halfDepthAlongLight) p.centre d n (e.halfDepth)
             crossing, p.centre
         | None -> failwith $"%s{id} must receive a beam"
 
@@ -298,23 +298,23 @@ module BeamLayoutTests =
         for s in scene.segments do
             Assert.True(s.finish.x <= -0.025 + tol && s.start.x <= -0.025 + tol, $"a ray reaches x = {max s.start.x s.finish.x}, behind the first detector")
         // Only the lit detector captures.
-        let detectors = [ Library.elementId "det2"; Library.elementId "det" ]
-        Assert.Equal<BeamTree.BeamBranch list>([ BeamTree.Transmitted ], detectedBranches scene detectors (Library.elementId "s") (Library.elementId "s"))
-        Assert.Empty(detectedBranches scene [ Library.elementId "det" ] (Library.elementId "s") (Library.elementId "s"))
+        let detectors = [ Library.ElementId "det2"; Library.ElementId "det" ]
+        Assert.Equal<BeamTree.BeamBranch list>([ BeamTree.TransmittedBeam ], detectedBranches scene detectors (Library.ElementId "s") (Library.ElementId "s"))
+        Assert.Empty(detectedBranches scene [ Library.ElementId "det" ] (Library.ElementId "s") (Library.ElementId "s"))
 
     [<Fact>]
     let ``the lit rays are listed main beam first, and the first one no detector ends is the free ray`` () =
         let withMainDetector = bothScene 30.0
         let scene = layout withMainDetector
         Assert.Equal<LitRay list>(
-            [ { host = OnMainBeam; ends = EndsAtDetector }; { host = OnReflectedBeamOf (Library.elementId "s"); ends = EndsOpen } ],
+            [ { host = OnMainBeam; ends = EndsAtDetector }; { host = OnReflectedBeamOf (Library.ElementId "s"); ends = EndsOpen } ],
             scene.rays)
-        Assert.Equal(Some (OnReflectedBeamOf (Library.elementId "s")), firstFreeRay scene)
+        Assert.Equal(Some (OnReflectedBeamOf (Library.ElementId "s")), scene.firstFreeRay)
         // A detector on that reflected ray leaves no free ray at all.
         let full = withMainDetector @ [ onReflectedOf "s" (el "rdet" Detector 0.4) ]
-        Assert.Equal(None, firstFreeRay (layout full))
+        Assert.Equal(None, (layout full).firstFreeRay)
         // With no detector anywhere, the main beam itself is the free ray.
-        Assert.Equal(Some OnMainBeam, firstFreeRay (layout [ el "src" LightSource -1.0; el "s" Sample 0.0 ]))
+        Assert.Equal(Some OnMainBeam, (layout [ el "src" LightSource -1.0; el "s" Sample 0.0 ]).firstFreeRay)
 
     [<Fact>]
     let ``a host whose reflected ray is gone, an unknown host, or a hosting loop falls back to the main beam`` () =
@@ -347,36 +347,36 @@ module BeamLayoutTests =
         let ids (xs : Library.ElementId list) : string list = xs |> List.map (fun i -> i.value)
         // The source never moves; the mirror, the lens and both polarizers (spec 0046: T only) open no side
         // beam; the sample cannot host itself, so it has nowhere to move but the main beam.
-        Assert.Empty(attachableHosts elements (Library.elementId "src"))
-        Assert.Equal<string list>([ "s" ], ids (attachableHosts elements (Library.elementId "det")))
-        Assert.Empty(attachableHosts elements (Library.elementId "s"))
-        Assert.Equal<Set<Library.ElementId>>(set [ Library.elementId "pol2"; Library.elementId "det" ], hostedUnder elements (Library.elementId "s"))
-        Assert.Equal(OpensReflectedBeam, sideBeamOf (el "s" Sample 0.0).placement)
-        Assert.Equal(NoSideBeam, sideBeamOf (el "m" FlatMirror 0.0).placement)
-        Assert.Equal(NoSideBeam, sideBeamOf (el "src" LightSource 0.0).placement)
-        Assert.Equal(NoSideBeam, sideBeamOf { (el "lens" Lens 0.0).placement with emission = EmitBoth })
-        Assert.Equal(NoSideBeam, sideBeamOf { (el "pol" LinearPolarizer 0.0).placement with emission = EmitBoth })
-        Assert.Equal(NoSideBeam, sideBeamOf { (el "cp" CircularPolarizer 0.0).placement with emission = EmitBoth })
+        Assert.Empty(attachableHosts elements (Library.ElementId "src"))
+        Assert.Equal<string list>([ "s" ], ids (attachableHosts elements (Library.ElementId "det")))
+        Assert.Empty(attachableHosts elements (Library.ElementId "s"))
+        Assert.Equal<Set<Library.ElementId>>(set [ Library.ElementId "pol2"; Library.ElementId "det" ], hostedUnder elements (Library.ElementId "s"))
+        Assert.Equal(OpensReflectedBeam, SideBeam.ofPlacement (el "s" Sample 0.0).placement)
+        Assert.Equal(NoSideBeam, SideBeam.ofPlacement (el "m" FlatMirror 0.0).placement)
+        Assert.Equal(NoSideBeam, SideBeam.ofPlacement (el "src" LightSource 0.0).placement)
+        Assert.Equal(NoSideBeam, SideBeam.ofPlacement { (el "lens" Lens 0.0).placement with emission = EmitBoth })
+        Assert.Equal(NoSideBeam, SideBeam.ofPlacement { (el "pol" LinearPolarizer 0.0).placement with emission = EmitBoth })
+        Assert.Equal(NoSideBeam, SideBeam.ofPlacement { (el "cp" CircularPolarizer 0.0).placement with emission = EmitBoth })
 
     // --- the element-menu ray switches -----------------------------------------------------------
 
     [<Fact>]
     let ``the ray switches keep both-off unrepresentable and leave mirrors, sources, detectors and reflect-only samples fixed`` () =
         let both = (el "s" Sample 0.0).placement
-        let rOff = toggleRay BeamTree.Reflected EmitBoth both
+        let rOff = toggleRay BeamTree.ReflectedBeam EmitBoth both
         Assert.Equal(EmitTransmittedOnly, rOff.emission)
         // Switching off the LAST ray turns the other one back on.
-        Assert.Equal(EmitReflectedOnly, (toggleRay BeamTree.Transmitted EmitBoth rOff).emission)
-        Assert.Equal(EmitBoth, (toggleRay BeamTree.Reflected EmitBoth rOff).emission)
+        Assert.Equal(EmitReflectedOnly, (toggleRay BeamTree.TransmittedBeam EmitBoth rOff).emission)
+        Assert.Equal(EmitBoth, (toggleRay BeamTree.ReflectedBeam EmitBoth rOff).emission)
         for kind in [ FlatMirror; CurvedMirror; Lens; LinearPolarizer; CircularPolarizer; LightSource; Detector ] do
             let p = (el "x" kind 0.0).placement
-            Assert.Equal(p, toggleRay BeamTree.Reflected EmitBoth p)
+            Assert.Equal(p, toggleRay BeamTree.ReflectedBeam EmitBoth p)
             match rayControlOf EmitBoth p with
             | RaysFixed _ -> ()
             | RaysSwitchable -> Assert.Fail($"%A{kind} rays must be fixed")
         // A sample bound to a ThinFilm is observable in reflection only.
         let film = { (el "s" Sample 0.0).placement with emission = EmitReflectedOnly }
-        Assert.Equal(film, toggleRay BeamTree.Transmitted EmitReflectedOnly film)
+        Assert.Equal(film, toggleRay BeamTree.TransmittedBeam EmitReflectedOnly film)
 
     // --- what the experiments can capture ---------------------------------------------------------
 
@@ -385,7 +385,7 @@ module BeamLayoutTests =
         let detectors (scene : LayoutElement list) : Library.ElementId list =
             scene |> List.filter (fun e -> e.placement.catalogueKind = Detector) |> List.map (fun e -> e.id)
         let capturesOf (scene : LayoutElement list) (varied : string) : Experiments.MeasurementMode list =
-            capturesFor (detectedBranches (layout scene) (detectors scene) (Library.elementId varied) (Library.elementId "s"))
+            capturesFor (detectedBranches (layout scene) (detectors scene) (Library.ElementId varied) (Library.ElementId "s"))
         // Only the transmitted detector ⇒ only T.
         Assert.Equal<Experiments.MeasurementMode list>([ Experiments.CaptureTransmitted ], capturesOf (sampleScene 30.0) "s")
         // Only a reflected detector ⇒ only R.

@@ -9,6 +9,8 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.SourceSpec
 open OpticalConstructor.Ui.Sources
+open OpticalConstructor.Ui.Sources.SourceEditorView
+open OpticalConstructor.Ui.Sources.PolarizationPicker
 open Xunit
 
 /// Part E source-editor projection tests (slice 007). Exercise the Avalonia-free
@@ -20,7 +22,7 @@ module SourceProjectionTests =
 
     let private tol = 1.0e-12
 
-    let private baseSource = SourceEditorView.defaultSource "src-1"
+    let private baseSource = (SourceSpecId "src-1").defaultSource
 
     let private stokesComponents (s : StokesVector) =
         let (StokesVector v) = s
@@ -32,15 +34,15 @@ module SourceProjectionTests =
     let ``AC-E1 toIncidentLight returns the entered wavelength/angle/polarization/ellipticity`` () =
         let src =
             baseSource
-            |> SourceEditorView.update (SourceEditorView.SetWaveLength (Nanometer, 532.0))
-            |> SourceEditorView.update (SourceEditorView.SetIncidenceAngleDegrees 30.0)
+            |> SourceEditorView.update (SourceEditorView.SetWaveLength (Nanometer, UnitMagnitude 532.0))
+            |> SourceEditorView.update (SourceEditorView.SetIncidenceAngle (IncidenceAngle.create (Angle.degree 30.0<deg>)))
             |> SourceEditorView.update (SourceEditorView.SetPolarization Polarization.p)
-            |> SourceEditorView.update (SourceEditorView.SetEllipticity 0.25)
+            |> SourceEditorView.update (SourceEditorView.SetEllipticity (Ellipticity.create 0.25))
         let info = SourceSpec.toIncidentLight src
         // wavelength reduces to canonical meters (532 nm = 5.32e-7 m).
         Assert.Equal(5.32e-7, info.waveLength.value / 1.0<meter>, 15)
         // angle / polarization / ellipticity match the inputs.
-        Assert.Equal((Angle.degree 30.0).value, info.incidenceAngle.value, 12)
+        Assert.Equal((Angle.degree 30.0<deg>).value, info.incidenceAngle.value, 12)
         Assert.Equal(Polarization.p.value, info.polarization.value, 12)
         Assert.Equal(0.25, info.ellipticity.value, 12)
 
@@ -58,7 +60,8 @@ module SourceProjectionTests =
     [<InlineData("Millimeter", 0.000532)>]
     [<InlineData("ElectronVolt", 2.331)>]
     [<InlineData("Wavenumber", 18796.0)>]
-    let ``AC-E2 a non-nm/um display unit converts via the boundary and stores no non-SI unit`` (unitName : string) (entered : float) =
+    let ``AC-E2 a non-nm/um display unit converts via the boundary and stores no non-SI unit`` (unitName : string) (enteredValue : float) =
+        let entered = UnitMagnitude enteredValue
         let u =
             match unitName with
             | "Angstrom" -> Angstrom
@@ -78,11 +81,11 @@ module SourceProjectionTests =
 
     [<Fact>]
     let ``AC-E2 nm and um map directly to the native WaveLength cases`` () =
-        let nmSrc = baseSource |> SourceEditorView.update (SourceEditorView.SetWaveLength (Nanometer, 600.0))
+        let nmSrc = baseSource |> SourceEditorView.update (SourceEditorView.SetWaveLength (Nanometer, UnitMagnitude 600.0))
         match nmSrc.light.waveLength with
         | WaveLength.Nm v -> Assert.Equal(600.0, v / 1.0<nm>, 9)
         | WaveLength.Mkm _ -> Assert.Fail("nm must map to WaveLength.Nm")
-        let umSrc = baseSource |> SourceEditorView.update (SourceEditorView.SetWaveLength (Micrometer, 0.6))
+        let umSrc = baseSource |> SourceEditorView.update (SourceEditorView.SetWaveLength (Micrometer, UnitMagnitude 0.6))
         match umSrc.light.waveLength with
         | WaveLength.Mkm v -> Assert.Equal(0.6, v / 1.0<mkm>, 9)
         | WaveLength.Nm _ -> Assert.Fail("µm must map to WaveLength.Mkm")
@@ -91,22 +94,22 @@ module SourceProjectionTests =
 
     [<Fact>]
     let ``AC-E3 a Ranged wavelength axis yields a WaveLengthRange handed unchanged`` () =
-        let axis = SourceEditorView.wavelengthAxisRanged 50
-        match SourceEditorView.axisRangedVariable axis with
+        let axis = (NumberOfPoints 50).wavelengthSourceAxis
+        match axis.rangedVariableOpt with
         | Some (WaveLengthRange _) -> ()
         | other -> Assert.Fail($"expected a WaveLengthRange, got {other}")
 
     [<Fact>]
     let ``AC-E3 a Ranged angle axis yields an IncidenceAngleRange handed unchanged`` () =
-        let axis = SourceEditorView.incidenceAngleAxisRanged 40
-        match SourceEditorView.axisRangedVariable axis with
+        let axis = (NumberOfPoints 40).incidenceAngleSourceAxis
+        match axis.rangedVariableOpt with
         | Some (IncidenceAngleRange _) -> ()
         | other -> Assert.Fail($"expected an IncidenceAngleRange, got {other}")
 
     [<Fact>]
     let ``AC-E3 a Fixed axis produces no RangedVariable`` () =
-        let axis = SourceEditorView.wavelengthAxisFixed (WaveLength.nm 633.0<nm>)
-        Assert.Equal(None, SourceEditorView.axisRangedVariable axis)
+        let axis = (WaveLength.nm 633.0<nm>).fixedSourceAxis
+        Assert.Equal(None, axis.rangedVariableOpt)
 
     // ---------------------------------------------------------------- AC-E4
 
@@ -129,18 +132,19 @@ module SourceProjectionTests =
     let ``AC-E4 the live Stokes readout is computed via EmField.stokesVector`` () =
         // A circular (RCP) source: |S3| ~ S0 (the engine-computed Stokes vector).
         let rcp = PolarizationPicker.applyPreset PolarizationPicker.PresetRCP baseSource
-        let (s0, _, _, s3) = stokesComponents (PolarizationPicker.liveStokes rcp)
+        let (s0, _, _, s3) = stokesComponents rcp.liveStokes
         Assert.True(s0 > tol, $"expected a positive intensity S0, got {s0}")
         Assert.Equal(1.0, abs s3 / s0, 6)
         // A linear s source: S3 ~ 0.
         let sLin = PolarizationPicker.applyPreset PolarizationPicker.PresetS baseSource
-        let (_, _, _, s3lin) = stokesComponents (PolarizationPicker.liveStokes sLin)
+        let (_, _, _, s3lin) = stokesComponents sLin.liveStokes
         Assert.True(abs s3lin < 1.0e-6, $"expected ~0 circular component for linear light, got {s3lin}")
 
     [<Fact>]
     let ``AC-E4 the Poincare marker lies on the unit sphere`` () =
         let rcp = PolarizationPicker.applyPreset PolarizationPicker.PresetRCP baseSource
-        let (m1, m2, m3) = PolarizationPicker.poincareMarker rcp
+        let marker = rcp.poincareMarker
+        let (m1, m2, m3) = (marker.x, marker.y, marker.z)
         Assert.Equal(1.0, sqrt (m1 * m1 + m2 * m2 + m3 * m3), 9)
         // RCP sits at the south/north pole: |S3| = 1.
         Assert.Equal(1.0, abs m3, 9)
@@ -149,6 +153,6 @@ module SourceProjectionTests =
 
     [<Fact>]
     let ``AC-E10 the Source palette entry adds a Source element one-click with no gate`` () =
-        Assert.Equal(ConstructorElement.Source, SourceEditorView.sourcePaletteEntry.element)
-        Assert.False(SourceEditorView.sourcePaletteEntry.requiresConfirmation)
-        Assert.False(System.String.IsNullOrWhiteSpace SourceEditorView.sourcePaletteEntry.title)
+        Assert.Equal(ConstructorElement.SourceElement, SourceEditorView.sourcePaletteEntry.element)
+        Assert.Equal(AddWithoutConfirmation, SourceEditorView.sourcePaletteEntry.addConfirmation)
+        Assert.False(System.String.IsNullOrWhiteSpace SourceEditorView.sourcePaletteEntry.title.value)

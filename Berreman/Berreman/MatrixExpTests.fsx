@@ -19,10 +19,10 @@ open Berreman.MatrixExp
 //===========================================================
 let m0 = 
     [
-        [1.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx]
-        [0.0 |> cplx; 1.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx]
-        [0.0 |> cplx; 0.0 |> cplx; 1.0 |> cplx; 0.0 |> cplx]
-        [0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx; 1.0 |> cplx]
+        [1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
+        [0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
+        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
+        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal]
     ]
     |> ComplexMatrix.create
     //|> ComplexMatrix4x4
@@ -33,10 +33,10 @@ printfn "b0 = %A" b0
 //===========================================================
 let m1 = 
     [
-        [0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx; 1.0 |> cplx]
-        [0.0 |> cplx; 0.0 |> cplx; 1.0 |> cplx; 0.0 |> cplx]
-        [0.0 |> cplx; 1.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx]
-        [1.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx]
+        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal]
+        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
+        [0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
+        [1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
     ]
     |> ComplexMatrix.create
     //|> ComplexMatrix4x4
@@ -48,10 +48,10 @@ printfn "b1 = %A" b1
 
 //let m2 = 
 //    [
-//        [0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx; 1.0 |> cplx]
-//        [0.0 |> cplx; 0.0 |> cplx; 1.0 |> cplx; 0.0 |> cplx]
-//        [0.0 |> cplx; 1.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx]
-//        [0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx; 0.0 |> cplx]
+//        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal]
+//        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
+//        [0.0 |> Complex.ofReal; 1.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
+//        [0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal; 0.0 |> Complex.ofReal]
 //    ]
 //    |> matrix
 //    |> ComplexMatrix4x4

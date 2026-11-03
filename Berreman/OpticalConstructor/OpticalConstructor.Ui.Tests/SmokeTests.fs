@@ -18,6 +18,7 @@ open Avalonia.Controls.ApplicationLifetimes
 open Avalonia.Threading
 open Xunit
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.AppShell
 open OpticalConstructor.App
 
 module SmokeTests =
@@ -28,13 +29,13 @@ module SmokeTests =
         HeadlessSession.run (fun () ->
             // 1) The shared headless session built and Initialize()'d the real
             //    `OpticalConstructor.App.App` (TestApp.fs points BuildAvaloniaApp at it),
-            //    so its theme seam (App.Initialize -> AppShell.themeVariant) has already
+            //    so its theme seam (App.Initialize -> Theme.themeVariant) has already
             //    run on the current application. Assert it executed: RequestedThemeVariant
             //    is the persisted theme's mapped variant, not the null default an
             //    Application carries before Initialize runs.
             let sessionApp = Application.Current :?> App
             let expectedVariant =
-                AppShell.themeVariant (UserEnvironment.load (UserEnvironment.settingsPath ())).theme
+                (UserEnvironment.EnvironmentSettings.load (UserEnvironment.settingsPath ())).theme.themeVariant
             Assert.Equal(expectedVariant, sessionApp.RequestedThemeVariant)
 
             // 2) Drive framework-init through the REAL App lifetime. The session app's

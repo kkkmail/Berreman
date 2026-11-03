@@ -7,7 +7,7 @@ open OpticalConstructor.Domain.MeasuredData           // IntensitySeries / Ellip
 /// Domain, the DECLARED-lifecycle `ExperimentDataProxy`: the IO boundary that turns an experiment's
 /// elevated `DataFilePath` (step 025) into a parsed measured-data series (step 034), or a typed
 /// `ExperimentDataError`. It is the disk-read EDGE the pure `MeasuredData` parsers were written to
-/// sit behind — `MeasuredData.parseIntensitySeries` / `parseEllipsometricSeries` take the file TEXT
+/// sit behind — `DataFileText.parseIntensitySeries` / `parseEllipsometricSeries` read the file TEXT
 /// and never touch the filesystem or throw, so a future real proxy is exactly the missing
 /// `path -> read text -> parse` adapter and its exceptions are caught AT this boundary and mapped to
 /// the typed `ExperimentDataError` channel.

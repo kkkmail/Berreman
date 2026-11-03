@@ -15,101 +15,111 @@ open Avalonia.FuncUI.Types
 /// single "×N" band, so the band list stays readable rather than listing every physical layer.
 module LayerBandsControls =
 
-    /// One drawn band: its label (material + thickness, possibly "×N"), a relative height weight (>0 — the
-    /// thicker the layer, the taller the band) and an `#RRGGBB` fill colour.
+    /// A band's relative height weight (> 0): the thicker the layer, the taller the band.
+    type BandWeight =
+        | BandWeight of float
+
+        member this.value = let (BandWeight w) = this in w
+
+        /// This weight normalised against the stack's `largest`: 1 for the tallest band, 0 … 1 for the rest.
+        member this.normalisedAgainst (largest : BandWeight) : BandWeight =
+            let weight = max 0.0 this.value
+            BandWeight (if largest.value > 1e-12 then weight / largest.value else 0.0)
+
+    /// A band's `#RRGGBB` fill colour, as the host supplies it.
+    type BandColorHex =
+        | BandColorHex of string
+
+        member this.value = let (BandColorHex h) = this in h
+
+        /// The fill, falling back to a neutral grey on a malformed string (so the control is total — a bad
+        /// host colour never throws).
+        member this.fill : Color =
+            match Color.TryParse this.value with
+            | true, c -> c
+            | _ -> Color.FromRgb(200uy, 200uy, 200uy)
+
+    /// One drawn band: its label (material + thickness, possibly "×N"), its relative height weight and its
+    /// fill colour.
     type Band =
         {
-            label : string
-            heightWeight : float
-            colorHex : string
+            label : ControlCaption
+            heightWeight : BandWeight
+            colorHex : BandColorHex
         }
 
     /// The bay's pure state: a "what it is" headline and the bands to draw (empty when nothing is selected
     /// or the selected element has no layered sample bound).
-    type State =
+    type LayerBandsControlsState =
         {
-            title : string
+            title : ControlCaption
             bands : Band list
         }
 
-    let empty : State =
+    let emptyLayerBandsControls : LayerBandsControlsState =
         {
-            title = ""
+            title = ControlCaption ""
             bands = []
         }
 
-    let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBorder = color 120 120 120
-
-    /// The drawn pixel height range a band's relative weight maps into: a very thin layer is still visible
-    /// (a floor), a very thick one is capped so one band can't dwarf the rest.
-    let private minBandHeight = 18.0
-    let private maxBandHeight = 64.0
-
-    /// Map a band's relative weight into a drawn pixel height, normalised against the stack's largest weight
-    /// (so the tallest band hits the cap and the rest scale below it, never under the floor).
-    let private bandHeight (maxWeight : float) (weight : float) : float =
-        let w = max 0.0 weight
-        let frac = if maxWeight > 1e-12 then w / maxWeight else 0.0
-        minBandHeight + (maxBandHeight - minBandHeight) * frac
-
-    /// Parse an `#RRGGBB` hex colour, falling back to a neutral grey on a malformed string (so the control
-    /// is total — a bad host colour never throws).
-    let private parseHex (hex : string) : Color =
-        match Color.TryParse hex with
-        | true, c -> c
-        | _ -> color 200 200 200
+    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
 
     /// One drawn band — a coloured, bordered rectangle (height ∝ thickness) labelled with its material +
     /// thickness, carrying the stable per-index automation id.
-    let private bandView (maxWeight : float) (index : int) (b : Band) : IView =
+    let private bandView (largest : BandWeight) (position : ConstructorUiPosition) (b : Band) : IView =
+        // The drawn height range a band maps into: a very thin layer is still visible (a floor), a very
+        // thick one is capped so one band can't dwarf the rest; the tallest band hits the cap.
+        let minHeight = 18.0
+        let maxHeight = 64.0
         Border.create [
-            Border.name (UiIds.LayerBands.band index)
-            Border.height (bandHeight maxWeight b.heightWeight)
-            Border.background (brush (parseHex b.colorHex))
+            Border.name (ConstructorUiId.layerBand position).value
+            Border.height (minHeight + (maxHeight - minHeight) * (b.heightWeight.normalisedAgainst largest).value)
+            Border.background (brush b.colorHex.fill)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
             Border.margin (Thickness(0.0, 0.0, 0.0, 2.0))
             Border.horizontalAlignment HorizontalAlignment.Stretch
             Border.child (
                 TextBlock.create [
-                    TextBlock.text b.label
+                    TextBlock.text b.label.value
                     TextBlock.fontSize 11.0
                     TextBlock.margin (Thickness(6.0, 0.0, 0.0, 0.0))
                     TextBlock.verticalAlignment VerticalAlignment.Center
                 ])
         ] :> IView
 
-    /// The Layer-Bands view — a titled vertical stack of bands (in a `ScrollViewer` for tall stacks). When
-    /// there are no bands it shows just the title (the host supplies a hint title for the empty / no-layers
-    /// case), so the view is always renderable.
-    let view (state : State) : IView =
-        let maxWeight =
-            match state.bands with
-            | [] -> 1.0
-            | _ -> state.bands |> List.map (fun b -> b.heightWeight) |> List.max
-        let bandViews = state.bands |> List.mapi (fun i b -> bandView maxWeight i b)
-        StackPanel.create [
-            StackPanel.orientation Orientation.Vertical
-            StackPanel.spacing 6.0
-            StackPanel.children [
-                TextBlock.create [
-                    TextBlock.name UiIds.LayerBands.title
-                    TextBlock.text state.title
-                    TextBlock.textWrapping TextWrapping.Wrap
-                    TextBlock.maxWidth 360.0
-                    TextBlock.fontWeight FontWeight.SemiBold
+    type LayerBandsControlsState with
+
+        /// The Layer-Bands view — a titled vertical stack of bands (in a `ScrollViewer` for tall stacks). When
+        /// there are no bands it shows just the title (the host supplies a hint title for the empty / no-layers
+        /// case), so the view is always renderable.
+        member this.view : IView =
+            let largest =
+                match this.bands with
+                | [] -> BandWeight 1.0
+                | _ -> this.bands |> List.map (fun b -> b.heightWeight) |> List.max
+            let bandViews = this.bands |> List.mapi (fun i b -> bandView largest (ConstructorUiPosition i) b)
+            StackPanel.create [
+                StackPanel.orientation Orientation.Vertical
+                StackPanel.spacing 6.0
+                StackPanel.children [
+                    TextBlock.create [
+                        TextBlock.name ConstructorUiId.layerBandsTitle.value
+                        TextBlock.text this.title.value
+                        TextBlock.textWrapping TextWrapping.Wrap
+                        TextBlock.maxWidth 360.0
+                        TextBlock.fontWeight FontWeight.SemiBold
+                    ]
+                    ScrollViewer.create [
+                        ScrollViewer.maxHeight 320.0
+                        ScrollViewer.content (
+                            StackPanel.create [
+                                StackPanel.name ConstructorUiId.layerBandsStack.value
+                                StackPanel.orientation Orientation.Vertical
+                                StackPanel.width 300.0
+                                StackPanel.children bandViews
+                            ])
+                    ]
                 ]
-                ScrollViewer.create [
-                    ScrollViewer.maxHeight 320.0
-                    ScrollViewer.content (
-                        StackPanel.create [
-                            StackPanel.name UiIds.LayerBands.stack
-                            StackPanel.orientation Orientation.Vertical
-                            StackPanel.width 300.0
-                            StackPanel.children bandViews
-                        ])
-                ]
-            ]
-        ] :> IView
+            ] :> IView

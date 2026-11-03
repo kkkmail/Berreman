@@ -14,18 +14,17 @@ open Berreman.Constants
 let fn = [ R; T; ]
 //EllipticityR
 
-let numberOfPoints = 1000
-let numberOfPoints3D = 100
+let numberOfPoints = NumberOfPoints 1000
+let numberOfPoints3D = NumberOfPoints 100
+let i = numberOfPoints.incidenceAngleRange
+let e = numberOfPoints.ellipticityRange
+let p = numberOfPoints.polarizationRange
+let w = numberOfPoints.wavelength200to800Range
 
-let i = incidenceAngleRange numberOfPoints
-let e = ellipticityRange numberOfPoints
-let p = polarizationRange numberOfPoints
-let w = wavelength200to800Range numberOfPoints
-
-let i3D = incidenceAngleRange numberOfPoints3D
-let e3D = ellipticityRange numberOfPoints3D
-let p3D = polarizationRange numberOfPoints3D
-let w3D = wavelength200to800Range numberOfPoints3D
+let i3D = numberOfPoints3D.incidenceAngleRange
+let e3D = numberOfPoints3D.ellipticityRange
+let p3D = numberOfPoints3D.polarizationRange
+let w3D = numberOfPoints3D.wavelength200to800Range
 
 
 let thickness1 = Thickness.nm ((600.0 / 1.52 / 4.0) * 1.0<nm>)
@@ -33,7 +32,7 @@ let thickness2 = Thickness.nm ((600.0 / 1.00 / 4.0) * 1.0<nm>)
 
 let filmSystem =
     {
-        description = Some "Multilayer thin film system."
+        description = Some (OpticalSystemDescription "Multilayer thin film system.")
         upper = OpticalProperties.vacuum
         films =
             [

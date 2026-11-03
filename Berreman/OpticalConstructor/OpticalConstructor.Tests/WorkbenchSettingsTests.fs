@@ -51,8 +51,8 @@ module WorkbenchSettingsTests =
     [<InlineData(-100)>]
     let ``QuickPickThreshold rejects a non-positive count with the typed error carrying the value`` (raw : int) =
         match QuickPickThreshold.tryCreate raw with
-        | Error (NonPositiveQuickPickThreshold v) -> Assert.Equal(raw, v)
-        | Error e -> Assert.Fail($"expected NonPositiveQuickPickThreshold, got %A{e}")
+        | Error (NonPositiveQuickPickThresholdErr v) -> Assert.Equal(raw, v)
+        | Error e -> Assert.Fail($"expected NonPositiveQuickPickThresholdErr, got %A{e}")
         | Ok v -> Assert.Fail($"expected rejection, got Ok %A{v}")
 
     [<Theory>]
@@ -70,8 +70,8 @@ module WorkbenchSettingsTests =
     [<InlineData(-100)>]
     let ``TreeAutoBuildThreshold rejects a non-positive count with the typed error carrying the value`` (raw : int) =
         match TreeAutoBuildThreshold.tryCreate raw with
-        | Error (NonPositiveTreeAutoBuildThreshold v) -> Assert.Equal(raw, v)
-        | Error e -> Assert.Fail($"expected NonPositiveTreeAutoBuildThreshold, got %A{e}")
+        | Error (NonPositiveTreeAutoBuildThresholdErr v) -> Assert.Equal(raw, v)
+        | Error e -> Assert.Fail($"expected NonPositiveTreeAutoBuildThresholdErr, got %A{e}")
         | Ok v -> Assert.Fail($"expected rejection, got Ok %A{v}")
 
     [<Theory>]
@@ -89,8 +89,8 @@ module WorkbenchSettingsTests =
     [<InlineData(-100)>]
     let ``ThicknessBucketCap rejects a non-positive cap with the typed error carrying the value`` (raw : int) =
         match ThicknessBucketCap.tryCreate raw with
-        | Error (NonPositiveThicknessBucketCap v) -> Assert.Equal(raw, v)
-        | Error e -> Assert.Fail($"expected NonPositiveThicknessBucketCap, got %A{e}")
+        | Error (NonPositiveThicknessBucketCapErr v) -> Assert.Equal(raw, v)
+        | Error e -> Assert.Fail($"expected NonPositiveThicknessBucketCapErr, got %A{e}")
         | Ok v -> Assert.Fail($"expected rejection, got Ok %A{v}")
 
     [<Fact>]

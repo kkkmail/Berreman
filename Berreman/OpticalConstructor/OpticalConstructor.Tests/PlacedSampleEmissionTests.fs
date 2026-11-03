@@ -23,16 +23,16 @@ module PlacedSampleEmissionTests =
 
     /// Resolve a seeded entry by its id (the entry id is the `valueId` written onto a bound element).
     let private entry (id : string) : LibraryEntry =
-        match lib.tryGetEntry id with
+        match lib.tryGetEntry (ElementValueId id) with
         | Ok (Some e) -> e
         | other -> failwith $"seed entry '%s{id}' unexpectedly not resolvable: %A{other}"
 
     /// The seeded MIRROR sample (`supportedEmission = EmitReflectedOnly`; spec 0046 — the EUV multilayer).
-    let private mirrorId : string = (SampleItem SeedSamples.euvMoSi).entryId
+    let private mirrorId : string = (SampleItem SeedSamples.euvMoSi).entryId.value
     /// A seeded ThinFilm sample — spec 0046: a thin film reflects AND transmits (`EmitBoth`).
-    let private thinFilmId : string = (SampleItem SeedSamples.glassFilm600).entryId
+    let private thinFilmId : string = (SampleItem SeedSamples.glassFilm600).entryId.value
     /// A seeded Plate sample supporting BOTH branches (`supportedEmission = EmitBoth`).
-    let private plateId : string = (SampleItem SeedSamples.glassPlate1mm).entryId
+    let private plateId : string = (SampleItem SeedSamples.glassPlate1mm).entryId.value
     /// A non-sample seeded entry (the 600 nm source) — carries no geometry emission constraint.
     let private sourceId : string = "src-600"
 
@@ -64,42 +64,42 @@ module PlacedSampleEmissionTests =
 
     /// Select the element at index `i`, then bind it to a Library entry (the `BindValueId` MVU path,
     /// which converges on the one targeted `BindValueIdTo` commit arm).
-    let private bind (i : int) (entryId : string) (m : Model) : Model =
-        { m with selection = ElementSelected i } |> update (BindValueId entryId)
+    let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
+        { m with selection = ElementSelected (SceneElementIndex i) } |> updateTableAndElementRotation (BindValueId (ElementValueId entryId))
 
-    let private emissionOf (i : int) (m : Model) : Emission = (List.item i m.elements).placement.emission
-    let private idOf (i : int) (m : Model) : string = (List.item i m.elements).id.value
+    let private emissionOf (i : int) (m : TableAndElementRotationModel) : Emission = (List.item i m.elements).placement.emission
+    let private idOf (i : int) (m : TableAndElementRotationModel) : Library.ElementId = (List.item i m.elements).id
 
     [<Fact>]
     let ``a placed Mirror sample defaults to reflected-only and its experiment to CaptureReflected`` () =
         // A sample is placed UNBOUND (the inverse hook) then bound; the bind seeds the emission. A
         // reflect-only sample continues the main beam on its reflected ray, so the seeded detector sees R.
-        let m = initMain () |> update (AddElement Sample) |> bind 2 mirrorId
+        let m = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 mirrorId
         Assert.Equal<Emission>(EmitReflectedOnly, emissionOf 2 m)
-        let chosen = m |> update (ExpChooseElement (idOf 2 m))
+        let chosen = m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m))
         Assert.Equal(CaptureReflected, chosen.experimentCollection.draft.measurement)
 
     [<Fact>]
     let ``a placed Plate sample supporting both defaults to EmitBoth and its experiment to what the detectors capture`` () =
-        let m = initMain () |> update (AddElement Sample) |> bind 2 plateId
+        let m = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 plateId
         Assert.Equal<Emission>(EmitBoth, emissionOf 2 m)
         // Spec 0046: the capture follows the DETECTORS — the seeded detector sits on the plate's
         // transmitted beam only, so T is the default ...
-        let chosen = m |> update (ExpChooseElement (idOf 2 m))
+        let chosen = m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m))
         Assert.Equal(CaptureTransmitted, chosen.experimentCollection.draft.measurement)
         // ... and with a second detector on the plate's REFLECTED ray, both branches are captured.
         let withReflectedDetector =
             m
-            |> update (AddElement Detector)
-            |> (fun m' -> m' |> update (PlaceOnBeam ((List.item 3 m'.elements).id, BeamLayout.OnReflectedBeamOf (List.item 2 m'.elements).id)))
-        let chosenBoth = withReflectedDetector |> update (ExpChooseElement (idOf 2 withReflectedDetector))
+            |> updateTableAndElementRotation (AddElement Detector)
+            |> (fun m' -> m' |> updateTableAndElementRotation (PlaceOnBeam ((List.item 3 m'.elements).id, BeamLayout.OnReflectedBeamOf (List.item 2 m'.elements).id)))
+        let chosenBoth = withReflectedDetector |> updateTableAndElementRotation (ExpChooseElement (idOf 2 withReflectedDetector))
         Assert.Equal(CaptureBoth, chosenBoth.experimentCollection.draft.measurement)
 
     [<Fact>]
     let ``binding a placed sample from a Mirror to a Plate re-seeds the placed emission`` () =
         // The single seed point runs on every bind, so re-binding a placed sample tracks the new
         // geometry rather than leaving the first bind's emission stale.
-        let m = initMain () |> update (AddElement Sample) |> bind 2 mirrorId
+        let m = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 mirrorId
         Assert.Equal<Emission>(EmitReflectedOnly, emissionOf 2 m)
         let rebound = m |> bind 2 plateId
         Assert.Equal<Emission>(EmitBoth, emissionOf 2 rebound)

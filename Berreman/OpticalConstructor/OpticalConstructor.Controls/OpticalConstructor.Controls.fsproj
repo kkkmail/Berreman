@@ -83,6 +83,7 @@
         <!-- Spec 0033 (017): the interactive chart-window host (moved here with ChartWindow.fs) — the
              same version both hosts already used, so one ScottPlot resolves solution-wide. -->
         <PackageReference Include="ScottPlot.Avalonia" />
+        <PackageReference Include="Softellect.Sys" />
     </ItemGroup>
 
 </Project>

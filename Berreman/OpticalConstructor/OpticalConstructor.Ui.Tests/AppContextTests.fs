@@ -79,7 +79,7 @@ module AppContextTests =
 
     /// A workbench surface composed FROM the app scope — what `MainConstructorWindow` runs (the two
     /// experiment proxies thread by record update, spec 0038 Part L step 037).
-    let private surfaceOf (context : AppContext) : Model =
+    let private surfaceOf (context : AppContext) : TableAndElementRotationModel =
         { initMainWith context.library context.experiments context.materials context.samples context.categories with
             experimentData = context.experimentData
             experimentCollections = context.experimentCollections }
@@ -97,8 +97,8 @@ module AppContextTests =
         // glass152 is referenced by seeded samples — the remove-block must consult the SAME
         // samples store `create` built (the composition order is the load-bearing part).
         match context.materials.removeMaterial MaterialIds.glass152 with
-        | Error (MaterialStillReferenced reason) -> Assert.Contains("is still referenced by", reason)
-        | other -> Assert.Fail($"expected MaterialStillReferenced from the coupled store, got %A{other}")
+        | Error (MaterialStillReferencedErr reason) -> Assert.Contains("is still referenced by", reason)
+        | other -> Assert.Fail($"expected MaterialStillReferencedErr from the coupled store, got %A{other}")
 
     [<Fact>]
     let ``two workbench surfaces composed from ONE app scope observe the same store`` () =
@@ -152,24 +152,24 @@ module AppContextTests =
             // Surface 1: the Library… strip button (spec 0038 step 015) → the REAL Library
             // window → Make-multilayer → the REAL Sample editor over the SHARED store (the
             // seeded-period creation path, so a plain name + Save persists).
-            clickOn first WorkbenchIds.openLibraryButton
+            clickOn first ConstructorUiId.openLibraryWindowButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let libraryOfFirst = opened.[0]
-            Assert.True(matchesId UiIds.LibraryWindow.window libraryOfFirst, "the strip button must open the Library window")
-            clickOn libraryOfFirst UiIds.LibraryWindow.makeMultilayerButton
+            Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryOfFirst, "the strip button must open the Library window")
+            clickOn libraryOfFirst ConstructorUiId.libraryMakeMultilayerButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             let editor = opened.[1]
-            Assert.True(matchesId UiIds.SampleEditor.window editor, "the opened window must be the Sample editor")
-            setText editor UiIds.SampleEditor.nameBox "Shared-scope sample"
-            clickOn editor UiIds.SampleEditor.saveButton
+            Assert.True(matchesId ConstructorUiId.sampleEditorWindow.value editor, "the opened window must be the Sample editor")
+            setText editor ConstructorUiId.sampleNameBox.value "Shared-scope sample"
+            clickOn editor ConstructorUiId.sampleEditorSaveButton.value
             Assert.False(editor.IsVisible, "Save must persist the entry and close the editor")
             // The id was minted at the verb dispatch — recover it through the SHARED app-scope store.
             let savedId =
                 match context.samples.listSamples ActiveOnly with
                 | Ok all ->
-                    match all |> List.tryFind (fun s -> s.name = "Shared-scope sample") with
+                    match all |> List.tryFind (fun s -> s.name.value = "Shared-scope sample") with
                     | Some sample -> sample.id
                     | None -> failwith "the saved sample must be in the app-scope store"
                 | Error e -> failwith $"listSamples failed: %A{e}"
@@ -180,14 +180,14 @@ module AppContextTests =
             Dispatcher.UIThread.RunJobs()
             // Surface 2: ITS strip button opens a fresh Library window that re-queries the SAME
             // store — the added sample is listed by the other window.
-            clickOn second WorkbenchIds.openLibraryButton
+            clickOn second ConstructorUiId.openLibraryWindowButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(3, opened.Count)
             let libraryOfSecond = opened.[2]
-            Assert.True(matchesId UiIds.LibraryWindow.window libraryOfSecond, "the strip button must open the Library window")
+            Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryOfSecond, "the strip button must open the Library window")
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
-            clickOn libraryOfSecond (UiIds.FacetedTree.treeNodeChevron "entries")
-            Assert.True(isPresent libraryOfSecond (LibraryWindowView.entryNode (string savedId.value)),
+            clickOn libraryOfSecond (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
+            Assert.True(isPresent libraryOfSecond ((ConstructorUiId.libraryEntryNode savedId.toElementValueId).value),
                         "the second Main window's Library window must list the sample added through the first")
             libraryOfSecond.Close()
             Dispatcher.UIThread.RunJobs()

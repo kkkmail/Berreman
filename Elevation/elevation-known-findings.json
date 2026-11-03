@@ -1,0 +1,6 @@
+{
+ "version": 1,
+ "about": "Findings the elevation gate reports but does not fail on: the tree's findings when the gates were set up (spec 0048 .manual/001), each waiting on the ledger in spec 0048 .manual/002. An entry is removed in the change that fixes its finding; a stale entry fails the gate, so the list only shrinks.",
+ "findings": [
+ ]
+}

@@ -12,9 +12,6 @@ module MatrixExp =
     /// This code is distributed under the GNU LGPL license, which is identical to the source license.
     type ComplexMatrix
     with
-        static member identity (n : int) : ComplexMatrix =
-            complexDiagonalMatrix n (cplx 1.0)
-
         member this.lInfinityNorm() : double =
             let (ComplexMatrix m) = this
 
@@ -31,7 +28,7 @@ module MatrixExp =
         member this.matrixExp() : ComplexMatrix =
             let (ComplexMatrix m) = this
             let q = 6
-            let one = cplx 1.0
+            let one = Complex.ofReal 1.0
 
             let aNorm = this.lInfinityNorm ()
             //printfn "aNorm = %A" aNorm
@@ -43,15 +40,15 @@ module MatrixExp =
             let t = 1.0 / (pown 2.0 s)
             //printfn "t = %A" t
 
-            let a2 = (cplx t) * this
+            let a2 = (Complex.ofReal t) * this
             //printfn "a2 = %A" a2
 
             let x = a2
             //printfn "x = %A" x
 
-            let c = cplx 0.5
+            let c = Complex.ofReal 0.5
 
-            let e = ComplexMatrix.identity m.RowCount
+            let e = DiagonalMatrix.create m.RowCount (Complex.ofReal 1.0) |> ComplexMatrix
             //printfn "e = %A" e
 
             let e1 = ComplexMatrix.addScaled one e c a2
@@ -71,7 +68,7 @@ module MatrixExp =
                 (xx : ComplexMatrix) =
                 if kk <= q
                 then
-                    let cn = cc * (cplx ((double (q - kk + 1)) / (double (kk * (2 * q - kk + 1)))))
+                    let cn = cc * (Complex.ofReal ((double (q - kk + 1)) / (double (kk * (2 * q - kk + 1)))))
                     //printfn "cn = %A" cn
 
                     let xn = a2 * xx

@@ -4,6 +4,7 @@ open Berreman.Fields
 open Berreman.Media
 open Berreman.Solvers
 open Berreman.FieldFunctions
+open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Optimization.Ellipsometry
@@ -26,8 +27,10 @@ open OpticalConstructor.Optimization.Ellipsometry
 /// signature directly. No merit-evaluation cache is admitted here (§G.4).
 module MeritFunction =
 
-    /// Floor on the residual denominator so a zero `tolerance` cannot divide by 0.
-    let private epsilon = 1.0e-12
+    type OpticalFunctionValue with
+
+        /// The value as a photometric fit target's value.
+        member this.toTargetValue : TargetValue = let (OpticalFunctionValue v) = this in TargetValue v
 
     /// The quantity a `FitTarget` evaluates: a photometric `OpticalFunction`
     /// (reused, not forked) or a §G.6 ellipsometric Ψ/Δ.
@@ -41,6 +44,27 @@ module MeritFunction =
         | Equality
         | Inequality of InequalityTarget
 
+    /// How much one target's residual counts in the merit.
+    type TargetWeight =
+        | TargetWeight of float
+
+        member this.value = let (TargetWeight w) = this in w
+
+    /// The scale a target's miss is measured in, in the target quantity's unit.
+    type TargetTolerance =
+        | TargetTolerance of float
+
+        member this.value = let (TargetTolerance t) = this in t
+
+        /// The residual denominator: the tolerance, floored at 1e-12 so a zero tolerance cannot divide by 0.
+        member this.denominator : float = let (TargetTolerance t) = this in max t 1.0e-12
+
+    /// One entry of the weighted least-squares residual vector.
+    type ResidualEntry =
+        | ResidualEntry of float
+
+        member this.value = let (ResidualEntry r) = this in r
+
     /// One fit target / merit term.
     type FitTarget =
         {
@@ -49,9 +73,9 @@ module MeritFunction =
             /// canonical-SI (meters via `WaveLength.value`); unit conversion
             /// happens only at the editor/import boundary (§0 constraint 3).
             samplePoint : IncidentLightInfo
-            desiredValue : float
-            weight : float
-            tolerance : float
+            desiredValue : TargetValue
+            weight : TargetWeight
+            tolerance : TargetTolerance
             kind : TargetKind
         }
 
@@ -64,31 +88,36 @@ module MeritFunction =
     let modelValue
         (baseSystem : OpticalSystem)
         (parameters : DesignParameter list)
-        (vector : float[])
-        (target : FitTarget) : float =
+        (vector : DesignVector)
+        (target : FitTarget) : TargetValue =
         let system = DesignParameters.applyVector parameters vector baseSystem
         let solution = OpticalSystemSolver(target.samplePoint, system).solution
         match target.quantity with
-        | Photometric f -> solution.func f |> Option.defaultValue 0.0
+        | Photometric f -> (solution.func f |> Option.defaultValue OpticalFunctionValue.zero).toTargetValue
         | Ellipsometric e -> e.evaluate solution
 
     /// Per-target residual entry: `weight × (model − desired) / max(tolerance, ε)`
     /// for `Equality`, a one-sided hinge (zero when satisfied) for `Inequality`.
-    let targetResidual (model : float) (target : FitTarget) : float =
-        let denom = max target.tolerance epsilon
-        match target.kind with
-        | Equality -> target.weight * (model - target.desiredValue) / denom
-        | Inequality (LessOrEqual bound) -> target.weight * (max 0.0 (model - bound)) / denom
-        | Inequality (GreaterOrEqual bound) -> target.weight * (max 0.0 (bound - model)) / denom
+    let targetResidual (model : TargetValue) (target : FitTarget) : ResidualEntry =
+        let (TargetValue m) = model
+        let (TargetWeight weight) = target.weight
+        let denom = target.tolerance.denominator
+        let entry =
+            match target.kind with
+            | Equality -> let (TargetValue desired) = target.desiredValue in weight * (m - desired) / denom
+            | Inequality (LessOrEqual (TargetValue bound)) -> weight * (max 0.0 (m - bound)) / denom
+            | Inequality (GreaterOrEqual (TargetValue bound)) -> weight * (max 0.0 (bound - m)) / denom
+        ResidualEntry entry
 
     /// Assemble the weighted-LSQ residual closure over the design vector — one
-    /// entry per `FitTarget`, in target order. This IS the G.1 `Residual`
-    /// (`float[] -> float[]`); it is handed unchanged to the §G.5 entry point.
+    /// entry per `FitTarget`, in target order. This IS the G.1 `Residual`; it is
+    /// handed unchanged to the §G.5 entry point.
     let buildResidual
         (baseSystem : OpticalSystem)
         (parameters : DesignParameter list)
         (targets : FitTarget list) : Residual =
-        fun (vector : float[]) ->
+        fun (vector : DesignVector) ->
             targets
-            |> List.map (fun t -> targetResidual (modelValue baseSystem parameters vector t) t)
+            |> List.map (fun t -> let (ResidualEntry r) = targetResidual (modelValue baseSystem parameters vector t) t in r)
             |> Array.ofList
+            |> ResidualVector

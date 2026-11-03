@@ -4,6 +4,7 @@
 open Berreman.FieldFunctions
 open Berreman.Media
 open OpticalProperties.Standard
+open Analytics.Variables
 open Analytics.StandardLightVariables
 open Analytics.StandardSystems
 open Analytics.Charting
@@ -11,17 +12,17 @@ open Berreman.Constants
 //===========================================================
 let fn = [ R; T ]
 
-let numberOfPoints = 2000
-let incidenceAngleDegree = 79.0
+let numberOfPoints = NumberOfPoints 2000
+let incidenceAngleDegree = 79.0<deg>
 
-let i = incidenceAngleRange numberOfPoints
-let e = ellipticityRange numberOfPoints
-let p = polarizationRange numberOfPoints
-let w = wavelength250to600Range numberOfPoints
+let i = numberOfPoints.incidenceAngleRange
+let e = numberOfPoints.ellipticityRange
+let p = numberOfPoints.polarizationRange
+let w = numberOfPoints.wavelength250to600Range
 
 let thickness = Thickness.mm 0.01<mm>
 
-//let ww = wavelength250to600 numberOfPoints
+//let ww = numberOfPoints.wavelength250to600
 
 //plotN11 langasiteOpticalProperties ww
 //plotXi11 langasiteOpticalProperties ww

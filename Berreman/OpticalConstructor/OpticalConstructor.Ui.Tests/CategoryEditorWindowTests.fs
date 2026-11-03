@@ -77,7 +77,7 @@ module CategoryEditorWindowTests =
     /// The guid suffix of the freshly-added, still-blank category row's name box — `BeginAddCategory`
     /// mints the id, so the headless Add proof locates the new row by its empty name box.
     let private newRowGuid (window : Window) : string =
-        let prefix = UiIds.Category.nameBox + "_"
+        let prefix = ConstructorUiId.categoryNameBox.value + "_"
         let found =
             window.GetVisualDescendants()
             |> Seq.tryPick (function
@@ -93,8 +93,8 @@ module CategoryEditorWindowTests =
 
     /// A hand-rolled in-memory stub `CategoryProxy` (the functional-proxy seam — the how-to's "stub
     /// CategoryProxy"): a mutable ordered list that actually stores adds / renames / removes, records
-    /// each write verb it reaches, refuses a `BuiltInCategory` remove with `BuiltInNotRemovable`, and
-    /// refuses a `UserCategory` remove whose id is in `referenced` with `CategoryStillReferenced`.
+    /// each write verb it reaches, refuses a `BuiltInCategory` remove with `BuiltInNotRemovableErr`, and
+    /// refuses a `UserCategory` remove whose id is in `referenced` with `CategoryStillReferencedErr`.
     let private stubProxy (seed : MaterialCategory list) (referenced : Set<Guid>) : ResizeArray<string> * CategoryProxy =
         let store = ref seed
         let calls = ResizeArray<string>()
@@ -103,26 +103,26 @@ module CategoryEditorWindowTests =
                 listCategories = fun () -> Ok store.Value
                 addCategory =
                     fun c ->
-                        calls.Add("add:" + c.name)
+                        calls.Add("add:" + c.name.value)
                         store.Value <- store.Value @ [ c ]
                         Ok ()
                 updateCategory =
                     fun c ->
-                        calls.Add("update:" + c.name)
+                        calls.Add("update:" + c.name.value)
                         store.Value <- store.Value |> List.map (fun x -> if x.id = c.id then c else x)
                         Ok ()
                 removeCategory =
                     fun id ->
                         calls.Add("remove:" + string id.value)
                         match store.Value |> List.tryFind (fun x -> x.id = id) with
-                        | None -> Error (UnknownCategoryId $"unknown category id '%s{string id.value}'")
+                        | None -> Error (UnknownCategoryIdErr $"unknown category id '%s{string id.value}'")
                         | Some c ->
                             match c.origin with
                             | BuiltInCategory ->
-                                Error (BuiltInNotRemovable $"'%s{c.name}' ships with the app and cannot be removed")
+                                Error (BuiltInNotRemovableErr $"'%s{c.name.value}' ships with the app and cannot be removed")
                             | UserCategory ->
                                 if Set.contains id.value referenced
-                                then Error (CategoryStillReferenced $"'%s{c.name}' is still referenced by materials")
+                                then Error (CategoryStillReferencedErr $"'%s{c.name.value}' is still referenced by materials")
                                 else
                                     store.Value <- store.Value |> List.filter (fun x -> x.id <> id)
                                     Ok ()
@@ -132,21 +132,27 @@ module CategoryEditorWindowTests =
     let private contextOver (proxy : CategoryProxy) : CategoryEditorContext =
         { categories = proxy; requestClose = ignore }
 
+    /// The block slot's text, "" while nothing is surfaced.
+    let private blockTextOf (m : CategoryEditorModel) : string =
+        match m.blockMessage with
+        | Some caption -> caption.value
+        | None -> ""
+
     let private userCategory (id : CategoryId) (name : string) : MaterialCategory =
-        { id = id; name = name; visibility = SelectableOnCreate; origin = UserCategory }
+        { id = id; name = CategoryName name; visibility = SelectableOnCreate; origin = UserCategory }
 
     // ============================ pure control contract ============================
 
     [<Fact>]
     let ``the Category editor window id is the stable CategoryEditorWindow id`` () =
-        Assert.Equal("CategoryEditorWindow", UiIds.CategoryEditor.window)
+        Assert.Equal("CategoryEditorWindow", ConstructorUiId.categoryEditorWindow.value)
 
     [<Fact>]
     let ``init seeds the editor over the proxy's listCategories with nothing armed`` () =
         let _, proxy = stubProxy standardCategories Set.empty
-        let m = init (contextOver proxy)
+        let m = (contextOver proxy).initCategoryEditor
         Assert.Equal(List.length standardCategories, List.length m.editor.rows)
-        Assert.Equal("", m.blockMessage)
+        Assert.Equal("", blockTextOf m)
         match m.pendingRemove with
         | None -> ()
         | Some _ -> Assert.Fail("a freshly-opened editor must arm no removal")
@@ -156,10 +162,10 @@ module CategoryEditorWindowTests =
     [<Fact>]
     let ``BeginAdd appends a blank UserCategory SelectableOnCreate row and marks it editing`` () =
         let _, proxy = stubProxy standardCategories Set.empty
-        let m = init (contextOver proxy) |> update BeginAdd
+        let m = (contextOver proxy).initCategoryEditor |> updateCategoryEditor BeginAdd
         Assert.Equal(List.length standardCategories + 1, List.length m.editor.rows)
         let added = List.last m.editor.rows
-        Assert.Equal("", added.name)
+        Assert.Equal("", added.name.value)
         Assert.Equal(SelectableOnCreate, added.visibility)
         Assert.Equal(UserCategory, added.origin)
         match m.editor.editingRow with
@@ -169,34 +175,34 @@ module CategoryEditorWindowTests =
     [<Fact>]
     let ``Add then set-name then Save persists a new category through addCategory`` () =
         let calls, proxy = stubProxy standardCategories Set.empty
-        let staged = init (contextOver proxy) |> update BeginAdd
+        let staged = (contextOver proxy).initCategoryEditor |> updateCategoryEditor BeginAdd
         let newId = (List.last staged.editor.rows).id
-        staged |> update (SetName (newId, "Polymer")) |> update (SaveRow newId) |> ignore
+        staged |> updateCategoryEditor (SetCategoryEditorName (newId, CategoryName "Polymer")) |> updateCategoryEditor (SaveRow newId) |> ignore
         match proxy.listCategories () with
         | Ok l ->
             Assert.Equal(List.length standardCategories + 1, List.length l)
-            Assert.True(l |> List.exists (fun c -> c.name = "Polymer" && c.origin = UserCategory), "the new user category must be persisted")
+            Assert.True(l |> List.exists (fun c -> c.name.value = "Polymer" && c.origin = UserCategory), "the new user category must be persisted")
         | Error e -> Assert.Fail($"listCategories failed: %A{e}")
         Assert.Contains("add:Polymer", calls)
 
     [<Fact>]
     let ``a blank new name is refused at Save with the typed InvalidCategory and nothing persists`` () =
         let calls, proxy = stubProxy standardCategories Set.empty
-        let staged = init (contextOver proxy) |> update BeginAdd
+        let staged = (contextOver proxy).initCategoryEditor |> updateCategoryEditor BeginAdd
         let newId = (List.last staged.editor.rows).id
-        let blocked = staged |> update (SaveRow newId)
-        Assert.True(blocked.blockMessage <> "", "a blank-named add must surface a typed block")
+        let blocked = staged |> updateCategoryEditor (SaveRow newId)
+        Assert.True(blockTextOf blocked <> "", "a blank-named add must surface a typed block")
         Assert.False(calls |> Seq.exists (fun s -> s.StartsWith "add:"), "a blank-named add must not reach the store")
 
     [<Fact>]
     let ``Rename an existing user category commits through updateCategory`` () =
         let userId = CategoryId.create ()
         let calls, proxy = stubProxy (standardCategories @ [ userCategory userId "Draft" ]) Set.empty
-        init (contextOver proxy) |> update (SetName (userId, "Final")) |> update (SaveRow userId) |> ignore
+        (contextOver proxy).initCategoryEditor |> updateCategoryEditor (SetCategoryEditorName (userId, CategoryName "Final")) |> updateCategoryEditor (SaveRow userId) |> ignore
         match proxy.listCategories () with
         | Ok l ->
             match l |> List.tryFind (fun c -> c.id = userId) with
-            | Some c -> Assert.Equal("Final", c.name)
+            | Some c -> Assert.Equal("Final", c.name.value)
             | None -> Assert.Fail("the renamed category vanished")
         | Error e -> Assert.Fail($"listCategories failed: %A{e}")
         Assert.Contains("update:Final", calls)
@@ -204,11 +210,11 @@ module CategoryEditorWindowTests =
     [<Fact>]
     let ``a built-in category is renamable through updateCategory`` () =
         let calls, proxy = stubProxy standardCategories Set.empty
-        init (contextOver proxy) |> update (SetName (CategoryIds.glass, "Glazing")) |> update (SaveRow CategoryIds.glass) |> ignore
+        (contextOver proxy).initCategoryEditor |> updateCategoryEditor (SetCategoryEditorName (CategoryIds.glass, CategoryName "Glazing")) |> updateCategoryEditor (SaveRow CategoryIds.glass) |> ignore
         match proxy.listCategories () with
         | Ok l ->
             match l |> List.tryFind (fun c -> c.id = CategoryIds.glass) with
-            | Some c -> Assert.Equal("Glazing", c.name)
+            | Some c -> Assert.Equal("Glazing", c.name.value)
             | None -> Assert.Fail("the renamed built-in vanished")
         | Error e -> Assert.Fail($"listCategories failed: %A{e}")
         Assert.Contains("update:Glazing", calls)
@@ -218,12 +224,12 @@ module CategoryEditorWindowTests =
         let userId = CategoryId.create ()
         let calls, proxy = stubProxy (standardCategories @ [ userCategory userId "Used" ]) (Set.ofList [ userId.value ])
         // First click ARMS the confirm — the store is not yet touched.
-        let armed = init (contextOver proxy) |> update (RemoveRow userId)
-        Assert.True(armed.blockMessage <> "", "arming must surface the confirm prompt")
+        let armed = (contextOver proxy).initCategoryEditor |> updateCategoryEditor (RemoveRow userId)
+        Assert.True(blockTextOf armed <> "", "arming must surface the confirm prompt")
         Assert.False(calls |> Seq.exists (fun s -> s.StartsWith "remove:"), "arming must not reach the store")
         // The confirming second click reaches the store, which refuses.
-        let blocked = armed |> update (RemoveRow userId)
-        Assert.Contains("referenced", blocked.blockMessage)
+        let blocked = armed |> updateCategoryEditor (RemoveRow userId)
+        Assert.Contains("referenced", blockTextOf blocked)
         match proxy.listCategories () with
         | Ok l -> Assert.True(l |> List.exists (fun c -> c.id = userId), "the referenced category must survive the refusal")
         | Error e -> Assert.Fail($"listCategories failed: %A{e}")
@@ -232,10 +238,10 @@ module CategoryEditorWindowTests =
     let ``removing a built-in surfaces BuiltInNotRemovable and leaves the store unchanged`` () =
         let _, proxy = stubProxy standardCategories Set.empty
         let blocked =
-            init (contextOver proxy)
-            |> update (RemoveRow CategoryIds.glass)
-            |> update (RemoveRow CategoryIds.glass)
-        Assert.Contains("cannot be removed", blocked.blockMessage)
+            (contextOver proxy).initCategoryEditor
+            |> updateCategoryEditor (RemoveRow CategoryIds.glass)
+            |> updateCategoryEditor (RemoveRow CategoryIds.glass)
+        Assert.Contains("cannot be removed", blockTextOf blocked)
         match proxy.listCategories () with
         | Ok l -> Assert.Equal(List.length standardCategories, List.length l)
         | Error e -> Assert.Fail($"listCategories failed: %A{e}")
@@ -243,9 +249,9 @@ module CategoryEditorWindowTests =
     [<Fact>]
     let ``Cancel discards a freshly-added, unsaved row`` () =
         let calls, proxy = stubProxy standardCategories Set.empty
-        let staged = init (contextOver proxy) |> update BeginAdd
+        let staged = (contextOver proxy).initCategoryEditor |> updateCategoryEditor BeginAdd
         let newId = (List.last staged.editor.rows).id
-        let cancelled = staged |> update (SetName (newId, "Temp")) |> update (CancelRow newId)
+        let cancelled = staged |> updateCategoryEditor (SetCategoryEditorName (newId, CategoryName "Temp")) |> updateCategoryEditor (CancelRow newId)
         Assert.Equal(List.length standardCategories, List.length cancelled.editor.rows)
         Assert.False(calls |> Seq.exists (fun s -> s.StartsWith "add:"), "a cancelled add must not reach the store")
 
@@ -254,7 +260,7 @@ module CategoryEditorWindowTests =
         let calls, proxy = stubProxy standardCategories Set.empty
         let closed = ref false
         let context : CategoryEditorContext = { categories = proxy; requestClose = fun () -> closed.Value <- true }
-        init context |> update (SetName (CategoryIds.glass, "Glazing")) |> update CommitAll |> ignore
+        context.initCategoryEditor |> updateCategoryEditor (SetCategoryEditorName (CategoryIds.glass, CategoryName "Glazing")) |> updateCategoryEditor CommitAll |> ignore
         Assert.True(closed.Value, "the window Save must request close")
         Assert.Contains("update:Glazing", calls)
 
@@ -263,7 +269,7 @@ module CategoryEditorWindowTests =
         let calls, proxy = stubProxy standardCategories Set.empty
         let closed = ref false
         let context : CategoryEditorContext = { categories = proxy; requestClose = fun () -> closed.Value <- true }
-        init context |> update (SetName (CategoryIds.glass, "X")) |> update CancelWindow |> ignore
+        context.initCategoryEditor |> updateCategoryEditor (SetCategoryEditorName (CategoryIds.glass, CategoryName "X")) |> updateCategoryEditor CancelWindow |> ignore
         Assert.True(closed.Value, "the window Cancel must request close")
         Assert.Empty(calls)
 
@@ -277,11 +283,11 @@ module CategoryEditorWindowTests =
             let window = CategoryEditorWindow(proxy)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(matchesId UiIds.CategoryEditor.window window, "the window itself carries the CategoryEditorWindow id")
-            Assert.True(isPresent window UiIds.Category.list, "the categories list is missing")
-            Assert.True(isPresent window UiIds.Category.addButton, "the Add verb is missing")
-            Assert.True(isPresent window UiIds.Category.saveButton, "the window Save is missing")
-            Assert.True(isPresent window UiIds.Category.cancelButton, "the window Cancel is missing")
+            Assert.True(matchesId ConstructorUiId.categoryEditorWindow.value window, "the window itself carries the CategoryEditorWindow id")
+            Assert.True(isPresent window ConstructorUiId.categoriesList.value, "the categories list is missing")
+            Assert.True(isPresent window ConstructorUiId.addCategoryButton.value, "the Add verb is missing")
+            Assert.True(isPresent window ConstructorUiId.categorySaveButton.value, "the window Save is missing")
+            Assert.True(isPresent window ConstructorUiId.categoryCancelButton.value, "the window Cancel is missing")
             window.Close())
 
     [<Fact>]
@@ -296,14 +302,14 @@ module CategoryEditorWindowTests =
             let window = CategoryEditorWindow(proxy)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickOn window UiIds.Category.addButton
+            clickOn window ConstructorUiId.addCategoryButton.value
             let guid = newRowGuid window
-            setText window (UiIds.Category.rowNameBox guid) "Polymer"
-            clickOn window (UiIds.Category.rowSaveButton guid)
+            setText window (ConstructorUiId.categoryRowNameBox (ConstructorUiKey guid)).value "Polymer"
+            clickOn window (ConstructorUiId.categoryRowSaveButton (ConstructorUiKey guid)).value
             match proxy.listCategories () with
             | Ok l ->
                 Assert.Equal(before + 1, List.length l)
-                Assert.True(l |> List.exists (fun c -> c.name = "Polymer"), "the added category must be listed")
+                Assert.True(l |> List.exists (fun c -> c.name.value = "Polymer"), "the added category must be listed")
             | Error e -> Assert.Fail($"listCategories failed: %A{e}")
             window.Close())
 
@@ -317,12 +323,12 @@ module CategoryEditorWindowTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let guid = string userId.value
-            setText window (UiIds.Category.rowNameBox guid) "Renamed"
-            clickOn window (UiIds.Category.rowSaveButton guid)
+            setText window (ConstructorUiId.categoryRowNameBox (ConstructorUiKey guid)).value "Renamed"
+            clickOn window (ConstructorUiId.categoryRowSaveButton (ConstructorUiKey guid)).value
             match proxy.listCategories () with
             | Ok l ->
                 match l |> List.tryFind (fun c -> c.id = userId) with
-                | Some c -> Assert.Equal("Renamed", c.name)
+                | Some c -> Assert.Equal("Renamed", c.name.value)
                 | None -> Assert.Fail("the renamed category vanished")
             | Error e -> Assert.Fail($"listCategories failed: %A{e}")
             window.Close())
@@ -338,14 +344,14 @@ module CategoryEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
             let guid = string userId.value
             // First Remove click ARMS the confirm — the block slot shows the prompt.
-            clickOn window (UiIds.Category.rowRemoveButton guid)
-            Assert.True(isPresent window UiIds.Category.blockMessage, "the confirm prompt must show")
+            clickOn window (ConstructorUiId.categoryRowRemoveButton (ConstructorUiKey guid)).value
+            Assert.True(isPresent window ConstructorUiId.categoryBlockMessage.value, "the confirm prompt must show")
             // The confirming second click surfaces the store's typed refusal.
-            clickOn window (UiIds.Category.rowRemoveButton guid)
-            Assert.True(isPresent window UiIds.Category.blockMessage, "the typed block must show")
-            Assert.Contains("referenced", textOf window UiIds.Category.blockMessage)
+            clickOn window (ConstructorUiId.categoryRowRemoveButton (ConstructorUiKey guid)).value
+            Assert.True(isPresent window ConstructorUiId.categoryBlockMessage.value, "the typed block must show")
+            Assert.Contains("referenced", textOf window ConstructorUiId.categoryBlockMessage.value)
             // The category — and its row — survive unchanged.
-            Assert.True(isPresent window (UiIds.Category.rowNameBox guid), "the referenced row must still render")
+            Assert.True(isPresent window (ConstructorUiId.categoryRowNameBox (ConstructorUiKey guid)).value, "the referenced row must still render")
             match proxy.listCategories () with
             | Ok l -> Assert.True(l |> List.exists (fun c -> c.id = userId), "the referenced category must survive")
             | Error e -> Assert.Fail($"listCategories failed: %A{e}")
