@@ -88,6 +88,12 @@ module MeasuredData =
             points : EllipsometricPoint list
         }
 
+    /// How many points a parsed measured series holds.
+    type MeasuredPointCount =
+        | MeasuredPointCount of int
+
+        member this.value = let (MeasuredPointCount n) = this in n
+
     /// A parsed measured-data series tagged by the detector shape that produced it (spec 034): an intensity
     /// sweep (X, S0) or an ellipsometric sweep (λ, Ψ, Δ). The tag lets `validateAgainstExperiment` reject a
     /// file whose shape does not match the experiment's detector kind as a LOUD `DataUnitsMismatch` — the
@@ -95,6 +101,12 @@ module MeasuredData =
     type MeasuredSeries =
         | IntensityData of IntensitySeries
         | EllipsometricData of EllipsometricSeries
+
+        /// How many points the series holds, as parsed (nothing normalized away).
+        member this.pointCount : MeasuredPointCount =
+            match this with
+            | IntensityData s -> MeasuredPointCount (List.length s.points)
+            | EllipsometricData s -> MeasuredPointCount (List.length s.points)
 
     // -------------------------------------------------------------------------------------------------
     // Parsing (pure, exception-free — string split + invariant-culture parse never throw).

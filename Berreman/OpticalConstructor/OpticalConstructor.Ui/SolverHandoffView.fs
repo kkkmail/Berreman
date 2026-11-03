@@ -15,11 +15,9 @@ module OpticalConstructor.Ui.SolverHandoffView
 
 open Avalonia
 open OpticalConstructor.Controls
-open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Layout
 open Avalonia.Media
-open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open OpticalConstructor.Domain
@@ -34,46 +32,62 @@ let solverComesLaterMessage =
 /// The typed per-experiment handoff validation status (spec 0038 Part L, step 039). GREEN
 /// (`HandoffReady`) means every non-sample element is specified, a data file is attached, it reads
 /// schema-valid, and its range is consistent — the point count rides along. Every other case is a
-/// TYPED error carrying a diagnostic `reason` (a bare error case is useless on the summary). Elevated
-/// — never a bare status string — with a `.text` projection the row renders and an `.isReady` guard.
+/// TYPED error carrying a diagnostic `reason` (a bare error case is useless on the summary).
 type ExperimentHandoffStatus =
-    | HandoffReady of points : int
-    | UnspecifiedElements of reason : string
-    | MissingDataFile of reason : string
-    | DataFileParseError of reason : string
-    | DataFileValidationError of reason : string
+    | HandoffReady of points : MeasuredData.MeasuredPointCount
+    | UnspecifiedElements of reason : ControlCaption
+    | MissingDataFile of reason : ControlCaption
+    | DataFileParseError of reason : ControlCaption
+    | DataFileValidationError of reason : ControlCaption
 
-    member this.text : string =
+    /// The status line the summary row shows.
+    member this.caption : ControlCaption =
         match this with
-        | HandoffReady n -> $"Ready — %d{n} point(s), every element specified, schema-valid, range-consistent"
-        | UnspecifiedElements reason -> $"Unspecified element(s) — %s{reason}"
-        | MissingDataFile reason -> $"Missing data file — %s{reason}"
-        | DataFileParseError reason -> $"Parse error — %s{reason}"
-        | DataFileValidationError reason -> $"Validation error — %s{reason}"
+        | HandoffReady n -> ControlCaption $"Ready — {n.value} point(s), every element specified, schema-valid, range-consistent"
+        | UnspecifiedElements reason -> ControlCaption $"Unspecified element(s) — {reason.value}"
+        | MissingDataFile reason -> ControlCaption $"Missing data file — {reason.value}"
+        | DataFileParseError reason -> ControlCaption $"Parse error — {reason.value}"
+        | DataFileValidationError reason -> ControlCaption $"Validation error — {reason.value}"
 
     member this.isReady : bool =
         match this with
         | HandoffReady _ -> true
         | UnspecifiedElements _ | MissingDataFile _ | DataFileParseError _ | DataFileValidationError _ -> false
 
-/// The point count of a validated measured series — the "N point(s)" the ready status reports (the
-/// `TableAndElementRotationView.measuredSeriesPointCount` shape, re-derived here so this module needs
-/// no workbench type).
-let private measuredSeriesPointCount (series : MeasuredData.MeasuredSeries) : int =
-    match series with
-    | MeasuredData.IntensityData s -> List.length s.points
-    | MeasuredData.EllipsometricData s -> List.length s.points
+type Experiments.Experiment with
 
-/// The non-sample elements of an experiment's setup that are still UNBOUND — the inverse sample is
-/// the unknown (allowed unbound, drawn dashed at step 30), so it is excluded; every OTHER element
-/// (source / detector / polarizer / …) MUST be specified before handoff.
-let private unspecifiedElements (experiment : Experiments.Experiment) : Experiments.ElementDescriptor list =
-    experiment.setup
-    |> List.filter (fun d ->
-        match d.kind, d.binding with
-        | Placement.Sample, _ -> false
-        | _, Experiments.Unbound -> true
-        | _, (Experiments.BoundByEntryId _ | Experiments.BoundByVersion _) -> false)
+    /// The non-sample elements of the setup that are still UNBOUND — the inverse sample is the unknown
+    /// (allowed unbound, drawn dashed at step 30), so it is excluded; every OTHER element (source /
+    /// detector / polarizer / …) MUST be specified before handoff.
+    member private this.unspecifiedElements : Experiments.ElementDescriptor list =
+        this.setup
+        |> List.filter (fun d ->
+            match d.kind, d.binding with
+            | Placement.Sample, _ -> false
+            | _, Experiments.Unbound -> true
+            | _, (Experiments.BoundByEntryId _ | Experiments.BoundByVersion _) -> false)
+
+    /// The ordered setup, each element labelled with whether it is specified (bound) or still an
+    /// unspecified unknown: the sample reads "the unknown (sample)", every other unbound element
+    /// "UNSPECIFIED".
+    member private this.handoffSetupCaption : ControlCaption =
+        this.setup
+        |> List.map (fun d ->
+            let tag =
+                match d.kind, d.binding with
+                | Placement.Sample, Experiments.Unbound -> "the unknown (sample)"
+                | Placement.Sample, _ -> "specified"
+                | _, Experiments.Unbound -> "UNSPECIFIED"
+                | _, (Experiments.BoundByEntryId _ | Experiments.BoundByVersion _) -> "specified"
+            $"{d.label.value} [{tag}]")
+        |> String.concat "  →  "
+        |> ControlCaption
+
+    /// The attached data file's name, or a note that none is attached.
+    member private this.handoffFileCaption : ControlCaption =
+        match this.dataFileOpt with
+        | Some path -> ControlCaption (System.IO.Path.GetFileName path.value)
+        | None -> ControlCaption "(no file attached)"
 
 /// Spec 0038 Part L (step 039): the BASIC per-experiment validation, three checks in order (no solver
 /// math). (1) Every non-sample element specified — else `UnspecifiedElements`. (2) A data file
@@ -88,20 +102,18 @@ let validateExperiment
     (dataProxy : ExperimentData.ExperimentDataProxy)
     (experiment : Experiments.Experiment)
     : ExperimentHandoffStatus =
-    match unspecifiedElements experiment with
+    match experiment.unspecifiedElements with
     | (_ :: _) as unbound ->
         let names = unbound |> List.map (fun d -> d.label.value) |> String.concat ", "
-        UnspecifiedElements $"every element except the sample must be specified; still unbound: %s{names}"
+        UnspecifiedElements (ControlCaption $"every element except the sample must be specified; still unbound: {names}")
     | [] ->
         match experiment.dataFileOpt with
-        | None -> MissingDataFile "no measured-data file is attached to this experiment"
+        | None -> MissingDataFile (ControlCaption "no measured-data file is attached to this experiment")
         | Some path ->
             match ExperimentDataLoad.loadAndValidate library dataProxy experiment path with
-            | Ok series -> HandoffReady (measuredSeriesPointCount series)
-            | Error (MeasuredData.MalformedDataFileErr reason)
-            | Error (MeasuredData.EmptyDataFileErr reason) -> DataFileParseError reason
-            | Error (MeasuredData.DataRangeMismatchErr reason)
-            | Error (MeasuredData.DataUnitsMismatchErr reason) -> DataFileValidationError reason
+            | Ok series -> HandoffReady series.pointCount
+            | Error ((MeasuredData.MalformedDataFileErr _ | MeasuredData.EmptyDataFileErr _) as err) -> DataFileParseError err.caption
+            | Error ((MeasuredData.DataRangeMismatchErr _ | MeasuredData.DataUnitsMismatchErr _) as err) -> DataFileValidationError err.caption
 
 /// One summarized experiment: the received `Experiment` (its ordered setup + attached file ride
 /// along), the resolved detector kind (fixes the expected data-file shape), and its typed validation
@@ -154,14 +166,16 @@ type SolverHandoffModel =
         rows : HandoffRow list
     }
 
-/// Build the model from the context — validate every received experiment ONCE at init (the whole
-/// computation the screen runs).
-let initSolverHandoff (context : SolverHandoffContext) : SolverHandoffModel =
-    {
-        context = context
-        collectionName = context.collection.name
-        rows = buildRows context.library context.experimentData context.collection.experiments
-    }
+type SolverHandoffContext with
+
+    /// The model over this context: every received experiment validated ONCE at init (the whole
+    /// computation the screen runs).
+    member this.initSolverHandoff : SolverHandoffModel =
+        {
+            context = this
+            collectionName = this.collection.name
+            rows = buildRows this.library this.experimentData this.collection.experiments
+        }
 
 /// The only message the read-only terminal screen dispatches: the window-level Close.
 type SolverHandoffMsg =
@@ -177,45 +191,16 @@ let updateSolverHandoff (msg : SolverHandoffMsg) (m : SolverHandoffModel) : Solv
 // precedent).
 // ---------------------------------------------------------------------------
 
-let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private readyColor = color 34 128 34
-let private errorColor = color 176 40 40
-let private mutedColor = color 96 96 96
+let private readyColor = Color.FromRgb(34uy, 128uy, 34uy)
+let private errorColor = Color.FromRgb(176uy, 40uy, 40uy)
+let private mutedColor = Color.FromRgb(96uy, 96uy, 96uy)
+let private closeBackground = Color.FromRgb(226uy, 226uy, 226uy)
+let private closeBorder = Color.FromRgb(120uy, 120uy, 120uy)
 
-/// Set `AutomationProperties.AutomationId` (freely mutable, unlike `Control.Name`) through FuncUI's
-/// attr builder.
-let private automationId<'t when 't :> Control> (autoId : string) : IAttr<'t> =
-    AttrBuilder<'t>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
-
-let private detectorLabel (kind : Library.DetectorKind) : string =
-    match kind with
-    | Library.Intensity -> "Intensity"
-    | Library.Ellipsometer -> "Ellipsometer"
-
-/// One element of the ordered setup, labelled with whether it is specified (bound) or still an
-/// unspecified unknown. The sample reads "the unknown (sample)"; every other unbound element reads
-/// "UNSPECIFIED".
-let private setupText (experiment : Experiments.Experiment) : string =
-    experiment.setup
-    |> List.map (fun d ->
-        let tag =
-            match d.kind, d.binding with
-            | Placement.Sample, Experiments.Unbound -> "the unknown (sample)"
-            | Placement.Sample, _ -> "specified"
-            | _, Experiments.Unbound -> "UNSPECIFIED"
-            | _, (Experiments.BoundByEntryId _ | Experiments.BoundByVersion _) -> "specified"
-        $"%s{d.label.value} [%s{tag}]")
-    |> String.concat "  →  "
-
-let private fileText (experiment : Experiments.Experiment) : string =
-    match experiment.dataFileOpt with
-    | Some path -> System.IO.Path.GetFileName path.value
-    | None -> "(no file attached)"
-
-let private infoLine (text : string) : IView =
+let private infoLine (text : ControlCaption) : IView =
     TextBlock.create [
-        TextBlock.text text
+        TextBlock.text text.value
         TextBlock.textWrapping TextWrapping.Wrap
         TextBlock.foreground (brush mutedColor)
         TextBlock.margin (Thickness(0.0, 1.0, 0.0, 0.0))
@@ -226,9 +211,9 @@ let private infoLine (text : string) : IView =
 /// the experiment id.
 let private summaryEntry (row : HandoffRow) : IView =
     let e = row.experiment
-    let idStr = string e.id.value
+    let rowId = ConstructorUiId.solverHandoffRow e.id
     StackPanel.create [
-        automationId (ConstructorUiId.solverHandoffRow e.id).value
+        rowId.automationAttribute<StackPanel> ()
         StackPanel.orientation Orientation.Vertical
         StackPanel.margin (Thickness(0.0, 0.0, 0.0, 12.0))
         StackPanel.children [
@@ -237,12 +222,12 @@ let private summaryEntry (row : HandoffRow) : IView =
                 TextBlock.fontWeight FontWeight.SemiBold
                 TextBlock.textWrapping TextWrapping.Wrap
             ]
-            infoLine $"Setup: %s{setupText e}"
-            infoLine $"Detector: %s{detectorLabel row.detector}"
-            infoLine $"Data file: %s{fileText e}"
+            infoLine (ControlCaption $"Setup: {e.handoffSetupCaption.value}")
+            infoLine (ControlCaption $"Detector: {row.detector.caption.value}")
+            infoLine (ControlCaption $"Data file: {e.handoffFileCaption.value}")
             TextBlock.create [
-                automationId (ConstructorUiId.solverHandoffStatus e.id).value
-                TextBlock.text row.status.text
+                (ConstructorUiId.solverHandoffStatus e.id).automationAttribute<TextBlock> ()
+                TextBlock.text row.status.caption.value
                 TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.fontWeight FontWeight.SemiBold
                 TextBlock.margin (Thickness(0.0, 3.0, 0.0, 0.0))
@@ -250,7 +235,7 @@ let private summaryEntry (row : HandoffRow) : IView =
             ]
         ]
     ]
-    |> Avalonia.FuncUI.DSL.View.withKey ("SolverHandoffRow_" + idStr)
+    |> Avalonia.FuncUI.DSL.View.withKey rowId.value
     :> IView
 
 let private summaryList (m : SolverHandoffModel) : IView =
@@ -266,9 +251,9 @@ let private summaryList (m : SolverHandoffModel) : IView =
 
 let private closeButton (dispatch : SolverHandoffMsg -> unit) : IView =
     Border.create [
-        automationId ConstructorUiId.solverHandoffCloseButton.value
-        Border.background (brush (color 226 226 226))
-        Border.borderBrush (brush (color 120 120 120))
+        ConstructorUiId.solverHandoffCloseButton.automationAttribute<Border> ()
+        Border.background (brush closeBackground)
+        Border.borderBrush (brush closeBorder)
         Border.borderThickness 1.0
         Border.cornerRadius (CornerRadius 3.0)
         Border.padding (Thickness(22.0, 6.0))
@@ -291,13 +276,13 @@ let solverHandoffView (m : SolverHandoffModel) (dispatch : SolverHandoffMsg -> u
                         StackPanel.spacing 2.0
                         StackPanel.children [
                             TextBlock.create [
-                                automationId ConstructorUiId.solverHandoffCollectionName.value
-                                TextBlock.text $"Solver handoff — collection '%s{m.collectionName.value}'"
+                                ConstructorUiId.solverHandoffCollectionName.automationAttribute<TextBlock> ()
+                                TextBlock.text $"Solver handoff — collection '{m.collectionName.value}'"
                                 TextBlock.fontWeight FontWeight.Bold
                                 TextBlock.fontSize 16.0
                             ]
                             TextBlock.create [
-                                automationId ConstructorUiId.solverHandoffSolverMessage.value
+                                ConstructorUiId.solverHandoffSolverMessage.automationAttribute<TextBlock> ()
                                 TextBlock.text solverComesLaterMessage
                                 TextBlock.textWrapping TextWrapping.Wrap
                                 TextBlock.foreground (brush mutedColor)

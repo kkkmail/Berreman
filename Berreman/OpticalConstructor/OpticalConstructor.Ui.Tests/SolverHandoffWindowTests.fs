@@ -135,7 +135,7 @@ module SolverHandoffWindowTests =
         let exp = exp0 |> withFile "good.csv"
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.6; 89.0, 0.2 ]))
         match SolverHandoffView.validateExperiment library proxy exp with
-        | SolverHandoffView.HandoffReady 3 -> ()
+        | SolverHandoffView.HandoffReady (MeasuredData.MeasuredPointCount 3) -> ()
         | other -> Assert.Fail($"expected HandoffReady 3, got %A{other}")
 
     [<Fact>]
@@ -146,7 +146,7 @@ module SolverHandoffWindowTests =
         let exp = exp0 |> withFile "good.csv"
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0 ]))
         match SolverHandoffView.validateExperiment library proxy exp with
-        | SolverHandoffView.UnspecifiedElements reason -> Assert.Contains("every element except the sample", reason)
+        | SolverHandoffView.UnspecifiedElements reason -> Assert.Contains("every element except the sample", reason.value)
         | other -> Assert.Fail($"expected UnspecifiedElements, got %A{other}")
 
     [<Fact>]
@@ -165,7 +165,7 @@ module SolverHandoffWindowTests =
         let exp = exp0 |> withFile "oor.csv"
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]))
         match SolverHandoffView.validateExperiment library proxy exp with
-        | SolverHandoffView.DataFileValidationError reason -> Assert.Contains("outside the experiment range", reason)
+        | SolverHandoffView.DataFileValidationError reason -> Assert.Contains("outside the experiment range", reason.value)
         | other -> Assert.Fail($"expected DataFileValidationError, got %A{other}")
 
     [<Fact>]
@@ -174,7 +174,7 @@ module SolverHandoffWindowTests =
         let exp = exp0 |> withFile "bad.csv"
         let proxy = mockIntensity (Error (MeasuredData.MalformedDataFileErr "row 3 is not a valid X,Y pair"))
         match SolverHandoffView.validateExperiment library proxy exp with
-        | SolverHandoffView.DataFileParseError reason -> Assert.Contains("row 3", reason)
+        | SolverHandoffView.DataFileParseError reason -> Assert.Contains("row 3", reason.value)
         | other -> Assert.Fail($"expected DataFileParseError, got %A{other}")
 
     [<Fact>]
@@ -187,7 +187,7 @@ module SolverHandoffWindowTests =
             | Error e -> failwith $"the fixture parser failed: %A{e}"
         let proxy = mockEllipsometric (Ok ellipsometric)
         match SolverHandoffView.validateExperiment library proxy exp with
-        | SolverHandoffView.HandoffReady 2 -> ()
+        | SolverHandoffView.HandoffReady (MeasuredData.MeasuredPointCount 2) -> ()
         | other -> Assert.Fail($"expected HandoffReady 2 from the ellipsometric path, got %A{other}")
 
     [<Fact>]
@@ -198,7 +198,7 @@ module SolverHandoffWindowTests =
         let calls, proxy = recordingIntensity (Ok (intensitySeries raw))
         match SolverHandoffView.validateExperiment library proxy exp with
         | SolverHandoffView.HandoffReady n ->
-            Assert.Equal(List.length raw, n)          // the raw point count — nothing normalized away
+            Assert.Equal(List.length raw, n.value)          // the raw point count — nothing normalized away
             Assert.Equal(1, calls.Value)              // exactly one load — the only computation the screen runs
         | other -> Assert.Fail($"expected HandoffReady, got %A{other}")
 
@@ -216,7 +216,7 @@ module SolverHandoffWindowTests =
         let proxy =
             mockIntensityByPath (Map.ofList [ "good.csv", Ok (intensitySeries [ 0.0, 1.0; 89.0, 0.2 ])
                                               "oor.csv", Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]) ])
-        let model : SolverHandoffView.SolverHandoffModel = SolverHandoffView.initSolverHandoff (contextOf library proxy experiments)
+        let model : SolverHandoffView.SolverHandoffModel = (contextOf library proxy experiments).initSolverHandoff
         Assert.Equal("run-A", model.collectionName.value)
         Assert.Equal(3, List.length model.rows)
         let statusById (n : int) : SolverHandoffView.ExperimentHandoffStatus =

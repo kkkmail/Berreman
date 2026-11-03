@@ -282,6 +282,24 @@ module ConstructorUiIdOfDomain =
         /// The typed rejection's reason as a status line shows it.
         member this.caption : ControlCaption = ControlCaption this.reason
 
+    type DetectorKind with
+
+        /// The detector kind as a summary line names it.
+        member this.caption : ControlCaption =
+            match this with
+            | DetectorKind.Intensity -> ControlCaption "Intensity"
+            | DetectorKind.Ellipsometer -> ControlCaption "Ellipsometer"
+
+    type OpticalConstructor.Domain.MeasuredData.ExperimentDataError with
+
+        /// The typed rejection's reason as a status line shows it.
+        member this.caption : ControlCaption =
+            match this with
+            | OpticalConstructor.Domain.MeasuredData.MalformedDataFileErr reason
+            | OpticalConstructor.Domain.MeasuredData.EmptyDataFileErr reason
+            | OpticalConstructor.Domain.MeasuredData.DataRangeMismatchErr reason
+            | OpticalConstructor.Domain.MeasuredData.DataUnitsMismatchErr reason -> ControlCaption reason
+
     type UnitOfMeasure with
 
         /// The unit as the ASCII key of its choice box (the display symbols carry µ / ⁻¹).
