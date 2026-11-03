@@ -826,7 +826,7 @@ type WheelNotches with
 type BeamLayout.ElementZoom with
 
     /// The draw zoom after `notches` wheel steps of ×1.1, bounded [1, 50].
-    member private this.zoomedBy (notches : WheelNotches) : BeamLayout.ElementZoom =
+    member this.zoomedBy (notches : WheelNotches) : BeamLayout.ElementZoom =
         BeamLayout.ElementZoom (max 1.0 (min 50.0 (this.value * (1.1 ** float notches.value))))
 
 type ScreenPoint with
@@ -838,7 +838,7 @@ type ScreenPoint with
 type ElementPlacement with
 
     /// The placement with its three rotations reset (bypassing the locks), its position kept.
-    member private p.withRotationsReset : ElementPlacement = { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero }
+    member p.withRotationsReset : ElementPlacement = { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero }
 
 let private mapElement (i : SceneElementIndex) (f : TestElement -> TestElement) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
     { m with elements = m.elements |> List.mapi (fun j e -> if j = i.value then f e else e) }
@@ -1913,28 +1913,40 @@ let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : StrokeWidt
         Line.startPoint a.toPoint; Line.endPoint b.toPoint; Line.stroke (brush c); Line.strokeThickness w.value
     ] :> IView
 
-let private elementView (i : SceneElementIndex) (model : TableAndElementRotationModel) (e : TestElement) : IView list =
-    let selected = (model.selection = ElementSelected i)
-    let corners = e.boxCorners |> List.map (fun c -> (TableScene.projectOnScene model.view c).toPoint) |> List.toArray
-    let boxColor = if selected then selectedStroke else elementColor
-    let weight = if selected then 2.5 else 1.0
-    let edges =
-        TableView.plateEdges
-        |> List.map (fun edge ->
-            Line.create [
-                Line.startPoint (edge.fromCorner.pick corners); Line.endPoint (edge.toCorner.pick corners); Line.stroke (brush boxColor); Line.strokeThickness weight
-            ] :> IView)
-    let { primaryNormal = n1; secondaryNormal = n2 } = orientedBasis e.placement
-    let cx = e.placement.placementPoint.x / 1.0<meter>
-    let cy = e.placement.placementPoint.y / 1.0<meter>
-    let half = e.zoom.value * (e.placement.box.a2 / 2.0 / 1.0<meter>)
-    let centreScr = TableScene.projectOnScene model.view (Vector3.create cx cy 0.0)
-    let along (n : Vector3) (len : float) = TableScene.projectOnScene model.view (Vector3.create (cx + len * n.x) (cy + len * n.y) (len * n.z))
-    let normalWidth = if selected then StrokeWidth 3.0 else StrokeWidth 2.0
-    // The secondary (roll) normal is drawn toward −N2 so the yellow marker points UP on screen rather
-    // than down (a drawing convention only — the element's actual orientation is unchanged).
-    edges @ [ line centreScr (along n1 (1.8 * half)) n1Color normalWidth
-              line centreScr (along n2 (-(1.3 * half))) n2Color normalWidth ]
+type TestElement with
+
+    /// The element as the test scenes draw it through `view`: its oriented box and its N1 / N2 markers,
+    /// heavier and in the selection colour when highlighted.
+    member e.testSceneViews (view : TableViewState) (highlight : ElementRenderer.ElementHighlight) : IView list =
+        let corners = e.boxCorners |> List.map (fun c -> (TableScene.projectOnScene view c).toPoint) |> List.toArray
+        let boxColor =
+            match highlight with
+            | ElementRenderer.ElementHighlighted -> selectedStroke
+            | ElementRenderer.ElementNotHighlighted -> elementColor
+        let weight =
+            match highlight with
+            | ElementRenderer.ElementHighlighted -> StrokeWidth 2.5
+            | ElementRenderer.ElementNotHighlighted -> StrokeWidth 1.0
+        let normalWidth =
+            match highlight with
+            | ElementRenderer.ElementHighlighted -> StrokeWidth 3.0
+            | ElementRenderer.ElementNotHighlighted -> StrokeWidth 2.0
+        let edges =
+            TableView.plateEdges
+            |> List.map (fun edge ->
+                Line.create [
+                    Line.startPoint (edge.fromCorner.pick corners); Line.endPoint (edge.toCorner.pick corners); Line.stroke (brush boxColor); Line.strokeThickness weight.value
+                ] :> IView)
+        let { primaryNormal = n1; secondaryNormal = n2 } = orientedBasis e.placement
+        let cx = e.placement.placementPoint.x / 1.0<meter>
+        let cy = e.placement.placementPoint.y / 1.0<meter>
+        let half = e.zoom.value * (e.placement.box.a2 / 2.0 / 1.0<meter>)
+        let centreScr = TableScene.projectOnScene view (Vector3.create cx cy 0.0)
+        let along (n : Vector3) (len : float) = TableScene.projectOnScene view (Vector3.create (cx + len * n.x) (cy + len * n.y) (len * n.z))
+        // The secondary (roll) normal is drawn toward −N2 so the yellow marker points UP on screen rather
+        // than down (a drawing convention only — the element's actual orientation is unchanged).
+        edges @ [ line centreScr (along n1 (1.8 * half)) n1Color normalWidth
+                  line centreScr (along n2 (-(1.3 * half))) n2Color normalWidth ]
 
 let private rotationHandlers (dispatch : TableAndElementRotationMsg -> unit) : RotationControls.Handlers =
     {
@@ -1962,7 +1974,13 @@ type PaletteButton =
 type TableAndElementRotationModel with
 
     member internal model.elementViews : IView list =
-        model.indexedElements |> List.collect (fun (i, e) -> elementView i model e)
+        model.indexedElements
+        |> List.collect (fun (i, e) ->
+            let highlight =
+                match model.selection with
+                | ElementSelected s when s = i -> ElementRenderer.ElementHighlighted
+                | _ -> ElementRenderer.ElementNotHighlighted
+            e.testSceneViews model.view highlight)
 
     /// The shared rotation-controls bar's state for whatever is selected (the table, or an element).
     /// When nothing is selected the bar is disabled — there is nothing to rotate (task 008).
