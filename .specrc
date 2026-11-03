@@ -47,6 +47,7 @@
     "exclude_paths": ["MathNetNumerics/**"]
   },
   "data_version": 8,
+  "slice_width": 4,
 
   "max_arc_wall_seconds": 1209600
 }
