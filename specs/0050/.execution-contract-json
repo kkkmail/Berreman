@@ -12640,6 +12640,1267 @@
           "command_sha256": "baaf4f03325297d4ac92b966104e641cf7bc0107dcebe5f031f3324e4a1a3839"
         }
       ]
+    },
+    {
+      "id": "S43-OPEN-SEAM",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "Domain gains the KitFolderPicker record (pickKitFolder answering Async<KitFolder option>), KitFolder.namedKitFile (a new kit file named for the folder's leaf, a blank leaf being InvalidKitNameErr), KitContext.openOrInitialise (open read-write; initialise only a folder that holds no kit, keeping its files; KitLockedErr and every other error passed through with nothing written) and KitContext.createInMemory (an initialised in-memory kit opened read-write without a lock), proved over the in-memory and the folder proxy.",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S43-EXPERIMENT-FILE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "An experiment is stored as E<n>.experiment-json: ExperimentId.fileStem, ExperimentFile (schemaVersion 1, the experiment), schema/experiment.schema.json validated through SchemaValidation.validateExperimentFile, ExperimentFile.fileText rendering canonical JSON and KitFileText.parseExperimentFile reading it back equal, another schema version being UnsupportedSchemaVersionErr and a schema-invalid text SchemaValidationErr.",
+      "checks": [
+        {
+          "step": 146,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S43-SCENE-FILE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "A scene is stored as <scene name>.setup-json in today's SceneSnapshot shape: SceneName.fileStem (step 24's name rule), SceneFile (schemaVersion 1, name, scene), schema/setup.schema.json validated through validateSceneFile, SceneFile.fileText and KitFileText.parseSceneFile round-tripping, another version being UnsupportedSchemaVersionErr; SceneSnapshot.libraryReferences names each bound entry once at its latest.",
+      "checks": [
+        {
+          "step": 147,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S43-KIT-CONTENT-VERBS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "KitProxy gains the typed members writeExperiment, deleteExperiment, readExperiments (ordered by id; any unreadable or misnamed file refuses the read with KitFileRejectedErr naming it), writeScene, readScene and readSceneNames over the per-kind verbs, refused by readOnlyView for writes; SceneRoundTripTests and ExperimentCollectionRoundTripTests run over kit folders.",
+      "checks": [
+        {
+          "step": 148,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S43-RECORD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "KitLibraryContext.recordExperiment and recordScene snapshot (and pin) every library version the file references before writing the file, write nothing when a reference cannot be resolved, and refuse through a read-only kit.",
+      "checks": [
+        {
+          "step": 149,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S43-OPENING",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "The Ui's KitOpening module provides ClockProvider.system, OpenedKit (library, data seam, experiments, scenes, snapshot rows, overlay; pendingDecisions; withRebindings), openKitAt (initialise-or-open read-write or open read-only, read experiments and scenes, resolve snapshots, open the overlay, closing the kit on any failure and passing KitLockedErr inside KitLibraryKitErr), the Avalonia KitFolderPicker.ofWindow and the scratch kit.",
+      "checks": [
+        {
+          "step": 150,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 150,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S43-NO-SCENE-SEAM",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "Scene.SceneProxy and its in-memory store are deleted, AppContext composes no scene store, SceneProxyTests is deleted with its SceneName and SnapMode facts moved unchanged into SceneRoundTripTests.",
+      "checks": [
+        {
+          "step": 151,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 151,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 151,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S43-CONSTRUCTOR-KIT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "The constructor model holds a KitContext (kit) and kitStatus in place of the experiment-collection store and its name, list and status; initWith works in the scratch kit; loadKit loads an opened kit's experiments and flags changed or missing data; a commit, an attach and a removal record or delete the experiment's kit file, a failed write keeping the experiment and showing kitStatus; ExperimentCollectionProxy, its store, ExperimentCollectionError and CollectionName.tryCreate, the collection messages and ids, and AppContext's experimentData and experimentCollections are deleted; no file under Berreman/ names SceneProxy or ExperimentCollectionProxy.",
+      "checks": [
+        {
+          "step": 152,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 152,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 152,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S43-SCENE-SAVE-LOAD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "The constructor saves the table as a scene of a typed name (SceneSetName, SceneSave) through KitLibraryContext.recordScene and loads a kit scene back onto the table (SceneLoad), listing the kit's scenes; a blank name or a missing scene is reported in kitStatus; the ids sceneNameField, saveSceneButton, savedScenes and savedScene name the controls.",
+      "checks": [
+        {
+          "step": 153,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 153,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 153,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S43-WINDOWS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "MainConstructorWindow and InverseConstructorWindow take the app context and an opened kit, overlay the library stores with the kit's snapshots, load the kit into the model and release it on close; the launcher's Main and Inverse open the folder the KitFolderPicker answers through KitOpening.openKitAt, showing a failure in launcherKitErrorText; headless tests substitute the picker with folders under the test output.",
+      "checks": [
+        {
+          "step": 154,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 154,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 154,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S43-READ-ONLY-OFFER",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "A picked kit whose lock another holder owns shows the holder in launcherKitErrorText with Open read-only and Cancel on one row (positive and negative colours, a gap); Open read-only opens the constructor over the kit's read-only context, writing nothing; Cancel opens nothing.",
+      "checks": [
+        {
+          "step": 155,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 155,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 155,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S43-RESOLVE-ON-OPEN",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "A picked kit with a snapshot row that is not SameContentHash opens the import dialog with ResolveKitSnapshot before any constructor window; Apply opens the constructor over the overlay re-bound by the outcome; closing the dialog without Apply closes the kit and opens nothing; a kit whose rows all reuse opens directly.",
+      "checks": [
+        {
+          "step": 156,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 156,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 156,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S43-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "Every S4.3 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error, so every complete match on the constructor's messages and on KitError covers its cases.",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 146,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 147,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 148,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 149,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 150,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 151,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 152,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 153,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 154,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 155,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 156,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S43-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §S4 ('today's experiments and scenes persist into the kit'; 'DELETE … the Scene / ExperimentCollection seams'), §R ('Scene.SceneProxy and ExperimentCollectionProxy (in-memory seams), replaced by KitProxy'), §A ('Kit extensions: … .setup-json, .experiment-json'; 'A file that exists many times is named by its own identity'), §E ('a .oc/lock … with an open read-only choice'; 'Library closure snapshot'; 'Resolution on open … One dialog shows all rows'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them'), §P ('KitProxy … setups, experiments'; 'Logic receives a KitContext'; 'Every user step is a semantic message'); specs/0050/.section-plan-jsonl section 17 (S4.3) brief; specs/0050/.spec-md §3.10, §3.11, §3.12, §4, §5, §6, §8, §10",
+      "requirement": "Every S4.3 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): every new value is elevated where it is born, no bool stands for a two-state condition, every new case name has two words and is unique (ELEV016), every new type, public and extension-member name is unique (ELEV014/015/019), no conversion runs both ways (ELEV006), and every IO declaration carrying a primitive is marked on itself.",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 146,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 147,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 148,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 149,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 150,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 151,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 152,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 153,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 154,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 155,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 156,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S43-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 17 (S4.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.3 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s17-elev-list-empty).",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        },
+        {
+          "step": 146,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        },
+        {
+          "step": 147,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        },
+        {
+          "step": 148,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        },
+        {
+          "step": 149,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        },
+        {
+          "step": 150,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        },
+        {
+          "step": 151,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        },
+        {
+          "step": 152,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        },
+        {
+          "step": 153,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        },
+        {
+          "step": 154,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        },
+        {
+          "step": 155,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        },
+        {
+          "step": 156,
+          "gate": "invariant-s17-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "45046db4fef08e903e47f6db378d57a32c36315f3b540a400497c502aaa35309"
+        }
+      ]
+    },
+    {
+      "id": "S43-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 17 (S4.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.3 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s17-no-vstest).",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        },
+        {
+          "step": 146,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        },
+        {
+          "step": 147,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        },
+        {
+          "step": 148,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        },
+        {
+          "step": 149,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        },
+        {
+          "step": 150,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        },
+        {
+          "step": 151,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        },
+        {
+          "step": 152,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        },
+        {
+          "step": 153,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        },
+        {
+          "step": 154,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        },
+        {
+          "step": 155,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        },
+        {
+          "step": 156,
+          "gate": "invariant-s17-no-vstest",
+          "selection": "command",
+          "command_sha256": "2e2e1fa26cae1dfc4b4ab8d6154ba48a646ef32b0f135813c3d671035fcf0fd7"
+        }
+      ]
+    },
+    {
+      "id": "S43-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 17 (S4.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.3 step, nothing under Berreman/ names kit.kit-json (section invariant s17-no-kit-kit-json): the kit file is named by its extension alone, .kit-json.",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        },
+        {
+          "step": 146,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        },
+        {
+          "step": 147,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        },
+        {
+          "step": 148,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        },
+        {
+          "step": 149,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        },
+        {
+          "step": 150,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        },
+        {
+          "step": 151,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        },
+        {
+          "step": 152,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        },
+        {
+          "step": 153,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        },
+        {
+          "step": 154,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        },
+        {
+          "step": 155,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        },
+        {
+          "step": 156,
+          "gate": "invariant-s17-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "dff2b536a24639cff3de2dba2ca1b2b29ec0b597e59b1f850c0387b8c7afc137"
+        }
+      ]
+    },
+    {
+      "id": "S43-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 17 (S4.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.3 step, nothing under Berreman/ names EpsAxisEvaluated (section invariant s17-no-eps-axis-evaluated, established by S1.1).",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        },
+        {
+          "step": 146,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        },
+        {
+          "step": 147,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        },
+        {
+          "step": 148,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        },
+        {
+          "step": 149,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        },
+        {
+          "step": 150,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        },
+        {
+          "step": 151,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        },
+        {
+          "step": 152,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        },
+        {
+          "step": 153,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        },
+        {
+          "step": 154,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        },
+        {
+          "step": 155,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        },
+        {
+          "step": 156,
+          "gate": "invariant-s17-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b72240ae14f68c49ee849e3edf5eff71485346d405d7856e97c9052de19a5145"
+        }
+      ]
+    },
+    {
+      "id": "S43-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 17 (S4.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.3 step, nothing under Berreman/ says complexity = None or complexity = Some (section invariant s17-complexity-mandatory, established by S1.2).",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        },
+        {
+          "step": 146,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        },
+        {
+          "step": 147,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        },
+        {
+          "step": 148,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        },
+        {
+          "step": 149,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        },
+        {
+          "step": 150,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        },
+        {
+          "step": 151,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        },
+        {
+          "step": 152,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        },
+        {
+          "step": 153,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        },
+        {
+          "step": 154,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        },
+        {
+          "step": 155,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        },
+        {
+          "step": 156,
+          "gate": "invariant-s17-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "362ad0a53e74a4b016d947b2756a78fb4f7a6a5c87db55d0b2df6d5e5b27cbc6"
+        }
+      ]
+    },
+    {
+      "id": "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 17 (S4.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.3 step, no Berreman/*.fs file holds a seeded preset string id (section invariant s17-no-seeded-string-preset-ids, established by S1.3).",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        },
+        {
+          "step": 146,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        },
+        {
+          "step": 147,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        },
+        {
+          "step": 148,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        },
+        {
+          "step": 149,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        },
+        {
+          "step": 150,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        },
+        {
+          "step": 151,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        },
+        {
+          "step": 152,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        },
+        {
+          "step": 153,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        },
+        {
+          "step": 154,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        },
+        {
+          "step": 155,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        },
+        {
+          "step": 156,
+          "gate": "invariant-s17-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "f35db208cac6c85977d17af5d81374c4506874a6ef0b52d8aa96b5a4281b46d8"
+        }
+      ]
+    },
+    {
+      "id": "S43-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 17 (S4.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.3 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (section invariant s17-no-seeding-seam, established by S1.6).",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        },
+        {
+          "step": 146,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        },
+        {
+          "step": 147,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        },
+        {
+          "step": 148,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        },
+        {
+          "step": 149,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        },
+        {
+          "step": 150,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        },
+        {
+          "step": 151,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        },
+        {
+          "step": 152,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        },
+        {
+          "step": 153,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        },
+        {
+          "step": 154,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        },
+        {
+          "step": 155,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        },
+        {
+          "step": 156,
+          "gate": "invariant-s17-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f2554f80de95d4ff0996f6e3759d30eee79f0d3d9a5c85c04cd1413304f5b4f8"
+        }
+      ]
+    },
+    {
+      "id": "S43-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 17 (S4.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.3 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (section invariant s17-t1-no-code-seeds, 001 §T 'From section 1', established by S1.7).",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        },
+        {
+          "step": 146,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        },
+        {
+          "step": 147,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        },
+        {
+          "step": 148,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        },
+        {
+          "step": 149,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        },
+        {
+          "step": 150,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        },
+        {
+          "step": 151,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        },
+        {
+          "step": 152,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        },
+        {
+          "step": 153,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        },
+        {
+          "step": 154,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        },
+        {
+          "step": 155,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        },
+        {
+          "step": 156,
+          "gate": "invariant-s17-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "010d0619c84341cbaad84426d9390858b88e9901818111dd2033b0496670451f"
+        }
+      ]
+    },
+    {
+      "id": "S43-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 17 (S4.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.3 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (section invariant s17-no-seed-modules, established by S1.3 and S1.7).",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        },
+        {
+          "step": 146,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        },
+        {
+          "step": 147,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        },
+        {
+          "step": 148,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        },
+        {
+          "step": 149,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        },
+        {
+          "step": 150,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        },
+        {
+          "step": 151,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        },
+        {
+          "step": 152,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        },
+        {
+          "step": 153,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        },
+        {
+          "step": 154,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        },
+        {
+          "step": 155,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        },
+        {
+          "step": 156,
+          "gate": "invariant-s17-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "62cdc4fd71aca68deccb830c2fbbc4b21bed49d9c07e295356ef49e5645c4e0f"
+        }
+      ]
+    },
+    {
+      "id": "S43-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 17 (S4.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.3 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (section invariant s17-no-test-db, established by S2.1 step 59).",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        },
+        {
+          "step": 146,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        },
+        {
+          "step": 147,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        },
+        {
+          "step": 148,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        },
+        {
+          "step": 149,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        },
+        {
+          "step": 150,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        },
+        {
+          "step": 151,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        },
+        {
+          "step": 152,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        },
+        {
+          "step": 153,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        },
+        {
+          "step": 154,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        },
+        {
+          "step": 155,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        },
+        {
+          "step": 156,
+          "gate": "invariant-s17-no-test-db",
+          "selection": "command",
+          "command_sha256": "3dd432194f6f1d7820c7d4cb7522f03d771699c8d63d55d99995b1df7e3dbf4f"
+        }
+      ]
+    },
+    {
+      "id": "S43-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 17 (S4.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.3 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (section invariant s17-no-versions-in-use, established by S2.2 step 65).",
+      "checks": [
+        {
+          "step": 145,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        },
+        {
+          "step": 146,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        },
+        {
+          "step": 147,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        },
+        {
+          "step": 148,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        },
+        {
+          "step": 149,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        },
+        {
+          "step": 150,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        },
+        {
+          "step": 151,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        },
+        {
+          "step": 152,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        },
+        {
+          "step": 153,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        },
+        {
+          "step": 154,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        },
+        {
+          "step": 155,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        },
+        {
+          "step": 156,
+          "gate": "invariant-s17-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -15183,6 +16444,246 @@
         "S42-INV-NO-TEST-DB",
         "S42-INV-NO-VERSIONS-IN-USE"
       ]
+    },
+    {
+      "step": 145,
+      "sha256": "c478b5b3f27708282dace1dde13a478510d8883c9119411092211218a61caecb",
+      "obligations": [
+        "S43-OPEN-SEAM",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 146,
+      "sha256": "b1a0b3277af883c489df21d42bd8e5b25ed68883a3396197926e713ca878893e",
+      "obligations": [
+        "S43-EXPERIMENT-FILE",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 147,
+      "sha256": "7339ddae31614528918aab8e864672bf00d7f9cf8066507dd0c9fae3c250105c",
+      "obligations": [
+        "S43-SCENE-FILE",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 148,
+      "sha256": "348a48da767a57d60ae5ec3ce98f418de61b61f7a65241426b06c14ccef1fb7d",
+      "obligations": [
+        "S43-KIT-CONTENT-VERBS",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 149,
+      "sha256": "fe3cff258fb4714a6225e85eaf21928fab2a9690270896201a69e772ec19baa1",
+      "obligations": [
+        "S43-RECORD",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 150,
+      "sha256": "3ed0097a8cf9c0b11928c788c1318a9445e1d2fc2b50ed91a916b58d66371ab9",
+      "obligations": [
+        "S43-OPENING",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 151,
+      "sha256": "5896ee48e6b073f23c0cbb1d822977e1880e6b1593a72a04bc2ab73c4d490093",
+      "obligations": [
+        "S43-NO-SCENE-SEAM",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 152,
+      "sha256": "c46da8bc3f9eca59cbc185d731066d019761609a9f41b23fcd2c4899119d6b58",
+      "obligations": [
+        "S43-CONSTRUCTOR-KIT",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 153,
+      "sha256": "6ead838e2e2722f97602b81a773445ca75f2bee6319c2bd4dbe2763abbabeb4b",
+      "obligations": [
+        "S43-SCENE-SAVE-LOAD",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 154,
+      "sha256": "1c2cc826a109f2a411722a9f83c021d4dc8337b5396e48e93c70c97b09c6f4fc",
+      "obligations": [
+        "S43-WINDOWS",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 155,
+      "sha256": "5a8fa1e6a8a0dbf1b0d89d8b3d6e5597b4063cb6ab7230296ab0b6a8925e129c",
+      "obligations": [
+        "S43-READ-ONLY-OFFER",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 156,
+      "sha256": "33979af326f261b2a17396ac433f2bbdbefd8f8e3528a74d85b9c1c70e449f75",
+      "obligations": [
+        "S43-RESOLVE-ON-OPEN",
+        "S43-BUILD",
+        "S43-ELEVATION",
+        "S43-INV-ELEV-LIST",
+        "S43-INV-NO-VSTEST",
+        "S43-INV-NO-KIT-KIT-JSON",
+        "S43-INV-NO-EPS-AXIS-EVALUATED",
+        "S43-INV-COMPLEXITY-MANDATORY",
+        "S43-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S43-INV-NO-SEEDING-SEAM",
+        "S43-INV-T1-NO-CODE-SEEDS",
+        "S43-INV-NO-SEED-MODULES",
+        "S43-INV-NO-TEST-DB",
+        "S43-INV-NO-VERSIONS-IN-USE"
+      ]
     }
   ],
   "behavior_seams": [
@@ -15730,6 +17231,66 @@
       "id": "s42-dialog",
       "step": 144,
       "obligation": "S42-DIALOG"
+    },
+    {
+      "id": "s43-open-seam",
+      "step": 145,
+      "obligation": "S43-OPEN-SEAM"
+    },
+    {
+      "id": "s43-experiment-file",
+      "step": 146,
+      "obligation": "S43-EXPERIMENT-FILE"
+    },
+    {
+      "id": "s43-scene-file",
+      "step": 147,
+      "obligation": "S43-SCENE-FILE"
+    },
+    {
+      "id": "s43-kit-content-verbs",
+      "step": 148,
+      "obligation": "S43-KIT-CONTENT-VERBS"
+    },
+    {
+      "id": "s43-record",
+      "step": 149,
+      "obligation": "S43-RECORD"
+    },
+    {
+      "id": "s43-opening",
+      "step": 150,
+      "obligation": "S43-OPENING"
+    },
+    {
+      "id": "s43-no-scene-seam",
+      "step": 151,
+      "obligation": "S43-NO-SCENE-SEAM"
+    },
+    {
+      "id": "s43-constructor-kit",
+      "step": 152,
+      "obligation": "S43-CONSTRUCTOR-KIT"
+    },
+    {
+      "id": "s43-scene-save-load",
+      "step": 153,
+      "obligation": "S43-SCENE-SAVE-LOAD"
+    },
+    {
+      "id": "s43-windows",
+      "step": 154,
+      "obligation": "S43-WINDOWS"
+    },
+    {
+      "id": "s43-read-only-offer",
+      "step": 155,
+      "obligation": "S43-READ-ONLY-OFFER"
+    },
+    {
+      "id": "s43-resolve-on-open",
+      "step": 156,
+      "obligation": "S43-RESOLVE-ON-OPEN"
     }
   ],
   "temporal_checks": [],
@@ -15994,6 +17555,19 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Domain",
         "Berreman/OpticalConstructor/OpticalConstructor.Storage",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 145,
+      "step": 156,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Controls",
+        "Berreman/OpticalConstructor/OpticalConstructor.App",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
       ]
