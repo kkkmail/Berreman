@@ -4501,6 +4501,709 @@
           "command_sha256": "73ac5404914c8d3b3870b19f847ffe60aa211712f357718e4cca6732ef3ce296"
         }
       ]
+    },
+    {
+      "id": "S22-PIN",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §C ('Versions are immutable', 'Pinned replaces VersionsInUse', 'The library proxies keep their shapes and gain a SQLite create', 'Contract tests', 'Hybrid shape'); specs/0050/.section-plan-jsonl section 9 (S2.2) brief; specs/0050/.spec-md §0.1, §4, §5, §6, §9",
+      "requirement": "A one-way per-version pin replaces the in-use seam: Lifecycle.VersionsInUse (with empty), VersionUsage and usageOf and Experiments.boundVersions and versionsInUseSeam are deleted; decideVersioning takes the stored latest version's PinState (step 61's type), minting the next version only when a pinned version's physics changes and otherwise behaving as before; the in-memory material and sample stores keep a pin per version (new and minted versions unpinned), gain pinMaterialVersion / pinSampleVersion (idempotent, no unpin, an unknown id or version a typed UnknownMaterialIdErr / UnknownSampleIdErr, the material text being the one MaterialError.unknownMaterialVersion that Propagation.resolveMaterialVersion also answers), refuse removal while any version is pinned as MaterialVersionPinnedErr / SampleVersionPinnedErr with the same diagnostic payload, and take no VersionsInUse argument; every caller, product, fixture and test, follows, and nothing under Berreman/ names the seam. Facts prove the pinned/unpinned decision table, pinned saves and removals in both stores, the pin verbs, and that an experiment's versionRefs pinned through the verb protect its sample.",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 65,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 65,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S22-CONTRACT-SUITES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §C ('Versions are immutable', 'Pinned replaces VersionsInUse', 'The library proxies keep their shapes and gain a SQLite create', 'Contract tests', 'Hybrid shape'); specs/0050/.section-plan-jsonl section 9 (S2.2) brief; specs/0050/.spec-md §0.1, §4, §5, §6, §9",
+      "requirement": "MaterialProxyTests and CategoryProxyTests become contract suites: the store facts are members of the abstract MaterialProxyContract / CategoryProxyContract over abstract store factories, the in-memory subclasses keep the names MaterialProxyTests and CategoryProxyTests so every fact keeps its id and the suite count is unchanged, and the stub and pure facts stay in the in-memory classes alone.",
+      "checks": [
+        {
+          "step": 66,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S22-ROW-OPERATIONS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §C ('Versions are immutable', 'Pinned replaces VersionsInUse', 'The library proxies keep their shapes and gain a SQLite create', 'Contract tests', 'Hybrid shape'); specs/0050/.section-plan-jsonl section 9 (S2.2) brief; specs/0050/.spec-md §0.1, §4, §5, §6, §9",
+      "requirement": "LibraryDbContext gains the version-history operations every SQLite library store uses, inside LibraryDatabase.run and saved once by the caller: reads of an entry's latest, a named version, all its versions and the latest of every entry of a kind (each through toStoredVersion); staging a version with exactly its envelope's facet and sample-material rows, the latest pointer, and a removal of every version; and the version rule's outcomes, stageNewEntry and stageEdit (keep, mutate in place under the latest's state, or mint the next version unpinned and active as the latest). The test fixture gains freshLibraryDatabase (), a SQLite :memory: database holding the Built-in catalogue at version 1. Facts prove the fixture, row replacement and latest movement, each stageEdit outcome and removal.",
+      "checks": [
+        {
+          "step": 67,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S22-MATERIAL-MEMBERS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §C ('Versions are immutable', 'Pinned replaces VersionsInUse', 'The library proxies keep their shapes and gain a SQLite create', 'Contract tests', 'Hybrid shape'); specs/0050/.section-plan-jsonl section 9 (S2.2) brief; specs/0050/.spec-md §0.1, §4, §5, §6, §9",
+      "requirement": "The in-memory materials store's version payload (MaterialEntry.versionPayload over a public MaterialMetadata) and refusal texts (MaterialError.unknownMaterial, stillReferenced and versionsPinned, beside step 65's unknownMaterialVersion) move into members both materials stores call, resolveMaterialWithDisp included, unchanged in text and behaviour.",
+      "checks": [
+        {
+          "step": 68,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S22-SQLITE-MATERIALS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §C ('Versions are immutable', 'Pinned replaces VersionsInUse', 'The library proxies keep their shapes and gain a SQLite create', 'Contract tests', 'Hybrid shape'); specs/0050/.section-plan-jsonl section 9 (S2.2) brief; specs/0050/.spec-md §0.1, §4, §5, §6, §9",
+      "requirement": "MaterialProxy.createInDatabase (database : LibraryDatabase), a Storage type extension unique on its receiver and marked StorageBoundary, implements every MaterialProxy field over the entry-version rows: latest-version listing (ActiveOnly by lifecycle, ordered by id), search through byQuery, latest and by-version lookups whatever the lifecycle, saves through decideVersioning with the stored pin (a first save is a user entry, an edit keeps the stored provenance), lifecycle verbs on the latest version, the pin verb, and removal refused while referenced by an active latest sample's sample-to-material rows or while any version is pinned; every database or decoder failure is the new MaterialStoreUnavailableErr. Every MaterialProxyContract fact runs against it in MaterialProxySqliteTests over SQLite :memory:, with SQLite-only facts for provenance and failure.",
+      "checks": [
+        {
+          "step": 69,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 69,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S22-CATEGORY-MEMBERS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §C ('Versions are immutable', 'Pinned replaces VersionsInUse', 'The library proxies keep their shapes and gain a SQLite create', 'Contract tests', 'Hybrid shape'); specs/0050/.section-plan-jsonl section 9 (S2.2) brief; specs/0050/.spec-md §0.1, §4, §5, §6, §9",
+      "requirement": "The in-memory category store's refusal texts (CategoryError.unknownCategory, duplicateCategory, builtInNotRemovable, stillReferenced) move into members both category stores call, unchanged in text and behaviour.",
+      "checks": [
+        {
+          "step": 70,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S22-SQLITE-CATEGORIES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §C ('Versions are immutable', 'Pinned replaces VersionsInUse', 'The library proxies keep their shapes and gain a SQLite create', 'Contract tests', 'Hybrid shape'); specs/0050/.section-plan-jsonl section 9 (S2.2) brief; specs/0050/.spec-md §0.1, §4, §5, §6, §9",
+      "requirement": "CategoryProxy.createInDatabase (database : LibraryDatabase), a Storage type extension marked StorageBoundary, implements list / add / update / remove over the category entry-version rows: a built-in category is filed under the Built-in catalogue's provenance and a user category under UserProvenance, an update keeps the stored provenance and follows decideVersioning with the stored pin, a category from a built-in catalogue is not removable, a category a material's latest version names is not removable, and every database or decoder failure is the new CategoryStoreUnavailableErr. Every CategoryProxyContract fact runs against it in CategoryProxySqliteTests over SQLite :memory:, with SQLite-only facts for provenance and failure.",
+      "checks": [
+        {
+          "step": 71,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 71,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S22-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §C ('Versions are immutable', 'Pinned replaces VersionsInUse', 'The library proxies keep their shapes and gain a SQLite create', 'Contract tests', 'Hybrid shape'); specs/0050/.section-plan-jsonl section 9 (S2.2) brief; specs/0050/.spec-md §0.1, §4, §5, §6, §9",
+      "requirement": "Every S2.2 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error, so every complete match on MaterialError, SampleError and CategoryError covers the renamed and new cases, and every MaterialProxy / SampleProxy record, stubs included, carries its pin field.",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 66,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 67,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 68,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 69,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 70,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 71,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S22-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §C ('Versions are immutable', 'Pinned replaces VersionsInUse', 'The library proxies keep their shapes and gain a SQLite create', 'Contract tests', 'Hybrid shape'); specs/0050/.section-plan-jsonl section 9 (S2.2) brief; specs/0050/.spec-md §0.1, §4, §5, §6, §9",
+      "requirement": "Every S2.2 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): the database stores carry the StorageBoundary mark on their declarations, the new extension members are unique on their receivers (ELEV019), no case name repeats (ELEV016), the new error cases end in Err (ELEV020), and no value is re-wrapped at a call site (ELEV001).",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 66,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 67,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 68,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 69,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 70,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 71,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S22-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 9 (S2.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S2.2 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s09-elev-list-empty).",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "invariant-s09-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f698c0669eb34db0b7da575aa7953b8dc133c924390308fb3e5673fdeac724f5"
+        },
+        {
+          "step": 66,
+          "gate": "invariant-s09-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f698c0669eb34db0b7da575aa7953b8dc133c924390308fb3e5673fdeac724f5"
+        },
+        {
+          "step": 67,
+          "gate": "invariant-s09-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f698c0669eb34db0b7da575aa7953b8dc133c924390308fb3e5673fdeac724f5"
+        },
+        {
+          "step": 68,
+          "gate": "invariant-s09-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f698c0669eb34db0b7da575aa7953b8dc133c924390308fb3e5673fdeac724f5"
+        },
+        {
+          "step": 69,
+          "gate": "invariant-s09-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f698c0669eb34db0b7da575aa7953b8dc133c924390308fb3e5673fdeac724f5"
+        },
+        {
+          "step": 70,
+          "gate": "invariant-s09-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f698c0669eb34db0b7da575aa7953b8dc133c924390308fb3e5673fdeac724f5"
+        },
+        {
+          "step": 71,
+          "gate": "invariant-s09-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f698c0669eb34db0b7da575aa7953b8dc133c924390308fb3e5673fdeac724f5"
+        }
+      ]
+    },
+    {
+      "id": "S22-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 9 (S2.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S2.2 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s09-no-vstest).",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "invariant-s09-no-vstest",
+          "selection": "command",
+          "command_sha256": "d7c869f6d2e35ad5cbefc8a5b383a37b909ab439b486682ab8d8145d10c481c2"
+        },
+        {
+          "step": 66,
+          "gate": "invariant-s09-no-vstest",
+          "selection": "command",
+          "command_sha256": "d7c869f6d2e35ad5cbefc8a5b383a37b909ab439b486682ab8d8145d10c481c2"
+        },
+        {
+          "step": 67,
+          "gate": "invariant-s09-no-vstest",
+          "selection": "command",
+          "command_sha256": "d7c869f6d2e35ad5cbefc8a5b383a37b909ab439b486682ab8d8145d10c481c2"
+        },
+        {
+          "step": 68,
+          "gate": "invariant-s09-no-vstest",
+          "selection": "command",
+          "command_sha256": "d7c869f6d2e35ad5cbefc8a5b383a37b909ab439b486682ab8d8145d10c481c2"
+        },
+        {
+          "step": 69,
+          "gate": "invariant-s09-no-vstest",
+          "selection": "command",
+          "command_sha256": "d7c869f6d2e35ad5cbefc8a5b383a37b909ab439b486682ab8d8145d10c481c2"
+        },
+        {
+          "step": 70,
+          "gate": "invariant-s09-no-vstest",
+          "selection": "command",
+          "command_sha256": "d7c869f6d2e35ad5cbefc8a5b383a37b909ab439b486682ab8d8145d10c481c2"
+        },
+        {
+          "step": 71,
+          "gate": "invariant-s09-no-vstest",
+          "selection": "command",
+          "command_sha256": "d7c869f6d2e35ad5cbefc8a5b383a37b909ab439b486682ab8d8145d10c481c2"
+        }
+      ]
+    },
+    {
+      "id": "S22-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 9 (S2.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S2.2 step, nothing under Berreman/ names kit.kit-json (section invariant s09-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "invariant-s09-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "029fb92ef45c461d50551e227d718d1c477aa32a3a33826c1f51dfdd1bb44af3"
+        },
+        {
+          "step": 66,
+          "gate": "invariant-s09-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "029fb92ef45c461d50551e227d718d1c477aa32a3a33826c1f51dfdd1bb44af3"
+        },
+        {
+          "step": 67,
+          "gate": "invariant-s09-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "029fb92ef45c461d50551e227d718d1c477aa32a3a33826c1f51dfdd1bb44af3"
+        },
+        {
+          "step": 68,
+          "gate": "invariant-s09-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "029fb92ef45c461d50551e227d718d1c477aa32a3a33826c1f51dfdd1bb44af3"
+        },
+        {
+          "step": 69,
+          "gate": "invariant-s09-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "029fb92ef45c461d50551e227d718d1c477aa32a3a33826c1f51dfdd1bb44af3"
+        },
+        {
+          "step": 70,
+          "gate": "invariant-s09-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "029fb92ef45c461d50551e227d718d1c477aa32a3a33826c1f51dfdd1bb44af3"
+        },
+        {
+          "step": 71,
+          "gate": "invariant-s09-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "029fb92ef45c461d50551e227d718d1c477aa32a3a33826c1f51dfdd1bb44af3"
+        }
+      ]
+    },
+    {
+      "id": "S22-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 9 (S2.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S2.2 step, nothing under Berreman/ names EpsAxisEvaluated (section invariant s09-no-eps-axis-evaluated, established by S1.1).",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "invariant-s09-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "8160c446f82edb7c11f276b1bdbdea37a24d687eba4e60f51fcef3836194ebdd"
+        },
+        {
+          "step": 66,
+          "gate": "invariant-s09-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "8160c446f82edb7c11f276b1bdbdea37a24d687eba4e60f51fcef3836194ebdd"
+        },
+        {
+          "step": 67,
+          "gate": "invariant-s09-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "8160c446f82edb7c11f276b1bdbdea37a24d687eba4e60f51fcef3836194ebdd"
+        },
+        {
+          "step": 68,
+          "gate": "invariant-s09-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "8160c446f82edb7c11f276b1bdbdea37a24d687eba4e60f51fcef3836194ebdd"
+        },
+        {
+          "step": 69,
+          "gate": "invariant-s09-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "8160c446f82edb7c11f276b1bdbdea37a24d687eba4e60f51fcef3836194ebdd"
+        },
+        {
+          "step": 70,
+          "gate": "invariant-s09-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "8160c446f82edb7c11f276b1bdbdea37a24d687eba4e60f51fcef3836194ebdd"
+        },
+        {
+          "step": 71,
+          "gate": "invariant-s09-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "8160c446f82edb7c11f276b1bdbdea37a24d687eba4e60f51fcef3836194ebdd"
+        }
+      ]
+    },
+    {
+      "id": "S22-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 9 (S2.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S2.2 step, nothing under Berreman/ says complexity = None or complexity = Some (section invariant s09-complexity-mandatory, established by S1.2).",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "invariant-s09-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3395214435474017c7037a765f54c6e799efbe7d0f34c15e62daa2c42d331726"
+        },
+        {
+          "step": 66,
+          "gate": "invariant-s09-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3395214435474017c7037a765f54c6e799efbe7d0f34c15e62daa2c42d331726"
+        },
+        {
+          "step": 67,
+          "gate": "invariant-s09-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3395214435474017c7037a765f54c6e799efbe7d0f34c15e62daa2c42d331726"
+        },
+        {
+          "step": 68,
+          "gate": "invariant-s09-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3395214435474017c7037a765f54c6e799efbe7d0f34c15e62daa2c42d331726"
+        },
+        {
+          "step": 69,
+          "gate": "invariant-s09-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3395214435474017c7037a765f54c6e799efbe7d0f34c15e62daa2c42d331726"
+        },
+        {
+          "step": 70,
+          "gate": "invariant-s09-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3395214435474017c7037a765f54c6e799efbe7d0f34c15e62daa2c42d331726"
+        },
+        {
+          "step": 71,
+          "gate": "invariant-s09-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3395214435474017c7037a765f54c6e799efbe7d0f34c15e62daa2c42d331726"
+        }
+      ]
+    },
+    {
+      "id": "S22-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 9 (S2.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S2.2 step, no Berreman/*.fs file holds a seeded preset string id (section invariant s09-no-seeded-string-preset-ids, established by S1.3).",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "invariant-s09-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bf3fa7542c374aaca83f370a303d823a0f738fa075213d0ecd63f656d61ef1f6"
+        },
+        {
+          "step": 66,
+          "gate": "invariant-s09-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bf3fa7542c374aaca83f370a303d823a0f738fa075213d0ecd63f656d61ef1f6"
+        },
+        {
+          "step": 67,
+          "gate": "invariant-s09-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bf3fa7542c374aaca83f370a303d823a0f738fa075213d0ecd63f656d61ef1f6"
+        },
+        {
+          "step": 68,
+          "gate": "invariant-s09-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bf3fa7542c374aaca83f370a303d823a0f738fa075213d0ecd63f656d61ef1f6"
+        },
+        {
+          "step": 69,
+          "gate": "invariant-s09-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bf3fa7542c374aaca83f370a303d823a0f738fa075213d0ecd63f656d61ef1f6"
+        },
+        {
+          "step": 70,
+          "gate": "invariant-s09-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bf3fa7542c374aaca83f370a303d823a0f738fa075213d0ecd63f656d61ef1f6"
+        },
+        {
+          "step": 71,
+          "gate": "invariant-s09-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bf3fa7542c374aaca83f370a303d823a0f738fa075213d0ecd63f656d61ef1f6"
+        }
+      ]
+    },
+    {
+      "id": "S22-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 9 (S2.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S2.2 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (section invariant s09-no-seeding-seam, established by S1.6).",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "invariant-s09-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "12b7cad96f7e429609a55e564ba859fcc7a49688776912aecbfb4a836309e029"
+        },
+        {
+          "step": 66,
+          "gate": "invariant-s09-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "12b7cad96f7e429609a55e564ba859fcc7a49688776912aecbfb4a836309e029"
+        },
+        {
+          "step": 67,
+          "gate": "invariant-s09-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "12b7cad96f7e429609a55e564ba859fcc7a49688776912aecbfb4a836309e029"
+        },
+        {
+          "step": 68,
+          "gate": "invariant-s09-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "12b7cad96f7e429609a55e564ba859fcc7a49688776912aecbfb4a836309e029"
+        },
+        {
+          "step": 69,
+          "gate": "invariant-s09-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "12b7cad96f7e429609a55e564ba859fcc7a49688776912aecbfb4a836309e029"
+        },
+        {
+          "step": 70,
+          "gate": "invariant-s09-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "12b7cad96f7e429609a55e564ba859fcc7a49688776912aecbfb4a836309e029"
+        },
+        {
+          "step": 71,
+          "gate": "invariant-s09-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "12b7cad96f7e429609a55e564ba859fcc7a49688776912aecbfb4a836309e029"
+        }
+      ]
+    },
+    {
+      "id": "S22-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 9 (S2.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S2.2 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (section invariant s09-t1-no-code-seeds, 001 §T 'From section 1', established by S1.7).",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "invariant-s09-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "ece45ef88a225668baefc8765d7a232d42761e10d1b1a8aed2006cc07f93f80a"
+        },
+        {
+          "step": 66,
+          "gate": "invariant-s09-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "ece45ef88a225668baefc8765d7a232d42761e10d1b1a8aed2006cc07f93f80a"
+        },
+        {
+          "step": 67,
+          "gate": "invariant-s09-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "ece45ef88a225668baefc8765d7a232d42761e10d1b1a8aed2006cc07f93f80a"
+        },
+        {
+          "step": 68,
+          "gate": "invariant-s09-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "ece45ef88a225668baefc8765d7a232d42761e10d1b1a8aed2006cc07f93f80a"
+        },
+        {
+          "step": 69,
+          "gate": "invariant-s09-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "ece45ef88a225668baefc8765d7a232d42761e10d1b1a8aed2006cc07f93f80a"
+        },
+        {
+          "step": 70,
+          "gate": "invariant-s09-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "ece45ef88a225668baefc8765d7a232d42761e10d1b1a8aed2006cc07f93f80a"
+        },
+        {
+          "step": 71,
+          "gate": "invariant-s09-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "ece45ef88a225668baefc8765d7a232d42761e10d1b1a8aed2006cc07f93f80a"
+        }
+      ]
+    },
+    {
+      "id": "S22-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 9 (S2.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S2.2 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (section invariant s09-no-seed-modules, established by S1.3 and S1.7).",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "invariant-s09-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1cdeb08c2e79029d4c5bde1e8d9f3f1645547bec69c2f2e7650a9baf048eae37"
+        },
+        {
+          "step": 66,
+          "gate": "invariant-s09-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1cdeb08c2e79029d4c5bde1e8d9f3f1645547bec69c2f2e7650a9baf048eae37"
+        },
+        {
+          "step": 67,
+          "gate": "invariant-s09-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1cdeb08c2e79029d4c5bde1e8d9f3f1645547bec69c2f2e7650a9baf048eae37"
+        },
+        {
+          "step": 68,
+          "gate": "invariant-s09-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1cdeb08c2e79029d4c5bde1e8d9f3f1645547bec69c2f2e7650a9baf048eae37"
+        },
+        {
+          "step": 69,
+          "gate": "invariant-s09-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1cdeb08c2e79029d4c5bde1e8d9f3f1645547bec69c2f2e7650a9baf048eae37"
+        },
+        {
+          "step": 70,
+          "gate": "invariant-s09-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1cdeb08c2e79029d4c5bde1e8d9f3f1645547bec69c2f2e7650a9baf048eae37"
+        },
+        {
+          "step": 71,
+          "gate": "invariant-s09-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1cdeb08c2e79029d4c5bde1e8d9f3f1645547bec69c2f2e7650a9baf048eae37"
+        }
+      ]
+    },
+    {
+      "id": "S22-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 9 (S2.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S2.2 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (section invariant s09-no-test-db, established by S2.1 step 59).",
+      "checks": [
+        {
+          "step": 65,
+          "gate": "invariant-s09-no-test-db",
+          "selection": "command",
+          "command_sha256": "2980b45514f844a710f31fd4f9b9f60c622546c5305eefa5a8bab0e1003700d9"
+        },
+        {
+          "step": 66,
+          "gate": "invariant-s09-no-test-db",
+          "selection": "command",
+          "command_sha256": "2980b45514f844a710f31fd4f9b9f60c622546c5305eefa5a8bab0e1003700d9"
+        },
+        {
+          "step": 67,
+          "gate": "invariant-s09-no-test-db",
+          "selection": "command",
+          "command_sha256": "2980b45514f844a710f31fd4f9b9f60c622546c5305eefa5a8bab0e1003700d9"
+        },
+        {
+          "step": 68,
+          "gate": "invariant-s09-no-test-db",
+          "selection": "command",
+          "command_sha256": "2980b45514f844a710f31fd4f9b9f60c622546c5305eefa5a8bab0e1003700d9"
+        },
+        {
+          "step": 69,
+          "gate": "invariant-s09-no-test-db",
+          "selection": "command",
+          "command_sha256": "2980b45514f844a710f31fd4f9b9f60c622546c5305eefa5a8bab0e1003700d9"
+        },
+        {
+          "step": 70,
+          "gate": "invariant-s09-no-test-db",
+          "selection": "command",
+          "command_sha256": "2980b45514f844a710f31fd4f9b9f60c622546c5305eefa5a8bab0e1003700d9"
+        },
+        {
+          "step": 71,
+          "gate": "invariant-s09-no-test-db",
+          "selection": "command",
+          "command_sha256": "2980b45514f844a710f31fd4f9b9f60c622546c5305eefa5a8bab0e1003700d9"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -5451,6 +6154,139 @@
         "S21-INV-T1-NO-CODE-SEEDS",
         "S21-INV-NO-SEED-MODULES"
       ]
+    },
+    {
+      "step": 65,
+      "sha256": "d1d8eaae9a9993e6cdc4341c878e9433f7cb8ecdb63dd01ce4ecbe7b1beef68e",
+      "obligations": [
+        "S22-PIN",
+        "S22-BUILD",
+        "S22-ELEVATION",
+        "S22-INV-ELEV-LIST",
+        "S22-INV-NO-VSTEST",
+        "S22-INV-NO-KIT-KIT-JSON",
+        "S22-INV-NO-EPS-AXIS-EVALUATED",
+        "S22-INV-COMPLEXITY-MANDATORY",
+        "S22-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S22-INV-NO-SEEDING-SEAM",
+        "S22-INV-T1-NO-CODE-SEEDS",
+        "S22-INV-NO-SEED-MODULES",
+        "S22-INV-NO-TEST-DB"
+      ]
+    },
+    {
+      "step": 66,
+      "sha256": "e468a810909a2e8f3fa8ba2439583ba5e0d293b27e41750fe66925b6d41abcb2",
+      "obligations": [
+        "S22-CONTRACT-SUITES",
+        "S22-BUILD",
+        "S22-ELEVATION",
+        "S22-INV-ELEV-LIST",
+        "S22-INV-NO-VSTEST",
+        "S22-INV-NO-KIT-KIT-JSON",
+        "S22-INV-NO-EPS-AXIS-EVALUATED",
+        "S22-INV-COMPLEXITY-MANDATORY",
+        "S22-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S22-INV-NO-SEEDING-SEAM",
+        "S22-INV-T1-NO-CODE-SEEDS",
+        "S22-INV-NO-SEED-MODULES",
+        "S22-INV-NO-TEST-DB"
+      ]
+    },
+    {
+      "step": 67,
+      "sha256": "74db30fdee1771c139a983128fef65a55940a620ced7c58c8b4036058f1dc230",
+      "obligations": [
+        "S22-ROW-OPERATIONS",
+        "S22-BUILD",
+        "S22-ELEVATION",
+        "S22-INV-ELEV-LIST",
+        "S22-INV-NO-VSTEST",
+        "S22-INV-NO-KIT-KIT-JSON",
+        "S22-INV-NO-EPS-AXIS-EVALUATED",
+        "S22-INV-COMPLEXITY-MANDATORY",
+        "S22-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S22-INV-NO-SEEDING-SEAM",
+        "S22-INV-T1-NO-CODE-SEEDS",
+        "S22-INV-NO-SEED-MODULES",
+        "S22-INV-NO-TEST-DB"
+      ]
+    },
+    {
+      "step": 68,
+      "sha256": "389e2b9843ccbd725e614d54387e2941fdc33bd1f1e0d54937731591fe50d038",
+      "obligations": [
+        "S22-MATERIAL-MEMBERS",
+        "S22-BUILD",
+        "S22-ELEVATION",
+        "S22-INV-ELEV-LIST",
+        "S22-INV-NO-VSTEST",
+        "S22-INV-NO-KIT-KIT-JSON",
+        "S22-INV-NO-EPS-AXIS-EVALUATED",
+        "S22-INV-COMPLEXITY-MANDATORY",
+        "S22-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S22-INV-NO-SEEDING-SEAM",
+        "S22-INV-T1-NO-CODE-SEEDS",
+        "S22-INV-NO-SEED-MODULES",
+        "S22-INV-NO-TEST-DB"
+      ]
+    },
+    {
+      "step": 69,
+      "sha256": "03eddd637f9995980eed00da894bf300c52ab1a2acc5d05bee56468e6f143934",
+      "obligations": [
+        "S22-SQLITE-MATERIALS",
+        "S22-BUILD",
+        "S22-ELEVATION",
+        "S22-INV-ELEV-LIST",
+        "S22-INV-NO-VSTEST",
+        "S22-INV-NO-KIT-KIT-JSON",
+        "S22-INV-NO-EPS-AXIS-EVALUATED",
+        "S22-INV-COMPLEXITY-MANDATORY",
+        "S22-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S22-INV-NO-SEEDING-SEAM",
+        "S22-INV-T1-NO-CODE-SEEDS",
+        "S22-INV-NO-SEED-MODULES",
+        "S22-INV-NO-TEST-DB"
+      ]
+    },
+    {
+      "step": 70,
+      "sha256": "48aae22fd425cf749654cdcb54b55d86da5169973016c8fd41eef69b0b5234f2",
+      "obligations": [
+        "S22-CATEGORY-MEMBERS",
+        "S22-BUILD",
+        "S22-ELEVATION",
+        "S22-INV-ELEV-LIST",
+        "S22-INV-NO-VSTEST",
+        "S22-INV-NO-KIT-KIT-JSON",
+        "S22-INV-NO-EPS-AXIS-EVALUATED",
+        "S22-INV-COMPLEXITY-MANDATORY",
+        "S22-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S22-INV-NO-SEEDING-SEAM",
+        "S22-INV-T1-NO-CODE-SEEDS",
+        "S22-INV-NO-SEED-MODULES",
+        "S22-INV-NO-TEST-DB"
+      ]
+    },
+    {
+      "step": 71,
+      "sha256": "9fcc88aee821a9cf415e8d81034b3d9df490db08a9606d22bda7d85745abaaf6",
+      "obligations": [
+        "S22-SQLITE-CATEGORIES",
+        "S22-BUILD",
+        "S22-ELEVATION",
+        "S22-INV-ELEV-LIST",
+        "S22-INV-NO-VSTEST",
+        "S22-INV-NO-KIT-KIT-JSON",
+        "S22-INV-NO-EPS-AXIS-EVALUATED",
+        "S22-INV-COMPLEXITY-MANDATORY",
+        "S22-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S22-INV-NO-SEEDING-SEAM",
+        "S22-INV-T1-NO-CODE-SEEDS",
+        "S22-INV-NO-SEED-MODULES",
+        "S22-INV-NO-TEST-DB"
+      ]
     }
   ],
   "behavior_seams": [
@@ -5663,6 +6499,26 @@
       "id": "s21-relational-keys",
       "step": 64,
       "obligation": "S21-RELATIONAL-KEYS"
+    },
+    {
+      "id": "s22-pin",
+      "step": 65,
+      "obligation": "S22-PIN"
+    },
+    {
+      "id": "s22-row-operations",
+      "step": 67,
+      "obligation": "S22-ROW-OPERATIONS"
+    },
+    {
+      "id": "s22-sqlite-materials",
+      "step": 69,
+      "obligation": "S22-SQLITE-MATERIALS"
+    },
+    {
+      "id": "s22-sqlite-categories",
+      "step": 71,
+      "obligation": "S22-SQLITE-CATEGORIES"
     }
   ],
   "temporal_checks": [],
@@ -5836,6 +6692,17 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Storage",
         "Berreman/OpticalConstructor/OpticalConstructor.App",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests"
+      ]
+    },
+    {
+      "from": 65,
+      "step": 71,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
       ]
     }
   ]
