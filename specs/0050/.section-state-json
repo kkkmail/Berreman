@@ -36,14 +36,14 @@
     {
       "name": "S1.6 -- CatalogueImport replaces seeding; the app and the tests load the catalogue",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "c7dfe6b",
       "spec_jsonl_lines": 44
     },
     {
       "name": "S1.7 -- The code seed values are deleted",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 58
     },
     {
       "name": "S2.1 -- The library model in EF Core, created without migrations",

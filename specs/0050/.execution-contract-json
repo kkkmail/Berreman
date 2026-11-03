@@ -2905,6 +2905,1051 @@
           "command_sha256": "ffe29803dcfa94d2cfd8c5cecf8c6cfa285be0039763b43cdbd95465f322afbd"
         }
       ]
+    },
+    {
+      "id": "S17-FIXTURE-DOUBLES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "The test fixture OpticalConstructor.Tests/BuiltinCatalogue.fs (linked into OpticalConstructor.Ui.Tests) offers store doubles that hold the Built-in catalogue and replace the self-seeding stores one for one: materialStore samplesReferencing versionsInUse, sampleStore versionsInUse, categoryStore materialsReferencingCategory, library () (every sample and preset, as the self-seeding Library served), sources () and source id. Each is an empty in-memory store filled through its own write verb in row order, failing the fact on a refusal, and new per call. A fact proves each double holds exactly the fixture's entries, the tunable source resolves, and two sample stores are isolated.",
+      "checks": [
+        {
+          "step": 45,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 45,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S17-CATEGORY-LIST",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "MaterialLibrary.tryFindCategory, tryFindCategoryByName and CategoryId.categoryName resolve through a MaterialCategory list handed in (the live CategoryProxy's listCategories), never standardCategories; an id the list lacks names itself by its GUID string. LibraryFacets.materialFacets and libraryFacets take the categories; MaterialsWindowView's liveCategoryName and liveMaterialFacets resolve through the live list with the category-def override deleted; LibraryWindowContext carries the window's CategoryProxy and the Library window's facets read it; the Material editor's view-only label reads its context's store; Report.fs's importMaterials, exportMaterials and dtoToEntry take the categories. Facts prove resolution by id and by name follows a renamed list and the category facet keys a material by the handed-in name; every window fact passes unchanged.",
+      "checks": [
+        {
+          "step": 46,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 46,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 46,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S17-DERIVED-TREE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "LibraryTree.byKind derives the By kind tree from a library's entries: root Library; kind groups Samples, Sources, Detectors, Polarizers (absent when empty); samples by SubstrateKind (Thin films, Thick plates, Mirrors), sources by tuning (Fixed lines, Tunable), polarizers by PolarizerCategory label, detectors as direct leaves; leaves are entry name and id in input order. liveLibrary's libraryTrees derives it over the entries it offers for the five catalogue kinds (created samples and user sources included), Library.createInMemoryEmpty's store derives it over what it holds, and CatalogueImport's bundle no longer answers the seeded tree. Facts pin the tree's shape, the store's derivation, the live tree's completeness and a created sample appearing in the Select bay.",
+      "checks": [
+        {
+          "step": 47,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 47,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 47,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S17-BAND-NAMES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "The Details bay's band labels name each material through the scene's live MaterialProxy (Sample.bandsState materials, bandDisplayName materials, detailsState passing model.materials); the private materialLibrary over MaterialLibrary.standard is deleted; an unknown id labels its band by GUID string; the colour maps keep keying by MaterialIds. The sampleBandsState fact keeps its assertions over the fixture's quarter-wave sample and store, and a fact proves the labels follow the store handed in.",
+      "checks": [
+        {
+          "step": 48,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 48,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S17-EDITOR-CATEGORIES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "MaterialEditorWindow takes its CategoryProxy as a mandatory constructor parameter; the self-seeding default store and its comment are deleted; MaterialsWindow passes the shared store; every test opening the window passes the fixture's categoryStore, so every count and assertion is unchanged.",
+      "checks": [
+        {
+          "step": 49,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 49,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S17-NO-SEED-EXPERIMENTS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "Experiments.seedExperiments, the dark-line seed template, is deleted; createInMemoryExperiments keeps its signature and answers no experiment and no id. ExperimentProxyTests' two seed facts are replaced by two facts asserting the empty proxy, and OutOfBandDiagnosticTests builds its dark line as a test-local experiment with unchanged assertions; nothing under Berreman/ names seedExperiments.",
+      "checks": [
+        {
+          "step": 50,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S17-REPOINT-CONSTRUCTOR",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "Every constructor-suite test that read a code seed (builtInEntries, standardCategories, MaterialLibrary.standard, SeedSamples, SeedSources, seedEntries, Library.createInMemory or a self-seeding store) reads the BuiltinCatalogue fixture under the S1.7 re-point rules: same entries by well-known id, same counts, same numbers, fact names and assertions unchanged; after steps 51-53 none of those names appears in the re-pointed files.",
+      "checks": [
+        {
+          "step": 51,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 52,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 53,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S17-REPOINT-UI",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "Every UI-suite test that read a code seed reads the BuiltinCatalogue fixture under the S1.7 re-point rules, with fact names, assertions and counts unchanged; after steps 54-56 no file under OpticalConstructor.Tests, OpticalConstructor.Ui.Tests, OpticalConstructor.Ui, the App or the TestWindows heads names a seed or calls a self-seeding store.",
+      "checks": [
+        {
+          "step": 54,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 54,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 55,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 55,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 56,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 56,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S17-INTEGRITY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "BuiltInCatalogueParityTests, the seed-to-file bridge, is deleted without a successor (five facts). BuiltInCatalogueIntegrityTests holds one fact over the shipped Catalogue/Builtin read through CatalogueProxy.createBuiltIn: the read is Ok (every file schema-valid, versioned and hash-matched), the manifest is the Built-in catalogue at version 1, every row's hash equals its envelope's recorded and recomputed content hash, ids are unique across kinds, and the six kinds are present with 12 materials, 5 categories, 11 samples, 28 sources, 3 polarizers and 2 detectors.",
+      "checks": [
+        {
+          "step": 57,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S17-SEEDS-DELETED",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "MaterialLibrary.standardCategories, builtInEntries, standard and their private complexities and helpers, Library.SeedSamples, SeedSources, seedEntries, seedTrees, the self-seeding Library.createInMemory and MaterialProxy / SampleProxy / CategoryProxy .createInMemory are deleted; the well-known id modules stay; the empty stores take the plain name createInMemory (Library.createInMemory answers the LibraryEntryStore) and every caller follows; docs, comments and the AGENTS.md LIVE-Library gotcha say what is true. Nothing under Berreman/ or in AGENTS.md names a seed or createInMemoryEmpty, 001 §T's 'From section 1' grep finds nothing, and the constructor and UI suites pass with unchanged counts.",
+      "checks": [
+        {
+          "step": 58,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 58,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 58,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S17-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "Every S1.7 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; each signature change (category lookups, facets, Report's import and export, LibraryWindowContext, bandsState, MaterialEditorWindow, the renamed in-memory stores) changes with every caller in one step, and FS0025 stays an error.",
+      "checks": [
+        {
+          "step": 45,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 46,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 47,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 48,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 49,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 50,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 51,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 52,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 53,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 54,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 55,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 56,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 57,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 58,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S17-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Shipped catalogue' ('then the Domain seed values are deleted', 'tests load the same files'), §R 'The code seed values and seedAll's Domain source', §T 'From section 1'; specs/0050/.section-plan-jsonl section 7 (S1.7) brief; specs/0050/.spec-md §3.3, §3.5, §7",
+      "requirement": "Every S1.7 step leaves the projects it touches, and the projects that reference them, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): LibraryTree.byKind is a member, no free function gains a bare primitive (ELEV003/010), names stay unique after the renames (ELEV014/015/016/019), and no value is re-wrapped at a call site (ELEV001).",
+      "checks": [
+        {
+          "step": 45,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 46,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 47,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 48,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 49,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 50,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 51,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 52,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 53,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 54,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 55,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 56,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 57,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 58,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S17-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 7 (S1.7) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.7 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s07-elev-list-empty).",
+      "checks": [
+        {
+          "step": 45,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 46,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 47,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 48,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 49,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 50,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 51,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 52,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 53,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 54,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 55,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 56,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 57,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        },
+        {
+          "step": 58,
+          "gate": "invariant-s07-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "72d0fb92e287a96a2c0aaf79268d0094a17c65d044b2c5980152a8ec65b9f1ce"
+        }
+      ]
+    },
+    {
+      "id": "S17-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 7 (S1.7) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.7 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s07-no-vstest).",
+      "checks": [
+        {
+          "step": 45,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 46,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 47,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 48,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 49,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 50,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 51,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 52,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 53,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 54,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 55,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 56,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 57,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        },
+        {
+          "step": 58,
+          "gate": "invariant-s07-no-vstest",
+          "selection": "command",
+          "command_sha256": "b1b7077f736d3a7930a1e4348c36dddf112616d3376c21f6db60c84bb2b5d12d"
+        }
+      ]
+    },
+    {
+      "id": "S17-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 7 (S1.7) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.7 step, nothing under Berreman/ names kit.kit-json (section invariant s07-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 45,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 46,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 47,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 48,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 49,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 50,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 51,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 52,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 53,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 54,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 55,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 56,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 57,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        },
+        {
+          "step": 58,
+          "gate": "invariant-s07-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "082b73e135c776f0da164b7f58c8e2b6d6a20f02ca1f26e90d89dab3f6cb884f"
+        }
+      ]
+    },
+    {
+      "id": "S17-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 7 (S1.7) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.7 step, nothing under Berreman/ names EpsAxisEvaluated, in code or in a comment (section invariant s07-no-eps-axis-evaluated, established by S1.1 step 9).",
+      "checks": [
+        {
+          "step": 45,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 46,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 47,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 48,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 49,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 50,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 51,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 52,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 53,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 54,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 55,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 56,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 57,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        },
+        {
+          "step": 58,
+          "gate": "invariant-s07-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b57bd66a50f91ae0e2be9f2713003eacd9dbbe1a0e296161e15584a2150f1162"
+        }
+      ]
+    },
+    {
+      "id": "S17-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 7 (S1.7) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.7 step, nothing under Berreman/ says complexity = None or complexity = Some (section invariant s07-complexity-mandatory, established by S1.2 steps 13 and 14).",
+      "checks": [
+        {
+          "step": 45,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 46,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 47,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 48,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 49,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 50,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 51,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 52,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 53,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 54,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 55,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 56,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 57,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        },
+        {
+          "step": 58,
+          "gate": "invariant-s07-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "534c938040a59e79e3157ae2dec94c2db9be4705408b5c4b08ce28d1453ea77c"
+        }
+      ]
+    },
+    {
+      "id": "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 7 (S1.7) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.7 step, no Berreman/*.fs file holds a seeded preset string id (src-600, src-hene-..., det-intensity, det-ellipsometer, pol-lp, pol-cp-left, pol-cp-right and the rest; section invariant s07-no-seeded-string-preset-ids, established by S1.3 step 20).",
+      "checks": [
+        {
+          "step": 45,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 46,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 47,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 48,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 49,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 50,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 51,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 52,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 53,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 54,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 55,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 56,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 57,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        },
+        {
+          "step": 58,
+          "gate": "invariant-s07-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "99b79753ce2537917744b8b1273e7f277256faec15c62c25efa255eac4e6ed7d"
+        }
+      ]
+    },
+    {
+      "id": "S17-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 7 (S1.7) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.7 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (section invariant s07-no-seeding-seam, established by S1.6 steps 37 and 40).",
+      "checks": [
+        {
+          "step": 45,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 46,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 47,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 48,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 49,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 50,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 51,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 52,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 53,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 54,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 55,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 56,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 57,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        },
+        {
+          "step": 58,
+          "gate": "invariant-s07-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "715e053470b05b2b5085dab0ecdaad1ca9eb83c35f8e6aed6c52b84b30cd2209"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -3523,6 +4568,230 @@
         "S16-INV-COMPLEXITY-MANDATORY",
         "S16-INV-NO-SEEDED-STRING-PRESET-IDS"
       ]
+    },
+    {
+      "step": 45,
+      "sha256": "bf2963ae62dcbd042d9ff232728469f7b3268c23c0b75d6f932f45198cc1ff12",
+      "obligations": [
+        "S17-FIXTURE-DOUBLES",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 46,
+      "sha256": "d9b4ea2ada898ab0090d94cde30c6796fdf47b374a24f7c2b347f19754507c8a",
+      "obligations": [
+        "S17-CATEGORY-LIST",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 47,
+      "sha256": "b410d55d36b10e8c5c3c8ea5b0f90449baa1ae32e9fb4c0b7ea4125d454d3bca",
+      "obligations": [
+        "S17-DERIVED-TREE",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 48,
+      "sha256": "e32856269df88e791e250ab94717333b2c1c8eaf5fa514170e20fe59e7d94b93",
+      "obligations": [
+        "S17-BAND-NAMES",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 49,
+      "sha256": "79c0adeffa713b7fdff92ad378042e35ec757febe71aecd54ac674d068c6312c",
+      "obligations": [
+        "S17-EDITOR-CATEGORIES",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 50,
+      "sha256": "ee90a70c12b2e1426804ef6b8ada715dce949424a8933f210ccac8fb58aac256",
+      "obligations": [
+        "S17-NO-SEED-EXPERIMENTS",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 51,
+      "sha256": "17bcc41eb4b501ea833f916d300ecc1bdafe65b4b598194821d6e0b88a7de2de",
+      "obligations": [
+        "S17-REPOINT-CONSTRUCTOR",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 52,
+      "sha256": "29b2df2144157776b9ada06e027cccb31328cf25c6c498551b34c03229238d84",
+      "obligations": [
+        "S17-REPOINT-CONSTRUCTOR",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 53,
+      "sha256": "5e4670c828002dadfd2864a90f368f039328bc450f148e9a35cfe62fc5297074",
+      "obligations": [
+        "S17-REPOINT-CONSTRUCTOR",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 54,
+      "sha256": "27830d40b6cd325310b249ccf11596db71e5824829b871afd3606bbe95249f24",
+      "obligations": [
+        "S17-REPOINT-UI",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 55,
+      "sha256": "457b8f614e5255f041c1e3425f50d32a56787223d45da1fa5f9dec4925cd0797",
+      "obligations": [
+        "S17-REPOINT-UI",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 56,
+      "sha256": "e5269ad13a6ad333493dec5a8eeebb32abd9a8e63637affd481ee25d18030513",
+      "obligations": [
+        "S17-REPOINT-UI",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 57,
+      "sha256": "09fdfbeed91a0f437d0cd4b64e2ab4db0fc6b9a47bb0e1c35716f17dc11e33de",
+      "obligations": [
+        "S17-INTEGRITY",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
+    },
+    {
+      "step": 58,
+      "sha256": "faf5f101616294973be2e0b2651aae1c090da010738bb575bb0ca958ed4971aa",
+      "obligations": [
+        "S17-SEEDS-DELETED",
+        "S17-BUILD",
+        "S17-ELEVATION",
+        "S17-INV-ELEV-LIST",
+        "S17-INV-NO-VSTEST",
+        "S17-INV-NO-KIT-KIT-JSON",
+        "S17-INV-NO-EPS-AXIS-EVALUATED",
+        "S17-INV-COMPLEXITY-MANDATORY",
+        "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S17-INV-NO-SEEDING-SEAM"
+      ]
     }
   ],
   "behavior_seams": [
@@ -3680,6 +4949,36 @@
       "id": "s16-app-root-imports",
       "step": 44,
       "obligation": "S16-APP-ROOT"
+    },
+    {
+      "id": "s17-fixture-doubles",
+      "step": 45,
+      "obligation": "S17-FIXTURE-DOUBLES"
+    },
+    {
+      "id": "s17-category-list",
+      "step": 46,
+      "obligation": "S17-CATEGORY-LIST"
+    },
+    {
+      "id": "s17-derived-tree",
+      "step": 47,
+      "obligation": "S17-DERIVED-TREE"
+    },
+    {
+      "id": "s17-band-names",
+      "step": 48,
+      "obligation": "S17-BAND-NAMES"
+    },
+    {
+      "id": "s17-empty-experiments",
+      "step": 50,
+      "obligation": "S17-NO-SEED-EXPERIMENTS"
+    },
+    {
+      "id": "s17-catalogue-integrity",
+      "step": 57,
+      "obligation": "S17-INTEGRITY"
     }
   ],
   "temporal_checks": [],
@@ -3822,6 +5121,26 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Ui",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 51,
+      "step": 56,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 45,
+      "step": 58,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
+        "AGENTS.md"
       ]
     }
   ]
