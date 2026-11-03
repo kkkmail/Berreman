@@ -93,3 +93,64 @@ module ConstructorUiIdOfDomain =
 
         /// The draft's point count as the Experiments bay's box shows it.
         member this.pointCount : ExperimentControls.ExperimentPointCount = ExperimentControls.ExperimentPointCount this.value
+
+    type EntryName with
+
+        /// The name as a row, a summary or a name box shows it.
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type SubstrateKind with
+
+        /// The geometry as the key of its Sample-editor option box.
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | ThinFilm -> ConstructorUiKey "ThinFilm"
+            | ThickPlate -> ConstructorUiKey "Plate"
+            | Mirror -> ConstructorUiKey "Mirror"
+
+        /// The geometry as its Sample-editor option box shows it.
+        member this.caption : ControlCaption =
+            match this with
+            | ThinFilm -> ControlCaption "Thin film"
+            | ThickPlate -> ControlCaption "Plate"
+            | Mirror -> ControlCaption "Mirror"
+
+    type OpticalConstructor.Domain.SampleStackEditor.FilmItemIndex with
+
+        /// The films item as the position of its repeated Sample-editor controls.
+        member this.uiPosition : ConstructorUiPosition = ConstructorUiPosition this.value
+
+    type OpticalConstructor.Domain.SampleStackEditor.CellLayerIndex with
+
+        /// The cell layer as the position of its repeated Sample-editor controls.
+        member this.uiPosition : ConstructorUiPosition = ConstructorUiPosition this.value
+
+    type MaterialError with
+
+        /// The typed rejection's reason as a status line shows it.
+        member this.caption : ControlCaption =
+            match this with
+            | UnknownMaterialIdErr reason
+            | DuplicateMaterialIdErr reason
+            | MaterialStillReferencedErr reason
+            | MaterialVersionInUseErr reason
+            | InvalidMaterialErr reason -> ControlCaption reason
+
+    type SampleError with
+
+        /// The typed rejection's reason as a status line shows it.
+        member this.caption : ControlCaption =
+            match this with
+            | UnknownSampleIdErr reason
+            | DuplicateSampleIdErr reason
+            | SampleVersionInUseErr reason
+            | InvalidSampleErr reason -> ControlCaption reason
+
+    type OpticalConstructor.Domain.SampleStackEditor.SampleStackEditError with
+
+        /// The typed rejection's reason as a status line shows it.
+        member this.caption : ControlCaption =
+            match this with
+            | OpticalConstructor.Domain.SampleStackEditor.InvalidRepeatCountErr reason
+            | OpticalConstructor.Domain.SampleStackEditor.SelectionNotFoldableErr reason
+            | OpticalConstructor.Domain.SampleStackEditor.NotARepeatGroupErr reason -> ControlCaption reason

@@ -39,6 +39,7 @@ open Avalonia.FuncUI.Types
 open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
+open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
@@ -108,7 +109,13 @@ type ExitPrompt =
 /// structure (spec 0038 step 033's dirtiness snapshot). Every component is a plain record/DU
 /// with structural equality; the reference-compared context / material list and the pure-UI
 /// state (selection, collapsed groups, transient entry texts) are excluded.
-type SampleEditSnapshot = string * string * SubstrateKind * Placement.Emission * SampleStructure
+type SampleEditSnapshot = EntryName * EntryDescription * SubstrateKind * Placement.Emission * SampleStructure
+
+/// How many whole periods a repeat-count stepper moves a count by (negative removes).
+type PeriodCountStep =
+    | PeriodCountStep of int
+
+    member this.value = let (PeriodCountStep n) = this in n
 
 /// The editor's model: the sample identity facets (name / description / `SubstrateKind`), the
 /// step-21 stack edit state, the material list resolved from `MaterialProxy.listMaterials`
@@ -122,8 +129,8 @@ type SampleEditorModel =
     {
         context : SampleEditorContext
         target : EditorTarget
-        name : string
-        description : string
+        name : EntryName
+        description : EntryDescription
         substrate : SubstrateKind
         /// The ray groups this sample can emit, geometry-constrained (spec 0040 Part D.2 step 010):
         /// a `Mirror` is pinned to `EmitReflectedOnly` (R fixed on, unclearable); a `ThinFilm` or a `Plate`
@@ -135,33 +142,33 @@ type SampleEditorModel =
         materials : MaterialEntry list
         chosenMaterial : MaterialId option
         /// Film indices of the period groups whose super-row is collapsed (expanded default).
-        collapsedGroups : Set<int>
-        thicknessText : string
-        qwotText : string
-        phiText : string
-        thetaText : string
-        psiText : string
+        collapsedGroups : Set<FilmItemIndex>
+        thicknessText : ControlCaption
+        qwotText : ControlCaption
+        phiText : ControlCaption
+        thetaText : ControlCaption
+        psiText : ControlCaption
         /// The toolbar stepper's fold count `MakeRepeatBlock` uses (always >= 1).
-        foldCount : int
+        foldCount : PeriodCount
         /// Spec 0038 (033): the edit snapshot captured at load — dirtiness is `initialEdit`
         /// structurally unequal to the current edit slice (no dirty flag maintained).
         initialEdit : SampleEditSnapshot
         /// Spec 0038 (033): normal editing vs the unsaved-edit exit confirm surface.
         exit : ExitPrompt
         /// The last typed-error reason (or entry-validation hint) surfaced to the user.
-        status : string option
+        status : ControlCaption option
     }
 
 type SampleEditorMsg =
-    | SetName of string
-    | SetDescription of string
+    | SetName of EntryName
+    | SetDescription of EntryDescription
     | SetSampleSubstrate of SubstrateKind
     /// Spec 0040 (D.2 step 010): the R / T emission checkboxes. Each carries the box's NEW
-    /// checked state; the update arm routes it through `Emission.withReflected` /
+    /// switch; the update arm routes it through `Emission.withReflected` /
     /// `withTransmitted` then re-imposes the geometry constraint, so "both off" is impossible
     /// and a `Mirror` stays `EmitReflectedOnly` even if a message reaches it.
-    | SetReflectedEmission of bool
-    | SetTransmittedEmission of bool
+    | SetReflectedEmission of Placement.RayGroupSwitch
+    | SetTransmittedEmission of Placement.RayGroupSwitch
     | ChooseMaterial of MaterialId
     /// Spec 0038 (019): re-query the material list from the LIVE `MaterialProxy` — dispatched
     /// whenever a Select session returns (chosen or cancelled) and on window activation,
@@ -171,17 +178,17 @@ type SampleEditorMsg =
     | ToggleLayer of LayerPosition
     | ClearSelectionClicked
     /// The super-row's rotating-triangle expander.
-    | ToggleGroup of int
+    | ToggleGroup of FilmItemIndex
     | AddLayerClicked
     | SelectByMaterialClicked
-    | SetThicknessText of string
-    | SetQwotText of string
+    | SetThicknessText of ControlCaption
+    | SetQwotText of ControlCaption
     | SetLayerHeightClicked
     | SetLayerMaterialClicked
-    | SetOrientationText of AngleSlot * string
+    | SetOrientationText of AngleSlot * ControlCaption
     | SetOrientationClicked
-    /// The per-layer orientation editor (degrees; only anisotropic layers render one).
-    | SetLayerOrientation of LayerPosition * float * float * float
+    /// The per-layer orientation editor (only anisotropic layers render one).
+    | SetLayerOrientation of LayerPosition * CrystalOrientation
     /// Spec 0038 (016/019): the TARGETED return of a Materials-window Select session
     /// (`SelectionTarget.SampleLayerTarget` — the per-layer Choose material… verb composes
     /// it): set THIS layer position's material, never "the current selection" (the modeless
@@ -193,10 +200,10 @@ type SampleEditorMsg =
     | MoveUpClicked
     | MoveDownClicked
     /// The toolbar fold-count stepper (clamped at 1).
-    | FoldCountBy of int
+    | FoldCountBy of PeriodCountStep
     | MakeRepeatBlockClicked
     /// A group's inline stepper: resize the `Repeated` group at a films index by whole periods.
-    | GroupCountBy of int * int
+    | GroupCountBy of FilmItemIndex * PeriodCountStep
     /// Spec 0040 (D.4 step 011): the TARGETED return of a substrate Materials-window Select
     /// session (`SelectionTarget.SampleSubstrateTarget` — the substrate Set… verb composes it):
     /// set the thick substrate plate to the picked material. The substrate is a single slot with
@@ -234,118 +241,140 @@ let private defaultConvention : RotationConvention = ZmXpZm
 /// repo's common visible-band reference).
 let private referenceWaveLength : WaveLength = WaveLength.nm 600.0<nm>
 
-let private anisotropyTolerance : float = 1.0e-12
+type MaterialEntry with
 
-/// Whether an entry's material is anisotropic — i.e. its crystal orientation matters. True
-/// when the eps or mu tensor (evaluated at the reference wavelength through the engine
-/// `getProperties` path) has any off-diagonal component or unequal diagonal, or when ANY rho
-/// component is nonzero (gyrotropy is orientation-sensitive; the isotropic default rho is the
-/// zero matrix). The per-layer orientation editor renders ONLY for these entries.
-let isAnisotropicEntry (entry : MaterialEntry) : bool =
-    let p = entry.properties.getProperties referenceWaveLength
-    let offDiagonalOrUnequalDiagonal (get : int -> int -> Complex) : bool =
-        let offDiagonal =
-            [ (0, 1); (0, 2); (1, 0); (1, 2); (2, 0); (2, 1) ]
-            |> List.exists (fun (i, j) -> (get i j).Magnitude > anisotropyTolerance)
-        let unequalDiagonal =
-            (get 0 0 - get 1 1).Magnitude > anisotropyTolerance
-            || (get 1 1 - get 2 2).Magnitude > anisotropyTolerance
-        offDiagonal || unequalDiagonal
-    let anyNonZero (get : int -> int -> Complex) : bool =
-        [ for i in 0 .. 2 do for j in 0 .. 2 -> (i, j) ]
-        |> List.exists (fun (i, j) -> (get i j).Magnitude > anisotropyTolerance)
-    offDiagonalOrUnequalDiagonal (fun i j -> p.eps.[i, j])
-    || offDiagonalOrUnequalDiagonal (fun i j -> p.mu.[i, j])
-    || anyNonZero (fun i j -> p.rho.[i, j])
+    /// Whether the material is anisotropic — i.e. its crystal orientation matters. True
+    /// when the eps or mu tensor (evaluated at the reference wavelength through the engine
+    /// `getProperties` path) has any off-diagonal component or unequal diagonal, or when ANY rho
+    /// component is nonzero (gyrotropy is orientation-sensitive; the isotropic default rho is the
+    /// zero matrix). The per-layer orientation editor renders ONLY for these entries.
+    member this.isAnisotropic : bool =
+        let tolerance = 1.0e-12
+        let p = this.properties.getProperties referenceWaveLength
+        let offDiagonalOrUnequalDiagonal (get : int -> int -> Complex) : bool =
+            let offDiagonal =
+                [ (0, 1); (0, 2); (1, 0); (1, 2); (2, 0); (2, 1) ]
+                |> List.exists (fun (i, j) -> (get i j).Magnitude > tolerance)
+            let unequalDiagonal =
+                (get 0 0 - get 1 1).Magnitude > tolerance
+                || (get 1 1 - get 2 2).Magnitude > tolerance
+            offDiagonal || unequalDiagonal
+        let anyNonZero (get : int -> int -> Complex) : bool =
+            [ for i in 0 .. 2 do for j in 0 .. 2 -> (i, j) ]
+            |> List.exists (fun (i, j) -> (get i j).Magnitude > tolerance)
+        offDiagonalOrUnequalDiagonal (fun i j -> p.eps.[i, j])
+        || offDiagonalOrUnequalDiagonal (fun i j -> p.mu.[i, j])
+        || anyNonZero (fun i j -> p.rho.[i, j])
 
 /// n = Re[√ε₁₁] at the wavelength, through the engine's own eps dispersion path (the
 /// NkDispersionChart / MaterialImport.exportCsv extraction — no n formula re-derived).
-let refractionIndexAt (entry : MaterialEntry) (w : WaveLength) : float =
-    (Complex.Sqrt (entry.properties.epsWithDisp.getEps w).[0, 0]).Real
+let refractionIndexAt (entry : MaterialEntry) (w : WaveLength) : RefractionIndex =
+    (Complex.Sqrt (entry.properties.epsWithDisp.getEps w).[0, 0]).Real |> RefractionIndex
 
-/// The quarter-wave optical thickness: t = λ/(4n), stored canonical-SI through the engine
-/// `Thickness.nm` constructor (the DBR template λ/4 precedent, Templates.fs:103,106).
-let qwotThickness (lambdaNm : float) (n : float) : Thickness =
-    Thickness.nm (lambdaNm / (4.0 * n) * 1.0<nm>)
+/// The quarter-wave optical thickness: t = λ/(4n), in the wavelength's own unit through the
+/// engine `Thickness` constructors (the DBR template λ/4 precedent, Templates.fs:103,106).
+let qwotThickness (w : WaveLength) (n : RefractionIndex) : Thickness =
+    match w with
+    | Nm lambdaNm -> Thickness.nm (lambdaNm / (4.0 * n.value))
+    | Mkm lambdaMkm -> Thickness.mkm (lambdaMkm / (4.0 * n.value))
 
-let private parseFloat (s : string) : float option =
-    match Double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture) with
-    | true, v -> Some v
-    | _ -> None
+type ControlCaption with
 
-let private chosenEntry (m : SampleEditorModel) : MaterialEntry option =
-    match m.chosenMaterial with
-    | Some id -> m.materials |> List.tryFind (fun e -> e.id = id)
-    | None -> None
+    /// The entry text as an invariant-culture number; `None` when it does not parse.
+    member private this.tryEntryNumber : float option =
+        match Double.TryParse(this.value, NumberStyles.Float, CultureInfo.InvariantCulture) with
+        | true, v -> Some v
+        | _ -> None
 
-/// The QWOT-derived physical thickness, when the entry text parses to a positive wavelength
-/// (nm) and a material is chosen to take n from. `None` otherwise — the readout shows a dash
-/// and the set-thickness verb falls back to the plain nm entry.
-let qwotDerived (m : SampleEditorModel) : Thickness option =
-    match chosenEntry m, parseFloat m.qwotText with
-    | Some entry, Some lambdaNm when lambdaNm > 0.0 ->
-        let n = refractionIndexAt entry (WaveLength.nm (lambdaNm * 1.0<nm>))
-        if n > 0.0 then Some (qwotThickness lambdaNm n) else None
-    | _, _ -> None
+type Thickness with
 
-/// A thickness readout in display nanometres (`∞` for the semi-infinite case).
-let thicknessLabel (t : Thickness) : string =
-    match t with
-    | Thickness meters -> $"%g{meters / nmToMeter / oneNanometer} nm"
-    | Infinity -> "∞"
+    /// The thickness as a readout shows it, in display nanometres (`∞` for the semi-infinite case).
+    member this.nanometreCaption : ControlCaption =
+        match this with
+        | Thickness meters -> ControlCaption $"%g{meters / nmToMeter / oneNanometer} nm"
+        | Infinity -> ControlCaption "∞"
 
-/// The flattened film count — each `Repeated` group expands to count × cell (the structure
-/// readout the "2-layer selection repeated K times shows 2*K films" acceptance observes).
-let filmsCount (m : SampleEditorModel) : int =
-    m.editor.structure.expandedFilms |> List.length
+type EulerAngles with
 
-/// A `SubstrateKind` facet option's stable code (the derived UiIds key).
-let substrateCode (kind : SubstrateKind) : string =
-    match kind with
-    | ThinFilm -> "ThinFilm"
-    | ThickPlate -> "Plate"
-    | Mirror -> "Mirror"
+    /// Angles → orientation: all-zero angles mean the material's own principal axes (the
+    /// identity is DATA, not an EulerRotation carrying zeros); otherwise the editors' convention.
+    member private this.editorOrientation : CrystalOrientation =
+        if this.phi.degrees = 0.0 && this.theta.degrees = 0.0 && this.psi.degrees = 0.0 then PrimaryAxes
+        else EulerRotation { this with convention = defaultConvention }
 
-let private substrateLabel (kind : SubstrateKind) : string =
-    match kind with
-    | ThinFilm -> "Thin film"
-    | ThickPlate -> "Plate"
-    | Mirror -> "Mirror"
+type CrystalOrientation with
 
-let private orientationDegrees (o : CrystalOrientation) : float * float * float =
-    match o with
-    | PrimaryAxes -> (0.0, 0.0, 0.0)
-    | EulerRotation angles -> (angles.phi.degrees, angles.theta.degrees, angles.psi.degrees)
+    /// The Euler angles the per-layer editor shows: the principal axes are all three at zero.
+    member private this.editorAngles : EulerAngles =
+        match this with
+        | PrimaryAxes -> { EulerAngles.convention = defaultConvention; phi = Angle.zero; theta = Angle.zero; psi = Angle.zero }
+        | EulerRotation angles -> angles
 
-/// Degrees → orientation: all-zero angles mean the material's own principal axes (the
-/// identity is DATA, not an EulerRotation carrying zeros).
-let private orientationOf (phi : float) (theta : float) (psi : float) : CrystalOrientation =
-    if phi = 0.0 && theta = 0.0 && psi = 0.0 then PrimaryAxes
-    else
-        EulerRotation
-            {
-                EulerAngles.convention = defaultConvention
-                phi = Angle.degree (phi * 1.0<deg>)
-                theta = Angle.degree (theta * 1.0<deg>)
-                psi = Angle.degree (psi * 1.0<deg>)
-            }
+    /// The orientation as a layer row summarises it.
+    member private this.editorCaption : ControlCaption =
+        match this with
+        | PrimaryAxes -> ControlCaption "primary axes"
+        | EulerRotation angles -> ControlCaption $"φ=%g{angles.phi.degrees}° θ=%g{angles.theta.degrees}° ψ=%g{angles.psi.degrees}°"
 
-let private orientationLabel (o : CrystalOrientation) : string =
-    match o with
-    | PrimaryAxes -> "primary axes"
-    | EulerRotation angles -> $"φ=%g{angles.phi.degrees}° θ=%g{angles.theta.degrees}° ψ=%g{angles.psi.degrees}°"
+type PeriodCount with
 
-/// The current edit slice compared for dirtiness (spec 0038 step 033): the identity facets, the
-/// supported emission (spec 0040 Part D.2 step 010 — an R/T change dirties the editor) and the
-/// stack structure, all plain records/DUs. The transient entry texts, the selection, the
-/// collapsed-group set and the re-queried material list are pure UI / read state and excluded.
-let private currentEdit (m : SampleEditorModel) : SampleEditSnapshot =
-    (m.name, m.description, m.substrate, m.supportedEmission, m.editor.structure)
+    /// This count moved by `step` whole periods (unclamped: `SetRepeatCount` rejects a count below 1).
+    member this.steppedBy (step : PeriodCountStep) : PeriodCount = PeriodCount (this.value + step.value)
 
-/// Whether the editor carries unsaved changes: the current edit slice differs structurally from
-/// the slice captured at load. No dirty flag is maintained (spec 0038 step 033).
-let isDirty (m : SampleEditorModel) : bool =
-    m.initialEdit <> currentEdit m
+type SampleEditorModel with
+
+    member private this.chosenEntry : MaterialEntry option =
+        match this.chosenMaterial with
+        | Some id -> this.materials |> List.tryFind (fun e -> e.id = id)
+        | None -> None
+
+    /// The QWOT-derived physical thickness, when the entry text parses to a positive wavelength
+    /// (nm) and a material is chosen to take n from. `None` otherwise — the readout shows a dash
+    /// and the set-thickness verb falls back to the plain nm entry.
+    member this.qwotDerived : Thickness option =
+        match this.chosenEntry, this.qwotText.tryEntryNumber with
+        | Some entry, Some lambdaNm when lambdaNm > 0.0 ->
+            let w = WaveLength.nm (lambdaNm * 1.0<nm>)
+            let n = refractionIndexAt entry w
+            if n.value > 0.0 then Some (qwotThickness w n) else None
+        | _, _ -> None
+
+    /// The flattened film count — each `Repeated` group expands to count × cell (the structure
+    /// readout the "2-layer selection repeated K times shows 2*K films" acceptance observes).
+    member this.filmsCount : int =
+        this.editor.structure.expandedFilms |> List.length
+
+    /// The current edit slice compared for dirtiness (spec 0038 step 033): the identity facets, the
+    /// supported emission (spec 0040 Part D.2 step 010 — an R/T change dirties the editor) and the
+    /// stack structure, all plain records/DUs. The transient entry texts, the selection, the
+    /// collapsed-group set and the re-queried material list are pure UI / read state and excluded.
+    member private this.currentEdit : SampleEditSnapshot =
+        (this.name, this.description, this.substrate, this.supportedEmission, this.editor.structure)
+
+    /// Whether the editor carries unsaved changes: the current edit slice differs structurally from
+    /// the slice captured at load. No dirty flag is maintained (spec 0038 step 033).
+    member this.isDirty : bool =
+        this.initialEdit <> this.currentEdit
+
+    member internal this.selectionAvailability : ControlAvailability =
+        if Set.isEmpty this.editor.selection then ControlWithheld else ControlOffered
+
+    member internal this.chosenMaterialAvailability : ControlAvailability =
+        match this.chosenMaterial with
+        | Some _ -> ControlOffered
+        | None -> ControlWithheld
+
+    /// Set material needs both a selection and a chosen material.
+    member internal this.setMaterialAvailability : ControlAvailability =
+        match this.selectionAvailability, this.chosenMaterialAvailability with
+        | ControlOffered, ControlOffered -> ControlOffered
+        | _, _ -> ControlWithheld
+
+    /// A material's display name by id (a placeholder when the id is unresolved).
+    member internal this.materialCaption (id : MaterialId) : ControlCaption =
+        match this.materials |> List.tryFind (fun e -> e.id = id) with
+        | Some e -> e.name.caption
+        | None -> ControlCaption $"unknown ({id.value})"
 
 // ---------------------------------------------------------------------------
 // init / toSample / update (pure — IO only through the context's proxy fields).
@@ -366,11 +395,11 @@ let initSampleEditor (context : SampleEditorContext) (materials : MaterialEntry 
         // emission (spec 0040 Part D.2 step 010); an edited one carries the sample's own value.
         match intent with
         | NewBlankSample mintedId ->
-            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, emptyStructure, ThinFilm.defaultSupportedEmission)
+            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, EntryName "", EntryDescription "", ThinFilm, emptyStructure, ThinFilm.defaultSupportedEmission)
         | NewSeededMultilayer mintedId ->
-            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, starterMultilayerStructure, ThinFilm.defaultSupportedEmission)
+            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, EntryName "", EntryDescription "", ThinFilm, starterMultilayerStructure, ThinFilm.defaultSupportedEmission)
         | EditSample s ->
-            ({ sampleId = s.id; freshness = WindowLauncher.Persisted }, s.name.value, s.description.value, s.substrate, s.structure, s.supportedEmission)
+            ({ sampleId = s.id; freshness = WindowLauncher.Persisted }, s.name, s.description, s.substrate, s.structure, s.supportedEmission)
     // Normalise the seed emission to its geometry constraint so the model starts consistent even
     // if an inconsistent sample is opened (spec 0040 Part D.2 — the single enforcement point).
     let supportedEmission = constrainEmission substrate emission
@@ -385,12 +414,12 @@ let initSampleEditor (context : SampleEditorContext) (materials : MaterialEntry 
         materials = materials
         chosenMaterial = None
         collapsedGroups = Set.empty
-        thicknessText = ""
-        qwotText = ""
-        phiText = ""
-        thetaText = ""
-        psiText = ""
-        foldCount = 2
+        thicknessText = ControlCaption ""
+        qwotText = ControlCaption ""
+        phiText = ControlCaption ""
+        thetaText = ControlCaption ""
+        psiText = ControlCaption ""
+        foldCount = PeriodCount 2
         // The edit snapshot at load — a freshly opened editor (including a seeded starter) is
         // pristine and closes silently (spec 0038 step 033).
         initialEdit = (name, description, substrate, supportedEmission, structure)
@@ -402,42 +431,21 @@ let initSampleEditor (context : SampleEditorContext) (materials : MaterialEntry 
 let toSample (id : SampleId) (m : SampleEditorModel) : Sample =
     {
         id = id
-        name = EntryName m.name
+        name = m.name
         structure = m.editor.structure
         substrate = m.substrate
-        description = EntryDescription m.description
+        description = m.description
         // The user's edited emission (spec 0040 Part D.2 step 010): the R/T checkboxes drive
         // `m.supportedEmission`, already kept inside the geometry constraint by every update arm
         // (a Mirror stays EmitReflectedOnly; a ThinFilm / Plate keeps its R-only / T-only / both choice).
         supportedEmission = m.supportedEmission
     }
 
-let private stackErrorReason (e : SampleStackEditError) : string =
-    match e with
-    | InvalidRepeatCountErr reason
-    | SelectionNotFoldableErr reason
-    | NotARepeatGroupErr reason -> reason
-
-let private sampleErrorReason (e : SampleError) : string =
-    match e with
-    | UnknownSampleIdErr reason
-    | DuplicateSampleIdErr reason
-    | SampleVersionInUseErr reason
-    | InvalidSampleErr reason -> reason
-
-let private materialErrorReason (e : MaterialError) : string =
-    match e with
-    | UnknownMaterialIdErr reason
-    | DuplicateMaterialIdErr reason
-    | MaterialStillReferencedErr reason
-    | MaterialVersionInUseErr reason
-    | InvalidMaterialErr reason -> reason
-
 /// Route one step-21 editor message; a typed rejection surfaces its reason as the status.
 let private applyStack (msg : SampleStackMsg) (m : SampleEditorModel) : SampleEditorModel =
     match applySampleStackMsg msg m.editor with
     | Ok editor -> { m with editor = editor; status = None }
-    | Error e -> { m with status = Some (stackErrorReason e) }
+    | Error e -> { m with status = Some e.caption }
 
 let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleEditorModel =
     match msg with
@@ -453,12 +461,12 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
             | Mirror, (ThinFilm | ThickPlate) -> kind.defaultSupportedEmission
             | _ -> constrainEmission kind m.supportedEmission
         { m with substrate = kind; supportedEmission = emission }
-    | SetReflectedEmission on ->
+    | SetReflectedEmission switch ->
         // Turn the reflected group on/off (spec 0040 Part D.2 step 010): the smart setter forbids
         // the both-off state, and `constrainEmission` re-pins a Mirror to EmitReflectedOnly.
-        { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withReflected (if on then Placement.RayGroupOn else Placement.RayGroupOff) m.supportedEmission) }
-    | SetTransmittedEmission on ->
-        { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withTransmitted (if on then Placement.RayGroupOn else Placement.RayGroupOff) m.supportedEmission) }
+        { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withReflected switch m.supportedEmission) }
+    | SetTransmittedEmission switch ->
+        { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withTransmitted switch m.supportedEmission) }
     | ChooseMaterial id -> { m with chosenMaterial = Some id }
     | RefreshMaterials ->
         // Spec 0038 (019): re-query the material list from the LIVE proxy — a material added
@@ -467,7 +475,7 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
         // the current list and surfaces its typed reason instead.
         match m.context.materials.listMaterials MaterialLibrary.ActiveOnly with
         | Ok entries -> { m with materials = entries }
-        | Error e -> { m with status = Some (materialErrorReason e) }
+        | Error e -> { m with status = Some e.caption }
     | ToggleLayer position ->
         if Set.contains position m.editor.selection
         then { m with editor = { m.editor with selection = Set.remove position m.editor.selection } }
@@ -490,43 +498,46 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
             // Pin the chosen material's current version (spec 0038 step 022 — `firstOf`: every
             // material lives at v1 until step 25's real `VersionsInUse` can drive a mint).
             applyStack (AddLayer { materialId = MaterialVersionId.firstOf id; thickness = defaultLayerThickness; orientation = PrimaryAxes }) m
-        | None -> { m with status = Some "no materials are available to add a layer from" }
+        | None -> { m with status = Some (ControlCaption "no materials are available to add a layer from") }
     | SelectByMaterialClicked ->
         match m.chosenMaterial with
         | Some id -> applyStack (SelectByMaterial id) m
-        | None -> { m with status = Some "choose a material to select by" }
+        | None -> { m with status = Some (ControlCaption "choose a material to select by") }
     | SetThicknessText s -> { m with thicknessText = s }
     | SetQwotText s -> { m with qwotText = s }
     | SetLayerHeightClicked ->
         // A valid QWOT derivation wins; otherwise the plain nm entry applies.
-        match qwotDerived m with
+        match m.qwotDerived with
         | Some t -> applyStack (SetThicknessOfSelected t) m
         | None ->
-            match parseFloat m.thicknessText with
+            match m.thicknessText.tryEntryNumber with
             | Some v when v > 0.0 -> applyStack (SetThicknessOfSelected (Thickness.nm (v * 1.0<nm>))) m
-            | Some _ | None -> { m with status = Some "enter a positive thickness in nm (or a QWOT wavelength with a chosen material)" }
+            | Some _ | None -> { m with status = Some (ControlCaption "enter a positive thickness in nm (or a QWOT wavelength with a chosen material)") }
     | SetLayerMaterialClicked ->
         match m.chosenMaterial with
         | Some id -> applyStack (SetMaterialOfSelected (MaterialVersionId.firstOf id)) m
-        | None -> { m with status = Some "choose a material to set" }
-    | SetOrientationText (slot, s) ->
+        | None -> { m with status = Some (ControlCaption "choose a material to set") }
+    | SetOrientationText (slot, text) ->
         match slot with
-        | PhiSlot -> { m with phiText = s }
-        | ThetaSlot -> { m with thetaText = s }
-        | PsiSlot -> { m with psiText = s }
+        | PhiSlot -> { m with phiText = text }
+        | ThetaSlot -> { m with thetaText = text }
+        | PsiSlot -> { m with psiText = text }
     | SetOrientationClicked ->
-        let angleOf (s : string) : float option =
-            if String.IsNullOrWhiteSpace s then Some 0.0 else parseFloat s
+        let angleOf (text : ControlCaption) : Angle option =
+            if String.IsNullOrWhiteSpace text.value then Some (Angle.degree 0.0<deg>)
+            else text.tryEntryNumber |> Option.map (fun degrees -> Angle.degree (degrees * 1.0<deg>))
         match angleOf m.phiText, angleOf m.thetaText, angleOf m.psiText with
-        | Some phi, Some theta, Some psi -> applyStack (SetOrientationOfSelected (orientationOf phi theta psi)) m
-        | _, _, _ -> { m with status = Some "the orientation angles must be numbers (degrees)" }
-    | SetLayerOrientation (position, phi, theta, psi) ->
+        | Some phi, Some theta, Some psi ->
+            let angles = { EulerAngles.convention = defaultConvention; phi = phi; theta = theta; psi = psi }
+            applyStack (SetOrientationOfSelected angles.editorOrientation) m
+        | _, _, _ -> { m with status = Some (ControlCaption "the orientation angles must be numbers (degrees)") }
+    | SetLayerOrientation (position, orientation) ->
         // One layer's editor: apply the selection-shaped Domain transform to JUST this
         // position, then restore the user's multi-selection (the transform never rejects).
         let single = { m.editor with selection = Set.ofList [ position ] }
-        match applySampleStackMsg (SetOrientationOfSelected (orientationOf phi theta psi)) single with
+        match applySampleStackMsg (SetOrientationOfSelected orientation) single with
         | Ok next -> { m with editor = { next with selection = m.editor.selection }; status = None }
-        | Error e -> { m with status = Some (stackErrorReason e) }
+        | Error e -> { m with status = Some e.caption }
     | BindMaterialToLayer (position, materialId) ->
         // Spec 0038 (016): a Materials-window Select session returned for THIS layer position.
         // The position is validated against the CURRENT structure first (the Domain seam
@@ -541,18 +552,18 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
             let single = { m.editor with selection = Set.ofList [ position ] }
             match applySampleStackMsg (SetMaterialOfSelected (MaterialVersionId.firstOf materialId)) single with
             | Ok next -> { m with editor = { next with selection = m.editor.selection }; chosenMaterial = Some materialId; status = None }
-            | Error e -> { m with status = Some (stackErrorReason e) }
+            | Error e -> { m with status = Some e.caption }
         | None ->
-            { m with status = Some "the chosen material was not applied — its target layer is no longer in the stack" }
+            { m with status = Some (ControlCaption "the chosen material was not applied — its target layer is no longer in the stack") }
     | RemoveSelectedClicked -> applyStack RemoveSelected m
     | MoveUpClicked -> applyStack MoveSelectedUp m
     | MoveDownClicked -> applyStack MoveSelectedDown m
-    | FoldCountBy delta -> { m with foldCount = max 1 (m.foldCount + delta) }
-    | MakeRepeatBlockClicked -> applyStack (MakeRepeatBlock (PeriodCount m.foldCount)) m
-    | GroupCountBy (groupIndex, delta) ->
-        match List.tryItem groupIndex m.editor.structure.films with
-        | Some (Repeated g) -> applyStack (SetRepeatCount (FilmItemIndex groupIndex, PeriodCount (g.count.value + delta))) m
-        | Some (SingleLayer _) | None -> { m with status = Some $"films item %d{groupIndex} is not a repeat group" }
+    | FoldCountBy step -> { m with foldCount = max (PeriodCount 1) (m.foldCount.steppedBy step) }
+    | MakeRepeatBlockClicked -> applyStack (MakeRepeatBlock m.foldCount) m
+    | GroupCountBy (groupIndex, step) ->
+        match List.tryItem groupIndex.value m.editor.structure.films with
+        | Some (Repeated g) -> applyStack (SetRepeatCount (groupIndex, g.count.steppedBy step)) m
+        | Some (SingleLayer _) | None -> { m with status = Some (ControlCaption $"films item %d{groupIndex.value} is not a repeat group") }
     | BindMaterialToSubstrate materialId ->
         // Spec 0040 (D.4 step 011): a Materials-window Select session returned for the substrate
         // slot (the substrate Set… verb's return). A sample holds ONE substrate plate — no
@@ -566,12 +577,12 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
         let layer = { materialId = MaterialVersionId.firstOf materialId; thickness = defaultLayerThickness; orientation = PrimaryAxes }
         match applySampleStackMsg (SampleStackMsg.SetSubstrate (Some layer)) m.editor with
         | Ok editor -> { m with editor = editor; chosenMaterial = Some materialId; status = None }
-        | Error e -> { m with status = Some (stackErrorReason e) }
+        | Error e -> { m with status = Some e.caption }
     | ClearSubstrateClicked -> applyStack (SampleStackMsg.SetSubstrate None) m
     | SetLowerClicked ->
         match m.chosenMaterial with
         | Some id -> applyStack (SampleStackMsg.SetLower (Some (MaterialVersionId.firstOf id))) m
-        | None -> { m with status = Some "choose a material to set as the lower half-space" }
+        | None -> { m with status = Some (ControlCaption "choose a material to set as the lower half-space") }
     | ClearLowerClicked -> applyStack (SampleStackMsg.SetLower None) m
     | SaveClicked ->
         // Spec 0038 step 022: Save routes through the ONE versioned `saveSample` (the mirror of
@@ -584,12 +595,12 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
         | Ok () ->
             m.context.requestClose ()
             { m with status = None }
-        | Error e -> { m with status = Some (sampleErrorReason e) }
+        | Error e -> { m with status = Some e.caption }
     | CancelClicked ->
         // Spec 0038 (033): a dirty editor MUST NOT close silently — show the discard confirm;
         // a pristine one closes as today. The window chrome (`OnClosing`) routes here too, so
         // both exits are equally gated.
-        if isDirty m then { m with exit = ConfirmingDiscard }
+        if m.isDirty then { m with exit = ConfirmingDiscard }
         else
             m.context.requestClose ()
             m
@@ -608,104 +619,93 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
 // window re-renders on every Elmish message).
 // ---------------------------------------------------------------------------
 
-let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private idleBackground = color 232 232 232
-let private chosenBackground = color 150 185 235
-let private groupBackground = color 214 224 238
-let private saveBackground = color 186 224 186
-let private cancelBackground = color 236 202 202
-let private idleBorder = color 120 120 120
-let private hintColor = color 110 110 110
-let private errorColor = color 165 40 40
+let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
+let private groupBackground = Color.FromRgb(214uy, 224uy, 238uy)
+let private saveBackground = Color.FromRgb(186uy, 224uy, 186uy)
+let private cancelBackground = Color.FromRgb(236uy, 202uy, 202uy)
+let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+let private hintColor = Color.FromRgb(110uy, 110uy, 110uy)
+let private errorColor = Color.FromRgb(165uy, 40uy, 40uy)
 
-/// Avalonia layout thicknesses, qualified: the bare `Thickness` in this file is the DOMAIN
-/// layer thickness (Berreman.Media), opened after Avalonia.
-let private thick (uniform : float) : Avalonia.Thickness = Avalonia.Thickness(uniform)
-let private thickLR (horizontal : float) (vertical : float) : Avalonia.Thickness = Avalonia.Thickness(horizontal, vertical)
-let private thickOf (l : float) (t : float) (r : float) (b : float) : Avalonia.Thickness = Avalonia.Thickness(l, t, r, b)
+// Avalonia layout thicknesses are written `Avalonia.Thickness(…)`: the bare `Thickness` in this file
+// is the DOMAIN layer thickness (Berreman.Media), opened after Avalonia.
 
-/// Set `AutomationProperties.AutomationId` (freely mutable, unlike `Control.Name`) through
-/// FuncUI's attr builder — the id survives FuncUI recycling a control onto another item's slot.
-let private automationId<'t when 't :> Control> (autoId : string) : IAttr<'t> =
-    AttrBuilder<'t>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
-
-/// The expander triangle's literal rotation (the "rotating-triangle" affordance: 0° collapsed,
-/// 90° expanded).
-let private renderRotation (degrees : float) : IAttr<TextBlock> =
-    AttrBuilder<TextBlock>.CreateProperty<ITransform>(Visual.RenderTransformProperty, (RotateTransform degrees :> ITransform), ValueNone)
-
-/// A clickable, styled box, highlighted when chosen. `e.Handled <- true` drops FuncUI's
-/// duplicate Tunnel|Bubble pass; re-subscribe when the id or the highlight changes.
-let private clickBoxView (autoId : string) (chosen : bool) (child : IView) (onClick : unit -> unit) : IView =
+/// A clickable, styled box on `background` (the chosen look or the idle one). `e.Handled <- true`
+/// drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the id or the look changes.
+let private clickBoxView (id : ConstructorUiId) (background : Color) (child : IView) (onClick : unit -> unit) : IView =
     Border.create [
-        automationId autoId
-        Border.background (brush (if chosen then chosenBackground else idleBackground))
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (thickLR 10.0 4.0)
-        Border.margin (thickOf 0.0 0.0 6.0 4.0)
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child child
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, chosen)))
-    ] :> IView
-
-let private clickBox (autoId : string) (label : string) (chosen : bool) (onClick : unit -> unit) : IView =
-    clickBoxView autoId chosen (TextBlock.create [ TextBlock.text label ] :> IView) onClick
-
-/// A toolbar verb button — disabled verbs are present but inert (a disabled Border dispatches
-/// no pointer event).
-let private verbButton (autoId : string) (label : string) (accent : bool) (enabled : bool) (onClick : unit -> unit) : IView =
-    Border.create [
-        automationId autoId
-        Border.isEnabled enabled
-        Border.opacity (if enabled then 1.0 else 0.4)
-        Border.background (brush (if accent then chosenBackground else idleBackground))
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (thickLR 12.0 5.0)
-        Border.margin (thickOf 0.0 0.0 8.0 0.0)
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, enabled)))
-    ] :> IView
-
-/// The Save / Cancel actions (one row, distinct positive/negative styling).
-let private actionButton (autoId : string) (label : string) (background : Color) (onClick : unit -> unit) : IView =
-    Border.create [
-        automationId autoId
+        id.automationAttribute<Border> ()
         Border.background (brush background)
         Border.borderBrush (brush idleBorder)
         Border.borderThickness 1.0
         Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (thickLR 22.0 6.0)
-        Border.margin (thickOf 0.0 0.0 10.0 0.0)
+        Border.padding (Avalonia.Thickness(10.0, 4.0))
+        Border.margin (Avalonia.Thickness(0.0, 0.0, 6.0, 4.0))
         Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box autoId))
+        Border.child child
+        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, background)))
+    ] :> IView
+
+let private clickBox (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
+    clickBoxView id background (TextBlock.create [ TextBlock.text label.value ] :> IView) onClick
+
+/// A toolbar verb button on `background` — withheld verbs are present but inert (a disabled
+/// Border dispatches no pointer event).
+let private verbButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
+    Border.create [
+        id.automationAttribute<Border> ()
+        Border.isEnabled availability.isEnabled
+        Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
+        Border.background (brush background)
+        Border.borderBrush (brush idleBorder)
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (Avalonia.Thickness(12.0, 5.0))
+        Border.margin (Avalonia.Thickness(0.0, 0.0, 8.0, 0.0))
+        Border.verticalAlignment VerticalAlignment.Center
+        Border.child (TextBlock.create [ TextBlock.text label.value ])
+        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, availability.isEnabled)))
+    ] :> IView
+
+/// The Save / Cancel actions (one row, distinct positive/negative styling).
+let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
+    Border.create [
+        id.automationAttribute<Border> ()
+        Border.background (brush background)
+        Border.borderBrush (brush idleBorder)
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (Avalonia.Thickness(22.0, 6.0))
+        Border.margin (Avalonia.Thickness(0.0, 0.0, 10.0, 0.0))
+        Border.verticalAlignment VerticalAlignment.Center
+        Border.child (TextBlock.create [ TextBlock.text label.value ])
+        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
     ] :> IView
 
 /// A −/count/+ stepper (the toolbar fold count and each group's inline period count).
-let private stepper (containerId : string) (minusId : string) (plusId : string) (count : int) (stepBy : int -> unit) : IView =
+let private stepper (containerId : ConstructorUiId) (minusId : ConstructorUiId) (plusId : ConstructorUiId) (count : PeriodCount) (stepBy : PeriodCountStep -> unit) : IView =
     StackPanel.create [
-        automationId containerId
+        containerId.automationAttribute<StackPanel> ()
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 2.0
         StackPanel.children [
-            clickBox minusId "−" false (fun () -> stepBy (-1))
+            clickBox minusId (ControlCaption "−") idleBackground (fun () -> stepBy (PeriodCountStep -1))
             TextBlock.create [
-                TextBlock.text (string count)
+                TextBlock.text (string count.value)
                 TextBlock.verticalAlignment VerticalAlignment.Center
-                TextBlock.margin (thickLR 4.0 0.0)
+                TextBlock.margin (Avalonia.Thickness(4.0, 0.0))
             ] :> IView
-            clickBox plusId "+" false (fun () -> stepBy 1)
+            clickBox plusId (ControlCaption "+") idleBackground (fun () -> stepBy (PeriodCountStep 1))
         ]
     ] :> IView
 
-let private labelBlock (label : string) : IView =
-    TextBlock.create [ TextBlock.text label; TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
+type ControlCaption with
+
+    /// The caption as a row's vertically centred label.
+    member private this.sampleEditorLabel : IView =
+        TextBlock.create [ TextBlock.text this.value; TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
 
 // -- the identity / facet rows -------------------------------------------------------------
 
@@ -714,12 +714,12 @@ let private nameRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit)
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
         StackPanel.children [
-            labelBlock "Name:"
+            (ControlCaption "Name:").sampleEditorLabel
             TextBox.create [
                 TextBox.name ConstructorUiId.sampleNameBox.value
                 TextBox.width 340.0
-                TextBox.text m.name
-                TextBox.onTextChanged (SetName >> dispatch)
+                TextBox.text m.name.value
+                TextBox.onTextChanged (EntryName >> SetName >> dispatch)
             ] :> IView
         ]
     ] :> IView
@@ -729,11 +729,11 @@ let private nameRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit)
 let private descriptionRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
-            Border.create [ Border.dock Dock.Left; Border.margin (thickOf 0.0 0.0 6.0 0.0); Border.child (labelBlock "Description:") ]
+            Border.create [ Border.dock Dock.Left; Border.margin (Avalonia.Thickness(0.0, 0.0, 6.0, 0.0)); Border.child ((ControlCaption "Description:").sampleEditorLabel) ]
             TextBox.create [
                 TextBox.name ConstructorUiId.sampleDescriptionBox.value
-                TextBox.text m.description
-                TextBox.onTextChanged (SetDescription >> dispatch)
+                TextBox.text m.description.value
+                TextBox.onTextChanged (EntryDescription >> SetDescription >> dispatch)
             ] :> IView
         ]
     ] :> IView
@@ -743,27 +743,38 @@ let private substrateRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> 
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
         StackPanel.children (
-            labelBlock "Geometry:"
+            (ControlCaption "Geometry:").sampleEditorLabel
             :: ([ ThinFilm; ThickPlate; Mirror ]
                 |> List.map (fun kind ->
-                    clickBox (ConstructorUiId.sampleSubstrateKind (ConstructorUiKey (substrateCode kind))).value (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSampleSubstrate kind)))))
+                    let background = if m.substrate = kind then chosenBackground else idleBackground
+                    clickBox (ConstructorUiId.sampleSubstrateKind kind.uiKey) kind.caption background (fun () -> dispatch (SetSampleSubstrate kind)))))
     ] :> IView
 
 /// One emission group checkbox (spec 0040 Part D.2 step 010). `isChecked` is bound ONE-WAY from
 /// the model; the dispatch rides `Button.onClick`, which fires only on USER activation (pointer /
 /// keyboard), never on the render's programmatic `IsChecked` set — so there is no FuncUI feedback
-/// loop. A disabled box (the Mirror R box) dispatches nothing.
-let private emissionCheck (autoId : string) (label : string) (isOn : bool) (enabled : bool) (toMsg : bool -> SampleEditorMsg) (dispatch : SampleEditorMsg -> unit) : IView =
+/// loop. A withheld box (the Mirror R box) dispatches nothing.
+let private emissionCheck
+    (id : ConstructorUiId)
+    (label : ControlCaption)
+    (switch : Placement.RayGroupSwitch)
+    (availability : ControlAvailability)
+    (toMsg : Placement.RayGroupSwitch -> SampleEditorMsg)
+    (dispatch : SampleEditorMsg -> unit) : IView =
+    let isChecked, toggled =
+        match switch with
+        | Placement.RayGroupOn -> true, Placement.RayGroupOff
+        | Placement.RayGroupOff -> false, Placement.RayGroupOn
     CheckBox.create [
-        automationId autoId
+        id.automationAttribute<CheckBox> ()
         // Reach `isEnabled` (InputElement) and `isChecked` (ToggleButton) through the in-scope
         // `CheckBox` class — the FuncUI DSL augments each control class with its inherited
         // attributes, and only `Avalonia.Controls` is opened here (not `.Primitives` / `.Input`),
         // so the base-class module names do not resolve (the `Border.isEnabled` precedent).
-        CheckBox.isEnabled enabled
-        CheckBox.isChecked isOn
-        CheckBox.content label
-        CheckBox.onClick ((fun _ -> dispatch (toMsg (not isOn))), SubPatchOptions.OnChangeOf (box (autoId, isOn, enabled)))
+        CheckBox.isEnabled availability.isEnabled
+        CheckBox.isChecked isChecked
+        CheckBox.content label.value
+        CheckBox.onClick ((fun _ -> dispatch (toMsg toggled)), SubPatchOptions.OnChangeOf (box (id.value, isChecked, availability.isEnabled)))
     ] :> IView
 
 /// The supported-emission facet (spec 0040 Part D.2 step 010; spec 0046): the ray groups this sample
@@ -771,24 +782,24 @@ let private emissionCheck (autoId : string) (label : string) (isOn : bool) (enab
 /// to R-only or T-only (the `Emission` smart setters keep "both off" unrepresentable); a `Mirror` shows R
 /// fixed on + disabled and renders NO T box (a mirror is observed in reflection alone).
 let private emissionRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
-    let reflectedOn = m.supportedEmission.emitsReflected
-    let transmittedOn = m.supportedEmission.emitsTransmitted
-    let reflectedEnabled =
+    let reflected = if m.supportedEmission.emitsReflected then Placement.RayGroupOn else Placement.RayGroupOff
+    let transmitted = if m.supportedEmission.emitsTransmitted then Placement.RayGroupOn else Placement.RayGroupOff
+    let reflectedAvailability =
         match m.substrate with
         | ThinFilm
-        | ThickPlate -> true
-        | Mirror -> false
+        | ThickPlate -> ControlOffered
+        | Mirror -> ControlWithheld
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 10.0
         StackPanel.children (
             [
-                labelBlock "Emission:"
-                emissionCheck ConstructorUiId.sampleEmitReflectedCheck.value "Reflected (R)" reflectedOn reflectedEnabled SetReflectedEmission dispatch
+                (ControlCaption "Emission:").sampleEditorLabel
+                emissionCheck ConstructorUiId.sampleEmitReflectedCheck (ControlCaption "Reflected (R)") reflected reflectedAvailability SetReflectedEmission dispatch
             ]
             @ (match m.substrate with
                | ThinFilm
-               | ThickPlate -> [ emissionCheck ConstructorUiId.sampleEmitTransmittedCheck.value "Transmitted (T)" transmittedOn true SetTransmittedEmission dispatch ]
+               | ThickPlate -> [ emissionCheck ConstructorUiId.sampleEmitTransmittedCheck (ControlCaption "Transmitted (T)") transmitted ControlOffered SetTransmittedEmission dispatch ]
                | Mirror -> []))
     ] :> IView
 
@@ -822,15 +833,15 @@ let private chooseMaterialForLayer (m : SampleEditorModel) (dispatch : SampleEdi
 /// clickable. The owner window for a modal Select open is resolved from the click's own visual
 /// tree at dispatch time (the step-017 precedent); the subscription re-patches on the id — the
 /// closure's only other captures (the context seam, dispatch) are render-stable.
-let private chooseMaterialVerb (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) (position : LayerPosition) (chooseId : string) : IView =
+let private chooseMaterialVerb (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) (position : LayerPosition) (chooseId : ConstructorUiId) : IView =
     Border.create [
-        automationId chooseId
+        chooseId.automationAttribute<Border> ()
         Border.background (brush idleBackground)
         Border.borderBrush (brush idleBorder)
         Border.borderThickness 1.0
         Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (thickLR 10.0 3.0)
-        Border.margin (thickOf 6.0 0.0 0.0 3.0)
+        Border.padding (Avalonia.Thickness(10.0, 3.0))
+        Border.margin (Avalonia.Thickness(6.0, 0.0, 0.0, 3.0))
         Border.verticalAlignment VerticalAlignment.Top
         Border.child (TextBlock.create [ TextBlock.text "Choose material…" ])
         Border.onPointerPressed ((fun e ->
@@ -840,7 +851,7 @@ let private chooseMaterialVerb (m : SampleEditorModel) (dispatch : SampleEditorM
                 match TopLevel.GetTopLevel source with
                 | :? Window as owner -> chooseMaterialForLayer m dispatch position owner
                 | _ -> ()
-            | _ -> ()), SubPatchOptions.OnChangeOf chooseId)
+            | _ -> ()), SubPatchOptions.OnChangeOf chooseId.value)
     ] :> IView
 
 /// Compose one Select session for the SUBSTRATE plate and open (or re-target) the Materials
@@ -866,7 +877,7 @@ let private chooseMaterialForSubstrate (m : SampleEditorModel) (dispatch : Sampl
     m.context.openMaterialsSelect owner selectContext
 
 /// The substrate plate's Set… verb (spec 0040 Part D.4 step 011): opens the Materials window in
-/// Select state targeted at the substrate slot, REPLACING the old `hasChosenMaterial`-gated
+/// Select state targeted at the substrate slot, REPLACING the old chosen-material-gated
 /// 'Set from chosen' substrate button. Unlike that button it needs NO pre-chosen material — it
 /// IS the pick, so a film-less Plate (no layer rows, hence no Choose material… verb) can still
 /// choose a substrate material. The owner window for a modal Select open is resolved from the
@@ -874,13 +885,13 @@ let private chooseMaterialForSubstrate (m : SampleEditorModel) (dispatch : Sampl
 /// toolbar verb; it reuses the `setSubstrateButton` id.
 let private setSubstrateVerb (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     Border.create [
-        automationId ConstructorUiId.setSubstrateButton.value
+        ConstructorUiId.setSubstrateButton.automationAttribute<Border> ()
         Border.background (brush idleBackground)
         Border.borderBrush (brush idleBorder)
         Border.borderThickness 1.0
         Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (thickLR 12.0 5.0)
-        Border.margin (thickOf 0.0 0.0 8.0 0.0)
+        Border.padding (Avalonia.Thickness(12.0, 5.0))
+        Border.margin (Avalonia.Thickness(0.0, 0.0, 8.0, 0.0))
         Border.verticalAlignment VerticalAlignment.Center
         Border.child (TextBlock.create [ TextBlock.text "Set…" ])
         Border.onPointerPressed ((fun e ->
@@ -895,30 +906,30 @@ let private setSubstrateVerb (m : SampleEditorModel) (dispatch : SampleEditorMsg
 
 /// One layer's inline orientation editor (φ/θ/ψ in degrees) — rendered ONLY when the layer's
 /// material is anisotropic; an unparsable entry dispatches nothing.
-let private orientationEditorView (dispatch : SampleEditorMsg -> unit) (position : LayerPosition) (orientationId : string) (orientation : CrystalOrientation) : IView =
-    let phi, theta, psi = orientationDegrees orientation
-    let angleBox (label : string) (current : float) (toMsg : float -> SampleEditorMsg) : IView list =
+let private orientationEditorView (dispatch : SampleEditorMsg -> unit) (position : LayerPosition) (orientationId : ConstructorUiId) (orientation : CrystalOrientation) : IView =
+    let angles = orientation.editorAngles
+    let angleBox (label : ControlCaption) (current : Angle) (withAngle : Angle -> EulerAngles) : IView list =
         [
-            labelBlock label
+            label.sampleEditorLabel
             TextBox.create [
                 TextBox.width 46.0
-                TextBox.text $"%g{current}"
+                TextBox.text $"%g{current.degrees}"
                 TextBox.onTextChanged (
-                    (fun s ->
-                        match parseFloat s with
-                        | Some v -> dispatch (toMsg v)
+                    ControlCaption >> (fun text ->
+                        match text.tryEntryNumber with
+                        | Some degrees -> dispatch (SetLayerOrientation (position, (withAngle (Angle.degree (degrees * 1.0<deg>))).editorOrientation))
                         | None -> ()),
-                    SubPatchOptions.OnChangeOf (box (orientationId, label, phi, theta, psi)))
+                    SubPatchOptions.OnChangeOf (box (orientationId.value, label.value, angles.phi.value, angles.theta.value, angles.psi.value)))
             ] :> IView
         ]
     StackPanel.create [
-        automationId orientationId
+        orientationId.automationAttribute<StackPanel> ()
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 4.0
         StackPanel.children (
-            angleBox "φ°" phi (fun v -> SetLayerOrientation (position, v, theta, psi))
-            @ angleBox "θ°" theta (fun v -> SetLayerOrientation (position, phi, v, psi))
-            @ angleBox "ψ°" psi (fun v -> SetLayerOrientation (position, phi, theta, v)))
+            angleBox (ControlCaption "φ°") angles.phi (fun a -> { angles with phi = a })
+            @ angleBox (ControlCaption "θ°") angles.theta (fun a -> { angles with theta = a })
+            @ angleBox (ControlCaption "ψ°") angles.psi (fun a -> { angles with psi = a }))
     ] :> IView
 
 /// One film-layer row (a top-level single or a group's nested cell slot): clickable
@@ -928,30 +939,30 @@ let private layerRowView
     (m : SampleEditorModel)
     (dispatch : SampleEditorMsg -> unit)
     (position : LayerPosition)
-    (rowId : string)
-    (thicknessId : string)
-    (orientationId : string)
-    (indent : float)
+    (rowId : ConstructorUiId)
+    (thicknessId : ConstructorUiId)
+    (orientationId : ConstructorUiId)
+    (margin : Avalonia.Thickness)
     (layer : SampleLayer) : IView =
     let selected = Set.contains position m.editor.selection
     let entryOpt = m.materials |> List.tryFind (fun e -> e.id = layer.materialId.materialId)
     let materialName =
         match entryOpt with
-        | Some entry -> entry.name.value
-        | None -> $"unknown material %s{string layer.materialId.materialId.value}"
+        | Some entry -> entry.name.caption
+        | None -> ControlCaption $"unknown material %s{string layer.materialId.materialId.value}"
     let orientationEditor =
         match entryOpt with
-        | Some entry when isAnisotropicEntry entry -> [ orientationEditorView dispatch position orientationId layer.orientation ]
+        | Some entry when entry.isAnisotropic -> [ orientationEditorView dispatch position orientationId layer.orientation ]
         | Some _ | None -> []
     Border.create [
-        automationId rowId
-        Border.margin (thickOf indent 0.0 0.0 3.0)
+        rowId.automationAttribute<Border> ()
+        Border.margin margin
         Border.background (brush (if selected then chosenBackground else idleBackground))
         Border.borderBrush (brush idleBorder)
         Border.borderThickness 1.0
         Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (thickLR 8.0 3.0)
-        Border.onPointerPressed ((fun e -> e.Handled <- true; dispatch (ToggleLayer position)), SubPatchOptions.OnChangeOf (box (rowId, selected)))
+        Border.padding (Avalonia.Thickness(8.0, 3.0))
+        Border.onPointerPressed ((fun e -> e.Handled <- true; dispatch (ToggleLayer position)), SubPatchOptions.OnChangeOf (box (rowId.value, selected)))
         Border.child (
             StackPanel.create [
                 StackPanel.orientation Orientation.Horizontal
@@ -959,18 +970,18 @@ let private layerRowView
                 StackPanel.children (
                     [
                         TextBlock.create [
-                            TextBlock.text materialName
+                            TextBlock.text materialName.value
                             TextBlock.width 230.0
                             TextBlock.verticalAlignment VerticalAlignment.Center
                         ] :> IView
                         TextBlock.create [
-                            automationId thicknessId
-                            TextBlock.text (thicknessLabel layer.thickness)
+                            thicknessId.automationAttribute<TextBlock> ()
+                            TextBlock.text layer.thickness.nanometreCaption.value
                             TextBlock.width 90.0
                             TextBlock.verticalAlignment VerticalAlignment.Center
                         ] :> IView
                         TextBlock.create [
-                            TextBlock.text (orientationLabel layer.orientation)
+                            TextBlock.text layer.orientation.editorCaption.value
                             TextBlock.foreground (brush hintColor)
                             TextBlock.verticalAlignment VerticalAlignment.Center
                         ] :> IView
@@ -981,38 +992,39 @@ let private layerRowView
 
 /// A period group's ONE collapsible super-row: the rotating-triangle expander, the cell
 /// summary, and the inline repeat-count stepper (whole periods through `SetRepeatCount`).
-let private groupRowView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) (groupIndex : int) (group : PeriodGroup) : IView =
+let private groupRowView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) (groupIndex : FilmItemIndex) (group : PeriodGroup) : IView =
     let collapsed = Set.contains groupIndex m.collapsedGroups
     let triangle =
         TextBlock.create [
             TextBlock.text "▶"
-            renderRotation (if collapsed then 0.0 else 90.0)
+            // The "rotating-triangle" affordance: 0° collapsed, 90° expanded.
+            AttrBuilder<TextBlock>.CreateProperty<ITransform>(Visual.RenderTransformProperty, (RotateTransform (if collapsed then 0.0 else 90.0) :> ITransform), ValueNone)
             TextBlock.verticalAlignment VerticalAlignment.Center
         ] :> IView
     Border.create [
-        automationId (ConstructorUiId.sampleGroupRow (ConstructorUiPosition groupIndex)).value
-        Border.margin (thickOf 0.0 0.0 0.0 3.0)
+        (ConstructorUiId.sampleGroupRow groupIndex.uiPosition).automationAttribute<Border> ()
+        Border.margin (Avalonia.Thickness(0.0, 0.0, 0.0, 3.0))
         Border.background (brush groupBackground)
         Border.borderBrush (brush idleBorder)
         Border.borderThickness 1.0
         Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (thickLR 8.0 3.0)
+        Border.padding (Avalonia.Thickness(8.0, 3.0))
         Border.child (
             StackPanel.create [
                 StackPanel.orientation Orientation.Horizontal
                 StackPanel.spacing 8.0
                 StackPanel.children [
-                    clickBoxView (ConstructorUiId.sampleGroupExpander (ConstructorUiPosition groupIndex)).value false triangle (fun () -> dispatch (ToggleGroup groupIndex))
+                    clickBoxView (ConstructorUiId.sampleGroupExpander groupIndex.uiPosition) idleBackground triangle (fun () -> dispatch (ToggleGroup groupIndex))
                     TextBlock.create [
                         TextBlock.text $"%d{List.length group.cell}-layer cell"
                         TextBlock.verticalAlignment VerticalAlignment.Center
                     ] :> IView
                     stepper
-                        (ConstructorUiId.repeatCountStepperOfGroup (ConstructorUiPosition groupIndex)).value
-                        (ConstructorUiId.repeatCountStepperMinusOfGroup (ConstructorUiPosition groupIndex)).value
-                        (ConstructorUiId.repeatCountStepperPlusOfGroup (ConstructorUiPosition groupIndex)).value
-                        group.count.value
-                        (fun delta -> dispatch (GroupCountBy (groupIndex, delta)))
+                        (ConstructorUiId.repeatCountStepperOfGroup groupIndex.uiPosition)
+                        (ConstructorUiId.repeatCountStepperMinusOfGroup groupIndex.uiPosition)
+                        (ConstructorUiId.repeatCountStepperPlusOfGroup groupIndex.uiPosition)
+                        group.count
+                        (fun step -> dispatch (GroupCountBy (groupIndex, step)))
                     TextBlock.create [
                         TextBlock.text $"× %d{group.count.value} periods = %d{group.count.value * List.length group.cell} films"
                         TextBlock.foreground (brush hintColor)
@@ -1025,84 +1037,59 @@ let private groupRowView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> 
 let private stackRows (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView list =
     // Each layer row is paired with its Choose material… verb in one horizontal slot (spec
     // 0038 step 019) — the verb sits beside the row, outside its toggling Border.
-    let rowWithChooser (row : IView) (position : LayerPosition) (chooseId : string) : IView =
+    let rowWithChooser (row : IView) (position : LayerPosition) (chooseId : ConstructorUiId) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [ row; chooseMaterialVerb m dispatch position chooseId ]
         ] :> IView
     m.editor.structure.films
     |> List.mapi (fun i item ->
+        let index = FilmItemIndex i
+        let itemPosition = index.uiPosition
         match item with
         | SingleLayer layer ->
             [ rowWithChooser
-                  (layerRowView m dispatch (AtSingleLayer (FilmItemIndex i)) (ConstructorUiId.sampleLayerRow (ConstructorUiPosition i)).value (ConstructorUiId.sampleLayerThickness (ConstructorUiPosition i)).value (ConstructorUiId.sampleLayerOrientation (ConstructorUiPosition i)).value 0.0 layer)
-                  (AtSingleLayer (FilmItemIndex i))
-                  (ConstructorUiId.chooseMaterialButton (ConstructorUiPosition i)).value ]
+                  (layerRowView m dispatch (AtSingleLayer index) (ConstructorUiId.sampleLayerRow itemPosition) (ConstructorUiId.sampleLayerThickness itemPosition) (ConstructorUiId.sampleLayerOrientation itemPosition) (Avalonia.Thickness(0.0, 0.0, 0.0, 3.0)) layer)
+                  (AtSingleLayer index)
+                  (ConstructorUiId.chooseMaterialButton itemPosition) ]
         | Repeated group ->
-            let superRow = groupRowView m dispatch i group
+            let superRow = groupRowView m dispatch index group
             let cellRows =
-                if Set.contains i m.collapsedGroups then []
+                if Set.contains index m.collapsedGroups then []
                 else
                     group.cell
                     |> List.mapi (fun j layer ->
+                        let cellIndex = CellLayerIndex j
+                        let cellPosition = cellIndex.uiPosition
                         rowWithChooser
-                            (layerRowView m dispatch (AtCellLayer (FilmItemIndex i, CellLayerIndex j)) (ConstructorUiId.sampleCellLayerRow (ConstructorUiPosition i) (ConstructorUiPosition j)).value (ConstructorUiId.sampleCellLayerThickness (ConstructorUiPosition i) (ConstructorUiPosition j)).value (ConstructorUiId.sampleCellLayerOrientation (ConstructorUiPosition i) (ConstructorUiPosition j)).value 28.0 layer)
-                            (AtCellLayer (FilmItemIndex i, CellLayerIndex j))
-                            (ConstructorUiId.cellChooseMaterialButton (ConstructorUiPosition i) (ConstructorUiPosition j)).value)
+                            (layerRowView m dispatch (AtCellLayer (index, cellIndex)) (ConstructorUiId.sampleCellLayerRow itemPosition cellPosition) (ConstructorUiId.sampleCellLayerThickness itemPosition cellPosition) (ConstructorUiId.sampleCellLayerOrientation itemPosition cellPosition) (Avalonia.Thickness(28.0, 0.0, 0.0, 3.0)) layer)
+                            (AtCellLayer (index, cellIndex))
+                            (ConstructorUiId.cellChooseMaterialButton itemPosition cellPosition))
             superRow :: cellRows)
     |> List.concat
 
-let private filmsCountRow (m : SampleEditorModel) : IView =
-    StackPanel.create [
-        StackPanel.orientation Orientation.Horizontal
-        StackPanel.spacing 6.0
-        StackPanel.margin (thickOf 0.0 0.0 0.0 4.0)
-        StackPanel.children [
-            labelBlock "Films (expanded):"
-            TextBlock.create [
-                TextBlock.name ConstructorUiId.sampleFilmsCount.value
-                TextBlock.text (string (filmsCount m))
-                TextBlock.verticalAlignment VerticalAlignment.Center
-            ] :> IView
-        ]
-    ] :> IView
-
 // -- the bulk toolbar / QWOT / status / actions ----------------------------------------------
-
-let private hasSelection (m : SampleEditorModel) : bool =
-    not (Set.isEmpty m.editor.selection)
-
-let private hasChosenMaterial (m : SampleEditorModel) : bool =
-    match m.chosenMaterial with
-    | Some _ -> true
-    | None -> false
-
-/// A material's display name by id (a placeholder when the id is unresolved).
-let private nameOfMaterialId (m : SampleEditorModel) (id : MaterialId) : string =
-    match m.materials |> List.tryFind (fun e -> e.id = id) with
-    | Some e -> e.name.value
-    | None -> $"unknown ({id.value})"
 
 /// The substrate-plate and lower-half-space editor (spec 0033 gap G12): both
 /// `SampleStructure` fields were previously invisible and uneditable. Each shows
 /// its current material and a Clear (lower clears to vacuum). The substrate's Set…
 /// verb opens the Materials window in Select state (spec 0040 Part D.4 step 011 —
 /// so a film-less Plate can pick a substrate material without a film row); the
-/// lower half-space keeps its `hasChosenMaterial`-gated Set-from-chosen button.
+/// lower half-space keeps its `chosenMaterialAvailability`-gated Set-from-chosen button.
 /// Clear is always available.
 let private halfSpacesRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     let substrateText =
         match m.editor.structure.substrate with
-        | Some layer -> $"{nameOfMaterialId m layer.materialId.materialId} ({thicknessLabel layer.thickness})"
-        | None -> "none"
+        | Some layer -> ControlCaption $"{(m.materialCaption layer.materialId.materialId).value} ({layer.thickness.nanometreCaption.value})"
+        | None -> ControlCaption "none"
     let lowerText =
         match m.editor.structure.lower with
-        | Some mvid -> nameOfMaterialId m mvid.materialId
-        | None -> "vacuum"
-    let summary (autoId : string) (text : string) : IView =
+        | Some mvid -> m.materialCaption mvid.materialId
+        | None -> ControlCaption "vacuum"
+    let summary (id : ConstructorUiId) (text : ControlCaption) : IView =
         TextBlock.create [
-            TextBlock.name autoId
-            TextBlock.text text
+            TextBlock.name id.value
+            TextBlock.text text.value
             TextBlock.width 200.0
             TextBlock.verticalAlignment VerticalAlignment.Center
         ] :> IView
@@ -1113,19 +1100,19 @@ let private halfSpacesRow (m : SampleEditorModel) (dispatch : SampleEditorMsg ->
             WrapPanel.create [
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children [
-                    labelBlock "Substrate plate:"
-                    summary ConstructorUiId.sampleSubstrateSummary.value substrateText
+                    (ControlCaption "Substrate plate:").sampleEditorLabel
+                    summary ConstructorUiId.sampleSubstrateSummary substrateText
                     setSubstrateVerb m dispatch
-                    verbButton ConstructorUiId.clearSubstrateButton.value "Clear" false true (fun () -> dispatch ClearSubstrateClicked)
+                    verbButton ConstructorUiId.clearSubstrateButton (ControlCaption "Clear") idleBackground ControlOffered (fun () -> dispatch ClearSubstrateClicked)
                 ]
             ] :> IView
             WrapPanel.create [
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children [
-                    labelBlock "Lower half-space:"
-                    summary ConstructorUiId.sampleLowerSummary.value lowerText
-                    verbButton ConstructorUiId.setLowerButton.value "Set from chosen" false (hasChosenMaterial m) (fun () -> dispatch SetLowerClicked)
-                    verbButton ConstructorUiId.clearLowerButton.value "Clear (vacuum)" false true (fun () -> dispatch ClearLowerClicked)
+                    (ControlCaption "Lower half-space:").sampleEditorLabel
+                    summary ConstructorUiId.sampleLowerSummary lowerText
+                    verbButton ConstructorUiId.setLowerButton (ControlCaption "Set from chosen") idleBackground m.chosenMaterialAvailability (fun () -> dispatch SetLowerClicked)
+                    verbButton ConstructorUiId.clearLowerButton (ControlCaption "Clear (vacuum)") idleBackground ControlOffered (fun () -> dispatch ClearLowerClicked)
                 ]
             ] :> IView
         ]
@@ -1136,17 +1123,21 @@ let private halfSpacesRow (m : SampleEditorModel) (dispatch : SampleEditorMsg ->
 /// headless font metrics run a single row past the window edge, and an off-screen verb cannot
 /// be clicked.
 let private selectionToolbar (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
+    let addAvailability =
+        match m.materials with
+        | [] -> ControlWithheld
+        | _ :: _ -> ControlOffered
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children [
-            verbButton ConstructorUiId.addLayerButton.value "Add layer" true (not (List.isEmpty m.materials)) (fun () -> dispatch AddLayerClicked)
-            verbButton ConstructorUiId.selectByMaterialButton.value "Select by material" false (hasChosenMaterial m) (fun () -> dispatch SelectByMaterialClicked)
-            verbButton ConstructorUiId.clearSelectionButton.value "Clear selection" false (hasSelection m) (fun () -> dispatch ClearSelectionClicked)
-            verbButton ConstructorUiId.removeSelectedLayersButton.value "Remove" false (hasSelection m) (fun () -> dispatch RemoveSelectedClicked)
-            verbButton ConstructorUiId.moveSelectedUpButton.value "Move up" false (hasSelection m) (fun () -> dispatch MoveUpClicked)
-            verbButton ConstructorUiId.moveSelectedDownButton.value "Move down" false (hasSelection m) (fun () -> dispatch MoveDownClicked)
-            stepper ConstructorUiId.repeatCountStepper.value ConstructorUiId.repeatCountStepperMinus.value ConstructorUiId.repeatCountStepperPlus.value m.foldCount (fun delta -> dispatch (FoldCountBy delta))
-            verbButton ConstructorUiId.makeRepeatBlockButton.value "Make repeat block" false (hasSelection m) (fun () -> dispatch MakeRepeatBlockClicked)
+            verbButton ConstructorUiId.addLayerButton (ControlCaption "Add layer") chosenBackground addAvailability (fun () -> dispatch AddLayerClicked)
+            verbButton ConstructorUiId.selectByMaterialButton (ControlCaption "Select by material") idleBackground m.chosenMaterialAvailability (fun () -> dispatch SelectByMaterialClicked)
+            verbButton ConstructorUiId.clearSelectionButton (ControlCaption "Clear selection") idleBackground m.selectionAvailability (fun () -> dispatch ClearSelectionClicked)
+            verbButton ConstructorUiId.removeSelectedLayersButton (ControlCaption "Remove") idleBackground m.selectionAvailability (fun () -> dispatch RemoveSelectedClicked)
+            verbButton ConstructorUiId.moveSelectedUpButton (ControlCaption "Move up") idleBackground m.selectionAvailability (fun () -> dispatch MoveUpClicked)
+            verbButton ConstructorUiId.moveSelectedDownButton (ControlCaption "Move down") idleBackground m.selectionAvailability (fun () -> dispatch MoveDownClicked)
+            stepper ConstructorUiId.repeatCountStepper ConstructorUiId.repeatCountStepperMinus ConstructorUiId.repeatCountStepperPlus m.foldCount (FoldCountBy >> dispatch)
+            verbButton ConstructorUiId.makeRepeatBlockButton (ControlCaption "Make repeat block") idleBackground m.selectionAvailability (fun () -> dispatch MakeRepeatBlockClicked)
         ]
     ] :> IView
 
@@ -1154,37 +1145,37 @@ let private selectionToolbar (m : SampleEditorModel) (dispatch : SampleEditorMsg
 /// A WRAP panel (same off-screen-verb reason as the selection toolbar); each label+box pair is
 /// one wrap item so a wrap never splits a label from its entry.
 let private editToolbar (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
-    let labelled (label : string) (entry : IView) : IView =
+    let labelled (label : ControlCaption) (entry : IView) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 4.0
-            StackPanel.margin (thickOf 0.0 0.0 8.0 0.0)
-            StackPanel.children [ labelBlock label; entry ]
+            StackPanel.margin (Avalonia.Thickness(0.0, 0.0, 8.0, 0.0))
+            StackPanel.children [ label.sampleEditorLabel; entry ]
         ] :> IView
-    let angleBox (boxId : string) (label : string) (text : string) (slot : AngleSlot) : IView =
+    let angleBox (boxId : ConstructorUiId) (label : ControlCaption) (text : ControlCaption) (slot : AngleSlot) : IView =
         labelled label (
             TextBox.create [
-                TextBox.name boxId
+                TextBox.name boxId.value
                 TextBox.width 46.0
-                TextBox.text text
-                TextBox.onTextChanged (fun s -> dispatch (SetOrientationText (slot, s)))
+                TextBox.text text.value
+                TextBox.onTextChanged (ControlCaption >> (fun entered -> dispatch (SetOrientationText (slot, entered))))
             ] :> IView)
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children [
-            labelled "Thickness (nm):" (
+            labelled (ControlCaption "Thickness (nm):") (
                 TextBox.create [
                     TextBox.name ConstructorUiId.sampleLayerHeightBox.value
                     TextBox.width 70.0
-                    TextBox.text m.thicknessText
-                    TextBox.onTextChanged (SetThicknessText >> dispatch)
+                    TextBox.text m.thicknessText.value
+                    TextBox.onTextChanged (ControlCaption >> SetThicknessText >> dispatch)
                 ] :> IView)
-            verbButton ConstructorUiId.setLayerHeightButton.value "Set thickness" false (hasSelection m) (fun () -> dispatch SetLayerHeightClicked)
-            verbButton ConstructorUiId.setLayerMaterialButton.value "Set material" false (hasSelection m && hasChosenMaterial m) (fun () -> dispatch SetLayerMaterialClicked)
-            angleBox ConstructorUiId.sampleOrientationPhiBox.value "φ°" m.phiText PhiSlot
-            angleBox ConstructorUiId.sampleOrientationThetaBox.value "θ°" m.thetaText ThetaSlot
-            angleBox ConstructorUiId.sampleOrientationPsiBox.value "ψ°" m.psiText PsiSlot
-            verbButton ConstructorUiId.setOrientationOfSelectedButton.value "Set orientation" false (hasSelection m) (fun () -> dispatch SetOrientationClicked)
+            verbButton ConstructorUiId.setLayerHeightButton (ControlCaption "Set thickness") idleBackground m.selectionAvailability (fun () -> dispatch SetLayerHeightClicked)
+            verbButton ConstructorUiId.setLayerMaterialButton (ControlCaption "Set material") idleBackground m.setMaterialAvailability (fun () -> dispatch SetLayerMaterialClicked)
+            angleBox ConstructorUiId.sampleOrientationPhiBox (ControlCaption "φ°") m.phiText PhiSlot
+            angleBox ConstructorUiId.sampleOrientationThetaBox (ControlCaption "θ°") m.thetaText ThetaSlot
+            angleBox ConstructorUiId.sampleOrientationPsiBox (ControlCaption "ψ°") m.psiText PsiSlot
+            verbButton ConstructorUiId.setOrientationOfSelectedButton (ControlCaption "Set orientation") idleBackground m.selectionAvailability (fun () -> dispatch SetOrientationClicked)
         ]
     ] :> IView
 
@@ -1194,24 +1185,24 @@ let private qwotRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit)
     // spec 0033 gap G14.1: render the derived thickness in display nanometres (the unit
     // every other thickness readout uses), not raw metres.
     let derivedLabel =
-        match qwotDerived m with
-        | Some t -> thicknessLabel t
-        | None -> "—"
+        match m.qwotDerived with
+        | Some t -> t.nanometreCaption
+        | None -> ControlCaption "—"
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
         StackPanel.children [
-            labelBlock "QWOT λ (nm):"
+            (ControlCaption "QWOT λ (nm):").sampleEditorLabel
             TextBox.create [
                 TextBox.name ConstructorUiId.qwotEntryBox.value
                 TextBox.width 70.0
-                TextBox.text m.qwotText
-                TextBox.onTextChanged (SetQwotText >> dispatch)
+                TextBox.text m.qwotText.value
+                TextBox.onTextChanged (ControlCaption >> SetQwotText >> dispatch)
             ] :> IView
-            labelBlock "→ t = λ/(4n) ="
+            (ControlCaption "→ t = λ/(4n) =").sampleEditorLabel
             TextBlock.create [
                 TextBlock.name ConstructorUiId.qwotDerivedText.value
-                TextBlock.text derivedLabel
+                TextBlock.text derivedLabel.value
                 TextBlock.verticalAlignment VerticalAlignment.Center
             ] :> IView
         ]
@@ -1223,7 +1214,7 @@ let private statusRow (m : SampleEditorModel) : IView =
         TextBlock.foreground (brush errorColor)
         TextBlock.text (
             match m.status with
-            | Some reason -> reason
+            | Some reason -> reason.value
             | None -> "")
     ] :> IView
 
@@ -1232,8 +1223,8 @@ let private saveCancelRow (dispatch : SampleEditorMsg -> unit) : IView =
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children [
-            actionButton ConstructorUiId.sampleEditorSaveButton.value "Save" saveBackground (fun () -> dispatch SaveClicked)
-            actionButton ConstructorUiId.sampleEditorCancelButton.value "Cancel" cancelBackground (fun () -> dispatch CancelClicked)
+            actionButton ConstructorUiId.sampleEditorSaveButton (ControlCaption "Save") saveBackground (fun () -> dispatch SaveClicked)
+            actionButton ConstructorUiId.sampleEditorCancelButton (ControlCaption "Cancel") cancelBackground (fun () -> dispatch CancelClicked)
         ]
     ] :> IView
 
@@ -1242,7 +1233,7 @@ let private saveCancelRow (dispatch : SampleEditorMsg -> unit) : IView =
 /// saving; Keep editing (positive styling) returns to the editor — one row, distinct styling.
 let private exitConfirmRow (dispatch : SampleEditorMsg -> unit) : IView =
     StackPanel.create [
-        automationId ConstructorUiId.sampleEditorExitConfirm.value
+        ConstructorUiId.sampleEditorExitConfirm.automationAttribute<StackPanel> ()
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children [
@@ -1250,10 +1241,10 @@ let private exitConfirmRow (dispatch : SampleEditorMsg -> unit) : IView =
                 TextBlock.text "Discard unsaved changes?"
                 TextBlock.foreground (brush errorColor)
                 TextBlock.verticalAlignment VerticalAlignment.Center
-                TextBlock.margin (thickOf 0.0 0.0 12.0 0.0)
+                TextBlock.margin (Avalonia.Thickness(0.0, 0.0, 12.0, 0.0))
             ] :> IView
-            actionButton ConstructorUiId.sampleEditorDiscardButton.value "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
-            actionButton ConstructorUiId.sampleEditorKeepEditingButton.value "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
+            actionButton ConstructorUiId.sampleEditorDiscardButton (ControlCaption "Discard changes") cancelBackground (fun () -> dispatch DiscardConfirmed)
+            actionButton ConstructorUiId.sampleEditorKeepEditingButton (ControlCaption "Keep editing") saveBackground (fun () -> dispatch KeepEditing)
         ]
     ] :> IView
 
@@ -1273,7 +1264,7 @@ let sampleEditorView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit
         DockPanel.children [
             Border.create [
                 Border.dock Dock.Top
-                Border.padding (thick 8.0)
+                Border.padding (Avalonia.Thickness(8.0))
                 Border.child (
                     StackPanel.create [
                         StackPanel.orientation Orientation.Vertical
@@ -1286,18 +1277,35 @@ let sampleEditorView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit
                         ]
                     ])
             ]
-            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (actionsRow m dispatch) ]
-            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 0.0); Border.child (statusRow m) ]
-            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (qwotRow m dispatch) ]
-            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (halfSpacesRow m dispatch) ]
-            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (editToolbar m dispatch) ]
-            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (selectionToolbar m dispatch) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (Avalonia.Thickness(8.0, 6.0)); Border.child (actionsRow m dispatch) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (Avalonia.Thickness(8.0, 0.0)); Border.child (statusRow m) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (Avalonia.Thickness(8.0, 2.0)); Border.child (qwotRow m dispatch) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (Avalonia.Thickness(8.0, 2.0)); Border.child (halfSpacesRow m dispatch) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (Avalonia.Thickness(8.0, 2.0)); Border.child (editToolbar m dispatch) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (Avalonia.Thickness(8.0, 2.0)); Border.child (selectionToolbar m dispatch) ]
             Border.create [
-                Border.padding (thickLR 8.0 4.0)
+                Border.padding (Avalonia.Thickness(8.0, 4.0))
                 Border.child (
                     DockPanel.create [
                         DockPanel.children [
-                            Border.create [ Border.dock Dock.Top; Border.child (filmsCountRow m) ]
+                            // The expanded-films readout.
+                            Border.create [
+                                Border.dock Dock.Top
+                                Border.child (
+                                    StackPanel.create [
+                                        StackPanel.orientation Orientation.Horizontal
+                                        StackPanel.spacing 6.0
+                                        StackPanel.margin (Avalonia.Thickness(0.0, 0.0, 0.0, 4.0))
+                                        StackPanel.children [
+                                            (ControlCaption "Films (expanded):").sampleEditorLabel
+                                            TextBlock.create [
+                                                TextBlock.name ConstructorUiId.sampleFilmsCount.value
+                                                TextBlock.text (string m.filmsCount)
+                                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                            ] :> IView
+                                        ]
+                                    ])
+                            ]
                             // Spec 0046: the layer table's rows are fixed-width cells, so in a narrow window
                             // the table scrolls sideways too instead of clipping its right-hand columns.
                             ScrollViewer.create [

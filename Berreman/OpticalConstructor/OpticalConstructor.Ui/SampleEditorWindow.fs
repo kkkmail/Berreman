@@ -100,7 +100,7 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
     /// `CancelClicked` the Cancel button hits, so both exits are equally gated.
     member _.ChromeCloseIntercepted() : bool =
         match latestModel with
-        | Some m when SampleEditorView.isDirty m ->
+        | Some m when m.isDirty ->
             dispatch SampleEditorView.CancelClicked
             true
         | _ -> false
