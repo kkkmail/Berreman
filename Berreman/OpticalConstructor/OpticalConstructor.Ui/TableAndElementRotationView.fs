@@ -1437,7 +1437,7 @@ let private experimentElementLabel (model : TableAndElementRotationModel) (id : 
     model.elements
     |> List.mapi (fun i e -> i, e)
     |> List.tryFind (fun (_, e) -> e.id = id)
-    |> Option.map (fun (i, e) -> Experiments.ElementLabel $"%s{(Catalogue.kindName e.placement.catalogueKind)} #%d{(i + 1)}")
+    |> Option.map (fun (i, e) -> Experiments.ElementLabel $"%s{e.placement.catalogueKind.kindName} #%d{(i + 1)}")
     |> Option.defaultValue (Experiments.ElementLabel "(element)")
 
 /// Spec 0038 Part I (step 025): resolve one present element's binding into an experiment descriptor's
@@ -1933,35 +1933,32 @@ let private rotationHandlers (dispatch : TableAndElementRotationMsg -> unit) : R
         cancel = fun () -> dispatch RotCancel
     }
 
-// `kindName` / `kindCode` now live in the early `Catalogue` module (task 018) so the shared renderer can
-// use them too; re-exported here for the existing references (the other scenes, the tests).
-let kindName : CatalogueKind -> string = Catalogue.kindName
-let kindCode : CatalogueKind -> string = Catalogue.kindCode
+type TableAndElementRotationModel with
 
-let private readoutText (model : TableAndElementRotationModel) : string =
-    match model.selection with
-    | TableSelected ->
-        $"Selected: TABLE   R1 %.0f{model.view.r1.degrees}°   R2 %.0f{model.view.r2.degrees}°   R3 %.0f{model.view.r3.degrees}°   zoom %.2f{model.view.zoom.value}×"
-    | ElementSelected i ->
-        let e = List.item i model.elements
-        let p = e.placement
-        // Spec 0027 (024): show the bound Library entry (resolved through the Library proxy), or "unbound".
-        let boundName =
-            match p.valueId with
-            | Some id ->
-                match model.library.tryGetEntry id with
-                | Ok (Some entry) -> entry.displayName
-                | Ok None | Error _ -> "unbound"
-            | None -> "unbound"
-        // Spec 0046: name every locked rotation axis (the light source starts with all three locked).
-        let lockText =
-            match [ if p.r1Locked = RotationLocked then "R1"
-                    if p.r2Locked = RotationLocked then "R2"
-                    if p.r3Locked = RotationLocked then "R3" ] with
-            | [] -> "rotations free"
-            | locked -> (String.concat " " locked) + " locked"
-        $"""Selected: Element %d{i + 1} (%s{kindName p.catalogueKind})   R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{lockText})   zoom %.1f{e.zoom}×   bound: %s{boundName}"""
-    | NothingSelected -> "Selected: none   (click the table or an element to select it)"
+    member internal model.readoutText : string =
+        match model.selection with
+        | TableSelected ->
+            $"Selected: TABLE   R1 %.0f{model.view.r1.degrees}°   R2 %.0f{model.view.r2.degrees}°   R3 %.0f{model.view.r3.degrees}°   zoom %.2f{model.view.zoom.value}×"
+        | ElementSelected i ->
+            let e = List.item i model.elements
+            let p = e.placement
+            // Spec 0027 (024): show the bound Library entry (resolved through the Library proxy), or "unbound".
+            let boundName =
+                match p.valueId with
+                | Some id ->
+                    match model.library.tryGetEntry id with
+                    | Ok (Some entry) -> entry.displayName
+                    | Ok None | Error _ -> "unbound"
+                | None -> "unbound"
+            // Spec 0046: name every locked rotation axis (the light source starts with all three locked).
+            let lockText =
+                match [ if p.r1Locked = RotationLocked then "R1"
+                        if p.r2Locked = RotationLocked then "R2"
+                        if p.r3Locked = RotationLocked then "R3" ] with
+                | [] -> "rotations free"
+                | locked -> (String.concat " " locked) + " locked"
+            $"""Selected: Element %d{i + 1} (%s{p.catalogueKind.kindName})   R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{lockText})   zoom %.1f{e.zoom}×   bound: %s{boundName}"""
+        | NothingSelected -> "Selected: none   (click the table or an element to select it)"
 
 /// Spec 0038 (018): one add-palette BUTTON — its stable code (the `PaletteAdd_<code>` automation-id
 /// suffix), its label, the catalogue kind it adds, and the seeded Library entry the new element
@@ -1975,34 +1972,36 @@ type PaletteButton =
         prebind : string option
     }
 
-/// Spec 0038 (018): the palette buttons the model's catalogue palette EXPANDS to. The
-/// circular-polarizer kind expands to the CPL / CPR pair, so the palette offers THREE polarizer
-/// buttons — LP / CPL / CPR — over the UNCHANGED `CatalogueKind`s (LP adds a LinearPolarizer,
-/// CPL and CPR both add a CircularPolarizer; only the label and the pre-bound seed entry differ).
-/// Every other kind keeps its one `kindCode`/`kindName` button with the kind's seeded default.
-/// Public so the mapping is provable without a window.
-let paletteButtons (model : TableAndElementRotationModel) : PaletteButton list =
-    model.palette
-    |> List.collect (fun k ->
-        match k with
-        | CircularPolarizer ->
-            [ { code = "CPL"; label = $"%s{(kindName CircularPolarizer)} (L)"; kind = CircularPolarizer; prebind = Some SeedEntryIds.polarizerCpLeft }
-              { code = "CPR"; label = $"%s{(kindName CircularPolarizer)} (R)"; kind = CircularPolarizer; prebind = Some SeedEntryIds.polarizerCpRight } ]
-        | LightSource | LinearPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector ->
-            [ { code = kindCode k; label = kindName k; kind = k; prebind = defaultSeedEntry k } ])
+type TableAndElementRotationModel with
+
+    /// Spec 0038 (018): the palette buttons the model's catalogue palette EXPANDS to. The
+    /// circular-polarizer kind expands to the CPL / CPR pair, so the palette offers THREE polarizer
+    /// buttons — LP / CPL / CPR — over the UNCHANGED `CatalogueKind`s (LP adds a LinearPolarizer,
+    /// CPL and CPR both add a CircularPolarizer; only the label and the pre-bound seed entry differ).
+    /// Every other kind keeps its one `kindCode`/`kindName` button with the kind's seeded default.
+    /// Public so the mapping is provable without a window.
+    member model.paletteButtons : PaletteButton list =
+        model.palette
+        |> List.collect (fun k ->
+            match k with
+            | CircularPolarizer ->
+                [ { code = "CPL"; label = $"%s{CircularPolarizer.kindName} (L)"; kind = CircularPolarizer; prebind = Some SeedEntryIds.polarizerCpLeft }
+                  { code = "CPR"; label = $"%s{CircularPolarizer.kindName} (R)"; kind = CircularPolarizer; prebind = Some SeedEntryIds.polarizerCpRight } ]
+            | LightSource | LinearPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector ->
+                [ { code = k.kindCode; label = k.kindName; kind = k; prebind = defaultSeedEntry k } ])
 
 /// The add / remove "Lego" palette row — shown ONLY when the scene has a non-empty palette (the Main
 /// screen). The static test windows pass an empty palette, so this row is absent and their UI is
 /// unchanged. It is the shared `ElementPaletteControls` bar, styled to match the rotation bar.
 let private paletteState (model : TableAndElementRotationModel) : ElementPaletteControls.ElementPaletteControlsState =
     {
-        addItems = paletteButtons model |> List.map (fun b -> { ElementPaletteControls.AddItem.id = ConstructorUiKey b.code; label = ControlCaption b.label })
+        addItems = model.paletteButtons |> List.map (fun b -> { ElementPaletteControls.AddItem.id = ConstructorUiKey b.code; label = ControlCaption b.label })
         removeAvailability = (match model.selection with ElementSelected _ -> ControlOffered | _ -> ControlWithheld)
     }
 
 let private paletteHandlers (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : ElementPaletteControls.ElementPaletteControlsHandlers =
     {
-        add = fun id -> paletteButtons model |> List.tryFind (fun b -> b.code = id.value) |> Option.iter (fun b -> dispatch (AddElementBoundTo (b.kind, b.prebind)))
+        add = fun id -> model.paletteButtons |> List.tryFind (fun b -> b.code = id.value) |> Option.iter (fun b -> dispatch (AddElementBoundTo (b.kind, b.prebind)))
         removeSelected = fun () -> dispatch RemoveSelected
     }
 
@@ -2018,7 +2017,7 @@ let private controlBar (model : TableAndElementRotationModel) (dispatch : TableA
         StackPanel.children
             (addRemoveBar model dispatch
              @ [ RotationControls.view (rotationState model) (rotationHandlers dispatch)
-                 TextBlock.create [ TextBlock.name ConstructorUiId.teReadout.value; TextBlock.text (readoutText model) ]
+                 TextBlock.create [ TextBlock.name ConstructorUiId.teReadout.value; TextBlock.text model.readoutText ]
                  TextBlock.create [
                      TextBlock.foreground (brush (color 100 100 100))
                      TextBlock.text "click TABLE or an element to select it (rotation acts on the selection) · drag = pan · wheel = zoom table · Shift/Ctrl+Shift/Alt+wheel = R1/R2/R3 of the selection · Ctrl+Alt+wheel = zoom element · Ctrl+Alt+Shift+wheel = zoom all · Shift+button = 5°"
@@ -2042,7 +2041,7 @@ let private tableCanvas (model : TableAndElementRotationModel) : IView =
     ] :> IView
 
 let tableAndElementRotationView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.tableElementCanvas.value e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.tableElementCanvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]
@@ -2130,7 +2129,7 @@ let private mainElementViews (model : TableAndElementRotationModel) : IView list
         let selected = (model.selection = ElementSelected i)
         let normals = if selected then ElementRenderer.ShowNormals else ElementRenderer.HideNormals
         renderer.draw project selected
-            { placement = placement; centre = nodes.[i].position; zoom = e.zoom; opticalSign = Catalogue.opticalSign e.placement.catalogueKind; bindingState = ElementRenderer.bindingStateOf placement; normals = normals })
+            { placement = placement; centre = nodes.[i].position; zoom = e.zoom; opticalSign = e.placement.catalogueKind.opticalSign; bindingState = ElementRenderer.bindingStateOf placement; normals = normals })
     |> List.concat
 
 /// The MOVE bay state/handlers: slide the selected element along the beam (disabled unless an element is
@@ -2241,45 +2240,47 @@ let rec private flattenNode (allowed : Set<string>) (boundId : string option) (d
         if List.isEmpty childRows then []
         else { label = label.rowCaption; depth = LibraryControls.LibraryRowDepth depth; kind = LibraryControls.LibraryGroupHeader } :: childRows
 
-/// The Select bay state for the current selection: an `ElementSelected` shows the kind-constrained
-/// tree rows, the kind label, and the bound-entry readout; anything else disables the bay.
-let private libraryState (model : TableAndElementRotationModel) : LibraryControls.LibraryControlsState =
-    match model.selection with
-    | ElementSelected i ->
-        let e = List.item i model.elements
-        let kind = e.placement.catalogueKind
-        let allowed = allowedEntryIds model kind
-        let boundId = e.placement.valueId |> Option.map (fun v -> v.value)
-        let rows =
-            match model.library.libraryTrees () with
-            | Ok (tree :: _) -> flattenNode allowed boundId 0 tree.root
-            | Ok [] | Error _ -> []
-        let boundName =
-            match e.placement.valueId with
-            | Some id ->
-                match model.library.tryGetEntry id with
-                | Ok (Some entry) -> Some (ControlCaption entry.displayName)
-                | Ok None | Error _ -> None
-            | None -> None
-        // Spec 0027 (026): the pending (selected-not-confirmed) entry's name + full description, resolved
-        // through the proxy (so a stale pending id yields no panel).
-        let pendingName, pendingDescription =
-            match model.pendingEntry with
-            | Some id ->
-                match model.library.tryGetEntry (ElementValueId id) with
-                | Ok (Some entry) -> Some (ControlCaption entry.displayName), ControlCaption entry.fullDescription
-                | Ok None | Error _ -> None, ControlCaption ""
-            | None -> None, ControlCaption ""
-        {
-            rows = rows
-            kindLabel = Some (ControlCaption (kindName kind))
-            boundName = boundName
-            availability = ControlOffered
-            pendingEntryId = model.pendingEntry |> Option.map ConstructorUiKey
-            pendingName = pendingName
-            pendingDescription = pendingDescription
-        }
-    | TableSelected | NothingSelected -> LibraryControls.empty
+type TableAndElementRotationModel with
+
+    /// The Select bay state for the current selection: an `ElementSelected` shows the kind-constrained
+    /// tree rows, the kind label, and the bound-entry readout; anything else disables the bay.
+    member internal model.libraryState : LibraryControls.LibraryControlsState =
+        match model.selection with
+        | ElementSelected i ->
+            let e = List.item i model.elements
+            let kind = e.placement.catalogueKind
+            let allowed = allowedEntryIds model kind
+            let boundId = e.placement.valueId |> Option.map (fun v -> v.value)
+            let rows =
+                match model.library.libraryTrees () with
+                | Ok (tree :: _) -> flattenNode allowed boundId 0 tree.root
+                | Ok [] | Error _ -> []
+            let boundName =
+                match e.placement.valueId with
+                | Some id ->
+                    match model.library.tryGetEntry id with
+                    | Ok (Some entry) -> Some (ControlCaption entry.displayName)
+                    | Ok None | Error _ -> None
+                | None -> None
+            // Spec 0027 (026): the pending (selected-not-confirmed) entry's name + full description, resolved
+            // through the proxy (so a stale pending id yields no panel).
+            let pendingName, pendingDescription =
+                match model.pendingEntry with
+                | Some id ->
+                    match model.library.tryGetEntry (ElementValueId id) with
+                    | Ok (Some entry) -> Some (ControlCaption entry.displayName), ControlCaption entry.fullDescription
+                    | Ok None | Error _ -> None, ControlCaption ""
+                | None -> None, ControlCaption ""
+            {
+                rows = rows
+                kindLabel = Some (ControlCaption kind.kindName)
+                boundName = boundName
+                availability = ControlOffered
+                pendingEntryId = model.pendingEntry |> Option.map ConstructorUiKey
+                pendingName = pendingName
+                pendingDescription = pendingDescription
+            }
+        | TableSelected | NothingSelected -> LibraryControls.empty
 
 let private libraryHandlers (dispatch : TableAndElementRotationMsg -> unit) : LibraryControls.LibraryControlsHandlers =
     {
@@ -2318,11 +2319,13 @@ let selectorOffer (model : TableAndElementRotationModel) : SelectorOffer =
 // host flattens the scene into candidates, the draft into the editor state, and the collection into rows.
 // ---------------------------------------------------------------------------
 
-/// One present element as a candidate-to-vary — its serializable id plus a human-readable label
-/// ("<kind> #<n>", 1-based, in scene order).
-let private sweepCandidates (model : TableAndElementRotationModel) : ExperimentControls.SweepCandidate list =
-    model.elements
-    |> List.mapi (fun i e -> { ExperimentControls.SweepCandidate.elementId = e.id.uiKey; label = ControlCaption $"%s{(kindName e.placement.catalogueKind)} #%d{(i + 1)}" })
+type TableAndElementRotationModel with
+
+    /// One present element as a candidate-to-vary — its serializable id plus a human-readable label
+    /// ("<kind> #<n>", 1-based, in scene order).
+    member internal model.sweepCandidates : ExperimentControls.SweepCandidate list =
+        model.elements
+        |> List.mapi (fun i e -> { ExperimentControls.SweepCandidate.elementId = e.id.uiKey; label = ControlCaption $"%s{e.placement.catalogueKind.kindName} #%d{(i + 1)}" })
 
 /// The current draft experiment's readout (spec 028), or "" when the draft is incomplete / its element is
 /// no longer present.
@@ -2356,7 +2359,7 @@ let private boundEntry (model : TableAndElementRotationModel) (e : TestElement) 
 /// menu's header show exactly this. Public so it is provable without a window.
 let elementInfo (model : TableAndElementRotationModel) (i : int) : string * string =
     let e = List.item i model.elements
-    let heading = $"%s{Catalogue.kindName e.placement.catalogueKind} #%d{i + 1}"
+    let heading = $"%s{e.placement.catalogueKind.kindName} #%d{i + 1}"
     let detail =
         match boundEntry model e with
         | Some entry -> $"%s{entry.displayName} — %s{entry.fullDescription}"
@@ -2868,7 +2871,7 @@ let experimentState (model : TableAndElementRotationModel) : ExperimentControls.
         | None -> []
     let capture = draftCapture model
     {
-        candidates = sweepCandidates model
+        candidates = model.sweepCandidates
         chosenId = draft.elementId |> Option.map (fun id -> id.uiKey)
         variableChoices = variableChoices
         chosenVariable = draft.variable |> Option.map toVariableChoice
@@ -3241,7 +3244,7 @@ let private selectorBayContent (model : TableAndElementRotationModel) (dispatch 
             | QuickPickAndChoose ->
                 [ Border.create [
                       workbenchAutomationId WorkbenchIds.quickPickStrip
-                      Border.child (LibraryControls.libraryControlsView (libraryState model) (libraryHandlers dispatch))
+                      Border.child (LibraryControls.libraryControlsView model.libraryState (libraryHandlers dispatch))
                   ]
                   |> Avalonia.FuncUI.DSL.View.withKey WorkbenchIds.quickPickStrip
                   :> IView ]
@@ -3581,7 +3584,7 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : TableAndElementRota
                         Ribbon.ribbonView { bays = bays; selected = Ribbon.BayName model.ribbon } (fun name -> dispatch (SelectBay name.value))
                     ]
                 ] :> IView
-                TextBlock.create [ TextBlock.name ConstructorUiId.teReadout.value; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text (readoutText model) ] :> IView
+                TextBlock.create [ TextBlock.name ConstructorUiId.teReadout.value; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text model.readoutText ] :> IView
             ]
             // Spec 0038 (016): the staleness status line — present only while a status is set.
             @ selectStatusRow model)
@@ -3661,7 +3664,7 @@ let elementMenuRows (model : TableAndElementRotationModel) (dispatch : TableAndE
     | Some i ->
         let e = List.item i model.elements
         let p = e.placement
-        let nameOf (j : int) : string = $"%s{kindName (List.item j model.elements).placement.catalogueKind} #%d{j + 1}"
+        let nameOf (j : int) : string = $"%s{(List.item j model.elements).placement.catalogueKind.kindName} #%d{j + 1}"
         let check (on : bool) : string = if on then "☑" else "☐"
         let radio (on : bool) : string = if on then "●" else "○"
         let control = BeamLayout.rayControlOf (supportedEmissionOf model p) p
@@ -3862,7 +3865,7 @@ let private mainTableCanvas (model : TableAndElementRotationModel) : IView =
 /// The bays are built once and shared: the ribbon hosts the in-pane bays' content and shows only a
 /// tab for a full-surface bay, whose content is placed here below.
 let mainView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.tableElementCanvas.value e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.tableElementCanvas e
     // The shared table surface + its pointer / wheel gestures. A thunk, so it is only built for a table bay:
     // a full-surface bay never realizes the canvas and must not wire the table gestures.
     // Spec 0046: a RIGHT click opens the element menu on release (its press starts no drag); the menu

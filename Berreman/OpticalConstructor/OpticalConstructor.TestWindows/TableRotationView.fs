@@ -142,8 +142,8 @@ let private zoomMin : float = 0.2
 let private zoomMax : float = 5.0
 
 // The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
-let tableRotationCanvasWidth : float = TableScene.canvasWidth
-let tableRotationCanvasHeight : float = TableScene.canvasHeight
+let tableRotationCanvasWidth : float = TableScene.canvasWidth.value
+let tableRotationCanvasHeight : float = TableScene.canvasHeight.value
 
 // ---------------------------------------------------------------------------
 // The documented wheel-gesture map (§E.3/§E.5, mirroring Commands.fs verbatim):
@@ -229,7 +229,7 @@ let updateTableRotation (msg : TableRotationMsg) (model : TableRotationModel) : 
         let selection =
             match model.drag with
             | TableRotationPressed start ->
-                match TableScene.tableHit model.view model.table start with
+                match TableScene.tableHitOnScene model.view model.table start with
                 | InsidePolygon -> TableRotationTableSelected
                 | OutsidePolygon -> TableUnselected
             | _ -> model.selection
@@ -276,7 +276,7 @@ let private detectorColor = color 20 20 20
 /// The plate (highlighted when the table is selected) and the source → detector central ray — both from
 /// the shared `TableScene`, so this test draws the SAME table as every other screen.
 let private plateViews (model : TableRotationModel) : IView list =
-    TableScene.plateViews model.view model.table (model.selection = TableRotationTableSelected)
+    TableScene.plateViews model.view model.table (match model.selection with TableRotationTableSelected -> PlateSelected | TableUnselected -> PlateNotSelected)
 
 let private referenceViews (model : TableRotationModel) : IView list =
     TableScene.sourceDetectorRayViews model.view
@@ -348,7 +348,7 @@ let private wheelModifiers (km : KeyModifiers) : Set<TableRotationWheelModifier>
 /// the content origin, a top-level pointer position equals a canvas coordinate. `e.Handled <-
 /// true` drops FuncUI's duplicate Tunnel|Bubble pass, so a wheel notch is exactly one step.
 let tableRotationView (model : TableRotationModel) (dispatch : TableRotationMsg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.tableRotationCanvas.value e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.tableRotationCanvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [

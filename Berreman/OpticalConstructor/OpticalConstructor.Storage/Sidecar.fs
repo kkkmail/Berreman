@@ -25,7 +25,7 @@ module Sidecar =
         /// `.binz` artefacts live — sweep/field-map results AND fit/design histories —
         /// NEVER the repository root. Every derived-artefact writer routes through here so
         /// the flat-vs-subfolder choice is decided once (reuse finding F2 of the cycle-1
-        /// review): `JobRunner.derivedArtefactPath` (sweeps/fits) and
+        /// review): `derivedArtefactPath` (the §J.10 job artefacts: sweeps/fits) and
         /// `SynthesisFitPage.fitHistorySidecarPath` (Part G fit history) both reach it.
         member this.sidecarFolder : FolderName = this.combine (FolderName ".sidecars")
 

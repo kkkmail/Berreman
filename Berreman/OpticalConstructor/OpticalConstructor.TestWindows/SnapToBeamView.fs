@@ -26,8 +26,8 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 
 // The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
-let snapToBeamCanvasWidth : float = TableScene.canvasWidth
-let snapToBeamCanvasHeight : float = TableScene.canvasHeight
+let snapToBeamCanvasWidth : float = TableScene.canvasWidth.value
+let snapToBeamCanvasHeight : float = TableScene.canvasHeight.value
 let stepDegrees : float = 5.0
 let bigStepDegrees : float = 15.0
 let private drawZoom : float = 5.0
@@ -143,11 +143,11 @@ let private elementColor = color 70 130 200
 let private codeColor = color 20 20 30
 
 let private v3 (x : float) (y : float) (z : float) : Vector3 = Vector3.create x y z
-let private projectPt (m : SnapToBeamModel) (p : Vector3) : ScreenPoint = TableScene.project m.view p
+let private projectPt (m : SnapToBeamModel) (p : Vector3) : ScreenPoint = TableScene.projectOnScene m.view p
 
 let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : IView =
     Line.create [
-        Line.startPoint (TableScene.toPoint a); Line.endPoint (TableScene.toPoint b); Line.stroke (brush c); Line.strokeThickness w
+        Line.startPoint a.toPoint; Line.endPoint b.toPoint; Line.stroke (brush c); Line.strokeThickness w
     ] :> IView
 
 /// The source marker plus a short arrow along the direction it currently emits (its oriented N1).
@@ -186,7 +186,7 @@ let private beamViews (m : SnapToBeamModel) : IView list =
               TextBlock.create [
                   TextBlock.left (centreScr.sx + 8.0)
                   TextBlock.top (centreScr.sy - 22.0)
-                  TextBlock.text (TableAndElementRotationView.kindCode s.placement.catalogueKind)
+                  TextBlock.text s.placement.catalogueKind.kindCode
                   TextBlock.fontWeight FontWeight.SemiBold
                   TextBlock.foreground (brush codeColor)
               ] :> IView ])
@@ -199,7 +199,7 @@ let private tableCanvas (model : SnapToBeamModel) : IView =
         Canvas.height snapToBeamCanvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
         Canvas.verticalAlignment VerticalAlignment.Top
-        Canvas.children (TableScene.plateViews model.view model.table false @ beamViews model @ sourceViews model)
+        Canvas.children (TableScene.plateViews model.view model.table PlateNotSelected @ beamViews model @ sourceViews model)
     ] :> IView
 
 let private readoutText (m : SnapToBeamModel) : string =

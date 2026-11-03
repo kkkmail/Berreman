@@ -24,8 +24,8 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 
 // The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
-let elementMovementCanvasWidth : float = TableScene.canvasWidth
-let elementMovementCanvasHeight : float = TableScene.canvasHeight
+let elementMovementCanvasWidth : float = TableScene.canvasWidth.value
+let elementMovementCanvasHeight : float = TableScene.canvasHeight.value
 let private drawZoom : float = 5.0
 let stepMeters : float = (RayPositionControls.stepMeters KeyModifiers.None).value
 let bigStepMeters : float = (RayPositionControls.stepMeters KeyModifiers.Shift).value
@@ -64,11 +64,11 @@ let elementX (m : ElementMovementModel) : float = m.element.placementPoint.x / 1
 let private setX (x : float) (m : ElementMovementModel) : ElementMovementModel =
     { m with element = { m.element with placementPoint = { m.element.placementPoint with x = clampX m x * 1.0<meter> } } }
 
-/// Screen x → table x for the fixed top-down view (no pan / zoom): the inverse of `TableScene.project`.
+/// Screen x → table x for the fixed top-down view (no pan / zoom): the inverse of `TableScene.projectOnScene`.
 let private tableXOfScreen (sx : float) : float = (sx - TableScene.center.sx) / TableScene.pixelsPerMeter.value
 
 let private elementCentreScreen (m : ElementMovementModel) : ScreenPoint =
-    TableScene.project m.view (Vector3.create (elementX m) 0.0 0.0)
+    TableScene.projectOnScene m.view (Vector3.create (elementX m) 0.0 0.0)
 
 let private dist (a : ScreenPoint) (b : ScreenPoint) : float = sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
 
@@ -100,7 +100,7 @@ let private elementColor = color 90 140 200
 let private elementStroke = color 0 60 160
 
 let private toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
-let private projectPt (m : ElementMovementModel) (p : Vector3) : ScreenPoint = TableScene.project m.view p
+let private projectPt (m : ElementMovementModel) (p : Vector3) : ScreenPoint = TableScene.projectOnScene m.view p
 
 /// The element's top-down footprint (depth `b` along the beam × face `a2` across it, magnified by the
 /// draw zoom), as a filled rectangle that highlights while dragging.
@@ -125,7 +125,7 @@ let private tableCanvas (model : ElementMovementModel) : IView =
         Canvas.height elementMovementCanvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
         Canvas.verticalAlignment VerticalAlignment.Top
-        Canvas.children (TableScene.plateViews model.view model.table false @ TableScene.sourceDetectorRayViews model.view @ [ elementView model ])
+        Canvas.children (TableScene.plateViews model.view model.table PlateNotSelected @ TableScene.sourceDetectorRayViews model.view @ [ elementView model ])
     ] :> IView
 
 let private kindName (k : CatalogueKind) : string =
@@ -167,7 +167,7 @@ let private controlBar (model : ElementMovementModel) (dispatch : ElementMovemen
     ] :> IView
 
 let elementMovementView (model : ElementMovementModel) (dispatch : ElementMovementMsg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.elementMovementCanvas.value e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.elementMovementCanvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]

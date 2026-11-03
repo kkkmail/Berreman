@@ -255,7 +255,7 @@ let private codeLabel (project : Vector3 -> ScreenPoint) (selected : bool) (e : 
     TextBlock.create [
         TextBlock.left (c.sx + 8.0)
         TextBlock.top (c.sy - 26.0)
-        TextBlock.text (Catalogue.kindCode e.placement.catalogueKind)
+        TextBlock.text e.placement.catalogueKind.kindCode
         TextBlock.fontWeight (if selected then FontWeight.Bold else FontWeight.SemiBold)
         TextBlock.foreground (brush codeColor)
     ] :> IView

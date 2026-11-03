@@ -36,8 +36,8 @@ module ElementRendererBindingTests =
     /// called on the headless UI thread (inside `HeadlessSession.run`).
     let private renderShapes (kind : RendererControls.RendererKind) (e : ElementRenderer.Drawable) : Shape list =
         let renderer = ElementRenderer.rendererOf { RendererControls.defaultState with kind = kind }
-        let views = renderer.draw (TableScene.project Table.defaultView) false e
-        let window = Window(Width = TableScene.canvasWidth, Height = TableScene.canvasHeight)
+        let views = renderer.draw (TableScene.projectOnScene Table.defaultView) false e
+        let window = Window(Width = TableScene.canvasWidth.value, Height = TableScene.canvasHeight.value)
         window.Content <- Component(fun _ -> Canvas.create [ Canvas.children views ] :> IView)
         window.Show()
         Dispatcher.UIThread.RunJobs()

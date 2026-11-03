@@ -7,7 +7,9 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
+open Softellect.Sys.Primitives
 open Analytics.Variables
+open OpticalConstructor.Storage.Sidecar
 open OpticalConstructor.Ui.JobRunner
 open Xunit
 
@@ -39,7 +41,7 @@ module JobRunnerCancelTests =
     let private sweep : RangedVariable =
         WaveLengthRange(Range<_>.create (NumberOfPoints 10) (WaveLength.nm 500.0<nm>) (WaveLength.nm 700.0<nm>))
 
-    let private solvePoint (_ : int) : float =
+    let private solvePoint (_ : JobStepCount) : float =
         OpticalSystemSolver(light, sampleSystem).solution.emSys.reflected.e.value.norm
 
     // ----------------------------------------------------------------- AC-J10.1
@@ -47,24 +49,24 @@ module JobRunnerCancelTests =
     [<Fact>]
     let ``AC-J10 sweepTotalPoints is the engine's 0..length inclusive count`` () =
         // Granularity is driven by the RangedVariable point count (Variables.fs:42).
-        Assert.Equal(11, sweepTotalPoints sweep)
-        Assert.Equal(sweep.length + 1, sweepTotalPoints sweep)
+        Assert.Equal(11, sweep.sweepTotalPoints.value)
+        Assert.Equal(sweep.length + 1, sweep.sweepTotalPoints.value)
 
     [<Fact>]
     let ``AC-J10 a run reports increasing completed-over-total progress to completion`` () =
-        let total = sweepTotalPoints sweep
+        let total = sweep.sweepTotalPoints
         let ticks = ResizeArray<JobProgress>()
         use cts = new CancellationTokenSource()
         let outcome = runPoints cts.Token total ticks.Add solvePoint
 
         match outcome with
-        | RanToCompletion results -> Assert.Equal(total, List.length results)
+        | RanToCompletion results -> Assert.Equal(total.value, List.length results)
         | CancelledWith _ -> Assert.Fail("an uncancelled run must run to completion")
 
         // One tick per point, completed strictly increasing 1..total, total known.
-        Assert.Equal(total, ticks.Count)
-        let completed = ticks |> Seq.map (fun p -> p.completed) |> List.ofSeq
-        Assert.Equal<int list>([ 1 .. total ], completed)
+        Assert.Equal(total.value, ticks.Count)
+        let completed = ticks |> Seq.map (fun p -> p.completed.value) |> List.ofSeq
+        Assert.Equal<int list>([ 1 .. total.value ], completed)
         Assert.All(ticks, fun p -> Assert.Equal(Some total, p.total))
         Assert.All(ticks, fun p -> Assert.False(p.isIndeterminate))
         // The last tick is a full completion (fraction = 1).
@@ -74,15 +76,15 @@ module JobRunnerCancelTests =
 
     [<Fact>]
     let ``AC-J10 a cancel observed between points stops within one inter-point check`` () =
-        let total = sweepTotalPoints sweep
+        let total = sweep.sweepTotalPoints
         let cancelAfter = 3
         use cts = new CancellationTokenSource()
         let ticks = ResizeArray<JobProgress>()
         // Cancel from inside the step body once `cancelAfter` points have run; the
         // loop checks the token at the TOP of the next iteration and stops there.
-        let step (i : int) : float =
+        let step (i : JobStepCount) : float =
             let v = solvePoint i
-            if i = cancelAfter - 1 then cts.Cancel()
+            if i.value = cancelAfter - 1 then cts.Cancel()
             v
 
         let outcome = runPoints cts.Token total ticks.Add step
@@ -92,7 +94,7 @@ module JobRunnerCancelTests =
             // Stopped within one inter-point check: exactly `cancelAfter` points ran,
             // not the full sweep.
             Assert.Equal(cancelAfter, List.length partial)
-            Assert.True(List.length partial < total)
+            Assert.True(List.length partial < total.value)
         | RanToCompletion _ -> Assert.Fail("a cancelled run must stop early")
 
         Assert.Equal(cancelAfter, ticks.Count)
@@ -129,12 +131,12 @@ module JobRunnerCancelTests =
     [<Fact>]
     let ``AC-J10 the single Start-Cancel button shows two states`` () =
         let idle : JobModel<float list> = initModel
-        Assert.Equal("Start", buttonLabel idle)
-        Assert.False(canCancel idle)
+        Assert.Equal("Start", idle.buttonLabel)
+        Assert.False(idle.canCancel)
 
         let running = updateJob StartRequested idle
-        Assert.Equal("Cancel", buttonLabel running)
-        Assert.True(canCancel running)
+        Assert.Equal("Cancel", running.buttonLabel)
+        Assert.True(running.canCancel)
 
     // ----------------------------------------------------------------- indeterminate
 
@@ -143,7 +145,7 @@ module JobRunnerCancelTests =
         // Optimizer-style: iterate while hasMore holds, no known total.
         let ticks = ResizeArray<JobProgress>()
         use cts = new CancellationTokenSource()
-        let outcome = runIterations cts.Token (fun i -> i < 4) ticks.Add (fun i -> float i)
+        let outcome = runIterations cts.Token (fun i -> if i.value < 4 then MoreStepsRemain else NoStepsRemain) ticks.Add (fun i -> float i.value)
         match outcome with
         | RanToCompletion rs -> Assert.Equal(4, List.length rs)
         | CancelledWith _ -> Assert.Fail("an uncancelled run must complete")
@@ -154,15 +156,15 @@ module JobRunnerCancelTests =
 
     [<Fact>]
     let ``AC-J10 derived artefacts go under the project sidecar dir, never the repo root`` () =
-        let projectDir = Path.Combine(Path.GetTempPath(), "oc-project-sample")
+        let projectDir = FolderName (Path.Combine(Path.GetTempPath(), "oc-project-sample"))
         let repoRoot = Path.GetFullPath(Path.Combine(__SOURCE_DIRECTORY__, "..", "..", ".."))
 
-        let sidecarDir = sidecarDirectory projectDir
-        let path = derivedArtefactPath projectDir "sweep-result"
+        let sidecarDir = projectDir.sidecarFolder.value
+        let path = (derivedArtefactPath projectDir (FileName "sweep-result")).value
 
         // The artefact lives under the project's sidecar directory…
         Assert.StartsWith(Path.GetFullPath sidecarDir, Path.GetFullPath path)
-        Assert.StartsWith(Path.GetFullPath projectDir, Path.GetFullPath sidecarDir)
+        Assert.StartsWith(Path.GetFullPath projectDir.value, Path.GetFullPath sidecarDir)
         // …carries the Softellect .binz extension (reused, not hand-written)…
         Assert.Equal(".binz", Path.GetExtension path)
         // …and is NEVER the repo root or a direct child of it.

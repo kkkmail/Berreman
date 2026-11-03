@@ -35,7 +35,7 @@ module MainSceneMsgTests =
         [ LightSource; LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ]
 
     let private kindOfCode (code : string) : CatalogueKind =
-        match allKinds |> List.filter (fun k -> Catalogue.kindCode k = code) with
+        match allKinds |> List.filter (fun k -> k.kindCode = code) with
         | [ k ] -> k
         | matches -> failwith $"catalogue code '{code}' matched {List.length matches} kinds"
 
@@ -141,7 +141,7 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``the palette offers THREE polarizer buttons over the UNCHANGED CatalogueKinds`` () =
-        let buttons = paletteButtons (initMain ())
+        let buttons = (initMain ()).paletteButtons
         // The polarizer trio: LP / CPL / CPR, in palette order — LP adds a LinearPolarizer, the
         // CPL / CPR pair adds CircularPolarizers; only the label and the pre-bound entry differ.
         let polarizers =

@@ -6,7 +6,7 @@
 /// 011) supplies the per-iteration optimizer progress payload to it; an active job
 /// surfaces in the `AppShell` (J.8) shared status area (slice 015).
 ///
-/// The harness is GENERIC over the per-step work (`step : int -> 'a`): it CONSUMES
+/// The harness is GENERIC over the per-step work (`step : JobStepCount -> 'StepResult`): it CONSUMES
 /// the engine sweep and the optimizer through an injected closure rather than
 /// forking `Variables.calculate`'s per-point routing or the ALGLIB loop (§0
 /// constraint 2 — reuse before invention). Sweep progress granularity stays tied
@@ -24,12 +24,8 @@ module OpticalConstructor.Ui.JobRunner
 
 open System
 open System.Diagnostics
-open System.IO
 open System.Threading
-open Softellect.Sys.Primitives
 open Analytics.Variables
-open OpticalConstructor.Storage
-open OpticalConstructor.Storage.Sidecar
 
 // ---------------------------------------------------------------------------
 // Progress payload (R-1 item 2). Completed-points-over-total for sweeps (total
@@ -38,31 +34,56 @@ open OpticalConstructor.Storage.Sidecar
 // report.
 // ---------------------------------------------------------------------------
 
+/// A count of a hosted job's steps: how many have completed, how many the job runs in all, or (passed to
+/// a step) how many completed before it.
+type JobStepCount =
+    | JobStepCount of int
+
+    member this.value = let (JobStepCount n) = this in n
+
+    /// One more step.
+    member this.next : JobStepCount = JobStepCount (this.value + 1)
+
+/// How long a hosted job has been running.
+type JobElapsed =
+    | JobElapsed of TimeSpan
+
+    member this.value = let (JobElapsed t) = this in t
+
+    member this.totalSeconds : float = this.value.TotalSeconds
+
+/// Whether an indeterminate job has another step to run (its optimizer's own termination decides).
+type JobContinuation =
+    | MoreStepsRemain
+    | NoStepsRemain
+
 /// A single progress tick: how many steps have completed, the total when known
 /// (`None` => indeterminate-but-running, R-1 item 2), and the elapsed run time.
 type JobProgress =
     {
-        completed : int
-        total : int option
-        elapsed : TimeSpan
+        completed : JobStepCount
+        total : JobStepCount option
+        elapsed : JobElapsed
     }
 
     /// Completed fraction in [0,1] when the total is known; `None` for an
     /// indeterminate job (the view shows a marquee/running state instead).
     member p.fraction =
         match p.total with
-        | Some t when t > 0 -> Some(float p.completed / float t)
+        | Some t when t.value > 0 -> Some(float p.completed.value / float t.value)
         | _ -> None
 
     /// True when the total is unknown — the view must show running, not frozen.
     member p.isIndeterminate = Option.isNone p.total
 
-/// The total number of points a sweep over `x` runs: the engine's own
-/// `Variables.calculate`/`calculate3D` iterate `0 .. x.length` INCLUSIVE
-/// (`Variables.fs:267,298`), so the total is `x.length + 1`. Reading the count
-/// straight off `RangedVariable.length` (`Variables.fs:42`) keeps progress
-/// granularity DRIVEN BY the engine's point count — it is not re-derived here.
-let sweepTotalPoints (x : RangedVariable) : int = x.length + 1
+type RangedVariable with
+
+    /// The total number of points a sweep over this variable runs: the engine's own
+    /// `Variables.calculate`/`calculate3D` iterate `0 .. x.length` INCLUSIVE
+    /// (`Variables.fs:267,298`), so the total is `x.length + 1`. Reading the count
+    /// straight off `RangedVariable.length` (`Variables.fs:42`) keeps progress
+    /// granularity DRIVEN BY the engine's point count — it is not re-derived here.
+    member this.sweepTotalPoints : JobStepCount = JobStepCount (this.length + 1)
 
 // ---------------------------------------------------------------------------
 // The cooperative run core (R-1 / cancellation). One job per worker; the
@@ -74,42 +95,46 @@ let sweepTotalPoints (x : RangedVariable) : int = x.length + 1
 /// The outcome of a cooperative run: either it ran every step to completion, or a
 /// cancellation was observed and the run stopped early carrying its PARTIAL
 /// results — which the MVU layer drops, leaving prior committed results intact.
-type JobOutcome<'a> =
-    | RanToCompletion of 'a list
-    | CancelledWith of 'a list
+type JobOutcome<'StepResult> =
+    | RanToCompletion of 'StepResult list
+    | CancelledWith of 'StepResult list
+
+/// Why a hosted job failed: the exception its run raised on the background worker.
+type JobError =
+    | JobRunExn of exn
 
 let private runLoop
     (token : CancellationToken)
-    (total : int option)
-    (shouldContinue : int -> bool)
+    (total : JobStepCount option)
+    (shouldContinue : JobStepCount -> JobContinuation)
     (onProgress : JobProgress -> unit)
-    (step : int -> 'a) : JobOutcome<'a> =
+    (step : JobStepCount -> 'StepResult) : JobOutcome<'StepResult> =
     let sw = Stopwatch.StartNew()
-    let results = ResizeArray<'a>()
-    let mutable i = 0
+    let results = ResizeArray<'StepResult>()
+    let mutable i = JobStepCount 0
     let mutable cancelled = false
-    while not cancelled && shouldContinue i do
+    while not cancelled && shouldContinue i = MoreStepsRemain do
         if token.IsCancellationRequested then
             // Observed between steps: stop within one inter-step check (item 5).
             cancelled <- true
         else
             let r = step i
             results.Add r
-            i <- i + 1
-            onProgress { completed = i; total = total; elapsed = sw.Elapsed }
+            i <- i.next
+            onProgress { completed = i; total = total; elapsed = JobElapsed sw.Elapsed }
     sw.Stop()
     let collected = List.ofSeq results
     if cancelled then CancelledWith collected else RanToCompletion collected
 
 /// Run a determinate job of exactly `total` steps (a sweep: `total =
-/// sweepTotalPoints x`), checking `token` between points and reporting
+/// x.sweepTotalPoints`), checking `token` between points and reporting
 /// completed-over-total progress with elapsed time (R-1 item 2).
 let runPoints
     (token : CancellationToken)
-    (total : int)
+    (total : JobStepCount)
     (onProgress : JobProgress -> unit)
-    (step : int -> 'a) : JobOutcome<'a> =
-    runLoop token (Some total) (fun i -> i < total) onProgress step
+    (step : JobStepCount -> 'StepResult) : JobOutcome<'StepResult> =
+    runLoop token (Some total) (fun i -> if i < total then MoreStepsRemain else NoStepsRemain) onProgress step
 
 /// Run an indeterminate job (optimizer iterations) while `hasMore` holds and the
 /// token is not cancelled, reporting iteration-count progress with NO known total
@@ -117,21 +142,23 @@ let runPoints
 /// optimizer's own termination drives `hasMore`; the loop adds no retry.
 let runIterations
     (token : CancellationToken)
-    (hasMore : int -> bool)
+    (hasMore : JobStepCount -> JobContinuation)
     (onProgress : JobProgress -> unit)
-    (step : int -> 'a) : JobOutcome<'a> =
+    (step : JobStepCount -> 'StepResult) : JobOutcome<'StepResult> =
     runLoop token None hasMore onProgress step
 
 /// Start `run` on a thread-pool background worker (R-1 item 1: the long job never
 /// freezes the UI). When it finishes — completion, cancellation, OR an exception —
-/// `onDone` is invoked with the result; an exception becomes `Error message`
+/// `onDone` is invoked with the result; an exception becomes `Error (JobRunExn e)`
 /// (mapped to a `RunFailed` message) rather than crashing the worker.
-let startBackground (run : unit -> JobOutcome<'a>) (onDone : Result<JobOutcome<'a>, string> -> unit) : unit =
+let startBackground
+    (run : unit -> JobOutcome<'StepResult>)
+    (onDone : Result<JobOutcome<'StepResult>, JobError> -> unit) : unit =
     Async.Start(
         async {
             let outcome =
                 try Ok(run ())
-                with e -> Error e.Message
+                with e -> Error(JobRunExn e)
             onDone outcome
         })
 
@@ -149,20 +176,42 @@ type JobStatus =
     | Running
     | Completed
     | Cancelled
-    | Failed of string
+    | Failed of JobError
 
-/// The harness model, generic over the job's result type `'r` (a sweep result
+/// The harness model, generic over the job's result type (a sweep result
 /// table, a fit report, …). `committedResults` are the LAST completed run's
-/// results that the owning page renders; they survive a cancel.
-type JobModel<'r> =
+/// results that the owning page renders; they survive a cancel. Its members are the
+/// presentation seams a FuncUI view binds, so the §J.10 UX commitments are provable headless.
+type JobModel<'Committed> =
     {
         status : JobStatus
         progress : JobProgress option
-        committedResults : 'r option
+        committedResults : 'Committed option
     }
 
+    /// True while a run is in flight (the Cancel state of the button).
+    member this.isRunning : bool = this.status = Running
+
+    /// Whether the immediate one-click Cancel is available (item 3/5): a run is in
+    /// flight.
+    member this.canCancel : bool = this.status = Running
+
+    /// The single Start↔Cancel button's label (item 5 — one button, two states):
+    /// "Cancel" while running, otherwise "Start".
+    member this.buttonLabel : string =
+        if this.isRunning then "Cancel" else "Start"
+
+    /// The progress line (item 2): completed/total + elapsed for a sweep, or an
+    /// indeterminate-but-running iteration count for optimization.
+    member this.progressText : string option =
+        this.progress
+        |> Option.map (fun p ->
+            match p.total with
+            | Some t -> $"%d{p.completed.value} / %d{t.value}  (%.1f{p.elapsed.totalSeconds} s)"
+            | None -> $"%d{p.completed.value} iterations  (%.1f{p.elapsed.totalSeconds} s)…")
+
 /// The idle initial model: no run, no progress, no committed results yet.
-let initModel<'r> : JobModel<'r> =
+let initModel<'Committed> : JobModel<'Committed> =
     {
         status = Idle
         progress = None
@@ -172,16 +221,16 @@ let initModel<'r> : JobModel<'r> =
 /// Messages the runner emits/consumes. `StartRequested`/`CancelRequested` are the
 /// two states of the single Start↔Cancel button (item 5); the remaining three are
 /// posted by the background worker via `startBackground`'s `onDone`.
-type JobMsg<'r> =
+type JobMsg<'Committed> =
     | StartRequested
     | CancelRequested
     | ProgressReported of JobProgress
-    | RunCompleted of 'r
+    | RunCompleted of 'Committed
     | RunCancelled
-    | RunFailed of string
+    | RunFailed of JobError
 
 /// Pure MVU update (Avalonia-free).
-let updateJob (msg : JobMsg<'r>) (model : JobModel<'r>) : JobModel<'r> =
+let updateJob (msg : JobMsg<'Committed>) (model : JobModel<'Committed>) : JobModel<'Committed> =
     match msg with
     // One-click, non-destructive Start (item 3): flip to Running, clear the
     // progress line; the prior committed results stay so a cancel can fall back.
@@ -198,51 +247,6 @@ let updateJob (msg : JobMsg<'r>) (model : JobModel<'r>) : JobModel<'r> =
     | RunCancelled -> { model with status = Cancelled }
     | RunFailed e -> { model with status = Failed e }
 
-// ---------------------------------------------------------------------------
-// Presentation seams (Avalonia-free). The strings/flags a FuncUI view binds, so
-// the §J.10 UX commitments are provable headless.
-// ---------------------------------------------------------------------------
-
-/// True while a run is in flight (the Cancel state of the button).
-let isRunning (model : JobModel<'r>) : bool = model.status = Running
-
-/// Whether the immediate one-click Cancel is available (item 3/5): a run is in
-/// flight.
-let canCancel (model : JobModel<'r>) : bool = model.status = Running
-
-/// The single Start↔Cancel button's label (item 5 — one button, two states):
-/// "Cancel" while running, otherwise "Start".
-let buttonLabel (model : JobModel<'r>) : string =
-    if isRunning model then "Cancel" else "Start"
-
-/// The progress line (item 2): completed/total + elapsed for a sweep, or an
-/// indeterminate-but-running iteration count for optimization.
-let progressText (model : JobModel<'r>) : string option =
-    model.progress
-    |> Option.map (fun p ->
-        match p.total with
-        | Some t -> $"%d{p.completed} / %d{t}  (%.1f{p.elapsed.TotalSeconds} s)"
-        | None -> $"%d{p.completed} iterations  (%.1f{p.elapsed.TotalSeconds} s)…")
-
-// ---------------------------------------------------------------------------
-// Derived-artefact sidecar confinement (R-1 item 6). Any artefact a job writes
-// (sweep/field-map `.binz`, fit histories) goes UNDER the project's sidecar
-// directory referenced from the project JSON (§A.7), NEVER the repository root;
-// these derived outputs are not committable project files (Part J adds none).
-// ---------------------------------------------------------------------------
-
-/// The project's sidecar directory for derived/bulk artefacts: a `.sidecars`
-/// subfolder beside the project file's own directory. NEVER the repository root.
-/// This is the SINGLE shared sidecar-location seam `FolderName.sidecarFolder` (`Storage.Sidecar`)
-/// (reuse finding F2): the fit page's `fitHistorySidecarPath` routes through the same
-/// seam, so the flat-vs-subfolder choice is decided in exactly one place.
-let sidecarDirectory (projectDir : string) : string =
-    (FolderName projectDir).sidecarFolder.value
-
-/// A derived-artefact `.binz` path under the project sidecar directory (item 6),
-/// via the single `Storage.Sidecar.derivedArtefactPath` seam, which appends the
-/// drift-proof Softellect `.binz` extension. The path is always under
-/// `sidecarDirectory projectDir`, never the repo root — the canonical JSON project
-/// that references it is the committable artefact (§0 constraint 4).
-let derivedArtefactPath (projectDir : string) (name : string) : string =
-    (Sidecar.derivedArtefactPath (FolderName projectDir) (FileName name)).value
+// Derived-artefact sidecar confinement (R-1 item 6): a job's artefacts (sweep/field-map `.binz`, fit
+// histories) go under the project's sidecar folder through `Storage.Sidecar.derivedArtefactPath`, never
+// the repository root (spec 0048 E028: the string wrappers here were deleted for that seam).

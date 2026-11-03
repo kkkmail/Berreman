@@ -71,8 +71,8 @@ type RendererTestModel =
     }
 
 // The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
-let rendererTestCanvasWidth : float = TableScene.canvasWidth
-let rendererTestCanvasHeight : float = TableScene.canvasHeight
+let rendererTestCanvasWidth : float = TableScene.canvasWidth.value
+let rendererTestCanvasHeight : float = TableScene.canvasHeight.value
 
 let private elementSelectRadiusPx : float = 50.0
 let private dragThresholdPx : float = 3.0
@@ -127,7 +127,7 @@ type RendererTestMsg =
 // Projection + selection + gestures.
 // ---------------------------------------------------------------------------
 
-let private projectPt (view : TableViewState) (p : Vector3) : ScreenPoint = TableScene.project view p
+let private projectPt (view : TableViewState) (p : Vector3) : ScreenPoint = TableScene.projectOnScene view p
 
 let private dist (a : ScreenPoint) (b : ScreenPoint) : float = sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
 
@@ -145,9 +145,9 @@ let private mapElement (i : int) (f : ElementRenderer.Drawable -> ElementRendere
     { m with elements = m.elements |> List.mapi (fun j e -> if j = i then f e else e) }
 
 let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : RendererTestModel) : RendererTestModel =
-    { m with view = TableScene.panViewBy (pt.sx - refPt.sx) (pt.sy - refPt.sy) m.view; drag = RendererTestPanning pt }
+    { m with view = TableScene.panViewBy refPt pt m.view; drag = RendererTestPanning pt }
 
-let private zoomBy (notches : int) (m : RendererTestModel) : RendererTestModel = { m with view = TableScene.zoomViewBy notches m.view }
+let private zoomBy (notches : int) (m : RendererTestModel) : RendererTestModel = { m with view = TableScene.zoomViewBy (WheelNotches notches) m.view }
 
 /// Rotate the SELECTION about axis (1/2/3) by `notches` steps: the selected element, or the table view.
 let private rotateSelected (axis : int) (notches : int) (m : RendererTestModel) : RendererTestModel =
@@ -158,7 +158,7 @@ let private rotateSelected (axis : int) (notches : int) (m : RendererTestModel) 
         mapElement i (fun e ->
             { e with placement = (match axis with 1 -> withR1 (rot e.placement.r1) | 2 -> withR2 (rot e.placement.r2) | _ -> withR3 (rot e.placement.r3)) e.placement }) m
     | None ->
-        { m with view = TableScene.rotateViewBy axis (wheelStepDegrees * float notches) m.view }
+        { m with view = TableScene.rotateViewBy (match axis with 1 -> RotationControls.R1 | 2 -> RotationControls.R2 | _ -> RotationControls.R3) a m.view }
 
 let updateRendererTest (msg : RendererTestMsg) (model : RendererTestModel) : RendererTestModel =
     match msg with
@@ -199,7 +199,7 @@ let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
 
 /// The table plate (highlighted when the table is the rotation target — nothing selected) + the ray.
 let private plateViews (model : RendererTestModel) : IView list =
-    TableScene.plateViews model.view model.table (model.selected = None)
+    TableScene.plateViews model.view model.table (match model.selected with None -> PlateSelected | Some _ -> PlateNotSelected)
     @ TableScene.sourceDetectorRayViews model.view
 
 /// The elements, drawn through the SHARED renderer (the only one that draws is the chosen one).
@@ -246,7 +246,7 @@ let private controlBar (model : RendererTestModel) (dispatch : RendererTestMsg -
     ] :> IView
 
 let rendererTestView (model : RendererTestModel) (dispatch : RendererTestMsg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.rendererTestCanvas.value e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.rendererTestCanvas e
     let wheelMods (km : KeyModifiers) : Set<RendererTestWheelModifier> =
         [ if km.HasFlag KeyModifiers.Control then RendererTestModCtrl
           if km.HasFlag KeyModifiers.Shift then RendererTestModShift

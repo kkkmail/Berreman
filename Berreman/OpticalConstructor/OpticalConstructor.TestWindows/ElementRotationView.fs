@@ -159,8 +159,8 @@ let private zoomMax : float = 50.0
 let private dragThresholdPx : float = 3.0
 
 // The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
-let elementRotationCanvasWidth : float = TableScene.canvasWidth
-let elementRotationCanvasHeight : float = TableScene.canvasHeight
+let elementRotationCanvasWidth : float = TableScene.canvasWidth.value
+let elementRotationCanvasHeight : float = TableScene.canvasHeight.value
 
 // ---------------------------------------------------------------------------
 // Pure update. Angles wrap mod 360.
@@ -207,18 +207,18 @@ let private zoomAllBy (notches : int) (model : ElementRotationModel) : ElementRo
 /// Pan the table by the screen delta (#2) — a pure screen-space translation of the view, via TableScene.
 let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (model : ElementRotationModel) : ElementRotationModel =
     { model with
-        view = TableScene.panViewBy (pt.sx - refPt.sx) (pt.sy - refPt.sy) model.view
+        view = TableScene.panViewBy refPt pt model.view
         drag = ElementRotationPanning pt }
 
 /// Zoom the table view (#2), bounded [0.2, 5] like the table test (distinct from the per-element draw
 /// zoom), via the shared `TableScene`.
 let private zoomTableBy (notches : int) (model : ElementRotationModel) : ElementRotationModel =
-    { model with view = TableScene.zoomViewBy notches model.view }
+    { model with view = TableScene.zoomViewBy (WheelNotches notches) model.view }
 
 /// The projected centre of an element (its placement point) under the current view, for click
 /// hit-testing.
 let private projectedCenter (view : TableViewState) (e : TestElement) : ScreenPoint =
-    TableScene.project view
+    TableScene.projectOnScene view
         (Vector3.create (e.placement.placementPoint.x / 1.0<meter>) (e.placement.placementPoint.y / 1.0<meter>) 0.0)
 
 /// The index of the element whose projected centre is nearest the click (there are always a few
@@ -319,7 +319,7 @@ let private n1Color = color 30 90 200      // beam-facing primary normal
 let private n2Color = color 210 120 0      // roll marker (secondary normal)
 
 let private toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
-let private projectPt (view : TableViewState) (p : Vector3) : ScreenPoint = TableScene.project view p
+let private projectPt (view : TableViewState) (p : Vector3) : ScreenPoint = TableScene.projectOnScene view p
 let private v3 (x : float) (y : float) (z : float) : Vector3 = Vector3.create x y z
 
 let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : IView =
@@ -334,7 +334,7 @@ let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : I
 /// central ray + source / detector markers. The table is not separately selectable in this test, so the
 /// plate is drawn unhighlighted.
 let private tableViews (model : ElementRotationModel) : IView list =
-    TableScene.plateViews model.view model.table false
+    TableScene.plateViews model.view model.table PlateNotSelected
     @ TableScene.sourceDetectorRayViews model.view
 
 /// One element: its oriented box (12 edges), the N1 (beam-facing) axis and the N2 (roll) marker.
@@ -451,7 +451,7 @@ let private tableCanvas (model : ElementRotationModel) : IView =
 
 /// The whole element-rotation test surface.
 let elementRotationView (model : ElementRotationModel) (dispatch : ElementRotationMsg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.elementRotationCanvas.value e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.elementRotationCanvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [

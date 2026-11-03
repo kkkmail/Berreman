@@ -197,7 +197,7 @@ let private mapElement (i : int) (f : ElementPlacement -> ElementPlacement) (m :
 
 let private rotateView (axis : int) (deg : float) (m : SnapToReflectedModel) : SnapToReflectedModel =
     if axis = 3 && m.tableR3Locked then m
-    else { m with view = TableScene.rotateViewBy axis deg m.view }
+    else { m with view = TableScene.rotateViewBy (match axis with 1 -> RotationControls.R1 | 2 -> RotationControls.R2 | _ -> RotationControls.R3) (Angle.degree (deg * 1.0<deg>)) m.view }
 
 let private rotateElement (axis : int) (deg : float) (i : int) (m : SnapToReflectedModel) : SnapToReflectedModel =
     mapElement i (fun p ->
@@ -213,18 +213,18 @@ let private rotateSelected (axis : int) (deg : float) (m : SnapToReflectedModel)
     | NothingSelected -> m
 
 let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : SnapToReflectedModel) : SnapToReflectedModel =
-    { m with view = TableScene.panViewBy (pt.sx - refPt.sx) (pt.sy - refPt.sy) m.view; drag = SnapToReflectedPanning pt }
+    { m with view = TableScene.panViewBy refPt pt m.view; drag = SnapToReflectedPanning pt }
 
 let private selectionAt (pt : ScreenPoint) (m : SnapToReflectedModel) : Selection =
     let nearest =
         elementPositions m
-        |> List.mapi (fun i pos -> i, dist pt (TableScene.project m.view pos))
+        |> List.mapi (fun i pos -> i, dist pt (TableScene.projectOnScene m.view pos))
         |> List.sortBy snd
         |> List.tryHead
     match nearest with
     | Some (i, d) when d <= elementSelectRadiusPx -> ElementSelected i
     | _ ->
-        match TableScene.tableHit m.view m.table pt with
+        match TableScene.tableHitOnScene m.view m.table pt with
         | InsidePolygon -> SnapToReflectedTableSelected
         | OutsidePolygon -> NothingSelected
 
@@ -285,7 +285,7 @@ let updateSnapToReflected (msg : SnapToReflectedMsg) (model : SnapToReflectedMod
         | SnapToReflectedRotateSel1 -> rotateSelected 1 (wheelStepDegrees * float notches) model
         | SnapToReflectedRotateSel2 -> rotateSelected 2 (wheelStepDegrees * float notches) model
         | SnapToReflectedRotateSel3 -> rotateSelected 3 (wheelStepDegrees * float notches) model
-        | SnapToReflectedZoomTable -> { model with view = TableScene.zoomViewBy notches model.view }
+        | SnapToReflectedZoomTable -> { model with view = TableScene.zoomViewBy (WheelNotches notches) model.view }
         | SnapToReflectedNoWheelAction -> model
 
 // ---------------------------------------------------------------------------
@@ -309,7 +309,7 @@ let private drawScale : float = 3.0
 let private v3 (x : float) (y : float) (z : float) : Vector3 = Vector3.create x y z
 
 let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : IView =
-    Line.create [ Line.startPoint (TableScene.toPoint a); Line.endPoint (TableScene.toPoint b); Line.stroke (brush c); Line.strokeThickness w ] :> IView
+    Line.create [ Line.startPoint a.toPoint; Line.endPoint b.toPoint; Line.stroke (brush c); Line.strokeThickness w ] :> IView
 
 let private roleColor (k : CatalogueKind) : Color =
     match k with
@@ -321,7 +321,7 @@ let private roleColor (k : CatalogueKind) : Color =
 /// normals, a face tick for the mirror, and its code.
 let private elementMark (m : SnapToReflectedModel) (i : int) (placement : ElementPlacement) (pos : Vector3) : IView list =
     let selected = (m.selection = ElementSelected i)
-    let proj = TableScene.project m.view
+    let proj = TableScene.projectOnScene m.view
     let cScr = proj pos
     let { primaryNormal = n1; secondaryNormal = n2 } = orientedBasis placement
     let half = drawScale * (placement.box.a2 / 2.0 / 1.0<meter>)
@@ -347,7 +347,7 @@ let private elementMark (m : SnapToReflectedModel) (i : int) (placement : Elemen
     let label =
         TextBlock.create [
             TextBlock.left (cScr.sx + 9.0); TextBlock.top (cScr.sy - 24.0)
-            TextBlock.text (TableAndElementRotationView.kindCode placement.catalogueKind)
+            TextBlock.text placement.catalogueKind.kindCode
             TextBlock.fontWeight (if selected then FontWeight.Bold else FontWeight.SemiBold)
             TextBlock.foreground (brush codeColor)
         ] :> IView
@@ -356,16 +356,16 @@ let private elementMark (m : SnapToReflectedModel) (i : int) (placement : Elemen
 let private sceneViews (m : SnapToReflectedModel) : IView list =
     let positions = elementPositions m
     let placements = drawPlacements m
-    let proj = TableScene.project m.view
+    let proj = TableScene.projectOnScene m.view
     let beam = positions |> List.pairwise |> List.map (fun (a, b) -> line (proj a) (proj b) rayColor 2.5)
     let elements = List.mapi2 (fun i p pos -> elementMark m i p pos) placements positions |> List.concat
-    TableScene.plateViews m.view m.table (m.selection = SnapToReflectedTableSelected) @ beam @ elements
+    TableScene.plateViews m.view m.table (match m.selection with SnapToReflectedTableSelected -> PlateSelected | _ -> PlateNotSelected) @ beam @ elements
 
 let private tableCanvas (model : SnapToReflectedModel) : IView =
     Canvas.create [
         Canvas.name ConstructorUiId.snapReflectedCanvas.value
-        Canvas.width TableScene.canvasWidth
-        Canvas.height TableScene.canvasHeight
+        Canvas.width TableScene.canvasWidth.value
+        Canvas.height TableScene.canvasHeight.value
         Canvas.horizontalAlignment HorizontalAlignment.Left
         Canvas.verticalAlignment VerticalAlignment.Top
         Canvas.children (sceneViews model)
@@ -422,7 +422,7 @@ let private wheelModifiers (km : KeyModifiers) : Set<SnapToReflectedWheelModifie
     |> Set.ofList
 
 let snapToReflectedView (model : SnapToReflectedModel) (dispatch : SnapToReflectedMsg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.snapReflectedCanvas.value e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.snapReflectedCanvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]

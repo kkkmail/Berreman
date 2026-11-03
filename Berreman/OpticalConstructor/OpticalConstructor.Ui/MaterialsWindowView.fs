@@ -1003,7 +1003,7 @@ let private selectModeRows (m : MaterialsWindowModel) (dispatch : MaterialsWindo
               TextBlock.fontWeight FontWeight.SemiBold
               TextBlock.textWrapping TextWrapping.Wrap
               TextBlock.maxWidth 380.0
-              TextBlock.text $"Choose a material for %s{targetText context.target} — the %s{Catalogue.kindName context.kindConstraint.value} kind constraint is fixed and cannot be removed."
+              TextBlock.text $"Choose a material for %s{targetText context.target} — the %s{context.kindConstraint.value.kindName} kind constraint is fixed and cannot be removed."
           ]
           |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.materialsSelectConstraint.value) :> IView ]
 

@@ -29,6 +29,7 @@ open Berreman.Geometry
 open Berreman.Fields
 open Berreman.Media
 open OpticalConstructor.Domain.BeamTree
+open OpticalConstructor.Domain.TableView
 
 // ---------------------------------------------------------------------------
 // Viewport coordinates (pure; the deferred OpenTK view maps `Vec3` to a
@@ -37,6 +38,7 @@ open OpticalConstructor.Domain.BeamTree
 
 /// A viewport 3-vector — plain floats the deferred OpenTK renderer maps onto its
 /// own vector type; this module takes no OpenTK drawing dependency.
+[<Softellect.Sys.NumericCarrier("the components of a viewport 3-vector, the numbers the 3-D system view lays out and draws with (R3; the viewport twin of the table-frame Vector3, as ScreenPoint is of the 2-D screen)")>]
 type Vec3 =
     {
         x : float
@@ -44,17 +46,24 @@ type Vec3 =
         z : float
     }
 
+/// A length in viewport units (the render boundary's pixels, §A.3).
+type ViewportLength =
+    | ViewportLength of float
+
+    member this.value = let (ViewportLength l) = this in l
+
 /// The default viewport scale: pixels (viewport units) per canonical meter. A
 /// display-layout constant, NOT a config knob; the deferred view normalises the
 /// scene to the available surface.
-[<Literal>]
-let defaultPixelsPerMeter = 2.0e5
+let defaultPixelsPerMeter : PixelsPerMeter = PixelsPerMeter 2.0e5
 
-/// Convert a canonical-SI length to a viewport coordinate at the render boundary
-/// (§A.3). Pure — it returns a new float and never writes the converted value back
-/// into the model.
-let metersToViewport (pixelsPerMeter : float) (m : float<meter>) : float =
-    pixelsPerMeter * (m / 1.0<meter>)
+type PixelsPerMeter with
+
+    /// Convert a canonical-SI length to a viewport length at the render boundary
+    /// (§A.3). Pure — it returns a new value and never writes the converted value back
+    /// into the model.
+    member this.toViewport (m : float<meter>) : ViewportLength =
+        ViewportLength (this.value * (m / 1.0<meter>))
 
 // ---------------------------------------------------------------------------
 // Element placement to scale (R-3). Each ConstructorElement is laid out along the
@@ -63,24 +72,26 @@ let metersToViewport (pixelsPerMeter : float) (m : float<meter>) : float =
 // finite extent.
 // ---------------------------------------------------------------------------
 
-/// The total finite-film thickness of a system in canonical meters (the half-space
-/// `Thickness.Infinity` films contribute nothing), read straight off the engine
-/// `Thickness` (`Media.fs:12`) — not re-typed.
-let systemThicknessMeters (sys : OpticalSystem) : float<meter> =
-    sys.films
-    |> List.sumBy (fun l ->
-        match l.thickness with
-        | Thickness.Thickness d -> d
-        | Thickness.Infinity -> 0.0<meter>)
+type OpticalSystem with
+
+    /// The total finite-film thickness of this system in canonical meters (the half-space
+    /// `Thickness.Infinity` films contribute nothing), read straight off the engine
+    /// `Thickness` (`Media.fs:12`) — not re-typed.
+    member this.finiteFilmThickness : float<meter> =
+        this.films
+        |> List.sumBy (fun l ->
+            match l.thickness with
+            | Thickness.Thickness d -> d
+            | Thickness.Infinity -> 0.0<meter>)
 
 /// A placed element of the system view: its `ConstructorElement`, its viewport
 /// position along the beam path, and its drawn extent along that path (both scaled
 /// from canonical meters at the render boundary).
-type PlacedElement =
+type SystemViewElement =
     {
         element : ConstructorElement
         position : Vec3
-        extent : float
+        extent : ViewportLength
     }
 
 /// The nominal viewport gap between consecutive elements, in canonical meters (a
@@ -93,14 +104,14 @@ let private elementGapMeters = 5.0e-3<meter>
 /// `Transmitted`, the `BeamBranch` declaration order `Map.toList` yields) places
 /// each node at the accumulated path position and sizes it by its system thickness;
 /// nothing is written back into the model (the positions are fresh `Vec3` values).
-let placeElements (pixelsPerMeter : float) (tree : BeamTree) : PlacedElement list =
-    let rec go (zStart : float<meter>) (node : BeamNode) : float<meter> * PlacedElement list =
-        let t = systemThicknessMeters node.system
+let placeElements (pixelsPerMeter : PixelsPerMeter) (tree : BeamTree) : SystemViewElement list =
+    let rec go (zStart : float<meter>) (node : BeamNode) : float<meter> * SystemViewElement list =
+        let t = node.system.finiteFilmThickness
         let placed =
             {
                 element = node.element
-                position = { x = 0.0; y = 0.0; z = metersToViewport pixelsPerMeter zStart }
-                extent = metersToViewport pixelsPerMeter t
+                position = { x = 0.0; y = 0.0; z = (pixelsPerMeter.toViewport zStart).value }
+                extent = pixelsPerMeter.toViewport t
             }
         let zAfter = zStart + t + elementGapMeters
         let childNodes = node.children |> Map.toList |> List.map snd

@@ -10,6 +10,7 @@ open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.Schematic
+open OpticalConstructor.Ui.SystemView3D
 open Xunit
 
 /// §J.1 schematic cross-section geometry tests (slice 014, AC-J1 portion ONLY).
@@ -180,14 +181,14 @@ module SchematicGeometryTests =
     let ``AC-J12 computing viewport geometry writes no value back into the model`` () =
         // The canonical thickness before and after building the placement is identical
         // — placeElements is a pure projection; it converts at the boundary only (§A.3).
-        let before = SystemView3D.systemThicknessMeters sampleSystem
+        let before = sampleSystem.finiteFilmThickness
         let tree : BeamTree = { root = sampleNode }
         let placed = SystemView3D.placeElements SystemView3D.defaultPixelsPerMeter tree
-        let after = SystemView3D.systemThicknessMeters sampleSystem
+        let after = sampleSystem.finiteFilmThickness
         Assert.Equal(before / 1.0<meter>, after / 1.0<meter>, 15)
         // The (canonical, finite) 200 nm film maps to a positive, finite extent.
         Assert.Single(placed) |> ignore
-        Assert.True(placed.[0].extent > 0.0)
+        Assert.True(placed.[0].extent.value > 0.0)
 
     [<Fact>]
     let ``AC-J12 a multi-element system places its elements to scale along the beam path`` () =

@@ -1203,7 +1203,7 @@ let private selectModeRows (m : LibraryWindowModel) (dispatch : LibraryWindowMsg
               TextBlock.fontWeight FontWeight.SemiBold
               TextBlock.textWrapping TextWrapping.Wrap
               TextBlock.maxWidth 380.0
-              TextBlock.text $"Choose a %s{Catalogue.kindName context.kindConstraint.value} for %s{targetText context.target} — the kind constraint is fixed and cannot be removed."
+              TextBlock.text $"Choose a %s{context.kindConstraint.value.kindName} for %s{targetText context.target} — the kind constraint is fixed and cannot be removed."
           ]
           |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.librarySelectConstraint.value) :> IView ]
 
