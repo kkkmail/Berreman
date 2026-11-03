@@ -9407,6 +9407,940 @@
           "command_sha256": "2594d04a576d49f42320de22364e755c05c6bbd425fe08f750e8f9b26a00a060"
         }
       ]
+    },
+    {
+      "id": "S33-ATTRIBUTION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B ('Licence attribution: CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots'; 'Export: any entry → its -json file; a selection or a category → a catalogue folder. Exporting pins the exported versions (§C)'), §A ('Catalogue folder layout': uniqueness per kind within a catalogue is checked on export), §C ('A version becomes Pinned — a one-way flag — when a kit first references it, or when it is exported'; '\"Export my library\" writes the user entries to a catalogue folder, which the recreated database imports'), §G ('Exports'); specs/0050/.section-plan-jsonl section 14 (S3.3) brief; specs/0050/.spec-md §4, §5, §6, §8, §10",
+      "requirement": "Domain decides licence attribution once: EntryLicence.attributionWith answers LicenceAndCitation for a CC-BY licence (SPDX identifier starting CC-BY, ignoring case) and LicenceNameOnly for any other; EntryProvenance.attributionOpt answers a pulled entry's attribution, through any fork, and None for built-in, user and kit-import provenances; EntryAttribution and EntryAttributionLine render their text; LibraryEntry.attributedEntryIds names the entry and, for a sample, its referenced materials.",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S33-ATTRIBUTION-READ",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B ('Licence attribution: CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots'; 'Export: any entry → its -json file; a selection or a category → a catalogue folder. Exporting pins the exported versions (§C)'), §A ('Catalogue folder layout': uniqueness per kind within a catalogue is checked on export), §C ('A version becomes Pinned — a one-way flag — when a kit first references it, or when it is exported'; '\"Export my library\" writes the user entries to a catalogue folder, which the recreated database imports'), §G ('Exports'); specs/0050/.section-plan-jsonl section 14 (S3.3) brief; specs/0050/.spec-md §4, §5, §6, §8, §10",
+      "requirement": "CatalogueImportProxy.attributionLinesOf answers, for the distinct ids asked in order, one line per held entry whose latest provenance carries a licence attribution, skipping ids not held and entries without one, and writes nothing; proved over the in-memory seam and SQLite :memory:.",
+      "checks": [
+        {
+          "step": 114,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S33-EXPORT-SEAM",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B ('Licence attribution: CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots'; 'Export: any entry → its -json file; a selection or a category → a catalogue folder. Exporting pins the exported versions (§C)'), §A ('Catalogue folder layout': uniqueness per kind within a catalogue is checked on export), §C ('A version becomes Pinned — a one-way flag — when a kit first references it, or when it is exported'; '\"Export my library\" writes the user entries to a catalogue folder, which the recreated database imports'), §G ('Exports'); specs/0050/.section-plan-jsonl section 14 (S3.3) brief; specs/0050/.spec-md §4, §5, §6, §8, §10",
+      "requirement": "CatalogueImportProxy.heldUserEntries answers every held entry whose latest provenance is not a built-in, whatever its lifecycle; pinEntryVersion pins one held version one way, refusing a version not held with ImportRejectedErr; the in-memory double pins materials and samples through S2.2's pinMaterialVersion and pinSampleVersion; the database pins any kind's row through the shared LibraryDbContext.stagePin, which the database pinMaterialVersion and pinSampleVersion also call; proved over both stores.",
+      "checks": [
+        {
+          "step": 115,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S33-ENTRY-EXPORT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B ('Licence attribution: CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots'; 'Export: any entry → its -json file; a selection or a category → a catalogue folder. Exporting pins the exported versions (§C)'), §A ('Catalogue folder layout': uniqueness per kind within a catalogue is checked on export), §C ('A version becomes Pinned — a one-way flag — when a kit first references it, or when it is exported'; '\"Export my library\" writes the user entries to a catalogue folder, which the recreated database imports'), §G ('Exports'); specs/0050/.section-plan-jsonl section 14 (S3.3) brief; specs/0050/.spec-md §4, §5, §6, §8, §10",
+      "requirement": "CatalogueImportContext.exportEntry reads an entry's latest envelope, pins that version before anything is written, and writes its canonical entry file through writeEntryFile (fileText through writeAtomically), byte-identical to the shipped file for a built-in; an entry not held is ExportedEntryNotHeldErr and writes nothing; a dropped exported file is decided as a reuse; LibraryExportError renders every case.",
+      "checks": [
+        {
+          "step": 116,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S33-CATALOGUE-EXPORT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B ('Licence attribution: CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots'; 'Export: any entry → its -json file; a selection or a category → a catalogue folder. Exporting pins the exported versions (§C)'), §A ('Catalogue folder layout': uniqueness per kind within a catalogue is checked on export), §C ('A version becomes Pinned — a one-way flag — when a kit first references it, or when it is exported'; '\"Export my library\" writes the user entries to a catalogue folder, which the recreated database imports'), §G ('Exports'); specs/0050/.section-plan-jsonl section 14 (S3.3) brief; specs/0050/.spec-md §4, §5, §6, §8, §10",
+      "requirement": "CatalogueImportContext.exportEntries writes the chosen entries plus the user entries they reference, at their latest versions, to a catalogue folder named by CatalogueExportTarget; it refuses an empty export, an entry not held, two entries of one kind with one file name (naming both) and a folder that already holds a catalogue, all before it pins; it pins every exported version before it writes; exportUserLibrary exports every user entry, inactive ones included, and no built-in; importing an export back gives reuse rows; CatalogueExportTarget.ofFolder names the catalogue by its folder.",
+      "checks": [
+        {
+          "step": 117,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S33-SHARED-WINDOW-PIECES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B ('Licence attribution: CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots'; 'Export: any entry → its -json file; a selection or a category → a catalogue folder. Exporting pins the exported versions (§C)'), §A ('Catalogue folder layout': uniqueness per kind within a catalogue is checked on export), §C ('A version becomes Pinned — a one-way flag — when a kit first references it, or when it is exported'; '\"Export my library\" writes the user entries to a catalogue folder, which the recreated database imports'), §G ('Exports'); specs/0050/.section-plan-jsonl section 14 (S3.3) brief; specs/0050/.spec-md §4, §5, §6, §8, §10",
+      "requirement": "MaterialsWindowView.verbButtonOn and pickLibraryFolder are the one verb-box and folder-picker bodies of both library windows, LibraryWindowView declares no copy of them, and the app's import context suggests the configured DataLocations.cataloguesFolder for exports while every other composition suggests none.",
+      "checks": [
+        {
+          "step": 118,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 118,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S33-MATERIALS-EXPORT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B ('Licence attribution: CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots'; 'Export: any entry → its -json file; a selection or a category → a catalogue folder. Exporting pins the exported versions (§C)'), §A ('Catalogue folder layout': uniqueness per kind within a catalogue is checked on export), §C ('A version becomes Pinned — a one-way flag — when a kit first references it, or when it is exported'; '\"Export my library\" writes the user entries to a catalogue folder, which the recreated database imports'), §G ('Exports'); specs/0050/.section-plan-jsonl section 14 (S3.3) brief; specs/0050/.spec-md §4, §5, §6, §8, §10",
+      "requirement": "The Materials window offers Export… for a selected material the library holds and Export shown to catalogue… for a non-empty shown list, in Browse mode, through a save dialog and a folder picker opened at the configured catalogues folder; the semantic messages ExportSelectedMaterial and ExportShownMaterials export through exportEntry and exportEntries and show the outcome or the refusal; the view panel shows a CC-BY material's citation and a CC0 material's licence name alone.",
+      "checks": [
+        {
+          "step": 119,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 119,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S33-LIBRARY-EXPORT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B ('Licence attribution: CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots'; 'Export: any entry → its -json file; a selection or a category → a catalogue folder. Exporting pins the exported versions (§C)'), §A ('Catalogue folder layout': uniqueness per kind within a catalogue is checked on export), §C ('A version becomes Pinned — a one-way flag — when a kit first references it, or when it is exported'; '\"Export my library\" writes the user entries to a catalogue folder, which the recreated database imports'), §G ('Exports'); specs/0050/.section-plan-jsonl section 14 (S3.3) brief; specs/0050/.spec-md §4, §5, §6, §8, §10",
+      "requirement": "The Library window offers Export…, Export shown to catalogue… and Export my library… in Browse mode; the semantic messages ExportSelectedLibraryEntry, ExportShownLibraryEntries and ExportMyLibrary export through exportEntry, exportEntries and exportUserLibrary and show the outcome or the refusal as the window message; the view panel credits the licensed materials of a selected sample; an Export my library over the app library is registered by a new library with every user entry.",
+      "checks": [
+        {
+          "step": 120,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 120,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S33-DETAILS-ATTRIBUTION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B ('Licence attribution: CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots'; 'Export: any entry → its -json file; a selection or a category → a catalogue folder. Exporting pins the exported versions (§C)'), §A ('Catalogue folder layout': uniqueness per kind within a catalogue is checked on export), §C ('A version becomes Pinned — a one-way flag — when a kit first references it, or when it is exported'; '\"Export my library\" writes the user entries to a catalogue folder, which the recreated database imports'), §G ('Exports'); specs/0050/.section-plan-jsonl section 14 (S3.3) brief; specs/0050/.spec-md §4, §5, §6, §8, §10",
+      "requirement": "TableAndElementRotationModel.detailsAttributionLines credits the selected element's bound entry and, for a sample, the licensed materials of its layers, and the Details bay shows those lines under its title.",
+      "checks": [
+        {
+          "step": 121,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 121,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S33-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B ('Licence attribution: CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots'; 'Export: any entry → its -json file; a selection or a category → a catalogue folder. Exporting pins the exported versions (§C)'), §A ('Catalogue folder layout': uniqueness per kind within a catalogue is checked on export), §C ('A version becomes Pinned — a one-way flag — when a kit first references it, or when it is exported'; '\"Export my library\" writes the user entries to a catalogue folder, which the recreated database imports'), §G ('Exports'); specs/0050/.section-plan-jsonl section 14 (S3.3) brief; specs/0050/.spec-md §4, §5, §6, §8, §10",
+      "requirement": "Every S3.3 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error, so every complete match on EntryProvenance, EntryAttribution, LibraryExportError, LibraryWindowError, MaterialsWindowMsg and LibraryWindowMsg covers its cases.",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 114,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 115,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 116,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 117,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 118,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 119,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 120,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 121,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S33-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B ('Licence attribution: CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots'; 'Export: any entry → its -json file; a selection or a category → a catalogue folder. Exporting pins the exported versions (§C)'), §A ('Catalogue folder layout': uniqueness per kind within a catalogue is checked on export), §C ('A version becomes Pinned — a one-way flag — when a kit first references it, or when it is exported'; '\"Export my library\" writes the user entries to a catalogue folder, which the recreated database imports'), §G ('Exports'); specs/0050/.section-plan-jsonl section 14 (S3.3) brief; specs/0050/.spec-md §4, §5, §6, §8, §10",
+      "requirement": "Every S3.3 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): every new value is elevated where it is born, every new case name has two words and is unique (ELEV016), every new error case ends in Err (ELEV020), every public module-level name is unique (ELEV015), and every caption is rendered by a member (ELEV002).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 114,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 115,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 116,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 117,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 118,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 119,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 120,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 121,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S33-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 14 (S3.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S3.3 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s14-elev-list-empty).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "invariant-s14-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "8b5d811e7181e04ceb37fa6d223abf38fc35b68c4a44cecff220a9a3dca99f93"
+        },
+        {
+          "step": 114,
+          "gate": "invariant-s14-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "8b5d811e7181e04ceb37fa6d223abf38fc35b68c4a44cecff220a9a3dca99f93"
+        },
+        {
+          "step": 115,
+          "gate": "invariant-s14-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "8b5d811e7181e04ceb37fa6d223abf38fc35b68c4a44cecff220a9a3dca99f93"
+        },
+        {
+          "step": 116,
+          "gate": "invariant-s14-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "8b5d811e7181e04ceb37fa6d223abf38fc35b68c4a44cecff220a9a3dca99f93"
+        },
+        {
+          "step": 117,
+          "gate": "invariant-s14-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "8b5d811e7181e04ceb37fa6d223abf38fc35b68c4a44cecff220a9a3dca99f93"
+        },
+        {
+          "step": 118,
+          "gate": "invariant-s14-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "8b5d811e7181e04ceb37fa6d223abf38fc35b68c4a44cecff220a9a3dca99f93"
+        },
+        {
+          "step": 119,
+          "gate": "invariant-s14-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "8b5d811e7181e04ceb37fa6d223abf38fc35b68c4a44cecff220a9a3dca99f93"
+        },
+        {
+          "step": 120,
+          "gate": "invariant-s14-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "8b5d811e7181e04ceb37fa6d223abf38fc35b68c4a44cecff220a9a3dca99f93"
+        },
+        {
+          "step": 121,
+          "gate": "invariant-s14-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "8b5d811e7181e04ceb37fa6d223abf38fc35b68c4a44cecff220a9a3dca99f93"
+        }
+      ]
+    },
+    {
+      "id": "S33-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 14 (S3.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S3.3 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s14-no-vstest).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "invariant-s14-no-vstest",
+          "selection": "command",
+          "command_sha256": "e60686c1eac51ca5f8c6bb896e71d18c53934a93cc7d173ecc561b42e6625773"
+        },
+        {
+          "step": 114,
+          "gate": "invariant-s14-no-vstest",
+          "selection": "command",
+          "command_sha256": "e60686c1eac51ca5f8c6bb896e71d18c53934a93cc7d173ecc561b42e6625773"
+        },
+        {
+          "step": 115,
+          "gate": "invariant-s14-no-vstest",
+          "selection": "command",
+          "command_sha256": "e60686c1eac51ca5f8c6bb896e71d18c53934a93cc7d173ecc561b42e6625773"
+        },
+        {
+          "step": 116,
+          "gate": "invariant-s14-no-vstest",
+          "selection": "command",
+          "command_sha256": "e60686c1eac51ca5f8c6bb896e71d18c53934a93cc7d173ecc561b42e6625773"
+        },
+        {
+          "step": 117,
+          "gate": "invariant-s14-no-vstest",
+          "selection": "command",
+          "command_sha256": "e60686c1eac51ca5f8c6bb896e71d18c53934a93cc7d173ecc561b42e6625773"
+        },
+        {
+          "step": 118,
+          "gate": "invariant-s14-no-vstest",
+          "selection": "command",
+          "command_sha256": "e60686c1eac51ca5f8c6bb896e71d18c53934a93cc7d173ecc561b42e6625773"
+        },
+        {
+          "step": 119,
+          "gate": "invariant-s14-no-vstest",
+          "selection": "command",
+          "command_sha256": "e60686c1eac51ca5f8c6bb896e71d18c53934a93cc7d173ecc561b42e6625773"
+        },
+        {
+          "step": 120,
+          "gate": "invariant-s14-no-vstest",
+          "selection": "command",
+          "command_sha256": "e60686c1eac51ca5f8c6bb896e71d18c53934a93cc7d173ecc561b42e6625773"
+        },
+        {
+          "step": 121,
+          "gate": "invariant-s14-no-vstest",
+          "selection": "command",
+          "command_sha256": "e60686c1eac51ca5f8c6bb896e71d18c53934a93cc7d173ecc561b42e6625773"
+        }
+      ]
+    },
+    {
+      "id": "S33-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 14 (S3.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S3.3 step, nothing under Berreman/ names kit.kit-json (section invariant s14-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "invariant-s14-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "e83aa0ed6dddf63542a6a19a4bad4f87e2238ac77ef44b1d53c34625745e129b"
+        },
+        {
+          "step": 114,
+          "gate": "invariant-s14-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "e83aa0ed6dddf63542a6a19a4bad4f87e2238ac77ef44b1d53c34625745e129b"
+        },
+        {
+          "step": 115,
+          "gate": "invariant-s14-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "e83aa0ed6dddf63542a6a19a4bad4f87e2238ac77ef44b1d53c34625745e129b"
+        },
+        {
+          "step": 116,
+          "gate": "invariant-s14-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "e83aa0ed6dddf63542a6a19a4bad4f87e2238ac77ef44b1d53c34625745e129b"
+        },
+        {
+          "step": 117,
+          "gate": "invariant-s14-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "e83aa0ed6dddf63542a6a19a4bad4f87e2238ac77ef44b1d53c34625745e129b"
+        },
+        {
+          "step": 118,
+          "gate": "invariant-s14-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "e83aa0ed6dddf63542a6a19a4bad4f87e2238ac77ef44b1d53c34625745e129b"
+        },
+        {
+          "step": 119,
+          "gate": "invariant-s14-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "e83aa0ed6dddf63542a6a19a4bad4f87e2238ac77ef44b1d53c34625745e129b"
+        },
+        {
+          "step": 120,
+          "gate": "invariant-s14-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "e83aa0ed6dddf63542a6a19a4bad4f87e2238ac77ef44b1d53c34625745e129b"
+        },
+        {
+          "step": 121,
+          "gate": "invariant-s14-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "e83aa0ed6dddf63542a6a19a4bad4f87e2238ac77ef44b1d53c34625745e129b"
+        }
+      ]
+    },
+    {
+      "id": "S33-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 14 (S3.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S3.3 step, nothing under Berreman/ names EpsAxisEvaluated (section invariant s14-no-eps-axis-evaluated, established by S1.1).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "invariant-s14-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0e417316a19f21ca175a49788c5b4d422d7311ca94e181286820d310597d3df8"
+        },
+        {
+          "step": 114,
+          "gate": "invariant-s14-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0e417316a19f21ca175a49788c5b4d422d7311ca94e181286820d310597d3df8"
+        },
+        {
+          "step": 115,
+          "gate": "invariant-s14-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0e417316a19f21ca175a49788c5b4d422d7311ca94e181286820d310597d3df8"
+        },
+        {
+          "step": 116,
+          "gate": "invariant-s14-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0e417316a19f21ca175a49788c5b4d422d7311ca94e181286820d310597d3df8"
+        },
+        {
+          "step": 117,
+          "gate": "invariant-s14-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0e417316a19f21ca175a49788c5b4d422d7311ca94e181286820d310597d3df8"
+        },
+        {
+          "step": 118,
+          "gate": "invariant-s14-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0e417316a19f21ca175a49788c5b4d422d7311ca94e181286820d310597d3df8"
+        },
+        {
+          "step": 119,
+          "gate": "invariant-s14-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0e417316a19f21ca175a49788c5b4d422d7311ca94e181286820d310597d3df8"
+        },
+        {
+          "step": 120,
+          "gate": "invariant-s14-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0e417316a19f21ca175a49788c5b4d422d7311ca94e181286820d310597d3df8"
+        },
+        {
+          "step": 121,
+          "gate": "invariant-s14-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0e417316a19f21ca175a49788c5b4d422d7311ca94e181286820d310597d3df8"
+        }
+      ]
+    },
+    {
+      "id": "S33-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 14 (S3.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S3.3 step, nothing under Berreman/ says complexity = None or complexity = Some (section invariant s14-complexity-mandatory, established by S1.2).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "invariant-s14-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3e5da3835769e68812ac303dfe2a557b4e13493e0c686ca40a3347b157c17640"
+        },
+        {
+          "step": 114,
+          "gate": "invariant-s14-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3e5da3835769e68812ac303dfe2a557b4e13493e0c686ca40a3347b157c17640"
+        },
+        {
+          "step": 115,
+          "gate": "invariant-s14-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3e5da3835769e68812ac303dfe2a557b4e13493e0c686ca40a3347b157c17640"
+        },
+        {
+          "step": 116,
+          "gate": "invariant-s14-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3e5da3835769e68812ac303dfe2a557b4e13493e0c686ca40a3347b157c17640"
+        },
+        {
+          "step": 117,
+          "gate": "invariant-s14-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3e5da3835769e68812ac303dfe2a557b4e13493e0c686ca40a3347b157c17640"
+        },
+        {
+          "step": 118,
+          "gate": "invariant-s14-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3e5da3835769e68812ac303dfe2a557b4e13493e0c686ca40a3347b157c17640"
+        },
+        {
+          "step": 119,
+          "gate": "invariant-s14-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3e5da3835769e68812ac303dfe2a557b4e13493e0c686ca40a3347b157c17640"
+        },
+        {
+          "step": 120,
+          "gate": "invariant-s14-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3e5da3835769e68812ac303dfe2a557b4e13493e0c686ca40a3347b157c17640"
+        },
+        {
+          "step": 121,
+          "gate": "invariant-s14-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3e5da3835769e68812ac303dfe2a557b4e13493e0c686ca40a3347b157c17640"
+        }
+      ]
+    },
+    {
+      "id": "S33-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 14 (S3.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S3.3 step, no Berreman/*.fs file holds a seeded preset string id (section invariant s14-no-seeded-string-preset-ids, established by S1.3).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "invariant-s14-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ea2bed3ae768abe98f166d4bce04aa043f95292f7fc77073023136e9e45a0951"
+        },
+        {
+          "step": 114,
+          "gate": "invariant-s14-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ea2bed3ae768abe98f166d4bce04aa043f95292f7fc77073023136e9e45a0951"
+        },
+        {
+          "step": 115,
+          "gate": "invariant-s14-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ea2bed3ae768abe98f166d4bce04aa043f95292f7fc77073023136e9e45a0951"
+        },
+        {
+          "step": 116,
+          "gate": "invariant-s14-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ea2bed3ae768abe98f166d4bce04aa043f95292f7fc77073023136e9e45a0951"
+        },
+        {
+          "step": 117,
+          "gate": "invariant-s14-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ea2bed3ae768abe98f166d4bce04aa043f95292f7fc77073023136e9e45a0951"
+        },
+        {
+          "step": 118,
+          "gate": "invariant-s14-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ea2bed3ae768abe98f166d4bce04aa043f95292f7fc77073023136e9e45a0951"
+        },
+        {
+          "step": 119,
+          "gate": "invariant-s14-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ea2bed3ae768abe98f166d4bce04aa043f95292f7fc77073023136e9e45a0951"
+        },
+        {
+          "step": 120,
+          "gate": "invariant-s14-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ea2bed3ae768abe98f166d4bce04aa043f95292f7fc77073023136e9e45a0951"
+        },
+        {
+          "step": 121,
+          "gate": "invariant-s14-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ea2bed3ae768abe98f166d4bce04aa043f95292f7fc77073023136e9e45a0951"
+        }
+      ]
+    },
+    {
+      "id": "S33-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 14 (S3.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S3.3 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (section invariant s14-no-seeding-seam, established by S1.6).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "invariant-s14-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "20e0f3f9aab9d3a68b6cbd7801d75460f51b25be5a9f4e799d78b0eb1505224a"
+        },
+        {
+          "step": 114,
+          "gate": "invariant-s14-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "20e0f3f9aab9d3a68b6cbd7801d75460f51b25be5a9f4e799d78b0eb1505224a"
+        },
+        {
+          "step": 115,
+          "gate": "invariant-s14-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "20e0f3f9aab9d3a68b6cbd7801d75460f51b25be5a9f4e799d78b0eb1505224a"
+        },
+        {
+          "step": 116,
+          "gate": "invariant-s14-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "20e0f3f9aab9d3a68b6cbd7801d75460f51b25be5a9f4e799d78b0eb1505224a"
+        },
+        {
+          "step": 117,
+          "gate": "invariant-s14-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "20e0f3f9aab9d3a68b6cbd7801d75460f51b25be5a9f4e799d78b0eb1505224a"
+        },
+        {
+          "step": 118,
+          "gate": "invariant-s14-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "20e0f3f9aab9d3a68b6cbd7801d75460f51b25be5a9f4e799d78b0eb1505224a"
+        },
+        {
+          "step": 119,
+          "gate": "invariant-s14-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "20e0f3f9aab9d3a68b6cbd7801d75460f51b25be5a9f4e799d78b0eb1505224a"
+        },
+        {
+          "step": 120,
+          "gate": "invariant-s14-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "20e0f3f9aab9d3a68b6cbd7801d75460f51b25be5a9f4e799d78b0eb1505224a"
+        },
+        {
+          "step": 121,
+          "gate": "invariant-s14-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "20e0f3f9aab9d3a68b6cbd7801d75460f51b25be5a9f4e799d78b0eb1505224a"
+        }
+      ]
+    },
+    {
+      "id": "S33-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 14 (S3.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S3.3 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (section invariant s14-t1-no-code-seeds, 001 §T 'From section 1', established by S1.7).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "invariant-s14-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "5808c8a36fc04af27319a178bfd2d6902ba451bf71a7ca29a508bc9686504ff9"
+        },
+        {
+          "step": 114,
+          "gate": "invariant-s14-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "5808c8a36fc04af27319a178bfd2d6902ba451bf71a7ca29a508bc9686504ff9"
+        },
+        {
+          "step": 115,
+          "gate": "invariant-s14-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "5808c8a36fc04af27319a178bfd2d6902ba451bf71a7ca29a508bc9686504ff9"
+        },
+        {
+          "step": 116,
+          "gate": "invariant-s14-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "5808c8a36fc04af27319a178bfd2d6902ba451bf71a7ca29a508bc9686504ff9"
+        },
+        {
+          "step": 117,
+          "gate": "invariant-s14-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "5808c8a36fc04af27319a178bfd2d6902ba451bf71a7ca29a508bc9686504ff9"
+        },
+        {
+          "step": 118,
+          "gate": "invariant-s14-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "5808c8a36fc04af27319a178bfd2d6902ba451bf71a7ca29a508bc9686504ff9"
+        },
+        {
+          "step": 119,
+          "gate": "invariant-s14-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "5808c8a36fc04af27319a178bfd2d6902ba451bf71a7ca29a508bc9686504ff9"
+        },
+        {
+          "step": 120,
+          "gate": "invariant-s14-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "5808c8a36fc04af27319a178bfd2d6902ba451bf71a7ca29a508bc9686504ff9"
+        },
+        {
+          "step": 121,
+          "gate": "invariant-s14-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "5808c8a36fc04af27319a178bfd2d6902ba451bf71a7ca29a508bc9686504ff9"
+        }
+      ]
+    },
+    {
+      "id": "S33-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 14 (S3.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S3.3 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (section invariant s14-no-seed-modules, established by S1.3 and S1.7).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "invariant-s14-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "14aff00c44b8bdc533cab5008a2f299cc137dd7a163a7e61b80e2e1044494dcb"
+        },
+        {
+          "step": 114,
+          "gate": "invariant-s14-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "14aff00c44b8bdc533cab5008a2f299cc137dd7a163a7e61b80e2e1044494dcb"
+        },
+        {
+          "step": 115,
+          "gate": "invariant-s14-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "14aff00c44b8bdc533cab5008a2f299cc137dd7a163a7e61b80e2e1044494dcb"
+        },
+        {
+          "step": 116,
+          "gate": "invariant-s14-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "14aff00c44b8bdc533cab5008a2f299cc137dd7a163a7e61b80e2e1044494dcb"
+        },
+        {
+          "step": 117,
+          "gate": "invariant-s14-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "14aff00c44b8bdc533cab5008a2f299cc137dd7a163a7e61b80e2e1044494dcb"
+        },
+        {
+          "step": 118,
+          "gate": "invariant-s14-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "14aff00c44b8bdc533cab5008a2f299cc137dd7a163a7e61b80e2e1044494dcb"
+        },
+        {
+          "step": 119,
+          "gate": "invariant-s14-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "14aff00c44b8bdc533cab5008a2f299cc137dd7a163a7e61b80e2e1044494dcb"
+        },
+        {
+          "step": 120,
+          "gate": "invariant-s14-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "14aff00c44b8bdc533cab5008a2f299cc137dd7a163a7e61b80e2e1044494dcb"
+        },
+        {
+          "step": 121,
+          "gate": "invariant-s14-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "14aff00c44b8bdc533cab5008a2f299cc137dd7a163a7e61b80e2e1044494dcb"
+        }
+      ]
+    },
+    {
+      "id": "S33-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 14 (S3.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S3.3 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (section invariant s14-no-test-db, established by S2.1 step 59).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "invariant-s14-no-test-db",
+          "selection": "command",
+          "command_sha256": "eb638dec619dd28dd872375e4e2019d25e6ff6d483b6abd245fe41434dab3f3e"
+        },
+        {
+          "step": 114,
+          "gate": "invariant-s14-no-test-db",
+          "selection": "command",
+          "command_sha256": "eb638dec619dd28dd872375e4e2019d25e6ff6d483b6abd245fe41434dab3f3e"
+        },
+        {
+          "step": 115,
+          "gate": "invariant-s14-no-test-db",
+          "selection": "command",
+          "command_sha256": "eb638dec619dd28dd872375e4e2019d25e6ff6d483b6abd245fe41434dab3f3e"
+        },
+        {
+          "step": 116,
+          "gate": "invariant-s14-no-test-db",
+          "selection": "command",
+          "command_sha256": "eb638dec619dd28dd872375e4e2019d25e6ff6d483b6abd245fe41434dab3f3e"
+        },
+        {
+          "step": 117,
+          "gate": "invariant-s14-no-test-db",
+          "selection": "command",
+          "command_sha256": "eb638dec619dd28dd872375e4e2019d25e6ff6d483b6abd245fe41434dab3f3e"
+        },
+        {
+          "step": 118,
+          "gate": "invariant-s14-no-test-db",
+          "selection": "command",
+          "command_sha256": "eb638dec619dd28dd872375e4e2019d25e6ff6d483b6abd245fe41434dab3f3e"
+        },
+        {
+          "step": 119,
+          "gate": "invariant-s14-no-test-db",
+          "selection": "command",
+          "command_sha256": "eb638dec619dd28dd872375e4e2019d25e6ff6d483b6abd245fe41434dab3f3e"
+        },
+        {
+          "step": 120,
+          "gate": "invariant-s14-no-test-db",
+          "selection": "command",
+          "command_sha256": "eb638dec619dd28dd872375e4e2019d25e6ff6d483b6abd245fe41434dab3f3e"
+        },
+        {
+          "step": 121,
+          "gate": "invariant-s14-no-test-db",
+          "selection": "command",
+          "command_sha256": "eb638dec619dd28dd872375e4e2019d25e6ff6d483b6abd245fe41434dab3f3e"
+        }
+      ]
+    },
+    {
+      "id": "S33-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 14 (S3.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S3.3 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (section invariant s14-no-versions-in-use, established by S2.2 step 65).",
+      "checks": [
+        {
+          "step": 113,
+          "gate": "invariant-s14-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e5b8f16f4d5a60096afa7e082f343602fa90fa29639a684e3c37afa0d8981e67"
+        },
+        {
+          "step": 114,
+          "gate": "invariant-s14-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e5b8f16f4d5a60096afa7e082f343602fa90fa29639a684e3c37afa0d8981e67"
+        },
+        {
+          "step": 115,
+          "gate": "invariant-s14-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e5b8f16f4d5a60096afa7e082f343602fa90fa29639a684e3c37afa0d8981e67"
+        },
+        {
+          "step": 116,
+          "gate": "invariant-s14-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e5b8f16f4d5a60096afa7e082f343602fa90fa29639a684e3c37afa0d8981e67"
+        },
+        {
+          "step": 117,
+          "gate": "invariant-s14-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e5b8f16f4d5a60096afa7e082f343602fa90fa29639a684e3c37afa0d8981e67"
+        },
+        {
+          "step": 118,
+          "gate": "invariant-s14-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e5b8f16f4d5a60096afa7e082f343602fa90fa29639a684e3c37afa0d8981e67"
+        },
+        {
+          "step": 119,
+          "gate": "invariant-s14-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e5b8f16f4d5a60096afa7e082f343602fa90fa29639a684e3c37afa0d8981e67"
+        },
+        {
+          "step": 120,
+          "gate": "invariant-s14-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e5b8f16f4d5a60096afa7e082f343602fa90fa29639a684e3c37afa0d8981e67"
+        },
+        {
+          "step": 121,
+          "gate": "invariant-s14-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e5b8f16f4d5a60096afa7e082f343602fa90fa29639a684e3c37afa0d8981e67"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -11310,6 +12244,186 @@
         "S32-INV-NO-TEST-DB",
         "S32-INV-NO-VERSIONS-IN-USE"
       ]
+    },
+    {
+      "step": 113,
+      "sha256": "6f3b07a3b64f1c28650d47140d7d914aa76a21e586640e7fbca2f71e36e0bccb",
+      "obligations": [
+        "S33-ATTRIBUTION",
+        "S33-BUILD",
+        "S33-ELEVATION",
+        "S33-INV-ELEV-LIST",
+        "S33-INV-NO-VSTEST",
+        "S33-INV-NO-KIT-KIT-JSON",
+        "S33-INV-NO-EPS-AXIS-EVALUATED",
+        "S33-INV-COMPLEXITY-MANDATORY",
+        "S33-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S33-INV-NO-SEEDING-SEAM",
+        "S33-INV-T1-NO-CODE-SEEDS",
+        "S33-INV-NO-SEED-MODULES",
+        "S33-INV-NO-TEST-DB",
+        "S33-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 114,
+      "sha256": "30d47983cea1c8eeb0ace86746452d03a718539e4cb0ae904bb13a54b056df90",
+      "obligations": [
+        "S33-ATTRIBUTION-READ",
+        "S33-BUILD",
+        "S33-ELEVATION",
+        "S33-INV-ELEV-LIST",
+        "S33-INV-NO-VSTEST",
+        "S33-INV-NO-KIT-KIT-JSON",
+        "S33-INV-NO-EPS-AXIS-EVALUATED",
+        "S33-INV-COMPLEXITY-MANDATORY",
+        "S33-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S33-INV-NO-SEEDING-SEAM",
+        "S33-INV-T1-NO-CODE-SEEDS",
+        "S33-INV-NO-SEED-MODULES",
+        "S33-INV-NO-TEST-DB",
+        "S33-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 115,
+      "sha256": "04ba898bc9ad960455507117b457b18d254d948e3e3421a36c408627f7b14e64",
+      "obligations": [
+        "S33-EXPORT-SEAM",
+        "S33-BUILD",
+        "S33-ELEVATION",
+        "S33-INV-ELEV-LIST",
+        "S33-INV-NO-VSTEST",
+        "S33-INV-NO-KIT-KIT-JSON",
+        "S33-INV-NO-EPS-AXIS-EVALUATED",
+        "S33-INV-COMPLEXITY-MANDATORY",
+        "S33-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S33-INV-NO-SEEDING-SEAM",
+        "S33-INV-T1-NO-CODE-SEEDS",
+        "S33-INV-NO-SEED-MODULES",
+        "S33-INV-NO-TEST-DB",
+        "S33-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 116,
+      "sha256": "23da53304cb9ce93e3086eb6c8e903528e9a72ab48c4535fe724d3d659316cc7",
+      "obligations": [
+        "S33-ENTRY-EXPORT",
+        "S33-BUILD",
+        "S33-ELEVATION",
+        "S33-INV-ELEV-LIST",
+        "S33-INV-NO-VSTEST",
+        "S33-INV-NO-KIT-KIT-JSON",
+        "S33-INV-NO-EPS-AXIS-EVALUATED",
+        "S33-INV-COMPLEXITY-MANDATORY",
+        "S33-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S33-INV-NO-SEEDING-SEAM",
+        "S33-INV-T1-NO-CODE-SEEDS",
+        "S33-INV-NO-SEED-MODULES",
+        "S33-INV-NO-TEST-DB",
+        "S33-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 117,
+      "sha256": "d277d9f2bfe635c041c34549aad17ddbb7c79db7348f3ed14445752a106aef0b",
+      "obligations": [
+        "S33-CATALOGUE-EXPORT",
+        "S33-BUILD",
+        "S33-ELEVATION",
+        "S33-INV-ELEV-LIST",
+        "S33-INV-NO-VSTEST",
+        "S33-INV-NO-KIT-KIT-JSON",
+        "S33-INV-NO-EPS-AXIS-EVALUATED",
+        "S33-INV-COMPLEXITY-MANDATORY",
+        "S33-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S33-INV-NO-SEEDING-SEAM",
+        "S33-INV-T1-NO-CODE-SEEDS",
+        "S33-INV-NO-SEED-MODULES",
+        "S33-INV-NO-TEST-DB",
+        "S33-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 118,
+      "sha256": "4a857621c9bc14d64672e33d01e92b46d4164b837ddb0a84deb5039a7b3c2776",
+      "obligations": [
+        "S33-SHARED-WINDOW-PIECES",
+        "S33-BUILD",
+        "S33-ELEVATION",
+        "S33-INV-ELEV-LIST",
+        "S33-INV-NO-VSTEST",
+        "S33-INV-NO-KIT-KIT-JSON",
+        "S33-INV-NO-EPS-AXIS-EVALUATED",
+        "S33-INV-COMPLEXITY-MANDATORY",
+        "S33-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S33-INV-NO-SEEDING-SEAM",
+        "S33-INV-T1-NO-CODE-SEEDS",
+        "S33-INV-NO-SEED-MODULES",
+        "S33-INV-NO-TEST-DB",
+        "S33-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 119,
+      "sha256": "8c6fcc320d88537bed9dd6bff9b68870bef768971dff7a70d06ddb30df386f46",
+      "obligations": [
+        "S33-MATERIALS-EXPORT",
+        "S33-BUILD",
+        "S33-ELEVATION",
+        "S33-INV-ELEV-LIST",
+        "S33-INV-NO-VSTEST",
+        "S33-INV-NO-KIT-KIT-JSON",
+        "S33-INV-NO-EPS-AXIS-EVALUATED",
+        "S33-INV-COMPLEXITY-MANDATORY",
+        "S33-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S33-INV-NO-SEEDING-SEAM",
+        "S33-INV-T1-NO-CODE-SEEDS",
+        "S33-INV-NO-SEED-MODULES",
+        "S33-INV-NO-TEST-DB",
+        "S33-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 120,
+      "sha256": "f89a787da642409344bd17eb33e55e807258e36a7c02fd8afb237cf14dab6444",
+      "obligations": [
+        "S33-LIBRARY-EXPORT",
+        "S33-BUILD",
+        "S33-ELEVATION",
+        "S33-INV-ELEV-LIST",
+        "S33-INV-NO-VSTEST",
+        "S33-INV-NO-KIT-KIT-JSON",
+        "S33-INV-NO-EPS-AXIS-EVALUATED",
+        "S33-INV-COMPLEXITY-MANDATORY",
+        "S33-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S33-INV-NO-SEEDING-SEAM",
+        "S33-INV-T1-NO-CODE-SEEDS",
+        "S33-INV-NO-SEED-MODULES",
+        "S33-INV-NO-TEST-DB",
+        "S33-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 121,
+      "sha256": "ae4a9aff8d6d1dc99bc15b841421b59262cc9e730c89d11afabeaa1c3b61dc95",
+      "obligations": [
+        "S33-DETAILS-ATTRIBUTION",
+        "S33-BUILD",
+        "S33-ELEVATION",
+        "S33-INV-ELEV-LIST",
+        "S33-INV-NO-VSTEST",
+        "S33-INV-NO-KIT-KIT-JSON",
+        "S33-INV-NO-EPS-AXIS-EVALUATED",
+        "S33-INV-COMPLEXITY-MANDATORY",
+        "S33-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S33-INV-NO-SEEDING-SEAM",
+        "S33-INV-T1-NO-CODE-SEEDS",
+        "S33-INV-NO-SEED-MODULES",
+        "S33-INV-NO-TEST-DB",
+        "S33-INV-NO-VERSIONS-IN-USE"
+      ]
     }
   ],
   "behavior_seams": [
@@ -11697,6 +12811,51 @@
       "id": "s32-launcher-pending",
       "step": 112,
       "obligation": "S32-LAUNCHER-PENDING"
+    },
+    {
+      "id": "s33-attribution",
+      "step": 113,
+      "obligation": "S33-ATTRIBUTION"
+    },
+    {
+      "id": "s33-attribution-read",
+      "step": 114,
+      "obligation": "S33-ATTRIBUTION-READ"
+    },
+    {
+      "id": "s33-export-seam",
+      "step": 115,
+      "obligation": "S33-EXPORT-SEAM"
+    },
+    {
+      "id": "s33-entry-export",
+      "step": 116,
+      "obligation": "S33-ENTRY-EXPORT"
+    },
+    {
+      "id": "s33-catalogue-export",
+      "step": 117,
+      "obligation": "S33-CATALOGUE-EXPORT"
+    },
+    {
+      "id": "s33-shared-window-pieces",
+      "step": 118,
+      "obligation": "S33-SHARED-WINDOW-PIECES"
+    },
+    {
+      "id": "s33-materials-export",
+      "step": 119,
+      "obligation": "S33-MATERIALS-EXPORT"
+    },
+    {
+      "id": "s33-library-export",
+      "step": 120,
+      "obligation": "S33-LIBRARY-EXPORT"
+    },
+    {
+      "id": "s33-details-attribution",
+      "step": 121,
+      "obligation": "S33-DETAILS-ATTRIBUTION"
     }
   ],
   "temporal_checks": [],
@@ -11928,6 +13087,18 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Storage",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui",
         "Berreman/OpticalConstructor/OpticalConstructor.App",
+        "Berreman/OpticalConstructor/OpticalConstructor.Controls",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 113,
+      "step": 121,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
         "Berreman/OpticalConstructor/OpticalConstructor.Controls",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
