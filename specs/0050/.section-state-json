@@ -1,13 +1,13 @@
 {
   "campaign_status": "in-progress",
   "plan_approval_requested": true,
-  "plan_approved": false,
+  "plan_approved": true,
   "sections": [
     {
       "name": "S1.1 -- Every dispersion axis is data: tabulated and transcendental cases",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 9
     },
     {
       "name": "S1.2 -- A material's physics is its complexity",

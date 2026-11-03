@@ -1,0 +1,677 @@
+{
+  "version": 1,
+  "obligations": [
+    {
+      "id": "S11-TABULATED",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 1 (S1.1) brief; specs/0050/.spec-md §0.1, §3.1",
+      "requirement": "A tabulated n,k table is axis data of the core: Berreman/Berreman/Dispersion.fs EpsAxisDispersion gains TabulatedNK of TabulatedNkTable, a [<NumericCarrier>] record of ascending wavelengths in metres, n and k arrays and the one-case interpolation rule TabulatedInterpolation (LinearInWaveLengthClamped, wire tag 1, tryOfWire). TabulatedNkTable.tryCreate refuses an empty table, unequal columns and a decreasing wavelength column with typed TabulatedTableError cases. Its complexIndex is buildTabulatedClosure's arithmetic moved verbatim: each sample at its own wavelength, linear in wavelength between neighbours, clamped to the first and last samples, and a one-sample table constant. OpticalConstructor.Storage/MaterialImport.fs entryFromTabulated builds that table for a refractiveindex.info tabulated page and for an n,k CSV, and carries it as Some complexity: one isotropic dispersive segment over the table's own sample range, view-only (isEditable false), with properties = complexity.toProperties. buildTabulatedClosure is deleted, and formula imports are untouched. A tabulated axis has the facet key 'Tabulated n/k'. No number moves: the imported eps equals the old closure's at every sample and every midpoint. Proved red first (the import's complexity is None), then green.",
+      "checks": [
+        {
+          "step": 1,
+          "gate": "constructor-unit-tests",
+          "selection": "selected",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 2,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        },
+        {
+          "step": 2,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S11-ABSCISSA",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 1 (S1.1) brief; specs/0050/.spec-md §0.1, §3.1",
+      "requirement": "AbscissaKind (LinearInX of a wavelength scale, ReciprocalInX of a [<NumericCarrier>] ReciprocalAbscissa scale and numerator) moves from a private type of OpticalConstructor.Domain/DispersionModels.fs into Berreman/Berreman/Dispersion.fs. ofUnit stays in the Domain, as a static extension member over the Units seam. Every finite-term lowering reads the moved type, and DispersionModelsTests' AC-B5 lowering facts stay green unchanged.",
+      "checks": [
+        {
+          "step": 3,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        },
+        {
+          "step": 3,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S11-OSCILLATORS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 1 (S1.1) brief; specs/0050/.spec-md §0.1, §3.1",
+      "requirement": "The four transcendental oscillator models are axis data of the core: TaucLorentzLaw, GaussianOscillatorLaw, ForouhiBloomerLaw and BrendelBormannLaw ([<NumericCarrier>] records of their coefficients plus an AbscissaKind), with the EpsAxisDispersion cases TaucLorentzAxis, GaussianOscillatorAxis, ForouhiBloomerAxis and BrendelBormannAxis. Each law's complexIndex is the arm of DispersionModels.fs baseIndex moved verbatim (with Weideman's Faddeeva series for Brendel-Bormann) over AbscissaKind.abscissaAt, which is bit-identical to Units.fromMeters. The Domain's baseIndex calls the law, so one implementation exists, and the arm's body is deleted there. DispersionModel.toEpsAxis lowers each model to its law case isothermally (evaluateAt keeps the thermo-optic correction), so no model lowers to EpsAxisEvaluated. The four cases keep the facet key 'Evaluated (transcendental)' and stay view-only. Equal models lower to equal axes (proved red first, then green), and each law equals the pre-move evaluate closure exactly at 300, 450, 600, 900 and 2000 nm.",
+      "checks": [
+        {
+          "step": 4,
+          "gate": "constructor-unit-tests",
+          "selection": "selected",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 5,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        },
+        {
+          "step": 5,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 5,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 6,
+          "gate": "constructor-unit-tests",
+          "selection": "selected",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 7,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        },
+        {
+          "step": 7,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 7,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 7,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S11-PUBLISHED-LAWS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 1 (S1.1) brief; specs/0050/.spec-md §0.1, §3.1",
+      "requirement": "The built-in Silicon and Langasite carry their dispersion as data: Berreman/Berreman/Dispersion.fs PublishedIndexLaw (SiliconIndexLaw, LangasiteOrdinaryIndexLaw, LangasiteExtraordinaryIndexLaw; int wire tags 1 to 3, tryOfWire), with the EpsAxisDispersion case PublishedLawAxis. Its complexIndex is the engine closed forms moved from OpticalProperties/Dispersive.fs. The Silicon and Langasite presets there call it, and the private re-statements in OpticalConstructor.Domain/MaterialLibrary.fs are deleted, so each closed form exists once. Each law equals the pre-move closure exactly at 400, 500, 600, 800 and 1000 nm, and the engine presets' numbers are unchanged. The Silicon and Langasite entries reproduce the engine presets as before, keep the facet key 'Evaluated (transcendental)' and stay view-only.",
+      "checks": [
+        {
+          "step": 8,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        },
+        {
+          "step": 8,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 8,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 8,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S11-NO-CLOSURE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 1 (S1.1) brief; specs/0050/.spec-md §0.1, §3.1",
+      "requirement": "EpsAxisEvaluated, [<CustomEquality; NoComparison>] and the custom Equals / GetHashCode of EpsAxisDispersion are deleted, so EpsAxisDispersion has F#'s structural equality: equal axis data of every case is equal and hashes equal, and a changed value breaks equality. The out-of-band fixtures build a data axis, every arm and doc comment naming the evaluated case is gone, and no file under Berreman/ names EpsAxisEvaluated.",
+      "checks": [
+        {
+          "step": 9,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        },
+        {
+          "step": 9,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 9,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 9,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S11-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 1 (S1.1) brief; specs/0050/.spec-md §0.1, §3.1",
+      "requirement": "Every S1.1 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 is an error in the core and constructor projects, so every match on EpsAxisDispersion follows each case it gains or loses in the same step.",
+      "checks": [
+        {
+          "step": 1,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 2,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 3,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 4,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 5,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 6,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 7,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 8,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 9,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S11-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 1 (S1.1) brief; specs/0050/.spec-md §0.1, §3.1",
+      "requirement": "Every S1.1 step leaves the projects it touches, and the projects that reference them, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command). The new data shapes are elevated, numeric carriers are marked [<NumericCarrier>], closed sets carry int wire tags read back by tryOfWire, error cases end in Err, and every new type, DU case and member name is unique.",
+      "checks": [
+        {
+          "step": 1,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 2,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 3,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 4,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 5,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 6,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 7,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 8,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 9,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S11-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 1 (S1.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.1 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s01-elev-list-empty).",
+      "checks": [
+        {
+          "step": 1,
+          "gate": "invariant-s01-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "9278eff298b54780c4b74583d349a8b9541ff40fe7abc7c5064ef5f1e2c149c5"
+        },
+        {
+          "step": 2,
+          "gate": "invariant-s01-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "9278eff298b54780c4b74583d349a8b9541ff40fe7abc7c5064ef5f1e2c149c5"
+        },
+        {
+          "step": 3,
+          "gate": "invariant-s01-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "9278eff298b54780c4b74583d349a8b9541ff40fe7abc7c5064ef5f1e2c149c5"
+        },
+        {
+          "step": 4,
+          "gate": "invariant-s01-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "9278eff298b54780c4b74583d349a8b9541ff40fe7abc7c5064ef5f1e2c149c5"
+        },
+        {
+          "step": 5,
+          "gate": "invariant-s01-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "9278eff298b54780c4b74583d349a8b9541ff40fe7abc7c5064ef5f1e2c149c5"
+        },
+        {
+          "step": 6,
+          "gate": "invariant-s01-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "9278eff298b54780c4b74583d349a8b9541ff40fe7abc7c5064ef5f1e2c149c5"
+        },
+        {
+          "step": 7,
+          "gate": "invariant-s01-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "9278eff298b54780c4b74583d349a8b9541ff40fe7abc7c5064ef5f1e2c149c5"
+        },
+        {
+          "step": 8,
+          "gate": "invariant-s01-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "9278eff298b54780c4b74583d349a8b9541ff40fe7abc7c5064ef5f1e2c149c5"
+        },
+        {
+          "step": 9,
+          "gate": "invariant-s01-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "9278eff298b54780c4b74583d349a8b9541ff40fe7abc7c5064ef5f1e2c149c5"
+        }
+      ]
+    },
+    {
+      "id": "S11-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 1 (S1.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.1 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s01-no-vstest).",
+      "checks": [
+        {
+          "step": 1,
+          "gate": "invariant-s01-no-vstest",
+          "selection": "command",
+          "command_sha256": "56de25bef57c475477757d2b1714e84b7a9099258b0da93fc162653977cb800c"
+        },
+        {
+          "step": 2,
+          "gate": "invariant-s01-no-vstest",
+          "selection": "command",
+          "command_sha256": "56de25bef57c475477757d2b1714e84b7a9099258b0da93fc162653977cb800c"
+        },
+        {
+          "step": 3,
+          "gate": "invariant-s01-no-vstest",
+          "selection": "command",
+          "command_sha256": "56de25bef57c475477757d2b1714e84b7a9099258b0da93fc162653977cb800c"
+        },
+        {
+          "step": 4,
+          "gate": "invariant-s01-no-vstest",
+          "selection": "command",
+          "command_sha256": "56de25bef57c475477757d2b1714e84b7a9099258b0da93fc162653977cb800c"
+        },
+        {
+          "step": 5,
+          "gate": "invariant-s01-no-vstest",
+          "selection": "command",
+          "command_sha256": "56de25bef57c475477757d2b1714e84b7a9099258b0da93fc162653977cb800c"
+        },
+        {
+          "step": 6,
+          "gate": "invariant-s01-no-vstest",
+          "selection": "command",
+          "command_sha256": "56de25bef57c475477757d2b1714e84b7a9099258b0da93fc162653977cb800c"
+        },
+        {
+          "step": 7,
+          "gate": "invariant-s01-no-vstest",
+          "selection": "command",
+          "command_sha256": "56de25bef57c475477757d2b1714e84b7a9099258b0da93fc162653977cb800c"
+        },
+        {
+          "step": 8,
+          "gate": "invariant-s01-no-vstest",
+          "selection": "command",
+          "command_sha256": "56de25bef57c475477757d2b1714e84b7a9099258b0da93fc162653977cb800c"
+        },
+        {
+          "step": 9,
+          "gate": "invariant-s01-no-vstest",
+          "selection": "command",
+          "command_sha256": "56de25bef57c475477757d2b1714e84b7a9099258b0da93fc162653977cb800c"
+        }
+      ]
+    },
+    {
+      "id": "S11-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 1 (S1.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.1 step, nothing under Berreman/ names kit.kit-json (section invariant s01-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 1,
+          "gate": "invariant-s01-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "bd03dc9b6dacb7cfd30d0b578c718ef22d0603a649fc7a9287c4728dc4cde14c"
+        },
+        {
+          "step": 2,
+          "gate": "invariant-s01-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "bd03dc9b6dacb7cfd30d0b578c718ef22d0603a649fc7a9287c4728dc4cde14c"
+        },
+        {
+          "step": 3,
+          "gate": "invariant-s01-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "bd03dc9b6dacb7cfd30d0b578c718ef22d0603a649fc7a9287c4728dc4cde14c"
+        },
+        {
+          "step": 4,
+          "gate": "invariant-s01-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "bd03dc9b6dacb7cfd30d0b578c718ef22d0603a649fc7a9287c4728dc4cde14c"
+        },
+        {
+          "step": 5,
+          "gate": "invariant-s01-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "bd03dc9b6dacb7cfd30d0b578c718ef22d0603a649fc7a9287c4728dc4cde14c"
+        },
+        {
+          "step": 6,
+          "gate": "invariant-s01-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "bd03dc9b6dacb7cfd30d0b578c718ef22d0603a649fc7a9287c4728dc4cde14c"
+        },
+        {
+          "step": 7,
+          "gate": "invariant-s01-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "bd03dc9b6dacb7cfd30d0b578c718ef22d0603a649fc7a9287c4728dc4cde14c"
+        },
+        {
+          "step": 8,
+          "gate": "invariant-s01-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "bd03dc9b6dacb7cfd30d0b578c718ef22d0603a649fc7a9287c4728dc4cde14c"
+        },
+        {
+          "step": 9,
+          "gate": "invariant-s01-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "bd03dc9b6dacb7cfd30d0b578c718ef22d0603a649fc7a9287c4728dc4cde14c"
+        }
+      ]
+    }
+  ],
+  "acceptance_bindings": [
+    {
+      "step": 1,
+      "sha256": "63bebb79e1e31e98c4eed298e5d5b811d3283a4a1cd628113ff230c7cacdb4cd",
+      "obligations": [
+        "S11-TABULATED",
+        "S11-BUILD",
+        "S11-ELEVATION",
+        "S11-INV-ELEV-LIST",
+        "S11-INV-NO-VSTEST",
+        "S11-INV-NO-KIT-KIT-JSON"
+      ]
+    },
+    {
+      "step": 2,
+      "sha256": "049e519437c8fa0f843d8c9763f76dee2906804ecc7ebc5637c97e361c40d77d",
+      "obligations": [
+        "S11-TABULATED",
+        "S11-BUILD",
+        "S11-ELEVATION",
+        "S11-INV-ELEV-LIST",
+        "S11-INV-NO-VSTEST",
+        "S11-INV-NO-KIT-KIT-JSON"
+      ]
+    },
+    {
+      "step": 3,
+      "sha256": "ae56651ced537cac08583f1553bcb316eaa62014e4cf30bc1f0c9248a46b3443",
+      "obligations": [
+        "S11-ABSCISSA",
+        "S11-BUILD",
+        "S11-ELEVATION",
+        "S11-INV-ELEV-LIST",
+        "S11-INV-NO-VSTEST",
+        "S11-INV-NO-KIT-KIT-JSON"
+      ]
+    },
+    {
+      "step": 4,
+      "sha256": "2ac9ea9f63434e758f6eb189227dab0b6846941addce2b685882bfd05e4c974a",
+      "obligations": [
+        "S11-OSCILLATORS",
+        "S11-BUILD",
+        "S11-ELEVATION",
+        "S11-INV-ELEV-LIST",
+        "S11-INV-NO-VSTEST",
+        "S11-INV-NO-KIT-KIT-JSON"
+      ]
+    },
+    {
+      "step": 5,
+      "sha256": "32da84708b4804a4a980f3a19c978d7c07fe107d968621b86158fa638d23fa13",
+      "obligations": [
+        "S11-OSCILLATORS",
+        "S11-BUILD",
+        "S11-ELEVATION",
+        "S11-INV-ELEV-LIST",
+        "S11-INV-NO-VSTEST",
+        "S11-INV-NO-KIT-KIT-JSON"
+      ]
+    },
+    {
+      "step": 6,
+      "sha256": "38b08992f01e845f040012e2c36b4134dc7dfd73b2e0f100a2e8ee4b4cda13ea",
+      "obligations": [
+        "S11-OSCILLATORS",
+        "S11-BUILD",
+        "S11-ELEVATION",
+        "S11-INV-ELEV-LIST",
+        "S11-INV-NO-VSTEST",
+        "S11-INV-NO-KIT-KIT-JSON"
+      ]
+    },
+    {
+      "step": 7,
+      "sha256": "86c2249651ff85368f083c9b96ed020c16a9f6760a734db11dc8ca2e2c335d77",
+      "obligations": [
+        "S11-OSCILLATORS",
+        "S11-BUILD",
+        "S11-ELEVATION",
+        "S11-INV-ELEV-LIST",
+        "S11-INV-NO-VSTEST",
+        "S11-INV-NO-KIT-KIT-JSON"
+      ]
+    },
+    {
+      "step": 8,
+      "sha256": "13e01c54f6913426e5f20781458f7b756eb73ffc42951d157575d769a9e20605",
+      "obligations": [
+        "S11-PUBLISHED-LAWS",
+        "S11-BUILD",
+        "S11-ELEVATION",
+        "S11-INV-ELEV-LIST",
+        "S11-INV-NO-VSTEST",
+        "S11-INV-NO-KIT-KIT-JSON"
+      ]
+    },
+    {
+      "step": 9,
+      "sha256": "e5b93ab3c26f7cc7f2d906ae3e855ecf4e0d33a295c9c3b3aa453aad2f66b169",
+      "obligations": [
+        "S11-NO-CLOSURE",
+        "S11-BUILD",
+        "S11-ELEVATION",
+        "S11-INV-ELEV-LIST",
+        "S11-INV-NO-VSTEST",
+        "S11-INV-NO-KIT-KIT-JSON"
+      ]
+    }
+  ],
+  "behavior_seams": [
+    {
+      "id": "s11-tabulated-import-red",
+      "step": 1,
+      "obligation": "S11-TABULATED"
+    },
+    {
+      "id": "s11-tabulated-axis",
+      "step": 2,
+      "obligation": "S11-TABULATED"
+    },
+    {
+      "id": "s11-tauc-gaussian-red",
+      "step": 4,
+      "obligation": "S11-OSCILLATORS"
+    },
+    {
+      "id": "s11-tauc-gaussian-laws",
+      "step": 5,
+      "obligation": "S11-OSCILLATORS"
+    },
+    {
+      "id": "s11-forouhi-brendel-red",
+      "step": 6,
+      "obligation": "S11-OSCILLATORS"
+    },
+    {
+      "id": "s11-forouhi-brendel-laws",
+      "step": 7,
+      "obligation": "S11-OSCILLATORS"
+    },
+    {
+      "id": "s11-published-laws",
+      "step": 8,
+      "obligation": "S11-PUBLISHED-LAWS"
+    },
+    {
+      "id": "s11-structural-equality",
+      "step": 9,
+      "obligation": "S11-NO-CLOSURE"
+    }
+  ],
+  "temporal_checks": [],
+  "closing_scopes": [
+    {
+      "from": 1,
+      "step": 2,
+      "paths": [
+        "Berreman/Berreman",
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/BerremanTests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage"
+      ]
+    },
+    {
+      "from": 4,
+      "step": 5,
+      "paths": [
+        "Berreman/Berreman",
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/BerremanTests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests"
+      ]
+    },
+    {
+      "from": 6,
+      "step": 7,
+      "paths": [
+        "Berreman/Berreman",
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/BerremanTests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 1,
+      "step": 9,
+      "paths": [
+        "Berreman/Berreman",
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/BerremanTests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalProperties",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    }
+  ]
+}
