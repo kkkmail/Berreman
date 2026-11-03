@@ -135,12 +135,12 @@ type AbsorbingBiaxialInverseTests() =
         // worth a fact; at fifteen it is not optional.
         let scaling = absorbingScalingAround absorbing
         Assert.Equal(15, scaling.dimension)
-        Assert.Equal<float[]>(Array.zeroCreate 15, toScaled scaling absorbing)
+        Assert.Equal<float[]>(Array.zeroCreate 15, (toScaled scaling absorbing).value)
 
         // A unit step in each scaled coordinate must move exactly that ONE parameter, by exactly its
         // scale, and leave the other fourteen untouched. All 225 (axis, parameter) pairs are checked.
         for (i, axis) in List.indexed scaling.axes do
-            let step = Array.init 15 (fun k -> if k = i then 1.0 else 0.0)
+            let step = Array.init 15 (fun k -> if k = i then 1.0 else 0.0) |> ScaledVector
             let moved = ofScaled scaling step
             for (k, other) in List.indexed scaling.axes do
                 let before = other.read absorbing
@@ -232,7 +232,7 @@ type AbsorbingBiaxialInverseTests() =
             let proxy = createBerremanForward (fun (_ : unit) -> properties) solverParameters
             match proxy.muellerOf probe () with
             | Ok m ->
-                match analyticInversion m with
+                match m.analyticInversion with
                 | Ok a -> a
                 | Error e -> failwith $"the analytic inversion failed: %A{e}"
             | Error e -> failwith $"the forward model failed: %A{e}"
@@ -297,7 +297,7 @@ type AbsorbingBiaxialInverseTests() =
         Assert.True(List.min transmittances > 0.05, $"the plate must not be opaque either, or there is no data: {report}")
 
         for o in observations do
-            let smallest = cloudeEigenvalues o.measured |> List.min
+            let smallest = (o.measured.cloudeEigenvalues |> List.map (fun e -> e.value)) |> List.min
             Assert.True(
                 smallest > -1.0e-9,
                 $"%A{o.configuration.cut} at {o.configuration.incidenceAngle.value / degree} deg: negative Cloude eigenvalue {smallest}")
@@ -334,11 +334,11 @@ type AbsorbingBiaxialInverseTests() =
         let observations = observe fullConfigurations
         let truthPoint = toScaled scaling absorbing
         Assert.True(
-            truthPoint |> Array.forall (fun x -> abs x > 1.0e-6),
+            truthPoint.value |> Array.forall (fun x -> abs x > 1.0e-6),
             "the Jacobian must not be evaluated at the origin of the scaled space")
 
-        let normalizedJacobian = FitQuality.residualJacobian (residualFor forward observations scaling) truthPoint
-        let absoluteJacobian = FitQuality.residualJacobian (throughputResidualFor forward observations scaling) truthPoint
+        let normalizedJacobian = residualJacobianAt (residualFor forward observations scaling) truthPoint
+        let absoluteJacobian = residualJacobianAt (throughputResidualFor forward observations scaling) truthPoint
 
         let isotropic = isotropicAbsorption scaling
         let anisotropic = anisotropicAbsorption scaling
@@ -376,10 +376,10 @@ type AbsorbingBiaxialInverseTests() =
         let scaling = absorbingScalingAround perturbedStart
         let fit = fitAbsorbingObservations forward box observations scaling
 
-        Assert.True(fit.solution.iterations > 0, "the fit should have taken at least one step")
+        Assert.True(fit.solution.iterations.value > 0, "the fit should have taken at least one step")
 
         let errors = recoveryErrors scaling absorbing fit.recovered
-        let report = $"{describeErrors errors}; chi2 {fit.chiSquared}; {fit.solution.iterations} iterations"
+        let report = $"{describeErrors errors}; chi2 {fit.chiSquared}; {fit.solution.iterations.value} iterations"
 
         // Bands pinned per the spec §9 protocol at ~29x the observed worst relative error of 3.5e-10
         // (g12) and ~16000x the observed final chi-squared of 6.4e-23. The three indices come back at
@@ -406,14 +406,14 @@ type AbsorbingBiaxialInverseTests() =
         let scaling = absorbingScalingAround perturbedStart
         let residual = throughputResidualFor forward (observe fullConfigurations) scaling
         let truthPoint = toScaled scaling absorbing
-        let jacobian = FitQuality.residualJacobian residual truthPoint
-        let norms = jacobianColumnNorms jacobian
+        let jacobian = residualJacobianAt residual truthPoint
+        let norms = jacobian.columnNorms
         let report = describeColumnNorms scaling.axes norms
 
         for (i, axis) in List.indexed scaling.axes do
             Assert.True(norms.[i] > 1.0e-6, $"{axis.name.value} is unobservable in the absorbing set: {report}")
 
-        let condition = jacobianCondition jacobian
+        let condition = jacobian.conditionNumber.value
         Assert.True(System.Double.IsFinite condition, $"the Jacobian condition number must be finite, got {condition}")
         // Measured 7677 — statistically indistinguishable from the 7954 the NINE-parameter transparent
         // fit shows on the same plate and cuts. Six extra unknowns cost essentially nothing in

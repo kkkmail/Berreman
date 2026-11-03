@@ -127,7 +127,7 @@ type LangasiteInverseTests() =
             cut = ZCut
             thickness = plateThickness
             incidenceAngle = IncidenceAngle.normal
-            azimuth = SampleAzimuth.degree 0.0
+            azimuth = SampleAzimuth.degree 0.0<Berreman.Constants.deg>
             observable = TransmittedMueller
             waveLength = waveLength
         }
@@ -262,14 +262,14 @@ type LangasiteInverseTests() =
             let solver = MuellerInverseSolver.createAlglibLevenbergMarquardt ()
             let request : NonlinearRequest =
                 {
-                    residual = fun (v : float[]) -> normalizedResidual (parametersOfScaledG11 v.[0])
-                    initial = [| 0.0 |]
+                    residual = fun (ScaledVector v) -> normalizedResidual (parametersOfScaledG11 v.[0]) |> ResidualVector
+                    initial = ScaledVector [| 0.0 |]
                     // +-50 scaled units = +-5e-4 in g11: brackets any physically sensible excursion while
                     // keeping the search far from any degenerate region.
-                    lowerBounds = [| -50.0 |]
-                    upperBounds = [| 50.0 |]
-                    maxIterations = 400
-                    epsX = 1.0e-12
+                    lowerBounds = ScaledVector [| -50.0 |]
+                    upperBounds = ScaledVector [| 50.0 |]
+                    maxIterations = IterationCount 400
+                    epsX = StepTolerance 1.0e-12
                 }
             match solver.solveNonlinearLeastSquares request with
             | Ok solution -> solution
@@ -277,7 +277,7 @@ type LangasiteInverseTests() =
             )
 
     /// The recovered g11 in physical units.
-    let fittedG11 = g11Start.value + g11Fit.Value.solution.[0] * g11Scale
+    let fittedG11 = g11Start.value + g11Fit.Value.solution.value.[0] * g11Scale
 
     /// The plate thickness in meters, for rotation-per-length reporting. Both lengths carry the engine's
     /// `meter` unit, so the ratio is dimensionless by construction.
@@ -441,7 +441,7 @@ type LangasiteInverseTests() =
         // than this; the band exists to catch a real regression (a changed forward model, a changed
         // optimizer), not to measure noise.
         let solution = g11Fit.Value
-        Assert.True(solution.iterations > 0, "the fit should have taken at least one step")
+        Assert.True(solution.iterations.value > 0, "the fit should have taken at least one step")
 
         let rotationDeg = rotationDegOfG11 fittedG11
         let rotationDegPerMm = rotationDeg / 3.0
@@ -457,7 +457,7 @@ type LangasiteInverseTests() =
 
         Assert.True(
             abs (fittedG11 - expectedG11.value) < 5.0e-10,
-            $"recovered g11 = {fittedG11:G17} (expected {expectedG11.value:G17}); rotation = {rotationDeg} deg over 3 mm = {rotationDegPerMm} deg/mm; iterations = {solution.iterations}")
+            $"recovered g11 = {fittedG11:G17} (expected {expectedG11.value:G17}); rotation = {rotationDeg} deg over 3 mm = {rotationDegPerMm} deg/mm; iterations = {solution.iterations.value}")
 
         // The crystallographic reading of the same recovered constant — pi * g / (n_o * lambda), the
         // literature-convention rotatory power (see crystallographicRotationDegPerMmOfG11 and the
@@ -498,7 +498,7 @@ type LangasiteInverseTests() =
                 "; ",
                 Array.map3 (fun a r m -> $"{a} deg: r = {r:G6}, measured = {m}") analyzerAnglesDeg residuals measuredIntensities)
 
-        Assert.True(solution.finalResiduals.Length = analyzerAnglesDeg.Length, "the fit residual vector must have one entry per analyzer angle")
+        Assert.True(solution.finalResiduals.value.Length = analyzerAnglesDeg.Length, "the fit residual vector must have one entry per analyzer angle")
         Assert.True(
             worst < allowedWorstNormalizedResidual,
             $"worst normalized residual at the solution = {worst:G17} (allowed {allowedWorstNormalizedResidual}); per-angle: {report}")
@@ -553,9 +553,9 @@ type LangasiteInverseTests() =
                (fittedG11 - g11CentreForJacobian) / g11Scale |]
         Assert.True(atSolution |> Array.forall (fun x -> abs x > 1.0e-6), "the Jacobian must not be evaluated at the origin of the scaled space")
 
-        let jacobian = FitQuality.residualJacobian residual2 atSolution
-        let norms = jacobianColumnNorms jacobian
-        let condition = jacobianCondition jacobian
+        let jacobian = FitQuality.residualJacobian residual2 atSolution |> ResidualJacobian
+        let norms = jacobian.columnNorms
+        let condition = jacobian.conditionNumber.value
 
         // g11 must be strongly constrained — this is the channel the measurement measures. Observed
         // 0.172; the band is pinned two orders below.

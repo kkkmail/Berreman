@@ -31,39 +31,43 @@ module MuellerInverseSolver =
     /// Jacobian and a confident, wrong answer.
     ///
     /// `terminationReason` is folded into the `Result`: a run that ALGLIB reports as unsuccessful becomes
-    /// `DidNotConverge` carrying that reason, rather than a solution the caller might mistake for converged.
+    /// `DidNotConvergeErr` carrying that reason, rather than a solution the caller might mistake for converged.
     let createAlglibLevenbergMarquardt () : NonlinearSolverProxy =
         {
             solveNonlinearLeastSquares =
                 fun (request : NonlinearRequest) ->
-                    if request.initial.Length = 0 then
-                        Error (InvalidNonlinearRequest "the initial parameter vector is empty")
-                    elif request.lowerBounds.Length <> request.initial.Length
-                         || request.upperBounds.Length <> request.initial.Length then
+                    let (ScaledVector initial) = request.initial
+                    let (ScaledVector lower) = request.lowerBounds
+                    let (ScaledVector upper) = request.upperBounds
+                    let (IterationCount maxIterations) = request.maxIterations
+                    let (StepTolerance epsX) = request.epsX
+                    if initial.Length = 0 then
+                        Error (InvalidNonlinearRequestErr "the initial parameter vector is empty")
+                    elif lower.Length <> initial.Length || upper.Length <> initial.Length then
                         Error (
-                            InvalidNonlinearRequest
-                                $"the bounds must match the parameter count: {request.initial.Length} parameters, {request.lowerBounds.Length} lower, {request.upperBounds.Length} upper")
+                            InvalidNonlinearRequestErr
+                                $"the bounds must match the parameter count: {initial.Length} parameters, {lower.Length} lower, {upper.Length} upper")
                     else
                         let optimizationRequest : OptimizationRequest =
                             {
-                                residual = request.residual
+                                residual = fun x -> let (ResidualVector r) = request.residual (ScaledVector x) in r
                                 jacobian = None
-                                initial = Array.copy request.initial
-                                bounds = { lower = Array.copy request.lowerBounds; upper = Array.copy request.upperBounds }
+                                initial = Array.copy initial
+                                bounds = { lower = Array.copy lower; upper = Array.copy upper }
                                 inequalityTargets = []
                                 method = LevenbergMarquardt
-                                maxIterations = request.maxIterations
-                                epsX = request.epsX
+                                maxIterations = maxIterations
+                                epsX = epsX
                             }
                         match AlglibAdapter.optimize optimizationRequest with
-                        | Error reason -> Error (DidNotConverge reason)
+                        | Error reason -> Error (DidNotConvergeErr reason)
                         | Ok result ->
                             if result.success then
                                 Ok
                                     {
-                                        solution = result.solution
-                                        finalResiduals = result.finalResiduals
-                                        iterations = result.iterations
+                                        solution = ScaledVector result.solution
+                                        finalResiduals = ResidualVector result.finalResiduals
+                                        iterations = IterationCount result.iterations
                                     }
-                            else Error (DidNotConverge $"%A{result.terminationReason}")
+                            else Error (DidNotConvergeErr $"%A{result.terminationReason}")
         }

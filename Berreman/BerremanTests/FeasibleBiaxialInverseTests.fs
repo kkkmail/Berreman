@@ -242,7 +242,7 @@ type FeasibleBiaxialInverseTests() =
             let observation =
                 observe [ configuration (TiltedCut (Angle.degree (cutDeg * 1.0<deg>))) vendorMinimumPlate 0.0 0.0 TransmittedMueller referenceWaveLength ]
                 |> List.exactlyOne
-            match analyticInversion observation.measured with
+            match observation.measured.analyticInversion with
             | Ok a -> sqrt (a.lb.degrees ** 2.0 + a.lbPrime.degrees ** 2.0)
             | Error e -> failwith $"the analytic inversion failed at {cutDeg} deg: %A{e}"
 
@@ -273,7 +273,7 @@ type FeasibleBiaxialInverseTests() =
             observe [ configuration opticAxisCut vendorMinimumPlate 0.0 0.0 TransmittedMueller referenceWaveLength ]
             |> List.exactlyOne
 
-        match analyticInversion opticAxisObservation.measured with
+        match opticAxisObservation.measured.analyticInversion with
         | Ok a ->
             // Bands pinned per the §9 protocol from the observed lb = -1.5e-5 deg, lb' = 1.5e-6 deg and
             // cb = 5.744 deg. The plate is a circular retarder to five decimal places in degrees, and it
@@ -291,7 +291,7 @@ type FeasibleBiaxialInverseTests() =
             observe [ configuration opticAxisCut idealizedPlate 0.0 0.0 TransmittedMueller referenceWaveLength ]
             |> List.exactlyOne
 
-        match analyticInversion opticAxisObservation.measured, analyticInversion thinObservation.measured with
+        match opticAxisObservation.measured.analyticInversion, thinObservation.measured.analyticInversion with
         | Ok thick, Ok thin ->
             let gain = abs thick.cb.value / abs thin.cb.value
             Assert.True(abs (gain - 25.0) < 0.5, $"the feasible plate should carry 25x the circular retardance, got {gain}")
@@ -347,7 +347,7 @@ type FeasibleBiaxialInverseTests() =
             match forwardModels forward decoy truthData with
             | Ok models ->
                 match residualVector truthData models with
-                | Ok r -> r |> Array.map abs |> Array.max
+                | Ok (ResidualVector r) -> r |> Array.map abs |> Array.max
                 | Error e -> failwith $"residual: %A{e}"
             | Error e -> failwith $"forward: %A{e}"
 
@@ -411,10 +411,10 @@ type FeasibleBiaxialInverseTests() =
         let scaling = scalingAround perturbedStart
         let fit = fitObservations forward box observations scaling
 
-        Assert.True(fit.solution.iterations > 0, "the fit should have taken at least one step")
+        Assert.True(fit.solution.iterations.value > 0, "the fit should have taken at least one step")
 
         let errors = recoveryErrors scaling triclinic fit.recovered
-        let report = $"{describeErrors errors}; chi2 {fit.chiSquared}; {fit.solution.iterations} iterations"
+        let report = $"{describeErrors errors}; chi2 {fit.chiSquared}; {fit.solution.iterations.value} iterations"
 
         // Bands pinned per the spec §9 protocol at ~37x the observed worst relative error of 2.7e-10
         // (g23) and ~37000x the observed final chi-squared of 2.7e-23. The three indices come back at
@@ -448,10 +448,10 @@ type FeasibleBiaxialInverseTests() =
         let residual = residualFor forward (observe fullConfigurations) scaling
         let truthPoint = toScaled scaling triclinic
         Assert.True(
-            truthPoint |> Array.forall (fun x -> abs x > 1.0e-6),
+            truthPoint.value |> Array.forall (fun x -> abs x > 1.0e-6),
             "the Jacobian must not be evaluated at the origin of the scaled space")
 
-        let norms = jacobianColumnNorms (FitQuality.residualJacobian residual truthPoint)
+        let norms = (residualJacobianAt residual truthPoint).columnNorms
         let report = describeColumnNorms scaling.axes norms
         let normOf (name : string) = norms.[scaling.axes |> List.findIndex (fun a -> a.name.value = name)]
 
@@ -482,6 +482,6 @@ type FeasibleBiaxialInverseTests() =
         // the strongest column to the weakest is WORSE here, and the Jacobian condition number with it.
         // Both statements are true and neither cancels the other: a better-conditioned problem is easier
         // to solve, but it is the absolute column norms that decide how much a noisy measurement can say.
-        let condition = jacobianCondition (FitQuality.residualJacobian residual truthPoint)
+        let condition = (residualJacobianAt residual truthPoint).conditionNumber.value
         Assert.True(System.Double.IsFinite condition, $"the Jacobian condition number must be finite, got {condition}")
         Assert.True(condition < 2.0e4, $"Jacobian condition number = {condition}; {report}")

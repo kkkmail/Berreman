@@ -107,13 +107,13 @@ type AbsorbingBiaxialNoisyTests() =
         let experiments = seeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
 
         for e in experiments do
-            Assert.True(e.fit.solution.iterations > 0, $"the fit for seed {e.seed.value} never took a step")
+            Assert.True(e.fit.solution.iterations.value > 0, $"the fit for seed {e.seed.value} never took a step")
 
         let recovered = experiments |> List.map (fun e -> e.fit.recovered)
         let table = reportedQuantities |> List.map (statisticsFor absorbing recovered)
         let residualLevels =
             [ for e in experiments ->
-                $"seed {e.seed.value}: chi2 {e.fit.chiSquared}, rms {e.fit.rmsResidual}, {e.fit.solution.iterations} iterations" ]
+                $"seed {e.seed.value}: chi2 {e.fit.chiSquared}, rms {e.fit.rmsResidual}, {e.fit.solution.iterations.value} iterations" ]
         let report =
             System.String.Join("; ", [ for row in table -> row.describe ])
             + " || "

@@ -46,15 +46,15 @@ type InverseFit<'Parameters> =
         recovered : 'Parameters
         solution : NonlinearSolution
         scaling : ParameterScaling<'Parameters>
-        residual : float[] -> float[]
+        residual : ScaledVector -> ResidualVector
     }
 
     /// Σ residualᵢ² at the solution.
-    member this.chiSquared : double = this.solution.finalResiduals |> Array.sumBy (fun r -> r * r)
+    member this.chiSquared : double = this.solution.finalResiduals.value |> Array.sumBy (fun r -> r * r)
 
     /// The root-mean-square residual entry at the solution — the noise level, when there is noise.
     member this.rmsResidual : double =
-        sqrt (this.chiSquared / float (max 1 this.solution.finalResiduals.Length))
+        sqrt (this.chiSquared / float (max 1 this.solution.finalResiduals.value.Length))
 
 // =====================================================================================================
 // The MEASUREMENT-ERROR model (manual task 010, generalized for task 014).
@@ -316,7 +316,7 @@ module InverseFitHarness =
             cut = cut
             thickness = thickness
             incidenceAngle = Angle.degree (incidenceDeg * 1.0<Berreman.Constants.deg>) |> IncidenceAngle.create
-            azimuth = SampleAzimuth.degree azimuthDeg
+            azimuth = SampleAzimuth.degree (azimuthDeg * 1.0<Berreman.Constants.deg>)
             observable = observable
             waveLength = waveLength
         }
@@ -345,15 +345,15 @@ module InverseFitHarness =
         (forward : ForwardModelProxy<'Parameters>)
         (observations : MuellerObservation list)
         (scaling : ParameterScaling<'Parameters>)
-        : float[] -> float[] =
+        : ScaledVector -> ResidualVector =
         let width = 15 * List.length observations
-        fun (v : float[]) ->
+        fun (v : ScaledVector) ->
             match forwardModels forward (ofScaled scaling v) observations with
-            | Error _ -> Array.create width 1.0e3
+            | Error _ -> Array.create width 1.0e3 |> ResidualVector
             | Ok models ->
                 match residualVector observations models with
                 | Ok r -> r
-                | Error _ -> Array.create width 1.0e3
+                | Error _ -> Array.create width 1.0e3 |> ResidualVector
 
     /// The residual closure for an ABSORBING sample: the 15 normalized Mueller element differences per
     /// observation, PLUS one log-throughput term per observation.
@@ -375,18 +375,18 @@ module InverseFitHarness =
         (forward : ForwardModelProxy<'Parameters>)
         (observations : MuellerObservation list)
         (scaling : ParameterScaling<'Parameters>)
-        : float[] -> float[] =
+        : ScaledVector -> ResidualVector =
         let width = 16 * List.length observations
         let logThroughput (m : MuellerMatrix) =
             let m00 = m.element 0 0
             if m00 <= 0.0 || not (System.Double.IsFinite m00) then None else Some (log m00)
-        fun (v : float[]) ->
+        fun (v : ScaledVector) ->
             match forwardModels forward (ofScaled scaling v) observations with
-            | Error _ -> Array.create width 1.0e3
+            | Error _ -> Array.create width 1.0e3 |> ResidualVector
             | Ok models ->
                 match residualVector observations models with
-                | Error _ -> Array.create width 1.0e3
-                | Ok normalized ->
+                | Error _ -> Array.create width 1.0e3 |> ResidualVector
+                | Ok (ResidualVector normalized) ->
                     let throughput =
                         List.zip observations models
                         |> List.map (fun (o, model) ->
@@ -394,7 +394,16 @@ module InverseFitHarness =
                             | Some measured, Some predicted -> predicted - measured
                             | _ -> 1.0e3)
                         |> Array.ofList
-                    Array.append normalized throughput
+                    Array.append normalized throughput |> ResidualVector
+
+    /// The residual Jacobian of a typed residual closure at a scaled point, by FitQuality's finite
+    /// differences (which speak plain arrays).
+    let residualJacobianAt (residual : ScaledVector -> ResidualVector) (point : ScaledVector) : ResidualJacobian =
+        FitQuality.residualJacobian (fun x -> (residual (ScaledVector x)).value) point.value |> ResidualJacobian
+
+    /// FitQuality's report on a fit, at its solution.
+    let fitReportOf (fit : InverseFit<'Parameters>) : FitQuality.FitReport =
+        FitQuality.reportFrom (fun x -> (fit.residual (ScaledVector x)).value) fit.solution.solution.value fit.solution.finalResiduals.value
 
     /// How hard the residual pushes back along ONE DIRECTION in parameter space — `‖J·v‖` for a unit
     /// direction `v`, computed from the residual Jacobian.
@@ -403,10 +412,10 @@ module InverseFitHarness =
     /// question "is this COMBINATION of parameters observable?", which is what an identifiability claim
     /// about a null direction needs: the isotropic part of an absorption tensor is not any one parameter,
     /// it is the sum of three of them, and it can be invisible while every individual column is alive.
-    let directionalSensitivity (jacobian : float[][]) (direction : float[]) : double =
+    let directionalSensitivity (jacobian : ResidualJacobian) (direction : float[]) : double =
         let norm = sqrt (direction |> Array.sumBy (fun x -> x * x))
         let unit = direction |> Array.map (fun x -> x / norm)
-        jacobian
+        jacobian.value
         |> Array.sumBy (fun row -> (Array.map2 (*) row unit |> Array.sum) ** 2.0)
         |> sqrt
 
@@ -450,18 +459,18 @@ module InverseFitHarness =
     /// and read back by a slightly wrong detector, and nothing about the fit itself changes.
     let fitWithResidual
         (box : SearchBox)
-        (residual : float[] -> float[])
+        (residual : ScaledVector -> ResidualVector)
         (scaling : ParameterScaling<'Parameters>)
         : InverseFit<'Parameters> =
         let solver = MuellerInverseSolver.createAlglibLevenbergMarquardt ()
         let request =
             {
                 residual = residual
-                initial = Array.zeroCreate scaling.dimension
-                lowerBounds = Array.create scaling.dimension -box.halfWidth
-                upperBounds = Array.create scaling.dimension box.halfWidth
-                maxIterations = 400
-                epsX = 1.0e-12
+                initial = Array.zeroCreate scaling.dimension |> ScaledVector
+                lowerBounds = Array.create scaling.dimension -box.halfWidth |> ScaledVector
+                upperBounds = Array.create scaling.dimension box.halfWidth |> ScaledVector
+                maxIterations = IterationCount 400
+                epsX = StepTolerance 1.0e-12
             }
         match solver.solveNonlinearLeastSquares request with
         | Ok solution ->
@@ -551,7 +560,7 @@ module InverseFitHarness =
     /// at all once normalized — an error in it is an error in absolute throughput, which every
     /// comparison in `MuellerInverse` divides out exactly.
     let misread (draws : UniformDeviateProvider) (noise : NoiseParam) (m : MuellerMatrix) : MuellerMatrix =
-        match normalizeMueller m with
+        match m.normalized with
         | Ok n ->
             RealMatrix4x4.create
                 [ for i in 0 .. 3 ->
@@ -573,7 +582,7 @@ module InverseFitHarness =
     /// The throughput draw is taken FIRST, before the fifteen element draws. That ordering is arbitrary
     /// but fixed: it is what makes an absorbing noisy experiment reproducible from its seed.
     let misreadAbsolute (draws : UniformDeviateProvider) (noise : NoiseParam) (m : MuellerMatrix) : MuellerMatrix =
-        match normalizeMueller m with
+        match m.normalized with
         | Ok n ->
             let trueThroughput = m.element 0 0
             let reportedThroughput = trueThroughput * (1.0 + noise.throughput.value * draws.nextDeviate ())
