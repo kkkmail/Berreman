@@ -6,5 +6,13 @@
     "declaringProject": "OpticalConstructor.Domain",
     "status": "active",
     "formerNames": []
+  },
+  "STORE_BigBoy_0002": {
+    "name": "LibraryDbContext",
+    "kind": "component",
+    "language": "csharp",
+    "declaringProject": "OpticalConstructor.Database",
+    "status": "active",
+    "formerNames": []
   }
 }
