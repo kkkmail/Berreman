@@ -278,12 +278,12 @@ let private envSchema : Result<JsonSchema, StorageError> Lazy =
     lazy
         if File.Exists schemaFullPath then
             try File.ReadAllText schemaFullPath |> JsonSchema.FromText |> Ok
-            with e -> Error (FileIoError e)
+            with e -> Error (FileIoExn e)
         else
-            Error SchemaMissing
+            Error SchemaMissingErr
 
 /// Validate a parsed document against the env schema (§J.6 item 1) via
-/// `JsonSchema.Net`. On any evaluation failure returns `SchemaValidationError`
+/// `JsonSchema.Net`. On any evaluation failure returns `SchemaValidationErr`
 /// with the library's messages; the caller MUST NOT bind on `Error`.
 let validateUserEnvironment (element : JsonElement) : Result<unit, StorageError> =
     match envSchema.Value with
@@ -298,7 +298,7 @@ let validateUserEnvironment (element : JsonElement) : Result<unit, StorageError>
                 | null -> []
                 | errs -> [ for kv in errs -> $"{results.InstanceLocation}: {kv.Key} -> {kv.Value}" ]
             let messages = if List.isEmpty messages then [ "environment schema validation failed" ] else messages
-            Error (SchemaValidationError messages)
+            Error (SchemaValidationErr messages)
 
 /// Serialize the environment to canonical JSON (§J.6 item 1), injecting the
 /// envelope `schemaVersion`, REUSING the slice-003 shared `ProjectJson.options`
@@ -309,15 +309,15 @@ let serialize (settings : EnvironmentSettings) : Result<string, StorageError> =
         let envelope = node.AsObject()
         envelope.["schemaVersion"] <- JsonValue.Create(userEnvironmentSchemaVersion)
         Ok(envelope.ToJsonString(ProjectJson.options))
-    with e -> Error(JsonParseError e.Message)
+    with e -> Error(MalformedJsonErr e.Message)
 
 /// Parse, validate-on-load, then bind (§J.6 item 1). Schema validation ALWAYS runs
 /// before the record is admitted; a `schemaVersion` mismatch fails the schema's
-/// `const` and surfaces as `SchemaValidationError`, never a migration (AC-J6).
+/// `const` and surfaces as `SchemaValidationErr`, never a migration (AC-J6).
 let deserialize (json : string) : Result<EnvironmentSettings, StorageError> =
     let parsed =
         try Ok(JsonDocument.Parse json)
-        with e -> Error(JsonParseError e.Message)
+        with e -> Error(MalformedJsonErr e.Message)
 
     match parsed with
     | Error e -> Error e
@@ -327,7 +327,7 @@ let deserialize (json : string) : Result<EnvironmentSettings, StorageError> =
         | Error e -> Error e
         | Ok () ->
             try Ok(doc.RootElement.Deserialize<EnvironmentSettings>(ProjectJson.options))
-            with e -> Error(JsonParseError e.Message)
+            with e -> Error(MalformedJsonErr e.Message)
 
 // ---------------------------------------------------------------------------
 // Fixed per-user path + total load / save (§J.6 item 2).
@@ -367,7 +367,7 @@ let save (path : string) (settings : EnvironmentSettings) : Result<unit, Storage
             Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
             File.WriteAllText(path, json)
             Ok()
-        with e -> Error(FileIoError e)
+        with e -> Error(FileIoExn e)
 
 // ---------------------------------------------------------------------------
 // Picker last-folder (§J.6 `lastFolders`, keyed by picker purpose). The field is a

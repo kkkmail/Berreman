@@ -63,18 +63,17 @@ module ProjectJsonRoundtripTests =
     let ``AC-A2 a valid canonical project validates on load`` () =
         let json = sampleProject Nanometer |> ProjectJson.serializeProject |> okOr
         // The canonical artefact is JSON text (never a .binz pickle).
-        Assert.StartsWith("{", json.TrimStart())
-        Assert.Contains("schemaVersion", json)
+        Assert.StartsWith("{", json.value.TrimStart())
+        Assert.Contains("schemaVersion", json.value)
         // Validate-on-load admits the document.
-        sampleProject Nanometer |> ProjectJson.serializeProject |> okOr
-        |> ProjectJson.deserializeProject
+        (sampleProject Nanometer |> ProjectJson.serializeProject |> okOr).parseProject
         |> okOr
         |> ignore
 
     [<Fact>]
     let ``AC-D6 round-trip preserves the defaultUnit label and the canonical SI datum`` () =
         let project = sampleProject Micrometer
-        let back = project |> ProjectJson.serializeProject |> okOr |> ProjectJson.deserializeProject |> okOr
+        let back = (project |> ProjectJson.serializeProject |> okOr).parseProject |> okOr
         // The display-only label survives the round-trip ...
         Assert.Equal(Micrometer, back.beamTree.root.defaultUnit)
         // ... and the stored SI magnitude is byte-identical (no conversion applied).
@@ -83,7 +82,7 @@ module ProjectJsonRoundtripTests =
     [<Fact>]
     let ``AC-A5 the canonical SI magnitudes are stored verbatim`` () =
         let project = sampleProject Nanometer
-        let back = project |> ProjectJson.serializeProject |> okOr |> ProjectJson.deserializeProject |> okOr
+        let back = (project |> ProjectJson.serializeProject |> okOr).parseProject |> okOr
         Assert.Equal(filmThickness, rootThickness back)
         Assert.Equal(light.waveLength.value, back.beamTree.root.incident.waveLength.value)
         // The transmitted detector child survived the Map round-trip.
@@ -112,10 +111,10 @@ module ProjectJsonRoundtripTests =
     let ``AC-B9 beam tree and systems round-trip through the schema-validated canonical project`` () =
         let json = richProject |> ProjectJson.serializeProject |> okOr
         // The canonical artefact is JSON text and is NEVER a .binz pickle (Part A constraint 4).
-        Assert.StartsWith("{", json.TrimStart())
-        Assert.DoesNotContain(".binz", json)
+        Assert.StartsWith("{", json.value.TrimStart())
+        Assert.DoesNotContain(".binz", json.value)
         // Validate-on-load admits the document against the published schema and binds it.
-        let back = json |> ProjectJson.deserializeProject |> okOr
+        let back = json.parseProject |> okOr
         // The Sample root, its Plate substrate, and both branch children survived.
         match back.beamTree.root.element with
         | SampleElement _ -> ()
@@ -137,11 +136,12 @@ module ProjectJsonRoundtripTests =
         // A real serialized document with the incident refractionIndex corrupted to a
         // non-number; the filled beamNode `$def` MUST reject it on validate-on-load.
         let bad =
-            (richProject |> ProjectJson.serializeProject |> okOr)
-                .Replace("\"refractionIndex\": 1", "\"refractionIndex\": \"not-a-number\"")
-        match ProjectJson.deserializeProject bad with
-        | Error (SchemaValidationError _) -> ()
-        | other -> failwith $"expected SchemaValidationError, got: {other}"
+            ProjectJson.ProjectJsonText
+                ((richProject |> ProjectJson.serializeProject |> okOr)
+                    .value.Replace("\"refractionIndex\": 1", "\"refractionIndex\": \"not-a-number\""))
+        match bad.parseProject with
+        | Error (SchemaValidationErr _) -> ()
+        | other -> failwith $"expected SchemaValidationErr, got: {other}"
 
     // --- AC-C1 (slice 004): the optical table plate round-trips through the
     // schema-validated canonical project. A fresh table is 1.2 x 2.0 x 0.10 m; an
@@ -161,8 +161,8 @@ module ProjectJsonRoundtripTests =
         // ... serialize -> validate-on-load -> bind: the table validates against the
         // opticalTable $def and the edited size survives byte-identically (no conversion).
         let json = project |> ProjectJson.serializeProject |> okOr
-        Assert.Contains("\"table\"", json)
-        let back = json |> ProjectJson.deserializeProject |> okOr
+        Assert.Contains("\"table\"", json.value)
+        let back = json.parseProject |> okOr
         Assert.Equal(1.5<meter>, back.table.width)
         Assert.Equal(2.5<meter>, back.table.length)
         Assert.Equal(0.125<meter>, back.table.thickness)

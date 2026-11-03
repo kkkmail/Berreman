@@ -186,8 +186,8 @@ module PlacementTests =
         // serialize -> validate-on-load -> bind. validate-on-load runs the published
         // schema against the document before binding (AC-A6).
         let json = project |> ProjectJson.serializeProject |> okOr
-        Assert.StartsWith("{", json.TrimStart())
-        let back = json |> ProjectJson.deserializeProject |> okOr
+        Assert.StartsWith("{", json.value.TrimStart())
+        let back = json.parseProject |> okOr
         // Exactly one placement survived ...
         Assert.Equal(1, List.length back.placements)
         let bp = List.head back.placements

@@ -195,24 +195,24 @@ module SynthesisFitPageTests =
         let (baseSystem, parameters, _, targets, _, _) = fittedProblem ()
         let residual = MeritFunction.buildResidual baseSystem parameters targets
         let bounds = DesignParameters.bounds parameters
-        let initial = [| 220.0e-9 |]
-        let saConfig = { Synthesis.AnnealingConfig.defaultValue with iterations = 5000 }
+        let initial = DesignVector [| 220.0e-9 |]
+        let saConfig = { Synthesis.AnnealingConfig.defaultValue with iterations = IterationCount 5000 }
 
         // Cancel immediately: the SA loop must stop without exhausting its iterations.
-        let cancelledRun = Synthesis.simulatedAnnealing saConfig (fun () -> true) bounds residual initial
-        Assert.True(cancelledRun.iterations.value < saConfig.iterations, "the loop must stop early on cancel")
+        let cancelledRun = Synthesis.simulatedAnnealing saConfig (fun () -> Synthesis.SearchCancelRequested) bounds residual initial
+        Assert.True(cancelledRun.iterations.value < saConfig.iterations.value, "the loop must stop early on cancel")
         Assert.Equal(SearchCancelled, cancelledRun.terminationReason)
         Assert.Equal(OptimizationFailed, cancelledRun.outcome)
 
         // The GA loop observes the same flag.
-        let gaConfig = { Synthesis.GeneticConfig.defaultValue with generations = 5000 }
-        let cancelledGa = Synthesis.geneticAlgorithm gaConfig (fun () -> true) bounds residual initial
-        Assert.True(cancelledGa.iterations.value < gaConfig.generations)
+        let gaConfig = { Synthesis.GeneticConfig.defaultValue with generations = IterationCount 5000 }
+        let cancelledGa = Synthesis.geneticAlgorithm gaConfig (fun () -> Synthesis.SearchCancelRequested) bounds residual initial
+        Assert.True(cancelledGa.iterations.value < gaConfig.generations.value)
         Assert.Equal(SearchCancelled, cancelledGa.terminationReason)
 
         // With no cancellation the same loop runs to completion — proving the flag
         // (not some other early-exit) is what stopped it above.
-        let fullRun = Synthesis.simulatedAnnealing { saConfig with iterations = 50 } (fun () -> false) bounds residual initial
+        let fullRun = Synthesis.simulatedAnnealing { saConfig with iterations = IterationCount 50 } (fun () -> Synthesis.SearchNotCancelled) bounds residual initial
         Assert.Equal(50, fullRun.iterations.value)
 
     // ----------------------------------------------------------------- AC-G8

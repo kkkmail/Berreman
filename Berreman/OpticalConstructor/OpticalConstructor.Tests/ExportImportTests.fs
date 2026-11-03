@@ -117,9 +117,9 @@ module ExportImportTests =
             if File.Exists path then File.Delete path
 
     [<Fact>]
-    let ``0035 importMaterials fails with a typed JsonParseError on an unknown category name`` () =
+    let ``0035 importMaterials fails with a typed MalformedJsonErr on an unknown category name`` () =
         // A library JSON whose category name is absent from the seeded catalogue is a typed
-        // `JsonParseError` at `dtoToEntry` (`tryFindCategoryByName` -> None), never a throw or a silent
+        // `MalformedJsonErr` at `dtoToEntry` (`tryFindCategoryByName` -> None), never a throw or a silent
         // default to some fallback category. The id is a valid Guid and the `description` field is present,
         // so deserialization reaches `dtoToEntry` and the CATEGORY branch is the one that fails.
         let path = Path.Combine(Path.GetTempPath(), $"""oc-cat-bad-%s{(Guid.NewGuid().ToString("N"))}.json""")
@@ -127,8 +127,8 @@ module ExportImportTests =
         File.WriteAllText(path, json, System.Text.UTF8Encoding false)
         try
             match importMaterials path with
-            | Error (JsonParseError msg) -> Assert.Contains("NotAKnownCategory", msg)
-            | Error e -> Assert.Fail($"expected JsonParseError on an unknown category, got %A{e}")
+            | Error (MalformedJsonErr msg) -> Assert.Contains("NotAKnownCategory", msg)
+            | Error e -> Assert.Fail($"expected MalformedJsonErr on an unknown category, got %A{e}")
             | Ok imported -> Assert.Fail($"expected a typed error, but import silently produced %d{List.length imported} entr(y/ies)")
         finally
             if File.Exists path then File.Delete path

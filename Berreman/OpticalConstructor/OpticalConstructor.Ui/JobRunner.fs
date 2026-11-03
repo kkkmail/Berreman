@@ -26,8 +26,10 @@ open System
 open System.Diagnostics
 open System.IO
 open System.Threading
+open Softellect.Sys.Primitives
 open Analytics.Variables
 open OpticalConstructor.Storage
+open OpticalConstructor.Storage.Sidecar
 
 // ---------------------------------------------------------------------------
 // Progress payload (R-1 item 2). Completed-points-over-total for sweeps (total
@@ -231,11 +233,11 @@ let progressText (model : JobModel<'r>) : string option =
 
 /// The project's sidecar directory for derived/bulk artefacts: a `.sidecars`
 /// subfolder beside the project file's own directory. NEVER the repository root.
-/// This is the SINGLE shared sidecar-location seam `Storage.Sidecar.sidecarDirectory`
+/// This is the SINGLE shared sidecar-location seam `FolderName.sidecarFolder` (`Storage.Sidecar`)
 /// (reuse finding F2): the fit page's `fitHistorySidecarPath` routes through the same
 /// seam, so the flat-vs-subfolder choice is decided in exactly one place.
 let sidecarDirectory (projectDir : string) : string =
-    Sidecar.sidecarDirectory projectDir
+    (FolderName projectDir).sidecarFolder.value
 
 /// A derived-artefact `.binz` path under the project sidecar directory (item 6),
 /// via the single `Storage.Sidecar.derivedArtefactPath` seam, which appends the
@@ -243,4 +245,4 @@ let sidecarDirectory (projectDir : string) : string =
 /// `sidecarDirectory projectDir`, never the repo root — the canonical JSON project
 /// that references it is the committable artefact (§0 constraint 4).
 let derivedArtefactPath (projectDir : string) (name : string) : string =
-    Sidecar.derivedArtefactPath projectDir name
+    (Sidecar.derivedArtefactPath (FolderName projectDir) (FileName name)).value

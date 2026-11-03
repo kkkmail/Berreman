@@ -63,7 +63,7 @@ module MaterialLibrary =
         lazy
             let schemaPath =
                 Path.Combine(AppContext.BaseDirectory, "schema", "optical-constructor-project.schema.json")
-            if not (File.Exists schemaPath) then Error SchemaMissing
+            if not (File.Exists schemaPath) then Error SchemaMissingErr
             else
                 try
                     let text = File.ReadAllText schemaPath
@@ -72,7 +72,7 @@ module MaterialLibrary =
                     let wrapper =
                         $"""{{"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/materialEntry","$defs":%s{defsText}}}"""
                     Ok (JsonSchema.FromText wrapper)
-                with e -> Error (FileIoError e)
+                with e -> Error (FileIoExn e)
 
     /// Validate a single material-entry JSON element against the `materialEntry`
     /// `$def` (§I.8 / AC-I10), reusing the slice-003 schema document.
@@ -83,7 +83,7 @@ module MaterialLibrary =
             let options = EvaluationOptions(OutputFormat = OutputFormat.List)
             let results = schema.Evaluate(element, options)
             if results.IsValid then Ok ()
-            else Error (SchemaValidationError [ "document violated the materialEntry $def" ])
+            else Error (SchemaValidationErr [ "document violated the materialEntry $def" ])
 
     /// Parse a persisted DTO back to a domain entry. The persisted `id` is the `MaterialId`'s Guid
     /// STRING form (spec 0033 step 002); a non-Guid id is a typed error — no legacy string-id path,
@@ -105,8 +105,8 @@ module MaterialLibrary =
                     // rebuilt entry is view-only until the §D.9 mapping lands.
                     complexity = None
                 }
-        | None, _ -> Error (JsonParseError $"materialEntry id '%s{dto.id}' is not a Guid")
-        | _, None -> Error (JsonParseError $"materialEntry category '%s{dto.category}' is not a known category")
+        | None, _ -> Error (MalformedJsonErr $"materialEntry id '%s{dto.id}' is not a Guid")
+        | _, None -> Error (MalformedJsonErr $"materialEntry category '%s{dto.category}' is not a known category")
 
     /// Import a material library (§I.8 / AC-I10). A document that begins with `[`/`{`
     /// is the canonical library JSON `exportMaterials` wrote (deserialized through the
@@ -117,7 +117,7 @@ module MaterialLibrary =
     let importMaterials (path : string) : Result<MaterialEntry list, StorageError> =
         let read =
             try Ok(File.ReadAllText path)
-            with e -> Error(FileIoError e)
+            with e -> Error(FileIoExn e)
         match read with
         | Error e -> Error e
         | Ok text ->
@@ -133,18 +133,18 @@ module MaterialLibrary =
                             | Ok entry -> toEntries rest (entry :: acc)
                             | Error e -> Error e
                     toEntries dtos []
-                with e -> Error(JsonParseError e.Message)
+                with e -> Error(MalformedJsonErr e.Message)
             else
                 match MaterialImport.importCsv text with
                 | Ok entry -> Ok [ entry ]
-                | Error e -> Error(JsonParseError(string e))
+                | Error e -> Error(MalformedJsonErr(string e))
 
     /// Export a material library to canonical JSON (§I.8 / AC-I10). Each entry is
     /// projected to its `materialEntry` display fields (a `description = None` field
     /// is omitted, never written as `null`, so the `$def`'s string-typed `description`
     /// is satisfied), validated against the `$def`, and the array is written through
     /// the shared `ProjectJson.options` formatting. A validation failure short-circuits
-    /// to `SchemaValidationError` so an `Ok` guarantees a schema-checked file.
+    /// to `SchemaValidationErr` so an `Ok` guarantees a schema-checked file.
     let exportMaterials (path : string) (entries : MaterialEntry list) : Result<unit, StorageError> =
         try
             let nodes =
@@ -178,7 +178,7 @@ module MaterialLibrary =
                 let json = JsonSerializer.Serialize(nodes, ProjectJson.options)
                 File.WriteAllText(path, json, System.Text.UTF8Encoding false)
                 Ok()
-        with e -> Error(FileIoError e)
+        with e -> Error(FileIoExn e)
 
 /// Append-only design history + structural diff (§I.8 / R-4). `appendRevision`
 /// persists each revision as a numbered canonical-JSON snapshot under a `history/`
@@ -229,9 +229,9 @@ module DesignHistory =
                 Directory.CreateDirectory dir |> ignore
                 let next = (Directory.GetFiles(dir, "rev-*.json") |> Array.length) + 1
                 let file = Path.Combine(dir, $"rev-%04d{next}.json")
-                File.WriteAllText(file, json, System.Text.UTF8Encoding false)
+                File.WriteAllText(file, json.value, System.Text.UTF8Encoding false)
                 Ok()
-            with e -> Error(FileIoError e)
+            with e -> Error(FileIoExn e)
 
     /// Positional diff of two value-comparable lists: an item present only in the new
     /// list is `Added`, only in the old is `Removed`, present in both but unequal is
@@ -356,4 +356,4 @@ module Report =
             let outPath = Path.Combine(dir, $"report.%s{ext}")
             File.WriteAllText(outPath, htmlText, System.Text.UTF8Encoding false)
             Ok()
-        with e -> Error(FileIoError e)
+        with e -> Error(FileIoExn e)

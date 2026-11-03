@@ -3,12 +3,14 @@ namespace OpticalConstructor.Storage
 open System
 open System.IO
 open System.Text.Json
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Project
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.ProjectFile
 
 /// Recent-files persistence + autosave (§I.5 / R-1). Both go through the slice-003
 /// storage core: the recent-files preferences travel the shared `ProjectJson.options`
-/// JSON stack (NO second serializer), and autosave reuses `ProjectFile.saveProject`
+/// JSON stack (NO second serializer), and autosave reuses `FileName.saveProject`
 /// so it writes the SAME canonical JSON the user's `.ocproj` does — never a `.binz`
 /// pickle (binding rule 4). The recent-files list is the discoverability surface the
 /// Operator-facing UX checklist requires; autosave keeps a distinct `.autosave` file
@@ -81,8 +83,8 @@ module Autosave =
     let autosavePath (name : string) : string = name + autosaveSuffix
 
     /// Write the project to its `.autosave` sidewrite path (§I.5), reusing
-    /// `ProjectFile.saveProject` (and so `serializeProject` — the same canonical
+    /// `FileName.saveProject` (and so `serializeProject` — the same canonical
     /// JSON). It writes ONLY the autosave file and MUST NOT overwrite the user's
-    /// `.ocproj` (AC-I6); a failed write returns `FileIoError` for the UI to surface.
+    /// `.ocproj` (AC-I6); a failed write returns `FileIoExn` for the UI to surface.
     let writeAutosave (name : string) (project : OpticalConstructorProject) : Result<unit, StorageError> =
-        ProjectFile.saveProject (autosavePath name) project
+        (FileName (autosavePath name)).saveProject project

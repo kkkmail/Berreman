@@ -8,13 +8,15 @@ open Berreman.Media
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.Project
+open Softellect.Sys.Primitives
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.ProjectFile
 open Xunit
 
 /// `.ocproj` file round-trip + load-time schema rejection (AC-I1 / AC-I2 / AC-I3).
 /// `saveProject`->`openProject` reproduces the original project value over its
-/// canonical SI fields; a schema-violating document returns `SchemaValidationError`
+/// canonical SI fields; a schema-violating document returns `SchemaValidationErr`
 /// (binding nothing); a `schemaVersion` mismatch is rejected as a validation error
 /// with no migration path.
 module RoundTripTests =
@@ -49,24 +51,24 @@ module RoundTripTests =
     [<Fact>]
     let ``AC-I1 saveProject then openProject reproduces the project value`` () =
         withTempFile (fun path ->
-            match ProjectFile.saveProject path project with
+            match (FileName path).saveProject project with
             | Error e -> Assert.Fail($"saveProject failed: {e}")
             | Ok () ->
-                match ProjectFile.openProject path with
+                match (FileName path).openProject () with
                 | Ok back -> Assert.Equal<OpticalConstructorProject>(project, back)
                 | Error e -> Assert.Fail($"openProject failed: {e}"))
 
     [<Fact>]
-    let ``AC-I2 a schema-violating document returns SchemaValidationError and binds nothing`` () =
+    let ``AC-I2 a schema-violating document returns SchemaValidationErr and binds nothing`` () =
         // `systems` is required to be an array; a string violates the schema.
         let bad = """{ "schemaVersion": "1.0", "beamTree": { "root": {} }, "systems": "not-an-array" }"""
-        match ProjectJson.deserializeProject bad with
-        | Error (SchemaValidationError msgs) -> Assert.NotEmpty msgs
-        | other -> Assert.Fail($"expected SchemaValidationError, got {other}")
+        match (ProjectJson.ProjectJsonText bad).parseProject with
+        | Error (SchemaValidationErr msgs) -> Assert.NotEmpty msgs
+        | other -> Assert.Fail($"expected SchemaValidationErr, got {other}")
 
     [<Fact>]
     let ``AC-I3 a schemaVersion mismatch is rejected without migration`` () =
         let wrongVersion = """{ "schemaVersion": "2.0", "beamTree": { "root": {} }, "systems": [] }"""
-        match ProjectJson.deserializeProject wrongVersion with
-        | Error (SchemaValidationError _) -> ()
-        | other -> Assert.Fail($"expected SchemaValidationError for a version mismatch, got {other}")
+        match (ProjectJson.ProjectJsonText wrongVersion).parseProject with
+        | Error (SchemaValidationErr _) -> ()
+        | other -> Assert.Fail($"expected SchemaValidationErr for a version mismatch, got {other}")

@@ -247,7 +247,7 @@ let comparisonOverlay (model : Model) : (FixedInfo list * OpticalFunction list) 
 /// subfolder via the shared `Storage.Sidecar.derivedArtefactPath` seam (never the
 /// repo root). The `.fit-history` infix names the artefact; the seam appends `.binz`.
 let fitHistorySidecarPath (model : Model) (name : string) : string =
-    OpticalConstructor.Storage.Sidecar.derivedArtefactPath model.workingFolder (name + ".fit-history")
+    (OpticalConstructor.Storage.Sidecar.derivedArtefactPath (FolderName model.workingFolder) (FileName (name + ".fit-history"))).value
 
 /// The `(path, bytes)` to write for the last completed run's G.8 report, via the
 /// `.binz` serializer (`FitReport.toBinz`). `None` until a run completes.

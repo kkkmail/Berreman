@@ -16,8 +16,8 @@ open OpticalConstructor.Domain.ExperimentData         // ExperimentDataProxy —
 /// Filesystem access is the boundary. `File.ReadAllText` is wrapped so any .NET IO exception (a missing
 /// file, a directory that does not exist, an access failure) is caught HERE and mapped to a typed
 /// `ExperimentDataError` carrying the failure reason — an exception NEVER crosses into the pure Domain.
-/// This mirrors the storage-layer precedent `ProjectFile.openProject`
-/// (`try Ok (File.ReadAllText path) with e -> Error (FileIoError e)`).
+/// This mirrors the storage-layer precedent `FileName.openProject` (`ProjectFile.fs`)
+/// (`try Ok (File.ReadAllText path) with e -> Error (FileIoExn e)`).
 ///
 /// `createFileBacked` is the runtime replacement for the step-035 in-memory mock (canned series keyed by
 /// path, in `OpticalConstructor.Tests`): every consumer that holds an `ExperimentDataProxy` is unchanged

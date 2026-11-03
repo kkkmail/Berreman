@@ -225,7 +225,7 @@ type OptimizationTests() =
                     kind = Equality
                 })
 
-        let preMerit = Synthesis.systemMerit baseSystem targets
+        let preMerit = (Synthesis.systemMerit baseSystem targets).value
 
         // A vanishingly-thin needle of the SAME glass material — adjacent same-index
         // layers compose to a single film, so order of insertion is immaterial and

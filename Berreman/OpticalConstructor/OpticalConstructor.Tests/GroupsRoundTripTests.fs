@@ -4,8 +4,10 @@ open Berreman.Constants
 open Berreman.Geometry
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
+open Softellect.Sys.Primitives
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.GroupsLibrary
 open Xunit
 
 /// Element-group / experiment-collection domain + storage tests (Spec 0026 Part G/H, slice 007,
@@ -111,20 +113,20 @@ module GroupsRoundTripTests =
     let ``AC-G3 the groups library round-trips through schema-validated JSON`` () =
         let json = GroupsLibrary.serialize library |> okOr
         // The canonical artefact is JSON text carrying the schema envelope.
-        Assert.StartsWith("{", json.TrimStart())
-        Assert.Contains("schemaVersion", json)
+        Assert.StartsWith("{", json.value.TrimStart())
+        Assert.Contains("schemaVersion", json.value)
         // Deserialize runs validate-on-load BEFORE binding; the round-trip is lossless.
-        let back = GroupsLibrary.deserialize json |> okOr
+        let back = json.parseGroupsLibrary |> okOr
         Assert.Equal<Groups.GroupsLibrary>(library, back)
 
     [<Fact>]
     let ``AC-G3 deserialize validates on load and rejects a wrong schemaVersion`` () =
         // A `schemaVersion` mismatch fails the schema `const` and surfaces as a validation error —
         // never a silent migration (out-of-scope, 0.6).
-        let bad = (GroupsLibrary.serialize library |> okOr).Replace("\"1.0\"", "\"9.9\"")
-        match GroupsLibrary.deserialize bad with
-        | Error (SchemaValidationError _) -> ()
-        | other -> failwith $"expected SchemaValidationError, got {other}"
+        let bad = GroupsLibraryJsonText ((GroupsLibrary.serialize library |> okOr).value.Replace("\"1.0\"", "\"9.9\""))
+        match bad.parseGroupsLibrary with
+        | Error (SchemaValidationErr _) -> ()
+        | other -> failwith $"expected SchemaValidationErr, got {other}"
 
     [<Fact>]
     let ``AC-G3 a nested groups-file violation keeps its instance-location detail (reused validate seam)`` () =
@@ -133,30 +135,30 @@ module GroupsRoundTripTests =
         // `SchemaValidation.collectMessages` (which recurses `results.Details`, R-4), the error keeps its
         // nested instance location instead of collapsing to the generic top-level fallback message.
         let nested =
-            """{ "schemaVersion": "1.0",
+            GroupsLibraryJsonText """{ "schemaVersion": "1.0",
                  "groups": [ { "name": "g", "mode": "MultiSelect",
                                "members": [ { "placement": { "r1": "not-a-number" }, "inBeam": true } ] } ],
                  "collections": [] }"""
-        match GroupsLibrary.deserialize nested with
-        | Error (SchemaValidationError msgs) ->
+        match nested.parseGroupsLibrary with
+        | Error (SchemaValidationErr msgs) ->
             let joined = String.concat " | " msgs
             // The nested member path is pinpointed — not the generic "groups schema validation failed".
             Assert.Contains("members", joined)
             Assert.DoesNotContain("groups schema validation failed", joined)
-        | other -> failwith $"expected SchemaValidationError, got {other}"
+        | other -> failwith $"expected SchemaValidationErr, got {other}"
 
     [<Fact>]
     let ``AC-G3 the library lives at the per-user app-data path and missing-file load is total`` () =
         let path = GroupsLibrary.libraryPath ()
-        Assert.EndsWith("groups.json", path)
+        Assert.EndsWith("groups.json", path.value)
         // Mirrors the environment store's Softellect/Berreman/OpticalConstructor app-data folder.
-        Assert.Contains("OpticalConstructor", path)
+        Assert.Contains("OpticalConstructor", path.value)
         // Load of a non-existent file falls back to the empty library, never throwing.
-        Assert.Equal<Groups.GroupsLibrary>(Groups.GroupsLibrary.empty, GroupsLibrary.load (path + ".does-not-exist"))
+        Assert.Equal<Groups.GroupsLibrary>(Groups.GroupsLibrary.empty, (FileName (path.value + ".does-not-exist")).loadGroupsLibrary ())
 
     [<Fact>]
     let ``AC-H1 a collection's shared samples and on/off toggles round-trip and setToggle flips one`` () =
-        let back = GroupsLibrary.serialize library |> okOr |> GroupsLibrary.deserialize |> okOr
+        let back = (GroupsLibrary.serialize library |> okOr).parseGroupsLibrary |> okOr
         let coll = List.head back.collections
         // The shared sample value-ids and the experiment/element/group on-off state survived.
         Assert.Equal<ElementValueId list>([ ElementValueId "sample-A"; ElementValueId "sample-B" ], coll.sampleValueIds)

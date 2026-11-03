@@ -9,8 +9,10 @@ open Berreman.Media
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.Project
+open Softellect.Sys.Primitives
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.History
+open OpticalConstructor.Storage.ProjectFile
 open Xunit
 
 /// Undo/redo (§I.6, AC-I7) and autosave distinctness (§I.5, AC-I6). A destructive
@@ -90,7 +92,7 @@ module HistoryTests =
         Directory.CreateDirectory dir |> ignore
         try
             let ocproj = Path.Combine(dir, "sample.ocproj")
-            match ProjectFile.saveProject ocproj preEdit with
+            match (FileName ocproj).saveProject preEdit with
             | Error e -> Assert.Fail($"saveProject failed: %A{e}")
             | Ok () ->
                 let before = File.ReadAllText ocproj

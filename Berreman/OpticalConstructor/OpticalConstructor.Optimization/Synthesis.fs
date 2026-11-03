@@ -7,6 +7,7 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Optimization.MeritFunction
+open OpticalConstructor.Optimization.FitQuality
 
 /// §G.9 — needle/tunnelling synthesis and global optimization (spec 0022 Part G
 /// §G.9, [Standard]).
@@ -34,32 +35,34 @@ module Synthesis =
     // `ResidualVector.sumOfSquares` (Σ residualᵢ²) is the shared least-squares definition from
     // `OptimizationInterface` (reuse-critic F1) — not re-declared here.
 
-    /// Scalar merit of a residual at a design vector — the G.4 weighted-LSQ sum of
-    /// squares, the single objective both synthesis families minimize.
-    let private merit (residual : Residual) (x : float[]) : float = (residual (DesignVector x)).sumOfSquares
+    /// The merit of a residual at a design vector — the G.4 weighted-LSQ sum of squares (the §G.8 χ²), the
+    /// single objective both synthesis families minimize.
+    let private merit (residual : Residual) (x : DesignVector) : ChiSquared = ChiSquared (residual x).sumOfSquares
 
     /// The merit of a CONCRETE system (no free parameters): evaluate the §G.4
     /// residual with an empty `DesignParameter` list / empty vector, so
     /// `applyVector [] DesignVector.empty system = system`.
-    let systemMerit (system : OpticalSystem) (targets : FitTarget list) : float =
-        (MeritFunction.buildResidual system [] targets DesignVector.empty).sumOfSquares
+    let systemMerit (system : OpticalSystem) (targets : FitTarget list) : ChiSquared =
+        merit (MeritFunction.buildResidual system [] targets) DesignVector.empty
 
-    /// Clamp a vector into the box bounds (an `infinity` side leaves it untouched).
-    let private clamp (bounds : ParameterBounds) (x : float[]) : float[] =
-        let (DesignVector lower) = bounds.lower
-        let (DesignVector upper) = bounds.upper
-        Array.mapi (fun i v -> max lower.[i] (min upper.[i] v)) x
+    type ParameterBounds with
 
-    /// A finite proposal span for parameter `i`: the bound width, or a fallback
-    /// scaled by the current value when a side is unbounded.
-    let private span (lo : float) (hi : float) (x : float) : float =
-        if System.Double.IsInfinity lo || System.Double.IsInfinity hi then max 1.0 (abs x)
-        else hi - lo
+        /// The design clamped into the box (an `infinity` side leaves it untouched).
+        member this.clamp (x : DesignVector) : DesignVector =
+            let (DesignVector lower) = this.lower
+            let (DesignVector upper) = this.upper
+            let (DesignVector v) = x
+            v |> Array.mapi (fun i e -> max lower.[i] (min upper.[i] e)) |> DesignVector
 
-    let private thicknessMeters (fallback : float) (l : Layer) : float =
-        match l.thickness with
-        | Thickness t -> t / 1.0<meter>
-        | Infinity -> fallback
+        /// A finite proposal span for parameter `i` at value `x`: the bound width, or a fallback
+        /// scaled by the current value when a side is unbounded.
+        member this.proposalSpan (i : int) (x : float) : float =
+            let (DesignVector lower) = this.lower
+            let (DesignVector upper) = this.upper
+            let lo = lower.[i]
+            let hi = upper.[i]
+            if System.Double.IsInfinity lo || System.Double.IsInfinity hi then max 1.0 (abs x)
+            else hi - lo
 
     // ------------------------------------------------------------------- needle
 
@@ -87,17 +90,24 @@ module Synthesis =
         // Pick the insertion depth whose grown system has the lowest merit.
         let bestPosition =
             positions
-            |> List.map (fun p -> p, systemMerit (insertAt p) targets)
+            |> List.map (fun p -> let (ChiSquared m) = systemMerit (insertAt p) targets in p, m)
             |> List.minBy snd
             |> fst
         let grown = insertAt bestPosition
 
         // Re-refine every film thickness of the grown design (unbounded layer
         // count is exactly what needle synthesis grows; lower bound 0 is the
-        // negative-thickness prohibition, §G.3).
+        // negative-thickness prohibition, §G.3). A semi-infinite film starts at the needle's thickness.
         let parameters = grown.films |> List.mapi (fun i _ -> DesignParameters.layerThickness (FilmIndex i) upperThickness)
-        let (DesignValue needleMeters) = needleThickness.designValue
-        let initial = grown.films |> List.map (thicknessMeters needleMeters) |> Array.ofList |> DesignVector
+        let initial =
+            grown.films
+            |> List.map (fun film ->
+                match film.thickness with
+                | Infinity -> needleThickness.designValue
+                | Thickness _ -> film.thickness.designValue)
+            |> List.map (fun (DesignValue v) -> v)
+            |> Array.ofList
+            |> DesignVector
         LocalRefinement.refine grown parameters initial targets
 
     // ----------------------------------------------------------------- tunnelling
@@ -122,20 +132,70 @@ module Synthesis =
             |> DesignVector
         LocalRefinement.refine baseSystem parameters perturbed targets
 
+    // ------------------------------------------------------------- search knobs
+
+    /// The seed that makes a stochastic search reproducible.
+    type RandomSeed =
+        | RandomSeed of int
+
+        member this.value = let (RandomSeed s) = this in s
+
+    /// Simulated annealing's starting temperature, in merit units: the uphill move the Metropolis rule
+    /// still accepts with probability 1/e.
+    type AnnealingTemperature =
+        | AnnealingTemperature of float
+
+        member this.value = let (AnnealingTemperature t) = this in t
+
+    /// The factor the annealing temperature is multiplied by after every iteration (geometric cooling).
+    type CoolingRate =
+        | CoolingRate of float
+
+        member this.value = let (CoolingRate r) = this in r
+
+    /// A proposal step as a fraction of the parameter's span (`ParameterBounds.proposalSpan`).
+    type ProposalScale =
+        | ProposalScale of float
+
+        member this.value = let (ProposalScale s) = this in s
+
+    /// The number of individuals in every generation of the genetic algorithm.
+    type PopulationSize =
+        | PopulationSize of int
+
+        member this.value = let (PopulationSize n) = this in n
+
+    /// The probability that one gene of a genetic-algorithm child is mutated.
+    type MutationRate =
+        | MutationRate of float
+
+        member this.value = let (MutationRate r) = this in r
+
+    /// What a §G.9 loop's cancellation flag answers, polled once per iteration or generation (AC-G7).
+    type SearchCancellation =
+        | SearchCancelRequested
+        | SearchNotCancelled
+
     // ------------------------------------------------------- simulated annealing
 
     /// Simulated-annealing schedule knobs. `seed` makes a run reproducible.
     type AnnealingConfig =
         {
-            seed : int
-            iterations : int
-            initialTemperature : float
-            coolingRate : float
-            stepScale : float
+            seed : RandomSeed
+            iterations : IterationCount
+            initialTemperature : AnnealingTemperature
+            coolingRate : CoolingRate
+            stepScale : ProposalScale
         }
 
         static member defaultValue =
-            { seed = 1; iterations = 1000; initialTemperature = 1.0; coolingRate = 0.997; stepScale = 0.1 }
+            {
+                seed = RandomSeed 1
+                iterations = IterationCount 1000
+                initialTemperature = AnnealingTemperature 1.0
+                coolingRate = CoolingRate 0.997
+                stepScale = ProposalScale 0.1
+            }
 
     /// **Simulated annealing (010 §II.5).** A Metropolis loop over the G.1
     /// `Residual` closure: propose a bounded neighbour, accept downhill moves and
@@ -143,47 +203,55 @@ module Synthesis =
     /// the best design seen. Checks `shouldCancel` each iteration (AC-G7).
     let simulatedAnnealing
         (config : AnnealingConfig)
-        (shouldCancel : unit -> bool)
+        (shouldCancel : unit -> SearchCancellation)
         (bounds : ParameterBounds)
         (residual : Residual)
-        (initial : float[])
+        (initial : DesignVector)
         : OptimizationResult =
-        let rng = System.Random(config.seed)
-        let n = initial.Length
-        let (DesignVector lower) = bounds.lower
-        let (DesignVector upper) = bounds.upper
-        let mutable current = clamp bounds (Array.copy initial)
-        let mutable currentE = merit residual current
-        let mutable best = Array.copy current
+        let (RandomSeed seed) = config.seed
+        let (IterationCount iterations) = config.iterations
+        let (AnnealingTemperature initialTemperature) = config.initialTemperature
+        let (CoolingRate coolingRate) = config.coolingRate
+        let (ProposalScale stepScale) = config.stepScale
+        let rng = System.Random(seed)
+        let (DesignVector start) = initial
+        let n = start.Length
+        let mutable current = bounds.clamp initial
+        let (ChiSquared startE) = merit residual current
+        let mutable currentE = startE
+        let mutable best = current.copy
         let mutable bestE = currentE
-        let mutable temp = config.initialTemperature
+        let mutable temp = initialTemperature
         let mutable iter = 0
         let mutable cancelled = false
-        while iter < config.iterations && not cancelled do
-            if shouldCancel () then cancelled <- true
-            else
+        while iter < iterations && not cancelled do
+            match shouldCancel () with
+            | SearchCancelRequested -> cancelled <- true
+            | SearchNotCancelled ->
+                let (DesignVector cur) = current
                 let candidate =
                     [| for i in 0 .. n - 1 ->
-                        let w = span lower.[i] upper.[i] current.[i]
-                        current.[i] + (rng.NextDouble() * 2.0 - 1.0) * config.stepScale * w |]
-                    |> clamp bounds
-                let candE = merit residual candidate
+                        let w = bounds.proposalSpan i cur.[i]
+                        cur.[i] + (rng.NextDouble() * 2.0 - 1.0) * stepScale * w |]
+                    |> DesignVector
+                    |> bounds.clamp
+                let (ChiSquared candE) = merit residual candidate
                 let dE = candE - currentE
                 if dE <= 0.0 || rng.NextDouble() < exp (-dE / max 1.0e-12 temp) then
                     current <- candidate
                     currentE <- candE
                     if candE < bestE then
-                        best <- Array.copy candidate
+                        best <- candidate.copy
                         bestE <- candE
-                temp <- temp * config.coolingRate
+                temp <- temp * coolingRate
                 iter <- iter + 1
         {
-            solution = DesignVector best
-            finalResiduals = residual (DesignVector best)
+            solution = best
+            finalResiduals = residual best
             iterations = IterationCount iter
             terminationReason =
                 if cancelled then SearchCancelled
-                elif iter >= config.iterations then MaxIterationsReached
+                elif iter >= iterations then MaxIterationsReached
                 else Converged
         }
 
@@ -192,15 +260,21 @@ module Synthesis =
     /// Genetic / evolutionary-algorithm knobs. `seed` makes a run reproducible.
     type GeneticConfig =
         {
-            seed : int
-            generations : int
-            populationSize : int
-            mutationRate : float
-            mutationScale : float
+            seed : RandomSeed
+            generations : IterationCount
+            populationSize : PopulationSize
+            mutationRate : MutationRate
+            mutationScale : ProposalScale
         }
 
         static member defaultValue =
-            { seed = 1; generations = 200; populationSize = 24; mutationRate = 0.2; mutationScale = 0.1 }
+            {
+                seed = RandomSeed 1
+                generations = IterationCount 200
+                populationSize = PopulationSize 24
+                mutationRate = MutationRate 0.2
+                mutationScale = ProposalScale 0.1
+            }
 
     /// **Genetic / evolutionary algorithm (010 §II.5).** A bounded real-coded GA
     /// over the G.1 `Residual` closure: tournament selection, uniform crossover,
@@ -208,28 +282,34 @@ module Synthesis =
     /// Checks `shouldCancel` each generation (AC-G7).
     let geneticAlgorithm
         (config : GeneticConfig)
-        (shouldCancel : unit -> bool)
+        (shouldCancel : unit -> SearchCancellation)
         (bounds : ParameterBounds)
         (residual : Residual)
-        (initial : float[])
+        (initial : DesignVector)
         : OptimizationResult =
-        let rng = System.Random(config.seed)
-        let n = initial.Length
+        let (RandomSeed seed) = config.seed
+        let (IterationCount generations) = config.generations
+        let (PopulationSize populationSize) = config.populationSize
+        let (MutationRate mutationRate) = config.mutationRate
+        let (ProposalScale mutationScale) = config.mutationScale
+        let rng = System.Random(seed)
+        let (DesignVector start) = initial
+        let n = start.Length
         let (DesignVector lower) = bounds.lower
         let (DesignVector upper) = bounds.upper
         let sampleGene i =
             let lo = lower.[i]
             let hi = upper.[i]
             if System.Double.IsInfinity lo || System.Double.IsInfinity hi then
-                initial.[i] + (rng.NextDouble() * 2.0 - 1.0) * max 1.0 (abs initial.[i])
+                start.[i] + (rng.NextDouble() * 2.0 - 1.0) * max 1.0 (abs start.[i])
             else lo + rng.NextDouble() * (hi - lo)
-        let randomIndividual () = [| for i in 0 .. n - 1 -> sampleGene i |]
-        let score (x : float[]) = x, merit residual x
-        let bestOf (s : (float[] * float)[]) = s |> Array.minBy snd
+        let randomIndividual () = [| for i in 0 .. n - 1 -> sampleGene i |] |> DesignVector
+        let score (x : DesignVector) = let (ChiSquared e) = merit residual x in x, e
+        let bestOf (s : (DesignVector * float)[]) = s |> Array.minBy snd
         // Seed the population with the (clamped) initial plus random individuals.
         let mutable scored =
-            Array.init config.populationSize (fun k ->
-                if k = 0 then clamp bounds (Array.copy initial) else randomIndividual ())
+            Array.init populationSize (fun k ->
+                if k = 0 then bounds.clamp initial else randomIndividual ())
             |> Array.map score
         let mutable best = bestOf scored
         let mutable gen = 0
@@ -238,33 +318,35 @@ module Synthesis =
             let a = scored.[rng.Next scored.Length]
             let b = scored.[rng.Next scored.Length]
             if snd a <= snd b then fst a else fst b
-        while gen < config.generations && not cancelled do
-            if shouldCancel () then cancelled <- true
-            else
+        while gen < generations && not cancelled do
+            match shouldCancel () with
+            | SearchCancelRequested -> cancelled <- true
+            | SearchNotCancelled ->
                 let nextPop =
-                    Array.init config.populationSize (fun k ->
+                    Array.init populationSize (fun k ->
                         if k = 0 then fst best   // elitism keeps the incumbent
                         else
-                            let p1 = tournament ()
-                            let p2 = tournament ()
+                            let (DesignVector p1) = tournament ()
+                            let (DesignVector p2) = tournament ()
                             [| for i in 0 .. n - 1 ->
                                 let gene = if rng.NextDouble() < 0.5 then p1.[i] else p2.[i]
-                                if rng.NextDouble() < config.mutationRate then
-                                    let w = span lower.[i] upper.[i] gene
-                                    gene + (rng.NextDouble() * 2.0 - 1.0) * config.mutationScale * w
+                                if rng.NextDouble() < mutationRate then
+                                    let w = bounds.proposalSpan i gene
+                                    gene + (rng.NextDouble() * 2.0 - 1.0) * mutationScale * w
                                 else gene |]
-                            |> clamp bounds)
+                            |> DesignVector
+                            |> bounds.clamp)
                 scored <- nextPop |> Array.map score
                 let genBest = bestOf scored
                 if snd genBest < snd best then best <- genBest
                 gen <- gen + 1
         let (bx, _) = best
         {
-            solution = DesignVector bx
-            finalResiduals = residual (DesignVector bx)
+            solution = bx
+            finalResiduals = residual bx
             iterations = IterationCount gen
             terminationReason =
                 if cancelled then SearchCancelled
-                elif gen >= config.generations then MaxIterationsReached
+                elif gen >= generations then MaxIterationsReached
                 else Converged
         }

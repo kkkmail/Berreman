@@ -242,12 +242,12 @@ module EnvironmentRoundTripTests =
         Assert.Equal(userEnvironmentSchemaVersion, doc.RootElement.GetProperty("schemaVersion").GetString())
 
     [<Fact>]
-    let ``a schemaVersion mismatch is a typed SchemaValidationError, never a migration`` () =
+    let ``a schemaVersion mismatch is a typed SchemaValidationErr, never a migration`` () =
         let envelope = (serialize sample |> okOr |> JsonNode.Parse).AsObject()
         envelope.["schemaVersion"] <- JsonValue.Create "9.9"
         match deserialize (envelope.ToJsonString()) with
-        | Error (SchemaValidationError _) -> ()
-        | other -> Assert.Fail($"expected SchemaValidationError, got %A{other}")
+        | Error (SchemaValidationErr _) -> ()
+        | other -> Assert.Fail($"expected SchemaValidationErr, got %A{other}")
 
     [<Fact>]
     let ``load falls back to defaults on a schemaVersion mismatch file`` () =
@@ -261,17 +261,17 @@ module EnvironmentRoundTripTests =
             if File.Exists path then File.Delete path
 
     [<Fact>]
-    let ``malformed JSON deserializes to a typed JsonParseError, never a throw`` () =
+    let ``malformed JSON deserializes to a typed MalformedJsonErr, never a throw`` () =
         match deserialize "not json at all {{{" with
-        | Error (JsonParseError _) -> ()
-        | other -> Assert.Fail($"expected JsonParseError, got %A{other}")
+        | Error (MalformedJsonErr _) -> ()
+        | other -> Assert.Fail($"expected MalformedJsonErr, got %A{other}")
 
     [<Fact>]
     let ``validate reports at least one message for an invalid document`` () =
         use doc = JsonDocument.Parse "{ \"theme\": \"Dark\" }"
         match validateUserEnvironment doc.RootElement with
-        | Error (SchemaValidationError messages) -> Assert.NotEmpty messages
-        | other -> Assert.Fail($"expected SchemaValidationError with messages, got %A{other}")
+        | Error (SchemaValidationErr messages) -> Assert.NotEmpty messages
+        | other -> Assert.Fail($"expected SchemaValidationErr with messages, got %A{other}")
 
     [<Fact>]
     let ``save creates the missing settings directory`` () =

@@ -56,7 +56,7 @@ module Export =
                 |> ignore
             File.WriteAllText(path, sb.ToString(), UTF8Encoding false)
             Ok ()
-        with e -> Error (FileIoError e)
+        with e -> Error (FileIoExn e)
 
     /// Write the same already-computed sweep results as an `.xlsx` workbook (§I.7),
     /// using the single in-tree Excel dependency (ClosedXML). One header row of
@@ -72,14 +72,14 @@ module Export =
                 row |> Array.iteri (fun c v -> ws.Cell(r + 2, c + 1).Value <- v))
             wb.SaveAs(path : string)
             Ok ()
-        with e -> Error (FileIoError e)
+        with e -> Error (FileIoExn e)
 
     /// Export a chart image (§I.7 / AC-I9) by DISPATCHING to the chart library's own
     /// writer carried by the `ChartHandle` — Plotly.NET through its WebView2-hosted
     /// image writer, ScottPlot through `SavePng`/`SaveSvg`. This module does not
     /// rasterize or vectorize; it only routes the call and folds a writer exception
-    /// into `FileIoError`.
+    /// into `FileIoExn`.
     let exportChartImage (path : string) (format : ChartImageFormat) (handle : ChartHandle) : Result<unit, StorageError> =
         match handle.saveImage format path with
         | Ok () -> Ok ()
-        | Error e -> Error (FileIoError e)
+        | Error e -> Error (FileIoExn e)
