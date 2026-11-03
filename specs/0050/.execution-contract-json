@@ -472,6 +472,347 @@
           "command_sha256": "bd03dc9b6dacb7cfd30d0b578c718ef22d0603a649fc7a9287c4728dc4cde14c"
         }
       ]
+    },
+    {
+      "id": "S12-GYRATION-LAW",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 2 (S1.2) brief; specs/0050/.spec-md §0.1, §3.2; deviation recorded in specs/0050/.history (FsxAcceptanceTests stores the engine Langasite preset)",
+      "requirement": "Langasite's dispersive gyration is core data: Berreman/Berreman/Dispersion.fs PublishedGyrationLaw (one case LangasiteGyrationLaw, int wire tag 1, tryOfWire answering None for any other tag) with rhoAt, whose body is the engine preset's g11 / g33 / rho kernels moved verbatim from OpticalProperties/Dispersive.fs, and RhoWithDispValue gains PublishedLawRho. toRhoWithDisp evaluates the law; the engine Langasite preset reads it, so every engine number is unchanged and the law equals G17 literals recorded before the move, with the zero entries zero. A published law is not editable: MaterialComplexity.isEditable answers false, ofComplexity answers the new PublishedGyrationNotEditableErr (captioned in ConstructorUiIdOfDomain), and an entry carrying it opens the editor view-only. The gyration-class and handedness facets apply but extract no value, and the gyration chart draws every component. The built-in Langasite keeps its constant gyration, so no library number moves.",
+      "checks": [
+        {
+          "step": 10,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        },
+        {
+          "step": 10,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 10,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 10,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S12-DATA-FIXTURES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 2 (S1.2) brief; specs/0050/.spec-md §0.1, §3.2",
+      "requirement": "Before the record changes, every MaterialEntry built from engine properties states its physics as MaterialComplexity data with properties = complexity.toProperties: FsxAcceptanceTests' material helper takes a complexity, and each Analytics script comparison (Glass, Glass_Dispersive through the Domain Sellmeier lowering, LangasiteOnSilicon through the published index and gyration laws, the multilayers and the EUV stacks) still matches the script within its 1e-6 tolerance; the minted-id lookup fact compares values, not references; and Report.fs rebuilds a metadata-only library entry with the vacuum complexity whose composition equals the former vacuum placeholder, proved by a re-import fact.",
+      "checks": [
+        {
+          "step": 11,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 11,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 11,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S12-CONTROLS-EDIT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 2 (S1.2) brief; specs/0050/.spec-md §0.1, §3.2",
+      "requirement": "The domain-free MaterialsControls carries no view-only Edit gating: MaterialEditability and MaterialsControlsRow.editability are deleted, every selected row offers the Edit verb, and a click on it dispatches the edit handler. The Materials window's own isEditable gate is unchanged, and every other MaterialsControls fact stays green.",
+      "checks": [
+        {
+          "step": 12,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 12,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S12-MANDATORY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 2 (S1.2) brief; specs/0050/.spec-md §0.1, §3.2",
+      "requirement": "MaterialEntry.complexity is a mandatory MaterialComplexity, and properties is a member equal to complexity.toProperties, so readers keep compiling and no number moves. Every construction drops properties and Some; every reader of the option reads the value; every None arm that stood for a coded, view-only preset is deleted with nothing replacing it (MaterialStore payloadOf compares the complexity directly, LibraryFacets, OutOfBandDiagnostic, previewAnisotropy deleted, MaterialsWindowView, and MaterialEditorView whose view-only case carries the shown complexity). The fact that every built-in carries Some complexity and the coded-preset preview fact are deleted as subjectless, and the facts whose names state the option are renamed.",
+      "checks": [
+        {
+          "step": 13,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 13,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 13,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S12-SWEEP",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 2 (S1.2) brief; specs/0050/.spec-md §0.1, §3.2; specs/0050/.section-plan-jsonl section 3 invariant s03-complexity-mandatory",
+      "requirement": "After the section, no file under Berreman/ says 'complexity = None' or 'complexity = Some' (the grep S1.3's invariant s03-complexity-mandatory runs): the remaining test comments and the Ui.Tests project comment are rewritten without adding a comment, and the gyration-builder fact that named a coded preset is renamed with its assertions unchanged.",
+      "checks": [
+        {
+          "step": 14,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 14,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S12-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 2 (S1.2) brief; specs/0050/.spec-md §0.1, §3.2; AGENTS.md 'A green build is non-negotiable'",
+      "requirement": "Every S1.2 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 is an error in the core and constructor projects, so every match on RhoWithDispValue, MaterialComplexityEditError, EditorMode and the complexity option follows each case it gains or loses in the same step.",
+      "checks": [
+        {
+          "step": 10,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 11,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 12,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 13,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 14,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S12-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B 'Physics is pure data'; specs/0050/.section-plan-jsonl section 2 (S1.2) brief; specs/0050/.spec-md §0.1, §3.2; AGENTS.md 'The ELEV analyzers'",
+      "requirement": "Every S1.2 step leaves the projects it touches, and the projects that reference them, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command). The new closed set carries an int wire tag read back by tryOfWire, the new DU cases have two or more words and unique names, and the new error case ends in Err.",
+      "checks": [
+        {
+          "step": 10,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 11,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 12,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 13,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 14,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S12-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 2 invariants",
+      "requirement": "After every S1.2 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s02-elev-list-empty).",
+      "checks": [
+        {
+          "step": 10,
+          "gate": "invariant-s02-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "cf0f4a658647796c67df1de47b34c2bc5613a4c072ad4ae6b930a5de74e206e8"
+        },
+        {
+          "step": 11,
+          "gate": "invariant-s02-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "cf0f4a658647796c67df1de47b34c2bc5613a4c072ad4ae6b930a5de74e206e8"
+        },
+        {
+          "step": 12,
+          "gate": "invariant-s02-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "cf0f4a658647796c67df1de47b34c2bc5613a4c072ad4ae6b930a5de74e206e8"
+        },
+        {
+          "step": 13,
+          "gate": "invariant-s02-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "cf0f4a658647796c67df1de47b34c2bc5613a4c072ad4ae6b930a5de74e206e8"
+        },
+        {
+          "step": 14,
+          "gate": "invariant-s02-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "cf0f4a658647796c67df1de47b34c2bc5613a4c072ad4ae6b930a5de74e206e8"
+        }
+      ]
+    },
+    {
+      "id": "S12-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 2 invariants",
+      "requirement": "After every S1.2 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s02-no-vstest).",
+      "checks": [
+        {
+          "step": 10,
+          "gate": "invariant-s02-no-vstest",
+          "selection": "command",
+          "command_sha256": "b4c972997bce83663810b12d9cfe563f99c8c12934d62a105e63d9a473f04b33"
+        },
+        {
+          "step": 11,
+          "gate": "invariant-s02-no-vstest",
+          "selection": "command",
+          "command_sha256": "b4c972997bce83663810b12d9cfe563f99c8c12934d62a105e63d9a473f04b33"
+        },
+        {
+          "step": 12,
+          "gate": "invariant-s02-no-vstest",
+          "selection": "command",
+          "command_sha256": "b4c972997bce83663810b12d9cfe563f99c8c12934d62a105e63d9a473f04b33"
+        },
+        {
+          "step": 13,
+          "gate": "invariant-s02-no-vstest",
+          "selection": "command",
+          "command_sha256": "b4c972997bce83663810b12d9cfe563f99c8c12934d62a105e63d9a473f04b33"
+        },
+        {
+          "step": 14,
+          "gate": "invariant-s02-no-vstest",
+          "selection": "command",
+          "command_sha256": "b4c972997bce83663810b12d9cfe563f99c8c12934d62a105e63d9a473f04b33"
+        }
+      ]
+    },
+    {
+      "id": "S12-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 2 invariants",
+      "requirement": "After every S1.2 step, nothing under Berreman/ names kit.kit-json (section invariant s02-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 10,
+          "gate": "invariant-s02-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4d860bd3fb76eeb2f2d2cb55d18dd7802012fdf98d3bf16e968df18a8c8d609c"
+        },
+        {
+          "step": 11,
+          "gate": "invariant-s02-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4d860bd3fb76eeb2f2d2cb55d18dd7802012fdf98d3bf16e968df18a8c8d609c"
+        },
+        {
+          "step": 12,
+          "gate": "invariant-s02-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4d860bd3fb76eeb2f2d2cb55d18dd7802012fdf98d3bf16e968df18a8c8d609c"
+        },
+        {
+          "step": 13,
+          "gate": "invariant-s02-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4d860bd3fb76eeb2f2d2cb55d18dd7802012fdf98d3bf16e968df18a8c8d609c"
+        },
+        {
+          "step": 14,
+          "gate": "invariant-s02-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "4d860bd3fb76eeb2f2d2cb55d18dd7802012fdf98d3bf16e968df18a8c8d609c"
+        }
+      ]
+    },
+    {
+      "id": "S12-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 2 invariants",
+      "requirement": "After every S1.2 step, nothing under Berreman/ names EpsAxisEvaluated, in code or in a comment (section invariant s02-no-eps-axis-evaluated, established by S1.1 step 9).",
+      "checks": [
+        {
+          "step": 10,
+          "gate": "invariant-s02-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "f20ae17aedb6b45a6879fb5fbdf68653f28b48f857d8895ce5c50e81f858d4e7"
+        },
+        {
+          "step": 11,
+          "gate": "invariant-s02-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "f20ae17aedb6b45a6879fb5fbdf68653f28b48f857d8895ce5c50e81f858d4e7"
+        },
+        {
+          "step": 12,
+          "gate": "invariant-s02-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "f20ae17aedb6b45a6879fb5fbdf68653f28b48f857d8895ce5c50e81f858d4e7"
+        },
+        {
+          "step": 13,
+          "gate": "invariant-s02-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "f20ae17aedb6b45a6879fb5fbdf68653f28b48f857d8895ce5c50e81f858d4e7"
+        },
+        {
+          "step": 14,
+          "gate": "invariant-s02-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "f20ae17aedb6b45a6879fb5fbdf68653f28b48f857d8895ce5c50e81f858d4e7"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -582,6 +923,71 @@
         "S11-INV-NO-VSTEST",
         "S11-INV-NO-KIT-KIT-JSON"
       ]
+    },
+    {
+      "step": 10,
+      "sha256": "9ce2689825a78a2ca51ee26173794929938361c10d1f89c3bbfadea81312d63e",
+      "obligations": [
+        "S12-GYRATION-LAW",
+        "S12-BUILD",
+        "S12-ELEVATION",
+        "S12-INV-ELEV-LIST",
+        "S12-INV-NO-VSTEST",
+        "S12-INV-NO-KIT-KIT-JSON",
+        "S12-INV-NO-EPS-AXIS-EVALUATED"
+      ]
+    },
+    {
+      "step": 11,
+      "sha256": "f4d66b52a3cb4d576c4477100d9f4bfc8a1a66afa2dd3d130a6e8092ac123a3c",
+      "obligations": [
+        "S12-DATA-FIXTURES",
+        "S12-BUILD",
+        "S12-ELEVATION",
+        "S12-INV-ELEV-LIST",
+        "S12-INV-NO-VSTEST",
+        "S12-INV-NO-KIT-KIT-JSON",
+        "S12-INV-NO-EPS-AXIS-EVALUATED"
+      ]
+    },
+    {
+      "step": 12,
+      "sha256": "cff0629a4b65edfa832bdd54904165e67c92bedc3339badd4e9948092017fd7b",
+      "obligations": [
+        "S12-CONTROLS-EDIT",
+        "S12-BUILD",
+        "S12-ELEVATION",
+        "S12-INV-ELEV-LIST",
+        "S12-INV-NO-VSTEST",
+        "S12-INV-NO-KIT-KIT-JSON",
+        "S12-INV-NO-EPS-AXIS-EVALUATED"
+      ]
+    },
+    {
+      "step": 13,
+      "sha256": "08f467d458c8eeac6a069fa6e513525326f56330cc6845030b5ce0c8fb3c99a5",
+      "obligations": [
+        "S12-MANDATORY",
+        "S12-BUILD",
+        "S12-ELEVATION",
+        "S12-INV-ELEV-LIST",
+        "S12-INV-NO-VSTEST",
+        "S12-INV-NO-KIT-KIT-JSON",
+        "S12-INV-NO-EPS-AXIS-EVALUATED"
+      ]
+    },
+    {
+      "step": 14,
+      "sha256": "92f112911c03b1eed53b935f4821632329e9beeeaeceac40c68997b6485fefae",
+      "obligations": [
+        "S12-SWEEP",
+        "S12-BUILD",
+        "S12-ELEVATION",
+        "S12-INV-ELEV-LIST",
+        "S12-INV-NO-VSTEST",
+        "S12-INV-NO-KIT-KIT-JSON",
+        "S12-INV-NO-EPS-AXIS-EVALUATED"
+      ]
     }
   ],
   "behavior_seams": [
@@ -624,6 +1030,26 @@
       "id": "s11-structural-equality",
       "step": 9,
       "obligation": "S11-NO-CLOSURE"
+    },
+    {
+      "id": "s12-gyration-law",
+      "step": 10,
+      "obligation": "S12-GYRATION-LAW"
+    },
+    {
+      "id": "s12-data-fixtures",
+      "step": 11,
+      "obligation": "S12-DATA-FIXTURES"
+    },
+    {
+      "id": "s12-controls-edit",
+      "step": 12,
+      "obligation": "S12-CONTROLS-EDIT"
+    },
+    {
+      "id": "s12-mandatory-complexity",
+      "step": 13,
+      "obligation": "S12-MANDATORY"
     }
   ],
   "temporal_checks": [],
@@ -670,6 +1096,21 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalProperties",
         "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 10,
+      "step": 14,
+      "paths": [
+        "Berreman/Berreman",
+        "Berreman/OpticalProperties",
+        "Berreman/BerremanTests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Controls",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
       ]
     }

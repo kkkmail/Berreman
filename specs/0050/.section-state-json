@@ -6,14 +6,14 @@
     {
       "name": "S1.1 -- Every dispersion axis is data: tabulated and transcendental cases",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "d16b189",
       "spec_jsonl_lines": 9
     },
     {
       "name": "S1.2 -- A material's physics is its complexity",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 14
     },
     {
       "name": "S1.3 -- Every library entry is identified by a frozen GUID",
