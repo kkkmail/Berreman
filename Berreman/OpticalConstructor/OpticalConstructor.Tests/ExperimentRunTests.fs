@@ -8,6 +8,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ExperimentRun
 open OpticalConstructor.Storage
+open OpticalConstructor.Storage.ExperimentExportFile
 
 /// Spec 0046 — what a detector reads along its light path (`ExperimentRun`): polarizers before the sample
 /// prepare the input, polarizers after it analyze, the detector decides the quantity; the CSV layout of an
@@ -58,12 +59,11 @@ module ExperimentRunTests =
         let shared =
             run [ { name = text "Intensity (T)"; points = [ point 0.0 1.0; point 1.0 0.5 ] }
                   { name = text "Intensity (R)"; points = [ point 0.0 0.0; point 1.0 0.5 ] } ]
-        let headers, rows = ExperimentExportFile.tableOf shared
-        Assert.Equal<string list>([ "x"; "Intensity (T)"; "Intensity (R)" ], headers)
-        Assert.Equal<float list list>([ [ 0.0; 1.0; 0.0 ]; [ 1.0; 0.5; 0.5 ] ], rows |> Array.map List.ofArray |> List.ofArray)
+        let table = shared.exportTable
+        Assert.Equal<string list>([ "x"; "Intensity (T)"; "Intensity (R)" ], table.headers |> List.map (fun h -> h.value))
+        Assert.Equal<float list list>([ [ 0.0; 1.0; 0.0 ]; [ 1.0; 0.5; 0.5 ] ], table.rows |> Array.map List.ofArray |> List.ofArray)
         let ragged = run [ { name = text "A"; points = [ point 0.0 1.0 ] }; { name = text "B"; points = [ point 2.0 3.0; point 4.0 5.0 ] } ]
-        let _, longRows = ExperimentExportFile.tableOf ragged
-        Assert.Equal(3, Array.length longRows)
+        Assert.Equal(3, Array.length ragged.exportTable.rows)
         // The in-memory store refuses a run with no series.
         let store = ExperimentExport.createInMemoryExperimentExport ()
         match store.proxy.exportRun (run []) with

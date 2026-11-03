@@ -10,7 +10,7 @@ open OpticalConstructor.Domain.SampleStore       // SampleProxy.createInMemoryEm
 /// Spec 0038 (041, ADD_CONTRACT STORE_XDUO_0008) — the seed-push seam. Declares, in a new
 /// `OpticalConstructor.Seeding` project, the DECLARED-lifecycle `SeedingProxy`: the write boundary
 /// that pushes the app's built-in seed catalogue (categories, materials, samples, library entries)
-/// into a store, plus the pure `seedAll` orchestrator that drives it.
+/// into a store, plus the pure `SeedingProxy.seedAll` orchestrator that drives it.
 ///
 /// The seeds STAY where they already live next to their types — `MaterialLibrary.standardCategories`
 /// / `builtInEntries` and `Library.SeedSamples.all` / `seedEntries`. `seedAll` only READS those
@@ -31,9 +31,9 @@ module Seeding =
 
     /// The seed-push error channel (errors as values; the case carries a diagnostic `reason` — a bare
     /// error case is useless in a log). A store rejects a seed — a duplicate id, a failed write, a
-    /// constraint violation — as `SeedRejected`, never a throw across this boundary.
+    /// constraint violation — as `SeedRejectedErr`, never a throw across this boundary.
     type SeedingError =
-        | SeedRejected of reason : string
+        | SeedRejectedErr of reason : string
 
     /// The seed-push seam (the functional-proxy convention): a record of camelCase `Result`-returning
     /// functions, one per seeded kind, each taking the elevated Domain value and returning `unit` or a
@@ -51,24 +51,24 @@ module Seeding =
             saveLibraryEntry : LibraryEntry -> Result<unit, SeedingError>
         }
 
-    /// Push every EXISTING Domain seed value through `proxy`, in category → material → sample → entry
-    /// order (foreign keys resolve in that order: an entry may reference a sample, a sample references
-    /// a material, a material references a category). Within each kind the seeds go in the order the
-    /// Domain lists them. The first `SeedRejected` short-circuits — the remaining seeds are not
-    /// pushed — and its error is returned; an all-`Ok` run returns `Ok ()`.
-    let seedAll (proxy : SeedingProxy) : Result<unit, SeedingError> =
-        let pushEach (save : 'Item -> Result<unit, SeedingError>) (items : 'Item list) : Result<unit, SeedingError> =
-            items
-            |> List.fold (fun acc item -> acc |> Result.bind (fun () -> save item)) (Ok ())
+        /// Push every EXISTING Domain seed value through this proxy, in category → material → sample →
+        /// entry order (foreign keys resolve in that order: an entry may reference a sample, a sample
+        /// references a material, a material references a category). Within each kind the seeds go in the
+        /// order the Domain lists them. The first `SeedRejectedErr` short-circuits — the remaining seeds are
+        /// not pushed — and its error is returned; an all-`Ok` run returns `Ok ()`.
+        member this.seedAll () : Result<unit, SeedingError> =
+            let pushEach (save : 'Item -> Result<unit, SeedingError>) (items : 'Item list) : Result<unit, SeedingError> =
+                items
+                |> List.fold (fun acc item -> acc |> Result.bind (fun () -> save item)) (Ok ())
 
-        pushEach proxy.saveCategory standardCategories
-        |> Result.bind (fun () -> pushEach proxy.saveMaterial builtInEntries)
-        |> Result.bind (fun () -> pushEach proxy.saveSample SeedSamples.allSeedSamples)
-        |> Result.bind (fun () -> pushEach proxy.saveLibraryEntry seedEntries)
+            pushEach this.saveCategory standardCategories
+            |> Result.bind (fun () -> pushEach this.saveMaterial builtInEntries)
+            |> Result.bind (fun () -> pushEach this.saveSample SeedSamples.allSeedSamples)
+            |> Result.bind (fun () -> pushEach this.saveLibraryEntry seedEntries)
 
     /// The four EMPTY in-memory stores the seed pipeline fills, bundled with the `SeedingProxy` that
     /// writes into them (spec 0038 step 042 — IMPLEMENT_CONTRACT STORE_XDUO_0008). A caller runs
-    /// `seedAll ctx.proxy` and then reads the reproduced catalogue back through `categories` /
+    /// `ctx.proxy.seedAll ()` and then reads the reproduced catalogue back through `categories` /
     /// `materials` / `samples` / `libraryEntries` — proving the pipeline fills a blank store with the
     /// seeded catalogue using NO database and NO file IO. `[<ReferenceEquality>]` because it carries
     /// the function-valued proxies.
@@ -87,7 +87,7 @@ module Seeding =
         /// Build a `SeedingProxy` over EMPTY in-memory stores (the IMPLEMENT_CONTRACT for
         /// STORE_XDUO_0008): each save adapts the underlying store's add verb —
         /// `CategoryProxy.addCategory`, `MaterialProxy.saveMaterial`, `SampleProxy.saveSample`, and the
-        /// library-entry store's `addEntry` — mapping the store's typed error to `SeedRejected reason`.
+        /// library-entry store's `addEntry` — mapping the store's typed error to `SeedRejectedErr reason`.
         /// NO database, NO file IO: every store is an EMPTY `createInMemoryEmpty` the pipeline fills.
         /// Store build order mirrors `AppContext.create` (samples → materials → categories) so the
         /// referencing lookups stay wired to the live stores; a future DB cycle swaps only these four
@@ -100,7 +100,7 @@ module Seeding =
             let libraryEntries = Library.createInMemoryEmpty ()
 
             // Each store carries its own error DU; every case carries a diagnostic `reason` — extract
-            // it (pattern-match, never reach into a case) and re-wrap as the seam's `SeedRejected`.
+            // it (pattern-match, never reach into a case) and re-wrap as the seam's `SeedRejectedErr`.
             let categoryReason (e : CategoryError) : string =
                 match e with
                 | UnknownCategoryIdErr r | DuplicateCategoryIdErr r | CategoryStillReferencedErr r | BuiltInNotRemovableErr r | InvalidCategoryErr r -> r
@@ -116,10 +116,10 @@ module Seeding =
 
             let proxy =
                 {
-                    saveCategory = fun c -> categories.addCategory c |> Result.mapError (categoryReason >> SeedRejected)
-                    saveMaterial = fun m -> materials.saveMaterial m |> Result.mapError (materialReason >> SeedRejected)
-                    saveSample = fun s -> samples.saveSample s |> Result.mapError (sampleReason >> SeedRejected)
-                    saveLibraryEntry = fun e -> libraryEntries.addEntry e |> Result.mapError (libraryReason >> SeedRejected)
+                    saveCategory = fun c -> categories.addCategory c |> Result.mapError (categoryReason >> SeedRejectedErr)
+                    saveMaterial = fun m -> materials.saveMaterial m |> Result.mapError (materialReason >> SeedRejectedErr)
+                    saveSample = fun s -> samples.saveSample s |> Result.mapError (sampleReason >> SeedRejectedErr)
+                    saveLibraryEntry = fun e -> libraryEntries.addEntry e |> Result.mapError (libraryReason >> SeedRejectedErr)
                 }
             {
                 proxy = proxy

@@ -10,7 +10,7 @@ open OpticalConstructor.Domain.Experiments
 
 /// Spec 0038 Part I (step 034) — the pure measured-data PARSERS (text in, values out). Following the
 /// text-taking parser precedent that keeps filesystem IO and its exceptions OUT of the parser
-/// (`OpticalConstructor.Storage.SpectralImport.parseSpectrumCsv`), every function here takes the file
+/// (`OpticalConstructor.Storage.SpectralImport.SpectrumSidecarText.parseSpectrum`), every function here takes the file
 /// TEXT (a `DataFileText`) and returns `Result<_, ExperimentDataError>` — never a path, never a stream,
 /// never a throw. The disk read that yields the text lives at the edge (a future `ExperimentDataProxy`, §15.4);
 /// this module is referentially transparent, so every test drives it from an in-memory string.

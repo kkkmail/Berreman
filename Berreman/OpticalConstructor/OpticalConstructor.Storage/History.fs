@@ -24,9 +24,9 @@ module History =
             future : OpticalConstructorProject list
         }
 
-    /// Seed a history at `present` with empty past/future (§I.6).
-    let ofPresent (present : OpticalConstructorProject) : EditHistory =
-        { past = []; present = present; future = [] }
+        /// Seed a history at `present` with empty past/future (§I.6).
+        static member ofPresent (present : OpticalConstructorProject) : EditHistory =
+            { past = []; present = present; future = [] }
 
     /// Record a destructive edit (§I.6): the old `present` moves onto `past`, `next`
     /// becomes `present`, and `future` is cleared (a fresh edit invalidates redo).

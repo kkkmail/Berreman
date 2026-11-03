@@ -33,7 +33,7 @@ module SeedingInMemoryTests =
     let ``seedAll over empty in-memory stores reproduces the seeded catalogue counts`` () =
         let stores = SeedingProxy.createInMemory ()
 
-        match seedAll stores.proxy with
+        match stores.proxy.seedAll () with
         | Ok () -> ()
         | Error e -> Assert.Fail($"seedAll over empty in-memory stores should be Ok (), got %A{e}")
 
@@ -69,7 +69,7 @@ module SeedingInMemoryTests =
     [<Fact>]
     let ``the fixed seed ids resolve to the same seed instances through the seeded in-memory stores`` () =
         let stores = SeedingProxy.createInMemory ()
-        match seedAll stores.proxy with
+        match stores.proxy.seedAll () with
         | Ok () -> ()
         | Error e -> Assert.Fail($"seedAll should be Ok (), got %A{e}")
 
@@ -94,12 +94,12 @@ module SeedingInMemoryTests =
     [<Fact>]
     let ``re-seeding the already-seeded in-memory stores is rejected (the store is genuinely stateful)`` () =
         // Proves the in-memory stores actually retain state: the first seedAll fills them; the second
-        // hits the first store's duplicate-id block, surfaced as SeedRejected, and no Ok () no-op.
+        // hits the first store's duplicate-id block, surfaced as SeedRejectedErr, and no Ok () no-op.
         let stores = SeedingProxy.createInMemory ()
-        match seedAll stores.proxy with
+        match stores.proxy.seedAll () with
         | Ok () -> ()
         | Error e -> Assert.Fail($"first seedAll should be Ok (), got %A{e}")
 
-        match seedAll stores.proxy with
-        | Error (SeedRejected reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        match stores.proxy.seedAll () with
+        | Error (SeedRejectedErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | Ok () -> Assert.Fail("re-seeding an already-seeded store should be rejected, not Ok ()")

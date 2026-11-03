@@ -109,7 +109,7 @@ type AppContext =
             experimentExport =
                 let documents = System.Environment.GetFolderPath System.Environment.SpecialFolder.MyDocuments
                 OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
-                    (System.IO.Path.Combine(documents, "Optical Constructor", "Exports"))
-                    (fun () -> System.DateTime.Now)
+                    (Softellect.Sys.Primitives.FolderName (System.IO.Path.Combine(documents, "Optical Constructor", "Exports")))
+                    (fun () -> OpticalConstructor.Storage.ExperimentExportFile.ExportTime System.DateTime.Now)
             settings = settings
         }

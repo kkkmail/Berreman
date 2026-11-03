@@ -77,12 +77,12 @@ module SourceExpansionTests =
     [<Fact>]
     let ``AC-E5 an imported spectrum is read from a CSV sidecar via FSharp.Data in canonical meters`` () =
         let csv = "wavelength_nm,weight\n400,0.5\n500,1.0\n600,0.8\n"
-        match parseSpectrumCsv csv with
+        match (SpectrumSidecarText csv).parseSpectrum with
         | Ok pairs ->
             Assert.Equal(3, List.length pairs)
             let (wl0, w0) = List.head pairs
             Assert.Equal(4.0e-7, wl0.value / 1.0<meter>, 15)
-            Assert.Equal(0.5, w0, 12)
+            Assert.Equal(0.5, w0.value, 12)
             // The pure profile sampler leaves an unloaded import empty — the data
             // arrives from the sidecar (FSharp.Data), never from a `.binz` pickle.
             Assert.Equal<(WaveLength * IlluminationWeight) list>([], SpectralProfile.sample (ImportedSpectrum (SpectrumSidecarPath "spectrum.csv")) ((NumberOfPoints 4).wavelength200to800Range))
@@ -90,7 +90,7 @@ module SourceExpansionTests =
 
     [<Fact>]
     let ``AC-E5 a micrometre-headed spectrum CSV reduces to canonical meters`` () =
-        match parseSpectrumCsv "lambda_um,weight\n0.5,1.0\n0.6,0.7\n" with
+        match (SpectrumSidecarText "lambda_um,weight\n0.5,1.0\n0.6,0.7\n").parseSpectrum with
         | Ok ((wl, _) :: _) -> Assert.Equal(5.0e-7, wl.value / 1.0<meter>, 15)
         | other -> Assert.Fail($"expected a µm spectrum parse, got {other}")
 

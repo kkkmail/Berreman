@@ -24,6 +24,16 @@ open OpticalConstructor.Domain.ExperimentData         // ExperimentDataProxy —
 /// — only the composition root swaps the mock for `createFileBacked ()`.
 module ExperimentDataStore =
 
+    /// Which measured-data file a load reads, as its failure names it.
+    type private DataFileKind =
+        | IntensityDataFile
+        | EllipsometricDataFile
+
+        member this.text : string =
+            match this with
+            | IntensityDataFile -> "intensity"
+            | EllipsometricDataFile -> "ellipsometric"
+
     /// Read the file at `path` and hand its TEXT to `parse` (a step-34 pure parser). Filesystem access is
     /// the boundary: a missing file, a missing directory, or any other .NET IO exception is caught HERE
     /// and mapped to a typed `MalformedDataFileErr` naming the file kind, the path, and the underlying reason
@@ -33,12 +43,12 @@ module ExperimentDataStore =
     /// adapter's.
     let private loadThrough
         (parse : DataFileText -> Result<'Series, ExperimentDataError>)
-        (kind : string)
+        (kind : DataFileKind)
         (path : DataFilePath)
         : Result<'Series, ExperimentDataError> =
         let read =
             try Ok (DataFileText (File.ReadAllText path.value))
-            with e -> Error (MalformedDataFileErr $"could not read the {kind} data file '{path.value}': {e.Message}")
+            with e -> Error (MalformedDataFileErr $"could not read the {kind.text} data file '{path.value}': {e.Message}")
         match read with
         | Error e -> Error e
         | Ok text -> parse text
@@ -50,6 +60,6 @@ module ExperimentDataStore =
     /// real store, leaving every consumer that holds the proxy unchanged.
     let createFileBacked () : ExperimentDataProxy =
         {
-            tryLoadIntensity = loadThrough (fun text -> text.parseIntensitySeries) "intensity"
-            tryLoadEllipsometric = loadThrough (fun text -> text.parseEllipsometricSeries) "ellipsometric"
+            tryLoadIntensity = loadThrough (fun text -> text.parseIntensitySeries) IntensityDataFile
+            tryLoadEllipsometric = loadThrough (fun text -> text.parseEllipsometricSeries) EllipsometricDataFile
         }

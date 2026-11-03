@@ -11,6 +11,8 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.Project
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.ExperimentExport
+open Softellect.Sys.Primitives
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.Export
@@ -24,32 +26,35 @@ module ExportImportTests =
 
     let private fixtures = Path.Combine(AppContext.BaseDirectory, "fixtures")
 
-    // --- AC-I8: exportCsv writes header + one comma-separated line per row ---------
+    // --- AC-I8: exportTableCsv writes header + one comma-separated line per row ----
 
     [<Fact>]
     let ``AC-I8 exportCsv writes one header line then one comma-separated line per row`` () =
         // The headers/rows are already-computed sweep tuples (no solver re-invocation).
-        let headers = [ "wavelength_nm"; "R"; "T" ]
-        let rows : float[][] = [| [| 400.0; 0.10; 0.90 |]; [| 500.0; 0.20; 0.80 |] |]
-        let path = Path.Combine(Path.GetTempPath(), $"""oc-csv-%s{(Guid.NewGuid().ToString("N"))}.csv""")
+        let table : ExportTable =
+            {
+                headers = [ ExportText "wavelength_nm"; ExportText "R"; ExportText "T" ]
+                rows = [| [| 400.0; 0.10; 0.90 |]; [| 500.0; 0.20; 0.80 |] |]
+            }
+        let path = FileName (Path.Combine(Path.GetTempPath(), $"""oc-csv-%s{(Guid.NewGuid().ToString("N"))}.csv"""))
         try
-            match Export.exportCsv path (headers, rows) with
+            match Export.exportTableCsv path table with
             | Error e -> Assert.Fail($"%A{e}")
             | Ok () ->
-                let lines = File.ReadAllLines path
+                let lines = File.ReadAllLines path.value
                 Assert.Equal(3, lines.Length)                  // one header + two rows
                 Assert.Equal("wavelength_nm,R,T", lines.[0])
                 Assert.Equal(3, lines.[1].Split(',').Length)   // one comma-separated value per column
                 Assert.Equal(3, lines.[2].Split(',').Length)
         finally
-            if File.Exists path then File.Delete path
+            if File.Exists path.value then File.Delete path.value
 
     // --- AC-I10: material import (CSV via FSharp.Data) + export validates ----------
 
     [<Fact>]
     let ``AC-I10 importMaterials reads a refractiveindex.info-style CSV and returns MaterialEntry list`` () =
-        let csvPath = Path.Combine(fixtures, "sample-nk.csv")
-        match importMaterials csvPath with
+        let csvPath = FileName (Path.Combine(fixtures, "sample-nk.csv"))
+        match csvPath.importMaterials () with
         | Ok entries -> Assert.False(List.isEmpty entries, "imported at least one entry")
         | Error e -> Assert.Fail($"%A{e}")
 
@@ -57,12 +62,12 @@ module ExportImportTests =
     let ``AC-I10 exportMaterials writes JSON that validates against the materialEntry $def`` () =
         // Built-in entries span categories and include None descriptions (the omit-null path).
         let entries = builtInEntries
-        let path = Path.Combine(Path.GetTempPath(), $"""oc-mat-%s{(Guid.NewGuid().ToString("N"))}.json""")
+        let path = FileName (Path.Combine(Path.GetTempPath(), $"""oc-mat-%s{(Guid.NewGuid().ToString("N"))}.json"""))
         try
-            match exportMaterials path entries with
+            match path.exportMaterials entries with
             | Error e -> Assert.Fail($"%A{e}")
             | Ok () ->
-                use doc = JsonDocument.Parse(File.ReadAllText path)
+                use doc = JsonDocument.Parse(File.ReadAllText path.value)
                 Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind)
                 let mutable count = 0
                 for el in doc.RootElement.EnumerateArray() do
@@ -72,7 +77,7 @@ module ExportImportTests =
                     | Error e -> Assert.Fail($"entry failed materialEntry validation: %A{e}")
                 Assert.Equal(List.length entries, count)
         finally
-            if File.Exists path then File.Delete path
+            if File.Exists path.value then File.Delete path.value
 
     // --- spec 0035 step 001: category survives the persistence seam by CategoryId ----
     // Category became DATA (a seeded catalogue keyed by `CategoryId`); the library file carries the
@@ -91,12 +96,12 @@ module ExportImportTests =
         let entries =
             builtInEntries
             |> List.filter (fun e -> match e.description with | Some _ -> true | None -> false)
-        let path = Path.Combine(Path.GetTempPath(), $"""oc-cat-%s{(Guid.NewGuid().ToString("N"))}.json""")
+        let path = FileName (Path.Combine(Path.GetTempPath(), $"""oc-cat-%s{(Guid.NewGuid().ToString("N"))}.json"""))
         try
-            match exportMaterials path entries with
+            match path.exportMaterials entries with
             | Error e -> Assert.Fail($"export failed: %A{e}")
             | Ok () ->
-                match importMaterials path with
+                match path.importMaterials () with
                 | Error e -> Assert.Fail($"import failed: %A{e}")
                 | Ok imported ->
                     Assert.Equal(List.length entries, List.length imported)
@@ -114,7 +119,7 @@ module ExportImportTests =
                     let vacuum = imported |> List.find (fun e -> e.id = MaterialIds.vacuumMaterial)
                     Assert.Equal(CategoryIds.vacuumCategory, vacuum.category)
         finally
-            if File.Exists path then File.Delete path
+            if File.Exists path.value then File.Delete path.value
 
     [<Fact>]
     let ``0035 importMaterials fails with a typed MalformedJsonErr on an unknown category name`` () =
@@ -122,16 +127,16 @@ module ExportImportTests =
         // `MalformedJsonErr` at `dtoToEntry` (`tryFindCategoryByName` -> None), never a throw or a silent
         // default to some fallback category. The id is a valid Guid and the `description` field is present,
         // so deserialization reaches `dtoToEntry` and the CATEGORY branch is the one that fails.
-        let path = Path.Combine(Path.GetTempPath(), $"""oc-cat-bad-%s{(Guid.NewGuid().ToString("N"))}.json""")
+        let path = FileName (Path.Combine(Path.GetTempPath(), $"""oc-cat-bad-%s{(Guid.NewGuid().ToString("N"))}.json"""))
         let json = $"""[{{"id":"%s{Guid.NewGuid().ToString()}","name":"Test material","category":"NotAKnownCategory","description":"probe"}}]"""
-        File.WriteAllText(path, json, System.Text.UTF8Encoding false)
+        File.WriteAllText(path.value, json, System.Text.UTF8Encoding false)
         try
-            match importMaterials path with
+            match path.importMaterials () with
             | Error (MalformedJsonErr msg) -> Assert.Contains("NotAKnownCategory", msg)
             | Error e -> Assert.Fail($"expected MalformedJsonErr on an unknown category, got %A{e}")
             | Ok imported -> Assert.Fail($"expected a typed error, but import silently produced %d{List.length imported} entr(y/ies)")
         finally
-            if File.Exists path then File.Delete path
+            if File.Exists path.value then File.Delete path.value
 
     // --- AC-I11: appendRevision twice + diffRevisions (no external VCS) -------------
 
@@ -156,14 +161,14 @@ module ExportImportTests =
 
     [<Fact>]
     let ``AC-I11 appendRevision twice yields two numbered snapshots and diffRevisions returns a ProjectDiff`` () =
-        let folder = Path.Combine(Path.GetTempPath(), $"""oc-hist-%s{(Guid.NewGuid().ToString("N"))}""")
-        Directory.CreateDirectory folder |> ignore
+        let folder = FolderName (Path.Combine(Path.GetTempPath(), $"""oc-hist-%s{(Guid.NewGuid().ToString("N"))}"""))
+        Directory.CreateDirectory folder.value |> ignore
         try
             let p1 = sampleProject Nanometer
             let p2 = sampleProject Micrometer
             match appendRevision folder p1, appendRevision folder p2 with
             | Ok (), Ok () ->
-                let snaps = Directory.GetFiles(Path.Combine(folder, "history"), "rev-*.json")
+                let snaps = Directory.GetFiles(Path.Combine(folder.value, "history"), "rev-*.json")
                 Assert.Equal(2, snaps.Length)
                 // diffRevisions is pure: identical systems/sources -> no diff items.
                 let same = diffRevisions p1 p2
@@ -175,4 +180,4 @@ module ExportImportTests =
                 Assert.Contains(d.systems, fun (it : DiffItem) -> it.change = Added)
             | r1, r2 -> Assert.Fail($"appendRevision failed: %A{r1} / %A{r2}")
         finally
-            if Directory.Exists folder then Directory.Delete(folder, true)
+            if Directory.Exists folder.value then Directory.Delete(folder.value, true)
