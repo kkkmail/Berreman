@@ -155,27 +155,27 @@ module LightSourceEditorTests =
         Assert.Equal(Ok (), sources.saveSource mine)
         let calls, context = libraryContext sources
         let m0 = LW.initLibraryWindow context Browse
-        Assert.Contains("src-mine", LW.filteredEntries m0 |> List.map (fun e -> e.entryId.value))
-        let selected = LW.updateLibraryWindow (LW.SelectEntry "src-mine") m0
-        Assert.Equal(Some mine, LW.editableSource selected)
-        LW.updateLibraryWindow LW.EditSelected selected |> ignore
+        Assert.Contains("src-mine", m0.filteredEntries |> List.map (fun e -> e.entryId.value))
+        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntry (OpticalConstructor.Domain.Placement.ElementValueId "src-mine")) m0
+        Assert.Equal(Some mine, selected.editableSource)
+        LW.updateLibraryWindow LW.EditSelectedEntry selected |> ignore
         Assert.Equal<string list>([ "source-edit:My line" ], List.ofSeq calls)
-        let armed = LW.updateLibraryWindow LW.RequestRemoveSelected selected
-        Assert.Equal(LW.PendingSourceRemove "src-mine", armed.removeGate)
-        let removed = LW.updateLibraryWindow LW.ConfirmRemove armed
-        Assert.Equal(LW.NoPendingRemove, removed.removeGate)
+        let armed = LW.updateLibraryWindow LW.RequestRemoveSelectedEntry selected
+        Assert.Equal(LW.PendingSourceRemove (OpticalConstructor.Domain.Placement.ElementValueId "src-mine"), armed.removeGate)
+        let removed = LW.updateLibraryWindow LW.ConfirmEntryRemove armed
+        Assert.Equal(LW.NoPendingLibraryRemove, removed.removeGate)
         Assert.Equal(None, removed.selectedEntryId)
         Assert.Equal(Ok [], sources.listSources ())
 
     [<Fact>]
     let ``a seeded source is protected: no Edit, and Remove refuses with the reason`` () =
         let calls, context = libraryContext (SourceProxy.createInMemory ())
-        let selected = LW.updateLibraryWindow (LW.SelectEntry "src-euv-13p5") (LW.initLibraryWindow context Browse)
-        Assert.Equal(None, LW.editableSource selected)
-        LW.updateLibraryWindow LW.EditSelected selected |> ignore
+        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntry (OpticalConstructor.Domain.Placement.ElementValueId "src-euv-13p5")) (LW.initLibraryWindow context Browse)
+        Assert.Equal(None, selected.editableSource)
+        LW.updateLibraryWindow LW.EditSelectedEntry selected |> ignore
         Assert.Empty(calls)
-        match (LW.updateLibraryWindow LW.RequestRemoveSelected selected).lastError with
-        | Some (LW.ProtectedEntryRefused reason) -> Assert.Contains("EUV 13.5 nm", reason)
+        match (LW.updateLibraryWindow LW.RequestRemoveSelectedEntry selected).lastError with
+        | Some (LW.ProtectedEntryRefusedErr reason) -> Assert.Contains("EUV 13.5 nm", reason)
         | other -> Assert.Fail($"expected the protected refusal, got %A{other}")
 
     // ------------------------------ on the Main table (headless) ------------------------------

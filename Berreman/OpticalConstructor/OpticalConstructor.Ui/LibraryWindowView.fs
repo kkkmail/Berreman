@@ -23,13 +23,10 @@
 module OpticalConstructor.Ui.LibraryWindowView
 
 open System
-open System.Globalization
 open Avalonia
-open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Layout
 open Avalonia.Media
-open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open OpticalConstructor.Domain
@@ -45,88 +42,64 @@ open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 
 // ---------------------------------------------------------------------------
-// Elevated window-local states (named DUs, never bools).
+// Elevated window-local states (named DUs, never bools). The lifecycle action, the
+// tree-build request and the expanded-node set are the Materials window's: one entity,
+// so the lower declaration serves both windows (spec 0048 R2).
 // ---------------------------------------------------------------------------
 
-/// Which sample remove (if any) awaits its inline confirmation. The pending case CARRIES the
-/// `SampleId` the Remove click targeted, so a selection change between Remove and Confirm can
-/// never delete a different entry (the step-013 `MaterialRemoveGate` shape). Only a SAMPLE can
-/// ever arm this gate — a protected entry's Remove refuses at the verb click and a preset has
-/// no removal store (see `RequestRemoveSelected`).
+/// Which remove (if any) awaits its inline confirmation. A pending case CARRIES the id the Remove
+/// click targeted, so a selection change between Remove and Confirm can never delete a different
+/// entry (the step-013 `MaterialRemoveGate` shape). Only a SAMPLE or (spec 0046) a USER light source
+/// can ever arm this gate — a protected entry's Remove refuses at the verb click and a preset has
+/// no removal store (see `RequestRemoveSelectedEntry`).
 type LibraryRemoveGate =
-    | NoPendingRemove
-    | PendingRemove of SampleId
-    /// Spec 0046: a USER light source's remove awaits confirmation (carrying its entry id).
-    | PendingSourceRemove of sourceEntryId : string
-
-/// Which lifecycle transition a confirm gate targets (spec 0038 step 023): a named DU — never a
-/// bare string — so the confirm prose and the proxy call both read from ONE value. `Supersede` and
-/// `MarkInactive` both retire the latest version (they share `InactiveEntry` in the store — steps
-/// 021/022), but stay DISTINCT actions so the verb the user pressed is what the confirm prompt
-/// names and a future step can diverge them.
-type LifecycleAction =
-    | MarkInactiveAction
-    | MarkActiveAction
-    | SupersedeAction
+    | NoPendingLibraryRemove
+    | PendingSampleRemove of SampleId
+    | PendingSourceRemove of ElementValueId
 
 /// Which lifecycle verb (if any) awaits its inline confirmation, carrying the `SampleId` the verb
 /// click targeted (the `LibraryRemoveGate` confirm-gating shape). Only a SAMPLE can arm this — a
 /// protected preset exposes no lifecycle verbs at all. Parallel to `removeGate`, never armed at the
 /// same time (arming either disarms the other), so the step-015 remove tests stay intact.
 type SampleLifecycleGate =
-    | NoPendingLifecycle
-    | PendingLifecycle of SampleId * LifecycleAction
-
-/// Whether the user has explicitly materialized a tree the result count gated behind the
-/// Show/Search button (spec 0038 §0.7). Sticky for the window's lifetime: once shown, later
-/// constraint changes keep the tree materialized — the gate protects the FIRST heavy render.
-type TreeBuildRequest =
-    | RequestedTreeBuild
-    | NoTreeBuildRequest
-
-/// The tree-node codes the user has explicitly expanded (spec 0040 step 002): an elevated named
-/// wrapper over the code set — never a naked `Set<string>` on the model surface. The tree is
-/// COLLAPSED by default (a code absent from the set projects `CollapsedNode`); a disclosure-chevron
-/// press toggles exactly one code's membership, and the choice PERSISTS across projections.
-type ExpandedNodes =
-    | ExpandedNodes of Set<string>
-
-    member this.value = let (ExpandedNodes codes) = this in codes
-    /// Whether the node with this code is expanded (its children render).
-    member this.isExpanded (code : string) : bool = this.value.Contains code
-    /// Flip one code's membership — expand a collapsed node, collapse an expanded one.
-    member this.toggle (code : string) : ExpandedNodes =
-        let codes = this.value
-        ExpandedNodes (if codes.Contains code then Set.remove code codes else Set.add code codes)
-
-    static member empty : ExpandedNodes = ExpandedNodes Set.empty
+    | NoPendingSampleLifecycle
+    | PendingSampleLifecycle of SampleId * MaterialsWindowView.LifecycleAction
 
 /// The window's typed refusals, surfaced as the inline message (errors are values — never a
 /// dialog, never a throw). Each case carries its diagnostic payload.
 type LibraryWindowError =
     /// Remove was clicked on a `ProtectedBuiltIn` entry (spec 0038 F.0: protected entries
     /// cannot be deleted) — the reason NAMES the entry.
-    | ProtectedEntryRefused of reason : string
+    | ProtectedEntryRefusedErr of reason : string
     /// Remove was clicked on a `UserManaged` NON-sample entry — no preset store exists to
     /// remove from. Unreachable over today's corpus (every non-sample is `ProtectedBuiltIn`),
     /// declared so the protection match is total without a throw.
-    | PresetNotRemovable of reason : string
+    | PresetNotRemovableErr of reason : string
     /// The samples store refused the confirmed remove — the typed `SampleError` carries its
     /// own reason.
-    | SampleRemoveRefused of SampleError
+    | SampleRemoveRefusedErr of SampleError
     /// Spec 0046: the user-sources store refused the confirmed remove.
-    | SourceRemoveRefused of SourceError
+    | SourceRemoveRefusedErr of SourceError
     /// The samples store refused a confirmed lifecycle verb (spec 0038 step 023 — e.g. the sample
     /// vanished behind the window's back) — the typed `SampleError` carries its own reason.
-    | SampleLifecycleRefused of SampleError
+    | SampleLifecycleRefusedErr of SampleError
+
+    /// The refusal's reason as the inline message shows it.
+    member this.caption : ControlCaption =
+        match this with
+        | ProtectedEntryRefusedErr reason
+        | PresetNotRemovableErr reason -> ControlCaption reason
+        | SampleRemoveRefusedErr sampleError
+        | SampleLifecycleRefusedErr sampleError -> sampleError.caption
+        | SourceRemoveRefusedErr sourceError -> sourceError.caption
 
 /// One named tree-shaping representation the window offers (spec 0038 §D.0: search order ≠
 /// representation order): a stable `code` the control dispatches back, the picker label, and
 /// the facet order handed to the engine's `buildTree`.
 type LibraryRepresentation =
     {
-        code : string
-        label : string
+        code : ConstructorUiKey
+        label : ControlCaption
         order : AttributeKey list
     }
 
@@ -136,8 +109,8 @@ type LibraryRepresentation =
 /// Applied constraints never reshuffle it.
 let byKindRepresentation : LibraryRepresentation =
     {
-        code = "by-kind"
-        label = "By kind"
+        code = ConstructorUiKey "by-kind"
+        label = ControlCaption "By kind"
         order =
             [
                 entryKindFacetKey
@@ -159,8 +132,11 @@ let byKindRepresentation : LibraryRepresentation =
 
 /// The representations offered. ONE this round — the slice seeds "By kind" only; a later step
 /// adds alternatives without a shape change (the step-013 two-representation precedent).
-let offeredRepresentations : LibraryRepresentation list =
+let offeredLibraryRepresentations : LibraryRepresentation list =
     [ byKindRepresentation ]
+
+/// The corpus group's tree-node code (`entries`); its leaves are `ElementValueId.libraryEntryCode`.
+let private libraryEntriesCode : ConstructorUiKey = ConstructorUiKey "entries"
 
 // ---------------------------------------------------------------------------
 // The window's IO seam (the functional-proxy Context convention).
@@ -195,140 +171,6 @@ type LibraryWindowContext =
         /// closes after `onSelected`, 'Close' after `onCancelled` (spec 0038 step 016).
         requestClose : unit -> unit
     }
-
-/// The window's pure model. The engine inputs (corpus, facet defs) are NOT cached here — every
-/// projection re-queries the context's proxies, so a verb's write (or another window's) shows
-/// in the same render pass.
-type LibraryWindowModel =
-    {
-        context : LibraryWindowContext
-        /// Browse (the ordinary window) or Select (spec 0038 step 016): the SAME window
-        /// pre-constrained to the session context's kind — the corpus seam applies the
-        /// constraint, so it is structurally NON-REMOVABLE (no breadcrumb chip) — plus the
-        /// Select/Close pair. A `RetargetSelect` re-points a live window's session; a resolved
-        /// or cancelled session flips back to Browse so the host's close hook can never fire
-        /// `onCancelled` after `onSelected`.
-        mode : LibraryWindowMode<LibraryEntry>
-        /// The applied facet constraints, in application (breadcrumb) order — at most one per
-        /// facet key (this window applies single-key selections; the engine's key-set OR stays
-        /// available to a later slice). A numeric selection is an ordinary member.
-        appliedFacets : AppliedConstraint list
-        /// The committed text filter (the box's draft echoes it; Enter/LostFocus commit only).
-        textFilter : TextQuery
-        /// The active tree-shaping representation.
-        representation : LibraryRepresentation
-        /// Whether the user has explicitly materialized a gated tree.
-        buildRequest : TreeBuildRequest
-        /// The tree-node codes the user has explicitly expanded (spec 0040 step 002) — the tree is
-        /// collapsed by default, so this starts empty and every top-level node opens collapsed.
-        expandedNodes : ExpandedNodes
-        /// The selected entry's `entryId` (the Edit / Remove verbs' target and the view panel's
-        /// subject). The entry-id STRING is the Library domain's uniform entry-identity seam
-        /// (`LibraryEntry.entryId` / `tryGetEntry` — a sample's elevated `SampleId` crosses it
-        /// as its Guid string form; the workbench `pendingEntry` precedent).
-        selectedEntryId : string option
-        /// The EXACT tree-node code of the selection — the control highlights the row whose code
-        /// matches, so an entry picked THROUGH a facet branch highlights that branch row, not the
-        /// corpus-group copy (spec 0040 step 003; §0.2 keeps the code a control-seam `string` token,
-        /// "" = nothing selected). `selectedEntryId` stays the domain selection; this is only its row.
-        selectedNodeCode : string
-        /// Whether the show-inactive/superseded toggle is on (spec 0038 step 023): `ActiveOnly`
-        /// (the default — pickers/facet counts exclude retired samples) or `IncludeInactive` (the
-        /// toggle adds retired samples to the tree, badged). The Domain DU, never a bool. Presets
-        /// carry no lifecycle, so the toggle only affects the sample half of the corpus. Select
-        /// mode ignores this and always lists `ActiveOnly` (a retired entry is never a valid pick).
-        showInactive : InactiveVisibility
-        /// Which sample remove (if any) awaits its inline confirmation.
-        removeGate : LibraryRemoveGate
-        /// Which lifecycle verb (if any) awaits its inline confirmation.
-        lifecycleGate : SampleLifecycleGate
-        /// Which OLDER version of the selected SAMPLE the view panel is showing read-only
-        /// (`None` = the latest, the editable default; `Some v` = version `v` view-only — spec
-        /// 0038 step 023). Reset to `None` on every selection change.
-        viewedVersion : VersionNumber option
-        /// The last typed refusal, surfaced as the inline message — never a cascade, never a
-        /// dialog.
-        lastError : LibraryWindowError option
-    }
-
-/// The window's model as it opens, before a Select session's current entry is shown (`init`).
-let private initModel (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : LibraryWindowModel =
-    {
-        context = context
-        mode = mode
-        appliedFacets = []
-        textFilter = TextQuery ""
-        representation = byKindRepresentation
-        buildRequest = NoTreeBuildRequest
-        expandedNodes = ExpandedNodes.empty
-        selectedEntryId = None
-        selectedNodeCode = ""
-        showInactive = ActiveOnly
-        removeGate = NoPendingRemove
-        lifecycleGate = NoPendingLifecycle
-        viewedVersion = None
-        lastError = None
-    }
-
-type LibraryWindowMsg =
-    /// Apply the selection as this facet's (single) constraint — an offered-value or bucket
-    /// click, or a parsed manual min–max entry; re-applying a constrained facet REPLACES its
-    /// selection.
-    | ApplyFacetConstraint of AttributeKey * FacetSelection
-    /// Remove the applied constraint of this facet — a breadcrumb-chip click.
-    | RemoveFacet of AttributeKey
-    /// Commit the filter box's text (Enter/LostFocus only — never per keystroke).
-    | CommitTextFilter of string
-    /// Choose the named representation with this code (tree reshaping only — the applied
-    /// constraints and the result set are untouched: search order ≠ representation order).
-    | ChooseRepresentation of string
-    /// Materialize the gated tree (the Show/Search button).
-    | RequestTreeBuild
-    /// Toggle one tree node's expansion (a disclosure-chevron press — spec 0040 step 002).
-    | ToggleNode of string
-    /// Select the entry leaf with this `entryId` (the view panel's subject). The selection
-    /// highlights the CORPUS-group row (the canonical `entry:<entryId>` code) — the id-only path
-    /// for programmatic / verb-driven selection.
-    | SelectEntry of string
-    /// Select an entry leaf by its EXACT tree-node code (the `entryId` it resolves to, plus the
-    /// code the user actually clicked). Highlights that node — so picking an entry through a facet
-    /// branch highlights the branch row, not the corpus-group copy (spec 0040 step 003).
-    | SelectEntryNode of string * string
-    /// The verbs, rewired from the retired Library bay (spec 0038 step 015).
-    | AddSample
-    | MakeMultilayer
-    /// Spec 0046: open the light-source editor on a NEW user source.
-    | AddSource
-    | EditSelected
-    | RequestRemoveSelected
-    | ConfirmRemove
-    | CancelRemove
-    /// The show-inactive/superseded toggle (spec 0038 step 023): flip the sample scope between
-    /// `ActiveOnly` and `IncludeInactive`.
-    | ToggleShowInactive
-    /// The lifecycle verbs on the selected SAMPLE, confirm-gated inline (spec 0038 step 023).
-    /// `Request…` arms the gate; `ConfirmLifecycle` runs the matching proxy verb (a refusal
-    /// surfaces as the typed inline message); `CancelLifecycle` disarms.
-    | RequestMarkInactive
-    | RequestMarkActive
-    | RequestSupersede
-    | ConfirmLifecycle
-    | CancelLifecycle
-    /// Show an OLDER version of the selected sample read-only in the view panel (spec 0038 step 023).
-    | ViewVersion of VersionNumber
-    /// The Select-state pair (spec 0038 step 016). 'Select' returns the HIGHLIGHTED entry
-    /// through the session's `onSelected` (a targeted dispatch), then closes; no highlight →
-    /// inert. 'Close' fires `onCancelled`, then closes.
-    | ConfirmSelect
-    | CancelSelect
-    /// A Select-state open met this LIVE window: re-point the session at the new context
-    /// (the superseded session is cancelled — a second Choose closes the first, logically)
-    /// and clear the highlight; the window itself stays (the launcher's re-target seam).
-    | RetargetSelect of SelectionContext<LibraryEntry>
-    /// The host window CLOSED (the title-bar X, or a staleness `Close()` from the requesting
-    /// surface): cancel a still-pending session exactly once — a session already resolved by
-    /// Select/Close flipped the mode to Browse first, so this can never double-fire.
-    | SelectDismissed
 
 // ---------------------------------------------------------------------------
 // Live projections (each pass re-queries the proxies).
@@ -367,158 +209,6 @@ let liveEntries (context : LibraryWindowContext) (scope : InactiveVisibility) : 
         | Error _ -> []
     samples @ (presets @ userSources |> List.distinctBy (fun entry -> entry.entryId))
 
-/// The corpus one projection pass works over: the live entries — in Select state pre-narrowed
-/// to the session's kind constraint (spec 0038 step 016). The constraint is applied at THIS
-/// corpus seam, so it is structurally NON-REMOVABLE: no breadcrumb chip exists to remove, and
-/// every count, offer, tree row and selection already lives inside it.
-/// `LibraryEntry.forKinds` is the existing kind-eligibility rule (a compound/custom polarizer
-/// serves BOTH polarizer kinds — spec 0038 step 014), never re-derived.
-/// The scope the corpus lists samples at (spec 0038 step 023): `ActiveOnly` in Select mode (a
-/// retired sample is never a valid pick target), else the window's `showInactive` toggle. The
-/// default `ActiveOnly` keeps offers, facet counts and Select byte-for-byte the step-022 behaviour.
-let effectiveScope (m : LibraryWindowModel) : InactiveVisibility =
-    match m.mode with
-    | Select _ -> ActiveOnly
-    | Browse -> m.showInactive
-
-let constrainedEntries (m : LibraryWindowModel) : LibraryEntry list =
-    let entries = liveEntries m.context (effectiveScope m)
-    match m.mode with
-    | Browse -> entries
-    | Select context -> entries |> List.filter (fun e -> e.forKinds |> List.contains context.kindConstraint.value)
-
-/// The text filter's facet key (the filter is an ORDINARY engine constraint — spec 0038 §D.0 —
-/// over the entry's display name; its UI surface stays the filter box, not a chip).
-let libraryTextFilterKey : AttributeKey = AttributeKey "library-text"
-
-/// One projection pass's engine inputs, read from the live proxies exactly once.
-type private ProjectionInputs =
-    {
-        defs : AttributeDef<LibraryEntry> list
-        /// The committed text filter as an applied constraint — empty query applies nothing.
-        textApplied : AppliedConstraint list
-        /// The FULL applied list: the text filter (first) then the facet chips in order.
-        appliedAll : AppliedConstraint list
-        corpus : LibraryEntry list
-    }
-
-let private projectionInputs (m : LibraryWindowModel) : ProjectionInputs =
-    let materialCorpus =
-        match m.context.materials.listMaterials ActiveOnly with
-        | Ok entries -> entries
-        | Error _ -> []
-    let textDef = textFilterDef libraryTextFilterKey (FacetCaption "Text") (fun (e : LibraryEntry) -> e.entryName) m.textFilter
-    let defs = textDef :: libraryFacets materialCorpus
-    let textApplied =
-        match m.textFilter.value with
-        | "" -> []
-        | _ -> [ textFilterConstraint libraryTextFilterKey ]
-    {
-        defs = defs
-        textApplied = textApplied
-        appliedAll = textApplied @ m.appliedFacets
-        corpus = constrainedEntries m
-    }
-
-/// The result set under everything applied (text filter AND facet constraints) — public so
-/// narrowing is unit-testable without a window.
-let filteredEntries (m : LibraryWindowModel) : LibraryEntry list =
-    let inputs = projectionInputs m
-    Facets.filter inputs.defs inputs.appliedAll inputs.corpus
-
-/// The selected entry resolved through the LIVE (and, in Select state, kind-constrained)
-/// corpus — a removed sample's selection resolves to nothing, so its panel vanishes with its
-/// row, and a Select session can only ever return an entry inside its constraint.
-let selectedEntry (m : LibraryWindowModel) : LibraryEntry option =
-    match m.selectedEntryId with
-    | Some id -> constrainedEntries m |> List.tryFind (fun e -> e.entryId.value = id)
-    | None -> None
-
-/// The selected entry as an editable SAMPLE — the Edit verb's target. Only samples have an
-/// editor; a preset selection offers NO Edit affordance (removed, not greyed — the
-/// `MaterialsControls` discipline).
-let editableSample (m : LibraryWindowModel) : Sample option =
-    match selectedEntry m with
-    | Some (SampleItem sample) -> Some sample
-    | Some (SourceItem _ | DetectorItem _ | PolarizerItem _) | None -> None
-
-/// Spec 0046: the selected entry as an editable USER light source — the Edit verb's other target. A
-/// protected seeded source has no editor (its Edit is absent, like any preset's).
-let editableSource (m : LibraryWindowModel) : SourcePreset option =
-    match selectedEntry m with
-    | Some (SourceItem source) ->
-        match source.protection with
-        | UserManaged -> Some source
-        | ProtectedBuiltIn -> None
-    | Some (SampleItem _ | DetectorItem _ | PolarizerItem _) | None -> None
-
-// ---------------------------------------------------------------------------
-// Lifecycle (spec 0038 step 023): only SAMPLES version and retire (presets are
-// protected — no version store, no lifecycle verbs). The active-id set, the
-// selected sample's live/retired state, the offered verbs, the version list.
-// ---------------------------------------------------------------------------
-
-/// The sample ids whose LATEST version is active (the `ActiveOnly` listing — read live every pass).
-/// A sample present in `IncludeInactive` but NOT here has a retired latest version; that is how the
-/// window distinguishes an inactive sample to badge it and to offer Mark active.
-let private activeSampleIds (m : LibraryWindowModel) : Set<SampleId> =
-    match m.context.samples.listSamples ActiveOnly with
-    | Ok samples -> samples |> List.map (fun s -> s.id) |> Set.ofList
-    | Error _ -> Set.empty
-
-/// A selected SAMPLE's lifecycle (spec 0038 step 023): `ActiveEntry` when its latest version is in
-/// the active set, `InactiveEntry` when it resolves but its latest is retired, `None` when it no
-/// longer resolves.
-let sampleLifecycle (m : LibraryWindowModel) (id : SampleId) : EntryLifecycle option =
-    match m.context.samples.tryGetSample id with
-    | Ok (Some _) ->
-        if Set.contains id (activeSampleIds m) then Some ActiveEntry else Some InactiveEntry
-    | Ok None | Error _ -> None
-
-/// The lifecycle verbs offered for the current selection (spec 0038 step 023) — the ONE source of
-/// truth the verbs row renders from and the tests assert against. `ProtectedBuiltIn` entries (the
-/// presets) offer NONE (removed, not greyed — requirement 2); a `UserManaged` non-sample has no
-/// version store, so none either; a selected SAMPLE offers Mark inactive + Supersede… when active,
-/// Mark active when retired. Any Select-mode selection offers none.
-let offeredLifecycleActions (m : LibraryWindowModel) : LifecycleAction list =
-    match m.mode with
-    | Select _ -> []
-    | Browse ->
-        match selectedEntry m with
-        | None -> []
-        | Some entry ->
-            match entry.protection with
-            | ProtectedBuiltIn -> []
-            | UserManaged ->
-                match entry with
-                | SampleItem sample ->
-                    match sampleLifecycle m sample.id with
-                    | Some ActiveEntry -> [ MarkInactiveAction; SupersedeAction ]
-                    | Some InactiveEntry -> [ MarkActiveAction ]
-                    | None -> []
-                | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
-
-/// The number of samples whose latest version is retired (spec 0038 step 023) — the visible count
-/// badge on the show-inactive toggle. Read over the whole samples store (not the filtered corpus),
-/// so the badge is a stable "N retired exist" hint whether the toggle is on or off.
-let inactiveCount (m : LibraryWindowModel) : int =
-    let active = activeSampleIds m
-    match m.context.samples.listSamples IncludeInactive with
-    | Ok all -> all |> List.filter (fun s -> not (Set.contains s.id active)) |> List.length
-    | Error _ -> 0
-
-/// Whether a library entry (its latest version) is a retired sample, for the tree-leaf badge.
-/// Presets never retire.
-let private isEntryInactive (activeIds : Set<SampleId>) (entry : LibraryEntry) : bool =
-    match entry with
-    | SampleItem sample -> not (Set.contains sample.id activeIds)
-    | SourceItem _ | DetectorItem _ | PolarizerItem _ -> false
-
-/// The badge appended to a retired sample's tree-leaf label when the show-inactive toggle reveals
-/// it (spec 0038 step 023). Supersede and mark-inactive share `InactiveEntry`, so it reads
-/// "inactive" for both.
-let inactiveBadge : string = " — inactive"
-
 /// The stored versions of a SAMPLE, ascending (latest last), enumerated by probing the proxy's
 /// by-version `resolveVersion` from version 1 upward until it resolves nothing (spec 0038 step 023
 /// — the store exposes no list-versions field). In the live in-memory store this is a single
@@ -533,127 +223,323 @@ let selectedVersionsOf (samples : SampleProxy) (id : SampleId) : (VersionNumber 
             | Ok None | Error _ -> List.rev acc
     loop VersionNumber.first []
 
-/// The selected SAMPLE's versions (empty for a preset, no selection, or a vanished id).
-let selectedVersions (m : LibraryWindowModel) : (VersionNumber * Sample) list =
-    match editableSample m with
-    | Some sample -> selectedVersionsOf m.context.samples sample.id
-    | None -> []
+/// The window's pure model. The engine inputs (corpus, facet defs) are NOT cached here — every
+/// projection re-queries the context's proxies, so a verb's write (or another window's) shows
+/// in the same render pass.
+type LibraryWindowModel =
+    {
+        context : LibraryWindowContext
+        /// Browse (the ordinary window) or Select (spec 0038 step 016): the SAME window
+        /// pre-constrained to the session context's kind — the corpus seam applies the
+        /// constraint, so it is structurally NON-REMOVABLE (no breadcrumb chip) — plus the
+        /// Select/Close pair. A `RetargetLibrarySelect` re-points a live window's session; a
+        /// resolved or cancelled session flips back to Browse so the host's close hook can never
+        /// fire `onCancelled` after `onSelected`.
+        mode : LibraryWindowMode<LibraryEntry>
+        /// The applied facet constraints, in application (breadcrumb) order — at most one per
+        /// facet key (this window applies single-key selections; the engine's key-set OR stays
+        /// available to a later slice). A numeric selection is an ordinary member.
+        appliedFacets : AppliedConstraint list
+        /// The committed text filter (the box's draft echoes it; Enter/LostFocus commit only).
+        textFilter : TextQuery
+        /// The active tree-shaping representation.
+        representation : LibraryRepresentation
+        /// Whether the user has explicitly materialized a gated tree.
+        buildRequest : MaterialsWindowView.TreeBuildRequest
+        /// The tree-node codes the user has explicitly expanded (spec 0040 step 002) — the tree is
+        /// collapsed by default, so this starts empty and every top-level node opens collapsed.
+        expandedNodes : MaterialsWindowView.ExpandedNodes
+        /// The selected entry (the Edit / Remove verbs' target and the view panel's subject); a
+        /// sample's `SampleId` crosses as `SampleId.toElementValueId`, the `LibraryEntry.entryId` seam.
+        selectedEntryId : ElementValueId option
+        /// The EXACT tree-node code of the selection — the control highlights the row whose code
+        /// matches, so an entry picked THROUGH a facet branch highlights that branch row, not the
+        /// corpus-group copy (spec 0040 step 003). `None` = nothing selected. `selectedEntryId`
+        /// stays the domain selection; this is only its row.
+        selectedNodeOpt : ConstructorUiKey option
+        /// Whether the show-inactive/superseded toggle is on (spec 0038 step 023): `ActiveOnly`
+        /// (the default — pickers/facet counts exclude retired samples) or `IncludeInactive` (the
+        /// toggle adds retired samples to the tree, badged). The Domain DU, never a bool. Presets
+        /// carry no lifecycle, so the toggle only affects the sample half of the corpus. Select
+        /// mode ignores this and always lists `ActiveOnly` (a retired entry is never a valid pick).
+        showInactive : InactiveVisibility
+        /// Which sample or source remove (if any) awaits its inline confirmation.
+        removeGate : LibraryRemoveGate
+        /// Which lifecycle verb (if any) awaits its inline confirmation.
+        lifecycleGate : SampleLifecycleGate
+        /// Which OLDER version of the selected SAMPLE the view panel is showing read-only
+        /// (`None` = the latest, the editable default; `Some v` = version `v` view-only — spec
+        /// 0038 step 023). Reset to `None` on every selection change.
+        viewedVersion : VersionNumber option
+        /// The last typed refusal, surfaced as the inline message — never a cascade, never a
+        /// dialog.
+        lastError : LibraryWindowError option
+    }
 
-// ---------------------------------------------------------------------------
-// Numeric range tokens (the domain-free control speaks string codes; every
-// token is lifted back to an elevated engine value at the handler boundary).
-// ---------------------------------------------------------------------------
+    /// The scope the corpus lists samples at (spec 0038 step 023): `ActiveOnly` in Select mode (a
+    /// retired sample is never a valid pick target), else the window's `showInactive` toggle. The
+    /// default `ActiveOnly` keeps offers, facet counts and Select byte-for-byte the step-022 behaviour.
+    member this.effectiveScope : InactiveVisibility =
+        match this.mode with
+        | Select _ -> ActiveOnly
+        | Browse -> this.showInactive
 
-let private tryParseDouble (s : string) : double option =
-    match Double.TryParse(s.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture) with
-    | true, v -> Some v
-    | _ -> None
+    /// The corpus one projection pass works over: the live entries — in Select state pre-narrowed
+    /// to the session's kind constraint (spec 0038 step 016). The constraint is applied at THIS
+    /// corpus seam, so it is structurally NON-REMOVABLE: no breadcrumb chip exists to remove, and
+    /// every count, offer, tree row and selection already lives inside it.
+    /// `LibraryEntry.forKinds` is the existing kind-eligibility rule (a compound/custom polarizer
+    /// serves BOTH polarizer kinds — spec 0038 step 014), never re-derived.
+    member this.constrainedEntries : LibraryEntry list =
+        let entries = liveEntries this.context this.effectiveScope
+        match this.mode with
+        | Browse -> entries
+        | Select context -> entries |> List.filter (fun e -> e.forKinds |> List.contains context.kindConstraint.value)
 
-/// A numeric range's stable value code: round-trip-formatted endpoints joined by ':' — a
-/// separator no numeric text form contains (an exponent's '-' could split a hyphen scheme).
-let numericRangeCode (range : NumericRange) : string =
-    let part (v : double) : string = v.ToString("R", CultureInfo.InvariantCulture)
-    $"{part range.lower.value}:{part range.upper.value}"
+    /// The selected entry resolved through the LIVE (and, in Select state, kind-constrained)
+    /// corpus — a removed sample's selection resolves to nothing, so its panel vanishes with its
+    /// row, and a Select session can only ever return an entry inside its constraint.
+    member this.selectedEntry : LibraryEntry option =
+        match this.selectedEntryId with
+        | Some id -> this.constrainedEntries |> List.tryFind (fun e -> e.entryId = id)
+        | None -> None
 
-let numericRangeOfCode (code : string) : NumericRange option =
-    match code.Split ':' with
-    | [| lo; hi |] ->
-        match tryParseDouble lo, tryParseDouble hi with
-        | Some lower, Some upper -> Some { lower = Units.UnitMagnitude lower; upper = Units.UnitMagnitude upper }
-        | _ -> None
-    | _ -> None
+    /// The selected entry as an editable SAMPLE — the Edit verb's target. Only samples have an
+    /// editor; a preset selection offers NO Edit affordance (removed, not greyed — the
+    /// `MaterialsControls` discipline).
+    member this.editableSample : Sample option =
+        match this.selectedEntry with
+        | Some (SampleItem sample) -> Some sample
+        | Some (SourceItem _ | DetectorItem _ | PolarizerItem _) | None -> None
 
-/// Parse the manual min–max box's RAW text (spec 0038 §D.0: a manual entry applies as an
-/// ordinary constraint chip): "lo-hi" (both endpoints in nm), or a single value as the
-/// degenerate exact-value range. Anything else is the host's no-op — the control's contract.
-let parseManualRange (raw : string) : NumericRange option =
-    let text = raw.Trim()
-    match text with
-    | "" -> None
-    | _ ->
-        match text.Split '-' with
-        | [| single |] -> tryParseDouble single |> Option.map (fun v -> { lower = Units.UnitMagnitude v; upper = Units.UnitMagnitude v })
-        | [| lo; hi |] ->
-            match tryParseDouble lo, tryParseDouble hi with
-            | Some lower, Some upper -> Some { lower = Units.UnitMagnitude lower; upper = Units.UnitMagnitude upper }
-            | _ -> None
-        | _ -> None
+    /// Spec 0046: the selected entry as an editable USER light source — the Edit verb's other target. A
+    /// protected seeded source has no editor (its Edit is absent, like any preset's).
+    member this.editableSource : SourcePreset option =
+        match this.selectedEntry with
+        | Some (SourceItem source) ->
+            match source.protection with
+            | UserManaged -> Some source
+            | ProtectedBuiltIn -> None
+        | Some (SampleItem _ | DetectorItem _ | PolarizerItem _) | None -> None
 
-/// A range's display text: the step-010 bucket label MINUS its trailing count — the ONE home
-/// of the nm/µm unit switch (`NumericBucket.label`, format pinned by the FacetBuckets tests)
-/// reused rather than re-derived (§D.0).
-let numericRangeText (range : NumericRange) : string =
-    let labelled = ({ range = range; count = ItemCount 0 } : NumericBucket).label
-    match labelled.LastIndexOf " (" with
-    | index when index > 0 -> labelled.Substring(0, index)
-    | _ -> labelled
+    /// The sample ids whose LATEST version is active (the `ActiveOnly` listing — read live every pass).
+    /// A sample present in `IncludeInactive` but NOT here has a retired latest version; that is how the
+    /// window distinguishes an inactive sample to badge it and to offer Mark active.
+    member internal this.activeSampleIds : Set<SampleId> =
+        match this.context.samples.listSamples ActiveOnly with
+        | Ok samples -> samples |> List.map (fun s -> s.id) |> Set.ofList
+        | Error _ -> Set.empty
 
-// ---------------------------------------------------------------------------
-// Tree node codes (host-supplied stable tokens, unique across the whole tree).
-// ---------------------------------------------------------------------------
+    /// A SAMPLE's lifecycle (spec 0038 step 023): `ActiveEntry` when its latest version is in the
+    /// active set, `InactiveEntry` when it resolves but its latest is retired, `None` when it no
+    /// longer resolves.
+    member this.sampleLifecycle (id : SampleId) : EntryLifecycle option =
+        match this.context.samples.tryGetSample id with
+        | Ok (Some _) ->
+            if Set.contains id this.activeSampleIds then Some ActiveEntry else Some InactiveEntry
+        | Ok None | Error _ -> None
 
-/// `entries` / `entry:<entryId>` name the corpus group and its selectable leaves;
-/// `facet:<facet-key>` / `branch:<facet-key>:<value-key>` name the representation's facet
-/// grouping, and a facet branch's own selectable member leaves are path-shaped
-/// `branch:<facet-key>:<value-key>:entry:<entryId>` (tree-unique, so the SAME entry can leaf both
-/// the corpus group and every branch it belongs to). Only an ENTRY-leaf code — the top-level
-/// `entry:<entryId>` OR a branch-nested `…:entry:<entryId>` — means anything to `selectNode`; a
-/// bare `facet:` / `branch:` code is grouping display (the OFFERS are the apply surface).
-let entryNodeCode (entryId : string) : string = "entry:" + entryId
+    /// The lifecycle verbs offered for the current selection (spec 0038 step 023) — the ONE source of
+    /// truth the verbs row renders from and the tests assert against. `ProtectedBuiltIn` entries (the
+    /// presets) offer NONE (removed, not greyed — requirement 2); a `UserManaged` non-sample has no
+    /// version store, so none either; a selected SAMPLE offers Mark inactive + Supersede… when active,
+    /// Mark active when retired. Any Select-mode selection offers none.
+    member this.offeredLifecycleActions : MaterialsWindowView.LifecycleAction list =
+        match this.mode with
+        | Select _ -> []
+        | Browse ->
+            match this.selectedEntry with
+            | None -> []
+            | Some entry ->
+                match entry.protection with
+                | ProtectedBuiltIn -> []
+                | UserManaged ->
+                    match entry with
+                    | SampleItem sample ->
+                        match this.sampleLifecycle sample.id with
+                        | Some ActiveEntry -> [ MaterialsWindowView.MarkInactiveAction; MaterialsWindowView.SupersedeAction ]
+                        | Some InactiveEntry -> [ MaterialsWindowView.MarkActiveAction ]
+                        | None -> []
+                    | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
 
-/// Resolve any entry-leaf node code back to its `entryId`: the top-level `entry:<entryId>`
-/// (prefix) or a branch-nested `…:entry:<entryId>` (the `:entry:` separator the branch code adds
-/// before the leaf). A bare `facet:` / `branch:` / `entries` code carries no `entry:` marker and
-/// resolves to `None`, so it stays inert at `selectNode`.
-let entryIdOfNodeCode (code : string) : string option =
-    let flatPrefix = "entry:"
-    let nestedMarker = ":entry:"
-    if code.StartsWith flatPrefix then Some (code.Substring flatPrefix.Length)
-    else
-        match code.LastIndexOf(nestedMarker, System.StringComparison.Ordinal) with
-        | -1 -> None
-        | idx -> Some (code.Substring (idx + nestedMarker.Length))
+    /// The number of samples whose latest version is retired (spec 0038 step 023) — the visible count
+    /// badge on the show-inactive toggle. Read over the whole samples store (not the filtered corpus),
+    /// so the badge is a stable "N retired exist" hint whether the toggle is on or off.
+    member this.inactiveCount : ItemCount =
+        let active = this.activeSampleIds
+        match this.context.samples.listSamples IncludeInactive with
+        | Ok all -> all |> List.filter (fun s -> not (Set.contains s.id active)) |> List.length |> ItemCount
+        | Error _ -> ItemCount 0
 
-/// Spec 0038 (044): the Domain-typed id helpers that outlived the per-view `UiIds` module —
-/// `OpticalConstructor.Controls` is domain-free, so `versionRow` (VersionNumber) and `entryNode`
-/// (over the view-local `entryNodeCode`) stay beside the view; every fixed Library-window id literal
-/// moved to `UiIds.LibraryWindow`, now `ConstructorUiId` members (spec 0048 R1).
-let versionRow (version : VersionNumber) : string = "LibraryVersionRow_" + string version.value
-let entryNode (entryId : string) : string = (ConstructorUiId.facetTreeNode (ConstructorUiKey (entryNodeCode entryId))).value
+    /// The selected SAMPLE's versions (empty for a preset, no selection, or a vanished id).
+    member this.selectedVersions : (VersionNumber * Sample) list =
+        match this.editableSample with
+        | Some sample -> selectedVersionsOf this.context.samples sample.id
+        | None -> []
 
-/// Spec 0046: a Select session opens with the entry its target is bound to now shown as CHOSEN — selected,
-/// highlighted, and the entries group expanded so its row is visible. Nothing to show (no binding, or one
-/// outside the session's kind) leaves the model as it is.
-let private showCurrentEntry (m : LibraryWindowModel) : LibraryWindowModel =
-    match m.mode with
-    | Select session ->
-        match session.currentEntryIdOpt with
-        | Some id when constrainedEntries m |> List.exists (fun e -> e.entryId = id) ->
-            let expanded = if m.expandedNodes.isExpanded "entries" then m.expandedNodes else m.expandedNodes.toggle "entries"
-            { m with selectedEntryId = Some id.value; selectedNodeCode = entryNodeCode id.value; expandedNodes = expanded }
-        | Some _ | None -> m
-    | Browse -> m
+    /// A query / selection change also disarms a pending remove confirmation and clears the inline
+    /// message — a stale confirm or refusal never outlives the state it referred to (the retired
+    /// bay's disarm discipline).
+    member internal this.disarmed : LibraryWindowModel =
+        { this with removeGate = NoPendingLibraryRemove; lifecycleGate = NoPendingSampleLifecycle; lastError = None }
+
+    /// Spec 0046: a Select session opens with the entry its target is bound to now shown as CHOSEN —
+    /// selected, highlighted, and the entries group expanded so its row is visible. Nothing to show (no
+    /// binding, or one outside the session's kind) leaves the model as it is.
+    member internal this.showCurrentEntry : LibraryWindowModel =
+        match this.mode with
+        | Select session ->
+            match session.currentEntryIdOpt with
+            | Some id when this.constrainedEntries |> List.exists (fun e -> e.entryId = id) ->
+                let expanded =
+                    match this.expandedNodes.nodeExpansion libraryEntriesCode with
+                    | FacetedTreeControls.ExpandedNode -> this.expandedNodes
+                    | FacetedTreeControls.CollapsedNode -> this.expandedNodes.toggle libraryEntriesCode
+                { this with selectedEntryId = Some id; selectedNodeOpt = Some id.libraryEntryCode; expandedNodes = expanded }
+            | Some _ | None -> this
+        | Browse -> this
+
+/// The window's model as it opens, before a Select session's current entry is shown (`initLibraryWindow`).
+let private initModel (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : LibraryWindowModel =
+    {
+        context = context
+        mode = mode
+        appliedFacets = []
+        textFilter = TextQuery ""
+        representation = byKindRepresentation
+        buildRequest = MaterialsWindowView.NoTreeBuildRequest
+        expandedNodes = MaterialsWindowView.ExpandedNodes Set.empty
+        selectedEntryId = None
+        selectedNodeOpt = None
+        showInactive = ActiveOnly
+        removeGate = NoPendingLibraryRemove
+        lifecycleGate = NoPendingSampleLifecycle
+        viewedVersion = None
+        lastError = None
+    }
+
+type LibraryWindowMsg =
+    /// Apply the selection as this facet's (single) constraint — an offered-value or bucket
+    /// click, or a parsed manual min–max entry; re-applying a constrained facet REPLACES its
+    /// selection.
+    | ApplyFacetConstraint of AttributeKey * FacetSelection
+    /// Remove the applied constraint of this facet — a breadcrumb-chip click.
+    | RemoveLibraryFacet of AttributeKey
+    /// Commit the filter box's text (Enter/LostFocus only — never per keystroke).
+    | CommitLibraryTextFilter of TextQuery
+    /// Choose the named representation with this code (tree reshaping only — the applied
+    /// constraints and the result set are untouched: search order ≠ representation order).
+    | ChooseLibraryRepresentation of ConstructorUiKey
+    /// Materialize the gated tree (the Show/Search button).
+    | RequestLibraryTreeBuild
+    /// Toggle one tree node's expansion (a disclosure-chevron press — spec 0040 step 002).
+    | ToggleLibraryNode of ConstructorUiKey
+    /// Select the entry leaf with this `entryId` (the view panel's subject). The selection
+    /// highlights the CORPUS-group row (the canonical `entry:<entryId>` code) — the id-only path
+    /// for programmatic / verb-driven selection.
+    | SelectLibraryEntry of ElementValueId
+    /// Select an entry leaf by its EXACT tree-node code (the `entryId` it resolves to, plus the
+    /// code the user actually clicked). Highlights that node — so picking an entry through a facet
+    /// branch highlights the branch row, not the corpus-group copy (spec 0040 step 003).
+    | SelectLibraryEntryNode of ElementValueId * ConstructorUiKey
+    /// The verbs, rewired from the retired Library bay (spec 0038 step 015).
+    | AddSample
+    | MakeMultilayer
+    /// Spec 0046: open the light-source editor on a NEW user source.
+    | AddSource
+    | EditSelectedEntry
+    | RequestRemoveSelectedEntry
+    | ConfirmEntryRemove
+    | CancelEntryRemove
+    /// The show-inactive/superseded toggle (spec 0038 step 023): flip the sample scope between
+    /// `ActiveOnly` and `IncludeInactive`.
+    | ToggleShowInactiveEntries
+    /// The lifecycle verbs on the selected SAMPLE, confirm-gated inline (spec 0038 step 023).
+    /// `Request…` arms the gate; `ConfirmSampleLifecycle` runs the matching proxy verb (a refusal
+    /// surfaces as the typed inline message); `CancelSampleLifecycle` disarms.
+    | RequestMarkSampleInactive
+    | RequestMarkSampleActive
+    | RequestSupersedeSample
+    | ConfirmSampleLifecycle
+    | CancelSampleLifecycle
+    /// Show an OLDER version of the selected sample read-only in the view panel (spec 0038 step 023).
+    | ViewSampleVersion of VersionNumber
+    /// The Select-state pair (spec 0038 step 016). 'Select' returns the HIGHLIGHTED entry
+    /// through the session's `onSelected` (a targeted dispatch), then closes; no highlight →
+    /// inert. 'Close' fires `onCancelled`, then closes.
+    | ConfirmLibrarySelect
+    | CancelLibrarySelect
+    /// A Select-state open met this LIVE window: re-point the session at the new context
+    /// (the superseded session is cancelled — a second Choose closes the first, logically)
+    /// and clear the highlight; the window itself stays (the launcher's re-target seam).
+    | RetargetLibrarySelect of SelectionContext<LibraryEntry>
+    /// The host window CLOSED (the title-bar X, or a staleness `Close()` from the requesting
+    /// surface): cancel a still-pending session exactly once — a session already resolved by
+    /// Select/Close flipped the mode to Browse first, so this can never double-fire.
+    | LibrarySelectDismissed
+
+/// The text filter's facet key (the filter is an ORDINARY engine constraint — spec 0038 §D.0 —
+/// over the entry's display name; its UI surface stays the filter box, not a chip).
+let libraryTextFilterKey : AttributeKey = AttributeKey "library-text"
+
+/// One projection pass's engine inputs, read from the live proxies exactly once.
+type private LibraryProjectionInputs =
+    {
+        defs : AttributeDef<LibraryEntry> list
+        /// The committed text filter as an applied constraint — empty query applies nothing.
+        textApplied : AppliedConstraint list
+        /// The FULL applied list: the text filter (first) then the facet chips in order.
+        appliedAll : AppliedConstraint list
+        corpus : LibraryEntry list
+    }
+
+let private projectionInputs (m : LibraryWindowModel) : LibraryProjectionInputs =
+    let materialCorpus =
+        match m.context.materials.listMaterials ActiveOnly with
+        | Ok entries -> entries
+        | Error _ -> []
+    let textDef = textFilterDef libraryTextFilterKey (FacetCaption "Text") (fun (e : LibraryEntry) -> e.entryName) m.textFilter
+    let defs = textDef :: libraryFacets materialCorpus
+    let textApplied =
+        match m.textFilter.value with
+        | "" -> []
+        | _ -> [ textFilterConstraint libraryTextFilterKey ]
+    {
+        defs = defs
+        textApplied = textApplied
+        appliedAll = textApplied @ m.appliedFacets
+        corpus = m.constrainedEntries
+    }
+
+type LibraryWindowModel with
+
+    /// The result set under everything applied (text filter AND facet constraints) — public so
+    /// narrowing is unit-testable without a window.
+    member this.filteredEntries : LibraryEntry list =
+        let inputs = projectionInputs this
+        Facets.filter inputs.defs inputs.appliedAll inputs.corpus
+
+/// An entry's lifecycle against the active sample-id set, for the tree-leaf badge (spec 0038 step
+/// 023); presets never retire.
+let private libraryEntryLifecycle (activeIds : Set<SampleId>) (entry : LibraryEntry) : EntryLifecycle =
+    match entry with
+    | SampleItem sample -> if Set.contains sample.id activeIds then ActiveEntry else InactiveEntry
+    | SourceItem _ | DetectorItem _ | PolarizerItem _ -> ActiveEntry
 
 /// The window's model as it opens — in a Select session, with the target's current entry shown as chosen.
 let initLibraryWindow (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : LibraryWindowModel =
-    showCurrentEntry (initModel context mode)
+    (initModel context mode).showCurrentEntry
 
 // ---------------------------------------------------------------------------
 // Pure update.
 // ---------------------------------------------------------------------------
 
-/// A query / selection change also disarms a pending remove confirmation and clears the inline
-/// message — a stale confirm or refusal never outlives the state it referred to (the retired
-/// bay's disarm discipline).
-let private disarmed (m : LibraryWindowModel) : LibraryWindowModel =
-    { m with removeGate = NoPendingRemove; lifecycleGate = NoPendingLifecycle; lastError = None }
-
 /// Arm the lifecycle confirm gate on the selected SAMPLE (spec 0038 step 023) — clears the remove
 /// gate and the inline message so at most one confirm is ever pending. A non-sample or empty
 /// selection is inert (its verbs never render).
-let private requestLifecycle (action : LifecycleAction) (m : LibraryWindowModel) : LibraryWindowModel =
-    match editableSample m with
-    | Some sample -> { m with lifecycleGate = PendingLifecycle (sample.id, action); removeGate = NoPendingRemove; lastError = None }
+let private requestLifecycle (action : MaterialsWindowView.LifecycleAction) (m : LibraryWindowModel) : LibraryWindowModel =
+    match m.editableSample with
+    | Some sample -> { m with lifecycleGate = PendingSampleLifecycle (sample.id, action); removeGate = NoPendingLibraryRemove; lastError = None }
     | None -> m
 
 let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : LibraryWindowModel =
@@ -662,58 +548,58 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
         // Single selection per facet: re-applying a constrained facet REPLACES its chip
         // (removed from its old breadcrumb position, re-applied at the end).
         let withoutKey = m.appliedFacets |> List.filter (fun c -> c.key <> key)
-        { disarmed m with appliedFacets = withoutKey @ [ { key = key; selection = selection } ] }
-    | RemoveFacet key ->
-        { disarmed m with appliedFacets = m.appliedFacets |> List.filter (fun c -> c.key <> key) }
-    | CommitTextFilter text ->
-        { disarmed m with textFilter = TextQuery text }
-    | ChooseRepresentation code ->
+        { m.disarmed with appliedFacets = withoutKey @ [ { key = key; selection = selection } ] }
+    | RemoveLibraryFacet key ->
+        { m.disarmed with appliedFacets = m.appliedFacets |> List.filter (fun c -> c.key <> key) }
+    | CommitLibraryTextFilter text ->
+        { m.disarmed with textFilter = text }
+    | ChooseLibraryRepresentation code ->
         // Reshapes the tree only — never the applied constraints or the result set.
-        match offeredRepresentations |> List.tryFind (fun r -> r.code = code) with
+        match offeredLibraryRepresentations |> List.tryFind (fun r -> r.code = code) with
         | Some r -> { m with representation = r }
         | None -> m
-    | RequestTreeBuild ->
-        { m with buildRequest = RequestedTreeBuild }
-    | ToggleNode code ->
+    | RequestLibraryTreeBuild ->
+        { m with buildRequest = MaterialsWindowView.RequestedTreeBuild }
+    | ToggleLibraryNode code ->
         // Flip one tree node's expansion (a disclosure-chevron press) — a display-only change, so
         // no gate is disarmed and no selection moves.
         { m with expandedNodes = m.expandedNodes.toggle code }
-    | SelectEntry id ->
+    | SelectLibraryEntry id ->
         // A new selection shows its LATEST version (the editable default) and disarms both gates.
         // The id-only path highlights the corpus-group row (the canonical `entry:<entryId>` code).
-        { disarmed m with selectedEntryId = Some id; selectedNodeCode = entryNodeCode id; viewedVersion = None }
-    | SelectEntryNode (id, code) ->
+        { m.disarmed with selectedEntryId = Some id; selectedNodeOpt = Some id.libraryEntryCode; viewedVersion = None }
+    | SelectLibraryEntryNode (id, code) ->
         // The same selection, but highlighting the EXACT clicked node — so an entry picked through
-        // a facet branch highlights that branch row rather than the corpus-group copy.
-        { disarmed m with selectedEntryId = Some id; selectedNodeCode = code; viewedVersion = None }
+        // a facet branch highlights the branch row rather than the corpus-group copy.
+        { m.disarmed with selectedEntryId = Some id; selectedNodeOpt = Some code; viewedVersion = None }
     | AddSample ->
         // Add mints the sample's SampleId HERE — at the window-open dispatch, off the save path
         // (spec 0038 step 008) — so the launcher's registry keys the new editor by the SAME id
         // its Save will persist under (a second Add mints a second id: two windows).
         m.context.openSampleEditor (SampleEditorView.NewBlankSample (newSampleId ()))
-        disarmed m
+        m.disarmed
     | MakeMultilayer ->
         // The DISTINCT Make-multilayer creation path (spec 0035 step 014): a NEW sample
         // pre-seeded with a foldable starter period — still minted at open, just not blank.
         m.context.openSampleEditor (SampleEditorView.NewSeededMultilayer (newSampleId ()))
-        disarmed m
+        m.disarmed
     | AddSource ->
         // Spec 0046: the source's entry id is minted HERE, at the window-open dispatch (the Add
         // sample precedent), so the launcher keys the new editor by the id its Save stores under.
         m.context.openSourceEditor (LightSourceEditorView.NewSource (newSourceId ()))
-        disarmed m
-    | EditSelected ->
+        m.disarmed
+    | EditSelectedEntry ->
         // Edit opens the Sample editor on the selected SAMPLE, or (spec 0046) the source editor on a
         // selected USER source, resolved through the live corpus at dispatch time; a vanished or
         // preset selection reaches no launcher (the verb is simply absent for it — removed, not
         // greyed).
-        (match editableSample m, editableSource m with
+        (match m.editableSample, m.editableSource with
          | Some sample, _ -> m.context.openSampleEditor (SampleEditorView.EditSample sample)
          | None, Some source -> m.context.openSourceEditor (LightSourceEditorView.EditSource source)
          | None, None -> ())
-        disarmed m
-    | RequestRemoveSelected ->
-        match selectedEntry m with
+        m.disarmed
+    | RequestRemoveSelectedEntry ->
+        match m.selectedEntry with
         | None -> m
         | Some entry ->
             match entry.protection with
@@ -721,92 +607,92 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
                 // Spec 0038 F.0: a protected built-in cannot be deleted — the verb REFUSES with
                 // the typed reason AT the click, so the confirm gate never arms for it.
                 { m with
-                    removeGate = NoPendingRemove
-                    lastError = Some (ProtectedEntryRefused $"'%s{entry.displayName}' is a protected built-in entry — it cannot be removed.") }
+                    removeGate = NoPendingLibraryRemove
+                    lastError = Some (ProtectedEntryRefusedErr $"'%s{entry.displayName}' is a protected built-in entry — it cannot be removed.") }
             | UserManaged ->
                 match entry with
-                | SampleItem sample -> { m with removeGate = PendingRemove sample.id; lastError = None }
-                | SourceItem source -> { m with removeGate = PendingSourceRemove source.id.value; lastError = None }
+                | SampleItem sample -> { m with removeGate = PendingSampleRemove sample.id; lastError = None }
+                | SourceItem source -> { m with removeGate = PendingSourceRemove source.id; lastError = None }
                 | DetectorItem _ | PolarizerItem _ ->
                     // Unreachable over today's corpus (every detector / polarizer seed is
                     // protected) — total handling, never a throw.
                     { m with
-                        removeGate = NoPendingRemove
-                        lastError = Some (PresetNotRemovable $"'%s{entry.displayName}' has no removal store — preset entries cannot be removed here.") }
-    | ConfirmRemove ->
+                        removeGate = NoPendingLibraryRemove
+                        lastError = Some (PresetNotRemovableErr $"'%s{entry.displayName}' has no removal store — preset entries cannot be removed here.") }
+    | ConfirmEntryRemove ->
         match m.removeGate with
-        | PendingRemove id ->
+        | PendingSampleRemove id ->
             match m.context.samples.removeSample id with
             | Ok () ->
                 { m with
-                    removeGate = NoPendingRemove
+                    removeGate = NoPendingLibraryRemove
                     lastError = None
-                    selectedEntryId = (if m.selectedEntryId = Some (string id.value) then None else m.selectedEntryId)
-                    selectedNodeCode = (if m.selectedEntryId = Some (string id.value) then "" else m.selectedNodeCode) }
+                    selectedEntryId = (if m.selectedEntryId = Some id.toElementValueId then None else m.selectedEntryId)
+                    selectedNodeOpt = (if m.selectedEntryId = Some id.toElementValueId then None else m.selectedNodeOpt) }
             | Error err ->
                 // The store refused (a typed SampleError) — surface the reason inline and leave
                 // the store, selection and list untouched.
-                { m with removeGate = NoPendingRemove; lastError = Some (SampleRemoveRefused err) }
+                { m with removeGate = NoPendingLibraryRemove; lastError = Some (SampleRemoveRefusedErr err) }
         | PendingSourceRemove id ->
-            match m.context.sources.removeSource (ElementValueId id) with
+            match m.context.sources.removeSource id with
             | Ok () ->
                 { m with
-                    removeGate = NoPendingRemove
+                    removeGate = NoPendingLibraryRemove
                     lastError = None
                     selectedEntryId = (if m.selectedEntryId = Some id then None else m.selectedEntryId)
-                    selectedNodeCode = (if m.selectedEntryId = Some id then "" else m.selectedNodeCode) }
-            | Error err -> { m with removeGate = NoPendingRemove; lastError = Some (SourceRemoveRefused err) }
-        | NoPendingRemove -> m
-    | CancelRemove ->
+                    selectedNodeOpt = (if m.selectedEntryId = Some id then None else m.selectedNodeOpt) }
+            | Error err -> { m with removeGate = NoPendingLibraryRemove; lastError = Some (SourceRemoveRefusedErr err) }
+        | NoPendingLibraryRemove -> m
+    | CancelEntryRemove ->
         // Cancel only ever disarms — it never dismisses the inline message (the next query /
         // selection change clears it).
-        { m with removeGate = NoPendingRemove }
-    | ToggleShowInactive ->
+        { m with removeGate = NoPendingLibraryRemove }
+    | ToggleShowInactiveEntries ->
         let flipped =
             match m.showInactive with
             | ActiveOnly -> IncludeInactive
             | IncludeInactive -> ActiveOnly
-        { disarmed m with showInactive = flipped }
-    | RequestMarkInactive -> requestLifecycle MarkInactiveAction m
-    | RequestMarkActive -> requestLifecycle MarkActiveAction m
-    | RequestSupersede -> requestLifecycle SupersedeAction m
-    | ConfirmLifecycle ->
+        { m.disarmed with showInactive = flipped }
+    | RequestMarkSampleInactive -> requestLifecycle MaterialsWindowView.MarkInactiveAction m
+    | RequestMarkSampleActive -> requestLifecycle MaterialsWindowView.MarkActiveAction m
+    | RequestSupersedeSample -> requestLifecycle MaterialsWindowView.SupersedeAction m
+    | ConfirmSampleLifecycle ->
         match m.lifecycleGate with
-        | PendingLifecycle (id, action) ->
+        | PendingSampleLifecycle (id, action) ->
             let outcome =
                 match action with
-                | MarkInactiveAction -> m.context.samples.markSampleInactive id
-                | MarkActiveAction -> m.context.samples.markSampleActive id
-                | SupersedeAction -> m.context.samples.supersedeSample id
+                | MaterialsWindowView.MarkInactiveAction -> m.context.samples.markSampleInactive id
+                | MaterialsWindowView.MarkActiveAction -> m.context.samples.markSampleActive id
+                | MaterialsWindowView.SupersedeAction -> m.context.samples.supersedeSample id
             match outcome with
-            | Ok () -> { m with lifecycleGate = NoPendingLifecycle; lastError = None }
+            | Ok () -> { m with lifecycleGate = NoPendingSampleLifecycle; lastError = None }
             | Error err ->
                 // The store refused (e.g. the sample vanished behind the window's back) — surface
                 // the typed reason inline and leave the store and selection untouched.
-                { m with lifecycleGate = NoPendingLifecycle; lastError = Some (SampleLifecycleRefused err) }
-        | NoPendingLifecycle -> m
-    | CancelLifecycle ->
+                { m with lifecycleGate = NoPendingSampleLifecycle; lastError = Some (SampleLifecycleRefusedErr err) }
+        | NoPendingSampleLifecycle -> m
+    | CancelSampleLifecycle ->
         // Cancel only ever disarms — the next query / selection change clears any inline message.
-        { m with lifecycleGate = NoPendingLifecycle }
-    | ViewVersion version ->
+        { m with lifecycleGate = NoPendingSampleLifecycle }
+    | ViewSampleVersion version ->
         { m with viewedVersion = Some version }
-    | ConfirmSelect ->
+    | ConfirmLibrarySelect ->
         // Spec 0038 step 016: 'Select' returns the HIGHLIGHTED entry through the session's
         // onSelected — a TARGETED dispatch (the requesting surface routes it by the context's
         // target and treats a vanished target as a no-op plus a status line) — then closes.
         // The mode flips to Browse in the SAME update, so the host's Closed hook
-        // (SelectDismissed, queued behind this message) finds no pending session: onSelected
+        // (LibrarySelectDismissed, queued behind this message) finds no pending session: onSelected
         // and onCancelled can never both fire. No highlight → inert (the pair stays, §0.7).
         match m.mode with
         | Select context ->
-            match selectedEntry m with
+            match m.selectedEntry with
             | Some entry ->
                 context.onSelected entry
                 m.context.requestClose ()
                 { m with mode = Browse }
             | None -> m
         | Browse -> m
-    | CancelSelect ->
+    | CancelLibrarySelect ->
         // The negative half of the pair: end the session without a choice, then close.
         match m.mode with
         | Select context ->
@@ -814,7 +700,7 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
             m.context.requestClose ()
             { m with mode = Browse }
         | Browse -> m
-    | RetargetSelect context ->
+    | RetargetLibrarySelect context ->
         // A Select-state open met this LIVE window (the launcher's re-target seam): the
         // superseded session is CANCELLED — a second Choose closes the first, logically —
         // and the window re-points at the new constraint/target with a fresh highlight
@@ -822,8 +708,9 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
         (match m.mode with
          | Select superseded -> superseded.onCancelled ()
          | Browse -> ())
-        showCurrentEntry { disarmed m with mode = Select context; selectedEntryId = None; selectedNodeCode = "" }
-    | SelectDismissed ->
+        let retargeted = { m.disarmed with mode = Select context; selectedEntryId = None; selectedNodeOpt = None }
+        retargeted.showCurrentEntry
+    | LibrarySelectDismissed ->
         // The host window closed (title-bar X, or a staleness Close() from the requesting
         // surface): a STILL-PENDING session cancels exactly once — Select/Close already
         // flipped a resolved session to Browse, so this arm is a no-op after them.
@@ -837,17 +724,14 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
 // The FacetedTreeControls projection.
 // ---------------------------------------------------------------------------
 
-let private isApplicableTo (def : AttributeDef<LibraryEntry>) (entry : LibraryEntry) : bool =
-    match def.appliesTo entry with
-    | ApplicableAttribute -> true
-    | InapplicableAttribute -> false
-
 /// The distinct discrete values a facet offers over the filtered population, in the engine's
 /// key order.
 let private offeredValuesFor (def : AttributeDef<LibraryEntry>) (filtered : LibraryEntry list) : DiscreteKey list =
     filtered
-    |> List.filter (isApplicableTo def)
-    |> List.collect (fun entry -> def.extract entry |> List.distinct)
+    |> List.collect (fun entry ->
+        match def.appliesTo entry with
+        | ApplicableAttribute -> def.extract entry |> List.distinct
+        | InapplicableAttribute -> [])
     |> List.choose (fun value ->
         match value with
         | DiscreteValue k -> Some k
@@ -857,7 +741,7 @@ let private offeredValuesFor (def : AttributeDef<LibraryEntry>) (filtered : Libr
 
 /// A chip's display label: the facet's name plus its selection — the discrete key(s), or the
 /// numeric range through the step-010 unit switch.
-let private chipLabel (defs : AttributeDef<LibraryEntry> list) (applied : AppliedConstraint) : string =
+let private chipLabel (defs : AttributeDef<LibraryEntry> list) (applied : AppliedConstraint) : ControlCaption =
     let facetName =
         match defs |> List.tryFind (fun d -> d.key = applied.key) with
         | Some def -> def.name.value
@@ -865,8 +749,8 @@ let private chipLabel (defs : AttributeDef<LibraryEntry> list) (applied : Applie
     let valueText =
         match applied.selection with
         | DiscreteSelection keys -> keys |> Set.toList |> List.map (fun k -> k.value) |> String.concat ", "
-        | NumericRangeSelection range -> numericRangeText range
-    $"%s{facetName}: %s{valueText}"
+        | NumericRangeSelection range -> range.caption.value
+    ControlCaption $"%s{facetName}: %s{valueText}"
 
 /// Sort projected tree nodes alphabetically (case-insensitive, ordinal) by their display
 /// label (operator 010/Q1): the top-level facet groups and the entry leaves read
@@ -879,28 +763,32 @@ let private sortNodesByLabel (nodes : FacetedTreeControls.TreeNode list) : Facet
 /// Project the live corpus through the engine into the domain-free control state. Everything
 /// here is recomputed per render over the CURRENT proxies (offers, counts, buckets, tree,
 /// previews), so a verb's write — this window's or another's — shows in the same pass.
-let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeControlsState =
+///
+/// Node codes, unique across the tree: `entries` / `entry:<entryId>` name the corpus group and its
+/// leaves; `facet:<facet-key>` / `branch:<facet-key>:<value-key>` the representation's grouping,
+/// whose member leaves are `branch:<facet-key>:<value-key>:entry:<entryId>` (so one entry can leaf
+/// the corpus group and every branch it belongs to). Only an entry-leaf code selects.
+let libraryFacetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeControlsState =
     let inputs = projectionInputs m
     let filtered = Facets.filter inputs.defs inputs.appliedAll inputs.corpus
     let resultCount = List.length filtered
     // The active sample-id set, for the retired-sample leaf badge (spec 0038 step 023): with the
     // toggle off the sample corpus is `ActiveOnly`, so no leaf ever badges; with it on, a retired
     // sample's latest version reads `label — inactive` (presets never badge).
-    let activeIds = activeSampleIds m
-    // The tree is collapsed by default (spec 0040 step 002): a node renders `ExpandedNode` only
-    // when its code is in the persisted expanded-node set, `CollapsedNode` otherwise.
-    let expansionOf (code : string) : FacetedTreeControls.NodeExpansion =
-        if m.expandedNodes.isExpanded code then FacetedTreeControls.ExpandedNode
-        else FacetedTreeControls.CollapsedNode
+    let activeIds = m.activeSampleIds
     // One selectable entry leaf under the given (tree-unique) code — the shared shape both the
     // corpus "entries" group and every facet branch project (an entry leafs its branch AND the
-    // corpus group, under distinct codes so the tree stays uniquely keyed).
-    let entryLeafNode (leafCode : string) (entry : LibraryEntry) : FacetedTreeControls.TreeNode =
+    // corpus group, under distinct codes so the tree stays uniquely keyed). The tree is collapsed by
+    // default (spec 0040 step 002): only a code in the persisted expanded-node set renders expanded.
+    let entryLeafNode (leafCode : ConstructorUiKey) (entry : LibraryEntry) : FacetedTreeControls.TreeNode =
         {
-            code = ConstructorUiKey leafCode
-            label = ControlCaption (if isEntryInactive activeIds entry then entry.displayName + inactiveBadge else entry.displayName)
+            code = leafCode
+            label =
+                match libraryEntryLifecycle activeIds entry with
+                | ActiveEntry -> entry.entryName.caption
+                | InactiveEntry -> entry.entryName.inactiveCaption
             countOpt = None
-            expansion = expansionOf leafCode
+            expansion = m.expandedNodes.nodeExpansion leafCode
             children = []
         }
     // The host decides gating (result count above the Domain threshold, no explicit build yet);
@@ -909,8 +797,8 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
     let materialization =
         if resultCount > m.context.treeAutoBuildThreshold.value then
             match m.buildRequest with
-            | RequestedTreeBuild -> FacetedTreeControls.TreeMaterialized
-            | NoTreeBuildRequest -> FacetedTreeControls.TreeGated
+            | MaterialsWindowView.RequestedTreeBuild -> FacetedTreeControls.TreeMaterialized
+            | MaterialsWindowView.NoTreeBuildRequest -> FacetedTreeControls.TreeGated
         else FacetedTreeControls.TreeMaterialized
     // Breadcrumbs: the facet chips in application order, after-counts cumulative over the
     // text-searched population (the filter box narrows first; it takes no chip of its own —
@@ -921,7 +809,7 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
         |> List.map (fun bc ->
             ({
                 code = bc.applied.key.uiKey
-                label = ControlCaption (chipLabel inputs.defs bc.applied)
+                label = chipLabel inputs.defs bc.applied
                 afterCount = bc.afterCount.facetCount
              } : FacetedTreeControls.BreadcrumbChip))
     // The buckets of one numeric facet over the CURRENTLY CONSTRAINED population (step 010 —
@@ -951,8 +839,8 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                                 buckets
                                 |> List.map (fun bucket ->
                                     ({
-                                        code = ConstructorUiKey (numericRangeCode bucket.range)
-                                        label = ControlCaption (numericRangeText bucket.range)
+                                        code = bucket.range.uiKey
+                                        label = bucket.range.caption
                                         // The bucket derives from the constrained population,
                                         // so its count IS the apply preview (pinned, step 010).
                                         previewCount = bucket.count.facetCount
@@ -990,13 +878,13 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
         | FacetedTreeControls.TreeMaterialized ->
             let entriesNode : FacetedTreeControls.TreeNode =
                 {
-                    code = ConstructorUiKey "entries"
+                    code = libraryEntriesCode
                     label = ControlCaption "Library"
                     countOpt = Some (FacetedTreeControls.FacetItemCount resultCount)
-                    expansion = expansionOf "entries"
+                    expansion = m.expandedNodes.nodeExpansion libraryEntriesCode
                     children =
                         filtered
-                        |> List.map (fun entry -> entryLeafNode (entryNodeCode entry.entryId.value) entry)
+                        |> List.map (fun entry -> entryLeafNode entry.entryId.libraryEntryCode entry)
                         |> sortNodesByLabel
                 }
             let engineTree = Facets.buildTree (Representation m.representation.order) inputs.defs inputs.appliedAll inputs.corpus
@@ -1007,39 +895,39 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                     // step-010 buckets, a discrete facet the engine's value branches. Members come
                     // from the SAME engine path as the count (a bucket / value applied as a chip),
                     // so a branch's leaves and its `(count)` badge always agree.
-                    let branchesWithMembers : (string * string * int * LibraryEntry list) list =
+                    let branchesWithMembers : (ConstructorUiKey * ControlCaption * FacetedTreeControls.FacetItemCount * LibraryEntry list) list =
                         match inputs.defs |> List.tryFind (fun d -> d.key = facet.key) with
                         | Some def when def.kind = NumericAttribute ->
                             bucketsOf def
                             |> List.map (fun bucket ->
-                                let branchCode = "branch:" + facet.key.value + ":" + numericRangeCode bucket.range
+                                let branchCode = ConstructorUiKey $"branch:{facet.key.value}:{bucket.range.uiKey.value}"
                                 let members = Facets.filter inputs.defs (inputs.appliedAll @ [ { key = facet.key; selection = NumericRangeSelection bucket.range } ]) inputs.corpus
                                 // The badge is the DISTINCT member entries (what expanding reveals),
                                 // not `bucket.count` — a numeric bucket counts value-occurrences, so an
                                 // entry with two in-range layer thicknesses would over-count the leaves.
-                                branchCode, numericRangeText bucket.range, List.length members, members)
+                                branchCode, bucket.range.caption, FacetedTreeControls.FacetItemCount (List.length members), members)
                         | Some _ | None ->
                             facet.branches
                             |> List.map (fun branch ->
-                                let branchCode = "branch:" + facet.key.value + ":" + branch.value.label
+                                let branchCode = ConstructorUiKey $"branch:{facet.key.value}:{branch.value.label}"
                                 let members =
                                     match branch.value with
                                     | DiscreteValue dk -> Facets.filter inputs.defs (inputs.appliedAll @ [ { key = facet.key; selection = DiscreteSelection (Set.singleton dk) } ]) inputs.corpus
                                     | NumericValue _ -> []
-                                branchCode, branch.label.value, branch.count.value, members)
+                                branchCode, branch.label.caption, branch.count.facetCount, members)
                     let branchNodes =
                         branchesWithMembers
                         |> List.map (fun (branchCode, label, count, members) ->
                             ({
-                                code = ConstructorUiKey branchCode
-                                label = ControlCaption label
-                                countOpt = Some (FacetedTreeControls.FacetItemCount count)
-                                expansion = expansionOf branchCode
+                                code = branchCode
+                                label = label
+                                countOpt = Some count
+                                expansion = m.expandedNodes.nodeExpansion branchCode
                                 // The branch expands to its member entries as selectable leaves
                                 // (path-shaped codes keep them tree-unique), alphabetical by label.
                                 children =
                                     members
-                                    |> List.map (fun entry -> entryLeafNode (branchCode + ":" + entryNodeCode entry.entryId.value) entry)
+                                    |> List.map (fun entry -> entryLeafNode (branchCode.libraryBranchLeaf entry.entryId) entry)
                                     |> sortNodesByLabel
                              } : FacetedTreeControls.TreeNode))
                     // The facet group shows its total: the DISTINCT filtered entries it classifies (an
@@ -1050,11 +938,12 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                         |> List.collect (fun (_, _, _, members) -> members |> List.map (fun entry -> entry.entryId))
                         |> List.distinct
                         |> List.length
+                    let facetCode = ConstructorUiKey $"facet:{facet.key.value}"
                     ({
-                        code = ConstructorUiKey ("facet:" + facet.key.value)
+                        code = facetCode
                         label = facet.name.caption
                         countOpt = Some (FacetedTreeControls.FacetItemCount groupCount)
-                        expansion = expansionOf ("facet:" + facet.key.value)
+                        expansion = m.expandedNodes.nodeExpansion facetCode
                         children = branchNodes
                      } : FacetedTreeControls.TreeNode))
                 |> sortNodesByLabel
@@ -1064,33 +953,30 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
         breadcrumbs = breadcrumbs
         offers = offers
         representations =
-            offeredRepresentations
-            |> List.map (fun r -> ({ code = ConstructorUiKey r.code; label = ControlCaption r.label } : FacetOption))
-        activeRepresentationOpt = Some (ConstructorUiKey m.representation.code)
+            offeredLibraryRepresentations
+            |> List.map (fun r -> ({ code = r.code; label = r.label } : FacetOption))
+        activeRepresentationOpt = Some m.representation.code
         filterDraft = m.textFilter.caption
         resultCount = FacetedTreeControls.FacetItemCount resultCount
         materialization = materialization
         // The EXACT selected node code (spec 0040 step 003) — the control highlights the row whose
         // code matches, so an entry picked through a facet branch highlights that branch row, not
-        // the corpus-group copy. The Model tracks the clicked code; "" = nothing selected.
-        selectedCodeOpt =
-            match m.selectedNodeCode with
-            | "" -> None
-            | code -> Some (ConstructorUiKey code)
+        // the corpus-group copy. The Model tracks the clicked code.
+        selectedCodeOpt = m.selectedNodeOpt
     }
 
 /// The control's behaviour seam: every token is lifted back to its domain value HERE, at the
 /// control boundary. Only an `entry:` node code selects (branches/headings are grouping
 /// display; the offers are the apply surface); the film-thickness group's tokens parse as
-/// numeric ranges (a bucket's `numericRangeCode`, or the manual box's raw "lo-hi" text) — an
+/// numeric ranges (a bucket's `NumericRange.uiKey`, or the manual box's raw "lo-hi" text) — an
 /// unparseable token is the documented no-op.
-let facetedHandlers (dispatch : LibraryWindowMsg -> unit) : FacetedTreeControls.FacetedTreeControlsHandlers =
+let libraryFacetedHandlers (dispatch : LibraryWindowMsg -> unit) : FacetedTreeControls.FacetedTreeControlsHandlers =
     {
         applyConstraint =
             fun group value ->
                 match AttributeKey.tryCreate group.value with
                 | Some key when key = sampleFilmThicknessKey ->
-                    match numericRangeOfCode value.value with
+                    match value.tryNumericRange with
                     | Some range -> dispatch (ApplyFacetConstraint (key, NumericRangeSelection range))
                     | None -> ()
                 | Some key ->
@@ -1098,19 +984,19 @@ let facetedHandlers (dispatch : LibraryWindowMsg -> unit) : FacetedTreeControls.
                     | Some discrete -> dispatch (ApplyFacetConstraint (key, DiscreteSelection (Set.singleton discrete)))
                     | None -> ()
                 | None -> ()
-        removeConstraint = fun chip -> AttributeKey.tryCreate chip.value |> Option.iter (RemoveFacet >> dispatch)
-        commitTextFilter = fun text -> dispatch (CommitTextFilter text.value)
-        chooseRepresentation = fun code -> dispatch (ChooseRepresentation code.value)
-        requestBuild = fun () -> dispatch RequestTreeBuild
+        removeConstraint = fun chip -> AttributeKey.tryCreate chip.value |> Option.iter (RemoveLibraryFacet >> dispatch)
+        commitTextFilter = fun text -> dispatch (CommitLibraryTextFilter text.toTextQuery)
+        chooseRepresentation = fun code -> dispatch (ChooseLibraryRepresentation code)
+        requestBuild = fun () -> dispatch RequestLibraryTreeBuild
         selectNode =
             fun code ->
-                match entryIdOfNodeCode code.value with
-                | Some id -> dispatch (SelectEntryNode (id, code.value))
+                match code.tryLibraryEntryId with
+                | Some id -> dispatch (SelectLibraryEntryNode (id, code))
                 | None -> ()
-        toggleNode = fun code -> dispatch (ToggleNode code.value)
+        toggleNode = fun code -> dispatch (ToggleLibraryNode code)
         applyManualRange =
             fun group raw ->
-                match AttributeKey.tryCreate group.value, parseManualRange raw.value with
+                match AttributeKey.tryCreate group.value, raw.tryManualNumericRange with
                 | Some key, Some range -> dispatch (ApplyFacetConstraint (key, NumericRangeSelection range))
                 | _ -> ()
     }
@@ -1119,29 +1005,22 @@ let facetedHandlers (dispatch : LibraryWindowMsg -> unit) : FacetedTreeControls.
 // The view: the faceted tree beside the verbs + view panel.
 // ---------------------------------------------------------------------------
 
-let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private idleBackground = color 232 232 232
-let private idleBorder = color 120 120 120
-let private messageColor = color 178 34 34
+let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+let private messageColor = Color.FromRgb(178uy, 34uy, 34uy)
 // The positive/negative action pair backgrounds (the Save/Cancel precedent, SampleEditorView).
-let private positiveBackground = color 186 224 186
-let private negativeBackground = color 236 202 202
-
-/// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
-/// `Control.Name`) through FuncUI's attr builder: the verbs, confirm row, message and panel
-/// all have variable membership, so nothing here sets `StyledElement.Name` (the
-/// `FacetedTreeControls` discipline).
-let private automationId<'View when 'View :> Control> (autoId : string) : IAttr<'View> =
-    AttrBuilder<'View>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+let private positiveBackground = Color.FromRgb(186uy, 224uy, 186uy)
+let private negativeBackground = Color.FromRgb(236uy, 202uy, 202uy)
 
 /// A clickable verb box (the shared workbench button look), KEYED by its id so membership
 /// changes recreate a shifted box; `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble
-/// pass.
-let private verbButton (autoId : string) (label : string) (onClick : unit -> unit) : IView =
+/// pass. The verbs, confirm row, message and panel all have variable membership, so every id is
+/// an AutomationId, never `StyledElement.Name` (the `FacetedTreeControls` discipline).
+let private verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
     let keyedBox =
         Border.create [
-            automationId<Border> autoId
+            id.automationAttribute<Border> ()
             Border.background (brush idleBackground)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
@@ -1149,19 +1028,19 @@ let private verbButton (autoId : string) (label : string) (onClick : unit -> uni
             Border.padding (Thickness(12.0, 5.0))
             Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
             Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf autoId)
+            Border.child (TextBlock.create [ TextBlock.text label.value ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
         ]
-        |> Avalonia.FuncUI.DSL.View.withKey autoId
+        |> Avalonia.FuncUI.DSL.View.withKey id.value
     keyedBox :> IView
 
 /// A positive/negative ACTION box (the Save/Cancel styling precedent) — same look as
 /// `verbButton` but colour-coded and wider-padded; keyed, AutomationId'd (variable
 /// membership: the pair exists only in Select state).
-let private actionButton (autoId : string) (label : string) (background : Color) (onClick : unit -> unit) : IView =
+let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
     let keyedBox =
         Border.create [
-            automationId<Border> autoId
+            id.automationAttribute<Border> ()
             Border.background (brush background)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
@@ -1169,18 +1048,20 @@ let private actionButton (autoId : string) (label : string) (background : Color)
             Border.padding (Thickness(22.0, 6.0))
             Border.margin (Thickness(0.0, 0.0, 10.0, 4.0))
             Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf autoId)
+            Border.child (TextBlock.create [ TextBlock.text label.value ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
         ]
-        |> Avalonia.FuncUI.DSL.View.withKey autoId
+        |> Avalonia.FuncUI.DSL.View.withKey id.value
     keyedBox :> IView
 
-/// The requesting surface a Select session serves, as banner prose.
-let private targetText (target : SelectionTarget) : string =
-    match target with
-    | TableElementTarget _ -> "the requesting table element"
-    | SampleLayerTarget _ -> "the requesting sample layer"
-    | SampleSubstrateTarget -> "the requesting sample substrate plate"
+type SelectionTarget with
+
+    /// The requesting surface a Select session serves, as the Library window's banner prose.
+    member private this.libraryTargetCaption : ControlCaption =
+        match this with
+        | TableElementTarget _ -> ControlCaption "the requesting table element"
+        | SampleLayerTarget _ -> ControlCaption "the requesting sample layer"
+        | SampleSubstrateTarget -> ControlCaption "the requesting sample substrate plate"
 
 /// The Select-state surface (spec 0038 step 016): exactly TWO buttons in ONE row with distinct
 /// positive/negative styling and a visible gap (§0.7) — 'Select' returns the highlighted entry,
@@ -1194,25 +1075,25 @@ let private selectModeRows (m : LibraryWindowModel) (dispatch : LibraryWindowMsg
         [ WrapPanel.create [
               WrapPanel.orientation Orientation.Horizontal
               WrapPanel.children [
-                  actionButton ConstructorUiId.librarySelectButton.value "Select" positiveBackground (fun () -> dispatch ConfirmSelect)
-                  actionButton ConstructorUiId.librarySelectCloseButton.value "Close" negativeBackground (fun () -> dispatch CancelSelect)
+                  actionButton ConstructorUiId.librarySelectButton (ControlCaption "Select") positiveBackground (fun () -> dispatch ConfirmLibrarySelect)
+                  actionButton ConstructorUiId.librarySelectCloseButton (ControlCaption "Close") negativeBackground (fun () -> dispatch CancelLibrarySelect)
               ]
           ] :> IView
           (TextBlock.create [
-              automationId<TextBlock> ConstructorUiId.librarySelectConstraint.value
+              ConstructorUiId.librarySelectConstraint.automationAttribute<TextBlock> ()
               TextBlock.fontWeight FontWeight.SemiBold
               TextBlock.textWrapping TextWrapping.Wrap
               TextBlock.maxWidth 380.0
-              TextBlock.text $"Choose a %s{context.kindConstraint.value.kindName} for %s{targetText context.target} — the kind constraint is fixed and cannot be removed."
+              TextBlock.text $"Choose a %s{context.kindConstraint.value.kindName} for %s{context.target.libraryTargetCaption.value} — the kind constraint is fixed and cannot be removed."
           ]
           |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.librarySelectConstraint.value) :> IView ]
 
 /// One lifecycle verb box (spec 0038 step 023), by its action.
-let private lifecycleButton (dispatch : LibraryWindowMsg -> unit) (action : LifecycleAction) : IView =
+let private lifecycleButton (dispatch : LibraryWindowMsg -> unit) (action : MaterialsWindowView.LifecycleAction) : IView =
     match action with
-    | MarkInactiveAction -> verbButton ConstructorUiId.libraryMarkInactiveButton.value "Mark inactive" (fun () -> dispatch RequestMarkInactive)
-    | MarkActiveAction -> verbButton ConstructorUiId.libraryMarkActiveButton.value "Mark active" (fun () -> dispatch RequestMarkActive)
-    | SupersedeAction -> verbButton ConstructorUiId.librarySupersedeButton.value "Supersede…" (fun () -> dispatch RequestSupersede)
+    | MaterialsWindowView.MarkInactiveAction -> verbButton ConstructorUiId.libraryMarkInactiveButton (ControlCaption "Mark inactive") (fun () -> dispatch RequestMarkSampleInactive)
+    | MaterialsWindowView.MarkActiveAction -> verbButton ConstructorUiId.libraryMarkActiveButton (ControlCaption "Mark active") (fun () -> dispatch RequestMarkSampleActive)
+    | MaterialsWindowView.SupersedeAction -> verbButton ConstructorUiId.librarySupersedeButton (ControlCaption "Supersede…") (fun () -> dispatch RequestSupersedeSample)
 
 /// The verbs row: Add sample, Make multilayer and (spec 0046) Add source always; Edit only for a
 /// SAMPLE or USER-SOURCE selection (a preset has no editor — the verb is removed, not greyed); Remove
@@ -1225,17 +1106,17 @@ let private verbsRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> un
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children (
             [
-                verbButton ConstructorUiId.libraryAddSampleButton.value "Add sample" (fun () -> dispatch AddSample)
-                verbButton ConstructorUiId.libraryMakeMultilayerButton.value "Make multilayer" (fun () -> dispatch MakeMultilayer)
-                verbButton ConstructorUiId.libraryAddSourceButton.value "Add source" (fun () -> dispatch AddSource)
+                verbButton ConstructorUiId.libraryAddSampleButton (ControlCaption "Add sample") (fun () -> dispatch AddSample)
+                verbButton ConstructorUiId.libraryMakeMultilayerButton (ControlCaption "Make multilayer") (fun () -> dispatch MakeMultilayer)
+                verbButton ConstructorUiId.libraryAddSourceButton (ControlCaption "Add source") (fun () -> dispatch AddSource)
             ]
-            @ (match editableSample m, editableSource m with
-               | Some _, _ | None, Some _ -> [ verbButton ConstructorUiId.libraryEditButton.value "Edit" (fun () -> dispatch EditSelected) ]
+            @ (match m.editableSample, m.editableSource with
+               | Some _, _ | None, Some _ -> [ verbButton ConstructorUiId.libraryEditButton (ControlCaption "Edit") (fun () -> dispatch EditSelectedEntry) ]
                | None, None -> [])
-            @ (match selectedEntry m with
-               | Some _ -> [ verbButton ConstructorUiId.libraryRemoveButton.value "Remove" (fun () -> dispatch RequestRemoveSelected) ]
+            @ (match m.selectedEntry with
+               | Some _ -> [ verbButton ConstructorUiId.libraryRemoveButton (ControlCaption "Remove") (fun () -> dispatch RequestRemoveSelectedEntry) ]
                | None -> [])
-            @ (offeredLifecycleActions m |> List.map (lifecycleButton dispatch)))
+            @ (m.offeredLifecycleActions |> List.map (lifecycleButton dispatch)))
     ] :> IView
 
 /// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
@@ -1245,26 +1126,26 @@ let private toggleRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
     match m.mode with
     | Select _ -> []
     | Browse ->
-        let n = inactiveCount m
+        let n = m.inactiveCount
         let label =
             match m.showInactive with
-            | ActiveOnly -> $"Show inactive (%d{n})"
-            | IncludeInactive -> $"Hide inactive (%d{n})"
-        [ verbButton ConstructorUiId.libraryShowInactiveToggle.value label (fun () -> dispatch ToggleShowInactive) ]
+            | ActiveOnly -> ControlCaption $"Show inactive (%d{n.value})"
+            | IncludeInactive -> ControlCaption $"Hide inactive (%d{n.value})"
+        [ verbButton ConstructorUiId.libraryShowInactiveToggle label (fun () -> dispatch ToggleShowInactiveEntries) ]
 
-/// The inline remove confirmation — present only while a sample remove is armed.
+/// The inline remove confirmation — present only while a sample or source remove is armed.
 let private confirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
     let prompt =
         match m.removeGate with
-        | NoPendingRemove -> None
-        | PendingRemove id ->
+        | NoPendingLibraryRemove -> None
+        | PendingSampleRemove id ->
             match m.context.samples.tryGetSample id with
             | Ok (Some sample) -> Some $"Remove sample '%s{sample.name.value}'?"
             | Ok None | Error _ -> Some $"Remove sample '%s{string id.value}'?"
         | PendingSourceRemove id ->
-            match m.context.sources.tryGetSource (ElementValueId id) with
+            match m.context.sources.tryGetSource id with
             | Ok (Some source) -> Some $"Remove source '%s{source.name.value}'?"
-            | Ok None | Error _ -> Some $"Remove source '%s{id}'?"
+            | Ok None | Error _ -> Some $"Remove source '%s{id.value}'?"
     match prompt with
     | None -> []
     | Some text ->
@@ -1276,8 +1157,8 @@ let private confirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> 
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  verbButton ConstructorUiId.libraryRemoveConfirmButton.value "Remove" (fun () -> dispatch ConfirmRemove)
-                  verbButton ConstructorUiId.libraryRemoveCancelButton.value "Cancel" (fun () -> dispatch CancelRemove)
+                  verbButton ConstructorUiId.libraryRemoveConfirmButton (ControlCaption "Remove") (fun () -> dispatch ConfirmEntryRemove)
+                  verbButton ConstructorUiId.libraryRemoveCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelEntryRemove)
               ]
           ] :> IView ]
 
@@ -1286,17 +1167,17 @@ let private confirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> 
 /// the matching proxy verb, Cancel disarms.
 let private lifecycleConfirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
     match m.lifecycleGate with
-    | NoPendingLifecycle -> []
-    | PendingLifecycle (id, action) ->
+    | NoPendingSampleLifecycle -> []
+    | PendingSampleLifecycle (id, action) ->
         let name =
             match m.context.samples.tryGetSample id with
             | Ok (Some sample) -> sample.name.value
             | Ok None | Error _ -> string id.value
         let prompt =
             match action with
-            | MarkInactiveAction -> $"Mark sample '%s{name}' inactive?"
-            | MarkActiveAction -> $"Mark sample '%s{name}' active?"
-            | SupersedeAction -> $"Supersede sample '%s{name}'?"
+            | MaterialsWindowView.MarkInactiveAction -> $"Mark sample '%s{name}' inactive?"
+            | MaterialsWindowView.MarkActiveAction -> $"Mark sample '%s{name}' active?"
+            | MaterialsWindowView.SupersedeAction -> $"Supersede sample '%s{name}'?"
         [ WrapPanel.create [
               WrapPanel.orientation Orientation.Horizontal
               WrapPanel.children [
@@ -1305,8 +1186,8 @@ let private lifecycleConfirmRow (m : LibraryWindowModel) (dispatch : LibraryWind
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  verbButton ConstructorUiId.libraryLifecycleConfirmButton.value "Confirm" (fun () -> dispatch ConfirmLifecycle)
-                  verbButton ConstructorUiId.libraryLifecycleCancelButton.value "Cancel" (fun () -> dispatch CancelLifecycle)
+                  verbButton ConstructorUiId.libraryLifecycleConfirmButton (ControlCaption "Confirm") (fun () -> dispatch ConfirmSampleLifecycle)
+                  verbButton ConstructorUiId.libraryLifecycleCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelSampleLifecycle)
               ]
           ] :> IView ]
 
@@ -1316,24 +1197,12 @@ let private messageRow (m : LibraryWindowModel) : IView list =
     match m.lastError with
     | None -> []
     | Some err ->
-        let text =
-            match err with
-            | ProtectedEntryRefused reason
-            | PresetNotRemovable reason -> reason
-            | SampleRemoveRefused sampleError
-            | SampleLifecycleRefused sampleError ->
-                match sampleError with
-                | UnknownSampleIdErr reason
-                | DuplicateSampleIdErr reason
-                | SampleVersionInUseErr reason
-                | InvalidSampleErr reason -> reason
-            | SourceRemoveRefused sourceError -> sourceError.reason
         [ TextBlock.create [
-              automationId<TextBlock> ConstructorUiId.libraryWindowMessage.value
+              ConstructorUiId.libraryWindowMessage.automationAttribute<TextBlock> ()
               TextBlock.foreground (brush messageColor)
               TextBlock.textWrapping TextWrapping.Wrap
               TextBlock.maxWidth 380.0
-              TextBlock.text text
+              TextBlock.text err.caption.value
           ] :> IView ]
 
 /// The version list (spec 0038 step 023): one clickable row per stored SAMPLE version, the latest
@@ -1345,7 +1214,7 @@ let private versionsRow (versions : (VersionNumber * Sample) list) (latest : Ver
     | [] | [ _ ] -> []
     | _ ->
         [ StackPanel.create [
-              automationId<StackPanel> ConstructorUiId.libraryVersionsPanel.value
+              ConstructorUiId.libraryVersionsPanel.automationAttribute<StackPanel> ()
               StackPanel.orientation Orientation.Horizontal
               StackPanel.spacing 0.0
               StackPanel.children (
@@ -1358,7 +1227,7 @@ let private versionsRow (versions : (VersionNumber * Sample) list) (latest : Ver
                       |> List.map (fun (version, _) ->
                           let marker = if version = shown then "▸ " else ""
                           let latestTag = if version = latest then " (latest)" else ""
-                          verbButton (versionRow version) $"%s{marker}v%d{version.value}%s{latestTag}" (fun () -> dispatch (ViewVersion version)))))
+                          verbButton (ConstructorUiId.libraryVersionRow version) (ControlCaption $"%s{marker}v%d{version.value}%s{latestTag}") (fun () -> dispatch (ViewSampleVersion version)))))
           ] :> IView ]
 
 /// The view panel: the selected entry's kind, protection state and FULL description (the
@@ -1369,7 +1238,7 @@ let private versionsRow (versions : (VersionNumber * Sample) list) (latest : Ver
 /// live corpus at render time, so a removed sample's panel vanishes with its row. The retired bay's
 /// View verb is subsumed by selection.
 let private viewPanel (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
-    match selectedEntry m with
+    match m.selectedEntry with
     | None -> []
     | Some entry ->
         let versions =
@@ -1398,7 +1267,7 @@ let private viewPanel (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
         let viewOnlyNote : IView list =
             if viewingOlder then
                 [ TextBlock.create [
-                      automationId<TextBlock> ConstructorUiId.libraryViewOnlyNote.value
+                      ConstructorUiId.libraryViewOnlyNote.automationAttribute<TextBlock> ()
                       TextBlock.foreground (brush idleBorder)
                       TextBlock.textWrapping TextWrapping.Wrap
                       TextBlock.maxWidth 380.0
@@ -1406,7 +1275,7 @@ let private viewPanel (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
                   ] :> IView ]
             else []
         [ Border.create [
-              automationId<Border> ConstructorUiId.libraryViewPanel.value
+              ConstructorUiId.libraryViewPanel.automationAttribute<Border> ()
               Border.child (
                   StackPanel.create [
                       StackPanel.orientation Orientation.Vertical
@@ -1458,9 +1327,9 @@ let libraryWindowView (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
                     ])
             ]
             Border.create [
-                automationId<Border> ConstructorUiId.libraryFacetTreeHost.value
+                ConstructorUiId.libraryFacetTreeHost.automationAttribute<Border> ()
                 Border.padding (Thickness 8.0)
-                Border.child (FacetedTreeControls.facetedTreeControlsView (facetedState m) (facetedHandlers dispatch))
+                Border.child (FacetedTreeControls.facetedTreeControlsView (libraryFacetedState m) (libraryFacetedHandlers dispatch))
             ]
         ]
     ] :> IView

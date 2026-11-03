@@ -4,6 +4,7 @@ open Berreman.Dispersion
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.Facets
+open OpticalConstructor.Domain.FacetBuckets
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MaterialLibrary
@@ -20,6 +21,30 @@ module ConstructorUiIdOfDomain =
 
         /// The material as its Materials-window corpus leaf's tree-node code (`entry:<guid>`).
         member this.materialsEntryCode : ConstructorUiKey = ConstructorUiKey $"entry:{this.value}"
+
+    type OpticalConstructor.Domain.Placement.ElementValueId with
+
+        /// The Library entry as the key of its Select-bay leaf row.
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
+        /// The entry as its Library-window corpus leaf's tree-node code (`entry:<entryId>`).
+        member this.libraryEntryCode : ConstructorUiKey = ConstructorUiKey $"entry:{this.value}"
+
+    type NumericRange with
+
+        /// The range as the code of its offered bucket and tree branch: round-trip endpoints joined by ':',
+        /// a separator no number's text contains (an exponent's '-' could split a hyphen scheme).
+        member this.uiKey : ConstructorUiKey =
+            let part (v : UnitMagnitude) : string = v.value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+            ConstructorUiKey $"{part this.lower}:{part this.upper}"
+
+        /// The range as the faceted tree shows it: its bucket label without the count, so the nm / µm
+        /// switch has one home (`NumericBucket.label`).
+        member this.caption : ControlCaption =
+            let labelled = ({ range = this; count = ItemCount 0 } : NumericBucket).label
+            match labelled.LastIndexOf " (" with
+            | index when index > 0 -> ControlCaption (labelled.Substring(0, index))
+            | _ -> ControlCaption labelled
 
     type ConstructorUiId with
 
@@ -45,6 +70,13 @@ module ConstructorUiIdOfDomain =
         /// One stored version's row in the Materials window's version list.
         static member materialsVersionRow (version : VersionNumber) : ConstructorUiId = ConstructorUiId $"MaterialsVersionRow_{version.value}"
 
+        /// A Library entry's corpus leaf in the Library window's faceted tree.
+        static member libraryEntryNode (entryId : OpticalConstructor.Domain.Placement.ElementValueId) : ConstructorUiId =
+            ConstructorUiId.facetTreeNode entryId.libraryEntryCode
+
+        /// One stored sample version's row in the Library window's version list.
+        static member libraryVersionRow (version : VersionNumber) : ConstructorUiId = ConstructorUiId $"LibraryVersionRow_{version.value}"
+
     type ConstructorUiKey with
 
         /// The category a Category-manager row key stands for (the inverse of `CategoryId.uiKey`).
@@ -53,28 +85,51 @@ module ConstructorUiIdOfDomain =
             | true, g -> Some (CategoryId g)
             | _ -> None
 
+        /// The id text of an entry leaf: the corpus `entry:<id>` or a branch-nested `…:entry:<id>`; a
+        /// `facet:` / `branch:` / `entries` code carries none.
+        member private this.entryLeafText : string option =
+            let flatPrefix = "entry:"
+            let nestedMarker = ":entry:"
+            let code = this.value
+            if code.StartsWith flatPrefix then Some (code.Substring flatPrefix.Length)
+            else
+                match code.LastIndexOf(nestedMarker, System.StringComparison.Ordinal) with
+                | -1 -> None
+                | idx -> Some (code.Substring (idx + nestedMarker.Length))
+
         /// A facet branch's member leaf, under this branch code: `<branch code>:entry:<guid>`.
         member this.materialsBranchLeaf (materialId : MaterialId) : ConstructorUiKey =
             ConstructorUiKey $"{this.value}:{materialId.materialsEntryCode.value}"
 
-        /// The material a Materials-window entry leaf stands for: the corpus `entry:<guid>` or a
-        /// branch-nested `…:entry:<guid>`; a `facet:` / `branch:` / `entries` code is `None`.
+        /// The material a Materials-window entry leaf stands for; a `facet:` / `branch:` / `entries` code is `None`.
         member this.tryMaterialsEntryId : MaterialId option =
-            let flatPrefix = "entry:"
-            let nestedMarker = ":entry:"
-            let code = this.value
-            let idText =
-                if code.StartsWith flatPrefix then Some (code.Substring flatPrefix.Length)
-                else
-                    match code.LastIndexOf(nestedMarker, System.StringComparison.Ordinal) with
-                    | -1 -> None
-                    | idx -> Some (code.Substring (idx + nestedMarker.Length))
-            match idText with
+            match this.entryLeafText with
             | Some t ->
                 match System.Guid.TryParse t with
                 | true, g -> Some (MaterialId g)
                 | _ -> None
             | None -> None
+
+        /// A facet branch's member leaf in the Library window, under this branch code: `<branch code>:entry:<entryId>`.
+        member this.libraryBranchLeaf (entryId : OpticalConstructor.Domain.Placement.ElementValueId) : ConstructorUiKey =
+            ConstructorUiKey $"{this.value}:{entryId.libraryEntryCode.value}"
+
+        /// The Library entry an entry leaf stands for; a `facet:` / `branch:` / `entries` code is `None`.
+        member this.tryLibraryEntryId : OpticalConstructor.Domain.Placement.ElementValueId option =
+            this.entryLeafText |> Option.map OpticalConstructor.Domain.Placement.ElementValueId
+
+        /// A numeric bucket's code (`NumericRange.uiKey`) read back as its range.
+        member this.tryNumericRange : NumericRange option =
+            let tryEndpoint (text : string) : UnitMagnitude option =
+                match System.Double.TryParse(text.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture) with
+                | true, v -> Some (UnitMagnitude v)
+                | _ -> None
+            match this.value.Split ':' with
+            | [| lo; hi |] ->
+                match tryEndpoint lo, tryEndpoint hi with
+                | Some lower, Some upper -> Some ({ lower = lower; upper = upper } : NumericRange)
+                | _ -> None
+            | _ -> None
 
     type ControlCaption with
 
@@ -84,14 +139,28 @@ module ConstructorUiIdOfDomain =
         /// The text committed in a filter box, as the query it filters by.
         member this.toTextQuery : TextQuery = TextQuery this.value
 
+        /// The manual min–max box's text as a range: `lo-hi` (both in nm), or one value as the exact-value
+        /// range; anything else is `None`, the control's no-op (spec 0038 §D.0).
+        member this.tryManualNumericRange : NumericRange option =
+            let tryEndpoint (text : string) : UnitMagnitude option =
+                match System.Double.TryParse(text.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture) with
+                | true, v -> Some (UnitMagnitude v)
+                | _ -> None
+            let text = this.value.Trim()
+            match text with
+            | "" -> None
+            | _ ->
+                match text.Split '-' with
+                | [| single |] -> tryEndpoint single |> Option.map (fun v -> ({ lower = v; upper = v } : NumericRange))
+                | [| lo; hi |] ->
+                    match tryEndpoint lo, tryEndpoint hi with
+                    | Some lower, Some upper -> Some ({ lower = lower; upper = upper } : NumericRange)
+                    | _ -> None
+                | _ -> None
+
     type ElementId with
 
         /// The element as the key of its repeated controls (an Experiments-bay candidate).
-        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
-
-    type OpticalConstructor.Domain.Placement.ElementValueId with
-
-        /// The Library entry as the key of its Select-bay leaf row.
         member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
 
     type CategoryId with

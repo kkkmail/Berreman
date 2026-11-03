@@ -187,7 +187,7 @@ module AppContextTests =
             Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryOfSecond, "the strip button must open the Library window")
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
             clickOn libraryOfSecond (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            Assert.True(isPresent libraryOfSecond (LibraryWindowView.entryNode (string savedId.value)),
+            Assert.True(isPresent libraryOfSecond ((ConstructorUiId.libraryEntryNode savedId.toElementValueId).value),
                         "the second Main window's Library window must list the sample added through the first")
             libraryOfSecond.Close()
             Dispatcher.UIThread.RunJobs()

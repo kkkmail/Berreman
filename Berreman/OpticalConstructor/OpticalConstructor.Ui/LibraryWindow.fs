@@ -96,11 +96,11 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
         // ANY close path funnels here (title-bar X, a staleness Close(), the Select/Close
         // verbs' requestClose): a still-pending Select session cancels exactly once — the
         // verbs flip the mode to Browse in the same update that fires their callback, so the
-        // queued dismissal is a no-op after them (LibraryWindowView.SelectDismissed).
-        this.Closed.Add (fun _ -> dispatch LibraryWindowView.SelectDismissed)
+        // queued dismissal is a no-op after them (LibraryWindowView.LibrarySelectDismissed).
+        this.Closed.Add (fun _ -> dispatch LibraryWindowView.LibrarySelectDismissed)
 
     /// The launcher's re-target seam (step 016): a Select-state open that found THIS window
     /// live re-points its session at the new context — the superseded session is cancelled by
     /// the pure update; the window instance stays (single-instance semantics).
     member _.Retarget (context : SelectionContext<LibraryEntry>) : unit =
-        dispatch (LibraryWindowView.RetargetSelect context)
+        dispatch (LibraryWindowView.RetargetLibrarySelect context)

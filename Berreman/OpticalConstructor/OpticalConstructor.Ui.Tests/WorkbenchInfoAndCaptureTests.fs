@@ -121,9 +121,9 @@ module WorkbenchInfoAndCaptureTests =
                 onCancelled = ignore
             }
         let m = LW.initLibraryWindow (libraryContext ()) (Select (session (Some (ElementValueId "src-hene-633"))))
-        Assert.Equal(Some "src-hene-633", m.selectedEntryId)
-        Assert.Equal(LW.entryNodeCode "src-hene-633", m.selectedNodeCode)
-        Assert.True(m.expandedNodes.isExpanded "entries", "the entries group opens so the chosen row shows")
+        Assert.Equal(Some (ElementValueId "src-hene-633"), m.selectedEntryId)
+        Assert.Equal(Some (ElementValueId "src-hene-633").libraryEntryCode, m.selectedNodeOpt)
+        Assert.True((m.expandedNodes.nodeExpansion (ConstructorUiKey "entries") = FacetedTreeControls.ExpandedNode), "the entries group opens so the chosen row shows")
         // Nothing bound (or a binding of another kind) shows nothing chosen.
         Assert.Equal(None, (LW.initLibraryWindow (libraryContext ()) (Select (session None))).selectedEntryId)
         Assert.Equal(None, (LW.initLibraryWindow (libraryContext ()) (Select (session (Some (ElementValueId "det-intensity"))))).selectedEntryId)

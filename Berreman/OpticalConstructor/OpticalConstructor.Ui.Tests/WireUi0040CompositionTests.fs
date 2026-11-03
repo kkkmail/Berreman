@@ -250,15 +250,15 @@ module WireUi0040CompositionTests =
             let libraryWindow = openLibraryWindow root
             Assert.True(isPresent libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value,
                         "the Library tree's entries group must carry a disclosure chevron")
-            Assert.False(isPresent libraryWindow (LW.entryNode "src-600"),
+            Assert.False(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "src-600")).value),
                          "a collapsed Library tree must hide its entry leaves on first open")
             expandNode libraryWindow "entries"
             commitFilter libraryWindow "polarizer"
-            Assert.True(isPresent libraryWindow (LW.entryNode "pol-lp"),
+            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-lp")).value),
                         "the expanded Library tree lists the seeded polarizer preset from the root-wired proxy")
-            clickOn libraryWindow (LW.entryNode "pol-lp")
-            let lSelected = labelBorderOf libraryWindow (LW.entryNode "pol-lp")
-            let lSibling = labelBorderOf libraryWindow (LW.entryNode "pol-cp-left")
+            clickOn libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-lp")).value)
+            let lSelected = labelBorderOf libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-lp")).value)
+            let lSibling = labelBorderOf libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-cp-left")).value)
             Assert.Equal(Some chosenFill, backgroundColorOf lSelected)
             Assert.Equal(Some idleFill, backgroundColorOf lSibling)
             Assert.True(lSelected.BorderThickness.Top > lSibling.BorderThickness.Top,

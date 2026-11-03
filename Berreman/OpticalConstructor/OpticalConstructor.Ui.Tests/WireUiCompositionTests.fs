@@ -192,9 +192,9 @@ module WireUiCompositionTests =
             let libraryWindow = openLibraryWindow window
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaves.
             clickOn libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            Assert.True(isPresent libraryWindow (LW.entryNode (string SeedSamples.glassFilm600.id.value)),
+            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode SeedSamples.glassFilm600.id.toElementValueId).value),
                         "the Library window must list the seeded glassFilm600 sample from the root-wired store")
-            Assert.True(isPresent libraryWindow (LW.entryNode "src-600"),
+            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "src-600")).value),
                         "the Library window must list the seeded source preset from the root-wired proxy")
             libraryWindow.Close()
             Dispatcher.UIThread.RunJobs()
@@ -228,7 +228,7 @@ module WireUiCompositionTests =
             Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryWindow, "the strip button must open the Library window")
             commitFilter libraryWindow "n=1.75"
             clickOn libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            clickOn libraryWindow (LW.entryNode (string SeedSamples.glassFilm600.id.value))
+            clickOn libraryWindow ((ConstructorUiId.libraryEntryNode SeedSamples.glassFilm600.id.toElementValueId).value)
             clickOn libraryWindow ConstructorUiId.libraryEditButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(3, opened.Count)
