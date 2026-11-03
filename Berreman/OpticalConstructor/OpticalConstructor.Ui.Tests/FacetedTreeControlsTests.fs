@@ -409,15 +409,15 @@ module FacetedTreeControlsTests =
             Dispatcher.UIThread.RunJobs()
             window.KeyReleaseQwerty(PhysicalKey.Enter, RawInputModifiers.None)
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal<string>([ "filter:quartz" ], commits ())
+            Assert.Equal<string list>([ "filter:quartz" ], commits ())
             // More typing after the commit still dispatches nothing...
             window.KeyTextInput("!")
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal<string>([ "filter:quartz" ], commits ())
+            Assert.Equal<string list>([ "filter:quartz" ], commits ())
             // ...until focus leaves the box — blur commits the box's CURRENT text.
             (textBoxOf window (ConstructorUiId.facetManualRangeBox (ConstructorUiKey "thickness")).value).Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal<string>([ "filter:quartz"; "filter:quartz!" ], commits ())
+            Assert.Equal<string list>([ "filter:quartz"; "filter:quartz!" ], commits ())
             window.Close())
 
     [<Fact>]
@@ -437,5 +437,5 @@ module FacetedTreeControlsTests =
             // Enter hands the RAW text to the host with the group's code (the host parses it).
             window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None)
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal<string>([ "range:thickness=10-20" ], ranges ())
+            Assert.Equal<string list>([ "range:thickness=10-20" ], ranges ())
             window.Close())
