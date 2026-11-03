@@ -2325,6 +2325,586 @@
           "command_sha256": "ee974257d6952f82419b80580260a59737dfa517e58baf1165f9c6b6f8851297"
         }
       ]
+    },
+    {
+      "id": "S16-MOVE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B '`SeedingProxy` / `seedAll` become `CatalogueImport`', 'Shipped catalogue' ('tests load the same files'); specs/0050/.section-plan-jsonl section 6 (S1.6) brief; specs/0050/.spec-md §3.4, §3.5, §4, §5, §6",
+      "requirement": "The import seam moves from OpticalConstructor.Seeding/Seeding.fs into Domain as CatalogueImport.fs (module CatalogueImport, compiled directly after SampleStore.fs), renamed and otherwise unchanged: SeedingError becomes CatalogueImportError with ImportRejectedErr of reason : string; SeedingProxy becomes the [<ReferenceEquality>] CatalogueImportProxy with exactly saveCategory, saveMaterial, saveSample and saveLibraryEntry; InMemorySeedStores becomes InMemoryCatalogueStores; seedAll and createInMemory keep their bodies. The OpticalConstructor.Seeding project (both files, the folder, its Berreman.slnx entry and its one ProjectReference with its comment) is deleted. SeedingProxyTests and SeedingInMemoryTests are renamed to CatalogueImportProxyTests and CatalogueImportInMemoryTests (files, modules, compile entries), their project-file comments deleted, every fact keeping its assertions and only the reference-equality fact renamed; the Domain doc comments that named SeedingProxy name CatalogueImportProxy. Nothing under Berreman/ names SeedingProxy, OpticalConstructor.Seeding, SeedingError, SeedRejectedErr or InMemorySeedStores, and the constructor suite's count is unchanged.",
+      "checks": [
+        {
+          "step": 37,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S16-BUILTIN-FOLDER",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B '`SeedingProxy` / `seedAll` become `CatalogueImport`', 'Shipped catalogue' ('tests load the same files'); specs/0050/.section-plan-jsonl section 6 (S1.6) brief; specs/0050/.spec-md §3.4, §3.5, §4, §5, §6",
+      "requirement": "Storage's CatalogueFolderStore.fs gains static member CatalogueProxy.createBuiltIn () : CatalogueProxy, the folder proxy over System.AppContext.BaseDirectory/Catalogue/Builtin that the Storage Content item fills in every output; it is the one place that path is written, and BuiltInCatalogueParityTests' readBuiltIn reads through it with no Path.Combine of its own. A fact reads the catalogue through createBuiltIn: Ok, manifest id CatalogueIds.builtInCatalogue, name Built-in, and equal to the read of an independently spelled-out path.",
+      "checks": [
+        {
+          "step": 38,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S16-ERROR-RENDERS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B '`SeedingProxy` / `seedAll` become `CatalogueImport`', 'Shipped catalogue' ('tests load the same files'); specs/0050/.section-plan-jsonl section 6 (S1.6) brief; specs/0050/.spec-md §3.4, §3.5, §4, §5, §6",
+      "requirement": "LibraryEntryError and CatalogueError each gain member describe : string, one line per case naming the case's condition and carrying its reason, with InvalidCatalogueEntriesErr rendering the wrapped LibraryEntryError's describe; every match is complete and no case is added. Facts render each of the six cases of both unions over distinct reasons into distinct texts that contain them.",
+      "checks": [
+        {
+          "step": 39,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S16-IMPORT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B '`SeedingProxy` / `seedAll` become `CatalogueImport`', 'Shipped catalogue' ('tests load the same files'); specs/0050/.section-plan-jsonl section 6 (S1.6) brief; specs/0050/.spec-md §3.4, §3.5, §4, §5, §6",
+      "requirement": "seedAll is deleted and CatalogueImportProxy.importCatalogue (catalogue : CatalogueData) : Result<unit, CatalogueImportError> imports a parsed catalogue: each envelope is decoded by its kind's S1.4 decoder and pushed through the matching field, every category, then material, then sample (through saveSample only), then preset (source, polarizer, detector, as SourceItem / PolarizerItem / DetectorItem), each group in row order; the first decode failure (UndecodableEntryErr of LibraryEntryError) or store refusal (ImportRejectedErr) stops the import, keeping what was pushed. importFrom (catalogue : CatalogueProxy) reads, maps a read failure to CatalogueUnreadableErr of CatalogueError, and imports. CatalogueImportError renders through describe. createInMemory keeps the empty stores. Stub facts over the Built-in catalogue prove the push order, the refusal short-circuit, the decode-failure stop and the renders; in-memory facts over the real stores prove that importFrom fills empty stores with the whole Built-in catalogue, that every entry resolves by id to its decoded value, that a second import is refused, and that an unreadable catalogue imports nothing. Nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding.",
+      "checks": [
+        {
+          "step": 40,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S16-FIXTURE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B '`SeedingProxy` / `seedAll` become `CatalogueImport`', 'Shipped catalogue' ('tests load the same files'); specs/0050/.section-plan-jsonl section 6 (S1.6) brief; specs/0050/.spec-md §3.4, §3.5, §4, §5, §6",
+      "requirement": "One fixture file, OpticalConstructor.Tests/BuiltinCatalogue.fs (module BuiltinCatalogue), is the first compile item of OpticalConstructor.Tests and is linked as the first compile item of OpticalConstructor.Ui.Tests. It loads Catalogue/Builtin once per process through CatalogueProxy.createBuiltIn (a Lazy that fails with the error's describe on first use) and exposes catalogueData, freshStores (filled in-memory stores, isolated per call), the decoded per-kind lists materials, categories, samples and presets, and the lookups material, category, sample and preset by well-known id. BuiltinCatalogueFixtureTests proves the fresh stores hold the whole catalogue and are isolated, and that the well-known ids resolve to the expected entries; the UI test assembly still discovers and runs its smoke facts.",
+      "checks": [
+        {
+          "step": 41,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 41,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S16-TEST-SCENES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B '`SeedingProxy` / `seedAll` become `CatalogueImport`', 'Shipped catalogue' ('tests load the same files'); specs/0050/.section-plan-jsonl section 6 (S1.6) brief; specs/0050/.spec-md §3.4, §3.5, §4, §5, §6",
+      "requirement": "TableAndElementRotationView.fs DefaultStores.create (the test-scene default of initMain, initTableAndElementRotation and the TestWindows heads) builds CatalogueImportProxy.createInMemory, imports CatalogueProxy.createBuiltIn through importFrom, logs a failure with Logger.logError and e.describe and keeps what was imported without throwing, and composes liveLibrary over the import's preset store, its samples and a fresh user-sources store. The in-memory bundle's preset proxy answers the existing By-kind grouping (Library.createInMemory's libraryTrees), so the Select bay's rows are unchanged, and no ordering is added. A fact over initMain shows the scene's samples, materials, categories and presets are exactly the fixture's; every class composing the default scene passes, the Select-bay facts included.",
+      "checks": [
+        {
+          "step": 42,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 42,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 42,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S16-WORKBENCH-FIXTURE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B '`SeedingProxy` / `seedAll` become `CatalogueImport`', 'Shipped catalogue' ('tests load the same files'); specs/0050/.section-plan-jsonl section 6 (S1.6) brief; specs/0050/.spec-md §3.4, §3.5, §4, §5, §6",
+      "requirement": "MainWorkbenchTests' fresh stores come from BuiltinCatalogue.freshStores and its Main scene from initMainWith over liveLibrary of that bundle, so the file calls none of the self-seeding MaterialProxy, SampleProxy, CategoryProxy or Library createInMemory; every fact keeps its name and assertions and the class passes with its count unchanged, the smoke facts included.",
+      "checks": [
+        {
+          "step": 43,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 43,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S16-APP-ROOT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B '`SeedingProxy` / `seedAll` become `CatalogueImport`', 'Shipped catalogue' ('tests load the same files'); specs/0050/.section-plan-jsonl section 6 (S1.6) brief; specs/0050/.spec-md §3.4, §3.5, §4, §5, §6",
+      "requirement": "AppContext.create, the product composition root that Program.fs Startup.context evaluates before the LauncherWindow opens, builds CatalogueImportProxy.createInMemory, imports CatalogueProxy.createBuiltIn through importFrom, logs a failure with Logger.logError and e.describe and starts with what was imported without throwing, and composes materials, samples, categories and liveLibrary from the import with an empty user-sources store; its signature and every other field are unchanged and it calls no self-seeding store. The comments the switch falsifies are corrected. AppContextTests proves a fresh context holds exactly the fixture's samples, materials, categories and presets, and its scope-isolation fact says each create imports its own; every class composing AppContext.create passes, the WireUi composition acceptance facts under ui-smoke and the rest under ui-tests.",
+      "checks": [
+        {
+          "step": 44,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 44,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 44,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S16-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B '`SeedingProxy` / `seedAll` become `CatalogueImport`', 'Shipped catalogue' ('tests load the same files'); specs/0050/.section-plan-jsonl section 6 (S1.6) brief; specs/0050/.spec-md §3.4, §3.5, §4, §5, §6",
+      "requirement": "Every S1.6 step leaves Berreman.slnx building in Release x64 with zero warnings from our code, without the OpticalConstructor.Seeding project from step 37 on; FS0025 stays an error, so every match on CatalogueImportError, LibraryEntryError and CatalogueError (describe) is complete, and OpticalConstructor.Ui.Tests compiles the linked BuiltinCatalogue.fs.",
+      "checks": [
+        {
+          "step": 37,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 38,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 39,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 40,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 41,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 42,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 43,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 44,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S16-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §B '`SeedingProxy` / `seedAll` become `CatalogueImport`', 'Shipped catalogue' ('tests load the same files'); specs/0050/.section-plan-jsonl section 6 (S1.6) brief; specs/0050/.spec-md §3.4, §3.5, §4, §5, §6",
+      "requirement": "Every S1.6 step leaves the projects it touches, and the projects that reference them, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command). The new names (CatalogueImport, CatalogueImportProxy, CatalogueImportError and its cases ImportRejectedErr, UndecodableEntryErr and CatalogueUnreadableErr, InMemoryCatalogueStores, importCatalogue, importFrom, createBuiltIn) are unique (ELEV014/015/016/019), every error case ends in Err, errors are rendered through describe and never %A (ELEV002), and createBuiltIn, importCatalogue and importFrom are members, not free functions (ELEV013).",
+      "checks": [
+        {
+          "step": 37,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 38,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 39,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 40,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 41,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 42,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 43,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 44,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S16-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 6 (S1.6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.6 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s06-elev-list-empty).",
+      "checks": [
+        {
+          "step": 37,
+          "gate": "invariant-s06-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "5fca6cf4433ca30dd3524dc20dcf0a7232282f1d928cc8ba61d4f4e648a125e4"
+        },
+        {
+          "step": 38,
+          "gate": "invariant-s06-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "5fca6cf4433ca30dd3524dc20dcf0a7232282f1d928cc8ba61d4f4e648a125e4"
+        },
+        {
+          "step": 39,
+          "gate": "invariant-s06-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "5fca6cf4433ca30dd3524dc20dcf0a7232282f1d928cc8ba61d4f4e648a125e4"
+        },
+        {
+          "step": 40,
+          "gate": "invariant-s06-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "5fca6cf4433ca30dd3524dc20dcf0a7232282f1d928cc8ba61d4f4e648a125e4"
+        },
+        {
+          "step": 41,
+          "gate": "invariant-s06-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "5fca6cf4433ca30dd3524dc20dcf0a7232282f1d928cc8ba61d4f4e648a125e4"
+        },
+        {
+          "step": 42,
+          "gate": "invariant-s06-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "5fca6cf4433ca30dd3524dc20dcf0a7232282f1d928cc8ba61d4f4e648a125e4"
+        },
+        {
+          "step": 43,
+          "gate": "invariant-s06-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "5fca6cf4433ca30dd3524dc20dcf0a7232282f1d928cc8ba61d4f4e648a125e4"
+        },
+        {
+          "step": 44,
+          "gate": "invariant-s06-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "5fca6cf4433ca30dd3524dc20dcf0a7232282f1d928cc8ba61d4f4e648a125e4"
+        }
+      ]
+    },
+    {
+      "id": "S16-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 6 (S1.6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.6 step, no .fsproj, .props or .targets names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s06-no-vstest).",
+      "checks": [
+        {
+          "step": 37,
+          "gate": "invariant-s06-no-vstest",
+          "selection": "command",
+          "command_sha256": "9a1111346c0bad94948a32b31ff13a19ef74ddd9002c5eb5fcd4ddcfffba2290"
+        },
+        {
+          "step": 38,
+          "gate": "invariant-s06-no-vstest",
+          "selection": "command",
+          "command_sha256": "9a1111346c0bad94948a32b31ff13a19ef74ddd9002c5eb5fcd4ddcfffba2290"
+        },
+        {
+          "step": 39,
+          "gate": "invariant-s06-no-vstest",
+          "selection": "command",
+          "command_sha256": "9a1111346c0bad94948a32b31ff13a19ef74ddd9002c5eb5fcd4ddcfffba2290"
+        },
+        {
+          "step": 40,
+          "gate": "invariant-s06-no-vstest",
+          "selection": "command",
+          "command_sha256": "9a1111346c0bad94948a32b31ff13a19ef74ddd9002c5eb5fcd4ddcfffba2290"
+        },
+        {
+          "step": 41,
+          "gate": "invariant-s06-no-vstest",
+          "selection": "command",
+          "command_sha256": "9a1111346c0bad94948a32b31ff13a19ef74ddd9002c5eb5fcd4ddcfffba2290"
+        },
+        {
+          "step": 42,
+          "gate": "invariant-s06-no-vstest",
+          "selection": "command",
+          "command_sha256": "9a1111346c0bad94948a32b31ff13a19ef74ddd9002c5eb5fcd4ddcfffba2290"
+        },
+        {
+          "step": 43,
+          "gate": "invariant-s06-no-vstest",
+          "selection": "command",
+          "command_sha256": "9a1111346c0bad94948a32b31ff13a19ef74ddd9002c5eb5fcd4ddcfffba2290"
+        },
+        {
+          "step": 44,
+          "gate": "invariant-s06-no-vstest",
+          "selection": "command",
+          "command_sha256": "9a1111346c0bad94948a32b31ff13a19ef74ddd9002c5eb5fcd4ddcfffba2290"
+        }
+      ]
+    },
+    {
+      "id": "S16-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 6 (S1.6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.6 step, nothing under Berreman/ names kit.kit-json (section invariant s06-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 37,
+          "gate": "invariant-s06-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1ca681cf54220aaff82ec284c2acb4bdee61578c95e5cc8aac73e151bec3f4ff"
+        },
+        {
+          "step": 38,
+          "gate": "invariant-s06-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1ca681cf54220aaff82ec284c2acb4bdee61578c95e5cc8aac73e151bec3f4ff"
+        },
+        {
+          "step": 39,
+          "gate": "invariant-s06-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1ca681cf54220aaff82ec284c2acb4bdee61578c95e5cc8aac73e151bec3f4ff"
+        },
+        {
+          "step": 40,
+          "gate": "invariant-s06-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1ca681cf54220aaff82ec284c2acb4bdee61578c95e5cc8aac73e151bec3f4ff"
+        },
+        {
+          "step": 41,
+          "gate": "invariant-s06-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1ca681cf54220aaff82ec284c2acb4bdee61578c95e5cc8aac73e151bec3f4ff"
+        },
+        {
+          "step": 42,
+          "gate": "invariant-s06-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1ca681cf54220aaff82ec284c2acb4bdee61578c95e5cc8aac73e151bec3f4ff"
+        },
+        {
+          "step": 43,
+          "gate": "invariant-s06-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1ca681cf54220aaff82ec284c2acb4bdee61578c95e5cc8aac73e151bec3f4ff"
+        },
+        {
+          "step": 44,
+          "gate": "invariant-s06-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1ca681cf54220aaff82ec284c2acb4bdee61578c95e5cc8aac73e151bec3f4ff"
+        }
+      ]
+    },
+    {
+      "id": "S16-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 6 (S1.6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.6 step, nothing under Berreman/ names EpsAxisEvaluated (section invariant s06-no-eps-axis-evaluated, established by S1.1).",
+      "checks": [
+        {
+          "step": 37,
+          "gate": "invariant-s06-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0f583fc576aecdc9b11596eee93689873b8cb7eb02a0b269649b6a8283874b15"
+        },
+        {
+          "step": 38,
+          "gate": "invariant-s06-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0f583fc576aecdc9b11596eee93689873b8cb7eb02a0b269649b6a8283874b15"
+        },
+        {
+          "step": 39,
+          "gate": "invariant-s06-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0f583fc576aecdc9b11596eee93689873b8cb7eb02a0b269649b6a8283874b15"
+        },
+        {
+          "step": 40,
+          "gate": "invariant-s06-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0f583fc576aecdc9b11596eee93689873b8cb7eb02a0b269649b6a8283874b15"
+        },
+        {
+          "step": 41,
+          "gate": "invariant-s06-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0f583fc576aecdc9b11596eee93689873b8cb7eb02a0b269649b6a8283874b15"
+        },
+        {
+          "step": 42,
+          "gate": "invariant-s06-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0f583fc576aecdc9b11596eee93689873b8cb7eb02a0b269649b6a8283874b15"
+        },
+        {
+          "step": 43,
+          "gate": "invariant-s06-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0f583fc576aecdc9b11596eee93689873b8cb7eb02a0b269649b6a8283874b15"
+        },
+        {
+          "step": 44,
+          "gate": "invariant-s06-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "0f583fc576aecdc9b11596eee93689873b8cb7eb02a0b269649b6a8283874b15"
+        }
+      ]
+    },
+    {
+      "id": "S16-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 6 (S1.6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.6 step, nothing under Berreman/ writes complexity = None or complexity = Some (section invariant s06-complexity-mandatory, established by S1.2).",
+      "checks": [
+        {
+          "step": 37,
+          "gate": "invariant-s06-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "113945f3f0823d346d9d30f08540cf76af18b329d536faf8ea669c00af725b42"
+        },
+        {
+          "step": 38,
+          "gate": "invariant-s06-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "113945f3f0823d346d9d30f08540cf76af18b329d536faf8ea669c00af725b42"
+        },
+        {
+          "step": 39,
+          "gate": "invariant-s06-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "113945f3f0823d346d9d30f08540cf76af18b329d536faf8ea669c00af725b42"
+        },
+        {
+          "step": 40,
+          "gate": "invariant-s06-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "113945f3f0823d346d9d30f08540cf76af18b329d536faf8ea669c00af725b42"
+        },
+        {
+          "step": 41,
+          "gate": "invariant-s06-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "113945f3f0823d346d9d30f08540cf76af18b329d536faf8ea669c00af725b42"
+        },
+        {
+          "step": 42,
+          "gate": "invariant-s06-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "113945f3f0823d346d9d30f08540cf76af18b329d536faf8ea669c00af725b42"
+        },
+        {
+          "step": 43,
+          "gate": "invariant-s06-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "113945f3f0823d346d9d30f08540cf76af18b329d536faf8ea669c00af725b42"
+        },
+        {
+          "step": 44,
+          "gate": "invariant-s06-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "113945f3f0823d346d9d30f08540cf76af18b329d536faf8ea669c00af725b42"
+        }
+      ]
+    },
+    {
+      "id": "S16-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 6 (S1.6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S1.6 step, no Berreman/*.fs file holds a seeded preset string id (src-600, src-hene-..., det-intensity, det-ellipsometer, pol-lp, pol-cp-left, pol-cp-right and the rest; section invariant s06-no-seeded-string-preset-ids, established by S1.3 step 20).",
+      "checks": [
+        {
+          "step": 37,
+          "gate": "invariant-s06-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ffe29803dcfa94d2cfd8c5cecf8c6cfa285be0039763b43cdbd95465f322afbd"
+        },
+        {
+          "step": 38,
+          "gate": "invariant-s06-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ffe29803dcfa94d2cfd8c5cecf8c6cfa285be0039763b43cdbd95465f322afbd"
+        },
+        {
+          "step": 39,
+          "gate": "invariant-s06-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ffe29803dcfa94d2cfd8c5cecf8c6cfa285be0039763b43cdbd95465f322afbd"
+        },
+        {
+          "step": 40,
+          "gate": "invariant-s06-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ffe29803dcfa94d2cfd8c5cecf8c6cfa285be0039763b43cdbd95465f322afbd"
+        },
+        {
+          "step": 41,
+          "gate": "invariant-s06-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ffe29803dcfa94d2cfd8c5cecf8c6cfa285be0039763b43cdbd95465f322afbd"
+        },
+        {
+          "step": 42,
+          "gate": "invariant-s06-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ffe29803dcfa94d2cfd8c5cecf8c6cfa285be0039763b43cdbd95465f322afbd"
+        },
+        {
+          "step": 43,
+          "gate": "invariant-s06-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ffe29803dcfa94d2cfd8c5cecf8c6cfa285be0039763b43cdbd95465f322afbd"
+        },
+        {
+          "step": 44,
+          "gate": "invariant-s06-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ffe29803dcfa94d2cfd8c5cecf8c6cfa285be0039763b43cdbd95465f322afbd"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -2823,6 +3403,126 @@
         "S15-INV-COMPLEXITY-MANDATORY",
         "S15-INV-NO-SEEDED-STRING-PRESET-IDS"
       ]
+    },
+    {
+      "step": 37,
+      "sha256": "c0950899c4ba1bc7ae4a75b1e92d9103370417e7ba500381683ea5772783b129",
+      "obligations": [
+        "S16-MOVE",
+        "S16-BUILD",
+        "S16-ELEVATION",
+        "S16-INV-ELEV-LIST",
+        "S16-INV-NO-VSTEST",
+        "S16-INV-NO-KIT-KIT-JSON",
+        "S16-INV-NO-EPS-AXIS-EVALUATED",
+        "S16-INV-COMPLEXITY-MANDATORY",
+        "S16-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 38,
+      "sha256": "bd977c077b0544439cf63d81c131a7d577972a588903c39200aa0df6f4071565",
+      "obligations": [
+        "S16-BUILTIN-FOLDER",
+        "S16-BUILD",
+        "S16-ELEVATION",
+        "S16-INV-ELEV-LIST",
+        "S16-INV-NO-VSTEST",
+        "S16-INV-NO-KIT-KIT-JSON",
+        "S16-INV-NO-EPS-AXIS-EVALUATED",
+        "S16-INV-COMPLEXITY-MANDATORY",
+        "S16-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 39,
+      "sha256": "ee34ff7183755ca37a9eac6b7f3600b7d58de2f5c83990dc12dfd66d5402aa3c",
+      "obligations": [
+        "S16-ERROR-RENDERS",
+        "S16-BUILD",
+        "S16-ELEVATION",
+        "S16-INV-ELEV-LIST",
+        "S16-INV-NO-VSTEST",
+        "S16-INV-NO-KIT-KIT-JSON",
+        "S16-INV-NO-EPS-AXIS-EVALUATED",
+        "S16-INV-COMPLEXITY-MANDATORY",
+        "S16-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 40,
+      "sha256": "bdd5eb3cf75783203e54aa3f33582686059e1018bb29987261bfda78722c745d",
+      "obligations": [
+        "S16-IMPORT",
+        "S16-BUILD",
+        "S16-ELEVATION",
+        "S16-INV-ELEV-LIST",
+        "S16-INV-NO-VSTEST",
+        "S16-INV-NO-KIT-KIT-JSON",
+        "S16-INV-NO-EPS-AXIS-EVALUATED",
+        "S16-INV-COMPLEXITY-MANDATORY",
+        "S16-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 41,
+      "sha256": "725f66975c6c5e69a1a0322ee2bc82848d56e34dc53f5128c68b76048708bfb1",
+      "obligations": [
+        "S16-FIXTURE",
+        "S16-BUILD",
+        "S16-ELEVATION",
+        "S16-INV-ELEV-LIST",
+        "S16-INV-NO-VSTEST",
+        "S16-INV-NO-KIT-KIT-JSON",
+        "S16-INV-NO-EPS-AXIS-EVALUATED",
+        "S16-INV-COMPLEXITY-MANDATORY",
+        "S16-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 42,
+      "sha256": "bd02e5bffda65259d785fc04f9626da1ecde2c0c68d6a249b85857443ae9163b",
+      "obligations": [
+        "S16-TEST-SCENES",
+        "S16-BUILD",
+        "S16-ELEVATION",
+        "S16-INV-ELEV-LIST",
+        "S16-INV-NO-VSTEST",
+        "S16-INV-NO-KIT-KIT-JSON",
+        "S16-INV-NO-EPS-AXIS-EVALUATED",
+        "S16-INV-COMPLEXITY-MANDATORY",
+        "S16-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 43,
+      "sha256": "ab8faae2079d920038bed3a89e07dc24406a8ffe923563b55392386f65319fa4",
+      "obligations": [
+        "S16-WORKBENCH-FIXTURE",
+        "S16-BUILD",
+        "S16-ELEVATION",
+        "S16-INV-ELEV-LIST",
+        "S16-INV-NO-VSTEST",
+        "S16-INV-NO-KIT-KIT-JSON",
+        "S16-INV-NO-EPS-AXIS-EVALUATED",
+        "S16-INV-COMPLEXITY-MANDATORY",
+        "S16-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
+    },
+    {
+      "step": 44,
+      "sha256": "bada00a51b27a31bc7c7146155579fcc34e3ea2924b8f7acd67adcf84067de36",
+      "obligations": [
+        "S16-APP-ROOT",
+        "S16-BUILD",
+        "S16-ELEVATION",
+        "S16-INV-ELEV-LIST",
+        "S16-INV-NO-VSTEST",
+        "S16-INV-NO-KIT-KIT-JSON",
+        "S16-INV-NO-EPS-AXIS-EVALUATED",
+        "S16-INV-COMPLEXITY-MANDATORY",
+        "S16-INV-NO-SEEDED-STRING-PRESET-IDS"
+      ]
     }
   ],
   "behavior_seams": [
@@ -2940,6 +3640,46 @@
       "id": "s15-builtin-parity-red",
       "step": 34,
       "obligation": "S15-BUILTIN-PARITY"
+    },
+    {
+      "id": "s16-move-renamed-facts",
+      "step": 37,
+      "obligation": "S16-MOVE"
+    },
+    {
+      "id": "s16-builtin-folder-read",
+      "step": 38,
+      "obligation": "S16-BUILTIN-FOLDER"
+    },
+    {
+      "id": "s16-error-renders",
+      "step": 39,
+      "obligation": "S16-ERROR-RENDERS"
+    },
+    {
+      "id": "s16-import-order-and-stop",
+      "step": 40,
+      "obligation": "S16-IMPORT"
+    },
+    {
+      "id": "s16-import-unreadable",
+      "step": 40,
+      "obligation": "S16-IMPORT"
+    },
+    {
+      "id": "s16-fixture-isolated",
+      "step": 41,
+      "obligation": "S16-FIXTURE"
+    },
+    {
+      "id": "s16-test-scene-from-catalogue",
+      "step": 42,
+      "obligation": "S16-TEST-SCENES"
+    },
+    {
+      "id": "s16-app-root-imports",
+      "step": 44,
+      "obligation": "S16-APP-ROOT"
     }
   ],
   "temporal_checks": [],
@@ -3058,6 +3798,30 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Storage",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/Catalogue"
+      ]
+    },
+    {
+      "from": 37,
+      "step": 40,
+      "paths": [
+        "Berreman/Berreman.slnx",
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Seeding",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests"
+      ]
+    },
+    {
+      "from": 37,
+      "step": 44,
+      "paths": [
+        "Berreman/Berreman.slnx",
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Seeding",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
       ]
     }
   ]
