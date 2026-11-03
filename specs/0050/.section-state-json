@@ -72,14 +72,14 @@
     {
       "name": "S3.1 -- Import on every start and the per-entry decision table",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "31acd24",
       "spec_jsonl_lines": 101
     },
     {
       "name": "S3.2 -- The import dialog and single-file drop",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 112
     },
     {
       "name": "S3.3 -- Export, Export my library and licence attribution",
