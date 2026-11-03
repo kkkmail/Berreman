@@ -2,7 +2,7 @@
   "spec_folder": "C:\\GitHub\\Berreman\\specs\\0048",
   "workflow": "continuous-loop",
   "started_at": "2026-11-02T12:57:14Z",
-  "updated_at": "2026-11-03T08:47:13Z",
+  "updated_at": "2026-11-03T08:58:19Z",
   "rounds": [
     {
       "round_no": 0,
@@ -563,6 +563,20 @@
       "worker_exit_code": 0,
       "verdict": "progressed",
       "detail": "open 6 -> 5, ledger +3, head 59f65545 -> e27ca4cd"
+    },
+    {
+      "round_no": 41,
+      "started_at": "2026-11-03T08:47:13Z",
+      "finished_at": "2026-11-03T08:58:19Z",
+      "open_before": 5,
+      "open_after": 4,
+      "head_before": "e27ca4cdfaaf503143050b40489248401fc3edf9",
+      "head_after": "151a0a01ec5ab117a9a827dc52aaf678fbcdfa61",
+      "ledger_rows_before": 124,
+      "ledger_rows_after": 127,
+      "worker_exit_code": 0,
+      "verdict": "progressed",
+      "detail": "open 5 -> 4, ledger +3, head e27ca4cd -> 151a0a01"
     }
   ],
   "outcome": null,
