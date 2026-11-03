@@ -30,14 +30,14 @@ module SceneProxyTests =
             {
                 id = Library.ElementId "src"
                 placement = { ElementPlacement.create LightSource TablePoint.origin with valueId = Some (ElementValueId "src-600") }
-                zoom = 1.0
+                zoom = BeamLayout.ElementZoom 1.0
                 beam = BeamLayout.OnMainBeam
             }
         let detector : SceneElement =
             {
                 id = Library.ElementId "det"
                 placement = ElementPlacement.create Detector TablePoint.origin
-                zoom = 2.0
+                zoom = BeamLayout.ElementZoom 2.0
                 beam = BeamLayout.OnMainBeam
             }
         {
@@ -70,14 +70,14 @@ module SceneProxyTests =
     [<InlineData("   ")>]
     let ``SceneName.tryCreate rejects a blank name as InvalidScene carrying a reason`` (raw : string) =
         match SceneName.tryCreate raw with
-        | Error (InvalidScene reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (InvalidScene _), got %A{other}")
+        | Error (InvalidSceneErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSceneErr _), got %A{other}")
 
     [<Fact>]
     let ``SceneName.tryCreate rejects a null name as InvalidScene`` () =
         match SceneName.tryCreate (null : string) with
-        | Error (InvalidScene reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (InvalidScene _), got %A{other}")
+        | Error (InvalidSceneErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSceneErr _), got %A{other}")
 
     [<Fact>]
     let ``SceneName.tryCreate accepts a non-blank name and round-trips its value`` () =

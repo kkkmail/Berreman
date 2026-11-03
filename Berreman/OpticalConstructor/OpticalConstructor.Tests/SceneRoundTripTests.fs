@@ -151,8 +151,8 @@ module SceneRoundTripTests =
         // and rejects it rather than storing an unaddressable key.
         let proxy = SceneProxy.createInMemory ()
         match proxy.saveScene (SceneName "   ") (captureScene (sourceModel ())) with
-        | Error (InvalidScene reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (InvalidScene _), got %A{other}")
+        | Error (InvalidSceneErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSceneErr _), got %A{other}")
         // ... and nothing was stored.
         match proxy.listScenes () with
         | Ok names -> Assert.Equal<string list>([], names |> List.map (fun n -> n.value))

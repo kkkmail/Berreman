@@ -83,3 +83,13 @@ module ConstructorUiIdOfDomain =
 
         /// A facet's name or a branch's label as its faceted-tree caption.
         member this.caption : ControlCaption = ControlCaption this.value
+
+    type OpticalConstructor.Domain.Propagation.SweptValue with
+
+        /// One end of the draft's range as the Experiments bay's box shows it.
+        member this.rangeEnd : ExperimentControls.ExperimentRangeEnd = ExperimentControls.ExperimentRangeEnd this.value
+
+    type OpticalConstructor.Domain.Propagation.CurvePointCount with
+
+        /// The draft's point count as the Experiments bay's box shows it.
+        member this.pointCount : ExperimentControls.ExperimentPointCount = ExperimentControls.ExperimentPointCount this.value

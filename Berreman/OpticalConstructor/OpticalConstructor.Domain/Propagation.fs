@@ -394,6 +394,9 @@ module Propagation =
 
         member this.value = let (SweptValue v) = this in v
 
+        /// The value as a magnitude in its display unit (nm for a wavelength sweep).
+        member this.toUnitMagnitude : Units.UnitMagnitude = Units.UnitMagnitude this.value
+
     /// How many points a sweep samples its range at, both ends included (fewer than two are read as two).
     type CurvePointCount =
         | CurvePointCount of int

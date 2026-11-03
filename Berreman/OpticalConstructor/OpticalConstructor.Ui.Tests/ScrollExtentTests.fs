@@ -167,8 +167,8 @@ module ScrollExtentTests =
                 xAxisKind = ExperimentChart.AngularXAxis
             }
         let noData : ExperimentData.ExperimentDataProxy =
-            { tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFile "none")
-              tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFile "none") }
+            { tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFileErr "none")
+              tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "none") }
         assertReachable "Chart" (fun () -> ChartWindow(chart))
         assertReachable "Handoff" (fun () ->
             SolverHandoffWindow(library, noData, { name = ExperimentCollectionStore.CollectionName "run"; experiments = (filledExperiments ()).experimentCollection.experiments }))

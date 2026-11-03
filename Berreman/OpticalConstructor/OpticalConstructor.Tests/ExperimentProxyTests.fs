@@ -28,27 +28,27 @@ module ExperimentProxyTests =
 
     /// A captured setup descriptor (id / label / kind / rest placement / binding).
     let private desc (idStr : string) (label : string) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
-        { ElementDescriptor.elementId = el idStr; label = label; kind = kind; placement = placementOf kind; binding = binding }
+        { ElementDescriptor.elementId = el idStr; label = ElementLabel label; kind = kind; placement = placementOf kind; binding = binding }
 
     /// The version-one binding of the seeded 1 mm glass plate — a sample bound BY VERSION.
     let private glassPlateBinding : ElementBinding =
         BoundByVersion (SampleVersionRef (SampleVersionId.firstOf SeedSamples.glassPlate1mm.id))
 
     // A single-source setup and a single-polarizer setup for the interactive-commit tests.
-    let private srcSetup : ElementDescriptor list = [ desc "src" "Light source #1" LightSource (BoundByEntryId "src-600") ]
-    let private polSetup : ElementDescriptor list = [ desc "pol" "Linear polarizer #2" LinearPolarizer (BoundByEntryId "pol-lp") ]
+    let private srcSetup : ElementDescriptor list = [ desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600")) ]
+    let private polSetup : ElementDescriptor list = [ desc "pol" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp")) ]
 
     // ============================ variable capability (attached to the kind, as DATA) ============================
 
     [<Fact>]
     let ``variablesFor is data-driven per kind (source=λ, polarizer=R1, sample=R1+R2, others none)`` () =
-        Assert.Equal<VariableParameter list>([ VaryWaveLength ], variablesFor LightSource)
-        Assert.Equal<VariableParameter list>([ VaryR1 ], variablesFor LinearPolarizer)
-        Assert.Equal<VariableParameter list>([ VaryR1 ], variablesFor CircularPolarizer)
-        Assert.Equal<VariableParameter list>([ VaryR1; VaryR2 ], variablesFor Sample)
-        Assert.Empty(variablesFor Lens)
-        Assert.Empty(variablesFor FlatMirror)
-        Assert.Empty(variablesFor Detector)
+        Assert.Equal<VariableParameter list>([ VaryWaveLength ], VariableParameter.allowedFor LightSource)
+        Assert.Equal<VariableParameter list>([ VaryR1 ], VariableParameter.allowedFor LinearPolarizer)
+        Assert.Equal<VariableParameter list>([ VaryR1 ], VariableParameter.allowedFor CircularPolarizer)
+        Assert.Equal<VariableParameter list>([ VaryR1; VaryR2 ], VariableParameter.allowedFor Sample)
+        Assert.Empty(VariableParameter.allowedFor Lens)
+        Assert.Empty(VariableParameter.allowedFor FlatMirror)
+        Assert.Empty(VariableParameter.allowedFor Detector)
 
     [<Fact>]
     let ``each variable carries a code, a label, and a display unit`` () =
@@ -61,9 +61,9 @@ module ExperimentProxyTests =
 
     [<Fact>]
     let ``the default range depends on the variable`` () =
-        Assert.Equal({ min = 0.0; max = 360.0; points = 73 }, VariableRange.forVariable VaryR1)
-        Assert.Equal({ min = 0.0; max = 89.0; points = 91 }, VariableRange.forVariable VaryR2)
-        Assert.Equal({ min = 200.0; max = 800.0; points = 91 }, VariableRange.forVariable VaryWaveLength)
+        Assert.Equal({ min = Propagation.SweptValue 0.0; max = Propagation.SweptValue 360.0; points = Propagation.CurvePointCount 73 }, VariableRange.forVariable VaryR1)
+        Assert.Equal({ min = Propagation.SweptValue 0.0; max = Propagation.SweptValue 89.0; points = Propagation.CurvePointCount 91 }, VariableRange.forVariable VaryR2)
+        Assert.Equal({ min = Propagation.SweptValue 200.0; max = Propagation.SweptValue 800.0; points = Propagation.CurvePointCount 91 }, VariableRange.forVariable VaryWaveLength)
 
     // ============================ measurement (T / R / both), defaulted from emission ============================
 
@@ -90,7 +90,7 @@ module ExperimentProxyTests =
     /// A collection with the source picked (λ variable, both capture allowed) — the common editing start.
     let private withSource () : ExperimentCollection =
         ExperimentCollection.empty
-        |> chooseElement (el "src") "Light source #1" (variablesFor LightSource) CaptureTransmitted
+        |> chooseElement (el "src") (ElementLabel "Light source #1") (VariableParameter.allowedFor LightSource) CaptureTransmitted
 
     [<Fact>]
     let ``chooseElement defaults the variable to the first allowed and the range to its default`` () =
@@ -98,19 +98,19 @@ module ExperimentProxyTests =
         Assert.Equal(Some (el "src"), c.draft.elementId)
         Assert.Equal(Some VaryWaveLength, c.draft.variable)
         Assert.Equal(VariableRange.forVariable VaryWaveLength, c.draft.range)
-        Assert.True(canCommit c)
+        Assert.True(c.canCommit)
 
     [<Fact>]
     let ``an element with nothing to vary leaves the variable unset and uncommittable`` () =
-        let c = ExperimentCollection.empty |> chooseElement (el "lens") "Lens #1" (variablesFor Lens) CaptureTransmitted
+        let c = ExperimentCollection.empty |> chooseElement (el "lens") (ElementLabel "Lens #1") (VariableParameter.allowedFor Lens) CaptureTransmitted
         Assert.Equal(None, c.draft.variable)
-        Assert.False(canCommit c)
+        Assert.False(c.canCommit)
 
     [<Fact>]
     let ``chooseVariable resets the range to the new variable's default`` () =
         let c =
             ExperimentCollection.empty
-            |> chooseElement (el "s") "Sample #1" (variablesFor Sample) CaptureBoth
+            |> chooseElement (el "s") (ElementLabel "Sample #1") (VariableParameter.allowedFor Sample) CaptureBoth
             |> chooseVariable VaryR2
         Assert.Equal(Some VaryR2, c.draft.variable)
         Assert.Equal(VariableRange.forVariable VaryR2, c.draft.range)
@@ -131,20 +131,20 @@ module ExperimentProxyTests =
     let ``editing the draft after add updates the stored experiment in place`` () =
         let c1 = withSource () |> commit srcSetup
         let id = (List.head c1.experiments).id
-        let c2 = c1 |> chooseMeasurement CaptureReflected |> setRangeMin 300.0 |> setRangeMax 500.0 |> commit srcSetup
+        let c2 = c1 |> chooseMeasurement CaptureReflected |> setRangeMin (Propagation.SweptValue 300.0) |> setRangeMax (Propagation.SweptValue 500.0) |> commit srcSetup
         Assert.Equal(1, List.length c2.experiments)
         let updated = c2.experiments |> List.find (fun e -> e.id = id)
         Assert.Equal(CaptureReflected, updated.measurement)
-        Assert.Equal(300.0, updated.range.min)
-        Assert.Equal(500.0, updated.range.max)
+        Assert.Equal(300.0, updated.range.min.value)
+        Assert.Equal(500.0, updated.range.max.value)
 
     [<Fact>]
     let ``newDraft after add lets a second commit APPEND a distinct experiment`` () =
         let c1 = withSource () |> commit srcSetup
         let c2 =
             c1
-            |> newDraft
-            |> chooseElement (el "pol") "Linear polarizer #2" (variablesFor LinearPolarizer) CaptureBoth
+            |> (fun c -> c.newDraft)
+            |> chooseElement (el "pol") (ElementLabel "Linear polarizer #2") (VariableParameter.allowedFor LinearPolarizer) CaptureBoth
             |> commit polSetup
         Assert.Equal(2, List.length c2.experiments)
         let ids = c2.experiments |> List.map (fun e -> e.id.value)
@@ -154,8 +154,8 @@ module ExperimentProxyTests =
     let ``edit loads an experiment into the draft for re-editing`` () =
         let c1 =
             withSource () |> commit srcSetup
-            |> newDraft
-            |> chooseElement (el "pol") "Linear polarizer #2" (variablesFor LinearPolarizer) CaptureTransmitted
+            |> (fun c -> c.newDraft)
+            |> chooseElement (el "pol") (ElementLabel "Linear polarizer #2") (VariableParameter.allowedFor LinearPolarizer) CaptureTransmitted
             |> commit polSetup
         let target = c1.experiments |> List.find (fun e -> (e.varied |> Option.map (fun v -> v.elementId)) = Some (el "pol"))
         let c2 = edit target.id c1
@@ -183,8 +183,8 @@ module ExperimentProxyTests =
 
     [<Fact>]
     let ``setRangePoints keeps at least two points`` () =
-        let c = withSource () |> setRangePoints 1
-        Assert.True(c.draft.range.points >= 2)
+        let c = withSource () |> setRangePoints (Propagation.CurvePointCount 1)
+        Assert.True(c.draft.range.points.value >= 2)
 
     // ============================ step 025: the full-setup experiment (E1 / E2 / E3) ============================
 
@@ -194,11 +194,11 @@ module ExperimentProxyTests =
             id = ExperimentId 1
             setup =
                 [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId "src-600")
-                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId "pol-lp")
+                    desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600"))
+                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
                     desc "s" "Sample #3" Sample glassPlateBinding
-                    desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId "pol-lp")
-                    desc "det" "Detector #5" Detector (BoundByEntryId "det-intensity")
+                    desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
+                    desc "det" "Detector #5" Detector (BoundByEntryId (ElementValueId "det-intensity"))
                 ]
             varied = Some { elementId = el "lp2"; variable = VaryR1 }
             measurement = CaptureTransmitted
@@ -213,10 +213,10 @@ module ExperimentProxyTests =
             id = ExperimentId 2
             setup =
                 [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId "src-600")
-                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId "pol-lp")
-                    desc "lp2" "Linear polarizer #3" LinearPolarizer (BoundByEntryId "pol-lp")
-                    desc "det" "Detector #4" Detector (BoundByEntryId "det-intensity")
+                    desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600"))
+                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
+                    desc "lp2" "Linear polarizer #3" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
+                    desc "det" "Detector #4" Detector (BoundByEntryId (ElementValueId "det-intensity"))
                 ] }
 
     /// E3 = an empty dark line (nothing varied) — how much ambient light reaches the detector with no source.
@@ -230,12 +230,12 @@ module ExperimentProxyTests =
             e1.setup |> List.map (fun d -> d.kind))
         // the varied element resolves to a descriptor inside the setup
         Assert.Equal(Some (el "lp2"), e1.varied |> Option.map (fun v -> v.elementId))
-        Assert.Equal("Linear polarizer #4", e1.variedLabel)
+        Assert.Equal(ElementLabel "Linear polarizer #4", e1.variedLabel)
         // the detector is part of the chain and carries its kind (via its preset binding)
         match e1.detectorDescriptorOpt with
         | Some d ->
             Assert.Equal(Detector, d.kind)
-            Assert.Equal(BoundByEntryId "det-intensity", d.binding)
+            Assert.Equal(BoundByEntryId (ElementValueId "det-intensity"), d.binding)
         | None -> Assert.Fail "E1 lost its detector from the captured chain"
 
     [<Fact>]
@@ -249,7 +249,7 @@ module ExperimentProxyTests =
     let ``E3 is an empty dark line — nothing varied, still describable`` () =
         Assert.Empty(e3.setup)
         Assert.Equal(None, e3.varied)
-        Assert.Equal("", e3.variedLabel)
+        Assert.Equal(ElementLabel.blank, e3.variedLabel)
         Assert.Contains("Dark line", e3.description)
 
     [<Fact>]
@@ -324,7 +324,7 @@ module ExperimentProxyTests =
         // The bay picks the rotating polarizer to vary and commits the scene setup (E1's chain).
         let c =
             ExperimentCollection.empty
-            |> chooseElement (el "lp2") "Linear polarizer #4" (variablesFor LinearPolarizer) CaptureTransmitted
+            |> chooseElement (el "lp2") (ElementLabel "Linear polarizer #4") (VariableParameter.allowedFor LinearPolarizer) CaptureTransmitted
             |> commit e1.setup
         Assert.Equal(1, List.length c.experiments)
         let exp = List.head c.experiments
@@ -335,7 +335,7 @@ module ExperimentProxyTests =
         Assert.Equal(Some (el "lp2"), exp.varied |> Option.map (fun v -> v.elementId))
         Assert.Equal(Some VaryR1, exp.varied |> Option.map (fun v -> v.variable))
         match exp.detectorDescriptorOpt with
-        | Some d -> Assert.Equal(BoundByEntryId "det-intensity", d.binding)
+        | Some d -> Assert.Equal(BoundByEntryId (ElementValueId "det-intensity"), d.binding)
         | None -> Assert.Fail "the committed chain lost its detector"
         // the sample binding rides along BY VERSION, so it counts as in-use
         Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SeedSamples.glassPlate1mm.id), boundVersions c.experiments)
@@ -350,10 +350,10 @@ module ExperimentProxyTests =
 
     [<Fact>]
     let ``tryGetExperiment hits a known seed id and misses an unknown one`` () =
-        match proxy.tryGetExperiment 1 with
+        match proxy.tryGetExperiment (ExperimentId 1) with
         | Ok (Some e) -> Assert.Equal(1, e.id.value)
         | other -> Assert.Fail($"expected seed 1, got %A{other}")
-        match proxy.tryGetExperiment 9999 with
+        match proxy.tryGetExperiment (ExperimentId 9999) with
         | Ok None -> ()
         | other -> Assert.Fail($"expected Ok None, got %A{other}")
 
@@ -362,7 +362,7 @@ module ExperimentProxyTests =
         let only : Experiment =
             {
                 id = ExperimentId 7
-                setup = [ desc "stub-el" "Stub" LinearPolarizer (BoundByEntryId "pol-lp") ]
+                setup = [ desc "stub-el" "Stub" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp")) ]
                 varied = Some { elementId = el "stub-el"; variable = VaryR1 }
                 measurement = CaptureTransmitted
                 range = VariableRange.forVariable VaryR1
@@ -372,14 +372,14 @@ module ExperimentProxyTests =
         let stub : ExperimentProxy =
             {
                 listExperiments = fun () -> Ok [ only ]
-                tryGetExperiment = fun i -> Ok (if i = 7 then Some only else None)
+                tryGetExperiment = fun i -> Ok (if i = ExperimentId 7 then Some only else None)
             }
         match stub.listExperiments () with
         | Ok [ s ] -> Assert.Equal(7, s.id.value)
         | other -> Assert.Fail($"%A{other}")
-        match stub.tryGetExperiment 7 with
+        match stub.tryGetExperiment (ExperimentId 7) with
         | Ok (Some s) -> Assert.Equal(Some (el "stub-el"), s.varied |> Option.map (fun v -> v.elementId))
         | other -> Assert.Fail($"%A{other}")
-        match stub.tryGetExperiment 0 with
+        match stub.tryGetExperiment (ExperimentId 0) with
         | Ok None -> ()
         | other -> Assert.Fail($"%A{other}")

@@ -34,7 +34,7 @@ module ExperimentCollectionRoundTripTests =
 
     /// A captured setup descriptor (id / label / kind / rest placement / binding).
     let private desc (idStr : string) (label : string) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
-        { ElementDescriptor.elementId = el idStr; label = label; kind = kind; placement = placementOf kind; binding = binding }
+        { ElementDescriptor.elementId = el idStr; label = ElementLabel label; kind = kind; placement = placementOf kind; binding = binding }
 
     /// The version-one binding of the seeded 1 mm glass plate — a sample bound BY VERSION (the only
     /// setup facet that pins a versioned reference; the round-trip proves it rides along unchanged).
@@ -53,11 +53,11 @@ module ExperimentCollectionRoundTripTests =
             id = ExperimentId 1
             setup =
                 [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId "src-600")
-                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId "pol-lp")
+                    desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600"))
+                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
                     desc "s" "Sample #3" Sample glassPlateBinding
-                    desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId "pol-lp")
-                    desc "det" "Detector #5" Detector (BoundByEntryId "det-intensity")
+                    desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
+                    desc "det" "Detector #5" Detector (BoundByEntryId (ElementValueId "det-intensity"))
                 ]
             varied = Some { elementId = el "lp2"; variable = VaryR1 }
             measurement = CaptureTransmitted
@@ -73,10 +73,10 @@ module ExperimentCollectionRoundTripTests =
             id = ExperimentId 2
             setup =
                 [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId "src-600")
-                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId "pol-lp")
-                    desc "lp2" "Linear polarizer #3" LinearPolarizer (BoundByEntryId "pol-lp")
-                    desc "det" "Detector #4" Detector (BoundByEntryId "det-intensity")
+                    desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600"))
+                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
+                    desc "lp2" "Linear polarizer #3" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
+                    desc "det" "Detector #4" Detector (BoundByEntryId (ElementValueId "det-intensity"))
                 ]
             dataFileOpt = None
             sourceWaveLengthOpt = None }
@@ -186,8 +186,8 @@ module ExperimentCollectionRoundTripTests =
         let proxy = ExperimentCollectionProxy.createInMemory ()
         let blank = { name = CollectionName "   "; experiments = [ e1 ] }
         match proxy.saveCollection blank with
-        | Error (InvalidCollection reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (InvalidCollection _), got %A{other}")
+        | Error (InvalidCollectionErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidCollectionErr _), got %A{other}")
         // ... and nothing was stored.
         match proxy.listCollections () with
         | Ok names -> Assert.Equal<string list>([], names |> List.map (fun n -> n.value))

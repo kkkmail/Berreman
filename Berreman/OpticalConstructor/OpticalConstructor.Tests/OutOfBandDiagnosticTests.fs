@@ -26,7 +26,7 @@ module OutOfBandDiagnosticTests =
 
     /// A reachable material with the given defined dispersion segments.
     let private reachable (name : string) (segments : WaveLengthInterval list) : ReachableMaterial =
-        { materialName = name; definedSegments = segments }
+        { materialName = EntryName name; definedSegments = segments }
 
     /// A CONSTANT-eps material complexity (isotropic transparent) — no dispersion segments.
     let private constantComplexity : MaterialComplexity =
@@ -64,7 +64,7 @@ module OutOfBandDiagnosticTests =
         let material = reachable "Silica" [ band 300.0 700.0 ]
         let coverage = checkOutOfBandDispersion [ material ] (FixedWavelength (nm 600.0))
         Assert.Equal(InBand, coverage)
-        Assert.Equal(None, coverageWarning coverage)
+        Assert.Equal(None, coverage.warningOpt)
 
     [<Fact>]
     let ``a 200-800 nm sweep against a 300-700 nm segment flags, naming the material and both ranges`` () =
@@ -72,7 +72,7 @@ module OutOfBandDiagnosticTests =
         let coverage = checkOutOfBandDispersion [ material ] (SweptWavelengths (band 200.0 800.0))
         match coverage with
         | OutOfBand [ finding ] ->
-            Assert.Equal("Silica", finding.materialName)
+            Assert.Equal(EntryName "Silica", finding.materialName)
             Assert.Equal(band 300.0 700.0, finding.definedRange)
             Assert.Equal(band 200.0 800.0, finding.requestedRange)
         | other -> failwith $"expected exactly one offender, got %A{other}"
@@ -99,9 +99,9 @@ module OutOfBandDiagnosticTests =
         let material = reachable "Glass" []
         Assert.Equal(InBand, checkOutOfBandDispersion [ material ] (SweptWavelengths (band 100.0 2000.0)))
         // The same through the MaterialComplexity extractor: a constant eps yields no segments.
-        Assert.Empty(definedSegmentIntervals constantComplexity)
+        Assert.Empty(ReachableMaterial.definedSegmentsOf constantComplexity)
         let entry = entryOf "Glass" constantComplexity
-        Assert.Empty((reachableMaterialOf entry).definedSegments)
+        Assert.Empty((ReachableMaterial.ofEntry entry).definedSegments)
         Assert.Equal(InBand, checkMaterialsOutOfBand [ entry ] (SweptWavelengths (band 100.0 2000.0)))
 
     [<Fact>]
@@ -122,17 +122,17 @@ module OutOfBandDiagnosticTests =
     // ============================ extractor + entry path ============================
 
     [<Fact>]
-    let ``definedSegmentIntervals reads each dispersive segment's interval`` () =
+    let ``ReachableMaterial.definedSegmentsOf reads each dispersive segment's interval`` () =
         let intervals = [ band 300.0 500.0; band 500.0 700.0 ]
         let c = dispersiveComplexity intervals
-        Assert.Equal<WaveLengthInterval list>(intervals, definedSegmentIntervals c)
+        Assert.Equal<WaveLengthInterval list>(intervals, ReachableMaterial.definedSegmentsOf c)
 
     [<Fact>]
     let ``checkMaterialsOutOfBand flags a dispersive entry whose defined band the sweep overruns`` () =
         let entry = entryOf "Sellmeier glass" (dispersiveComplexity [ band 300.0 700.0 ])
         match checkMaterialsOutOfBand [ entry ] (SweptWavelengths (band 200.0 800.0)) with
         | OutOfBand [ finding ] ->
-            Assert.Equal("Sellmeier glass", finding.materialName)
+            Assert.Equal(EntryName "Sellmeier glass", finding.materialName)
             Assert.Equal(band 300.0 700.0, finding.definedRange)
         | other -> failwith $"expected exactly one offender, got %A{other}"
 
@@ -147,14 +147,14 @@ module OutOfBandDiagnosticTests =
                 reachable "OutOfBand" [ band 400.0 700.0 ]        // 200-800 overruns → flagged
             ]
         match checkOutOfBandDispersion materials (SweptWavelengths (band 200.0 800.0)) with
-        | OutOfBand [ finding ] -> Assert.Equal("OutOfBand", finding.materialName)
+        | OutOfBand [ finding ] -> Assert.Equal(EntryName "OutOfBand", finding.materialName)
         | other -> failwith $"expected exactly one offender, got %A{other}"
 
     // ============================ requested-wavelengths derivation ============================
 
     [<Fact>]
     let ``requestedWavelengthsFor: a wavelength sweep requests the nm range; other variables stay fixed`` () =
-        let range : VariableRange = { min = 200.0; max = 800.0; points = 91 }
+        let range : VariableRange = { min = OpticalConstructor.Domain.Propagation.SweptValue 200.0; max = OpticalConstructor.Domain.Propagation.SweptValue 800.0; points = OpticalConstructor.Domain.Propagation.CurvePointCount 91 }
         let fixedλ = nm 600.0
         Assert.Equal(SweptWavelengths (band 200.0 800.0), requestedWavelengthsFor fixedλ (Some VaryWaveLength) range)
         Assert.Equal(FixedWavelength fixedλ, requestedWavelengthsFor fixedλ (Some VaryR1) range)
@@ -170,7 +170,7 @@ module OutOfBandDiagnosticTests =
                 setup = []
                 varied = Some { VariedElement.elementId = OpticalConstructor.Domain.Library.ElementId "src"; variable = VaryWaveLength }
                 measurement = CaptureTransmitted
-                range = { min = 200.0; max = 800.0; points = 91 }
+                range = { min = OpticalConstructor.Domain.Propagation.SweptValue 200.0; max = OpticalConstructor.Domain.Propagation.SweptValue 800.0; points = OpticalConstructor.Domain.Propagation.CurvePointCount 91 }
                 dataFileOpt = None
                 sourceWaveLengthOpt = None
             }
@@ -184,7 +184,7 @@ module OutOfBandDiagnosticTests =
     [<Fact>]
     let ``coverageWarning names the material and both nm ranges`` () =
         let material = reachable "Silica" [ band 300.0 700.0 ]
-        match coverageWarning (checkOutOfBandDispersion [ material ] (SweptWavelengths (band 200.0 800.0))) with
+        match (checkOutOfBandDispersion [ material ] (SweptWavelengths (band 200.0 800.0))).warningOpt with
         | Some text ->
             // Names the material and states both the DEFINED (300..700) and REQUESTED (200..800) ranges.
             Assert.Contains("Silica", text)
@@ -196,8 +196,8 @@ module OutOfBandDiagnosticTests =
 
     [<Fact>]
     let ``nmRangeLabel reads a fixed single wavelength as one value and a range as two`` () =
-        Assert.Equal("600 nm", nmRangeLabel (band 600.0 600.0))
-        let ranged = nmRangeLabel (band 300.0 700.0)
+        Assert.Equal("600 nm", (band 600.0 600.0).nmRangeLabel)
+        let ranged = (band 300.0 700.0).nmRangeLabel
         Assert.Contains("300", ranged)
         Assert.Contains("700", ranged)
         Assert.NotEqual<string>("300 nm", ranged)

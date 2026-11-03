@@ -11,8 +11,8 @@ open OpticalConstructor.Domain.Experiments
 /// Spec 0038 Part I (step 034) — the pure measured-data PARSERS (text in, values out). Following the
 /// text-taking parser precedent that keeps filesystem IO and its exceptions OUT of the parser
 /// (`OpticalConstructor.Storage.SpectralImport.parseSpectrumCsv`), every function here takes the file
-/// TEXT (a `string`) and returns `Result<_, ExperimentDataError>` — never a path, never a stream, never
-/// a throw. The disk read that yields the text lives at the edge (a future `ExperimentDataProxy`, §15.4);
+/// TEXT (a `DataFileText`) and returns `Result<_, ExperimentDataError>` — never a path, never a stream,
+/// never a throw. The disk read that yields the text lives at the edge (a future `ExperimentDataProxy`, §15.4);
 /// this module is referentially transparent, so every test drives it from an in-memory string.
 ///
 /// Two STRICT schema-v1 shapes, one per detector kind (spec §4 / step 25 `DetectorKind`):
@@ -35,10 +35,10 @@ module MeasuredData =
     /// `reason` naming exactly what failed (the first malformed row, the empty file, the offending value
     /// and range, or the detector/shape mismatch). Never a bare error case: a reason is what a log needs.
     type ExperimentDataError =
-        | MalformedDataFile of reason : string
-        | EmptyDataFile of reason : string
-        | DataRangeMismatch of reason : string
-        | DataUnitsMismatch of reason : string
+        | MalformedDataFileErr of reason : string
+        | EmptyDataFileErr of reason : string
+        | DataRangeMismatchErr of reason : string
+        | DataUnitsMismatchErr of reason : string
 
     /// One measured abscissa value — the intensity file's X column (spec 034). Its MEANING (wavelength in
     /// nm, or R1/R2 in degrees) is fixed by the experiment's varied parameter, NOT by the file, so it is
@@ -97,138 +97,151 @@ module MeasuredData =
         | EllipsometricData of EllipsometricSeries
 
     // -------------------------------------------------------------------------------------------------
-    // Parsing primitives (pure, exception-free — string split + invariant-culture parse never throw).
+    // Parsing (pure, exception-free — string split + invariant-culture parse never throw).
     // -------------------------------------------------------------------------------------------------
 
-    let private inv = CultureInfo.InvariantCulture
+    /// A 1-based line number of a data file, as the reader sees it (a malformed-row error names it).
+    type DataLineNumber =
+        | DataLineNumber of int
 
-    /// Parse one invariant-culture float, tolerating surrounding whitespace (NO thousands separators, NO
-    /// culture heuristics). `None` on any non-numeric field — the caller turns the first `None` into a
-    /// typed `MalformedDataFile`.
-    let private tryFloat (s : string) : float option =
-        match Double.TryParse(s.Trim(), NumberStyles.Float, inv) with
-        | true, v -> Some v
-        | _ -> None
+        member this.value = let (DataLineNumber n) = this in n
 
-    /// The file's non-empty lines paired with their 1-based ORIGINAL line number (so a malformed-row error
-    /// names the line the reader sees). Splits on `\n` and trims each line's `\r`/whitespace, so a pasted
-    /// CRLF string parses; fully blank lines are dropped, never a header or a data row.
-    let private nonEmptyLines (text : string) : (int * string) list =
-        text.Split('\n')
-        |> Array.mapi (fun i raw -> i + 1, raw.Trim())
-        |> Array.filter (fun (_, s) -> s.Length > 0)
-        |> Array.toList
+    /// One non-empty, trimmed line of a measured-data file: a header or a data row.
+    type DataFileRow =
+        | DataFileRow of string
 
-    /// Parse one intensity data row: EXACTLY two comma-separated invariant-culture floats (strict — no
-    /// extra columns, no delimiter sniffing). `None` on the wrong column count or a non-numeric field.
-    let private parseIntensityRow (raw : string) : IntensityPoint option =
-        match raw.Split(',') with
-        | [| xs; ys |] ->
-            match tryFloat xs, tryFloat ys with
-            | Some x, Some y -> Some { x = MeasuredAbscissa x; intensity = MeasuredIntensity y }
+        member this.value = let (DataFileRow r) = this in r
+
+        /// The row's comma-separated cells as invariant-culture floats, each tolerating surrounding
+        /// whitespace (NO thousands separators, NO culture heuristics); `None` for a non-numeric cell.
+        member this.numbers : float option list =
+            this.value.Split(',')
+            |> Array.map (fun cell ->
+                match Double.TryParse(cell.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture) with
+                | true, v -> Some v
+                | _ -> None)
+            |> Array.toList
+
+        /// The row as an intensity sample: EXACTLY two comma-separated invariant-culture floats (strict — no
+        /// extra columns, no delimiter sniffing). `None` on the wrong column count or a non-numeric field.
+        member this.tryIntensityPoint : IntensityPoint option =
+            match this.numbers with
+            | [ Some x; Some y ] -> Some { x = MeasuredAbscissa x; intensity = MeasuredIntensity y }
             | _ -> None
-        | _ -> None
-
-    /// Parse an intensity data file TEXT (spec 034, STRICT schema v1): the first non-empty line is labels
-    /// (ignored); every remaining non-empty line is an `X,Y` pair in invariant culture. An empty file (or
-    /// a header with no data rows) is `EmptyDataFile`; the FIRST malformed row is a `MalformedDataFile`
-    /// naming that row. No delimiter sniffing, no unit heuristics.
-    let parseIntensitySeries (csvText : string) : Result<IntensitySeries, ExperimentDataError> =
-        match nonEmptyLines csvText with
-        | [] -> Error (EmptyDataFile "the intensity data file is empty (no header row and no data rows)")
-        | [ _header ] -> Error (EmptyDataFile "the intensity data file has a header row but no data rows")
-        | _header :: dataLines ->
-            let rec loop (rows : (int * string) list) (acc : IntensityPoint list) : Result<IntensitySeries, ExperimentDataError> =
-                match rows with
-                | [] -> Ok { points = List.rev acc }
-                | (lineNo, raw) :: rest ->
-                    match parseIntensityRow raw with
-                    | Some p -> loop rest (p :: acc)
-                    | None -> Error (MalformedDataFile $"row {lineNo} is not a valid comma-separated X,Y pair: '{raw}'")
-            loop dataLines []
 
     /// The ellipsometric column layout an accepted header declares (spec 034): the mandatory
     /// `wavelength_nm,psi_deg,delta_deg` triple, optionally with a trailing `aoi_deg`. A DU, not a bool
     /// flag — the column count is data.
-    type private EllipsometricColumns =
+    type EllipsometricColumns =
         | WavelengthPsiDelta
         | WavelengthPsiDeltaAoi
 
-        member this.count =
+        member this.count : int =
             match this with
             | WavelengthPsiDelta -> 3
             | WavelengthPsiDeltaAoi -> 4
 
-    /// Validate an ellipsometric header (spec 034, STRICT — the header is CHECKED, not sniffed): exactly
-    /// `wavelength_nm,psi_deg,delta_deg` with an optional `aoi_deg`, compared case-insensitively after
-    /// trimming. Anything else is a `MalformedDataFile` naming the offending header.
-    let private ellipsometricColumns (headerRaw : string) : Result<EllipsometricColumns, ExperimentDataError> =
-        let cols = headerRaw.Split(',') |> Array.map (fun c -> c.Trim().ToLowerInvariant())
-        match cols with
-        | [| "wavelength_nm"; "psi_deg"; "delta_deg" |] -> Ok WavelengthPsiDelta
-        | [| "wavelength_nm"; "psi_deg"; "delta_deg"; "aoi_deg" |] -> Ok WavelengthPsiDeltaAoi
-        | _ ->
-            Error (MalformedDataFile $"the ellipsometric header must be 'wavelength_nm,psi_deg,delta_deg' with an optional 'aoi_deg', but was: '{headerRaw}'")
+        /// Validate an ellipsometric header (spec 034, STRICT — the header is CHECKED, not sniffed): exactly
+        /// `wavelength_nm,psi_deg,delta_deg` with an optional `aoi_deg`, compared case-insensitively after
+        /// trimming. Anything else is a `MalformedDataFileErr` naming the offending header.
+        static member tryOfHeader (header : DataFileRow) : Result<EllipsometricColumns, ExperimentDataError> =
+            let cols = header.value.Split(',') |> Array.map (fun c -> c.Trim().ToLowerInvariant())
+            match cols with
+            | [| "wavelength_nm"; "psi_deg"; "delta_deg" |] -> Ok WavelengthPsiDelta
+            | [| "wavelength_nm"; "psi_deg"; "delta_deg"; "aoi_deg" |] -> Ok WavelengthPsiDeltaAoi
+            | _ ->
+                Error (MalformedDataFileErr $"the ellipsometric header must be 'wavelength_nm,psi_deg,delta_deg' with an optional 'aoi_deg', but was: '{header.value}'")
 
-    /// Parse one ellipsometric data row against the header's declared layout (spec 034): 3 (or 4)
-    /// invariant-culture floats. `wavelength_nm` crosses to the engine `WaveLength` via the sole `Units`
-    /// seam; Ψ / Δ / aoi become engine `Angle`s from degrees. `None` on the wrong column count or a
-    /// non-numeric field.
-    let private parseEllipsometricRow (columns : EllipsometricColumns) (raw : string) : EllipsometricPoint option =
-        match columns, raw.Split(',') with
-        | WavelengthPsiDelta, [| ws; ps; ds |] ->
-            match tryFloat ws, tryFloat ps, tryFloat ds with
-            | Some w, Some p, Some d ->
+        /// Parse one ellipsometric data row against this layout (spec 034): 3 (or 4) invariant-culture
+        /// floats. `wavelength_nm` crosses to the engine `WaveLength` via the sole `Units` seam; Ψ / Δ / aoi
+        /// become engine `Angle`s from degrees. `None` on the wrong column count or a non-numeric field.
+        member this.tryPoint (row : DataFileRow) : EllipsometricPoint option =
+            match this, row.numbers with
+            | WavelengthPsiDelta, [ Some w; Some p; Some d ] ->
                 Some { waveLength = toWaveLength Nanometer (UnitMagnitude w); psi = Angle.degree (p * 1.0<Berreman.Constants.deg>); delta = Angle.degree (d * 1.0<Berreman.Constants.deg>); aoiOpt = None }
-            | _ -> None
-        | WavelengthPsiDeltaAoi, [| ws; ps; ds; aos |] ->
-            match tryFloat ws, tryFloat ps, tryFloat ds, tryFloat aos with
-            | Some w, Some p, Some d, Some a ->
+            | WavelengthPsiDeltaAoi, [ Some w; Some p; Some d; Some a ] ->
                 Some { waveLength = toWaveLength Nanometer (UnitMagnitude w); psi = Angle.degree (p * 1.0<Berreman.Constants.deg>); delta = Angle.degree (d * 1.0<Berreman.Constants.deg>); aoiOpt = Some (Angle.degree (a * 1.0<Berreman.Constants.deg>)) }
             | _ -> None
-        | _ -> None
 
-    /// Parse an ellipsometric data file TEXT (spec 034, STRICT schema v1): the first non-empty line is the
-    /// `wavelength_nm,psi_deg,delta_deg[,aoi_deg]` header (VALIDATED, not sniffed); every remaining
-    /// non-empty line is 3 (or 4) invariant-culture floats. An empty file (or a header with no data rows)
-    /// is `EmptyDataFile`; a bad header or the FIRST malformed row is a `MalformedDataFile` naming it.
-    let parseEllipsometricSeries (csvText : string) : Result<EllipsometricSeries, ExperimentDataError> =
-        match nonEmptyLines csvText with
-        | [] -> Error (EmptyDataFile "the ellipsometric data file is empty (no header row and no data rows)")
-        | (_, headerRaw) :: dataLines ->
-            match ellipsometricColumns headerRaw with
-            | Error e -> Error e
-            | Ok columns ->
-                match dataLines with
-                | [] -> Error (EmptyDataFile "the ellipsometric data file has a header row but no data rows")
-                | _ ->
-                    let rec loop (rows : (int * string) list) (acc : EllipsometricPoint list) : Result<EllipsometricSeries, ExperimentDataError> =
-                        match rows with
-                        | [] -> Ok { points = List.rev acc }
-                        | (lineNo, raw) :: rest ->
-                            match parseEllipsometricRow columns raw with
-                            | Some p -> loop rest (p :: acc)
-                            | None -> Error (MalformedDataFile $"row {lineNo} is not a valid ellipsometric row (expected {columns.count} invariant-culture numbers): '{raw}'")
-                    loop dataLines []
+    /// The text of a measured-data file, as read at the IO edge (`ExperimentDataProxy`).
+    type DataFileText =
+        | DataFileText of string
+
+        member this.value = let (DataFileText t) = this in t
+
+        /// The file's non-empty lines paired with their 1-based ORIGINAL line number (so a malformed-row error
+        /// names the line the reader sees). Splits on `\n` and trims each line's `\r`/whitespace, so a pasted
+        /// CRLF string parses; fully blank lines are dropped, never a header or a data row.
+        member this.nonEmptyRows : (DataLineNumber * DataFileRow) list =
+            this.value.Split('\n')
+            |> Array.mapi (fun i raw -> DataLineNumber (i + 1), raw.Trim())
+            |> Array.filter (fun (_, s) -> s.Length > 0)
+            |> Array.map (fun (lineNo, s) -> lineNo, DataFileRow s)
+            |> Array.toList
+
+        /// Parse the text as an intensity data file (spec 034, STRICT schema v1): the first non-empty line is
+        /// labels (ignored); every remaining non-empty line is an `X,Y` pair in invariant culture. An empty file
+        /// (or a header with no data rows) is `EmptyDataFileErr`; the FIRST malformed row is a
+        /// `MalformedDataFileErr` naming that row. No delimiter sniffing, no unit heuristics.
+        member this.parseIntensitySeries : Result<IntensitySeries, ExperimentDataError> =
+            match this.nonEmptyRows with
+            | [] -> Error (EmptyDataFileErr "the intensity data file is empty (no header row and no data rows)")
+            | [ _header ] -> Error (EmptyDataFileErr "the intensity data file has a header row but no data rows")
+            | _header :: dataLines ->
+                let rec loop (rows : (DataLineNumber * DataFileRow) list) (acc : IntensityPoint list) : Result<IntensitySeries, ExperimentDataError> =
+                    match rows with
+                    | [] -> Ok { points = List.rev acc }
+                    | (lineNo, row) :: rest ->
+                        match row.tryIntensityPoint with
+                        | Some p -> loop rest (p :: acc)
+                        | None -> Error (MalformedDataFileErr $"row {lineNo.value} is not a valid comma-separated X,Y pair: '{row.value}'")
+                loop dataLines []
+
+        /// Parse the text as an ellipsometric data file (spec 034, STRICT schema v1): the first non-empty line
+        /// is the `wavelength_nm,psi_deg,delta_deg[,aoi_deg]` header (VALIDATED, not sniffed); every remaining
+        /// non-empty line is 3 (or 4) invariant-culture floats. An empty file (or a header with no data rows)
+        /// is `EmptyDataFileErr`; a bad header or the FIRST malformed row is a `MalformedDataFileErr` naming it.
+        member this.parseEllipsometricSeries : Result<EllipsometricSeries, ExperimentDataError> =
+            match this.nonEmptyRows with
+            | [] -> Error (EmptyDataFileErr "the ellipsometric data file is empty (no header row and no data rows)")
+            | (_, header) :: dataLines ->
+                match EllipsometricColumns.tryOfHeader header with
+                | Error e -> Error e
+                | Ok columns ->
+                    match dataLines with
+                    | [] -> Error (EmptyDataFileErr "the ellipsometric data file has a header row but no data rows")
+                    | _ ->
+                        let rec loop (rows : (DataLineNumber * DataFileRow) list) (acc : EllipsometricPoint list) : Result<EllipsometricSeries, ExperimentDataError> =
+                            match rows with
+                            | [] -> Ok { points = List.rev acc }
+                            | (lineNo, row) :: rest ->
+                                match columns.tryPoint row with
+                                | Some p -> loop rest (p :: acc)
+                                | None -> Error (MalformedDataFileErr $"row {lineNo.value} is not a valid ellipsometric row (expected {columns.count} invariant-culture numbers): '{row.value}'")
+                        loop dataLines []
 
     // -------------------------------------------------------------------------------------------------
     // Validation against a step-25 experiment (LOUD errors, never a silent trim).
     // -------------------------------------------------------------------------------------------------
 
-    /// Whether `x` sits within `[lo, hi]`, absorbing float noise at the endpoints with a tiny
-    /// range-relative epsilon (so a tabulated 800.0 nm never spuriously overruns an 800 nm range top) —
-    /// but still LOUD for a genuine overrun.
-    let private inRange (lo : float) (hi : float) (x : float) : bool =
-        let eps = 1e-9 * max 1.0 (max (abs lo) (abs hi))
-        x >= lo - eps && x <= hi + eps
+    type VariableRange with
+
+        /// Whether `x` (in the range's display unit) sits within the range, either way round, absorbing
+        /// float noise at the endpoints with a tiny range-relative epsilon (so a tabulated 800.0 nm never
+        /// spuriously overruns an 800 nm range top) — but still LOUD for a genuine overrun.
+        member this.admits (x : float) : bool =
+            let lo = min this.min.value this.max.value
+            let hi = max this.min.value this.max.value
+            let eps = 1e-9 * max 1.0 (max (abs lo) (abs hi))
+            x >= lo - eps && x <= hi + eps
 
     /// Validate a parsed series against a step-25 experiment's varied parameter, numeric range, and
     /// detector kind (spec 034). Returns the series UNCHANGED on success (never trims / clips); otherwise a
     /// typed, LOUD mismatch:
     ///   - the series shape must match the detector kind (an intensity file for an ellipsometer, or an
-    ///     ellipsometric file for an intensity detector, is a `DataUnitsMismatch`);
+    ///     ellipsometric file for an intensity detector, is a `DataUnitsMismatchErr`);
     ///   - an intensity series' X abscissa is in the varied quantity's display unit (nm / degrees) BY the
-    ///     schema, so any X outside `[range.min, range.max]` is a `DataRangeMismatch`;
+    ///     schema, so any X outside `[range.min, range.max]` is a `DataRangeMismatchErr`;
     ///   - an ellipsometric series against a wavelength sweep (`VaryWaveLength`) range-checks its
     ///     wavelength (nm) the same way; against a non-wavelength varied parameter the file's wavelength
     ///     abscissa is NOT the swept quantity, so the wavelength range check does not apply.
@@ -238,25 +251,25 @@ module MeasuredData =
         (detector : DetectorKind)
         (series : MeasuredSeries)
         : Result<MeasuredSeries, ExperimentDataError> =
-        let lo = min range.min range.max
-        let hi = max range.min range.max
+        let lo = min range.min.value range.max.value
+        let hi = max range.min.value range.max.value
         let unit = varied |> Option.map (fun v -> v.unitLabel) |> Option.defaultValue ""
         match detector, series with
         | Intensity, EllipsometricData _ ->
-            Error (DataUnitsMismatch "the detector records intensity (S0), but the data file is an ellipsometric Ψ/Δ series")
+            Error (DataUnitsMismatchErr "the detector records intensity (S0), but the data file is an ellipsometric Ψ/Δ series")
         | Ellipsometer, IntensityData _ ->
-            Error (DataUnitsMismatch "the detector is an ellipsometer (records Ψ/Δ), but the data file is a single-intensity series")
+            Error (DataUnitsMismatchErr "the detector is an ellipsometer (records Ψ/Δ), but the data file is a single-intensity series")
         | Intensity, IntensityData s ->
-            match s.points |> List.tryFind (fun p -> not (inRange lo hi p.x.value)) with
-            | Some p -> Error (DataRangeMismatch $"a measured abscissa {p.x.value} {unit} lies outside the experiment range [{lo}, {hi}] {unit}")
+            match s.points |> List.tryFind (fun p -> not (range.admits p.x.value)) with
+            | Some p -> Error (DataRangeMismatchErr $"a measured abscissa {p.x.value} {unit} lies outside the experiment range [{lo}, {hi}] {unit}")
             | None -> Ok series
         | Ellipsometer, EllipsometricData s ->
             match varied with
             | Some VaryWaveLength ->
-                match s.points |> List.tryFind (fun p -> not (inRange lo hi (wavelengthToUnit Nanometer p.waveLength).value)) with
+                match s.points |> List.tryFind (fun p -> not (range.admits (wavelengthToUnit Nanometer p.waveLength).value)) with
                 | Some p ->
                     let nm = (wavelengthToUnit Nanometer p.waveLength).value
-                    Error (DataRangeMismatch $"a measured wavelength {nm} nm lies outside the experiment range [{lo}, {hi}] nm")
+                    Error (DataRangeMismatchErr $"a measured wavelength {nm} nm lies outside the experiment range [{lo}, {hi}] nm")
                 | None -> Ok series
             | Some VaryR1
             | Some VaryR2

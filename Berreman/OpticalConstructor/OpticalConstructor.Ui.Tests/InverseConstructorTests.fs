@@ -52,11 +52,11 @@ module InverseConstructorTests =
     /// A data proxy that answers intensity loads with `result` and refuses ellipsometric loads.
     let private mockIntensity (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
         { tryLoadIntensity = fun _ -> result
-          tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFile "the mock has no ellipsometric data") }
+          tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data") }
 
     /// A data proxy that answers ellipsometric loads with `result` and refuses intensity loads.
     let private mockEllipsometric (result : Result<MeasuredData.EllipsometricSeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
-        { tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFile "the mock has no intensity data")
+        { tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no intensity data")
           tryLoadEllipsometric = fun _ -> result }
 
     /// An inverse model whose data proxy is the given mock, with ONE committed intensity experiment
@@ -122,7 +122,7 @@ module InverseConstructorTests =
 
     [<Fact>]
     let ``attaching a malformed intensity file records a typed parse-error status`` () =
-        let proxy = mockIntensity (Error (MeasuredData.MalformedDataFile "row 3 is not a valid X,Y pair"))
+        let proxy = mockIntensity (Error (MeasuredData.MalformedDataFileErr "row 3 is not a valid X,Y pair"))
         let m, expId = withIntensityExperiment proxy
         let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "bad.csv"))
         match m1.experimentDataStatus |> Map.tryFind expId.value with
@@ -144,7 +144,7 @@ module InverseConstructorTests =
         // Bind the detector to the ellipsometer, commit an experiment, then attach an ellipsometric
         // file — the load must go through `tryLoadEllipsometric` and validate as an ellipsometric shape.
         let ellipsometric =
-            match MeasuredData.parseEllipsometricSeries "wavelength_nm,psi_deg,delta_deg\n500,20,120\n600,25,110" with
+            match (MeasuredData.DataFileText "wavelength_nm,psi_deg,delta_deg\n500,20,120\n600,25,110").parseEllipsometricSeries with
             | Ok series -> series
             | Error e -> failwith $"the fixture parser failed: %A{e}"
         let m0 = { inverse () with experimentData = mockEllipsometric (Ok ellipsometric) }

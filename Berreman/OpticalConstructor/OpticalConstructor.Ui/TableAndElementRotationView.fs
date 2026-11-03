@@ -583,7 +583,7 @@ let captureScene (model : TableAndElementRotationModel) : Scene.SceneSnapshot =
     {
         Scene.SceneSnapshot.elements =
             model.elements
-            |> List.map (fun e -> { Scene.SceneElement.id = e.id; placement = e.placement; zoom = e.zoom; beam = e.beam })
+            |> List.map (fun e -> { Scene.SceneElement.id = e.id; placement = e.placement; zoom = BeamLayout.ElementZoom e.zoom; beam = e.beam })
         view = model.view
         snap = Scene.SnapMode.create model.snapChain
         pivot = model.rotationPivot
@@ -599,7 +599,7 @@ let restoreScene (snapshot : Scene.SceneSnapshot) (model : TableAndElementRotati
     { model with
         elements =
             snapshot.elements
-            |> List.map (fun e -> { TestElement.id = e.id; placement = e.placement; zoom = e.zoom; beam = e.beam })
+            |> List.map (fun e -> { TestElement.id = e.id; placement = e.placement; zoom = e.zoom.value; beam = e.beam })
         view = snapshot.view
         snapChain = snapshot.snap.value
         rotationPivot = snapshot.pivot
@@ -858,7 +858,7 @@ type MainNode =
 /// The scene as the pure beam layout reads it (spec 0046): every element with its beam host and draw zoom
 /// (the ray meets, and an open ray stops at, the DRAWN box), the source first.
 let layoutElements (m : TableAndElementRotationModel) : BeamLayout.LayoutElement list =
-    m.elements |> List.map (fun e -> { BeamLayout.LayoutElement.id = e.id; placement = e.placement; host = e.beam; zoom = e.zoom })
+    m.elements |> List.map (fun e -> { BeamLayout.LayoutElement.id = e.id; placement = e.placement; host = e.beam; zoom = BeamLayout.ElementZoom e.zoom })
 
 /// The laid-out Main scene (spec 0046) — `BeamLayout.layoutWith` the global rotation pivot over
 /// `layoutElements`.
@@ -1052,7 +1052,7 @@ let private addElement (kind : CatalogueKind) (prebind : string option) (m : Tab
     let host, x =
         match kind with
         | Detector ->
-            match BeamLayout.firstFreeRay (sceneLayout m) with
+            match (sceneLayout m).firstFreeRay with
             | Some ray -> ray, rayEndX m ray
             | None -> BeamLayout.OnMainBeam, defaultX
         | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror ->
@@ -1333,13 +1333,16 @@ let variablesOfElement (model : TableAndElementRotationModel) (e : TestElement) 
         | Some (Library.TunableBetween _) -> [ Experiments.VaryWaveLength ]
         | Some Library.FixedLine | None -> []
     | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector ->
-        Experiments.variablesFor e.placement.catalogueKind
+        Experiments.VariableParameter.allowedFor e.placement.catalogueKind
 
 /// A wavelength sweep's range for the scene's source (spec 0046): a tunable source's limits; else the generic
 /// default.
 let private wavelengthRangeFor (model : TableAndElementRotationModel) : Experiments.VariableRange =
     match boundSourceOf model |> Option.bind (fun source -> source.tunableLimitsOpt) with
-    | Some limits -> { Experiments.VariableRange.forVariable Experiments.VaryWaveLength with min = toNm limits.lower; max = toNm limits.upper }
+    | Some limits ->
+        { Experiments.VariableRange.forVariable Experiments.VaryWaveLength with
+            min = Propagation.SweptValue (toNm limits.lower)
+            max = Propagation.SweptValue (toNm limits.upper) }
     | None -> Experiments.VariableRange.forVariable Experiments.VaryWaveLength
 
 /// Keep a wavelength sweep inside a tunable source's limits (spec 0046); any other range as it is.
@@ -1347,7 +1350,7 @@ let private clampSweep (model : TableAndElementRotationModel) (range : Experimen
     match model.experimentCollection.draft.variable, boundSourceOf model |> Option.bind (fun source -> source.tunableLimitsOpt) with
     | Some Experiments.VaryWaveLength, Some limits ->
         let lo, hi = toNm limits.lower, toNm limits.upper
-        { range with min = clamp lo hi range.min; max = clamp lo hi range.max }
+        { range with min = Propagation.SweptValue (clamp lo hi range.min.value); max = Propagation.SweptValue (clamp lo hi range.max.value) }
     | _ -> range
 
 /// The element an experiment MEASURES (spec 0046 task 5): the first element bound to a SAMPLE (the one the
@@ -1430,25 +1433,25 @@ let draftCapture (model : TableAndElementRotationModel) : Experiments.Measuremen
 
 /// Spec 0027 (028): the human label of a present element ("<kind> #<n>", 1-based, in scene order), captured
 /// onto an experiment so its collection row survives the element's removal.
-let private experimentElementLabel (model : TableAndElementRotationModel) (id : Library.ElementId) : string =
+let private experimentElementLabel (model : TableAndElementRotationModel) (id : Library.ElementId) : Experiments.ElementLabel =
     model.elements
     |> List.mapi (fun i e -> i, e)
     |> List.tryFind (fun (_, e) -> e.id = id)
-    |> Option.map (fun (i, e) -> $"%s{(Catalogue.kindName e.placement.catalogueKind)} #%d{(i + 1)}")
-    |> Option.defaultValue "(element)"
+    |> Option.map (fun (i, e) -> Experiments.ElementLabel $"%s{(Catalogue.kindName e.placement.catalogueKind)} #%d{(i + 1)}")
+    |> Option.defaultValue (Experiments.ElementLabel "(element)")
 
 /// Spec 0038 Part I (step 025): resolve one present element's binding into an experiment descriptor's
 /// `ElementBinding`. A bound Sample resolves through the Library to its `SampleId` and pins version one
 /// (`SampleVersionId.firstOf` — every sample lives at v1 at this in-memory step), so the captured setup
 /// references the sample BY VERSION (the `VersionsInUse` seam collects it); a bound protected preset
 /// (source / detector / polarizer) binds by its entry id; an unbound element is `Unbound`.
-let private descriptorBinding (model : TableAndElementRotationModel) (kind : CatalogueKind) (valueIdOpt : string option) : Experiments.ElementBinding =
+let private descriptorBinding (model : TableAndElementRotationModel) (kind : CatalogueKind) (valueIdOpt : ElementValueId option) : Experiments.ElementBinding =
     match valueIdOpt with
     | None -> Experiments.Unbound
     | Some vid ->
         match kind with
         | Sample ->
-            match model.library.tryGetEntry (ElementValueId vid) with
+            match model.library.tryGetEntry vid with
             | Ok (Some (Library.SampleItem s)) ->
                 Experiments.BoundByVersion (Lifecycle.SampleVersionRef (Library.SampleVersionId.firstOf s.id))
             | Ok (Some _) | Ok None | Error _ -> Experiments.BoundByEntryId vid
@@ -1468,7 +1471,7 @@ let private buildExperimentSetup (model : TableAndElementRotationModel) : Experi
             label = experimentElementLabel model e.id
             kind = e.placement.catalogueKind
             placement = Experiments.PlacementSummary.ofPlacement e.placement
-            binding = descriptorBinding model e.placement.catalogueKind (e.placement.valueId |> Option.map (fun v -> v.value))
+            binding = descriptorBinding model e.placement.catalogueKind e.placement.valueId
         })
 
 /// Spec 0038 Part L (037): the point count of a validated measured series — the collection builder's
@@ -1483,10 +1486,10 @@ let private measuredSeriesPointCount (series : MeasuredData.MeasuredSeries) : in
 /// the domain error's diagnostic `reason` into the typed inline status.
 let private classifyDataError (error : MeasuredData.ExperimentDataError) : ExperimentFileStatus =
     match error with
-    | MeasuredData.MalformedDataFile reason
-    | MeasuredData.EmptyDataFile reason -> DataFileParseError reason
-    | MeasuredData.DataRangeMismatch reason
-    | MeasuredData.DataUnitsMismatch reason -> DataFileValidationError reason
+    | MeasuredData.MalformedDataFileErr reason
+    | MeasuredData.EmptyDataFileErr reason -> DataFileParseError reason
+    | MeasuredData.DataRangeMismatchErr reason
+    | MeasuredData.DataUnitsMismatchErr reason -> DataFileValidationError reason
 
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
@@ -1597,7 +1600,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         | Some _ | None -> model
     | ExpChooseElement idStr ->
         // Choosing the element to vary sets the draft element AND, from the element's kind, the allowed
-        // variables (data via `variablesFor`, never hard-coded here) and the default capture. Spec 0046:
+        // variables (data via `VariableParameter.allowedFor`, never hard-coded here) and the default capture. Spec 0046:
         // the default is the best capture the scene's DETECTORS allow (Both when they see both branches,
         // else the one they see); with no capturing detector it falls back to the element's emission.
         // Spec 0046: what the element may vary comes from the element AND its binding (a fixed-line source
@@ -1625,10 +1628,10 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         { model with experimentCollection = ranged }
     | ExpChooseMeasurement m -> { model with experimentCollection = Experiments.chooseMeasurement (ofMeasurementChoice m) model.experimentCollection }
     | ExpSetRangeMin v ->
-        let set = Experiments.setRangeMin v model.experimentCollection
+        let set = Experiments.setRangeMin (Propagation.SweptValue v) model.experimentCollection
         { model with experimentCollection = Experiments.setRange (clampSweep model set.draft.range) set }
     | ExpSetRangeMax v ->
-        let set = Experiments.setRangeMax v model.experimentCollection
+        let set = Experiments.setRangeMax (Propagation.SweptValue v) model.experimentCollection
         { model with experimentCollection = Experiments.setRange (clampSweep model set.draft.range) set }
     | ExpSetSourceWaveLength nm ->
         // Spec 0046: only a TUNABLE source takes a setting, and only within its limits.
@@ -1638,7 +1641,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             { model with experimentCollection = Experiments.setSourceWaveLength (Some (ofNm (clamp lo hi nm))) model.experimentCollection }
         | None -> model
     | ExportExperimentData -> exportDraftRun model
-    | ExpSetRangePoints n -> { model with experimentCollection = Experiments.setRangePoints n model.experimentCollection }
+    | ExpSetRangePoints n -> { model with experimentCollection = Experiments.setRangePoints (Propagation.CurvePointCount n) model.experimentCollection }
     | ExpCommit ->
         // Spec 0038 Part I (step 025): capture the live scene as the experiment's ordered setup and commit.
         // Spec 0046: the experiment records the capture the detectors allow (the draft's request coerced);
@@ -1648,7 +1651,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             let collection = Experiments.chooseMeasurement capture model.experimentCollection
             { model with experimentCollection = Experiments.commit (buildExperimentSetup model) collection }
         | None -> model
-    | ExpNew -> { model with experimentCollection = Experiments.newDraft model.experimentCollection }
+    | ExpNew -> { model with experimentCollection = model.experimentCollection.newDraft }
     | ExpEdit idStr ->
         match System.Int32.TryParse idStr with
         | true, i -> { model with experimentCollection = Experiments.edit (Experiments.ExperimentId i) model.experimentCollection }
@@ -1690,9 +1693,9 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 { model with
                     savedCollections = saved
                     collectionStatus = Some $"Saved collection '%s{name.value}' (%d{List.length model.experimentCollection.experiments} experiment(s))." }
-            | Error (ExperimentCollectionStore.InvalidCollection reason) ->
+            | Error (ExperimentCollectionStore.InvalidCollectionErr reason) ->
                 { model with collectionStatus = Some $"Save failed — %s{reason}" }
-        | Error (ExperimentCollectionStore.InvalidCollection reason) ->
+        | Error (ExperimentCollectionStore.InvalidCollectionErr reason) ->
             { model with collectionStatus = Some $"Save failed — %s{reason}" }
     | CollectionLoad nameStr ->
         // Spec 0038 Part L (037): load a stored collection back into the live collection through the
@@ -1704,21 +1707,16 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match model.experimentCollections.tryLoadCollection name with
             | Ok (Some snapshot) ->
                 let experiments = snapshot.experiments
-                let nextId = (experiments |> List.map (fun e -> e.id.value) |> List.fold max 0) + 1
                 { model with
-                    experimentCollection =
-                        { model.experimentCollection with
-                            experiments = experiments
-                            nextId = nextId
-                            draft = Experiments.ExperimentDraft.empty }
+                    experimentCollection = Experiments.ExperimentCollection.ofLoaded experiments
                     collectionName = name.value
                     experimentDataStatus = Map.empty
                     collectionStatus = Some $"Loaded collection '%s{name.value}' (%d{List.length experiments} experiment(s))." }
             | Ok None ->
                 { model with collectionStatus = Some $"No collection named '%s{nameStr}' is stored." }
-            | Error (ExperimentCollectionStore.InvalidCollection reason) ->
+            | Error (ExperimentCollectionStore.InvalidCollectionErr reason) ->
                 { model with collectionStatus = Some $"Load failed — %s{reason}" }
-        | Error (ExperimentCollectionStore.InvalidCollection reason) ->
+        | Error (ExperimentCollectionStore.InvalidCollectionErr reason) ->
             { model with collectionStatus = Some $"Load failed — %s{reason}" }
     | AttachDataFileTo (experimentId, path) ->
         // Spec 0038 Part L (037): attach the picked file to the experiment, then load + validate it
@@ -2315,7 +2313,7 @@ let selectorOffer (model : TableAndElementRotationModel) : SelectorOffer =
 // ---------------------------------------------------------------------------
 // Main-screen EXPERIMENTS bay (spec 0027 / 028): the multi-step, editable experiment builder + collection.
 // The SETUP is the live scene; the user picks the element to vary (the element's kind — via
-// `Experiments.variablesFor` DATA — determines the allowed variables), the T/R/both capture, and the
+// `Experiments.VariableParameter.allowedFor` DATA — determines the allowed variables), the T/R/both capture, and the
 // range, then Adds to a persistent collection (edit / remove supported). The bay is domain-free, so the
 // host flattens the scene into candidates, the draft into the editor state, and the collection into rows.
 // ---------------------------------------------------------------------------
@@ -2332,7 +2330,7 @@ let private experimentReadout (model : TableAndElementRotationModel) : string =
     let draft = model.experimentCollection.draft
     match draft.elementId, draft.variable with
     | Some id, Some v when model.elements |> List.exists (fun e -> e.id = id) ->
-        $"Experiment: %s{draft.elementLabel} — vary %s{v.label} over %g{draft.range.min}…%g{draft.range.max} %s{v.unitLabel} (%d{draft.range.points} pts), capture %s{draft.measurement.label}"
+        $"Experiment: %s{draft.elementLabel.value} — vary %s{v.label} over %g{draft.range.min.value}…%g{draft.range.max.value} %s{v.unitLabel} (%d{draft.range.points.value} pts), capture %s{draft.measurement.label}"
     | _ -> ""
 
 // ---------------------------------------------------------------------------
@@ -2431,8 +2429,7 @@ let private sceneRequestedWavelengths (model : TableAndElementRotationModel) : O
 /// The out-of-band warning text for element `e`, if any (spec 0038 step 031). Public so the Details
 /// bay and the badge overlay share ONE derivation and a headless test can drive it directly.
 let outOfBandWarningFor (model : TableAndElementRotationModel) (e : TestElement) : string option =
-    OutOfBandDiagnostic.checkMaterialsOutOfBand (reachableMaterialEntries model e) (sceneRequestedWavelengths model)
-    |> OutOfBandDiagnostic.coverageWarning
+    (OutOfBandDiagnostic.checkMaterialsOutOfBand (reachableMaterialEntries model e) (sceneRequestedWavelengths model)).warningOpt
 
 /// Attach an AutomationId to a badge TextBlock through FuncUI's attr builder (the
 /// `workbenchAutomationId` precedent — a scene overlay has variable membership, so it carries an
@@ -2614,7 +2611,7 @@ let chartForRun
     (variable : Experiments.VariableParameter)
     (measurement : Experiments.MeasurementMode)
     (range : Experiments.VariableRange)
-    (label : string)
+    (label : Experiments.ElementLabel)
     (sourceWaveLengthOpt : WaveLength option) : ExperimentChart.ExperimentChart =
     match model.elements |> List.tryFindIndex (fun e -> e.id = chosen) with
     | None -> ExperimentChart.emptyExperimentChart
@@ -2622,11 +2619,12 @@ let chartForRun
     let variedElement = List.item variedIndex model.elements
     let layout = sceneLayout model
     let w0 = operatingWaveLength model sourceWaveLengthOpt
-    let n = max 2 range.points
+    let n = max 2 range.points.value
     let lo, hi =
         match variable with
-        | Experiments.VaryR2 -> max 0.0 (min range.min range.max), min Propagation.r2SweepMaxDegrees.value (max range.min range.max)
-        | Experiments.VaryR1 | Experiments.VaryWaveLength -> range.min, range.max
+        | Experiments.VaryR2 ->
+            max 0.0 (min range.min.value range.max.value), min Propagation.r2SweepMaxDegrees.value (max range.min.value range.max.value)
+        | Experiments.VaryR1 | Experiments.VaryWaveLength -> range.min.value, range.max.value
     let xs = [ for k in 0 .. n - 1 -> lo + (hi - lo) * float k / float (n - 1) ]
     let wAt (x : float) : WaveLength =
         match variable with
@@ -2723,7 +2721,7 @@ let chartForRun
             captured
             |> List.map (fun (tag, j) -> $"%s{tag}: %s{readsText (detectorKindOf model j)}")
             |> String.concat ", "
-        $"%s{sourceText}; varied element: %s{label}; capture %s{measurement.label} (%s{detectorText}). Varying %s{varyText}."
+        $"%s{sourceText}; varied element: %s{label.value}; capture %s{measurement.label} (%s{detectorText}). Varying %s{varyText}."
     // The rotate-R1 intensity run needs polarized light: with no polarizer on the path there is nothing a
     // rotation could change — the typed status, never a synthesized curve (spec 0038 step 018).
     let noPolarizerOnPath =
@@ -2785,7 +2783,7 @@ let chartForParams
     (variable : Experiments.VariableParameter)
     (measurement : Experiments.MeasurementMode)
     (range : Experiments.VariableRange)
-    (label : string) : ExperimentChart.ExperimentChart =
+    (label : Experiments.ElementLabel) : ExperimentChart.ExperimentChart =
     chartForRun model chosen variable measurement range label None
 
 /// Spec 0038 Part L (037): whether the forward experiment chart surface is present. The FORWARD
@@ -2890,12 +2888,12 @@ let experimentState (model : TableAndElementRotationModel) : ExperimentControls.
                     ExperimentControls.TunableSourceWaveLength
                         (setting, { ExperimentControls.SourceWaveLengthLimits.lowest = ExperimentControls.BayNanometers lo; highest = ExperimentControls.BayNanometers hi })
                 | None -> ExperimentControls.FixedSourceWaveLength setting
-        rangeMin = ExperimentControls.ExperimentRangeEnd draft.range.min
-        rangeMax = ExperimentControls.ExperimentRangeEnd draft.range.max
-        rangePoints = ExperimentControls.ExperimentPointCount draft.range.points
+        rangeMin = draft.range.min.rangeEnd
+        rangeMax = draft.range.max.rangeEnd
+        rangePoints = draft.range.points.pointCount
         rangeUnitLabel = ControlCaption (match draft.variable with Some v -> v.unitLabel | None -> "°")
         addAvailability =
-            match Experiments.canCommit col, capture with
+            match col.canCommit, capture with
             | true, Some _ -> ControlOffered
             | true, None | false, _ -> ControlWithheld
         editorMode =
@@ -3673,7 +3671,7 @@ let elementMenuRows (model : TableAndElementRotationModel) (dispatch : TableAndE
             | BeamLayout.RaysFixed _ -> false
         let fixedNote =
             match control with
-            | BeamLayout.RaysFixed reason -> [ elementMenuNote $"(%s{reason})" false ]
+            | BeamLayout.RaysFixed reason -> [ elementMenuNote $"(%s{reason.text})" false ]
             | BeamLayout.RaysSwitchable -> []
         let groups = p.outgoingGroups
         let rayRows =

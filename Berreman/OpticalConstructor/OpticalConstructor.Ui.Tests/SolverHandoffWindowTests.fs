@@ -101,16 +101,16 @@ module SolverHandoffWindowTests =
                 fun (p : Experiments.DataFilePath) ->
                     match byPath |> Map.tryFind p.value with
                     | Some r -> r
-                    | None -> Error (MeasuredData.MalformedDataFile $"no mock intensity registered for '%s{p.value}'")
-            tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFile "the mock has no ellipsometric data")
+                    | None -> Error (MeasuredData.MalformedDataFileErr $"no mock intensity registered for '%s{p.value}'")
+            tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data")
         }
 
     let private mockIntensity (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
         { tryLoadIntensity = fun _ -> result
-          tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFile "the mock has no ellipsometric data") }
+          tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data") }
 
     let private mockEllipsometric (result : Result<MeasuredData.EllipsometricSeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
-        { tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFile "the mock has no intensity data")
+        { tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no intensity data")
           tryLoadEllipsometric = fun _ -> result }
 
     /// An intensity proxy that COUNTS its loads — the "no computation beyond validation" proof.
@@ -118,7 +118,7 @@ module SolverHandoffWindowTests =
         let calls = ref 0
         let proxy : ExperimentData.ExperimentDataProxy =
             { tryLoadIntensity = fun _ -> calls.Value <- calls.Value + 1; result
-              tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFile "the mock has no ellipsometric data") }
+              tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data") }
         calls, proxy
 
     let private snapshotOf (experiments : Experiments.Experiment list) : ExperimentCollectionStore.ExperimentCollectionSnapshot =
@@ -172,7 +172,7 @@ module SolverHandoffWindowTests =
     let ``a malformed data file yields DataFileParseError`` () =
         let library, exp0 = baseExperiment (Some "src-600") (Some "det-intensity")
         let exp = exp0 |> withFile "bad.csv"
-        let proxy = mockIntensity (Error (MeasuredData.MalformedDataFile "row 3 is not a valid X,Y pair"))
+        let proxy = mockIntensity (Error (MeasuredData.MalformedDataFileErr "row 3 is not a valid X,Y pair"))
         match SolverHandoffView.validateExperiment library proxy exp with
         | SolverHandoffView.DataFileParseError reason -> Assert.Contains("row 3", reason)
         | other -> Assert.Fail($"expected DataFileParseError, got %A{other}")
@@ -182,7 +182,7 @@ module SolverHandoffWindowTests =
         let library, exp0 = baseExperiment (Some "src-600") (Some "det-ellipsometer")
         let exp = exp0 |> withFile "ellipso.csv"
         let ellipsometric =
-            match MeasuredData.parseEllipsometricSeries "wavelength_nm,psi_deg,delta_deg\n500,20,120\n600,25,110" with
+            match (MeasuredData.DataFileText "wavelength_nm,psi_deg,delta_deg\n500,20,120\n600,25,110").parseEllipsometricSeries with
             | Ok series -> series
             | Error e -> failwith $"the fixture parser failed: %A{e}"
         let proxy = mockEllipsometric (Ok ellipsometric)

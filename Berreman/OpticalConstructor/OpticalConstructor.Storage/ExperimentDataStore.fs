@@ -8,7 +8,7 @@ open OpticalConstructor.Domain.ExperimentData         // ExperimentDataProxy —
 /// Spec 0038 Part I (036, IMPLEMENT_CONTRACT STORE_XDUO_0006) — the real file-backed adapter behind the
 /// DECLARED `ExperimentDataProxy` (step 035). This is the ONLY new real IO this spec permits
 /// (spec-md §0.3c): the missing `path -> read text -> parse` EDGE the pure step-34 `MeasuredData`
-/// parsers were written to sit behind. `MeasuredData.parseIntensitySeries` / `parseEllipsometricSeries`
+/// parsers were written to sit behind. `DataFileText.parseIntensitySeries` / `parseEllipsometricSeries`
 /// take the file TEXT and never touch the filesystem or throw, so this adapter is exactly the disk read
 /// that yields that text — and NOTHING else. It adds NO parsing logic of its own: the schema, the
 /// malformed-row / empty-file diagnostics, and the elevated point types all stay in `MeasuredData`.
@@ -26,19 +26,19 @@ module ExperimentDataStore =
 
     /// Read the file at `path` and hand its TEXT to `parse` (a step-34 pure parser). Filesystem access is
     /// the boundary: a missing file, a missing directory, or any other .NET IO exception is caught HERE
-    /// and mapped to a typed `MalformedDataFile` naming the file kind, the path, and the underlying reason
+    /// and mapped to a typed `MalformedDataFileErr` naming the file kind, the path, and the underlying reason
     /// — never a throw across into the pure Domain, and staying WITHIN the step-34 declared four-case
     /// channel (the step-035 mock returned the same case for a missing file). The parse itself is delegated
     /// UNCHANGED, so every schema / malformed-row / empty-file diagnostic is the step-34 parser's, not this
     /// adapter's.
     let private loadThrough
-        (parse : string -> Result<'Series, ExperimentDataError>)
+        (parse : DataFileText -> Result<'Series, ExperimentDataError>)
         (kind : string)
         (path : DataFilePath)
         : Result<'Series, ExperimentDataError> =
         let read =
-            try Ok (File.ReadAllText path.value)
-            with e -> Error (MalformedDataFile $"could not read the {kind} data file '{path.value}': {e.Message}")
+            try Ok (DataFileText (File.ReadAllText path.value))
+            with e -> Error (MalformedDataFileErr $"could not read the {kind} data file '{path.value}': {e.Message}")
         match read with
         | Error e -> Error e
         | Ok text -> parse text
@@ -50,6 +50,6 @@ module ExperimentDataStore =
     /// real store, leaving every consumer that holds the proxy unchanged.
     let createFileBacked () : ExperimentDataProxy =
         {
-            tryLoadIntensity = loadThrough parseIntensitySeries "intensity"
-            tryLoadEllipsometric = loadThrough parseEllipsometricSeries "ellipsometric"
+            tryLoadIntensity = loadThrough (fun text -> text.parseIntensitySeries) "intensity"
+            tryLoadEllipsometric = loadThrough (fun text -> text.parseEllipsometricSeries) "ellipsometric"
         }

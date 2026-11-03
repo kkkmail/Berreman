@@ -90,7 +90,7 @@ let validateExperiment
     : ExperimentHandoffStatus =
     match unspecifiedElements experiment with
     | (_ :: _) as unbound ->
-        let names = unbound |> List.map (fun d -> d.label) |> String.concat ", "
+        let names = unbound |> List.map (fun d -> d.label.value) |> String.concat ", "
         UnspecifiedElements $"every element except the sample must be specified; still unbound: %s{names}"
     | [] ->
         match experiment.dataFileOpt with
@@ -98,10 +98,10 @@ let validateExperiment
         | Some path ->
             match ExperimentDataLoad.loadAndValidate library dataProxy experiment path with
             | Ok series -> HandoffReady (measuredSeriesPointCount series)
-            | Error (MeasuredData.MalformedDataFile reason)
-            | Error (MeasuredData.EmptyDataFile reason) -> DataFileParseError reason
-            | Error (MeasuredData.DataRangeMismatch reason)
-            | Error (MeasuredData.DataUnitsMismatch reason) -> DataFileValidationError reason
+            | Error (MeasuredData.MalformedDataFileErr reason)
+            | Error (MeasuredData.EmptyDataFileErr reason) -> DataFileParseError reason
+            | Error (MeasuredData.DataRangeMismatchErr reason)
+            | Error (MeasuredData.DataUnitsMismatchErr reason) -> DataFileValidationError reason
 
 /// One summarized experiment: the received `Experiment` (its ordered setup + attached file ride
 /// along), the resolved detector kind (fixes the expected data-file shape), and its typed validation
@@ -205,7 +205,7 @@ let private setupText (experiment : Experiments.Experiment) : string =
             | Placement.Sample, _ -> "specified"
             | _, Experiments.Unbound -> "UNSPECIFIED"
             | _, (Experiments.BoundByEntryId _ | Experiments.BoundByVersion _) -> "specified"
-        $"%s{d.label} [%s{tag}]")
+        $"%s{d.label.value} [%s{tag}]")
     |> String.concat "  →  "
 
 let private fileText (experiment : Experiments.Experiment) : string =

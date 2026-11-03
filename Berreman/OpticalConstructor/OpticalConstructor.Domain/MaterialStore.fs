@@ -34,9 +34,9 @@ module MaterialStore =
     /// so its `None = None` never mints.
     type private MaterialMetadata =
         {
-            name : string
+            name : EntryName
             category : CategoryId
-            description : string option
+            description : EntryDescription option
         }
 
     type MaterialProxy with
@@ -76,7 +76,7 @@ module MaterialStore =
             let payloadOf (e : MaterialEntry) : VersionPayload<MaterialComplexity option, MaterialMetadata> =
                 {
                     physics = e.complexity
-                    metadata = { name = e.name.value; category = e.category; description = e.description |> Option.map (fun d -> d.value) }
+                    metadata = { name = e.name; category = e.category; description = e.description }
                 }
 
             /// Whether the versioned reference is bound by a live experiment, through the seam.

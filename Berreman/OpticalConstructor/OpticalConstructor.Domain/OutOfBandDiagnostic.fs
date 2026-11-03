@@ -24,6 +24,16 @@ open OpticalConstructor.Domain.Experiments
 /// it never flags: the diagnostic can only warn where a material DECLARES a finite band.
 module OutOfBandDiagnostic =
 
+    type WaveLengthInterval with
+
+        /// The interval as a human range in nanometres (spec 0038 step 031), through the sole `Units`
+        /// conversion seam. A degenerate interval (a fixed single λ) reads as one value, not "x–x".
+        member this.nmRangeLabel : string =
+            let lo = (wavelengthToUnit Nanometer this.lower).value
+            let hi = (wavelengthToUnit Nanometer this.upper).value
+            if lo = hi then $"%g{lo} nm"
+            else $"%g{lo}–%g{hi} nm"
+
     /// The wavelengths an experiment actually requests (spec 0038 step 031): a
     /// single fixed λ (a fixed setting — the scene source's monochromatic
     /// wavelength), or the FULL swept range of a wavelength sweep. A DU, never a
@@ -48,9 +58,37 @@ module OutOfBandDiagnostic =
     /// an offender.
     type ReachableMaterial =
         {
-            materialName : string
+            materialName : EntryName
             definedSegments : WaveLengthInterval list
         }
+
+        /// The wavelength intervals of a material's DEFINED eps dispersion segments
+        /// (spec 0038 step 031): each segment's `wavelengthInterval` when the eps is
+        /// segment-dispersive; EMPTY for a constant eps (`EpsWithoutDispValue`). This
+        /// is the union input the coverage check merges — a constant material yields
+        /// no segments and therefore never flags.
+        static member definedSegmentsOf (complexity : MaterialComplexity) : WaveLengthInterval list =
+            match complexity.eps with
+            | EpsWithoutDispValue _ -> []
+            | EpsWithDispValue dispersive ->
+                match dispersive with
+                | IsotropicDispersive segments -> segments |> List.map (fun s -> s.wavelengthInterval)
+                | UniaxialDispersive segments -> segments |> List.map (fun s -> s.wavelengthInterval)
+                | BiaxialDispersive segments -> segments |> List.map (fun s -> s.wavelengthInterval)
+
+        /// The reachable-material view of a library material entry (spec 0038 step 031):
+        /// its display name and its defined dispersion segments. An entry with coded
+        /// dispersion (a single spectrum-spanning segment — silicon / langasite) declares
+        /// an unbounded band, so no request leaves it and it never flags — the diagnostic
+        /// only warns where a material declares a finite band.
+        static member ofEntry (entry : MaterialEntry) : ReachableMaterial =
+            {
+                materialName = entry.name
+                definedSegments =
+                    entry.complexity
+                    |> Option.map ReachableMaterial.definedSegmentsOf
+                    |> Option.defaultValue []
+            }
 
     /// One material flagged out-of-band (spec 0038 step 031): its name and both
     /// ranges — the union span of its DEFINED dispersion and the experiment's
@@ -58,10 +96,16 @@ module OutOfBandDiagnostic =
     /// state where its physics is defined versus what the experiment asked for.
     type OutOfBandFinding =
         {
-            materialName : string
+            materialName : EntryName
             definedRange : WaveLengthInterval
             requestedRange : WaveLengthInterval
         }
+
+        /// The warning text for one offender (spec 0038 step 031): names the material
+        /// and both ranges — where its dispersion is defined and what the experiment
+        /// requests.
+        member this.text : string =
+            $"%s{this.materialName.value}: dispersion defined for %s{this.definedRange.nmRangeLabel}, but the experiment requests %s{this.requestedRange.nmRangeLabel}"
 
     /// The out-of-band coverage verdict for an element (spec 0038 step 031): every
     /// reachable material's defined dispersion covers the request (`InBand`), or
@@ -72,33 +116,13 @@ module OutOfBandDiagnostic =
         | InBand
         | OutOfBand of OutOfBandFinding list
 
-    /// The wavelength intervals of a material's DEFINED eps dispersion segments
-    /// (spec 0038 step 031): each segment's `wavelengthInterval` when the eps is
-    /// segment-dispersive; EMPTY for a constant eps (`EpsWithoutDispValue`). This
-    /// is the union input the coverage check merges — a constant material yields
-    /// no segments and therefore never flags.
-    let definedSegmentIntervals (complexity : MaterialComplexity) : WaveLengthInterval list =
-        match complexity.eps with
-        | EpsWithoutDispValue _ -> []
-        | EpsWithDispValue dispersive ->
-            match dispersive with
-            | IsotropicDispersive segments -> segments |> List.map (fun s -> s.wavelengthInterval)
-            | UniaxialDispersive segments -> segments |> List.map (fun s -> s.wavelengthInterval)
-            | BiaxialDispersive segments -> segments |> List.map (fun s -> s.wavelengthInterval)
-
-    /// The reachable-material view of a library material entry (spec 0038 step 031):
-    /// its display name and its defined dispersion segments. An entry with coded
-    /// dispersion (a single spectrum-spanning segment — silicon / langasite) declares
-    /// an unbounded band, so no request leaves it and it never flags — the diagnostic
-    /// only warns where a material declares a finite band.
-    let reachableMaterialOf (entry : MaterialEntry) : ReachableMaterial =
-        {
-            materialName = entry.name.value
-            definedSegments =
-                entry.complexity
-                |> Option.map definedSegmentIntervals
-                |> Option.defaultValue []
-        }
+        /// The full warning text of a coverage verdict (spec 0038 step 031): one clause
+        /// per offender, `None` when in-band. The SAME text is shown in the badge
+        /// tooltip and the Details bay.
+        member this.warningOpt : string option =
+            match this with
+            | InBand -> None
+            | OutOfBand findings -> findings |> List.map (fun f -> f.text) |> String.concat "; " |> Some
 
     /// Merge a segment-interval list into the minimal set of disjoint intervals it
     /// covers, sorted by lower bound. Endpoints are INCLUSIVE, so two segments that
@@ -118,15 +142,15 @@ module OutOfBandDiagnostic =
             []
         |> List.rev
 
-    /// Whether a contiguous requested span sits ENTIRELY within the union of the
-    /// defined segments. Because the request is contiguous, full coverage means it
+    /// The merged interval of the defined segments that holds a contiguous requested
+    /// span ENTIRELY, if any. Because the request is contiguous, full coverage means it
     /// fits inside ONE merged interval (a request that straddles a gap is not
     /// covered even if both its ends land in segments).
-    let private covers (segments : WaveLengthInterval list) (request : WaveLengthInterval) : bool =
+    let private coveringInterval (segments : WaveLengthInterval list) (request : WaveLengthInterval) : WaveLengthInterval option =
         let lo = min request.lower.value request.upper.value
         let hi = max request.lower.value request.upper.value
         mergeIntervals segments
-        |> List.exists (fun i -> i.lower.value <= lo && hi <= i.upper.value)
+        |> List.tryFind (fun i -> i.lower.value <= lo && hi <= i.upper.value)
 
     /// The union span of a material's defined segments — the widest lower and upper
     /// across them — reported as the material's "defined range" in a finding.
@@ -143,8 +167,9 @@ module OutOfBandDiagnostic =
         match material.definedSegments with
         | [] -> None
         | segments ->
-            if covers segments requested.span then None
-            else
+            match coveringInterval segments requested.span with
+            | Some _ -> None
+            | None ->
                 Some
                     {
                         materialName = material.materialName
@@ -165,7 +190,7 @@ module OutOfBandDiagnostic =
     /// The diagnostic over library material entries (spec 0038 step 031): resolve
     /// each entry to its reachable-material view, then run `checkOutOfBandDispersion`.
     let checkMaterialsOutOfBand (entries : MaterialEntry list) (requested : RequestedWavelengths) : DispersionCoverage =
-        checkOutOfBandDispersion (entries |> List.map reachableMaterialOf) requested
+        checkOutOfBandDispersion (entries |> List.map ReachableMaterial.ofEntry) requested
 
     /// The wavelengths a swept setting requests (spec 0038 step 031). A WAVELENGTH
     /// sweep (`VaryWaveLength`) requests its full range (`range.min…range.max`, in
@@ -182,8 +207,8 @@ module OutOfBandDiagnostic =
         | Some VaryWaveLength ->
             SweptWavelengths
                 {
-                    lower = toWaveLength Nanometer (UnitMagnitude range.min)
-                    upper = toWaveLength Nanometer (UnitMagnitude range.max)
+                    lower = toWaveLength Nanometer range.min.toUnitMagnitude
+                    upper = toWaveLength Nanometer range.max.toUnitMagnitude
                 }
         | Some VaryR1
         | Some VaryR2
@@ -198,25 +223,3 @@ module OutOfBandDiagnostic =
             (experiment.varied |> Option.map (fun v -> v.variable))
             experiment.range
 
-    /// A wavelength interval as a human range in nanometres (spec 0038 step 031),
-    /// through the sole `Units` conversion seam. A degenerate interval (a fixed
-    /// single λ) reads as one value, not "x–x".
-    let nmRangeLabel (interval : WaveLengthInterval) : string =
-        let lo = (wavelengthToUnit Nanometer interval.lower).value
-        let hi = (wavelengthToUnit Nanometer interval.upper).value
-        if lo = hi then $"%g{lo} nm"
-        else $"%g{lo}–%g{hi} nm"
-
-    /// The warning text for one offender (spec 0038 step 031): names the material
-    /// and both ranges — where its dispersion is defined and what the experiment
-    /// requests.
-    let findingText (finding : OutOfBandFinding) : string =
-        $"%s{finding.materialName}: dispersion defined for %s{nmRangeLabel finding.definedRange}, but the experiment requests %s{nmRangeLabel finding.requestedRange}"
-
-    /// The full warning text of a coverage verdict (spec 0038 step 031): one clause
-    /// per offender, `None` when in-band. The SAME text is shown in the badge
-    /// tooltip and the Details bay.
-    let coverageWarning (coverage : DispersionCoverage) : string option =
-        match coverage with
-        | InBand -> None
-        | OutOfBand findings -> findings |> List.map findingText |> String.concat "; " |> Some

@@ -34,7 +34,7 @@ module ExperimentCollectionProxyTests =
 
     /// A captured setup descriptor (id / label / kind / rest placement / binding).
     let private desc (idStr : string) (label : string) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
-        { ElementDescriptor.elementId = el idStr; label = label; kind = kind; placement = placementOf kind; binding = binding }
+        { ElementDescriptor.elementId = el idStr; label = ElementLabel label; kind = kind; placement = placementOf kind; binding = binding }
 
     /// A step-25 full-setup experiment (source + polarizer + detector, the polarizer varied) carrying
     /// its optional `DataFilePath` attachment — the field that must ride along through the snapshot.
@@ -43,9 +43,9 @@ module ExperimentCollectionProxyTests =
             id = ExperimentId n
             setup =
                 [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId "src-600")
-                    desc "lp" "Linear polarizer #2" LinearPolarizer (BoundByEntryId "pol-lp")
-                    desc "det" "Detector #3" Detector (BoundByEntryId "det-intensity")
+                    desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600"))
+                    desc "lp" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
+                    desc "det" "Detector #3" Detector (BoundByEntryId (ElementValueId "det-intensity"))
                 ]
             varied = Some { elementId = el "lp"; variable = VaryR1 }
             measurement = CaptureTransmitted
@@ -91,14 +91,14 @@ module ExperimentCollectionProxyTests =
     [<InlineData("   ")>]
     let ``CollectionName.tryCreate rejects a blank name as InvalidCollection carrying a reason`` (raw : string) =
         match CollectionName.tryCreate raw with
-        | Error (InvalidCollection reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (InvalidCollection _), got %A{other}")
+        | Error (InvalidCollectionErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidCollectionErr _), got %A{other}")
 
     [<Fact>]
     let ``CollectionName.tryCreate rejects a null name as InvalidCollection`` () =
         match CollectionName.tryCreate (null : string) with
-        | Error (InvalidCollection reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (InvalidCollection _), got %A{other}")
+        | Error (InvalidCollectionErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidCollectionErr _), got %A{other}")
 
     [<Fact>]
     let ``CollectionName.tryCreate accepts a non-blank name and round-trips its value`` () =

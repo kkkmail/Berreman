@@ -116,7 +116,7 @@ module OutOfBandBadgeTests =
                 zoom = defaultElementZoom
                 beam = BeamLayout.OnMainBeam
             }
-        let draft = { baseModel.experimentCollection.draft with variable = variable; range = { min = 200.0; max = 800.0; points = 91 } }
+        let draft = { baseModel.experimentCollection.draft with variable = variable; range = { min = Propagation.SweptValue 200.0; max = Propagation.SweptValue 800.0; points = Propagation.CurvePointCount 91 } }
         let model =
             { baseModel with
                 elements = baseModel.elements @ [ flagged ]

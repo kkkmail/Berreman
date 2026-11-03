@@ -19,7 +19,7 @@ module SampleStore =
     /// sample frozen at that version. The store keeps a per-`SampleId` history of these, ascending
     /// by version number and non-empty; the LATEST (highest-numbered) version is the one the library
     /// edits and the offers surface, older versions are view-only resolution targets.
-    type private VersionRecord =
+    type private SampleVersionRecord =
         {
             versionNo : VersionNumber
             lifecycle : EntryLifecycle
@@ -34,8 +34,8 @@ module SampleStore =
     /// it carries no function case, so structural equality is direct.
     type private SampleMetadata =
         {
-            name : string
-            description : string
+            name : EntryName
+            description : EntryDescription
             substrate : SubstrateKind
         }
 
@@ -64,7 +64,7 @@ module SampleStore =
                 UnknownSampleIdErr $"unknown sample id '%s{string id.value}'"
 
             /// The latest (highest-numbered) version of a non-empty history.
-            let latestOf (versions : VersionRecord list) : VersionRecord =
+            let latestOf (versions : SampleVersionRecord list) : SampleVersionRecord =
                 versions |> List.maxBy (fun v -> v.versionNo.value)
 
             /// The payload the shared rule sees: physics = the structure tree, metadata = the display
@@ -72,7 +72,7 @@ module SampleStore =
             let payloadOf (s : Sample) : VersionPayload<SampleStructure, SampleMetadata> =
                 {
                     physics = s.structure
-                    metadata = { name = s.name.value; description = s.description.value; substrate = s.substrate }
+                    metadata = { name = s.name; description = s.description; substrate = s.substrate }
                 }
 
             /// Whether the versioned reference is bound by a live experiment, through the seam.

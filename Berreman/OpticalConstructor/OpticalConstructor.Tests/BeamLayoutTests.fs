@@ -29,7 +29,7 @@ module BeamLayoutTests =
             id = Library.ElementId id
             placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }
             host = OnMainBeam
-            zoom = 5.0
+            zoom = ElementZoom 5.0
         }
 
     let private tilted (r2 : float) (e : LayoutElement) : LayoutElement =
@@ -192,7 +192,7 @@ module BeamLayoutTests =
             let p = placedOf id scene
             let e = elements |> List.find (fun x -> x.id = Library.ElementId id)
             match p.incoming with
-            | Some d -> (RayModel.crossElement p.centre d (RayModel.faceNormal d e.placement) (halfDepthOf e)).entry
+            | Some d -> (RayModel.crossElement p.centre d (RayModel.faceNormal d e.placement) (e.halfDepth)).entry
             | None -> p.centre
         let sampleExit =
             let p = placedOf "s" scene
@@ -243,11 +243,11 @@ module BeamLayoutTests =
             let n = RayModel.faceNormal d e.placement
             let crossing =
                 match pivot with
-                | PivotAtCentre -> RayModel.crossElement p.centre d n (halfDepthOf e)
+                | PivotAtCentre -> RayModel.crossElement p.centre d n (e.halfDepth)
                 | PivotAtIncidentFace ->
                     // The incident face's middle: half a depth back from the centre, against the light.
-                    let halfDepthAlongLight = RayModel.centreBehindIncidentFace (Vector3.create 0.0 0.0 0.0) d n (halfDepthOf e)
-                    RayModel.crossElementThrough (sub p.centre halfDepthAlongLight) p.centre d n (halfDepthOf e)
+                    let halfDepthAlongLight = RayModel.centreBehindIncidentFace (Vector3.create 0.0 0.0 0.0) d n (e.halfDepth)
+                    RayModel.crossElementThrough (sub p.centre halfDepthAlongLight) p.centre d n (e.halfDepth)
             crossing, p.centre
         | None -> failwith $"%s{id} must receive a beam"
 
@@ -309,12 +309,12 @@ module BeamLayoutTests =
         Assert.Equal<LitRay list>(
             [ { host = OnMainBeam; ends = EndsAtDetector }; { host = OnReflectedBeamOf (Library.ElementId "s"); ends = EndsOpen } ],
             scene.rays)
-        Assert.Equal(Some (OnReflectedBeamOf (Library.ElementId "s")), firstFreeRay scene)
+        Assert.Equal(Some (OnReflectedBeamOf (Library.ElementId "s")), scene.firstFreeRay)
         // A detector on that reflected ray leaves no free ray at all.
         let full = withMainDetector @ [ onReflectedOf "s" (el "rdet" Detector 0.4) ]
-        Assert.Equal(None, firstFreeRay (layout full))
+        Assert.Equal(None, (layout full).firstFreeRay)
         // With no detector anywhere, the main beam itself is the free ray.
-        Assert.Equal(Some OnMainBeam, firstFreeRay (layout [ el "src" LightSource -1.0; el "s" Sample 0.0 ]))
+        Assert.Equal(Some OnMainBeam, (layout [ el "src" LightSource -1.0; el "s" Sample 0.0 ]).firstFreeRay)
 
     [<Fact>]
     let ``a host whose reflected ray is gone, an unknown host, or a hosting loop falls back to the main beam`` () =
@@ -351,12 +351,12 @@ module BeamLayoutTests =
         Assert.Equal<string list>([ "s" ], ids (attachableHosts elements (Library.ElementId "det")))
         Assert.Empty(attachableHosts elements (Library.ElementId "s"))
         Assert.Equal<Set<Library.ElementId>>(set [ Library.ElementId "pol2"; Library.ElementId "det" ], hostedUnder elements (Library.ElementId "s"))
-        Assert.Equal(OpensReflectedBeam, sideBeamOf (el "s" Sample 0.0).placement)
-        Assert.Equal(NoSideBeam, sideBeamOf (el "m" FlatMirror 0.0).placement)
-        Assert.Equal(NoSideBeam, sideBeamOf (el "src" LightSource 0.0).placement)
-        Assert.Equal(NoSideBeam, sideBeamOf { (el "lens" Lens 0.0).placement with emission = EmitBoth })
-        Assert.Equal(NoSideBeam, sideBeamOf { (el "pol" LinearPolarizer 0.0).placement with emission = EmitBoth })
-        Assert.Equal(NoSideBeam, sideBeamOf { (el "cp" CircularPolarizer 0.0).placement with emission = EmitBoth })
+        Assert.Equal(OpensReflectedBeam, SideBeam.ofPlacement (el "s" Sample 0.0).placement)
+        Assert.Equal(NoSideBeam, SideBeam.ofPlacement (el "m" FlatMirror 0.0).placement)
+        Assert.Equal(NoSideBeam, SideBeam.ofPlacement (el "src" LightSource 0.0).placement)
+        Assert.Equal(NoSideBeam, SideBeam.ofPlacement { (el "lens" Lens 0.0).placement with emission = EmitBoth })
+        Assert.Equal(NoSideBeam, SideBeam.ofPlacement { (el "pol" LinearPolarizer 0.0).placement with emission = EmitBoth })
+        Assert.Equal(NoSideBeam, SideBeam.ofPlacement { (el "cp" CircularPolarizer 0.0).placement with emission = EmitBoth })
 
     // --- the element-menu ray switches -----------------------------------------------------------
 

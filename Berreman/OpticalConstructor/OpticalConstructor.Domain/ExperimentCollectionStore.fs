@@ -27,13 +27,13 @@ module ExperimentCollectionStore =
     /// future store deems invalid). The later real store MAY grow the channel (missing file, IO
     /// failure) without breaking this declared shape — a new case is a compiler-guided addition.
     type ExperimentCollectionError =
-        | InvalidCollection of reason : string
+        | InvalidCollectionErr of reason : string
 
     /// A saved experiment-collection's name — the persistence key `tryLoadCollection` addresses,
     /// `saveCollection` carries inside its snapshot, and `listCollections` enumerates. Elevated
     /// single-case string DU; `.value` is the raw key (reached only at the storage boundary), and
     /// `tryCreate` rejects a blank name at the parse boundary (a collection with no name has no
-    /// addressable key), returning the typed `InvalidCollection`.
+    /// addressable key), returning the typed `InvalidCollectionErr`.
     type CollectionName =
         | CollectionName of string
 
@@ -41,7 +41,7 @@ module ExperimentCollectionStore =
 
         static member tryCreate (name : string) : Result<CollectionName, ExperimentCollectionError> =
             if System.String.IsNullOrWhiteSpace name
-            then Error (InvalidCollection "an experiment-collection name must not be blank")
+            then Error (InvalidCollectionErr "an experiment-collection name must not be blank")
             else Ok (CollectionName name)
 
     /// A named collection of experiments captured as pure DATA (the seam a future storage cycle
@@ -87,7 +87,7 @@ module ExperimentCollectionStore =
         /// of the same shape). Starts EMPTY — a fresh session has no saved collections.
         /// `saveCollection` upserts (insert or overwrite under the snapshot's OWN `name`), RE-validating
         /// that name through `CollectionName.tryCreate` so a directly-constructed blank key is rejected
-        /// as `InvalidCollection` rather than silently stored; `tryLoadCollection` / `listCollections`
+        /// as `InvalidCollectionErr` rather than silently stored; `tryLoadCollection` / `listCollections`
         /// read the map. Unlike `SceneProxy.saveScene` the name lives INSIDE the snapshot (the slice
         /// pins that signature), so there is no separate `name` argument. This is an INTRINSIC
         /// augmentation staying in this file (the `SceneProxy.createInMemory` precedent): it needs no

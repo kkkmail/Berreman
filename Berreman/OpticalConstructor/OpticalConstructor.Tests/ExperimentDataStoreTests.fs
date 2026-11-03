@@ -13,7 +13,7 @@ open OpticalConstructor.Storage                         // ExperimentDataStore.c
 /// These tests exercise the actual disk read: a temp file written under the test output round-trips a
 /// known intensity series and a known ellipsometric series (the store's parsed result equals the step-34
 /// parser's own output); a missing path yields a typed `ExperimentDataError` from BOTH fields (never a
-/// throw); and an EMPTY but existing file yields the parser's `EmptyDataFile` — distinct from the
+/// throw); and an EMPTY but existing file yields the parser's `EmptyDataFileErr` — distinct from the
 /// IO-failure case — proving the adapter reads then delegates and adds no parsing logic of its own.
 /// Parser semantics themselves stay covered by the step-34 in-memory string tests (`MeasuredDataTests`).
 module ExperimentDataStoreTests =
@@ -43,7 +43,7 @@ module ExperimentDataStoreTests =
         // The store must reproduce EXACTLY what the pure step-34 parser yields from the same text — no
         // parsing logic of its own.
         let expected =
-            match parseIntensitySeries text with
+            match (DataFileText text).parseIntensitySeries with
             | Ok s -> s
             | Error e -> failwith $"the intensity fixture unexpectedly failed to parse: %A{e}"
 
@@ -58,7 +58,7 @@ module ExperimentDataStoreTests =
         let path = writeTemp "ellipsometric-roundtrip.csv" text
 
         let expected =
-            match parseEllipsometricSeries text with
+            match (DataFileText text).parseEllipsometricSeries with
             | Ok s -> s
             | Error e -> failwith $"the ellipsometric fixture unexpectedly failed to parse: %A{e}"
 
@@ -72,21 +72,21 @@ module ExperimentDataStoreTests =
         let missing = DataFilePath.create (Path.Combine(testDir, "does-not-exist.csv"))
 
         match proxy.tryLoadIntensity missing with
-        | Error (MalformedDataFile reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (MalformedDataFile _) for a missing intensity path, got %A{other}")
+        | Error (MalformedDataFileErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (MalformedDataFileErr _) for a missing intensity path, got %A{other}")
 
         match proxy.tryLoadEllipsometric missing with
-        | Error (MalformedDataFile reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (MalformedDataFile _) for a missing ellipsometric path, got %A{other}")
+        | Error (MalformedDataFileErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (MalformedDataFileErr _) for a missing ellipsometric path, got %A{other}")
 
     [<Fact>]
-    let ``createFileBacked delegates parse semantics: an existing but empty file is the parser's EmptyDataFile`` () =
+    let ``createFileBacked delegates parse semantics: an existing but empty file is the parser's EmptyDataFileErr`` () =
         // The file EXISTS but is empty — File.ReadAllText succeeds with "" (no IO exception), so the store
-        // hands "" to the parser, whose EmptyDataFile is a DIFFERENT case than the IO-failure
-        // MalformedDataFile. This proves the adapter reads then delegates, adding no parsing logic.
+        // hands "" to the parser, whose EmptyDataFileErr is a DIFFERENT case than the IO-failure
+        // MalformedDataFileErr. This proves the adapter reads then delegates, adding no parsing logic.
         let proxy = ExperimentDataStore.createFileBacked ()
         let path = writeTemp "empty-intensity.csv" ""
 
         match proxy.tryLoadIntensity path with
-        | Error (EmptyDataFile reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected the parser's Error (EmptyDataFile _) for an empty file, got %A{other}")
+        | Error (EmptyDataFileErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected the parser's Error (EmptyDataFileErr _) for an empty file, got %A{other}")

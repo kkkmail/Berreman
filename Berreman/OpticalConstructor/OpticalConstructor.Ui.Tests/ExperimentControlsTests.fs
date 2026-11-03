@@ -100,9 +100,9 @@ module ExperimentControlsTests =
         Assert.Equal(Some (Library.ElementId "src"), m.experimentCollection.draft.elementId)
         Assert.Equal(Some Experiments.VaryWaveLength, m.experimentCollection.draft.variable)
         // Spec 0046: the sweep spans the tunable source's limits (190–1000 nm) and stays inside them.
-        Assert.True(abs (m.experimentCollection.draft.range.min - 190.0) < 1e-9)
-        Assert.True(abs (m.experimentCollection.draft.range.max - 1000.0) < 1e-9)
-        Assert.True(abs ((updateTableAndElementRotation (ExpSetRangeMin 50.0) m).experimentCollection.draft.range.min - 190.0) < 1e-9)
+        Assert.True(abs (m.experimentCollection.draft.range.min.value - 190.0) < 1e-9)
+        Assert.True(abs (m.experimentCollection.draft.range.max.value - 1000.0) < 1e-9)
+        Assert.True(abs ((updateTableAndElementRotation (ExpSetRangeMin 50.0) m).experimentCollection.draft.range.min.value - 190.0) < 1e-9)
 
     [<Fact>]
     let ``a fixed-line or unbound source varies nothing — its wavelength cannot be changed`` () =
@@ -160,9 +160,9 @@ module ExperimentControlsTests =
             |> updateTableAndElementRotation (ExpSetRangePoints 51)
         let d = m.experimentCollection.draft
         Assert.Equal(Experiments.CaptureBoth, d.measurement)
-        Assert.Equal(250.0, d.range.min)
-        Assert.Equal(650.0, d.range.max)
-        Assert.Equal(51, d.range.points)
+        Assert.Equal(250.0, d.range.min.value)
+        Assert.Equal(650.0, d.range.max.value)
+        Assert.Equal(51, d.range.points.value)
 
     // ============================ host MVU: Add / edit / remove collection ============================
 
