@@ -607,23 +607,86 @@ The feature list of spec 0050. Every item below is decided.
 - **`measuredElementOf` and the "first polarizer sets unit intensity" special case,** replaced by N objects and a real source with that default.
 - **No up-converters and no migrations** anywhere; a version mismatch is a typed error.
 
-### S. Phasing (each slice green on its own)
+### S. Implementation sections (in this order; each green on its own)
 
-1. **Pure data + names:** the tabulated-material case; canonical JSON + hash; per-kind schemas; seeds exported to catalogue files and deleted; tests load the files.
-2. **Library database** (slow data only, `EnsureCreated`, `Pinned`, backup, locations, contract tests); catalogue import with the decision dialog; extra catalogue folders.
-3. **Kit folder** for BOTH constructors:
-   - `KitProxy`, lock, change check;
-   - start screen + history (stars on top, `KitHistoryLimit`);
-   - experiments and scenes persist into the kit;
-   - copy-in + hashes; snapshot + resolution;
-   - `.ocproj`, the scene and collection seams and `recent.json` deleted.
-4. **Send kit / open kit from zip;** single-entry drops; copy experiments between kits.
-5. **Items + item models + parameters.**
-6. **Setups as slots;** the N-object run law; the real source; slot bar; grid generator; the naming template (replacing `MuellerExperimentLabel.parsed`).
-7. **Experiments v2:** roles, sessions, multi-variable scans, the import wizard with profiles (the existing parsers reused), split and match, exclusions, corrections.
-8. **Study + fit:**
-   - scopes and links, staged and joint fits, fit runs, results, publish / promote;
-   - first the harness and pipeline promotion and the test-support project (§Q reuse);
-   - then **AT-1 and AT-2**.
-9. **Online material sources** (`MaterialSourceProxy`: refractiveindex.info, then PTB OCDB, then Henke).
-10. **Measurement Planner, gyrotropic crystals first** (§M): layer 1, then the layer-2 recoverability report and plan generation with the kit cache. Acceptance is the set of existing facts listed in §M.
+1. **Library entries as data files** (§A, §B):
+   - the tabulated `EpsWithDispValue` case; canonical JSON + SHA-256; per-kind JSON Schemas, reusing the `ProjectJson` serializer and validator stack;
+   - generate `Berreman/OpticalConstructor/Catalogue/Builtin/` ONCE from the code seeds (GUIDs and values byte-for-byte), then delete the seed values;
+   - `CatalogueImport` over the existing `SeedingProxy` shape; tests load the catalogue files.
+2. **Library database** (§C, §G):
+   - replace the `Test` entity with the library model; `EnsureCreated`; the `Pinned` flag replacing `VersionsInUse`;
+   - a SQLite `create` for every library proxy, with contract suites run against BOTH the in-memory store and SQLite `:memory:`;
+   - locations from `appsettings.json` (the `OpticalConstructorSqlite` connection string); backup and restore; the `AppContext` switch to the database.
+3. **Catalogue import and library-entry exchange** (§B): import on every start by manifest hash; the decision table and its one-row-per-entry dialog; extra read-only catalogue folders; export to `-json` files and catalogue folders (export pins); single-file drop; licence attribution display.
+4. **Kit folder core** (§E, §A):
+   - `KitProxy` (folder + in-memory), `.kit-json`, atomic writes, `.oc/lock`, the external-change check;
+   - relative paths + hashes; copy-in of attached files; library snapshot + resolution on open;
+   - today's experiments and scenes persist into the kit;
+   - DELETE `.ocproj` (`ProjectFile`, the `Project` aggregate) and the `Scene` / `ExperimentCollection` seams.
+5. **Start screen and history** (§F):
+   - `KitHistoryProxy` over the per-user preferences, REUSING `RecentFiles.bump` (+ `star` / `unstar` / `forget` / `evict`); starred kits always on top, sorted by last open date; `KitHistoryLimit` = 100;
+   - missing-folder handling; `recent.json` replaced;
+   - the Launcher's Main AND Inverse both go through the start screen; the Data locations panel.
+6. **Send and receive kits** (§H): `KitArchiveProxy` (zip honouring `sendExclude`, open from zip); copy experiments between kits with item mapping.
+7. **Items and item models** (§I): the `Kit` module (`Item`, `ItemId`, `ItemLabel`, `Parameter`, `ParameterState`), `ItemModel` library entries with generated `ParameterAxis` lists, dial mapping, revisions, the Items panel.
+8. **Setups as slots and the run law** (§J, §N):
+   - N objects in series (delete `measuredElementOf`); a real source whose default reproduces today's charts;
+   - the slot bar and quick swap; the grid generator;
+   - the naming template, which REPLACES `MuellerExperimentLabel.parsed` and its `experimentRegex`.
+9. **Experiments v2 and data import** (§K):
+   - roles, sessions, multi-variable scans;
+   - the column-mapping wizard with import profiles stored in `.kit-json`; built-in profiles REUSE `MeasuredData`'s parsers and `MuellerDataStore`'s `parseMuellerCsv`, and the Mueller-matrix observation profile is added;
+   - split by column + template match, exclusions with reasons, setup corrections with audit notes;
+   - DELETE the `MuellerDataSet` DU and the archive-keyed `MuellerDataProxy` (`data.zip` stays as AT-1's data source only).
+10. **Promote the inverse harness and the reference pipeline** (§Q "Reuse"):
+    - MOVE into `OpticalConstructor.Optimization`: the bench noise model, observe / residual / throughput-residual, `scalingAround`, the fit wrappers, `RecoveredQuantity` / `RecoveryStatistics` / `statisticsFor`, `predictedRelativeErrors` and `combinationVariance`;
+    - create `Berreman/BerremanTestSupport/` (own folder, own `.fsproj`, a plain library) holding `BiaxialSample` and `AbsorbingBiaxialSample`, referenced by `BerremanTests` and `OpticalConstructor.Ui.Tests`;
+    - promote the `MuellerReconstructionTests` §7.2 hand-composed pipeline into product code and re-point §7.2 at it; move its expected literals into one shared reference module (no file read for expectations, spec 0044 §8.5);
+    - `BerremanTests` stays green with unchanged numbers.
+11. **Studies and fitting** (§L, §N):
+    - scopes and links; sessions and gain models (`MuellerReconstruction.familyGain` becomes their first implementation);
+    - staged and joint fits; the automatic engine choice, REUSING `buildDesign` / `reconstruct` and `InverseFit` / `MuellerInverseSolver` over `MuellerInverse.forwardModels`;
+    - generated axes; append-only fit runs; results (`FitQuality` reused), realizability, product check, profile likelihood;
+    - publish / promote to library; the study view;
+    - DELETE the `SolverHandoffView` stub, reusing its checks as pre-fit validation.
+12. **The two acceptance tests** (§Q): AT-1 optics-mueller and AT-2 `AbsorbingBiaxialNoisyTests`, built ONLY through semantic messages, with the folder round-trip (write, `SendKit`, unzip, reopen against an EMPTY library, compare the kit and the start-point residual). AT-2's five-seed ensemble is xUnit v3 `Explicit`. They run under the `kit-acceptance` gate.
+13. **Online material sources** (§D): `MaterialSourceProxy`. First refractiveindex.info (offline snapshot + update, REUSING `MaterialImport` as the record parser); then PTB OCDB with uncertainties; then the Henke compound calculator. Provenance, licence, a new version on update.
+14. **Measurement Planner, gyrotropic crystals first** (§M):
+    - inputs from the kit;
+    - the layer-1 symmetry table;
+    - layer 2: Fisher information / rank / confounded combinations / Cramér–Rao, REUSING `FitQuality.residualJacobian` and its `ResidualJacobian` carrier (`columnNorms`, `conditionNumber`, `correlation`) and the promoted `predictedRelativeErrors`;
+    - greedy D-optimal ranking; the plan emitted as `Planned` setups and experiments in the kit; the cache in `.oc/planner/`;
+    - acceptance = the existing `MuellerInverseTests` / `BiaxialInverseTests` facts listed in §M.
+
+### T. Invariants
+
+Each holds from the section named, through the end of the spec.
+
+- From section 1: `git grep -n -E "let (builtInEntries|seedEntries|standardCategories) " -- Berreman/OpticalConstructor/` finds nothing.
+- Throughout: `git grep -n -F "kit.kit-json" -- Berreman/` finds nothing.
+- From section 4: `git grep -n -i -F "ocproj" -- Berreman/OpticalConstructor/` finds nothing.
+- From section 8: `git grep -n -F "experimentRegex" -- Berreman/` finds nothing.
+- From section 9: `git grep -n -F "MuellerDataSet" -- Berreman/` finds nothing.
+- From section 10: `git grep -n -F "let noisyObserveAbsoluteWith" -- Berreman/BerremanTests/` finds nothing.
+
+### U. Gates this work adds to the usual ones
+
+- **`kit-acceptance`** (`.gates/OpticalConstructor/kit-acceptance.gates`): AT-1 and AT-2, trait `kit-acceptance`. It applies to the Study, run-law and import code and the acceptance test files.
+- **`unit-tests`** applies only to the code `BerremanTests` covers. In this work that is sections 10 and 11, and any step that changes the solver, `OpticalConstructor.Optimization`, `MuellerInverse.fs` or `MuellerReconstruction.fs`.
+
+### V. Done when
+
+- AT-1 and AT-2 pass under `kit-acceptance`, with the assertions listed in §Q.
+- The Planner reproduces the §M facts.
+- Every gate is green with zero warnings from our code, `elevation-full` included, and `Elevation/elevation-known-findings.json` still lists no finding.
+- `BerremanTests`' numbers are unchanged.
+- The code no longer contains the §R removals.
+- The app persists the library in the database and everything else in kit folders.
+
+### W. Out of scope
+
+- New inverse-physics tests.
+- A WinForms port (UI logic stays in pure Domain / State, as `AGENTS.md` requires).
+- Cloud or shared databases.
+- Bayesian sequential design.
+- Shipped planner playbooks.

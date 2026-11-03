@@ -81,7 +81,7 @@ dotnet test --no-build -c Release --filter-trait "Category=ui-smoke"
 - Filter with xUnit v3's own options only (`--filter-class`,
   `--filter-method`, `--filter-trait`, `--filter-not-trait`). VSTest's
   `--filter` does not exist here.
-- `BerremanTests` takes about 30 minutes whole, so run the classes you
+- `BerremanTests` takes about 52 minutes whole, so run the classes you
   touched. The two constructor suites take under a minute, and
   `ui-tests` about three.
 - The ELEV analyzers run over what you changed, from the repo root,
@@ -91,8 +91,8 @@ dotnet test --no-build -c Release --filter-trait "Category=ui-smoke"
   powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004
   ```
 
-- Build machines have no OneDrive. No test, fixture or kit may live
-  under Documents or depend on a OneDrive folder.
+- No test, fixture or kit lives under Documents; test kits and
+  databases go under the test run's output directory.
 
 ---
 
@@ -121,34 +121,14 @@ duplicate it here. What you need to know while implementing:
   count is at least the baseline from the prior green step's
   checkpoint record (`.checkpoints-json`, maintained by the
   arc-runner). You never author baselines yourself.
-- **The known-findings list** (`Elevation/elevation-known-findings.json`):
-  - a recorded finding does not fail `elevation`, but a new one does;
-  - a recorded finding that is gone fails as stale, so a fix deletes its
-    entry (or lowers its count) in the same step. That includes entries in
-    other files your change cleared, such as the higher side of a
-    duplicate name whose lower side you renamed;
-  - never add an entry, never re-record the list, and never edit
-    `.elevation-analyzers.json` to silence a finding.
-
----
-
-## The ELEV ledger
-
-The ELEV cleanup is the ledger
-`specs/0048/.manual/002-elevation-ledger.jsonl`, one JSON row per unit of
-work. Its plan, with the operator's rulings R1-R7, is
-`specs/0048/.manual/002-elevation-plan.md`, and that plan binds over a
-row's own text.
-
-- A step works inside ONE row: the whole row, or some of its files in
-  the row's order. Rows close in id order.
-- The step that clears a row's last file flips the row, in the same
-  change as its code: `state` becomes `done`, `closedIn` names the step,
-  and the note is written as plan section 5 lists.
-- A public rename in a shipped package goes in
-  `specs/0048/.manual/renames.tsv`, and a changed stored shape in
-  `specs/0048/.manual/stored-format-changes.md`.
-- The ledger is never regenerated.
+- **The tree is ELEV-clean.** The known-findings list
+  (`Elevation/elevation-known-findings.json`) is empty, so every ELEV
+  finding (ELEV004 excepted) fails `elevation`:
+  - every line you write is ELEV-clean;
+  - never add an entry to the list, and never edit
+    `.elevation-analyzers.json` or the analyzers to silence a finding;
+  - a mark (`[<ElevationBoundary>]`, `[<NumericCarrier>]`) goes on a
+    declaration, never on a module, and only where AGENTS.md allows it.
 
 ---
 
@@ -220,8 +200,7 @@ ASG cannot; these are the ones STL's prompt carries (ASG spec 0090
 
 1. **Nothing is deferred** (operator, 2026-11-01; STL spec 0229
    `.manual/006`). A step finishes what its brief asks for. Work that
-   cannot be finished is a blocked step, or a blocked ledger row, naming
-   the question. It is never a "later", never a follow-up, and never an
+   cannot be finished is a blocked step naming the question. It is never a "later", never a follow-up, and never an
    entry left for another step.
 2. **A published spec is not amended.** An operator ruling in the
    spec's `.manual/`, or an operator note, is the amendment.

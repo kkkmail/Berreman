@@ -54,9 +54,11 @@ Test stack: **xUnit v3 on Microsoft.Testing.Platform**, **FsCheck**
 (property-based, run through `Check.One` inside a `[<Fact>]`),
 **FluentAssertions**, and **Avalonia.Headless** for UI tests. Run the relevant
 tests after every change; if your local build/tests are green, the matching
-gate is green too. `BerremanTests` takes about 30 minutes whole (the inverse-fit
-tests, spec 0044 `.manual/020`), so run the classes you touched; the two
-constructor suites take under a minute, `ui-tests` about three.
+gate is green too. `BerremanTests` takes about 52 minutes whole (51 min 44 s
+measured 2026-11-03; the inverse-fit classes alone run up to 997 s each, spec 0044
+`.manual/020`), so run the classes you touched; the two constructor suites take
+under a minute, `ui-tests` about three. No test, fixture or kit lives under
+`Documents`; test kits and databases go under the test run's output directory.
 
 **Release only.** There is no Debug configuration: the root
 `Directory.Build.props` defaults `Configuration` to Release and the root
@@ -376,18 +378,10 @@ bulk numbers on purpose with `[<NumericCarrier("<reason>")>]`. Both are
 
 The gates are `elevation` (the projects a step touches, plus their dependents)
 and `elevation-full` (every project). **ELEV004 is excluded in the gate command,
-not in the rules**, as in STL. The tree's findings when the gates were set up are
-recorded in `Elevation/elevation-known-findings.json`: a recorded finding does
-not fail the gate, a new one does, and so does a recorded one that is gone. **Fix
-a finding and delete its entry in the same change; never add an entry and never
-re-record the list.**
-
-The cleanup is the ELEV ledger `specs/0048/.manual/002-elevation-ledger.jsonl`,
-one row per unit of work, built from that list the way STL builds its elevation
-ledgers. Its plan, with the operator's rulings, is `002-elevation-plan.md`
-beside it. A row closes in the change that clears its last file, and nothing is
-deferred. A row that cannot be closed as ruled is marked `blocked` with its
-question.
+not in the rules**, as in STL. **The tree is ELEV-clean** (spec 0048 closed the
+cleanup): `Elevation/elevation-known-findings.json` lists no finding, so every
+finding fails the gate. **Never add an entry, never re-record the list, and never
+edit `.elevation-analyzers.json` or the analyzers to silence a finding.**
 
 ---
 
@@ -455,6 +449,13 @@ click harder.
 
   Never scatter id strings through the codebase, and never use a module of
   `[<Literal>]`s or `[<RequireQualifiedAccess>]`.
+
+  Here the type is `ConstructorUiId` (`OpticalConstructor.Controls/UiIds.fs`). An
+  id derived from a Domain value is an extension member of `ConstructorUiId` in
+  the project that owns the value's type
+  (`OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs`).
+- **Every user action is a semantic Elmish message.** The button and the test
+  send the same message, so tests drive by meaning, never by pixels.
 - **Three test layers, in this order:** (1) domain/model unit tests for behavior;
   (2) `Avalonia.Headless` tests for UI structure, input, layout, and rendered
   frames (the `ui-smoke` gate opens the host and renders one frame per view);
@@ -487,6 +488,17 @@ This is a spec-driven, gated repository.
   prompt that waits for user input.
 - Route persistent worker output only into the per-arc `.artifacts/` folder,
   never `%TEMP%` / `%LOCALAPPDATA%`.
+- **No legacy, no migration** (there is no release yet). Superseded code is
+  deleted in the change that replaces it. A stored format whose version differs
+  from the app's is a typed error: no schema up-converters, no EF Core migrations
+  (`EnsureCreated` plus a schema stamp), no compatibility shims, no fallback
+  readers, no "keep the old path as an option".
+- **Reuse, never copy.** A reuse is a move or a call: the change that adds code
+  at its new home deletes it at the old one. A duplicated function body, a
+  re-transcribed constant or a second parser for one format is a defect.
+- **Nothing is deferred** (operator, 2026-11-01). A step finishes what it is
+  asked for: no stub, no TODO, no "later" or "follow-up". Work that cannot be
+  finished as written stops with its question.
 - **Build machines run without OneDrive** (operator ruling, 2026-11-01). ASG's
   `Disable-OneDrive.ps1` removes it for every account and keeps it out, so
   Documents, Desktop and `%APPDATA%` are on the local disk. No build step, gate,

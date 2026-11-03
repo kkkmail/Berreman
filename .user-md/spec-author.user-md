@@ -1,0 +1,68 @@
+# Writing a spec in this repository
+
+These rules bind every spec the spec-writer authors here. `AGENTS.md` binds every
+line the spec asks for; this file binds how the spec is written and which gates
+each step runs.
+
+## The preliminary spec is the spec's source
+
+- The preliminary spec named by the prompt (`specs/<id>/.manual/NNN-*.md`) is
+  binding and authoritative. Do not re-open anything it decides.
+- Verify each fact you build on against the tree; do not assume it. Where the
+  preliminary spec and the code disagree, the code is the baseline and the
+  preliminary spec is the target.
+- If something is genuinely ambiguous, pick the reading most consistent with the
+  preliminary spec and `AGENTS.md`, and record it in the `.spec-md` problem
+  statement. Do not ask.
+- Its out-of-scope list is the operator's decision, not a deferral.
+
+## Sections and steps
+
+- You own the final plan. A section is at most about forty steps, and
+  dependencies point backward.
+- A section's paragraph in the preliminary spec is its spec. Put that
+  paragraph's essentials into each brief, because mappers do not read each
+  other's sections.
+- Nothing is deferred (`AGENTS.md`). No brief hands part of its own work to a
+  later step, and no step leaves a stub. Work that cannot be finished as written
+  is a blocked step naming the question.
+- Where the preliminary spec names a reuse, the brief says which code moves or
+  is called, and what is deleted at the source in the same step, so the
+  `reuse_critic` can check it.
+
+## Section invariants
+
+- Declare an invariant on every section AFTER the one that establishes its rule.
+  It runs after every step, so never declare it on the section that makes it
+  true.
+- Commands contain no backslash; use `-F` for literal text.
+- Every spec declares these on all its sections:
+  - `ASSERT_INVARIANT elev-list-empty must-find-nothing: git grep -n -F "ELEV0" -- Elevation/elevation-known-findings.json`
+  - `ASSERT_INVARIANT no-vstest must-find-nothing: git grep -n -E "Microsoft.NET.Test.Sdk|xunit.runner.visualstudio|Xunit.SkippableFact|IsTestingPlatformApplication" -- "*.fsproj" "*.props" "*.targets"`
+- Add one wherever a brief says "nothing may name X". The preliminary spec lists
+  its own.
+
+## Choosing a step's gates
+
+A step runs only the gates that cover the seam of its change.
+
+- **`build`** on every step that edits a file the solution compiles.
+- **`elevation`** on every step that edits an `.fs` or `.fsproj`, and on no
+  other step.
+- **`elevation-full`** at the final step only. The scoped `elevation` already
+  analyzes every project that references a changed one.
+- **`constructor-unit-tests`** and **`ui-smoke`** (whole suites under a minute)
+  on the steps that touch their code.
+- **`ui-tests`** selected by the classes the step touches (`gate_selection`);
+  whole at the final step only.
+- **`unit-tests`** (`BerremanTests`, about 52 minutes whole; single inverse
+  classes up to 997 s) selected by class only, on the steps its `applies_to`
+  matches; whole at the final step only.
+- **`kit-acceptance`** on the steps that touch the Study, run-law or import code,
+  or the acceptance test files.
+- **A step that edits no file runs no gate.** Its `how_to` never asks the worker
+  to run tests or the elevation driver by hand, and its `acceptance` names only
+  gates the step runs.
+
+`count_at_least` baselines never regress. A test that moves between projects
+counts in its new project in the same step.
