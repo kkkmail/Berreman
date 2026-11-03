@@ -24,6 +24,8 @@ applies_to:
       - "Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs"
       - "Berreman/OpticalConstructor/OpticalConstructor.Optimization/**"
       - "Berreman/BerremanTestSupport/**"
+      - "data/optics-mueller/**"
+      - "data/absorbing-biaxial-noisy/**"
 qualifier: integration
 requires_gates: [build]
 selector:

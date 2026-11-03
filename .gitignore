@@ -328,7 +328,10 @@ ASALocalRun/
 
 # MFractors (Xamarin productivity tool) working folder 
 .mfractor/
-/data
+# data/ holds the committed reference experiment kits (spec 0050 .manual/001 §1). Only the web app's
+# knowledge-base store and each kit's app cache and lock (.oc/) are machine-local.
+/data/chroma/
+/data/*/.oc/
 
 # Optical Constructor (Spec 0022, Part I §I.4): derived/bulk .binz sidecars
 # (sweep tables, field maps, fit histories) are regenerable and excluded from

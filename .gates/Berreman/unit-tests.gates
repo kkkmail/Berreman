@@ -29,6 +29,7 @@ applies_to:
       - "Berreman/OpticalConstructor/OpticalConstructor.Optimization/**"
       - "Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs"
       - "Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs"
+      - "data/optics-mueller/data/**"
 qualifier: unit
 requires_gates: [build]
 selector:

@@ -70,6 +70,16 @@ The feature list of spec 0050. Every item below is decided.
 
 ## 1. The two reference cases
 
+Each reference case is a committed experiment kit in its own subfolder of `<repo-root>/data/`:
+
+- **`data/optics-mueller/`**: case 1a, used by AT-1 (§Q);
+- **`data/absorbing-biaxial-noisy/`**: case 1b, used by AT-2 (§Q).
+
+They are complete kit folders (§A, §E): `.kit-json`, items, setups, experiments, the study and its fit runs, `library/`
+and the raw lab files under `data/`. The acceptance tests prove the kit IO against them, and the user opens them from
+the start screen ("Open kit…") to try the UI on real and on synthetic data. Only `data/chroma/` (the web app's
+knowledge base) and each kit's `.oc/` are git-ignored.
+
 ### 1a. optics-mueller (real data, `C:\GitHub\optics-mueller`)
 
 - **Items:**
@@ -300,7 +310,7 @@ The feature list of spec 0050. Every item below is decided.
 - **Shipped catalogue:** `<install>\Catalogue\`.
 - **Every path is overridable** in `appsettings.json`; a Launcher "Data locations" panel shows them, each with "Open folder".
 - `AGENTS.md`'s rule against `%LOCALAPPDATA%` covers arc-runner WORKER output, not product data.
-- **Tests:** test kits and databases live under the test run's output directory (§Q), never under `Documents`.
+- **Tests:** test kits and databases live under the test run's output directory (§Q), never under `Documents`. The two committed reference kits in `<repo-root>/data/` (§1) are read-only to tests: a test opens them read-only and never writes there.
 
 ### H. Exchange
 
@@ -541,24 +551,23 @@ The feature list of spec 0050. Every item below is decided.
 ### Q. The two acceptance tests — replication by REUSE
 
 **Common rules:**
-- Each test builds its kit ONLY through the semantic messages (§P).
-- Library: SQLite `:memory:`. Kit: an in-memory `KitProxy` stub.
-- **The data and the expected values come from where they already live;** nothing is transcribed or copied.
-- At the end the kit is written through the REAL folder `KitProxy` into a throw-away folder under the test run's output directory, zipped with `SendKit`, unzipped elsewhere, and reopened against an EMPTY library database. The test asserts:
-  - the reopened kit is equal to the original;
-  - the study's residual vector at its start point is equal too.
+- **The two kits are committed** in `data/optics-mueller/` and `data/absorbing-biaxial-noisy/` (§1). Section 12 creates them by running the build below once, through the app's own folder `KitProxy`, and commits the result. They are never hand-written.
+- **Build:** each test builds its kit ONLY through the semantic messages (§P), against a SQLite `:memory:` library, and writes it through the REAL folder `KitProxy` into a throw-away folder under the test run's output directory. It asserts that the built kit equals the committed kit, file by file (every kit file and every file under `data/` and `library/`; `.oc/` excluded). This proves the write path, and that the committed kit is what the app produces.
+- **Open:** the test then opens the COMMITTED kit read-only through the real folder `KitProxy`, against an EMPTY library database, and runs its study from there. This proves the read path: the library snapshot, the relative paths and hashes, and the data import. A test never writes into `data/`.
+- **Send:** the built kit is zipped with `SendKit`, unzipped elsewhere and reopened; the reopened kit and the study's residual vector at its start point equal the built ones.
+- **The data and the expected values come from where they already live;** nothing is transcribed. The raw lab files live in the committed kit, once (AT-1 below), or are regenerated and compared byte for byte (AT-2 below).
 - Trait `kit-acceptance`, the `FsxAcceptanceTests` pattern, in `OpticalConstructor.Ui.Tests` (the headless app).
 
 **AT-1 — optics-mueller:**
 - **Kit:** laser, LP1, LP2, CPL1 / CPL2 (compound LP + retarder, δ and Δ unknown), QZ / LR (black-box Mueller), phone (session gain, dark).
 - **Setups:** the grid over 4 families × {AIR, QZ, LR, QZ → LR} × φ. The **two-sample** setups put QZ in Object 1 and LR in Object 2.
-- **Data:** the committed `Berreman/Data/MuellerMatrix/data.zip`.
-  - The in-memory kit is seeded from its CSV entries through the existing `MuellerDataStore` reader, so there is no second copy of the data.
+- **Data:** the lab files of `Berreman/Data/MuellerMatrix/` MOVE into the kit: the CSV entries of `data.zip` into `data/optics-mueller/data/raw/`, and the reference pipeline's scripts, `README.md` and `reference_step1_summary.json` / `reference_step2_linear_summary.json` into `data/optics-mueller/data/reference/`. `Berreman/Data/MuellerMatrix/` is then deleted, with its `Content` link in `BerremanTests.fsproj`; `MuellerReconstructionTests` §7.2 (re-pointed by section 10) reads the kit's files. There is no second copy of the data.
+  - The CSVs are read through the existing `MuellerDataStore` parser (`parseMuellerCsv`, the "Phone ROI CSV" import profile).
   - Attach, split by `experiment`, match by the lab template.
   - Roles for Darkness, BullshitCheck and the AIR repeats.
   - The LR correction and the excluded frame are applied as data.
 - **Study:** staged (stage 1 AIR calibration → publish → stage 2 objects).
-- **Expected:** the reference pipeline's full-precision values that `MuellerReconstructionTests` §7.2 ("section 7.2 end-to-end…") asserts (provenance `Berreman/Data/MuellerMatrix/reference_step2_linear_summary.json`).
+- **Expected:** the reference pipeline's full-precision values that `MuellerReconstructionTests` §7.2 ("section 7.2 end-to-end…") asserts (provenance `data/optics-mueller/data/reference/reference_step2_linear_summary.json`).
 - **Reuse, so that ONE implementation exists:**
   - the stage pipeline that §7.2 composes by hand (`loadDataSet`, `reduceAirTraces`, `unwrapFit`, stage-1 constants, `familyGain`, `correctSignal`, `buildDesign`, `reconstruct`) is promoted into product code as the study's staged Mueller path, and §7.2 is re-pointed to call it;
   - the transcribed expected literals move from the §7.2 test body into one shared reference module, which both tests open. The test reads no file for its expectations (spec 0044 §8.5).
@@ -571,8 +580,9 @@ The feature list of spec 0050. Every item below is decided.
   - five sample items — 100 µm plates cut `opticAxisCut`, `otherOpticAxisCut`, `ZCut`, `XCut`, `YCut` — all made of ONE material version holding the `absorbing` ground truth.
 - **Setups and experiments:** one experiment per plate, with a multi-variable scan (incidence × azimuth × T / R) that reproduces exactly `a1 @ a2 @ a3` = 44 configurations. This is the grid generator's job, checked configuration by configuration against `fullConfigurations`.
 - **Data:**
-  - for each seed, the observations come from the EXISTING `noisyObserveAbsoluteWith forward absorbing NoiseParam.decentLab seed fullConfigurations`;
-  - they are written as kit data files through the Mueller-matrix import profile, and read back through the same profile.
+  - for each of the five seeds, the observations come from the EXISTING `noisyObserveAbsoluteWith forward absorbing NoiseParam.decentLab seed fullConfigurations`;
+  - they are written as kit data files under `data/absorbing-biaxial-noisy/data/` through the Mueller-matrix import profile, committed with the kit, and read back through the same profile;
+  - the test regenerates them from the seeds and requires the committed files byte-identical, so the data is never transcribed.
 - **Study:**
   - open the material with all 15 components `Unknown` (`MaterialScope` across the five plates);
   - start = `perturbedStart`, box = `searchBox`.
@@ -601,7 +611,7 @@ The feature list of spec 0050. Every item below is decided.
 - **The code seed values and `seedAll`'s Domain source,** replaced by catalogue files + `CatalogueImport`.
 - **The `Test` EF table and its initial migration**, replaced by the library model with `EnsureCreated`.
 - **`SolverHandoffView`'s stub screen**, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks.
-- **`MuellerDataSet`** (a hard-coded DU of data sets) and the archive-keyed `MuellerDataProxy`. `parseMuellerCsv` is reused as an import profile, and the archive stays only as AT-1's data source.
+- **`MuellerDataSet`** (a hard-coded DU of data sets), the archive-keyed `MuellerDataProxy` and `Berreman/Data/MuellerMatrix/`. `parseMuellerCsv` is reused as an import profile, and the archive's lab files and reference files move into the AT-1 kit, `data/optics-mueller/data/` (§Q).
 - **`MuellerExperimentLabel.parsed` and `experimentRegex`,** replaced by the naming template (§J).
 - **The strict v1 `X,Y` path,** whose parsers are reused as built-in import profiles.
 - **`measuredElementOf` and the "first polarizer sets unit intensity" special case,** replaced by N objects and a real source with that default.
@@ -637,7 +647,7 @@ The feature list of spec 0050. Every item below is decided.
    - roles, sessions, multi-variable scans;
    - the column-mapping wizard with import profiles stored in `.kit-json`; built-in profiles REUSE `MeasuredData`'s parsers and `MuellerDataStore`'s `parseMuellerCsv`, and the Mueller-matrix observation profile is added;
    - split by column + template match, exclusions with reasons, setup corrections with audit notes;
-   - DELETE the `MuellerDataSet` DU and the archive-keyed `MuellerDataProxy` (`data.zip` stays as AT-1's data source only).
+   - DELETE the `MuellerDataSet` DU and the archive-keyed `MuellerDataProxy`. MOVE `Berreman/Data/MuellerMatrix/` into the AT-1 kit folder: the CSV entries of `data.zip` into `data/optics-mueller/data/raw/`, the scripts, `README.md` and reference summaries into `data/optics-mueller/data/reference/` (§Q AT-1). Delete the folder and its `Content` link in `BerremanTests.fsproj`, and re-point `MuellerReconstructionTests` to read the kit's files through the import profile. Its numbers stay unchanged.
 10. **Promote the inverse harness and the reference pipeline** (§Q "Reuse"):
     - MOVE into `OpticalConstructor.Optimization`: the bench noise model, observe / residual / throughput-residual, `scalingAround`, the fit wrappers, `RecoveredQuantity` / `RecoveryStatistics` / `statisticsFor`, `predictedRelativeErrors` and `combinationVariance`;
     - create `Berreman/BerremanTestSupport/` (own folder, own `.fsproj`, a plain library) holding `BiaxialSample` and `AbsorbingBiaxialSample`, referenced by `BerremanTests` and `OpticalConstructor.Ui.Tests`;
@@ -649,7 +659,12 @@ The feature list of spec 0050. Every item below is decided.
     - generated axes; append-only fit runs; results (`FitQuality` reused), realizability, product check, profile likelihood;
     - publish / promote to library; the study view;
     - DELETE the `SolverHandoffView` stub, reusing its checks as pre-fit validation.
-12. **The two acceptance tests** (§Q): AT-1 optics-mueller and AT-2 `AbsorbingBiaxialNoisyTests`, built ONLY through semantic messages, with the folder round-trip (write, `SendKit`, unzip, reopen against an EMPTY library, compare the kit and the start-point residual). AT-2's five-seed ensemble is xUnit v3 `Explicit`. They run under the `kit-acceptance` gate.
+12. **The two acceptance tests and the two reference kits** (§1, §Q):
+    - AT-1 optics-mueller and AT-2 `AbsorbingBiaxialNoisyTests`, built ONLY through semantic messages;
+    - create the committed kits `data/optics-mueller/` (around the lab files section 9 moved there) and `data/absorbing-biaxial-noisy/` (with AT-2's five generated observation files) by running that build once through the app's folder `KitProxy`;
+    - each test asserts its built kit equals the committed one, then opens the committed kit read-only against an EMPTY library and runs its study, then round-trips the built kit through `SendKit`;
+    - AT-2's five-seed ensemble is xUnit v3 `Explicit`;
+    - they run under the `kit-acceptance` gate.
 13. **Online material sources** (§D): `MaterialSourceProxy`. First refractiveindex.info (offline snapshot + update, REUSING `MaterialImport` as the record parser); then PTB OCDB with uncertainties; then the Henke compound calculator. Provenance, licence, a new version on update.
 14. **Measurement Planner, gyrotropic crystals first** (§M):
     - inputs from the kit;
@@ -667,16 +682,18 @@ Each holds from the section named, through the end of the spec.
 - From section 4: `git grep -n -i -F "ocproj" -- Berreman/OpticalConstructor/` finds nothing.
 - From section 8: `git grep -n -F "experimentRegex" -- Berreman/` finds nothing.
 - From section 9: `git grep -n -F "MuellerDataSet" -- Berreman/` finds nothing.
+- From section 9: `git grep -n -F "Data/MuellerMatrix" -- Berreman/` finds nothing.
 - From section 10: `git grep -n -F "let noisyObserveAbsoluteWith" -- Berreman/BerremanTests/` finds nothing.
 
 ### U. Gates this work adds to the usual ones
 
-- **`kit-acceptance`** (`.gates/OpticalConstructor/kit-acceptance.gates`, already in the catalog): AT-1 and AT-2, trait `kit-acceptance`, in `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs`. The gate is forward-pointing until section 12 creates that file. It applies to that file, the run law (`OpticalConstructor.Domain/ExperimentRun.fs`), `OpticalConstructor.Optimization` and `BerremanTestSupport`. `ui-tests` already excludes the trait.
+- **`kit-acceptance`** (`.gates/OpticalConstructor/kit-acceptance.gates`, already in the catalog): AT-1 and AT-2, trait `kit-acceptance`, in `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs`. The gate is forward-pointing until section 12 creates that file. It applies to that file, the run law (`OpticalConstructor.Domain/ExperimentRun.fs`), `OpticalConstructor.Optimization`, `BerremanTestSupport` and the two committed kits (`data/optics-mueller/**`, `data/absorbing-biaxial-noisy/**`). `ui-tests` already excludes the trait.
 - **`unit-tests`** applies only to the code `BerremanTests` covers. In this work that is sections 10 and 11, and any step that changes the solver, `OpticalConstructor.Optimization`, `MuellerInverse.fs` or `MuellerReconstruction.fs`.
 
 ### V. Done when
 
 - AT-1 and AT-2 pass under `kit-acceptance`, with the assertions listed in §Q.
+- The two reference kits are committed in `data/optics-mueller/` and `data/absorbing-biaxial-noisy/`, equal to what the build produces, and open in the app from the start screen.
 - The Planner reproduces the §M facts.
 - Every gate is green with zero warnings from our code, `elevation-full` included, and `Elevation/elevation-known-findings.json` still lists no finding.
 - `BerremanTests`' numbers are unchanged.
@@ -696,7 +713,7 @@ Each holds from the section named, through the end of the spec.
 The code and documents this work builds on. Read each before writing the steps that touch it.
 
 - **Repository rules:** `AGENTS.md`, `naming_conventions.md`, `.gates/`.
-- **Solver and data:** `Berreman/Berreman/`, `Berreman/Analytics/`, `Berreman/OpticalProperties/`, `Berreman/Data/MuellerMatrix/README.md`.
+- **Solver and data:** `Berreman/Berreman/`, `Berreman/Analytics/`, `Berreman/OpticalProperties/`, `Berreman/Data/MuellerMatrix/README.md` (moved into `data/optics-mueller/data/reference/` by section 9), `.gitignore` (`data/` is tracked; only `data/chroma/` and each kit's `.oc/` are ignored).
 - **Constructor:**
   - `Berreman/OpticalConstructor/OpticalConstructor.Domain/`, `OpticalConstructor.Storage/`, `OpticalConstructor.Optimization/`, `OpticalConstructor.App/`, `OpticalConstructor.Database/`;
   - `OpticalConstructor.Seeding/Seeding.fs`;

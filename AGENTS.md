@@ -580,5 +580,8 @@ This is a spec-driven, gated repository.
   (no EOL, no diff, no merge). Leave them alone.
 - **Vendored MathNet.Numerics** is built from source under `MathNetNumerics/`;
   reference the projects, not the NuGet.
-- Scratch/working folders (`Temp/`, `!Temp/`, `specs_copy/`, `data/`) are not the
+- Scratch/working folders (`Temp/`, `!Temp/`, `specs_copy/`) are not the
   product — don't build product code there.
+- `data/` holds the committed reference experiment kits (spec 0050 `.manual/001` §1),
+  one subfolder each. Only `data/chroma/` (the web app's knowledge base) and each kit's
+  `.oc/` are git-ignored. Tests open those kits read-only and never write into `data/`.
