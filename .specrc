@@ -43,6 +43,9 @@
   "spec_defaults": {
     "gates_policy": "seam"
   },
+  "census": {
+    "exclude_paths": ["MathNetNumerics/**"]
+  },
   "data_version": 8,
 
   "max_arc_wall_seconds": 1209600
