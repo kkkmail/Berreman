@@ -690,3 +690,19 @@ Each holds from the section named, through the end of the spec.
 - Cloud or shared databases.
 - Bayesian sequential design.
 - Shipped planner playbooks.
+
+### X. What this work reads
+
+The code and documents this work builds on. Read each before writing the steps that touch it.
+
+- **Repository rules:** `AGENTS.md`, `naming_conventions.md`, `.gates/`.
+- **Solver and data:** `Berreman/Berreman/`, `Berreman/Analytics/`, `Berreman/OpticalProperties/`, `Berreman/Data/MuellerMatrix/README.md`.
+- **Constructor:**
+  - `Berreman/OpticalConstructor/OpticalConstructor.Domain/`, `OpticalConstructor.Storage/`, `OpticalConstructor.Optimization/`, `OpticalConstructor.App/`, `OpticalConstructor.Database/`;
+  - `OpticalConstructor.Seeding/Seeding.fs`;
+  - `OpticalConstructor.Ui/AppContext.fs`, `TableAndElementRotationView.fs`, `SolverHandoffView.fs`;
+  - `OpticalConstructor.Ui.Tests/FsxAcceptanceTests.fs`.
+- **Inverse tests:** in `Berreman/BerremanTests/`, the files `InverseFitHarness.fs`, `BiaxialSample.fs`, `AbsorbingBiaxialSample.fs`, `AbsorbingBiaxialNoisyTests.fs`, `MuellerReconstructionTests.fs`, `MuellerInverseTests.fs`, `BiaxialInverseTests.fs`.
+- **Specs:**
+  - `specs/0046/.manual/018-sharing-libraries-inverse-planner.md`;
+  - `specs/0044/.manual/004-active-anisotropic-inverse-problem.md`, `017-feasible-biaxial-experiments.md`, `020-handover.md`.
