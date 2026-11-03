@@ -22,5 +22,13 @@
     "openTemporary": false,
     "consumers": [],
     "temporaries": []
+  },
+  "STORE_BigBoy_0004": {
+    "lifecycle": "declared",
+    "declaringStep": 125,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
   }
 }

@@ -84,14 +84,14 @@
     {
       "name": "S3.3 -- Export, Export my library and licence attribution",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "903dcb1",
       "spec_jsonl_lines": 121
     },
     {
       "name": "S4.1 -- The kit file, KitFolder, KitProxy and KitContext",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 131
     },
     {
       "name": "S4.2 -- Attachments by relative path and hash; the library snapshot and its resolution",

@@ -10341,6 +10341,1007 @@
           "command_sha256": "e5b8f16f4d5a60096afa7e082f343602fa90fa29639a684e3c37afa0d8981e67"
         }
       ]
+    },
+    {
+      "id": "S41-KIT-FILE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "Domain Kit.fs declares ClockTime, ClockProvider (an injected now), KitError with describe, KitName (tryCreate refusing a blank name; fileStem through step 24's FileStem.ofText, no second rule), KitAuthor, KitNotes, SendExcludeGlob, KitFile (schema version, step 24's KitId, name, author, created, modified, notes, sendExclude; currentSchemaVersion 1, extension .kit-json, fileName .kit-json, create at one instant), KitFolder over FolderName and KitAccess (ReadWriteKitAccess / ReadOnlyKitAccess).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S41-KIT-PATHS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "KitRelativePath.tryCreate answers forward slashes and refuses an empty, rooted, drive-bearing or escaping path with InvalidKitPathErr; KitFileKind is the five per-kind kit files of 001 §A with their extensions, fileNameOf and all; KitFileText and KitDataFile exist; KitError gains MissingKitFileErr and InvalidKitPathErr; ContentHash.ofBytes is the one lowercase-hex SHA-256 body and contentHashOf hashes through it with every hash unchanged.",
+      "checks": [
+        {
+          "step": 123,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S41-KIT-FILE-TEXT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "The .kit-json is canonical indented JSON (KitFile.fileText) read back by KitFileText.parseKitFile, which validates against schema/kit.schema.json (version-gated, every key required and no other under version 1) and answers UnsupportedSchemaVersionErr with the kit file's extension for another schema version; the entry, manifest and kit file texts render through JsonNode.canonicalFileText, and the manifest and kit file parse through CanonicalJson.parseVersionedText, so each body exists once.",
+      "checks": [
+        {
+          "step": 124,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S41-KIT-PROXY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "Domain KitFolders.fs declares the [<ReferenceEquality>] KitProxy record with initialiseKit (refusing a folder that already holds .kit-json with KitAlreadyExistsErr; keeping every file; adding data, library and the kit file), readKitFile (NotAKitFolderErr without one) and writeKitFile (NotAKitFolderErr without one); InMemoryKitFolder (create, placeLabFile, paths) shared by every in-memory proxy over it; and KitProxy.createInMemory; KitProxyContract holds the facts and KitProxyTests runs them in memory.",
+      "checks": [
+        {
+          "step": 125,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S41-KIT-FOLDER",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "Storage KitProxy.create (folder : KitFolder) implements the kit-file verbs over a real folder: building it writes nothing; initialise creates a missing folder, data and library, and writes .kit-json last through FileName.writeBytesAtomically; a missing folder or .kit-json is NotAKitFolderErr; a refused kit file text is KitFileRejectedErr naming .kit-json; every IO exception is KitIoErr; LibraryFileText.writeAtomically writes through the same atomic writer; KitProxyFolderTests runs every contract fact over folders under the test output.",
+      "checks": [
+        {
+          "step": 126,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S41-KIND-FILES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "Both KitProxy implementations list (ordinal, by extension ignoring case, root only), read, atomically write and delete the kit files of every KitFileKind by stem, a missing file being MissingKitFileErr; a replace leaves no temporary file, and a failed folder replace keeps the old file whole and is KitIoErr.",
+      "checks": [
+        {
+          "step": 127,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S41-DATA-FILES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "Both KitProxy implementations read any file of the kit by its KitRelativePath, answering its text (UTF-8, a leading byte-order mark dropped from the text only) and ContentHash.ofBytes of its stored bytes, MissingKitFileErr when absent and KitIoErr on an IO failure, writing nothing.",
+      "checks": [
+        {
+          "step": 128,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S41-KIT-LOCK",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "KitLockOwner (MachineName, UserName, STL ProcessId) and KitLockHolder (owner, acquiredAt, describe) exist and KitError gains KitLockedErr of the holder; KitProxy.acquireLock takes .oc/lock for this proxy (creating .oc only then), answers its own holder again, and answers KitLockedErr of a foreign live lock writing nothing; releaseLock deletes only its own lock and keeps .oc; the folder lock is stale only for an unbinding text or a process that has ended on this machine, and is taken by a move that never overwrites a live lock.",
+      "checks": [
+        {
+          "step": 129,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S41-CHANGE-CHECK",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "KitProxy.recordStamps records the stamps of the .kit-json and every per-kind kit file, never on disk, and changedKitFiles answers in ordinal order every kit file another writer added, changed or removed since, this proxy's own writes and deletes moving the record; lab files, .oc and temporary files are never stamped; the folder stamps by SHA-256 of the bytes and the double by content.",
+      "checks": [
+        {
+          "step": 130,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S41-KIT-CONTEXT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "KitContext holds the proxy, the loaded KitFile, the access and the clock; openKit reads the kit file, takes the lock only under ReadWriteKitAccess (KitLockedErr passing through with nothing written, so a read-only open can follow) and records the stamps; under ReadOnlyKitAccess its proxy is KitProxy.readOnlyView, whose every write verb answers KitReadOnlyErr, so a read-only context writes nothing, not even .oc; close releases the lock; saveKitFile stamps modified from the clock and writes the kit file.",
+      "checks": [
+        {
+          "step": 131,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S41-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "Every S4.1 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error, so every complete match on KitError, KitAccess and KitFileKind covers its cases.",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 123,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 124,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 125,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 126,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 127,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 128,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 129,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 130,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 131,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S41-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §E ('A kit is a folder recognised by its .kit-json'; 'The kit file holds the kit id (GUID), name, author, created and modified times, notes, … and the sendExclude globs'; 'References inside a kit are relative paths (forward slashes) plus the SHA-256 recorded at attach time'; 'Writes are atomic (write *.tmp, then replace)'; 'Concurrency: one window per kit; a .oc/lock (machine, user, process, time) warns across processes and machines, with an open read-only choice; on activation, files changed outside the app … are offered for reload'), §A ('Kit folder layout'; 'A file that exists once per folder is named by its extension alone'; 'Kit extensions'), §F ('New kit…: … An empty folder is initialised; a folder that already has files keeps them, and .kit-json plus the app's subfolders are added'), §P ('KitProxy, built per opened folder by KitProxy.create (folder : KitFolder)'; 'a ClockProvider'; 'Logic receives a KitContext, and every proxy has an in-memory stub of the same shape'); specs/0050/.section-plan-jsonl section 15 (S4.1) brief; specs/0050/.spec-md §3.11, §3.12, §3.13, §4, §5, §6, §8",
+      "requirement": "Every S4.1 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): every new value is elevated where it is born, KitId and ProcessId are reused rather than declared again (ELEV014), every new case name has two words and is unique (ELEV016), every KitError case ends in Err (ELEV020), every IO declaration carrying a primitive is marked on itself, and every caption is rendered by a member (ELEV002).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 123,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 124,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 125,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 126,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 127,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 128,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 129,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 130,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 131,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S41-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 15 (S4.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.1 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s15-elev-list-empty).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "invariant-s15-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "3fef5a9cb986f20774e3639cbf1986a35104d43773090ab579fd3a88946ac881"
+        },
+        {
+          "step": 123,
+          "gate": "invariant-s15-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "3fef5a9cb986f20774e3639cbf1986a35104d43773090ab579fd3a88946ac881"
+        },
+        {
+          "step": 124,
+          "gate": "invariant-s15-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "3fef5a9cb986f20774e3639cbf1986a35104d43773090ab579fd3a88946ac881"
+        },
+        {
+          "step": 125,
+          "gate": "invariant-s15-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "3fef5a9cb986f20774e3639cbf1986a35104d43773090ab579fd3a88946ac881"
+        },
+        {
+          "step": 126,
+          "gate": "invariant-s15-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "3fef5a9cb986f20774e3639cbf1986a35104d43773090ab579fd3a88946ac881"
+        },
+        {
+          "step": 127,
+          "gate": "invariant-s15-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "3fef5a9cb986f20774e3639cbf1986a35104d43773090ab579fd3a88946ac881"
+        },
+        {
+          "step": 128,
+          "gate": "invariant-s15-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "3fef5a9cb986f20774e3639cbf1986a35104d43773090ab579fd3a88946ac881"
+        },
+        {
+          "step": 129,
+          "gate": "invariant-s15-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "3fef5a9cb986f20774e3639cbf1986a35104d43773090ab579fd3a88946ac881"
+        },
+        {
+          "step": 130,
+          "gate": "invariant-s15-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "3fef5a9cb986f20774e3639cbf1986a35104d43773090ab579fd3a88946ac881"
+        },
+        {
+          "step": 131,
+          "gate": "invariant-s15-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "3fef5a9cb986f20774e3639cbf1986a35104d43773090ab579fd3a88946ac881"
+        }
+      ]
+    },
+    {
+      "id": "S41-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 15 (S4.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.1 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s15-no-vstest).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "invariant-s15-no-vstest",
+          "selection": "command",
+          "command_sha256": "82759a98d11d55bc0e8f9fede294a05b4dec95e702763cdd13153362da8d4d6e"
+        },
+        {
+          "step": 123,
+          "gate": "invariant-s15-no-vstest",
+          "selection": "command",
+          "command_sha256": "82759a98d11d55bc0e8f9fede294a05b4dec95e702763cdd13153362da8d4d6e"
+        },
+        {
+          "step": 124,
+          "gate": "invariant-s15-no-vstest",
+          "selection": "command",
+          "command_sha256": "82759a98d11d55bc0e8f9fede294a05b4dec95e702763cdd13153362da8d4d6e"
+        },
+        {
+          "step": 125,
+          "gate": "invariant-s15-no-vstest",
+          "selection": "command",
+          "command_sha256": "82759a98d11d55bc0e8f9fede294a05b4dec95e702763cdd13153362da8d4d6e"
+        },
+        {
+          "step": 126,
+          "gate": "invariant-s15-no-vstest",
+          "selection": "command",
+          "command_sha256": "82759a98d11d55bc0e8f9fede294a05b4dec95e702763cdd13153362da8d4d6e"
+        },
+        {
+          "step": 127,
+          "gate": "invariant-s15-no-vstest",
+          "selection": "command",
+          "command_sha256": "82759a98d11d55bc0e8f9fede294a05b4dec95e702763cdd13153362da8d4d6e"
+        },
+        {
+          "step": 128,
+          "gate": "invariant-s15-no-vstest",
+          "selection": "command",
+          "command_sha256": "82759a98d11d55bc0e8f9fede294a05b4dec95e702763cdd13153362da8d4d6e"
+        },
+        {
+          "step": 129,
+          "gate": "invariant-s15-no-vstest",
+          "selection": "command",
+          "command_sha256": "82759a98d11d55bc0e8f9fede294a05b4dec95e702763cdd13153362da8d4d6e"
+        },
+        {
+          "step": 130,
+          "gate": "invariant-s15-no-vstest",
+          "selection": "command",
+          "command_sha256": "82759a98d11d55bc0e8f9fede294a05b4dec95e702763cdd13153362da8d4d6e"
+        },
+        {
+          "step": 131,
+          "gate": "invariant-s15-no-vstest",
+          "selection": "command",
+          "command_sha256": "82759a98d11d55bc0e8f9fede294a05b4dec95e702763cdd13153362da8d4d6e"
+        }
+      ]
+    },
+    {
+      "id": "S41-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 15 (S4.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.1 step, nothing under Berreman/ names kit.kit-json (section invariant s15-no-kit-kit-json): the kit file is named by its extension alone, .kit-json.",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "invariant-s15-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "5d29f941315d8173732c55e500df41774ea46f5887608e3a37c99346ce4a7acd"
+        },
+        {
+          "step": 123,
+          "gate": "invariant-s15-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "5d29f941315d8173732c55e500df41774ea46f5887608e3a37c99346ce4a7acd"
+        },
+        {
+          "step": 124,
+          "gate": "invariant-s15-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "5d29f941315d8173732c55e500df41774ea46f5887608e3a37c99346ce4a7acd"
+        },
+        {
+          "step": 125,
+          "gate": "invariant-s15-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "5d29f941315d8173732c55e500df41774ea46f5887608e3a37c99346ce4a7acd"
+        },
+        {
+          "step": 126,
+          "gate": "invariant-s15-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "5d29f941315d8173732c55e500df41774ea46f5887608e3a37c99346ce4a7acd"
+        },
+        {
+          "step": 127,
+          "gate": "invariant-s15-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "5d29f941315d8173732c55e500df41774ea46f5887608e3a37c99346ce4a7acd"
+        },
+        {
+          "step": 128,
+          "gate": "invariant-s15-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "5d29f941315d8173732c55e500df41774ea46f5887608e3a37c99346ce4a7acd"
+        },
+        {
+          "step": 129,
+          "gate": "invariant-s15-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "5d29f941315d8173732c55e500df41774ea46f5887608e3a37c99346ce4a7acd"
+        },
+        {
+          "step": 130,
+          "gate": "invariant-s15-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "5d29f941315d8173732c55e500df41774ea46f5887608e3a37c99346ce4a7acd"
+        },
+        {
+          "step": 131,
+          "gate": "invariant-s15-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "5d29f941315d8173732c55e500df41774ea46f5887608e3a37c99346ce4a7acd"
+        }
+      ]
+    },
+    {
+      "id": "S41-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 15 (S4.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.1 step, nothing under Berreman/ names EpsAxisEvaluated (section invariant s15-no-eps-axis-evaluated, established by S1.1).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "invariant-s15-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "561ae569b3eaae85d8cbe6dedcf03d9682a5d67b5a8dab51d281b7df7c0f8484"
+        },
+        {
+          "step": 123,
+          "gate": "invariant-s15-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "561ae569b3eaae85d8cbe6dedcf03d9682a5d67b5a8dab51d281b7df7c0f8484"
+        },
+        {
+          "step": 124,
+          "gate": "invariant-s15-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "561ae569b3eaae85d8cbe6dedcf03d9682a5d67b5a8dab51d281b7df7c0f8484"
+        },
+        {
+          "step": 125,
+          "gate": "invariant-s15-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "561ae569b3eaae85d8cbe6dedcf03d9682a5d67b5a8dab51d281b7df7c0f8484"
+        },
+        {
+          "step": 126,
+          "gate": "invariant-s15-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "561ae569b3eaae85d8cbe6dedcf03d9682a5d67b5a8dab51d281b7df7c0f8484"
+        },
+        {
+          "step": 127,
+          "gate": "invariant-s15-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "561ae569b3eaae85d8cbe6dedcf03d9682a5d67b5a8dab51d281b7df7c0f8484"
+        },
+        {
+          "step": 128,
+          "gate": "invariant-s15-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "561ae569b3eaae85d8cbe6dedcf03d9682a5d67b5a8dab51d281b7df7c0f8484"
+        },
+        {
+          "step": 129,
+          "gate": "invariant-s15-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "561ae569b3eaae85d8cbe6dedcf03d9682a5d67b5a8dab51d281b7df7c0f8484"
+        },
+        {
+          "step": 130,
+          "gate": "invariant-s15-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "561ae569b3eaae85d8cbe6dedcf03d9682a5d67b5a8dab51d281b7df7c0f8484"
+        },
+        {
+          "step": 131,
+          "gate": "invariant-s15-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "561ae569b3eaae85d8cbe6dedcf03d9682a5d67b5a8dab51d281b7df7c0f8484"
+        }
+      ]
+    },
+    {
+      "id": "S41-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 15 (S4.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.1 step, nothing under Berreman/ says complexity = None or complexity = Some (section invariant s15-complexity-mandatory, established by S1.2).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "invariant-s15-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "fcadddd684dc32f4d38cef58586862a7e3c1299630f7da4e2207409077bd02ed"
+        },
+        {
+          "step": 123,
+          "gate": "invariant-s15-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "fcadddd684dc32f4d38cef58586862a7e3c1299630f7da4e2207409077bd02ed"
+        },
+        {
+          "step": 124,
+          "gate": "invariant-s15-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "fcadddd684dc32f4d38cef58586862a7e3c1299630f7da4e2207409077bd02ed"
+        },
+        {
+          "step": 125,
+          "gate": "invariant-s15-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "fcadddd684dc32f4d38cef58586862a7e3c1299630f7da4e2207409077bd02ed"
+        },
+        {
+          "step": 126,
+          "gate": "invariant-s15-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "fcadddd684dc32f4d38cef58586862a7e3c1299630f7da4e2207409077bd02ed"
+        },
+        {
+          "step": 127,
+          "gate": "invariant-s15-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "fcadddd684dc32f4d38cef58586862a7e3c1299630f7da4e2207409077bd02ed"
+        },
+        {
+          "step": 128,
+          "gate": "invariant-s15-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "fcadddd684dc32f4d38cef58586862a7e3c1299630f7da4e2207409077bd02ed"
+        },
+        {
+          "step": 129,
+          "gate": "invariant-s15-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "fcadddd684dc32f4d38cef58586862a7e3c1299630f7da4e2207409077bd02ed"
+        },
+        {
+          "step": 130,
+          "gate": "invariant-s15-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "fcadddd684dc32f4d38cef58586862a7e3c1299630f7da4e2207409077bd02ed"
+        },
+        {
+          "step": 131,
+          "gate": "invariant-s15-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "fcadddd684dc32f4d38cef58586862a7e3c1299630f7da4e2207409077bd02ed"
+        }
+      ]
+    },
+    {
+      "id": "S41-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 15 (S4.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.1 step, no Berreman/*.fs file holds a seeded preset string id (section invariant s15-no-seeded-string-preset-ids, established by S1.3).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "invariant-s15-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d8a16c4f7bef6022ed2757bd0ec23452a8bf300e52267b93452efd98ca3a14e0"
+        },
+        {
+          "step": 123,
+          "gate": "invariant-s15-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d8a16c4f7bef6022ed2757bd0ec23452a8bf300e52267b93452efd98ca3a14e0"
+        },
+        {
+          "step": 124,
+          "gate": "invariant-s15-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d8a16c4f7bef6022ed2757bd0ec23452a8bf300e52267b93452efd98ca3a14e0"
+        },
+        {
+          "step": 125,
+          "gate": "invariant-s15-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d8a16c4f7bef6022ed2757bd0ec23452a8bf300e52267b93452efd98ca3a14e0"
+        },
+        {
+          "step": 126,
+          "gate": "invariant-s15-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d8a16c4f7bef6022ed2757bd0ec23452a8bf300e52267b93452efd98ca3a14e0"
+        },
+        {
+          "step": 127,
+          "gate": "invariant-s15-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d8a16c4f7bef6022ed2757bd0ec23452a8bf300e52267b93452efd98ca3a14e0"
+        },
+        {
+          "step": 128,
+          "gate": "invariant-s15-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d8a16c4f7bef6022ed2757bd0ec23452a8bf300e52267b93452efd98ca3a14e0"
+        },
+        {
+          "step": 129,
+          "gate": "invariant-s15-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d8a16c4f7bef6022ed2757bd0ec23452a8bf300e52267b93452efd98ca3a14e0"
+        },
+        {
+          "step": 130,
+          "gate": "invariant-s15-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d8a16c4f7bef6022ed2757bd0ec23452a8bf300e52267b93452efd98ca3a14e0"
+        },
+        {
+          "step": 131,
+          "gate": "invariant-s15-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d8a16c4f7bef6022ed2757bd0ec23452a8bf300e52267b93452efd98ca3a14e0"
+        }
+      ]
+    },
+    {
+      "id": "S41-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 15 (S4.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.1 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (section invariant s15-no-seeding-seam, established by S1.6).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "invariant-s15-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "369e8e34911fc0ec9301a19c9599432295b449230e11c67a2a869bdcac881fdc"
+        },
+        {
+          "step": 123,
+          "gate": "invariant-s15-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "369e8e34911fc0ec9301a19c9599432295b449230e11c67a2a869bdcac881fdc"
+        },
+        {
+          "step": 124,
+          "gate": "invariant-s15-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "369e8e34911fc0ec9301a19c9599432295b449230e11c67a2a869bdcac881fdc"
+        },
+        {
+          "step": 125,
+          "gate": "invariant-s15-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "369e8e34911fc0ec9301a19c9599432295b449230e11c67a2a869bdcac881fdc"
+        },
+        {
+          "step": 126,
+          "gate": "invariant-s15-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "369e8e34911fc0ec9301a19c9599432295b449230e11c67a2a869bdcac881fdc"
+        },
+        {
+          "step": 127,
+          "gate": "invariant-s15-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "369e8e34911fc0ec9301a19c9599432295b449230e11c67a2a869bdcac881fdc"
+        },
+        {
+          "step": 128,
+          "gate": "invariant-s15-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "369e8e34911fc0ec9301a19c9599432295b449230e11c67a2a869bdcac881fdc"
+        },
+        {
+          "step": 129,
+          "gate": "invariant-s15-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "369e8e34911fc0ec9301a19c9599432295b449230e11c67a2a869bdcac881fdc"
+        },
+        {
+          "step": 130,
+          "gate": "invariant-s15-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "369e8e34911fc0ec9301a19c9599432295b449230e11c67a2a869bdcac881fdc"
+        },
+        {
+          "step": 131,
+          "gate": "invariant-s15-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "369e8e34911fc0ec9301a19c9599432295b449230e11c67a2a869bdcac881fdc"
+        }
+      ]
+    },
+    {
+      "id": "S41-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 15 (S4.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.1 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (section invariant s15-t1-no-code-seeds, 001 §T 'From section 1', established by S1.7).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "invariant-s15-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "7e5c883ebd6da4f4ff3a5a08c84aa15f53dd2e5f1060b7281b4065ce827221b9"
+        },
+        {
+          "step": 123,
+          "gate": "invariant-s15-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "7e5c883ebd6da4f4ff3a5a08c84aa15f53dd2e5f1060b7281b4065ce827221b9"
+        },
+        {
+          "step": 124,
+          "gate": "invariant-s15-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "7e5c883ebd6da4f4ff3a5a08c84aa15f53dd2e5f1060b7281b4065ce827221b9"
+        },
+        {
+          "step": 125,
+          "gate": "invariant-s15-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "7e5c883ebd6da4f4ff3a5a08c84aa15f53dd2e5f1060b7281b4065ce827221b9"
+        },
+        {
+          "step": 126,
+          "gate": "invariant-s15-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "7e5c883ebd6da4f4ff3a5a08c84aa15f53dd2e5f1060b7281b4065ce827221b9"
+        },
+        {
+          "step": 127,
+          "gate": "invariant-s15-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "7e5c883ebd6da4f4ff3a5a08c84aa15f53dd2e5f1060b7281b4065ce827221b9"
+        },
+        {
+          "step": 128,
+          "gate": "invariant-s15-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "7e5c883ebd6da4f4ff3a5a08c84aa15f53dd2e5f1060b7281b4065ce827221b9"
+        },
+        {
+          "step": 129,
+          "gate": "invariant-s15-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "7e5c883ebd6da4f4ff3a5a08c84aa15f53dd2e5f1060b7281b4065ce827221b9"
+        },
+        {
+          "step": 130,
+          "gate": "invariant-s15-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "7e5c883ebd6da4f4ff3a5a08c84aa15f53dd2e5f1060b7281b4065ce827221b9"
+        },
+        {
+          "step": 131,
+          "gate": "invariant-s15-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "7e5c883ebd6da4f4ff3a5a08c84aa15f53dd2e5f1060b7281b4065ce827221b9"
+        }
+      ]
+    },
+    {
+      "id": "S41-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 15 (S4.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.1 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (section invariant s15-no-seed-modules, established by S1.3 and S1.7).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "invariant-s15-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "47708e535c3fde35a2e13c2bd70fd7730f350cd880dc9c4ecab2ade751ae111b"
+        },
+        {
+          "step": 123,
+          "gate": "invariant-s15-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "47708e535c3fde35a2e13c2bd70fd7730f350cd880dc9c4ecab2ade751ae111b"
+        },
+        {
+          "step": 124,
+          "gate": "invariant-s15-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "47708e535c3fde35a2e13c2bd70fd7730f350cd880dc9c4ecab2ade751ae111b"
+        },
+        {
+          "step": 125,
+          "gate": "invariant-s15-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "47708e535c3fde35a2e13c2bd70fd7730f350cd880dc9c4ecab2ade751ae111b"
+        },
+        {
+          "step": 126,
+          "gate": "invariant-s15-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "47708e535c3fde35a2e13c2bd70fd7730f350cd880dc9c4ecab2ade751ae111b"
+        },
+        {
+          "step": 127,
+          "gate": "invariant-s15-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "47708e535c3fde35a2e13c2bd70fd7730f350cd880dc9c4ecab2ade751ae111b"
+        },
+        {
+          "step": 128,
+          "gate": "invariant-s15-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "47708e535c3fde35a2e13c2bd70fd7730f350cd880dc9c4ecab2ade751ae111b"
+        },
+        {
+          "step": 129,
+          "gate": "invariant-s15-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "47708e535c3fde35a2e13c2bd70fd7730f350cd880dc9c4ecab2ade751ae111b"
+        },
+        {
+          "step": 130,
+          "gate": "invariant-s15-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "47708e535c3fde35a2e13c2bd70fd7730f350cd880dc9c4ecab2ade751ae111b"
+        },
+        {
+          "step": 131,
+          "gate": "invariant-s15-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "47708e535c3fde35a2e13c2bd70fd7730f350cd880dc9c4ecab2ade751ae111b"
+        }
+      ]
+    },
+    {
+      "id": "S41-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 15 (S4.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.1 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (section invariant s15-no-test-db, established by S2.1 step 59).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "invariant-s15-no-test-db",
+          "selection": "command",
+          "command_sha256": "9b7865d4d2611b7fc288a8b585180dbbcf0ac559c9d8fc39b051d1cbc9786c68"
+        },
+        {
+          "step": 123,
+          "gate": "invariant-s15-no-test-db",
+          "selection": "command",
+          "command_sha256": "9b7865d4d2611b7fc288a8b585180dbbcf0ac559c9d8fc39b051d1cbc9786c68"
+        },
+        {
+          "step": 124,
+          "gate": "invariant-s15-no-test-db",
+          "selection": "command",
+          "command_sha256": "9b7865d4d2611b7fc288a8b585180dbbcf0ac559c9d8fc39b051d1cbc9786c68"
+        },
+        {
+          "step": 125,
+          "gate": "invariant-s15-no-test-db",
+          "selection": "command",
+          "command_sha256": "9b7865d4d2611b7fc288a8b585180dbbcf0ac559c9d8fc39b051d1cbc9786c68"
+        },
+        {
+          "step": 126,
+          "gate": "invariant-s15-no-test-db",
+          "selection": "command",
+          "command_sha256": "9b7865d4d2611b7fc288a8b585180dbbcf0ac559c9d8fc39b051d1cbc9786c68"
+        },
+        {
+          "step": 127,
+          "gate": "invariant-s15-no-test-db",
+          "selection": "command",
+          "command_sha256": "9b7865d4d2611b7fc288a8b585180dbbcf0ac559c9d8fc39b051d1cbc9786c68"
+        },
+        {
+          "step": 128,
+          "gate": "invariant-s15-no-test-db",
+          "selection": "command",
+          "command_sha256": "9b7865d4d2611b7fc288a8b585180dbbcf0ac559c9d8fc39b051d1cbc9786c68"
+        },
+        {
+          "step": 129,
+          "gate": "invariant-s15-no-test-db",
+          "selection": "command",
+          "command_sha256": "9b7865d4d2611b7fc288a8b585180dbbcf0ac559c9d8fc39b051d1cbc9786c68"
+        },
+        {
+          "step": 130,
+          "gate": "invariant-s15-no-test-db",
+          "selection": "command",
+          "command_sha256": "9b7865d4d2611b7fc288a8b585180dbbcf0ac559c9d8fc39b051d1cbc9786c68"
+        },
+        {
+          "step": 131,
+          "gate": "invariant-s15-no-test-db",
+          "selection": "command",
+          "command_sha256": "9b7865d4d2611b7fc288a8b585180dbbcf0ac559c9d8fc39b051d1cbc9786c68"
+        }
+      ]
+    },
+    {
+      "id": "S41-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 15 (S4.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.1 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (section invariant s15-no-versions-in-use, established by S2.2 step 65).",
+      "checks": [
+        {
+          "step": 122,
+          "gate": "invariant-s15-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "affedbe344bc32d4f95afdf08d11fc57f47216b4d3e64e8fbc00b230d48c17c2"
+        },
+        {
+          "step": 123,
+          "gate": "invariant-s15-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "affedbe344bc32d4f95afdf08d11fc57f47216b4d3e64e8fbc00b230d48c17c2"
+        },
+        {
+          "step": 124,
+          "gate": "invariant-s15-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "affedbe344bc32d4f95afdf08d11fc57f47216b4d3e64e8fbc00b230d48c17c2"
+        },
+        {
+          "step": 125,
+          "gate": "invariant-s15-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "affedbe344bc32d4f95afdf08d11fc57f47216b4d3e64e8fbc00b230d48c17c2"
+        },
+        {
+          "step": 126,
+          "gate": "invariant-s15-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "affedbe344bc32d4f95afdf08d11fc57f47216b4d3e64e8fbc00b230d48c17c2"
+        },
+        {
+          "step": 127,
+          "gate": "invariant-s15-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "affedbe344bc32d4f95afdf08d11fc57f47216b4d3e64e8fbc00b230d48c17c2"
+        },
+        {
+          "step": 128,
+          "gate": "invariant-s15-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "affedbe344bc32d4f95afdf08d11fc57f47216b4d3e64e8fbc00b230d48c17c2"
+        },
+        {
+          "step": 129,
+          "gate": "invariant-s15-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "affedbe344bc32d4f95afdf08d11fc57f47216b4d3e64e8fbc00b230d48c17c2"
+        },
+        {
+          "step": 130,
+          "gate": "invariant-s15-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "affedbe344bc32d4f95afdf08d11fc57f47216b4d3e64e8fbc00b230d48c17c2"
+        },
+        {
+          "step": 131,
+          "gate": "invariant-s15-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "affedbe344bc32d4f95afdf08d11fc57f47216b4d3e64e8fbc00b230d48c17c2"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -12424,6 +13425,206 @@
         "S33-INV-NO-TEST-DB",
         "S33-INV-NO-VERSIONS-IN-USE"
       ]
+    },
+    {
+      "step": 122,
+      "sha256": "e4b9819f01a9cb845b275990fbbcde7ab508d7d9ffb916dcc7511bb83699b0e4",
+      "obligations": [
+        "S41-KIT-FILE",
+        "S41-BUILD",
+        "S41-ELEVATION",
+        "S41-INV-ELEV-LIST",
+        "S41-INV-NO-VSTEST",
+        "S41-INV-NO-KIT-KIT-JSON",
+        "S41-INV-NO-EPS-AXIS-EVALUATED",
+        "S41-INV-COMPLEXITY-MANDATORY",
+        "S41-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S41-INV-NO-SEEDING-SEAM",
+        "S41-INV-T1-NO-CODE-SEEDS",
+        "S41-INV-NO-SEED-MODULES",
+        "S41-INV-NO-TEST-DB",
+        "S41-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 123,
+      "sha256": "85f2109e7eed069f1ec1692310da3134a4605dbbd9e8beb20a902d256100275d",
+      "obligations": [
+        "S41-KIT-PATHS",
+        "S41-BUILD",
+        "S41-ELEVATION",
+        "S41-INV-ELEV-LIST",
+        "S41-INV-NO-VSTEST",
+        "S41-INV-NO-KIT-KIT-JSON",
+        "S41-INV-NO-EPS-AXIS-EVALUATED",
+        "S41-INV-COMPLEXITY-MANDATORY",
+        "S41-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S41-INV-NO-SEEDING-SEAM",
+        "S41-INV-T1-NO-CODE-SEEDS",
+        "S41-INV-NO-SEED-MODULES",
+        "S41-INV-NO-TEST-DB",
+        "S41-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 124,
+      "sha256": "c90943d66d6cc9416d5c1573a4faa758dc165061b52a9e3294ba2c94470f63a6",
+      "obligations": [
+        "S41-KIT-FILE-TEXT",
+        "S41-BUILD",
+        "S41-ELEVATION",
+        "S41-INV-ELEV-LIST",
+        "S41-INV-NO-VSTEST",
+        "S41-INV-NO-KIT-KIT-JSON",
+        "S41-INV-NO-EPS-AXIS-EVALUATED",
+        "S41-INV-COMPLEXITY-MANDATORY",
+        "S41-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S41-INV-NO-SEEDING-SEAM",
+        "S41-INV-T1-NO-CODE-SEEDS",
+        "S41-INV-NO-SEED-MODULES",
+        "S41-INV-NO-TEST-DB",
+        "S41-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 125,
+      "sha256": "8c3a722841b4979ddc4982e15209153b98930480c1aca30c54c04d029862e9d1",
+      "obligations": [
+        "S41-KIT-PROXY",
+        "S41-BUILD",
+        "S41-ELEVATION",
+        "S41-INV-ELEV-LIST",
+        "S41-INV-NO-VSTEST",
+        "S41-INV-NO-KIT-KIT-JSON",
+        "S41-INV-NO-EPS-AXIS-EVALUATED",
+        "S41-INV-COMPLEXITY-MANDATORY",
+        "S41-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S41-INV-NO-SEEDING-SEAM",
+        "S41-INV-T1-NO-CODE-SEEDS",
+        "S41-INV-NO-SEED-MODULES",
+        "S41-INV-NO-TEST-DB",
+        "S41-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 126,
+      "sha256": "2d36774cdf12b4db52de23574fbdd224c5974d90789b189f325fc8442052a5bd",
+      "obligations": [
+        "S41-KIT-FOLDER",
+        "S41-BUILD",
+        "S41-ELEVATION",
+        "S41-INV-ELEV-LIST",
+        "S41-INV-NO-VSTEST",
+        "S41-INV-NO-KIT-KIT-JSON",
+        "S41-INV-NO-EPS-AXIS-EVALUATED",
+        "S41-INV-COMPLEXITY-MANDATORY",
+        "S41-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S41-INV-NO-SEEDING-SEAM",
+        "S41-INV-T1-NO-CODE-SEEDS",
+        "S41-INV-NO-SEED-MODULES",
+        "S41-INV-NO-TEST-DB",
+        "S41-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 127,
+      "sha256": "ad7f2b11277aa23ef9945c36b07c22f04bdae05da9e507ad7f87977b0256a0c1",
+      "obligations": [
+        "S41-KIND-FILES",
+        "S41-BUILD",
+        "S41-ELEVATION",
+        "S41-INV-ELEV-LIST",
+        "S41-INV-NO-VSTEST",
+        "S41-INV-NO-KIT-KIT-JSON",
+        "S41-INV-NO-EPS-AXIS-EVALUATED",
+        "S41-INV-COMPLEXITY-MANDATORY",
+        "S41-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S41-INV-NO-SEEDING-SEAM",
+        "S41-INV-T1-NO-CODE-SEEDS",
+        "S41-INV-NO-SEED-MODULES",
+        "S41-INV-NO-TEST-DB",
+        "S41-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 128,
+      "sha256": "7472776266242350ea07d5e877c53ef89fa880937011296b85c421412b4494cc",
+      "obligations": [
+        "S41-DATA-FILES",
+        "S41-BUILD",
+        "S41-ELEVATION",
+        "S41-INV-ELEV-LIST",
+        "S41-INV-NO-VSTEST",
+        "S41-INV-NO-KIT-KIT-JSON",
+        "S41-INV-NO-EPS-AXIS-EVALUATED",
+        "S41-INV-COMPLEXITY-MANDATORY",
+        "S41-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S41-INV-NO-SEEDING-SEAM",
+        "S41-INV-T1-NO-CODE-SEEDS",
+        "S41-INV-NO-SEED-MODULES",
+        "S41-INV-NO-TEST-DB",
+        "S41-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 129,
+      "sha256": "eae6add066f731228c4cbc6f19a4ddf202d0a796a4f194668a4c837343fe291d",
+      "obligations": [
+        "S41-KIT-LOCK",
+        "S41-BUILD",
+        "S41-ELEVATION",
+        "S41-INV-ELEV-LIST",
+        "S41-INV-NO-VSTEST",
+        "S41-INV-NO-KIT-KIT-JSON",
+        "S41-INV-NO-EPS-AXIS-EVALUATED",
+        "S41-INV-COMPLEXITY-MANDATORY",
+        "S41-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S41-INV-NO-SEEDING-SEAM",
+        "S41-INV-T1-NO-CODE-SEEDS",
+        "S41-INV-NO-SEED-MODULES",
+        "S41-INV-NO-TEST-DB",
+        "S41-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 130,
+      "sha256": "e56cc181c43bf61e68d517260abf1fbd886ce0df4b2c9d471b1387418acc4840",
+      "obligations": [
+        "S41-CHANGE-CHECK",
+        "S41-BUILD",
+        "S41-ELEVATION",
+        "S41-INV-ELEV-LIST",
+        "S41-INV-NO-VSTEST",
+        "S41-INV-NO-KIT-KIT-JSON",
+        "S41-INV-NO-EPS-AXIS-EVALUATED",
+        "S41-INV-COMPLEXITY-MANDATORY",
+        "S41-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S41-INV-NO-SEEDING-SEAM",
+        "S41-INV-T1-NO-CODE-SEEDS",
+        "S41-INV-NO-SEED-MODULES",
+        "S41-INV-NO-TEST-DB",
+        "S41-INV-NO-VERSIONS-IN-USE"
+      ]
+    },
+    {
+      "step": 131,
+      "sha256": "f4c03841cc63bdc716bb3e795db8c6bdd25fe0701c4fd3c4009fe3838912f5a1",
+      "obligations": [
+        "S41-KIT-CONTEXT",
+        "S41-BUILD",
+        "S41-ELEVATION",
+        "S41-INV-ELEV-LIST",
+        "S41-INV-NO-VSTEST",
+        "S41-INV-NO-KIT-KIT-JSON",
+        "S41-INV-NO-EPS-AXIS-EVALUATED",
+        "S41-INV-COMPLEXITY-MANDATORY",
+        "S41-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S41-INV-NO-SEEDING-SEAM",
+        "S41-INV-T1-NO-CODE-SEEDS",
+        "S41-INV-NO-SEED-MODULES",
+        "S41-INV-NO-TEST-DB",
+        "S41-INV-NO-VERSIONS-IN-USE"
+      ]
     }
   ],
   "behavior_seams": [
@@ -12856,6 +14057,56 @@
       "id": "s33-details-attribution",
       "step": 121,
       "obligation": "S33-DETAILS-ATTRIBUTION"
+    },
+    {
+      "id": "s41-kit-file",
+      "step": 122,
+      "obligation": "S41-KIT-FILE"
+    },
+    {
+      "id": "s41-kit-paths",
+      "step": 123,
+      "obligation": "S41-KIT-PATHS"
+    },
+    {
+      "id": "s41-kit-file-text",
+      "step": 124,
+      "obligation": "S41-KIT-FILE-TEXT"
+    },
+    {
+      "id": "s41-kit-proxy",
+      "step": 125,
+      "obligation": "S41-KIT-PROXY"
+    },
+    {
+      "id": "s41-kit-folder",
+      "step": 126,
+      "obligation": "S41-KIT-FOLDER"
+    },
+    {
+      "id": "s41-kind-files",
+      "step": 127,
+      "obligation": "S41-KIND-FILES"
+    },
+    {
+      "id": "s41-data-files",
+      "step": 128,
+      "obligation": "S41-DATA-FILES"
+    },
+    {
+      "id": "s41-kit-lock",
+      "step": 129,
+      "obligation": "S41-KIT-LOCK"
+    },
+    {
+      "id": "s41-change-check",
+      "step": 130,
+      "obligation": "S41-CHANGE-CHECK"
+    },
+    {
+      "id": "s41-kit-context",
+      "step": 131,
+      "obligation": "S41-KIT-CONTEXT"
     }
   ],
   "temporal_checks": [],
@@ -13102,6 +14353,15 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Controls",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 122,
+      "step": 131,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests"
       ]
     }
   ]
