@@ -6,8 +6,11 @@ open Berreman.Media
 open Berreman.Fields
 open Berreman.Solvers
 open Berreman.FieldFunctions
+open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.OptimizationInterface
+open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Optimization.MeritFunction
 open OpticalConstructor.Optimization.FitQuality
 open OpticalConstructor.Ui
@@ -45,7 +48,7 @@ module SynthesisFitPageTests =
     let private fittedProblem () =
         let trueSystem = mkSystem 250.0<nm>
         let baseSystem = mkSystem 1.0<nm>
-        let parameters = [ DesignParameters.layerThickness 0 1.0e-6 ]
+        let parameters = [ DesignParameters.layerThickness (FilmIndex 0) (Thickness.mkm 1.0<mkm>) ]
         let targets =
             [ 450.0; 520.0; 590.0; 660.0 ]
             |> List.map (fun nm ->
@@ -53,13 +56,13 @@ module SynthesisFitPageTests =
                 {
                     quantity = Photometric R
                     samplePoint = IncidentLightInfo.create w
-                    desiredValue = reflectanceOf trueSystem w
-                    weight = 1.0
-                    tolerance = 1.0
+                    desiredValue = TargetValue (reflectanceOf trueSystem w)
+                    weight = TargetWeight 1.0
+                    tolerance = TargetTolerance 1.0
                     kind = Equality
                 })
         let initial = [| 220.0e-9 |]
-        match LocalRefinement.refine baseSystem parameters initial targets with
+        match LocalRefinement.refine baseSystem parameters (DesignVector initial) targets with
         | Ok (refined, result) ->
             let residual = MeritFunction.buildResidual baseSystem parameters targets
             baseSystem, parameters, initial, targets, refined, FitQuality.fromResult residual result
@@ -72,31 +75,36 @@ module SynthesisFitPageTests =
         let (_, _, _, targets, _, report) = fittedProblem ()
 
         // Quality metrics are present and well-shaped.
-        Assert.True(report.chiSquared >= 0.0)
-        Assert.True(System.Double.IsFinite report.mse)
-        Assert.True(System.Double.IsFinite report.reducedChiSquared)
-        Assert.Equal(1, report.parameters.Length)
-        Assert.Equal(1, report.standardErrors.Length)
-        Assert.Equal(1, report.confidenceIntervals.Length)
+        Assert.True(report.chiSquared.value >= 0.0)
+        Assert.True(System.Double.IsFinite report.mse.value)
+        Assert.True(System.Double.IsFinite report.reducedChiSquared.value)
+        Assert.Equal(1, report.parameters.value.Length)
+        Assert.Equal(1, report.standardErrors.value.Length)
+        Assert.Equal(1, report.confidenceIntervals.lower.value.Length)
+        Assert.Equal(1, report.confidenceIntervals.upper.value.Length)
         // Correlation matrix is n×n with a unit diagonal.
-        Assert.Equal(report.parameters.Length, report.correlation.Length)
-        report.correlation |> Array.iter (fun row -> Assert.Equal(report.parameters.Length, row.Length))
-        Assert.True(abs (report.correlation.[0].[0] - 1.0) < 1.0e-9)
+        Assert.Equal(report.parameters.value.Length, report.correlation.value.Length)
+        report.correlation.value |> Array.iter (fun row -> Assert.Equal(report.parameters.value.Length, row.Length))
+        Assert.True(abs (report.correlation.value.[0].[0] - 1.0) < 1.0e-9)
         // Per-sample residuals retained for the residual plot / overlay.
-        Assert.Equal(targets.Length, report.residuals.Length)
+        Assert.Equal(targets.Length, report.residuals.value.Length)
         // Each CI brackets its parameter estimate.
-        let (lo, hi) = report.confidenceIntervals.[0]
-        Assert.True(lo <= report.parameters.[0] && report.parameters.[0] <= hi)
+        let lo = report.confidenceIntervals.lower.value.[0]
+        let hi = report.confidenceIntervals.upper.value.[0]
+        Assert.True(lo <= report.parameters.value.[0] && report.parameters.value.[0] <= hi)
 
         // .binz round-trip: derived sidecar payload, NOT canonical JSON.
-        let bytes = FitQuality.toBinz report
+        let binz = report.toBinz
+        let bytes = binz.value
         Assert.Equal(0x1fuy, bytes.[0])              // gzip magic — the .binz payload
         Assert.Equal(0x8buy, bytes.[1])
         Assert.NotEqual(byte '{', bytes.[0])         // never the canonical JSON '{'
-        let restored = FitQuality.fromBinz bytes
-        Assert.Equal(report.chiSquared, restored.chiSquared, 12)
-        Assert.Equal(report.parameters.[0], restored.parameters.[0], 15)
-        Assert.Equal(report.residuals.Length, restored.residuals.Length)
+        match FitReport.tryFromBinz binz with
+        | Ok restored ->
+            Assert.Equal(report.chiSquared.value, restored.chiSquared.value, 12)
+            Assert.Equal(report.parameters.value.[0], restored.parameters.value.[0], 15)
+            Assert.Equal(report.residuals.value.Length, restored.residuals.value.Length)
+        | Error e -> failwith $"expected the .binz payload to read back, got Error {e}"
 
     // -------------------------------------- mis-scaled-Jacobian regression (R-1)
 
@@ -119,11 +127,11 @@ module SynthesisFitPageTests =
         // Known small residuals at the solution: dᵢ = sin(baseᵢ) + epsᵢ ⇒ rᵢ(x0) = −epsᵢ.
         let eps = [| 0.01; -0.02; 0.015; -0.005; 0.012 |]
         let data = Array.map2 (fun b e -> sin b + e) bases eps
-        let residual (x : float[]) = Array.map2 (fun om d -> sin (om * x.[0]) - d) omegas data
+        let residual (DesignVector x) = Array.map2 (fun om d -> sin (om * x.[0]) - d) omegas data |> ResidualVector
 
         // Analytic Jacobian column at x0: drᵢ/dx = ωᵢ cos(ωᵢ x0) = ωᵢ cos(baseᵢ).
         let analyticJac = Array.map2 (fun om b -> om * cos b) omegas bases
-        let jac = FitQuality.residualJacobian residual [| x0 |]
+        let jac = (FitQuality.residualJacobian residual (DesignVector [| x0 |])).value
         Assert.Equal(omegas.Length, jac.Length)
         jac |> Array.iteri (fun i row ->
             Assert.Equal(1, row.Length)
@@ -132,16 +140,16 @@ module SynthesisFitPageTests =
 
         // Analytic standard error of the single parameter:
         //   reducedχ² = Σeps²/(m−1);  Cov = reducedχ²/Σ(ωᵢ cos baseᵢ)²;  σ = √Cov.
-        let finalResiduals = residual [| x0 |]
-        let m = finalResiduals.Length
+        let finalResiduals = residual (DesignVector [| x0 |])
+        let m = finalResiduals.value.Length
         let reduced = (eps |> Array.sumBy (fun v -> v * v)) / float (m - 1)
         let analyticStdErr = sqrt (reduced / (analyticJac |> Array.sumBy (fun v -> v * v)))
 
-        let report = FitQuality.reportFrom residual [| x0 |] finalResiduals
-        let sigma = report.standardErrors.[0]
+        let report = FitQuality.reportFrom residual (DesignVector [| x0 |]) finalResiduals
+        let sigma = report.standardErrors.value.[0]
         // Non-degenerate covariance: finite and strictly positive.
         Assert.True(System.Double.IsFinite sigma && sigma > 0.0, "std error must be finite and positive")
-        Assert.True(System.Double.IsFinite report.covariance.[0].[0] && report.covariance.[0].[0] > 0.0)
+        Assert.True(System.Double.IsFinite report.covariance.value.[0].[0] && report.covariance.value.[0].[0] > 0.0)
         // And it matches the analytic closed form — a mis-scaled Jacobian misses this.
         let relSigma = abs (sigma - analyticStdErr) / analyticStdErr
         Assert.True(relSigma < 1.0e-3, $"std error {sigma} vs analytic {analyticStdErr} (rel {relSigma}) — mis-scaled Jacobian")
@@ -192,20 +200,20 @@ module SynthesisFitPageTests =
 
         // Cancel immediately: the SA loop must stop without exhausting its iterations.
         let cancelledRun = Synthesis.simulatedAnnealing saConfig (fun () -> true) bounds residual initial
-        Assert.True(cancelledRun.iterations < saConfig.iterations, "the loop must stop early on cancel")
-        Assert.Equal(Failed "cancelled", cancelledRun.terminationReason)
-        Assert.False(cancelledRun.success)
+        Assert.True(cancelledRun.iterations.value < saConfig.iterations, "the loop must stop early on cancel")
+        Assert.Equal(SearchCancelled, cancelledRun.terminationReason)
+        Assert.Equal(OptimizationFailed, cancelledRun.outcome)
 
         // The GA loop observes the same flag.
         let gaConfig = { Synthesis.GeneticConfig.defaultValue with generations = 5000 }
         let cancelledGa = Synthesis.geneticAlgorithm gaConfig (fun () -> true) bounds residual initial
-        Assert.True(cancelledGa.iterations < gaConfig.generations)
-        Assert.Equal(Failed "cancelled", cancelledGa.terminationReason)
+        Assert.True(cancelledGa.iterations.value < gaConfig.generations)
+        Assert.Equal(SearchCancelled, cancelledGa.terminationReason)
 
         // With no cancellation the same loop runs to completion — proving the flag
         // (not some other early-exit) is what stopped it above.
         let fullRun = Synthesis.simulatedAnnealing { saConfig with iterations = 50 } (fun () -> false) bounds residual initial
-        Assert.Equal(50, fullRun.iterations)
+        Assert.Equal(50, fullRun.iterations.value)
 
     // ----------------------------------------------------------------- AC-G8
 

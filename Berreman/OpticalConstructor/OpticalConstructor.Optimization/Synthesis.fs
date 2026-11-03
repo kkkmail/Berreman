@@ -3,6 +3,7 @@ namespace OpticalConstructor.Optimization
 open Berreman.Constants
 open Berreman.MaterialProperties
 open Berreman.Media
+open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Optimization.MeritFunction
@@ -30,22 +31,24 @@ open OpticalConstructor.Optimization.MeritFunction
 /// strategy plugin system is added (§G.9 non-requirement) — only these families.
 module Synthesis =
 
-    // `sumSq` (Σ residualᵢ²) is the shared least-squares definition from
+    // `ResidualVector.sumOfSquares` (Σ residualᵢ²) is the shared least-squares definition from
     // `OptimizationInterface` (reuse-critic F1) — not re-declared here.
 
     /// Scalar merit of a residual at a design vector — the G.4 weighted-LSQ sum of
     /// squares, the single objective both synthesis families minimize.
-    let private merit (residual : Residual) (x : float[]) : float = sumSq (residual x)
+    let private merit (residual : Residual) (x : float[]) : float = (residual (DesignVector x)).sumOfSquares
 
     /// The merit of a CONCRETE system (no free parameters): evaluate the §G.4
     /// residual with an empty `DesignParameter` list / empty vector, so
-    /// `applyVector [] [||] system = system`.
+    /// `applyVector [] DesignVector.empty system = system`.
     let systemMerit (system : OpticalSystem) (targets : FitTarget list) : float =
-        MeritFunction.buildResidual system [] targets [||] |> sumSq
+        (MeritFunction.buildResidual system [] targets DesignVector.empty).sumOfSquares
 
     /// Clamp a vector into the box bounds (an `infinity` side leaves it untouched).
     let private clamp (bounds : ParameterBounds) (x : float[]) : float[] =
-        Array.mapi (fun i v -> max bounds.lower.[i] (min bounds.upper.[i] v)) x
+        let (DesignVector lower) = bounds.lower
+        let (DesignVector upper) = bounds.upper
+        Array.mapi (fun i v -> max lower.[i] (min upper.[i] v)) x
 
     /// A finite proposal span for parameter `i`: the bound width, or a fallback
     /// scaled by the current value when a side is unbounded.
@@ -70,12 +73,12 @@ module Synthesis =
     /// greater than the pre-insertion merit (AC-G6).
     let needleInsertion
         (needleMaterial : OpticalProperties)
-        (needleThickness : float)
-        (upperThickness : float)
+        (needleThickness : Thickness)
+        (upperThickness : Thickness)
         (baseSystem : OpticalSystem)
         (targets : FitTarget list)
-        : Result<OpticalSystem * OptimizationResult, string> =
-        let needle = { properties = needleMaterial; thickness = Thickness (needleThickness * 1.0<meter>) }
+        : Result<OpticalSystem * OptimizationResult, OptimizationError> =
+        let needle : Layer = { properties = needleMaterial; thickness = needleThickness }
         let insertAt (p : int) : OpticalSystem =
             let before, after = List.splitAt p baseSystem.films
             { baseSystem with films = before @ [ needle ] @ after }
@@ -92,8 +95,9 @@ module Synthesis =
         // Re-refine every film thickness of the grown design (unbounded layer
         // count is exactly what needle synthesis grows; lower bound 0 is the
         // negative-thickness prohibition, §G.3).
-        let parameters = grown.films |> List.mapi (fun i _ -> DesignParameters.layerThickness i upperThickness)
-        let initial = grown.films |> List.map (thicknessMeters needleThickness) |> Array.ofList
+        let parameters = grown.films |> List.mapi (fun i _ -> DesignParameters.layerThickness (FilmIndex i) upperThickness)
+        let (DesignValue needleMeters) = needleThickness.designValue
+        let initial = grown.films |> List.map (thicknessMeters needleMeters) |> Array.ofList |> DesignVector
         LocalRefinement.refine grown parameters initial targets
 
     // ----------------------------------------------------------------- tunnelling
@@ -104,15 +108,18 @@ module Synthesis =
     /// fit can be nudged reproducibly. Composes with `needleInsertion` (both grow /
     /// escape the same `OpticalSystem`/`DesignParameter` representation).
     let tunnel
-        (perturbation : float[])
+        (perturbation : DesignVector)
         (baseSystem : OpticalSystem)
         (parameters : DesignParameter list)
-        (converged : float[])
+        (converged : DesignVector)
         (targets : FitTarget list)
-        : Result<OpticalSystem * OptimizationResult, string> =
+        : Result<OpticalSystem * OptimizationResult, OptimizationError> =
+        let (DesignVector offsets) = perturbation
+        let (DesignVector start) = converged
         let perturbed =
-            converged
-            |> Array.mapi (fun i v -> v + (if i < perturbation.Length then perturbation.[i] else 0.0))
+            start
+            |> Array.mapi (fun i v -> v + (if i < offsets.Length then offsets.[i] else 0.0))
+            |> DesignVector
         LocalRefinement.refine baseSystem parameters perturbed targets
 
     // ------------------------------------------------------- simulated annealing
@@ -143,6 +150,8 @@ module Synthesis =
         : OptimizationResult =
         let rng = System.Random(config.seed)
         let n = initial.Length
+        let (DesignVector lower) = bounds.lower
+        let (DesignVector upper) = bounds.upper
         let mutable current = clamp bounds (Array.copy initial)
         let mutable currentE = merit residual current
         let mutable best = Array.copy current
@@ -155,7 +164,7 @@ module Synthesis =
             else
                 let candidate =
                     [| for i in 0 .. n - 1 ->
-                        let w = span bounds.lower.[i] bounds.upper.[i] current.[i]
+                        let w = span lower.[i] upper.[i] current.[i]
                         current.[i] + (rng.NextDouble() * 2.0 - 1.0) * config.stepScale * w |]
                     |> clamp bounds
                 let candE = merit residual candidate
@@ -169,14 +178,13 @@ module Synthesis =
                 temp <- temp * config.coolingRate
                 iter <- iter + 1
         {
-            solution = best
-            finalResiduals = residual best
-            iterations = iter
+            solution = DesignVector best
+            finalResiduals = residual (DesignVector best)
+            iterations = IterationCount iter
             terminationReason =
-                if cancelled then Failed "cancelled"
+                if cancelled then SearchCancelled
                 elif iter >= config.iterations then MaxIterationsReached
                 else Converged
-            success = not cancelled
         }
 
     // -------------------------------------------------------- genetic algorithm
@@ -207,9 +215,11 @@ module Synthesis =
         : OptimizationResult =
         let rng = System.Random(config.seed)
         let n = initial.Length
+        let (DesignVector lower) = bounds.lower
+        let (DesignVector upper) = bounds.upper
         let sampleGene i =
-            let lo = bounds.lower.[i]
-            let hi = bounds.upper.[i]
+            let lo = lower.[i]
+            let hi = upper.[i]
             if System.Double.IsInfinity lo || System.Double.IsInfinity hi then
                 initial.[i] + (rng.NextDouble() * 2.0 - 1.0) * max 1.0 (abs initial.[i])
             else lo + rng.NextDouble() * (hi - lo)
@@ -240,7 +250,7 @@ module Synthesis =
                             [| for i in 0 .. n - 1 ->
                                 let gene = if rng.NextDouble() < 0.5 then p1.[i] else p2.[i]
                                 if rng.NextDouble() < config.mutationRate then
-                                    let w = span bounds.lower.[i] bounds.upper.[i] gene
+                                    let w = span lower.[i] upper.[i] gene
                                     gene + (rng.NextDouble() * 2.0 - 1.0) * config.mutationScale * w
                                 else gene |]
                             |> clamp bounds)
@@ -250,12 +260,11 @@ module Synthesis =
                 gen <- gen + 1
         let (bx, _) = best
         {
-            solution = bx
-            finalResiduals = residual bx
-            iterations = gen
+            solution = DesignVector bx
+            finalResiduals = residual (DesignVector bx)
+            iterations = IterationCount gen
             terminationReason =
-                if cancelled then Failed "cancelled"
+                if cancelled then SearchCancelled
                 elif gen >= config.generations then MaxIterationsReached
                 else Converged
-            success = not cancelled
         }

@@ -25,6 +25,7 @@ open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Optimization.MeritFunction
 open OpticalConstructor.Optimization.FitQuality
+open Softellect.Sys.Primitives
 
 // ---------------------------------------------------------------------------
 // Navigation entry (§G.10 item 1): a named top-level entry reachable from the
@@ -249,6 +250,6 @@ let fitHistorySidecarPath (model : Model) (name : string) : string =
     OpticalConstructor.Storage.Sidecar.derivedArtefactPath model.workingFolder (name + ".fit-history")
 
 /// The `(path, bytes)` to write for the last completed run's G.8 report, via the
-/// `.binz` serializer (`FitQuality.toBinz`). `None` until a run completes.
+/// `.binz` serializer (`FitReport.toBinz`). `None` until a run completes.
 let saveFitReport (model : Model) (name : string) : (string * byte[]) option =
-    model.report |> Option.map (fun report -> fitHistorySidecarPath model name, toBinz report)
+    model.report |> Option.map (fun report -> let (SerializedData bytes) = report.toBinz in fitHistorySidecarPath model name, bytes)

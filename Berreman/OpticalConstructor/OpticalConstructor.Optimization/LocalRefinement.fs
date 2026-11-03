@@ -1,7 +1,9 @@
 namespace OpticalConstructor.Optimization
 
 open Berreman.Media
+open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.OptimizationInterface
+open OpticalConstructor.Optimization.AlglibAdapter
 open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Optimization.MeritFunction
 
@@ -29,8 +31,8 @@ module LocalRefinement =
     let defaultMethod = LevenbergMarquardt
 
     /// Conservative defaults for the unconstrained termination knobs.
-    let defaultMaxIterations = 200
-    let defaultEpsX = 1.0e-9
+    let defaultMaxIterations : IterationCount = IterationCount 200
+    let defaultEpsX : StepTolerance = StepTolerance 1.0e-9
 
     /// The FitTargets' inequality targets, surfaced as a G.1 `InequalityTarget`
     /// list (R-2); equality targets contribute no constraint.
@@ -43,24 +45,24 @@ module LocalRefinement =
     /// getter, so the start point is supplied by the caller).
     let refineWith
         (method : OptimizationMethod)
-        (maxIterations : int)
-        (epsX : float)
+        (maxIterations : IterationCount)
+        (epsX : StepTolerance)
         (baseSystem : OpticalSystem)
         (parameters : DesignParameter list)
-        (initial : float[])
-        (targets : FitTarget list) : Result<OpticalSystem * OptimizationResult, string> =
-        let request =
+        (initial : DesignVector)
+        (targets : FitTarget list) : Result<OpticalSystem * OptimizationResult, OptimizationError> =
+        let request : OptimizationRequest =
             {
                 residual = MeritFunction.buildResidual baseSystem parameters targets
                 jacobian = None
-                initial = Array.copy initial
+                initial = initial.copy
                 bounds = DesignParameters.bounds parameters
                 inequalityTargets = inequalityTargets targets
                 method = method
                 maxIterations = maxIterations
                 epsX = epsX
             }
-        AlglibAdapter.optimize request
+        request.optimize ()
         |> Result.map (fun result ->
             let refined = DesignParameters.applyVector parameters result.solution baseSystem
             refined, result)
@@ -70,6 +72,6 @@ module LocalRefinement =
     let refine
         (baseSystem : OpticalSystem)
         (parameters : DesignParameter list)
-        (initial : float[])
-        (targets : FitTarget list) : Result<OpticalSystem * OptimizationResult, string> =
+        (initial : DesignVector)
+        (targets : FitTarget list) : Result<OpticalSystem * OptimizationResult, OptimizationError> =
         refineWith defaultMethod defaultMaxIterations defaultEpsX baseSystem parameters initial targets

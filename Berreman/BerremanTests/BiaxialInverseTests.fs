@@ -968,8 +968,8 @@ type BiaxialInverseTests() =
         for (name, predicted) in predictions do
             Assert.True(System.Double.IsFinite predicted.value && predicted.value > 0.0, $"{name.value} has no usable standard error: {comparison}")
         Assert.True(
-            quality.reducedChiSquared > 1.0e-12,
-            $"reduced chi-squared = {quality.reducedChiSquared}, which is the underflowing noiseless regime F3 describes")
+            quality.reducedChiSquared.value > 1.0e-12,
+            $"reduced chi-squared = {quality.reducedChiSquared.value}, which is the underflowing noiseless regime F3 describes")
 
         // AND IT IS RIGHT TO WITHIN A FACTOR OF ~2, ACROSS FOUR DECADES OF UNCERTAINTY. The predictions
         // range from 5.5e-4 (the indices) to 2.0 (g23) — that is, from "one part in two thousand" to
@@ -1010,7 +1010,8 @@ type BiaxialInverseTests() =
         let truthPoint = toScaled first.fit.scaling triclinic
         let intervals =
             [ for (i, a) in List.indexed first.fit.scaling.axes ->
-                let (lo, hi) = quality.confidenceIntervals.[i]
+                let lo = quality.confidenceIntervals.lower.value.[i]
+                let hi = quality.confidenceIntervals.upper.value.[i]
                 a.name, lo <= truthPoint.value.[i] && truthPoint.value.[i] <= hi ]
         let missed = System.String.Join(", ", [ for (name, covered) in intervals do if not covered then name.value ])
         Assert.True(intervals |> List.forall snd, $"the 95%% intervals missed {missed}: {comparison}")

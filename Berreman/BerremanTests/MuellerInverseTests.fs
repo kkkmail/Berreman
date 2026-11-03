@@ -1324,8 +1324,8 @@ type MuellerInverseTests() =
         for (name, predicted) in predictions do
             Assert.True(System.Double.IsFinite predicted.value && predicted.value > 0.0, $"{name.value} has no usable standard error: {comparison}")
         Assert.True(
-            quality.reducedChiSquared > 1.0e-12,
-            $"reduced chi-squared = {quality.reducedChiSquared}, which is the underflowing noiseless regime F3 describes")
+            quality.reducedChiSquared.value > 1.0e-12,
+            $"reduced chi-squared = {quality.reducedChiSquared.value}, which is the underflowing noiseless regime F3 describes")
 
         // And it is not merely usable, it is RIGHT. Band pinned per the §9 protocol from the observed
         // ratios (0.98, 0.98, 1.43, 0.85); a factor of two is the honest tolerance, because the
@@ -1372,7 +1372,8 @@ type MuellerInverseTests() =
         let truthPoint = toScaled first.fit.scaling quartz
         let intervals =
             [ for (i, a) in List.indexed first.fit.scaling.axes ->
-                let (lo, hi) = quality.confidenceIntervals.[i]
+                let lo = quality.confidenceIntervals.lower.value.[i]
+                let hi = quality.confidenceIntervals.upper.value.[i]
                 a.name, lo <= truthPoint.value.[i] && truthPoint.value.[i] <= hi ]
         let missed = System.String.Join(", ", [ for (name, covered) in intervals do if not covered then name.value ])
         Assert.True(intervals |> List.forall snd, $"the 95%% intervals missed {missed}: {comparison}")

@@ -1,7 +1,9 @@
 namespace OpticalConstructor.Optimization
 
+open Berreman.Geometry
 open Berreman.Solvers
 open Analytics.AnalysisFunctions
+open OpticalConstructor.Optimization.OptimizationInterface
 
 /// §G.6 — Ψ, Δ derivation for ellipsometric residuals (spec 0022 Part G §G.6, [Standard]).
 ///
@@ -20,6 +22,11 @@ open Analytics.AnalysisFunctions
 /// by Part F §F.3 (slice 008) and is NOT revived here.
 module Ellipsometry =
 
+    type Angle with
+
+        /// The angle in radians, as the value of a Ψ or Δ fit target.
+        member this.toTargetValue : TargetValue = let (Angle a) = this in TargetValue a
+
     /// The two net-new ellipsometric quantities reachable by a `FitTarget` (§G.4),
     /// so ellipsometric targets compose identically to the photometric
     /// `OpticalFunction` cases.
@@ -29,8 +36,8 @@ module Ellipsometry =
 
         /// Evaluate the quantity on a solved `Solution`, sharing the §F.5
         /// (Ψ, Δ) = (atan|ρ|, arg ρ) derivation rather than re-deriving it.
-        member this.evaluate (solution : Solution) : float =
+        member this.evaluate (solution : Solution) : TargetValue =
             let pd = solution.psiDelta
             match this with
-            | Psi -> pd.psi.value
-            | Delta -> pd.delta.value
+            | Psi -> pd.psi.toTargetValue
+            | Delta -> pd.delta.toTargetValue

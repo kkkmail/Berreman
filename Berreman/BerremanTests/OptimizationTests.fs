@@ -15,8 +15,10 @@ open Analytics.Variables
 open Analytics.AnalysisFunctions
 open Analytics.FieldProfile
 open Analytics.Colorimetry
+open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.OptimizationInterface
+open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Optimization.Ellipsometry
 open OpticalConstructor.Optimization.MeritFunction
 open Xunit
@@ -59,13 +61,13 @@ type OptimizationTests() =
     let diagonalLight (a : IncidenceAngle) (w : WaveLength) : IncidentLightInfo =
         { IncidentLightInfo.createInclined w a with polarization = Polarization.create (Angle.degree 45.0<deg>) }
 
-    let reflectanceOf (system : OpticalSystem) (w : WaveLength) : float =
-        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.map (fun v -> v.value) |> Option.get
+    let reflectanceOf (system : OpticalSystem) (w : WaveLength) : TargetValue =
+        OpticalSystemSolver(IncidentLightInfo.create w, system).solution.func R |> Option.map (fun v -> v.toTargetValue) |> Option.get
 
-    let psiOf (system : OpticalSystem) (light : IncidentLightInfo) : float =
+    let psiOf (system : OpticalSystem) (light : IncidentLightInfo) : TargetValue =
         Psi.evaluate (OpticalSystemSolver(light, system).solution)
 
-    let ssr (r : float[]) = r |> Array.sumBy (fun v -> v * v)
+    let ssr (ResidualVector r) = r |> Array.sumBy (fun v -> v * v)
 
     let thicknessMeters (l : Layer) =
         match l.thickness with
@@ -87,7 +89,7 @@ type OptimizationTests() =
         let trueThickness = 250.0e-9
         let trueSystem = mkFilmSystem 250.0<nm>
         let baseSystem = mkFilmSystem 1.0<nm>   // thickness slot; applyVector overrides it
-        let parameters = [ DesignParameters.layerThickness 0 1.0e-6 ]
+        let parameters = [ DesignParameters.layerThickness (FilmIndex 0) (Thickness.mkm 1.0<mkm>) ]
         let targets =
             waveNm
             |> List.map (fun nm ->
@@ -96,15 +98,15 @@ type OptimizationTests() =
                     quantity = Photometric R
                     samplePoint = IncidentLightInfo.create w
                     desiredValue = reflectanceOf trueSystem w
-                    weight = 1.0
-                    tolerance = 1.0
+                    weight = TargetWeight 1.0
+                    tolerance = TargetTolerance 1.0
                     kind = Equality
                 })
-        let initial = [| 220.0e-9 |]   // perturbed start, same interference basin
+        let initial = DesignVector [| 220.0e-9 |]   // perturbed start, same interference basin
 
-        match LocalRefinement.refineWith LevenbergMarquardt 400 1.0e-12 baseSystem parameters initial targets with
+        match LocalRefinement.refineWith LevenbergMarquardt (IterationCount 400) (StepTolerance 1.0e-12) baseSystem parameters initial targets with
         | Ok (refined, result) ->
-            Assert.True(result.success, $"LM did not succeed: %A{result.terminationReason}")
+            Assert.True(result.outcome = OptimizationSucceeded, $"LM did not succeed: %A{result.terminationReason}")
             let recovered = thicknessMeters refined.films.[0]
             Assert.True(abs (recovered - trueThickness) < 1.0e-9,
                         $"recovered %g{recovered} m, expected %g{trueThickness} m")
@@ -128,20 +130,20 @@ type OptimizationTests() =
         // restores a usable gradient; `getSys` still stores canonical SI meters via
         // `Thickness.nm`, so §0 constraint 3 holds. This is a legitimate G.3
         // `DesignParameter` (the same abstraction `layerThickness` builds).
-        let nmThickness (index : int) (upperNm : float) : DesignParameters.DesignParameter =
+        let nmThickness (index : int) (upperNm : DesignValue) : DesignParameters.DesignParameter =
             {
-                name = $"film[%d{index}].thickness.nm"
+                name = ParameterName $"film[%d{index}].thickness.nm"
                 getSys =
-                    fun (sys : OpticalSystem) (v : double) ->
+                    fun (sys : OpticalSystem) (DesignValue v) ->
                         let films =
                             sys.films
                             |> List.mapi (fun i (l : Layer) ->
                                 if i = index then { l with thickness = Thickness.nm (v * 1.0<nm>) } else l)
                         { sys with films = films }
-                lower = 0.0
+                lower = DesignValue 0.0
                 upper = upperNm
             }
-        let parameters = [ nmThickness 0 1000.0 ]
+        let parameters = [ nmThickness 0 (DesignValue 1000.0) ]
         let targets =
             waveNm
             |> List.map (fun nm ->
@@ -150,15 +152,15 @@ type OptimizationTests() =
                     quantity = Ellipsometric Psi
                     samplePoint = light
                     desiredValue = psiOf trueSystem light
-                    weight = 1.0
-                    tolerance = 1.0
+                    weight = TargetWeight 1.0
+                    tolerance = TargetTolerance 1.0
                     kind = Equality
                 })
-        let initial = [| 220.0 |]   // perturbed start in nm, 30 nm from the true value
+        let initial = DesignVector [| 220.0 |]   // perturbed start in nm, 30 nm from the true value
 
-        match LocalRefinement.refineWith LevenbergMarquardt 400 1.0e-9 baseSystem parameters initial targets with
+        match LocalRefinement.refineWith LevenbergMarquardt (IterationCount 400) (StepTolerance 1.0e-9) baseSystem parameters initial targets with
         | Ok (refined, result) ->
-            Assert.True(result.success, $"LM did not succeed: %A{result.terminationReason}")
+            Assert.True(result.outcome = OptimizationSucceeded, $"LM did not succeed: %A{result.terminationReason}")
             let recoveredNm = thicknessMeters refined.films.[0] / 1.0e-9
             Assert.True(abs (recoveredNm - trueThicknessNm) < 1.0e-3,
                         $"recovered %g{recoveredNm} nm, expected %g{trueThicknessNm} nm")
@@ -176,7 +178,7 @@ type OptimizationTests() =
         let upper = 1.0e-6
         let trueSystem = mkFilmSystem 250.0<nm>
         let baseSystem = mkFilmSystem 1.0<nm>
-        let parameters = [ DesignParameters.layerThickness 0 upper ]
+        let parameters = [ DesignParameters.layerThickness (FilmIndex 0) (Thickness.mkm 1.0<mkm>) ]
         let targets =
             waveNm
             |> List.map (fun nm ->
@@ -185,18 +187,18 @@ type OptimizationTests() =
                     quantity = Photometric R
                     samplePoint = IncidentLightInfo.create w
                     desiredValue = reflectanceOf trueSystem w
-                    weight = 1.0
-                    tolerance = 1.0
+                    weight = TargetWeight 1.0
+                    tolerance = TargetTolerance 1.0
                     kind = Equality
                 })
-        let initial = [| -5.0e-8 |]   // negative — outside the physical range
+        let initial = DesignVector [| -5.0e-8 |]   // negative — outside the physical range
 
         match LocalRefinement.refine baseSystem parameters initial targets with
         | Ok (refined, result) ->
             let t = thicknessMeters refined.films.[0]
             Assert.True(t >= 0.0, $"refined thickness must be non-negative, got %g{t}")
             Assert.True(t <= upper + tol, $"refined thickness must be within the upper bound, got %g{t}")
-            Assert.True(result.solution.[0] >= -tol, "the solution vector must respect the lower bound 0")
+            Assert.True(result.solution.value.[0] >= -tol, "the solution vector must respect the lower bound 0")
         | Error e -> failwith $"expected a refined system, got Error {e}"
 
     // ================================================================= AC-G6
@@ -218,8 +220,8 @@ type OptimizationTests() =
                     quantity = Photometric R
                     samplePoint = IncidentLightInfo.create w
                     desiredValue = reflectanceOf trueSystem w
-                    weight = 1.0
-                    tolerance = 1.0
+                    weight = TargetWeight 1.0
+                    tolerance = TargetTolerance 1.0
                     kind = Equality
                 })
 
@@ -228,7 +230,7 @@ type OptimizationTests() =
         // A vanishingly-thin needle of the SAME glass material — adjacent same-index
         // layers compose to a single film, so order of insertion is immaterial and
         // re-refinement can recover the 300 nm target exactly.
-        match Synthesis.needleInsertion glass 1.0e-9 1.0e-6 baseSystem targets with
+        match Synthesis.needleInsertion glass (Thickness.nm 1.0<nm>) (Thickness.mkm 1.0<mkm>) baseSystem targets with
         | Ok (refined, result) ->
             Assert.Equal(baseSystem.films.Length + 1, refined.films.Length)
             for film in refined.films do

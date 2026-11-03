@@ -2,6 +2,7 @@ namespace OpticalConstructor.Optimization
 
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.OptimizationInterface
+open OpticalConstructor.Optimization.AlglibAdapter
 
 /// Spec 0044 §5.3 — the REAL nonlinear-solve backend behind the `NonlinearSolverProxy` seam that
 /// `OpticalConstructor.Domain.MuellerInverse` declares.
@@ -20,7 +21,7 @@ module MuellerInverseSolver =
     /// Build the real ALGLIB Levenberg–Marquardt-backed `NonlinearSolverProxy`.
     ///
     /// The request's residual, start point and bounds are passed straight through to the existing
-    /// `AlglibAdapter.optimize` entry point, which already traps every exception — ALGLIB's or otherwise —
+    /// `OptimizationRequest.optimize` entry point (`AlglibAdapter`), which already traps every exception — ALGLIB's or otherwise —
     /// and returns a `Result`. No ALGLIB type crosses this function in either direction.
     ///
     /// A CRITICAL precondition, and the reason `ParameterScaling` exists at all: `AlglibAdapter.runLm`
@@ -39,8 +40,6 @@ module MuellerInverseSolver =
                     let (ScaledVector initial) = request.initial
                     let (ScaledVector lower) = request.lowerBounds
                     let (ScaledVector upper) = request.upperBounds
-                    let (IterationCount maxIterations) = request.maxIterations
-                    let (StepTolerance epsX) = request.epsX
                     if initial.Length = 0 then
                         Error (InvalidNonlinearRequestErr "the initial parameter vector is empty")
                     elif lower.Length <> initial.Length || upper.Length <> initial.Length then
@@ -50,24 +49,26 @@ module MuellerInverseSolver =
                     else
                         let optimizationRequest : OptimizationRequest =
                             {
-                                residual = fun x -> let (ResidualVector r) = request.residual (ScaledVector x) in r
+                                residual = fun (DesignVector x) -> request.residual (ScaledVector x)
                                 jacobian = None
-                                initial = Array.copy initial
-                                bounds = { lower = Array.copy lower; upper = Array.copy upper }
+                                initial = DesignVector (Array.copy initial)
+                                bounds = { lower = DesignVector (Array.copy lower); upper = DesignVector (Array.copy upper) }
                                 inequalityTargets = []
                                 method = LevenbergMarquardt
-                                maxIterations = maxIterations
-                                epsX = epsX
+                                maxIterations = request.maxIterations
+                                epsX = request.epsX
                             }
-                        match AlglibAdapter.optimize optimizationRequest with
-                        | Error reason -> Error (DidNotConvergeErr reason)
+                        match optimizationRequest.optimize () with
+                        | Error (OptimizationRunExn reason) -> Error (DidNotConvergeErr reason)
                         | Ok result ->
-                            if result.success then
+                            match result.outcome with
+                            | OptimizationSucceeded ->
+                                let (DesignVector solution) = result.solution
                                 Ok
                                     {
-                                        solution = ScaledVector result.solution
-                                        finalResiduals = ResidualVector result.finalResiduals
-                                        iterations = IterationCount result.iterations
+                                        solution = ScaledVector solution
+                                        finalResiduals = result.finalResiduals
+                                        iterations = result.iterations
                                     }
-                            else Error (DidNotConvergeErr $"%A{result.terminationReason}")
+                            | OptimizationFailed -> Error (DidNotConvergeErr $"%A{result.terminationReason}")
         }

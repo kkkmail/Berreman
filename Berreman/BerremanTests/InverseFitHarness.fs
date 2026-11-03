@@ -397,13 +397,18 @@ module InverseFitHarness =
                     Array.append normalized throughput |> ResidualVector
 
     /// The residual Jacobian of a typed residual closure at a scaled point, by FitQuality's finite
-    /// differences (which speak plain arrays).
+    /// differences (which speak the optimizer's design vector).
     let residualJacobianAt (residual : ScaledVector -> ResidualVector) (point : ScaledVector) : ResidualJacobian =
-        FitQuality.residualJacobian (fun x -> (residual (ScaledVector x)).value) point.value |> ResidualJacobian
+        let (ScaledVector x) = point
+        FitQuality.residualJacobian (fun (OptimizationInterface.DesignVector v) -> residual (ScaledVector v)) (OptimizationInterface.DesignVector x)
 
     /// FitQuality's report on a fit, at its solution.
     let fitReportOf (fit : InverseFit<'Parameters>) : FitQuality.FitReport =
-        FitQuality.reportFrom (fun x -> (fit.residual (ScaledVector x)).value) fit.solution.solution.value fit.solution.finalResiduals.value
+        let (ScaledVector solution) = fit.solution.solution
+        FitQuality.reportFrom
+            (fun (OptimizationInterface.DesignVector v) -> fit.residual (ScaledVector v))
+            (OptimizationInterface.DesignVector solution)
+            fit.solution.finalResiduals
 
     /// How hard the residual pushes back along ONE DIRECTION in parameter space — `‖J·v‖` for a unit
     /// direction `v`, computed from the residual Jacobian.
@@ -686,7 +691,7 @@ module InverseFitHarness =
         fit.scaling.axes
         |> List.mapi (fun i a ->
             a.name,
-            quality.standardErrors.[i] * abs (a.read fit.scaling.scale) / abs (a.read truth) |> RelativeError)
+            quality.standardErrors.value.[i] * abs (a.read fit.scaling.scale) / abs (a.read truth) |> RelativeError)
 
     /// The variance a fit's covariance predicts for a LINEAR COMBINATION of the fitted parameters,
     /// `wᵀ C w` — the only route this report offers to an error bar on a DERIVED quantity such as a
@@ -699,7 +704,7 @@ module InverseFitHarness =
     let combinationVariance (quality : FitQuality.FitReport) (weights : float[]) : double =
         let n = weights.Length
         [ for i in 0 .. n - 1 do
-            for j in 0 .. n - 1 -> weights.[i] * quality.covariance.[i].[j] * weights.[j] ]
+            for j in 0 .. n - 1 -> weights.[i] * quality.covariance.value.[i].[j] * weights.[j] ]
         |> List.sum
 
     /// The weight vector that picks out the DIFFERENCE of two named parameters, `plus − minus`, in the

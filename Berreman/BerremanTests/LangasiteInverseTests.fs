@@ -553,7 +553,10 @@ type LangasiteInverseTests() =
                (fittedG11 - g11CentreForJacobian) / g11Scale |]
         Assert.True(atSolution |> Array.forall (fun x -> abs x > 1.0e-6), "the Jacobian must not be evaluated at the origin of the scaled space")
 
-        let jacobian = FitQuality.residualJacobian residual2 atSolution |> ResidualJacobian
+        let jacobian =
+            FitQuality.residualJacobian
+                (fun (OptimizationInterface.DesignVector v) -> residual2 v |> ResidualVector)
+                (OptimizationInterface.DesignVector atSolution)
         let norms = jacobian.columnNorms
         let condition = jacobian.conditionNumber.value
 
