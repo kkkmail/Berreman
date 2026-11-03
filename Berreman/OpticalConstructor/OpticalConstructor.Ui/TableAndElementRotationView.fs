@@ -832,7 +832,7 @@ type BeamLayout.ElementZoom with
 type ScreenPoint with
 
     /// The screen distance to `other`, in pixels.
-    member private this.distanceTo (other : ScreenPoint) : CanvasLength =
+    member this.distanceTo (other : ScreenPoint) : CanvasLength =
         CanvasLength (sqrt ((this.sx - other.sx) ** 2.0 + (this.sy - other.sy) ** 2.0))
 
 type ElementPlacement with
