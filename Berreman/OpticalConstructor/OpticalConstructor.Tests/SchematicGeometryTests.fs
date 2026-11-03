@@ -7,7 +7,9 @@ open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.Schematic
 open Xunit
 
 /// §J.1 schematic cross-section geometry tests (slice 014, AC-J1 portion ONLY).
@@ -45,48 +47,49 @@ module SchematicGeometryTests =
     [<Fact>]
     let ``AC-J1 a Wedge substrate draws a sloped lower edge, a Plate stays flat`` () =
         let layer = { properties = OpticalProperties.vacuum; thickness = Thickness.mm 1.0<mm> }
-        let plate = Schematic.substrateBand (Plate layer)
+        let plate = (Plate layer).substrateBand
         Assert.Equal(Schematic.PlateBand, plate)
 
-        let wedge = Schematic.substrateBand (Wedge { layer = layer; angle = WedgeAngle (Angle.degree 3.0<deg>) })
+        let wedge = (Wedge { layer = layer; angle = WedgeAngle (Angle.degree 3.0<deg>) }).substrateBand
         match wedge with
-        | Schematic.WedgeBand slope -> Assert.True(slope > 0.0, "a non-zero wedge angle must tilt the lower edge")
+        | Schematic.WedgeBand slope -> Assert.True(slope.value > 0.0, "a non-zero wedge angle must tilt the lower edge")
         | other -> failwith $"expected a sloped WedgeBand, got {other}"
 
     [<Fact>]
     let ``AC-J1 the wedge lower-edge slope increases with the wedge angle`` () =
-        let s1 = Schematic.wedgeSlope (WedgeAngle (Angle.degree 1.0<deg>))
-        let s5 = Schematic.wedgeSlope (WedgeAngle (Angle.degree 5.0<deg>))
-        Assert.Equal(0.0, Schematic.wedgeSlope (WedgeAngle (Angle.degree 0.0<deg>)), 12)
-        Assert.True(s1 < s5, "a larger wedge angle must slope more")
+        let s1 = (WedgeAngle (Angle.degree 1.0<deg>)).edgeSlope
+        let s5 = (WedgeAngle (Angle.degree 5.0<deg>)).edgeSlope
+        Assert.Equal(0.0, (WedgeAngle (Angle.degree 0.0<deg>)).edgeSlope.value, 12)
+        Assert.True(s1.value < s5.value, "a larger wedge angle must slope more")
 
     // ----------------------------------------------------------------- AC-J1.5
 
     [<Fact>]
     let ``AC-J1 the incident ray tracks the incidence angle and reflects about the normal`` () =
         let a = IncidenceAngle.create (Angle.degree 30.0<deg>)
-        let ray = Schematic.rayGeometry a
-        Assert.Equal(a.value, ray.angleRadians, 12)
+        let ray = a.rayGeometry
+        Assert.Equal(a.value, ray.incidenceAngle.value, 12)
         // Reflected ray mirrors the incident about the surface normal: y flips, x same.
-        Assert.Equal(ray.incidentDx, ray.reflectedDx, 12)
-        Assert.Equal(-ray.incidentDy, ray.reflectedDy, 12)
+        Assert.Equal(ray.incidentDirection.x, ray.reflectedDirection.x, 12)
+        Assert.Equal(-ray.incidentDirection.y, ray.reflectedDirection.y, 12)
         // A non-normal incidence has a non-zero horizontal component.
-        Assert.True(ray.incidentDx > 0.0)
+        Assert.True(ray.incidentDirection.x > 0.0)
 
     // ----------------------------------------------------------------- AC-J1.6
 
     [<Fact>]
     let ``AC-J1 material colour is a deterministic pure function of the stable id`` () =
-        // The curated identity keys are the built-in MaterialIds' Guid string forms (spec 0033
-        // step 002); synthetic per-layer keys still hash deterministically.
-        let silicon = string OpticalConstructor.Domain.MaterialLibrary.MaterialIds.silicon.value
-        let glass152 = string OpticalConstructor.Domain.MaterialLibrary.MaterialIds.glass152.value
+        // The curated colours are keyed by the built-in MaterialIds (spec 0033 step 002); an
+        // unknown id still hashes deterministically.
+        let silicon = MaterialIds.silicon
+        let glass152 = MaterialIds.glass152
+        let unknown = MaterialId (System.Guid "11111111-2222-3333-4444-555555555555")
         // Same id → same colour across redraws.
         Assert.Equal(Schematic.colorForMaterial silicon, Schematic.colorForMaterial silicon)
         // A curated id maps to its static colour entry, distinct from another material.
         Assert.NotEqual(Schematic.colorForMaterial silicon, Schematic.colorForMaterial glass152)
-        // An unknown / synthetic key is still deterministic (stable hash fallback, not GetHashCode).
-        Assert.Equal(Schematic.colorForMaterial "made-up-id", Schematic.colorForMaterial "made-up-id")
+        // An unknown id is still deterministic (stable hash fallback, not GetHashCode).
+        Assert.Equal(Schematic.colorForMaterial unknown, Schematic.colorForMaterial unknown)
 
     // ----------------------------------------------------------------- layout
 
@@ -101,7 +104,7 @@ module SchematicGeometryTests =
                 substrate = Some (Wedge { layer = film (Thickness.mm 1.0<mm>); angle = WedgeAngle (Angle.degree 2.0<deg>) })
                 lower = OpticalProperties.vacuum
             }
-        let bands = Schematic.layout Nanometer (fun i -> $"m%d{i}") sys
+        let bands = Schematic.layoutSchematic Nanometer (fun _ -> MaterialIds.silicon) sys
         // upper + 2 films + substrate + lower = 5 bands.
         Assert.Equal(5, List.length bands)
         // The substrate band carries the wedge shape; the half-spaces and films do not.
@@ -111,7 +114,7 @@ module SchematicGeometryTests =
         | Schematic.WedgeBand _ -> ()
         | other -> failwith $"expected a WedgeBand in the layout, got {other}"
         // The film bands preserve the thicker-draws-taller ordering (item 1).
-        let filmHeights = bands |> List.skip 1 |> List.take 2 |> List.map (fun b -> b.height)
+        let filmHeights = bands |> List.skip 1 |> List.take 2 |> List.map (fun b -> b.height.value)
         Assert.True(filmHeights.[0] < filmHeights.[1])
 
     // =====================================================================

@@ -39,15 +39,15 @@ module SeriesDataTests =
 
         Assert.Equal(expected.Length, actual.Length)
         Array.zip expected actual
-        |> Array.iter (fun ((ex, ey), (ax, ay)) ->
-            Assert.Equal(ex, ax, 12)
-            Assert.Equal(ey, ay, 12))
+        |> Array.iter (fun ((ex, ey), a) ->
+            Assert.Equal(ex, a.x, 12)
+            Assert.Equal(ey, a.y, 12))
 
     [<Fact>]
     let ``AC-H1 the series legend name is the engine fullName`` () =
         let x =
             IncidenceAngleRange (Range<_>.create (NumberOfPoints 4) (Angle.degree 0.0<deg> |> IncidenceAngle) (Angle.degree 40.0<deg> |> IncidenceAngle))
-        Assert.Equal(R.info.fullName, (SeriesData.series1D f R x).name)
+        Assert.Equal(R.info.fullName, (SeriesData.series1D f R x).name.value)
 
     // ----------------------------------------------------------------- AC-H3
 
@@ -62,7 +62,7 @@ module SeriesDataTests =
         // the comparison is order-stable (calculate3D parallelises over rows).
         let data = calculate3D f x y
         let expected = Charting.mapFun data R |> Array.map (Array.map (fun v -> v.value))
-        let actual = (SeriesData.surfaceFromData data R x.plotPoints y.plotPoints).z
+        let actual = (SeriesData.surfaceFromData data R x y).z
 
         Assert.Equal(expected.Length, actual.Length)
         Array.zip expected actual

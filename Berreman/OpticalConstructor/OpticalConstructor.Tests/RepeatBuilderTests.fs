@@ -4,6 +4,7 @@ open Berreman.Constants
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
+open OpticalConstructor.Domain.Library
 open OpticalConstructor.Ui
 open Xunit
 
@@ -28,23 +29,23 @@ module RepeatBuilderTests =
 
     [<Fact>]
     let ``AC-J2 expand yields exactly N*R layers`` () =
-        let r = RepeatBuilder.expand cell 5
+        let r = RepeatBuilder.expand cell (PeriodCount 5)
         Assert.Equal(2 * 5, List.length r)
 
     [<Fact>]
     let ``AC-J2 expand preserves cell order across every period`` () =
-        let r = RepeatBuilder.expand cell 3
+        let r = RepeatBuilder.expand cell (PeriodCount 3)
         Assert.Equal<Layer list>([ h; l; h; l; h; l ], r)
         // Cell order holds in each period: even indices are the cell's first layer.
         r |> List.iteri (fun i x -> Assert.Equal((if i % 2 = 0 then h else l), x))
 
     [<Fact>]
     let ``AC-J2 a single repeat returns the cell unchanged`` () =
-        Assert.Equal<Layer list>(cell, RepeatBuilder.expand cell 1)
+        Assert.Equal<Layer list>(cell, RepeatBuilder.expand cell (PeriodCount 1))
 
     [<Fact>]
     let ``AC-J2 the expanded films are ordinary Layers assignable to OpticalSystem.films`` () =
-        let films = RepeatBuilder.expand cell 4
+        let films = RepeatBuilder.expand cell (PeriodCount 4)
         // No new period/super-layer type: the result is `Layer list` and drops
         // straight into the engine `OpticalSystem.films` field (Media.fs:98).
         let sys : OpticalSystem =
