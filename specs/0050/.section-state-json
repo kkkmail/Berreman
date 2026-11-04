@@ -234,14 +234,14 @@
     {
       "name": "S11.4 -- Fit results: uncertainty, correlation, realizability, product check, profile likelihood",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "27a0f31",
       "spec_jsonl_lines": 404
     },
     {
       "name": "S11.5 -- Publishing, the study view; the solver hand-off stub goes",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 419
     },
     {
       "name": "S12.1 -- AT-1 and the optics-mueller reference kit",
