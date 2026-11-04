@@ -42215,6 +42215,2087 @@
           "command_sha256": "370a81ff36227403ac743cd0f7bf6edab3eb144ba4bd5e6b8c30768004b3e5f2"
         }
       ]
+    },
+    {
+      "id": "S112-RUN-GEOMETRY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "BeamLayout.fs declares PlacedElement.incidenceOn (moved verbatim from the UI's private extension) and BeamBranch.propagationBranch; Setups.fs declares SetupSlot.boundSourceIn (the UI's boundSource rule) and ExperimentRun.fs SourcePreset.operatingWaveLengthOf (the UI's operatingWaveLength rule, 600 nm without a source); chartForRun, boundSource and operatingWaveLength call them and the UI keeps no copy; the three new facts pass and the selected chart classes run unchanged.",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 367,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 367,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S112-SLOT-RUN",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "ItemEvaluation.fs declares SlotRunParam, SlotRunError (SlotItemErr, SlotEvaluationErr), SetupSlot.runElementWith (item through its model and the given values, else the library binding, no element for source / detector / mirror / lens slots), SetupSlot.runStepOf and SetupSlot.runEmissionOf; chartForRun and model.runEmission call them with their texts unchanged; the three ItemEvaluationTests facts pass and the selected chart classes run unchanged.",
+      "checks": [
+        {
+          "step": 368,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 368,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 368,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S112-PREFIT-CHECKS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "OpticalConstructor.Domain/PrefitChecks.fs (module PrefitChecks, compiled directly after ExperimentMatrices.fs) declares SlotSpecification with SetupSlot.specification, PrefitError (UnspecifiedSlotsErr, MissingDataErr, UnreadableDataErr, InconsistentDataErr, describe) and Experiment.prefitCheckWith running SolverHandoffView's three checks in order (slots specified except samples; data attached; loadAndValidate) and answering the kept, validated points; SolverHandoffView.validateExperiment maps its result onto ExperimentHandoffStatus with every caption unchanged and its unspecifiedElements is deleted; the five PrefitCheckTests facts pass and SolverHandoffWindowTests runs unchanged.",
+      "checks": [
+        {
+          "step": 369,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 369,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 369,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S112-DATA-CHANGE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "PrefitChecks.fs declares DataChangeFlag (DataUnchangedFlag, ChangedSinceAttachFlag, ChangedSinceFitFlag, MissingDataFileFlag, text) and MappedAttachment.changeWith over S4.2's DataAttachmentStatus and the attachments the last fit run read: missing, then changed since attach, then changed since the fit, else unchanged; the PrefitCheckTests fact passes.",
+      "checks": [
+        {
+          "step": 370,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S112-MEASURED-ROWS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "OpticalConstructor.Domain/StudyForward.fs (module StudyForward, compiled directly after PrefitChecks.fs) declares StudyForwardError (UnpairedPointsErr, describe), RecordedReading (RecordedSignal, RecordedPsiDelta, RecordedMueller), MeasuredRow (SettingsRow, ObservationRow) and MappedPoints.measuredRowsFor placing series points, capture rows, column rows and observations on the scan by validatedFor's rules; the three StudyForwardTests facts pass.",
+      "checks": [
+        {
+          "step": 371,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S112-VECTOR-LAYOUT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "StudyForward.fs declares StudyForwardContext, StudyRunUse with ExperimentRole.studyUse (Science, Calibration, Drift check give rows; Dark gives the dark level; the rest are not read), Study.fittedRunsIn, StudyVectorEntry, the NumericCarrier StudyParameterVector (ofParameterValues, valueAt), StudyParameterLayout (entries, sessions, startVector) and Study.parameterLayoutWith (one entry per owner of each unknown, users being enabled fitted runs whose setups use the unknown's item or a sample of its opened material); the two StudyForwardTests facts pass.",
+      "checks": [
+        {
+          "step": 372,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S112-ASSIGNMENT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "StudyForward.fs declares ExperimentAssignment (itemValues, crystals; valuesOf, crystalOf, materialProxyOver resolving an opened version to the working copy's crystal physics) and StudyParameterLayout.assignmentFor (VectorLengthErr; owners holding the experiment set item values and crystal components from the vector, links copy their leader); the four StudyForwardTests facts and the widened error fact pass.",
+      "checks": [
+        {
+          "step": 373,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S112-FORWARD-MODEL",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "ExperimentRun.fs declares RunStep.productOf; StudyForward.fs declares ParameterValue.darkMean, DetectorReadout (intensity gain and dark, polarimeter, ellipsometer), BoundPathStep, BoundExperiment and Experiment.boundWith (the setup's slots drawn and laid out, bound through runElementWith with the assignment's values and opened materials, the emission, the operating wavelength, the first detector item's readout) and BoundExperiment.readingAt (settings turn, dial, tilt and retune the path; S0 x gain + dark, the path Mueller matrix, Psi/Delta), with ForwardSetupErr, ForwardSlotErr and StudyDetectorErr; the five new facts and the widened error fact pass.",
+      "checks": [
+        {
+          "step": 374,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S112-OBSERVATIONS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "StudyForward.fs declares MeasurementConfiguration.elementOrientation and BoundExperiment.predictedReadingOf (settings rows through readingAt; observation rows as BoundCutPlate of CutPlate.ofForward over createBerremanForward of the experiment's one opened crystal at the observation's configuration); BoundExperiment gains observedCrystalOpt and solverParameters and boundWith takes the study, with ObservationPlateErr and ReadingMismatchErr; the two new facts and the widened error fact pass, the observation exactly equal to the spec 0044 forward.",
+      "checks": [
+        {
+          "step": 375,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S112-ROW-RESIDUAL",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "MuellerInverse.fs declares throughputResidual (ln m00 model - ln m00 measured, NonPositiveIntensityErr) and MuellerFitting.throughputResidualFor calls it with its local helper deleted and its numbers bit-identical; StudyForward.fs declares RowResidual and RecordedReading.residualAgainst (signal difference; Psi and Delta differences, Delta by IEEERemainder 2 pi; observationResidual's 15 entries and the throughput term; RowResidualErr, ReadingMismatchErr); the four new facts and the widened error fact pass and AbsorbingBiaxialInverseTests runs unchanged.",
+      "checks": [
+        {
+          "step": 376,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 376,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S112-STUDY-PREFIT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "StudyForward.fs declares ExperimentPrefit (experiment, check, changeOpt) and Study.prefitWith checking the enabled Science, Calibration, Drift-check and Dark runs in study order through prefitCheckWith and flagging their data through changeWith over the attachment status and the last fit run's attachments, with MissingStudyRunErr and StudyRunKitErr; the two new facts and the widened error fact pass.",
+      "checks": [
+        {
+          "step": 377,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S112-STUDY-DATA",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "StudyForward.fs declares StudyRun, SessionDark (a DarkMean per session), StudyData (runs, darks, darkOf) and Study.dataWith (PrefitFailedErr for the first failed check; fitted runs' measuredRowsFor rows in study order; each session's dark the mean signal of darkRunsIn over the fit's runs, DarkReadingErr for a non-signal row); the three new facts and the widened error fact pass.",
+      "checks": [
+        {
+          "step": 378,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S112-STUDY-RESIDUAL",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "StudyForward.fs declares Study.residualWith: for each run of the study's data in order, the assignment, the session dark, the bound experiment and the residualWeightOf weight, every row's predictedReadingOf residualAgainst its measured reading times the weight; element entries run after run, then every Mueller row's throughput entry (the throughputResidualFor layout); the three new facts pass, the polarimeter study equal to throughputResidualFor within 1e-12 relative.",
+      "checks": [
+        {
+          "step": 379,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S112-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "Every S11.2 step leaves Berreman.slnx building in Release x64 with zero warnings from our code, FS0025 an error; no project and no package is added; OpticalConstructor.Domain compiles PrefitChecks.fs directly after ExperimentMatrices.fs and StudyForward.fs directly after PrefitChecks.fs, and OpticalConstructor.Tests compiles PrefitCheckTests.fs and StudyForwardTests.fs last, in that order, none of these lines carrying a comment.",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 368,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 369,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 370,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 371,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 372,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 373,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 374,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 375,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 376,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 377,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 378,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 379,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S112-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "Every S11.2 step leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command), with nothing under Elevation/ and nothing in .elevation-analyzers.json edited: the moved run rules, PrefitChecks.fs, StudyForward.fs and every changed signature and record carry only elevated types (ELEV003/003P/008/010/010P; StudyParameterVector is the one NumericCarrier, read through valueAt), no value is wrapped at a call site (ELEV001; a vector element becomes a ParameterValue through valueAt and a dark offset a DarkMean through ParameterValue.darkMean), no two-case union is mapped to a bool (ELEV012; SlotSpecification and StudyRunUse are unions), tuples hold at most three distinct types (ELEV011), no single-parameter free function of our types is declared (ELEV013; RunStep.productOf and the run rules are members), every new type, public, case and extension-member name is unique among ours (ELEV014/015/016/019), and every PrefitError, SlotRunError and StudyForwardError case ends in Err (ELEV020).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 368,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 369,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 370,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 371,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 372,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 373,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 374,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 375,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 376,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 377,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 378,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 379,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s37-elev-list-empty).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0af338a79d36131e5f1703b7a73289f337ce3f6b0676746859f3d2900949a64b"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s37-no-vstest).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-vstest",
+          "selection": "command",
+          "command_sha256": "9992cef6d70f18d3190795a2a3fe6ee595f4fb5f4fe70230c3039414df793b94"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s37-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "1a47fb1a1a4cdf988ae44b4665889c3b09f98f5c743725e3dde60f970c2012a6"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s37-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "c671c9261837502f126a8f926e69870507acb9bd8f6326133de09ecab6f7fbd4"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s37-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "25ee22014af2b2c40bfd6e788c51ddfe7ba550323efcaf469d841f583ce262f1"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s37-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "859e06698a6fd8d2220f798f21bdbed9331040758336eb2ac16d7ba433e9bc7e"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s37-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "ccdfcbfa5fb7637a53f1b435cf2de6916acd6facf47778f1105ec49a36baa0e0"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s37-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "38dd6ba739f1b8e68e5dee2f517261e2fa0f56f58f9b746c16ee1e9646564ad6"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s37-no-seed-modules).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c7368268dcfaee99246847539f2ca974e1de8a385817ad8efa5187b9b3df970f"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s37-no-test-db).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-test-db",
+          "selection": "command",
+          "command_sha256": "573f4687a78ff5cbab89279406036647394d66c3b5db512f3f5a2ae0a0050c7b"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s37-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "32752fe3dabbc048ec85b7b0f0111066e66f8c1216ad7d753b31fee6a674c555"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s37-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "54c7ffe530bddb1eafd79c0d67d53f1d998d2e2f2eb26830591f5626f558cf3b"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s37-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "bf1cb93c90a8e49da9d173ed02515cdbe4789da3106546d2136b4aca65f260cd"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names recent.json (001 §R, established by S5.1 step 169) (section invariant s37-no-recent-json).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-recent-json",
+          "selection": "command",
+          "command_sha256": "36f65858e5813dbaa80929aa38f88095a4c960a0dde5ae2b15658256f09d45af"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-MEASURED-ELEMENT-OF",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names measuredElementOf (001 §R, established by S8.1 step 254) (section invariant s37-no-measured-element-of).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "0e49bccfad5fab4025d9a7410723326046b37d955ee41d37a021259e987a0371"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-T8-NO-EXPERIMENT-REGEX",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names experimentRegex (001 §T 'From section 8', established by S8.3 step 270) (section invariant s37-t8-no-experiment-regex).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "475a59d87fc3330be230023680f6bb7b45a441d7ed501cb3451f9618fbd00c52"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-T9-NO-MUELLER-DATA-SET",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names MuellerDataSet (001 §T 'From section 9', established by S9.4 step 331) (section invariant s37-t9-no-mueller-data-set).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c114f7056a408c3b902f32f64ba60a9c12c7e25d22e0fb371dc598cf3426320c"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names Data/MuellerMatrix (001 §T 'From section 9', established by S9.4 steps 330-331) (section invariant s37-t9-no-data-mueller-matrix).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "af41f8eb4e462da4cc5e98bdf88e933e186c8ca962a993d8b0b159d253389ca9"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-NO-ARCHIVE-DATA-PROXY",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, nothing under Berreman/ names MuellerDataProxy or createArchiveBacked (established by S9.4 step 331) (section invariant s37-no-archive-data-proxy).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "013a0f46e32142478ab56fa32fd6c7c42d850dba02b073196872d59c84b28bfc"
+        }
+      ]
+    },
+    {
+      "id": "S112-INV-T10-NO-HARNESS-NOISE",
+      "source": "specs/0050/.section-plan-jsonl section 37 (S11.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S11.2 step, no file under Berreman/BerremanTests/ declares noisyObserveAbsoluteWith (001 §T 'From section 10', established by S10.1 step 340) (section invariant s37-t10-no-harness-noise).",
+      "checks": [
+        {
+          "step": 367,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 368,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 369,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 370,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 371,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 372,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 373,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 374,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 375,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 376,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 377,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 378,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        },
+        {
+          "step": 379,
+          "gate": "invariant-s37-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "44b65c0e0f4b2d8e4662bef219334ed65a4d538aa2dd84fb2baa858dcb0be9ac"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -50140,6 +52221,383 @@
         "S111-INV-NO-ARCHIVE-DATA-PROXY",
         "S111-INV-T10-NO-HARNESS-NOISE"
       ]
+    },
+    {
+      "step": 367,
+      "sha256": "e259af1599f655601298d9cf33ef031e4fbf50f5ed8ef649c9241b93ffe7e9ea",
+      "obligations": [
+        "S112-RUN-GEOMETRY",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 368,
+      "sha256": "bdacc9b114b2fb2496b4ca8ef1b377129089ed45b61a71c156559f9fe0453162",
+      "obligations": [
+        "S112-SLOT-RUN",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 369,
+      "sha256": "ecade8bcd200cc41e4738d5f4d19c55480749c457b6a37dc582a79472794c39e",
+      "obligations": [
+        "S112-PREFIT-CHECKS",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 370,
+      "sha256": "a3e11d0b4a81208c91d49d1bde77e5f65e9a8a582c95718f2f8050a14b23540f",
+      "obligations": [
+        "S112-DATA-CHANGE",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 371,
+      "sha256": "7f4c4a016ccc5e9419d6381d162383fa04550c7a9020e92fe1a8b2f432c61fc3",
+      "obligations": [
+        "S112-MEASURED-ROWS",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 372,
+      "sha256": "689e7974b7ba71e367bc028ba8f45636b96e693cb4195f6bba5440c02abcd301",
+      "obligations": [
+        "S112-VECTOR-LAYOUT",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 373,
+      "sha256": "5a1f790714ee0bead43590ab77cf043d1720ef60d5a45a3d09932c4291f54b6f",
+      "obligations": [
+        "S112-ASSIGNMENT",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 374,
+      "sha256": "6d19dd92388750771c1dbd65cd4fb7d1984c19aa5af62ce5561de45574def10e",
+      "obligations": [
+        "S112-FORWARD-MODEL",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 375,
+      "sha256": "b63242001f431c04f6cc87394b89584c7dcc4725199502e47d68b570b55d6cc8",
+      "obligations": [
+        "S112-OBSERVATIONS",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 376,
+      "sha256": "fe7986f73a4aa229455f1badf3929421043386f568aaf94c77c7947a77c85349",
+      "obligations": [
+        "S112-ROW-RESIDUAL",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 377,
+      "sha256": "2335c01efd0fe0cccb4897463f41521619b948d2792eabcc0daaabca4c6bf5c9",
+      "obligations": [
+        "S112-STUDY-PREFIT",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 378,
+      "sha256": "c419c876801c1adee0b9a6e98c788316b6490339a6364d2198cfd02139b71380",
+      "obligations": [
+        "S112-STUDY-DATA",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 379,
+      "sha256": "72ab12153687443ba7a545870252511c3423bfe8b55455033c880fc654328c8a",
+      "obligations": [
+        "S112-STUDY-RESIDUAL",
+        "S112-BUILD",
+        "S112-ELEVATION",
+        "S112-INV-ELEV-LIST-EMPTY",
+        "S112-INV-NO-VSTEST",
+        "S112-INV-NO-KIT-KIT-JSON",
+        "S112-INV-NO-EPS-AXIS-EVALUATED",
+        "S112-INV-COMPLEXITY-MANDATORY",
+        "S112-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S112-INV-NO-SEEDING-SEAM",
+        "S112-INV-T1-NO-CODE-SEEDS",
+        "S112-INV-NO-SEED-MODULES",
+        "S112-INV-NO-TEST-DB",
+        "S112-INV-NO-VERSIONS-IN-USE",
+        "S112-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S112-INV-T4-NO-OCPROJ",
+        "S112-INV-NO-RECENT-JSON",
+        "S112-INV-NO-MEASURED-ELEMENT-OF",
+        "S112-INV-T8-NO-EXPERIMENT-REGEX",
+        "S112-INV-T9-NO-MUELLER-DATA-SET",
+        "S112-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S112-INV-NO-ARCHIVE-DATA-PROXY",
+        "S112-INV-T10-NO-HARNESS-NOISE"
+      ]
     }
   ],
   "behavior_seams": [
@@ -51687,6 +54145,71 @@
       "id": "s111-study-messages",
       "step": 366,
       "obligation": "S111-STUDY-MESSAGES"
+    },
+    {
+      "id": "s112-run-geometry",
+      "step": 367,
+      "obligation": "S112-RUN-GEOMETRY"
+    },
+    {
+      "id": "s112-slot-run",
+      "step": 368,
+      "obligation": "S112-SLOT-RUN"
+    },
+    {
+      "id": "s112-prefit-checks",
+      "step": 369,
+      "obligation": "S112-PREFIT-CHECKS"
+    },
+    {
+      "id": "s112-data-change",
+      "step": 370,
+      "obligation": "S112-DATA-CHANGE"
+    },
+    {
+      "id": "s112-measured-rows",
+      "step": 371,
+      "obligation": "S112-MEASURED-ROWS"
+    },
+    {
+      "id": "s112-vector-layout",
+      "step": 372,
+      "obligation": "S112-VECTOR-LAYOUT"
+    },
+    {
+      "id": "s112-assignment",
+      "step": 373,
+      "obligation": "S112-ASSIGNMENT"
+    },
+    {
+      "id": "s112-forward-model",
+      "step": 374,
+      "obligation": "S112-FORWARD-MODEL"
+    },
+    {
+      "id": "s112-observations",
+      "step": 375,
+      "obligation": "S112-OBSERVATIONS"
+    },
+    {
+      "id": "s112-row-residual",
+      "step": 376,
+      "obligation": "S112-ROW-RESIDUAL"
+    },
+    {
+      "id": "s112-study-prefit",
+      "step": 377,
+      "obligation": "S112-STUDY-PREFIT"
+    },
+    {
+      "id": "s112-study-data",
+      "step": 378,
+      "obligation": "S112-STUDY-DATA"
+    },
+    {
+      "id": "s112-study-residual",
+      "step": 379,
+      "obligation": "S112-STUDY-RESIDUAL"
     }
   ],
   "temporal_checks": [],
@@ -52201,6 +54724,17 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
         "Berreman/BerremanTests",
         "Berreman/BerremanTestSupport"
+      ]
+    },
+    {
+      "from": 367,
+      "step": 379,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Optimization",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
       ]
     }
   ]
