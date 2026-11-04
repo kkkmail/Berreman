@@ -108,14 +108,14 @@
     {
       "name": "S4.4 -- The .ocproj aggregate is deleted",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "5c326b2",
       "spec_jsonl_lines": 161
     },
     {
       "name": "S5.1 -- The kit history over the per-user preferences",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 169
     },
     {
       "name": "S5.2 -- The kit start screen and the Launcher",

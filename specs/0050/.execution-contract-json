@@ -14484,6 +14484,953 @@
           "command_sha256": "32bf96c9b759ffc504b2c41ea4763820b588222d65b743df11730a1782672065"
         }
       ]
+    },
+    {
+      "id": "S51-LIMIT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §F ('History': up to `KitHistoryLimit` = 100 folders (`appsettings.json`); starred kits always at the top, sorted by last open date, then the rest sorted the same way; the cap evicts the oldest UNSTARRED entry and never a starred one; a missing folder shows greyed. 'Storage': the history lives in the per-user preferences, replacing the 16-entry `recent.json` list; entry: folder, kit id, name cache, last opened, `Starred | NotStarred`; the existing pure MRU logic (`RecentFiles.bump`) is REUSED and extended with `star`, `unstar`, `forget` and `evict` over a clock provider), §G (preferences location; every path overridable), §P (`KitHistoryProxy` (preferences); every proxy has an in-memory stub of the same shape), §R ('The 16-entry `recent.json` list, replaced by the kit history (`bump` reused)'), §S5; specs/0050/.section-plan-jsonl section 19 (S5.1) brief; specs/0050/.spec-md §0.1 (the RecentFiles row), §0.2 (`KitHistoryProxy`), §3.17, §4, §5 (`KitHistoryProxy`), §6 ('History MRU'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "WorkbenchSettings declares KitHistoryLimit (value, defaultValue 100, tryCreate accepting a positive count) and WorkbenchSettingsError gains NonPositiveKitHistoryLimitErr carrying a refused value.",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S51-SETTINGS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §F ('History': up to `KitHistoryLimit` = 100 folders (`appsettings.json`); starred kits always at the top, sorted by last open date, then the rest sorted the same way; the cap evicts the oldest UNSTARRED entry and never a starred one; a missing folder shows greyed. 'Storage': the history lives in the per-user preferences, replacing the 16-entry `recent.json` list; entry: folder, kit id, name cache, last opened, `Starred | NotStarred`; the existing pure MRU logic (`RecentFiles.bump`) is REUSED and extended with `star`, `unstar`, `forget` and `evict` over a clock provider), §G (preferences location; every path overridable), §P (`KitHistoryProxy` (preferences); every proxy has an in-memory stub of the same shape), §R ('The 16-entry `recent.json` list, replaced by the kit history (`bump` reused)'), §S5; specs/0050/.section-plan-jsonl section 19 (S5.1) brief; specs/0050/.spec-md §0.1 (the RecentFiles row), §0.2 (`KitHistoryProxy`), §3.17, §4, §5 (`KitHistoryProxy`), §6 ('History MRU'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "The WorkbenchSettings record carries kitHistoryLimit, 100 in WorkbenchSettings.defaults; ConfigKey declares the KitHistoryLimit appSettings key; AppConfig.loadWorkbenchSettings reads it through a KitHistoryLimit door, writing a missing or refused value back as its default; and the four count doors (QuickPickThreshold, TreeAutoBuildThreshold, ThicknessBucketCap, KitHistoryLimit) parse through one shared private body with unchanged refusal texts.",
+      "checks": [
+        {
+          "step": 163,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 163,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 163,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S51-MODEL",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §F ('History': up to `KitHistoryLimit` = 100 folders (`appsettings.json`); starred kits always at the top, sorted by last open date, then the rest sorted the same way; the cap evicts the oldest UNSTARRED entry and never a starred one; a missing folder shows greyed. 'Storage': the history lives in the per-user preferences, replacing the 16-entry `recent.json` list; entry: folder, kit id, name cache, last opened, `Starred | NotStarred`; the existing pure MRU logic (`RecentFiles.bump`) is REUSED and extended with `star`, `unstar`, `forget` and `evict` over a clock provider), §G (preferences location; every path overridable), §P (`KitHistoryProxy` (preferences); every proxy has an in-memory stub of the same shape), §R ('The 16-entry `recent.json` list, replaced by the kit history (`bump` reused)'), §S5; specs/0050/.section-plan-jsonl section 19 (S5.1) brief; specs/0050/.spec-md §0.1 (the RecentFiles row), §0.2 (`KitHistoryProxy`), §3.17, §4, §5 (`KitHistoryProxy`), §6 ('History MRU'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "Domain KitHistory.fs declares KitStar (StarredKit / UnstarredKit with int tags 1 and 2 read back by tryOfWire), KitHistoryEntry (folder, kit id, name, last opened, star) and KitHistory (schema version 1, entries newest open first, empty); star, unstar and forget change only the entry whose folder matches case-insensitively; evict drops the oldest unstarred entries down to the limit and never a starred one; displayOrder lists starred entries then the rest, each newest open first.",
+      "checks": [
+        {
+          "step": 164,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S51-PROXY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §F ('History': up to `KitHistoryLimit` = 100 folders (`appsettings.json`); starred kits always at the top, sorted by last open date, then the rest sorted the same way; the cap evicts the oldest UNSTARRED entry and never a starred one; a missing folder shows greyed. 'Storage': the history lives in the per-user preferences, replacing the 16-entry `recent.json` list; entry: folder, kit id, name cache, last opened, `Starred | NotStarred`; the existing pure MRU logic (`RecentFiles.bump`) is REUSED and extended with `star`, `unstar`, `forget` and `evict` over a clock provider), §G (preferences location; every path overridable), §P (`KitHistoryProxy` (preferences); every proxy has an in-memory stub of the same shape), §R ('The 16-entry `recent.json` list, replaced by the kit history (`bump` reused)'), §S5; specs/0050/.section-plan-jsonl section 19 (S5.1) brief; specs/0050/.spec-md §0.1 (the RecentFiles row), §0.2 (`KitHistoryProxy`), §3.17, §4, §5 (`KitHistoryProxy`), §6 ('History MRU'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "Domain declares KitFolderPresence, KitHistoryError (KitHistoryWriteErr with describe) and the functional proxy KitHistoryProxy { readHistory; writeHistory; probeFolder } with an in-memory double, and KitHistoryProxyContract holds the store facts run over that double.",
+      "checks": [
+        {
+          "step": 165,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S51-STAR-TAG",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §F ('History': up to `KitHistoryLimit` = 100 folders (`appsettings.json`); starred kits always at the top, sorted by last open date, then the rest sorted the same way; the cap evicts the oldest UNSTARRED entry and never a starred one; a missing folder shows greyed. 'Storage': the history lives in the per-user preferences, replacing the 16-entry `recent.json` list; entry: folder, kit id, name cache, last opened, `Starred | NotStarred`; the existing pure MRU logic (`RecentFiles.bump`) is REUSED and extended with `star`, `unstar`, `forget` and `evict` over a clock provider), §G (preferences location; every path overridable), §P (`KitHistoryProxy` (preferences); every proxy has an in-memory stub of the same shape), §R ('The 16-entry `recent.json` list, replaced by the kit history (`bump` reused)'), §S5; specs/0050/.section-plan-jsonl section 19 (S5.1) brief; specs/0050/.spec-md §0.1 (the RecentFiles row), §0.2 (`KitHistoryProxy`), §3.17, §4, §5 (`KitHistoryProxy`), §6 ('History MRU'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "CanonicalJson.options writes a KitStar as its int tag and reads it back through KitStar.tryOfWire, refusing an unknown tag.",
+      "checks": [
+        {
+          "step": 166,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S51-TEXT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §F ('History': up to `KitHistoryLimit` = 100 folders (`appsettings.json`); starred kits always at the top, sorted by last open date, then the rest sorted the same way; the cap evicts the oldest UNSTARRED entry and never a starred one; a missing folder shows greyed. 'Storage': the history lives in the per-user preferences, replacing the 16-entry `recent.json` list; entry: folder, kit id, name cache, last opened, `Starred | NotStarred`; the existing pure MRU logic (`RecentFiles.bump`) is REUSED and extended with `star`, `unstar`, `forget` and `evict` over a clock provider), §G (preferences location; every path overridable), §P (`KitHistoryProxy` (preferences); every proxy has an in-memory stub of the same shape), §R ('The 16-entry `recent.json` list, replaced by the kit history (`bump` reused)'), §S5; specs/0050/.section-plan-jsonl section 19 (S5.1) brief; specs/0050/.spec-md §0.1 (the RecentFiles row), §0.2 (`KitHistoryProxy`), §3.17, §4, §5 (`KitHistoryProxy`), §6 ('History MRU'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "The history file's text is canonical JSON: schema/kit-history.schema.json validates it on read through SchemaValidation.validateKitHistory, KitHistory.fileText renders it, and KitHistoryText.parseKitHistory reads it through parseVersionedText, a schema version other than 1 being UnsupportedSchemaVersionErr; the file is named kit-history.json.",
+      "checks": [
+        {
+          "step": 167,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S51-STORE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §F ('History': up to `KitHistoryLimit` = 100 folders (`appsettings.json`); starred kits always at the top, sorted by last open date, then the rest sorted the same way; the cap evicts the oldest UNSTARRED entry and never a starred one; a missing folder shows greyed. 'Storage': the history lives in the per-user preferences, replacing the 16-entry `recent.json` list; entry: folder, kit id, name cache, last opened, `Starred | NotStarred`; the existing pure MRU logic (`RecentFiles.bump`) is REUSED and extended with `star`, `unstar`, `forget` and `evict` over a clock provider), §G (preferences location; every path overridable), §P (`KitHistoryProxy` (preferences); every proxy has an in-memory stub of the same shape), §R ('The 16-entry `recent.json` list, replaced by the kit history (`bump` reused)'), §S5; specs/0050/.section-plan-jsonl section 19 (S5.1) brief; specs/0050/.spec-md §0.1 (the RecentFiles row), §0.2 (`KitHistoryProxy`), §3.17, §4, §5 (`KitHistoryProxy`), §6 ('History MRU'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "KitHistoryProxy.create over a preferences folder reads kit-history.json, answering the empty history with a logged warning when the file is missing or unreadable and never changing the file on a read; writes it atomically through FileName.writeBytesAtomically, creating the folder, a failure being KitHistoryWriteErr and never a throw; and probes a folder's existence; every contract fact passes over real folders under the test output.",
+      "checks": [
+        {
+          "step": 168,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S51-BUMP",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §F ('History': up to `KitHistoryLimit` = 100 folders (`appsettings.json`); starred kits always at the top, sorted by last open date, then the rest sorted the same way; the cap evicts the oldest UNSTARRED entry and never a starred one; a missing folder shows greyed. 'Storage': the history lives in the per-user preferences, replacing the 16-entry `recent.json` list; entry: folder, kit id, name cache, last opened, `Starred | NotStarred`; the existing pure MRU logic (`RecentFiles.bump`) is REUSED and extended with `star`, `unstar`, `forget` and `evict` over a clock provider), §G (preferences location; every path overridable), §P (`KitHistoryProxy` (preferences); every proxy has an in-memory stub of the same shape), §R ('The 16-entry `recent.json` list, replaced by the kit history (`bump` reused)'), §S5; specs/0050/.section-plan-jsonl section 19 (S5.1) brief; specs/0050/.spec-md §0.1 (the RecentFiles row), §0.2 (`KitHistoryProxy`), §3.17, §4, §5 (`KitHistoryProxy`), §6 ('History MRU'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "KitHistory.bump, moved from RecentFiles.bump and generalised to entries over a ClockProvider, puts the opened kit first with its star kept and its id, name and time refreshed, matching its folder case-insensitively, then evicts over the limit; RecentFiles.fs (bump, maxRecent, prefsPath, loadRecent, pushRecent) and HistoryTests are deleted, the docs that named them point at the kit history, and nothing under Berreman/ names RecentFiles, recent.json, maxRecent, pushRecent, loadRecent or prefsPath.",
+      "checks": [
+        {
+          "step": 169,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 169,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S51-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §F ('History': up to `KitHistoryLimit` = 100 folders (`appsettings.json`); starred kits always at the top, sorted by last open date, then the rest sorted the same way; the cap evicts the oldest UNSTARRED entry and never a starred one; a missing folder shows greyed. 'Storage': the history lives in the per-user preferences, replacing the 16-entry `recent.json` list; entry: folder, kit id, name cache, last opened, `Starred | NotStarred`; the existing pure MRU logic (`RecentFiles.bump`) is REUSED and extended with `star`, `unstar`, `forget` and `evict` over a clock provider), §G (preferences location; every path overridable), §P (`KitHistoryProxy` (preferences); every proxy has an in-memory stub of the same shape), §R ('The 16-entry `recent.json` list, replaced by the kit history (`bump` reused)'), §S5; specs/0050/.section-plan-jsonl section 19 (S5.1) brief; specs/0050/.spec-md §0.1 (the RecentFiles row), §0.2 (`KitHistoryProxy`), §3.17, §4, §5 (`KitHistoryProxy`), §6 ('History MRU'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "Every S5.1 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error, and no project, compile item or content item names a deleted file.",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 163,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 164,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 165,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 166,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 167,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 168,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 169,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S51-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §F ('History': up to `KitHistoryLimit` = 100 folders (`appsettings.json`); starred kits always at the top, sorted by last open date, then the rest sorted the same way; the cap evicts the oldest UNSTARRED entry and never a starred one; a missing folder shows greyed. 'Storage': the history lives in the per-user preferences, replacing the 16-entry `recent.json` list; entry: folder, kit id, name cache, last opened, `Starred | NotStarred`; the existing pure MRU logic (`RecentFiles.bump`) is REUSED and extended with `star`, `unstar`, `forget` and `evict` over a clock provider), §G (preferences location; every path overridable), §P (`KitHistoryProxy` (preferences); every proxy has an in-memory stub of the same shape), §R ('The 16-entry `recent.json` list, replaced by the kit history (`bump` reused)'), §S5; specs/0050/.section-plan-jsonl section 19 (S5.1) brief; specs/0050/.spec-md §0.1 (the RecentFiles row), §0.2 (`KitHistoryProxy`), §3.17, §4, §5 (`KitHistoryProxy`), §6 ('History MRU'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "Every S5.1 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): every new name is unique, the star's disk tag is an int, no public member mixes our types with primitives, and no free function of one of our types is added.",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 163,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 164,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 165,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 166,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 167,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 168,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 169,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s19-elev-list-empty).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "33c678cabe80233467bbd6f175f06b538849151e1413fa54f3ded4ee728242f1"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "33c678cabe80233467bbd6f175f06b538849151e1413fa54f3ded4ee728242f1"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "33c678cabe80233467bbd6f175f06b538849151e1413fa54f3ded4ee728242f1"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "33c678cabe80233467bbd6f175f06b538849151e1413fa54f3ded4ee728242f1"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "33c678cabe80233467bbd6f175f06b538849151e1413fa54f3ded4ee728242f1"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "33c678cabe80233467bbd6f175f06b538849151e1413fa54f3ded4ee728242f1"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "33c678cabe80233467bbd6f175f06b538849151e1413fa54f3ded4ee728242f1"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "33c678cabe80233467bbd6f175f06b538849151e1413fa54f3ded4ee728242f1"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s19-no-vstest).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-no-vstest",
+          "selection": "command",
+          "command_sha256": "39b1dbb9038d531e99e3d6a9eed08628c0bf90111ae4606cfda12fbb4c5d71b0"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-no-vstest",
+          "selection": "command",
+          "command_sha256": "39b1dbb9038d531e99e3d6a9eed08628c0bf90111ae4606cfda12fbb4c5d71b0"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-no-vstest",
+          "selection": "command",
+          "command_sha256": "39b1dbb9038d531e99e3d6a9eed08628c0bf90111ae4606cfda12fbb4c5d71b0"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-no-vstest",
+          "selection": "command",
+          "command_sha256": "39b1dbb9038d531e99e3d6a9eed08628c0bf90111ae4606cfda12fbb4c5d71b0"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-no-vstest",
+          "selection": "command",
+          "command_sha256": "39b1dbb9038d531e99e3d6a9eed08628c0bf90111ae4606cfda12fbb4c5d71b0"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-no-vstest",
+          "selection": "command",
+          "command_sha256": "39b1dbb9038d531e99e3d6a9eed08628c0bf90111ae4606cfda12fbb4c5d71b0"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-no-vstest",
+          "selection": "command",
+          "command_sha256": "39b1dbb9038d531e99e3d6a9eed08628c0bf90111ae4606cfda12fbb4c5d71b0"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-no-vstest",
+          "selection": "command",
+          "command_sha256": "39b1dbb9038d531e99e3d6a9eed08628c0bf90111ae4606cfda12fbb4c5d71b0"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s19-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "14872d938f6bd5d30adb9068017ccae5e3f707bbc615b62e1f5fea11aa65f0e1"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "14872d938f6bd5d30adb9068017ccae5e3f707bbc615b62e1f5fea11aa65f0e1"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "14872d938f6bd5d30adb9068017ccae5e3f707bbc615b62e1f5fea11aa65f0e1"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "14872d938f6bd5d30adb9068017ccae5e3f707bbc615b62e1f5fea11aa65f0e1"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "14872d938f6bd5d30adb9068017ccae5e3f707bbc615b62e1f5fea11aa65f0e1"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "14872d938f6bd5d30adb9068017ccae5e3f707bbc615b62e1f5fea11aa65f0e1"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "14872d938f6bd5d30adb9068017ccae5e3f707bbc615b62e1f5fea11aa65f0e1"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "14872d938f6bd5d30adb9068017ccae5e3f707bbc615b62e1f5fea11aa65f0e1"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s19-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "446204fa1f526b69d1c1bd432d506df364caa4aef2e2e1e8d10add1da9a082ef"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "446204fa1f526b69d1c1bd432d506df364caa4aef2e2e1e8d10add1da9a082ef"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "446204fa1f526b69d1c1bd432d506df364caa4aef2e2e1e8d10add1da9a082ef"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "446204fa1f526b69d1c1bd432d506df364caa4aef2e2e1e8d10add1da9a082ef"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "446204fa1f526b69d1c1bd432d506df364caa4aef2e2e1e8d10add1da9a082ef"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "446204fa1f526b69d1c1bd432d506df364caa4aef2e2e1e8d10add1da9a082ef"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "446204fa1f526b69d1c1bd432d506df364caa4aef2e2e1e8d10add1da9a082ef"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "446204fa1f526b69d1c1bd432d506df364caa4aef2e2e1e8d10add1da9a082ef"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s19-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "042111bf829871481af5b6538e3ec23c37f7cac2f5a188bf0a1229a8dff423b2"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "042111bf829871481af5b6538e3ec23c37f7cac2f5a188bf0a1229a8dff423b2"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "042111bf829871481af5b6538e3ec23c37f7cac2f5a188bf0a1229a8dff423b2"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "042111bf829871481af5b6538e3ec23c37f7cac2f5a188bf0a1229a8dff423b2"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "042111bf829871481af5b6538e3ec23c37f7cac2f5a188bf0a1229a8dff423b2"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "042111bf829871481af5b6538e3ec23c37f7cac2f5a188bf0a1229a8dff423b2"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "042111bf829871481af5b6538e3ec23c37f7cac2f5a188bf0a1229a8dff423b2"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "042111bf829871481af5b6538e3ec23c37f7cac2f5a188bf0a1229a8dff423b2"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s19-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "998719431ad167fe5a1c08fb2d161fac89dd44a250b800ec99224426500cb97b"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "998719431ad167fe5a1c08fb2d161fac89dd44a250b800ec99224426500cb97b"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "998719431ad167fe5a1c08fb2d161fac89dd44a250b800ec99224426500cb97b"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "998719431ad167fe5a1c08fb2d161fac89dd44a250b800ec99224426500cb97b"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "998719431ad167fe5a1c08fb2d161fac89dd44a250b800ec99224426500cb97b"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "998719431ad167fe5a1c08fb2d161fac89dd44a250b800ec99224426500cb97b"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "998719431ad167fe5a1c08fb2d161fac89dd44a250b800ec99224426500cb97b"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "998719431ad167fe5a1c08fb2d161fac89dd44a250b800ec99224426500cb97b"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s19-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "c9d56cdeb069c154db1c4e506c7aaf29c077e92165fec1e43a3af505606ce27b"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "c9d56cdeb069c154db1c4e506c7aaf29c077e92165fec1e43a3af505606ce27b"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "c9d56cdeb069c154db1c4e506c7aaf29c077e92165fec1e43a3af505606ce27b"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "c9d56cdeb069c154db1c4e506c7aaf29c077e92165fec1e43a3af505606ce27b"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "c9d56cdeb069c154db1c4e506c7aaf29c077e92165fec1e43a3af505606ce27b"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "c9d56cdeb069c154db1c4e506c7aaf29c077e92165fec1e43a3af505606ce27b"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "c9d56cdeb069c154db1c4e506c7aaf29c077e92165fec1e43a3af505606ce27b"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "c9d56cdeb069c154db1c4e506c7aaf29c077e92165fec1e43a3af505606ce27b"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s19-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "59900d14d3c8cea5eed8b0e11f822b4307b48db354dc52c88670e76652d56fc5"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "59900d14d3c8cea5eed8b0e11f822b4307b48db354dc52c88670e76652d56fc5"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "59900d14d3c8cea5eed8b0e11f822b4307b48db354dc52c88670e76652d56fc5"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "59900d14d3c8cea5eed8b0e11f822b4307b48db354dc52c88670e76652d56fc5"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "59900d14d3c8cea5eed8b0e11f822b4307b48db354dc52c88670e76652d56fc5"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "59900d14d3c8cea5eed8b0e11f822b4307b48db354dc52c88670e76652d56fc5"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "59900d14d3c8cea5eed8b0e11f822b4307b48db354dc52c88670e76652d56fc5"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "59900d14d3c8cea5eed8b0e11f822b4307b48db354dc52c88670e76652d56fc5"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s19-no-seed-modules).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "b9a29b558b8e264d31826eeeec5d5138363b874676a909aab05663628abbe851"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "b9a29b558b8e264d31826eeeec5d5138363b874676a909aab05663628abbe851"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "b9a29b558b8e264d31826eeeec5d5138363b874676a909aab05663628abbe851"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "b9a29b558b8e264d31826eeeec5d5138363b874676a909aab05663628abbe851"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "b9a29b558b8e264d31826eeeec5d5138363b874676a909aab05663628abbe851"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "b9a29b558b8e264d31826eeeec5d5138363b874676a909aab05663628abbe851"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "b9a29b558b8e264d31826eeeec5d5138363b874676a909aab05663628abbe851"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "b9a29b558b8e264d31826eeeec5d5138363b874676a909aab05663628abbe851"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s19-no-test-db).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-no-test-db",
+          "selection": "command",
+          "command_sha256": "a73a776b07f69c503c4de2b75d85e140f8e6807ee72368c1260708e70690f829"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-no-test-db",
+          "selection": "command",
+          "command_sha256": "a73a776b07f69c503c4de2b75d85e140f8e6807ee72368c1260708e70690f829"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-no-test-db",
+          "selection": "command",
+          "command_sha256": "a73a776b07f69c503c4de2b75d85e140f8e6807ee72368c1260708e70690f829"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-no-test-db",
+          "selection": "command",
+          "command_sha256": "a73a776b07f69c503c4de2b75d85e140f8e6807ee72368c1260708e70690f829"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-no-test-db",
+          "selection": "command",
+          "command_sha256": "a73a776b07f69c503c4de2b75d85e140f8e6807ee72368c1260708e70690f829"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-no-test-db",
+          "selection": "command",
+          "command_sha256": "a73a776b07f69c503c4de2b75d85e140f8e6807ee72368c1260708e70690f829"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-no-test-db",
+          "selection": "command",
+          "command_sha256": "a73a776b07f69c503c4de2b75d85e140f8e6807ee72368c1260708e70690f829"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-no-test-db",
+          "selection": "command",
+          "command_sha256": "a73a776b07f69c503c4de2b75d85e140f8e6807ee72368c1260708e70690f829"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s19-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "323e2d804bb4397618ef4e4797485d388b55bd5a05f321f5b6c65529b20a8af3"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "323e2d804bb4397618ef4e4797485d388b55bd5a05f321f5b6c65529b20a8af3"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "323e2d804bb4397618ef4e4797485d388b55bd5a05f321f5b6c65529b20a8af3"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "323e2d804bb4397618ef4e4797485d388b55bd5a05f321f5b6c65529b20a8af3"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "323e2d804bb4397618ef4e4797485d388b55bd5a05f321f5b6c65529b20a8af3"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "323e2d804bb4397618ef4e4797485d388b55bd5a05f321f5b6c65529b20a8af3"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "323e2d804bb4397618ef4e4797485d388b55bd5a05f321f5b6c65529b20a8af3"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "323e2d804bb4397618ef4e4797485d388b55bd5a05f321f5b6c65529b20a8af3"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s19-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "25fd0c6176704884b4d46d414d9aca1614d3cbe9cdd9e1826350b9cdbd2114a7"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "25fd0c6176704884b4d46d414d9aca1614d3cbe9cdd9e1826350b9cdbd2114a7"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "25fd0c6176704884b4d46d414d9aca1614d3cbe9cdd9e1826350b9cdbd2114a7"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "25fd0c6176704884b4d46d414d9aca1614d3cbe9cdd9e1826350b9cdbd2114a7"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "25fd0c6176704884b4d46d414d9aca1614d3cbe9cdd9e1826350b9cdbd2114a7"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "25fd0c6176704884b4d46d414d9aca1614d3cbe9cdd9e1826350b9cdbd2114a7"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "25fd0c6176704884b4d46d414d9aca1614d3cbe9cdd9e1826350b9cdbd2114a7"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "25fd0c6176704884b4d46d414d9aca1614d3cbe9cdd9e1826350b9cdbd2114a7"
+        }
+      ]
+    },
+    {
+      "id": "S51-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 19 (S5.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S5.1 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s19-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 162,
+          "gate": "invariant-s19-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4f672bcaac711cfa235b9e382149f30181a33e2d813ceb643d7d6624a6e096e2"
+        },
+        {
+          "step": 163,
+          "gate": "invariant-s19-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4f672bcaac711cfa235b9e382149f30181a33e2d813ceb643d7d6624a6e096e2"
+        },
+        {
+          "step": 164,
+          "gate": "invariant-s19-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4f672bcaac711cfa235b9e382149f30181a33e2d813ceb643d7d6624a6e096e2"
+        },
+        {
+          "step": 165,
+          "gate": "invariant-s19-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4f672bcaac711cfa235b9e382149f30181a33e2d813ceb643d7d6624a6e096e2"
+        },
+        {
+          "step": 166,
+          "gate": "invariant-s19-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4f672bcaac711cfa235b9e382149f30181a33e2d813ceb643d7d6624a6e096e2"
+        },
+        {
+          "step": 167,
+          "gate": "invariant-s19-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4f672bcaac711cfa235b9e382149f30181a33e2d813ceb643d7d6624a6e096e2"
+        },
+        {
+          "step": 168,
+          "gate": "invariant-s19-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4f672bcaac711cfa235b9e382149f30181a33e2d813ceb643d7d6624a6e096e2"
+        },
+        {
+          "step": 169,
+          "gate": "invariant-s19-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4f672bcaac711cfa235b9e382149f30181a33e2d813ceb643d7d6624a6e096e2"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -17372,6 +18319,182 @@
         "S44-INV-NO-VERSIONS-IN-USE",
         "S44-INV-NO-SCENE-COLLECTION-SEAMS"
       ]
+    },
+    {
+      "step": 162,
+      "sha256": "357dac159e0210fdeed33ea960a0b511343f5330559290b031c2e77f8c676b98",
+      "obligations": [
+        "S51-LIMIT",
+        "S51-BUILD",
+        "S51-ELEVATION",
+        "S51-INV-ELEV-LIST-EMPTY",
+        "S51-INV-NO-VSTEST",
+        "S51-INV-NO-KIT-KIT-JSON",
+        "S51-INV-NO-EPS-AXIS-EVALUATED",
+        "S51-INV-COMPLEXITY-MANDATORY",
+        "S51-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S51-INV-NO-SEEDING-SEAM",
+        "S51-INV-T1-NO-CODE-SEEDS",
+        "S51-INV-NO-SEED-MODULES",
+        "S51-INV-NO-TEST-DB",
+        "S51-INV-NO-VERSIONS-IN-USE",
+        "S51-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S51-INV-T4-NO-OCPROJ"
+      ]
+    },
+    {
+      "step": 163,
+      "sha256": "ac169b87df946d398ac99a02717b1e09cd7f27fafee94a12a96c2d4045012690",
+      "obligations": [
+        "S51-SETTINGS",
+        "S51-BUILD",
+        "S51-ELEVATION",
+        "S51-INV-ELEV-LIST-EMPTY",
+        "S51-INV-NO-VSTEST",
+        "S51-INV-NO-KIT-KIT-JSON",
+        "S51-INV-NO-EPS-AXIS-EVALUATED",
+        "S51-INV-COMPLEXITY-MANDATORY",
+        "S51-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S51-INV-NO-SEEDING-SEAM",
+        "S51-INV-T1-NO-CODE-SEEDS",
+        "S51-INV-NO-SEED-MODULES",
+        "S51-INV-NO-TEST-DB",
+        "S51-INV-NO-VERSIONS-IN-USE",
+        "S51-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S51-INV-T4-NO-OCPROJ"
+      ]
+    },
+    {
+      "step": 164,
+      "sha256": "a040606168a718cbd16fb7ab4ace84509e49c197478a72e55913a1c50fdd65be",
+      "obligations": [
+        "S51-MODEL",
+        "S51-BUILD",
+        "S51-ELEVATION",
+        "S51-INV-ELEV-LIST-EMPTY",
+        "S51-INV-NO-VSTEST",
+        "S51-INV-NO-KIT-KIT-JSON",
+        "S51-INV-NO-EPS-AXIS-EVALUATED",
+        "S51-INV-COMPLEXITY-MANDATORY",
+        "S51-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S51-INV-NO-SEEDING-SEAM",
+        "S51-INV-T1-NO-CODE-SEEDS",
+        "S51-INV-NO-SEED-MODULES",
+        "S51-INV-NO-TEST-DB",
+        "S51-INV-NO-VERSIONS-IN-USE",
+        "S51-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S51-INV-T4-NO-OCPROJ"
+      ]
+    },
+    {
+      "step": 165,
+      "sha256": "71df3c1d9948a03f4b5086acb529c5cb68c2b11281479e4f2b50e08410f7da27",
+      "obligations": [
+        "S51-PROXY",
+        "S51-BUILD",
+        "S51-ELEVATION",
+        "S51-INV-ELEV-LIST-EMPTY",
+        "S51-INV-NO-VSTEST",
+        "S51-INV-NO-KIT-KIT-JSON",
+        "S51-INV-NO-EPS-AXIS-EVALUATED",
+        "S51-INV-COMPLEXITY-MANDATORY",
+        "S51-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S51-INV-NO-SEEDING-SEAM",
+        "S51-INV-T1-NO-CODE-SEEDS",
+        "S51-INV-NO-SEED-MODULES",
+        "S51-INV-NO-TEST-DB",
+        "S51-INV-NO-VERSIONS-IN-USE",
+        "S51-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S51-INV-T4-NO-OCPROJ"
+      ]
+    },
+    {
+      "step": 166,
+      "sha256": "8d89ef6cba301b5862864e1f04c27d02347040f60673fad1abece63c38f58ec7",
+      "obligations": [
+        "S51-STAR-TAG",
+        "S51-BUILD",
+        "S51-ELEVATION",
+        "S51-INV-ELEV-LIST-EMPTY",
+        "S51-INV-NO-VSTEST",
+        "S51-INV-NO-KIT-KIT-JSON",
+        "S51-INV-NO-EPS-AXIS-EVALUATED",
+        "S51-INV-COMPLEXITY-MANDATORY",
+        "S51-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S51-INV-NO-SEEDING-SEAM",
+        "S51-INV-T1-NO-CODE-SEEDS",
+        "S51-INV-NO-SEED-MODULES",
+        "S51-INV-NO-TEST-DB",
+        "S51-INV-NO-VERSIONS-IN-USE",
+        "S51-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S51-INV-T4-NO-OCPROJ"
+      ]
+    },
+    {
+      "step": 167,
+      "sha256": "4d7e7e779ebf87cacc8cddf17f5441ab9d321dc390e127c240667adfe254257c",
+      "obligations": [
+        "S51-TEXT",
+        "S51-BUILD",
+        "S51-ELEVATION",
+        "S51-INV-ELEV-LIST-EMPTY",
+        "S51-INV-NO-VSTEST",
+        "S51-INV-NO-KIT-KIT-JSON",
+        "S51-INV-NO-EPS-AXIS-EVALUATED",
+        "S51-INV-COMPLEXITY-MANDATORY",
+        "S51-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S51-INV-NO-SEEDING-SEAM",
+        "S51-INV-T1-NO-CODE-SEEDS",
+        "S51-INV-NO-SEED-MODULES",
+        "S51-INV-NO-TEST-DB",
+        "S51-INV-NO-VERSIONS-IN-USE",
+        "S51-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S51-INV-T4-NO-OCPROJ"
+      ]
+    },
+    {
+      "step": 168,
+      "sha256": "d3617c5abfb5ebc72f4dfcdb41d4c38501f8a1889c850e722622f4d0a8d36730",
+      "obligations": [
+        "S51-STORE",
+        "S51-BUILD",
+        "S51-ELEVATION",
+        "S51-INV-ELEV-LIST-EMPTY",
+        "S51-INV-NO-VSTEST",
+        "S51-INV-NO-KIT-KIT-JSON",
+        "S51-INV-NO-EPS-AXIS-EVALUATED",
+        "S51-INV-COMPLEXITY-MANDATORY",
+        "S51-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S51-INV-NO-SEEDING-SEAM",
+        "S51-INV-T1-NO-CODE-SEEDS",
+        "S51-INV-NO-SEED-MODULES",
+        "S51-INV-NO-TEST-DB",
+        "S51-INV-NO-VERSIONS-IN-USE",
+        "S51-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S51-INV-T4-NO-OCPROJ"
+      ]
+    },
+    {
+      "step": 169,
+      "sha256": "c705e31cf07f3830e6665e361829c9dba29a235a0019e5e27c28a6f62295ecc1",
+      "obligations": [
+        "S51-BUMP",
+        "S51-BUILD",
+        "S51-ELEVATION",
+        "S51-INV-ELEV-LIST-EMPTY",
+        "S51-INV-NO-VSTEST",
+        "S51-INV-NO-KIT-KIT-JSON",
+        "S51-INV-NO-EPS-AXIS-EVALUATED",
+        "S51-INV-COMPLEXITY-MANDATORY",
+        "S51-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S51-INV-NO-SEEDING-SEAM",
+        "S51-INV-T1-NO-CODE-SEEDS",
+        "S51-INV-NO-SEED-MODULES",
+        "S51-INV-NO-TEST-DB",
+        "S51-INV-NO-VERSIONS-IN-USE",
+        "S51-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S51-INV-T4-NO-OCPROJ"
+      ]
     }
   ],
   "behavior_seams": [
@@ -18004,6 +19127,46 @@
       "id": "s44-no-ocproj",
       "step": 161,
       "obligation": "S44-NO-OCPROJ"
+    },
+    {
+      "id": "s51-limit",
+      "step": 162,
+      "obligation": "S51-LIMIT"
+    },
+    {
+      "id": "s51-settings",
+      "step": 163,
+      "obligation": "S51-SETTINGS"
+    },
+    {
+      "id": "s51-model",
+      "step": 164,
+      "obligation": "S51-MODEL"
+    },
+    {
+      "id": "s51-proxy",
+      "step": 165,
+      "obligation": "S51-PROXY"
+    },
+    {
+      "id": "s51-star-tag",
+      "step": 166,
+      "obligation": "S51-STAR-TAG"
+    },
+    {
+      "id": "s51-text",
+      "step": 167,
+      "obligation": "S51-TEXT"
+    },
+    {
+      "id": "s51-store",
+      "step": 168,
+      "obligation": "S51-STORE"
+    },
+    {
+      "id": "s51-bump",
+      "step": 169,
+      "obligation": "S51-BUMP"
     }
   ],
   "temporal_checks": [],
@@ -18293,6 +19456,18 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Storage",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         ".gitignore"
+      ]
+    },
+    {
+      "from": 162,
+      "step": 169,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.App",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
       ]
     }
   ]
