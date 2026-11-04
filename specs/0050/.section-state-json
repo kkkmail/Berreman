@@ -114,14 +114,14 @@
     {
       "name": "S5.1 -- The kit history over the per-user preferences",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "69217d5",
       "spec_jsonl_lines": 169
     },
     {
       "name": "S5.2 -- The kit start screen and the Launcher",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 180
     },
     {
       "name": "S5.3 -- The kit window: title, Kit menu, lock, reload and mode; Data locations",
