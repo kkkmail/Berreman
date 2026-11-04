@@ -174,14 +174,14 @@
     {
       "name": "S9.1 -- Experiments v2: scans, roles, sessions and attachments",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "af2bc41",
       "spec_jsonl_lines": 297
     },
     {
       "name": "S9.2 -- Import profiles and the column-mapping wizard",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 312
     },
     {
       "name": "S9.3 -- One file, many experiments; exclusions, corrections, the Data step and the experiment matrix",

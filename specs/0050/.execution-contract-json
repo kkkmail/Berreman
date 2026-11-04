@@ -31721,6 +31721,2043 @@
           "command_sha256": "9de9e880234110118ae1e842b39df3081af59830c8d9d1f125e880cedf05b27c"
         }
       ]
+    },
+    {
+      "id": "S92-PROFILE-LAYOUT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "Kit.fs: ImportProfileName moves directly before NamingTemplate and gains phoneRoiCsv ('Phone ROI CSV'), muellerObservations ('Mueller-matrix observations') and builtIns (the four names in order); DataDelimiter, HeaderRowChoice, ByteOrderMark, ScanColumnUnit and ScanReading, each fieldless with a 1-based int value, tryOfWire, text and all (character, spectralUnitOpt); DataColumnNumber (tryCreate None below 1, index). CanonicalJson.options writes the five as their int tags (step 166's converter form).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S92-KIT-PROFILES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "Kit.fs: ScanColumn { column; unit; reading }; ReadingColumns (SignalColumns of signal * sigmaOpt | MuellerElementColumns of elements * throughputOpt); ColumnRoles { scan; reading; timestampOpt; captureIndexOpt; observableOpt; keyOpt }; ImportProfileError (seven *Err cases) with describe; ImportProfile { name; delimiter; header; bom; roles }; ImportProfileName.availableAmong (built-in and held names refused); KitFile.importProfiles (after namingTemplate, empty on create) and KitFile.withImportProfile (append, never replace). kit.schema.json requires importProfiles; schema version 1 kept.",
+      "checks": [
+        {
+          "step": 299,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S92-MAPPED-POINTS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "New Domain ImportProfiles.fs after ItemEvaluation.fs: Observable.value/tryOfWire/tryOfCell and SampleCut.value/tilt/tryOfWire (members in this file, MuellerInverse.fs untouched); BuiltInImportProfile (four cases, name, all, tryOfName); ChosenImportProfile (BuiltInProfileChoice | KitProfileChoice, name, tryOfName with built-ins first); MeasuredSigma, RowTimestamp, ScanCell with displayValue, MappedReading, MappedRow, KeyedObservation, MappedPoints (SeriesPoints | CapturePoints | ObservationPoints | ColumnPoints) with pointCount; MuellerElementIndex, ColumnRoleChoice, ColumnChoice and ColumnRoles.tryOfChoices.",
+      "checks": [
+        {
+          "step": 300,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S92-OBSERVATION-FILE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "New Storage LabFileImport.fs after MuellerDataStore.fs: KeyedObservation.observationFileText (the 25-column header, the key, cut tag and tilt, thickness m, incidence and azimuth rad, observable tag, wavelength nm, the 16 normalized elements and the throughput, every number 'R' invariant, LF, no BOM; refusing an unwritable key, an infinite thickness, a micrometre wavelength and a matrix that does not normalize) and KitFileText.parseMuellerObservations (strict header, 25 cells, measured = throughput x normalized element, the incidence kept from its radians).",
+      "checks": [
+        {
+          "step": 301,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S92-COLUMN-MAPPING-READ",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "LabFileImport.fs: one private CsvFile.Parse read by delimiter and header (exceptions caught, blank rows skipped) and ImportProfile.mapText: one MappedRow per data row (scan cells, signal and sigma or Mueller elements times the throughput, timestamp, capture index, observable through tryOfCell, key), the first unreadable cell MalformedDataFileErr naming its row and column, no data row EmptyDataFileErr.",
+      "checks": [
+        {
+          "step": 302,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S92-ONE-PROFILE-READ",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "LabFileImport.fs: ChosenImportProfile.mapText — Intensity series and Ellipsometric series call the MeasuredData parsers (SeriesPoints), Phone ROI CSV calls MuellerDataStore.parseMuellerCsv (CapturePoints, MuellerDataError mapped onto ExperimentDataError), Mueller-matrix observations calls parseMuellerObservations (ObservationPoints), a kit profile calls ImportProfile.mapText (ColumnPoints); each built-in reads its fixture exactly as its parser did. MeasuredData.fs's module doc names the parsers as the two built-in profiles' bodies.",
+      "checks": [
+        {
+          "step": 303,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S92-MAPPED-VALIDATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "Domain fsproj: ExperimentDataProxy.fs and ExperimentDataLoad.fs compile after ImportProfiles.fs. ImportProfiles.fs: ScanQuantity with admits, ExperimentScan.quantities (distinct slot variables in first appearance), MappedPoints.validatedFor (the X,Y series rule moved from loadAndValidate; Phone ROI rows and column rows checked against the quantities' units, raw-dial vs physical and ranges and the detector; observations pass). loadAndValidate answers mapped points; ExperimentDataBadge.ofCheck takes them; SolverHandoffView answers HandoffReady of their pointCount.",
+      "checks": [
+        {
+          "step": 304,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 304,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 304,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S92-DATA-SEAM",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "MappedPoints.selectedBy (AllDataRows; KeyedDataRows over capture labels, observation keys and row keys; an X,Y series and a keyless mapping refused; an empty selection EmptyDataFileErr). ExperimentDataProxy = { readPickedFile; attachDataFile; attachmentStatus; readMapped }, tryLoadIntensity and tryLoadEllipsometric deleted. loadAndValidate = readMapped then validatedFor. ExperimentDataStore.fs compiles after LabFileImport.fs; createFileBacked reads picked files through the attach's one read body and readMapped through the kit file's profiles, readDataFile, mapText and selectedBy; DataFileKind and loadThrough deleted. Every proxy built in tests follows.",
+      "checks": [
+        {
+          "step": 305,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 305,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 305,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S92-PROFILES-ON-COPY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "Kit.fs: ImportProfileName.nextFreeAmong over FileStem.firstFreeText. KitContentFiles: ExperimentCopyReport gains profiles and kitFile; copyExperimentsFrom adds the source kit profiles its experiments are mapped by (equal reused, a different one renamed and its experiments re-pointed), saving the kit file before any experiment. TARV's CopyChosenExperiments takes the copy's kit file.",
+      "checks": [
+        {
+          "step": 306,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 306,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 306,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S92-SNIFF-PREVIEW",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "Kit.fs: FileByteContent.kitFileText (UTF-8, a leading BOM dropped) and byteOrderMark; the kit stores' decode bodies call kitFileText. ImportProfiles.fs: LabFileSniff, PreviewCell, PreviewRow, LabFilePreview and LabFileSource.sniffedLayout (BOM from the bytes; the first delimiter splitting the first ten lines evenly into two or more cells, else comma; a header when the first line reads no number or a text over a number). LabFileImport.fs: KitFileText.previewWith through step 302's CSV read (header names or Column <n>, twenty rows).",
+      "checks": [
+        {
+          "step": 307,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S92-WIZARD-MVU",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "New Ui ImportWizardView.fs after SetupGridView.fs: ImportWizardRequest, ImportWizardApplied, ImportWizardContext, WizardProfileChoice, ImportWizardModel (with preview), initImportWizard (one read, the sniffed layout, the default profile, one unmapped choice per column), ImportWizardMsg and updateImportWizard: layout, profile, column-role and name messages change only the model; Apply hands onApplied the picked profile or the new mapping (name rule and roles rule refused into lastError) and closes; Cancel closes.",
+      "checks": [
+        {
+          "step": 308,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 308,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 308,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S92-WIZARD-VIEW",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "ImportWizardView.fs: importWizardView (Attach / Cancel row, message, heading, layout choices, mark caption, profile choices and New column mapping, the name field, the preview grid with role, unit and reading choices). ConstructorUiIdOfDomain: uiKey and caption members of DataDelimiter, HeaderRowChoice, ImportProfileName, ByteOrderMark, ImportProfileError, ColumnRoleChoice, ScanColumnUnit, ScanReading, DataColumnNumber.uiPosition. UiIds: the fifteen ImportWizard ids.",
+      "checks": [
+        {
+          "step": 309,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 309,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 309,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S92-ATTACH-WITH-PROFILE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "TARV: KitWindowShell.openImportWizard (inert ignore); AttachDataFileTo renamed AttachDataFile carrying the profile name; OpenImportWizard (the request from the model: readPickedFile, the kit's profiles, the detector's builtInProfile); SaveImportProfile (withImportProfile then saveKitFile); ImportWizardApplied.messages (save first, then attach); all behind the read-only guard; the Attach data file button sends OpenImportWizard.",
+      "checks": [
+        {
+          "step": 310,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 310,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 310,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S92-WIZARD-WINDOW",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "New Ui ImportWizardWindow.fs after KitWindowView.fs: ImportWizardWindow (HostWindow, 'Import data file', the importWizardWindow id, keepOnScreen, mkProgram over the wizard MVU with this.Close) and KitWindowShell.withImportWizard (opens the window over the owner, dispatching ImportWizardApplied.messages). ScrollExtentTests covers the window.",
+      "checks": [
+        {
+          "step": 311,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 311,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 311,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S92-WIZARD-WIRED",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "Program.fs: ConstructorScene.mount's shell is followed by withImportWizard window dispatch. KitWindowTests gains a ui-smoke end-to-end fact over a folder kit (OpenImportWizard, the wizard window, Phone ROI CSV, Attach: the file copied into data, the experiment mapped and validated). AGENTS.md gains the gotcha 'Lab files are read through import profiles'.",
+      "checks": [
+        {
+          "step": 312,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 312,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 312,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S92-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "Every S9.2 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error (no wildcard arm hides a new case of MappedPoints, ChosenImportProfile, BuiltInImportProfile, ColumnRoleChoice, ImportProfileError or the window's messages), no package is added, and the new compile items (ImportProfiles.fs after ItemEvaluation.fs with ExperimentDataProxy.fs and ExperimentDataLoad.fs after it, LabFileImport.fs after MuellerDataStore.fs with ExperimentDataStore.fs after it, ImportWizardView.fs after SetupGridView.fs, ImportWizardWindow.fs after KitWindowView.fs, ImportProfileTests.fs and LabFileImportTests.fs at the end of the constructor suite, ImportWizardTests.fs after ImportDialogTests.fs) carry no comment.",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 299,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 300,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 301,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 302,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 303,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 304,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 305,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 306,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 307,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 308,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 309,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 310,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 311,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 312,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S92-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
+      "requirement": "Every S9.2 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): every new type, public name, DU case and extension member is unique; every case name has two or more words; the profile's closed sets, the observable and the cut carry 1-based int disk tags read back by tryOfWire; names, keys, cells, sigmas and timestamps are single-case unions; every record field is one of our types; ids derived from Domain values are members in ConstructorUiIdOfDomain.fs; and the IO (File.ReadAllBytes, CsvFile.Parse) is caught at its seam.",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 299,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 300,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 301,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 302,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 303,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 304,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 305,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 306,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 307,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 308,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 309,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 310,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 311,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 312,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s30-elev-list-empty).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "01fd3f9557ff2b3db1fa927593f160c6136716516c34ce4035882773c5ef97b4"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s30-no-vstest).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-no-vstest",
+          "selection": "command",
+          "command_sha256": "168e11b1b7058a3584cd64b89e60beb97821e95136f632c4b678c8b460611e1d"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s30-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "140be52573a8aaf612840e4fa43a07a6a2a5bdd5fc4a91445bc75bfcf4b114e2"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s30-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "59eb53f56cc9b9dcdddcfe3d3a4c4711b5e8a982baf2e30abef9b9e94faa5783"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s30-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "631e5842f4b7125636ba94753e56a01e42cb57771e1266d8945cc0a6e77e4a19"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s30-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "bc08d1d3c3e5068667436bc0715f6639ec833e09f09d9c48835d6a2b83d9ca24"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s30-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f4a3f3e4757f1bedc1ca30e9ba6d46a3c8f2debad96590695927c3df295d200e"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s30-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "17360bf74c3ecdcb66e14d4bd08e059f06d39bbf4c50f835841e988086611351"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s30-no-seed-modules).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8f0df6059171d8e3b0f888f687a6fd6016dde34e764df8e326a478d1d0ddaeef"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s30-no-test-db).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-no-test-db",
+          "selection": "command",
+          "command_sha256": "8862f1c7928dee13643d9c2957701095c3ee4475b7a8dd333ced0789a62e3976"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s30-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "63ac98f329da7ae6e5e18c297578036dc601a97e68f17453f67930c7715ce360"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s30-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "8417245dd50796eba1cd454d90808ebf607675af5521d475a1a91b3da61eb735"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s30-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "51efd5ead6169850e3fd56e50dcfb9b0b7e8887f2bb76862ccff15acdc3c1593"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/ names recent.json: the kit history replaced the 16-entry list (001 §R, established by S5.1 step 169) (section invariant s30-no-recent-json).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-no-recent-json",
+          "selection": "command",
+          "command_sha256": "91c9df3c6d25d3e24bc682ac22a968d09be5b97c9821f8d63ee6b453f3c96e17"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-NO-MEASURED-ELEMENT-OF",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/ names measuredElementOf: captures are decided per object (001 §R, established by S8.1 step 254) (section invariant s30-no-measured-element-of).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "7260100787c9bdee1cf6abf9224a3b4f5923f92c8de94f415085a4f8378ad31b"
+        }
+      ]
+    },
+    {
+      "id": "S92-INV-T8-NO-EXPERIMENT-REGEX",
+      "source": "specs/0050/.section-plan-jsonl section 30 (S9.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.2 step, nothing under Berreman/ names experimentRegex: the naming template replaced the label regex (001 §T 'From section 8', established by S8.3 step 270) (section invariant s30-t8-no-experiment-regex).",
+      "checks": [
+        {
+          "step": 298,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 299,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 300,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 301,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 302,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 303,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 304,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 305,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 306,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 307,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 308,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 309,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 310,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 311,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        },
+        {
+          "step": 312,
+          "gate": "invariant-s30-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -37793,6 +39830,381 @@
         "S91-INV-NO-MEASURED-ELEMENT-OF",
         "S91-INV-T8-NO-EXPERIMENT-REGEX"
       ]
+    },
+    {
+      "step": 298,
+      "sha256": "451e46dae98668ceea758e96dd58116d77037dd70f54795b791f911bc591b754",
+      "obligations": [
+        "S92-PROFILE-LAYOUT",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 299,
+      "sha256": "d427b792539183ae23e4393ab8fd3f7e26d7803fe4ecdc28e2027794c1a3fd18",
+      "obligations": [
+        "S92-KIT-PROFILES",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 300,
+      "sha256": "5f33347f7045237f9be16b3fe7310cb6560abfdf3f800fe28bc3e06be4c3dbf7",
+      "obligations": [
+        "S92-MAPPED-POINTS",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 301,
+      "sha256": "c796c0bec53834358c1d3938054e9895bccd0149a5af6c7a90a76a7d75a5a2e2",
+      "obligations": [
+        "S92-OBSERVATION-FILE",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 302,
+      "sha256": "d3aee9914b93b92729f756df03bf361f362135b3f9483692fb151415889e789b",
+      "obligations": [
+        "S92-COLUMN-MAPPING-READ",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 303,
+      "sha256": "6a803f2e1bf447bb7db7fe273055dbf6442e8aa4a868e1a85dcf9701c20183f0",
+      "obligations": [
+        "S92-ONE-PROFILE-READ",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 304,
+      "sha256": "4a609ff62e8fea9dec489f5a67bbfe32e8f926130c18c184ecaa238db18b83d5",
+      "obligations": [
+        "S92-MAPPED-VALIDATION",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 305,
+      "sha256": "0eee74a03b8d6a2e6f2dcd38f8c3fb092fed5e6f0fbb2155201f88162fbf2fb2",
+      "obligations": [
+        "S92-DATA-SEAM",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 306,
+      "sha256": "6a9200eebaa62356ad45c80c8df4c4a568cc114d1b4f713534eaaec6a2a3af31",
+      "obligations": [
+        "S92-PROFILES-ON-COPY",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 307,
+      "sha256": "070dfc08a4d3e3c649bb32cd557982a8b961bb084a613ccb44177894b89d83a0",
+      "obligations": [
+        "S92-SNIFF-PREVIEW",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 308,
+      "sha256": "27240973117d87fdcfcac035bb9564905c47cdeec8253c0b7acbd47be6adf7d4",
+      "obligations": [
+        "S92-WIZARD-MVU",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 309,
+      "sha256": "58d9ce215813e852934f0a29709064465e066270ddcb6704ae08c4113aaffda7",
+      "obligations": [
+        "S92-WIZARD-VIEW",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 310,
+      "sha256": "9ada4203cec9dd3da16fc276f3cb686aa1fb8139833d23ba69d7bb878cbae432",
+      "obligations": [
+        "S92-ATTACH-WITH-PROFILE",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 311,
+      "sha256": "f1c900f5d8aab8b46f16c9994da829b6dba8d66995b02689b62807db09b2b653",
+      "obligations": [
+        "S92-WIZARD-WINDOW",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 312,
+      "sha256": "63b9e971f20be00d3a07e67adfa3571d07a8b2870e7037c7c0b9ed57dd166b2b",
+      "obligations": [
+        "S92-WIZARD-WIRED",
+        "S92-BUILD",
+        "S92-ELEVATION",
+        "S92-INV-ELEV-LIST-EMPTY",
+        "S92-INV-NO-VSTEST",
+        "S92-INV-NO-KIT-KIT-JSON",
+        "S92-INV-NO-EPS-AXIS-EVALUATED",
+        "S92-INV-COMPLEXITY-MANDATORY",
+        "S92-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S92-INV-NO-SEEDING-SEAM",
+        "S92-INV-T1-NO-CODE-SEEDS",
+        "S92-INV-NO-SEED-MODULES",
+        "S92-INV-NO-TEST-DB",
+        "S92-INV-NO-VERSIONS-IN-USE",
+        "S92-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S92-INV-T4-NO-OCPROJ",
+        "S92-INV-NO-RECENT-JSON",
+        "S92-INV-NO-MEASURED-ELEMENT-OF",
+        "S92-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
     }
   ],
   "behavior_seams": [
@@ -39105,6 +41517,81 @@
       "id": "s91-kit-window-acceptance",
       "step": 297,
       "obligation": "S91-KIT-WINDOW-ACCEPTANCE"
+    },
+    {
+      "id": "s92-profile-layout",
+      "step": 298,
+      "obligation": "S92-PROFILE-LAYOUT"
+    },
+    {
+      "id": "s92-kit-profiles",
+      "step": 299,
+      "obligation": "S92-KIT-PROFILES"
+    },
+    {
+      "id": "s92-mapped-points",
+      "step": 300,
+      "obligation": "S92-MAPPED-POINTS"
+    },
+    {
+      "id": "s92-observation-file",
+      "step": 301,
+      "obligation": "S92-OBSERVATION-FILE"
+    },
+    {
+      "id": "s92-column-mapping-read",
+      "step": 302,
+      "obligation": "S92-COLUMN-MAPPING-READ"
+    },
+    {
+      "id": "s92-one-profile-read",
+      "step": 303,
+      "obligation": "S92-ONE-PROFILE-READ"
+    },
+    {
+      "id": "s92-mapped-validation",
+      "step": 304,
+      "obligation": "S92-MAPPED-VALIDATION"
+    },
+    {
+      "id": "s92-data-seam",
+      "step": 305,
+      "obligation": "S92-DATA-SEAM"
+    },
+    {
+      "id": "s92-profiles-on-copy",
+      "step": 306,
+      "obligation": "S92-PROFILES-ON-COPY"
+    },
+    {
+      "id": "s92-sniff-preview",
+      "step": 307,
+      "obligation": "S92-SNIFF-PREVIEW"
+    },
+    {
+      "id": "s92-wizard-mvu",
+      "step": 308,
+      "obligation": "S92-WIZARD-MVU"
+    },
+    {
+      "id": "s92-wizard-view",
+      "step": 309,
+      "obligation": "S92-WIZARD-VIEW"
+    },
+    {
+      "id": "s92-attach-with-profile",
+      "step": 310,
+      "obligation": "S92-ATTACH-WITH-PROFILE"
+    },
+    {
+      "id": "s92-wizard-window",
+      "step": 311,
+      "obligation": "S92-WIZARD-WINDOW"
+    },
+    {
+      "id": "s92-wizard-wired",
+      "step": 312,
+      "obligation": "S92-WIZARD-WIRED"
     }
   ],
   "temporal_checks": [],
@@ -39532,6 +42019,20 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Storage",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui",
         "Berreman/OpticalConstructor/OpticalConstructor.Controls",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
+        "AGENTS.md"
+      ]
+    },
+    {
+      "from": 298,
+      "step": 312,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Controls",
+        "Berreman/OpticalConstructor/OpticalConstructor.App",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
         "AGENTS.md"
