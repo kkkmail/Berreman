@@ -156,14 +156,14 @@
     {
       "name": "S8.2 -- Setups as slots",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "461b150",
       "spec_jsonl_lines": 266
     },
     {
       "name": "S8.3 -- The naming template and the grid generator",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 276
     },
     {
       "name": "S8.4 -- The slot bar, quick swap and the direct problem",

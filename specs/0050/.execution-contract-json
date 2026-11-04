@@ -27437,6 +27437,1317 @@
           "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
         }
       ]
+    },
+    {
+      "id": "S83-KIT-TEMPLATE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "Kit.fs: NamingTemplate of string (.value; standard = 001 §J's '{source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}'), declared before KitFile; KitFile gains namingTemplate (after sendExclude), KitFile.create sets NamingTemplate.standard; kit.schema.json (schema version 1) requires namingTemplate as a string. No up-converter or default-on-read.",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S83-TEMPLATE-GRAMMAR",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "New Domain NamingTemplates.fs (module NamingTemplates, compiled directly after Setups.fs): NamePart; NameAlias { label : ItemLabel; part }; PlaceholderNeed (RequiredPlaceholder | OptionalPlaceholder); TemplatePlaceholder (SlotPlaceholder of SlotRole | AnglePlaceholder of SlotPosition | NotePlaceholder) with text and need (position 2+ and the note optional); TemplateValue; TemplatePiece (LiteralPiece | ValuePiece); NamingTemplateError (seven *Err cases with describe); NamingTemplate.pieces (words light, source, obj, phi, analyzer, detector, note; no number = 1; label=part aliases on slot placeholders) refusing syntax errors, duplicate placeholders, adjacent placeholders and duplicate aliases; NamingTemplate.tryCreate. No regex.",
+      "checks": [
+        {
+          "step": 268,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S83-NAME-READING",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "NamingTemplates.fs: NameText; SlotPart { role; part }; ObjectAngle { position; angle }; NameReading { parts; angles; noteOpt } with tryFindPart / tryFindAngle; angles written in degrees rounded to three decimals (invariant, no trailing zero, no signed zero) and read back by Angle.degree; NamingTemplate.writeName (an optional placeholder left out with its owned text, a required one MissingNameValueErr) and readName (the ways of leaving out optional groups tried in a fixed order, each value running to the first following owned text at least one character on; NameMismatchErr when none reads). No regex, no backtracking within a way.",
+      "checks": [
+        {
+          "step": 269,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S83-LABELS-THROUGH-TEMPLATE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "MuellerReconstruction.fs: experimentRegex, objectRegex, MuellerExperimentLabel.parsed, ParsedExperiment, ParsedObject, MuellerLabelToken and the RegularExpressions open are deleted; MuellerExperimentLabel.nameText; NameReading.family / objectRotation / matrixKind / objectPhi moved from ParsedExperiment with their rules; buildDesign keeps a row only when NamingTemplate.standard reads its label with the requested kind. MuellerReconstructionTests' label fact is renamed and re-pointed, section 7.2's prepareRow re-pointed, and every number is unchanged. 001 §T 'From section 8' holds from this step.",
+      "checks": [
+        {
+          "step": 270,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 270,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S83-SLOT-NAMES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "NamingTemplates.fs: ItemLabel.namePart; NameText.toSetupName (one direction); SlotItem { role; item }; NamingTemplate.nameReadingOf (slots in light order; a slot placeholder takes its item's alias part or label, an angle placeholder Obj k's DialTurn reading or placement R1, the note noteOpt), itemsOf (alias part, else label, ignoring case; UnknownNameItemErr), setupNameOf, and setupNameAmong (the template's name made free by nextFreeAmong, or the given name when the template cannot name the slots). Names never change after a template change.",
+      "checks": [
+        {
+          "step": 271,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S83-WINDOW-NAMES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "TableAndElementRotationView.fs: ExpCommit on a table that is no setup yet and SwapSlot's CreateSwappedSetup name the new setup by model.kit.kitFile.namingTemplate.setupNameAmong over the recorded slots and the kit's items, made free among kitSetups' names, with S8.2's name (SetupName.firstFree, or <active> (2)) when the template cannot name the slots. CreateSetup and copied setups keep their names. Step 261's and 264's facts keep their names.",
+      "checks": [
+        {
+          "step": 272,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 272,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 272,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S83-TEMPLATE-EDIT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "ConstructorUiIdOfDomain.fs: NamingTemplate.caption. UiIds.fs: namingTemplateField, saveNamingTemplateButton. TableAndElementRotationView.fs: model namingTemplateText (from the kit file at initWith, loadKit and ReloadKitChanges); SetNamingTemplateText; SaveNamingTemplate (read-only guard; tryCreate error told; unchanged told; otherwise saveKitFile with the new template, its error told). KitWindowView.fs: the 'Naming template:' row with the field and Save template (withheld when the kit's writes are not offered).",
+      "checks": [
+        {
+          "step": 273,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 273,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 273,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S83-GRID",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "Kit.fs: SetupError gains SlotItemTwiceErr. New Domain SetupGrids.fs (module SetupGrids, directly after NamingTemplates.fs): SlotChoice { itemOpt; r1 }; SlotOptions { slot; choices }; SlotPick; GridCombination { picks } with slotsOver (turn, then withoutItem / withItem; UnknownSlotItemErr, UnknownSetupSlotErr, SlotItemTwiceErr; recordedWith); SetupGrid { axes; unticked } with combinations (first axis slowest), ticked, untick, tick, create (impossible combinations unticked) and generate (a held or earlier equal setup reused, else Setup.create named by template.setupNameAmong or SetupName.firstFree; the first failing combination refuses the whole grid). Pure; nothing written.",
+      "checks": [
+        {
+          "step": 274,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S83-GRID-EXPERIMENTS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "Experiments.fs: commitOverSetups (references) (collection) folds commit over each reference from a draft editing nothing when canCommit holds, appending one experiment per reference with the next ids and leaving the draft editing nothing; an incomplete draft appends nothing. No second experiment builder.",
+      "checks": [
+        {
+          "step": 275,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S83-GENERATE-SETUP-GRID",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "TableAndElementRotationView.fs: GenerateSetupGrid of SetupGrids.SetupGrid (read-only guard; grid.generate over the table, the kit's items, tryItemModelChoice, the kit's template and kitSetups; an error told with nothing written; new setups recorded through recordSetup; with a capture, commitOverSetups over every generated setup and each experiment recorded as ExpCommit records one; the first failing write stops; 'Generated <n> setups (<m> new) and <k> experiments.'). AGENTS.md gains the naming-template gotcha.",
+      "checks": [
+        {
+          "step": 276,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 276,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 276,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S83-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "Every S8.3 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error (no wildcard arm hides a new case), no package is added, and the new compile items sit where the steps name them (NamingTemplates.fs directly after Setups.fs and SetupGrids.fs directly after NamingTemplates.fs; NamingTemplateTests.fs and SetupGridTests.fs at the end of the constructor suite).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 268,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 269,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 270,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 271,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 272,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 273,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 274,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 275,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 276,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S83-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Naming template: each kit carries one (e.g. {source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}). It names setups and experiments, and PARSES names back to match imported data. It replaces MuellerExperimentLabel.parsed and its experimentRegex; their cases become the template engine's first test cases'; 'Grid generator: a set of options per slot -> their product, with impossible or unwanted combinations unticked -> all setups and experiments created at once'), §A ('.kit-json … naming template'; the kit layout's CPL1.item-json beside CPL-(QZ#45-LR#45)-CPL.setup-json), §R ('MuellerExperimentLabel.parsed and experimentRegex, replaced by the naming template'), §P (GenerateSetupGrid), §T ('From section 8: git grep -n -F \"experimentRegex\" -- Berreman/ finds nothing'), §O (the experiment matrix: rows source x objects x phi, columns analyzer); specs/0050/.section-plan-jsonl section 27 (S8.3) brief; specs/0050/.spec-md §0.1 (MuellerReconstruction.fs row), §3.11, §4, §5 (Setup, SetupName, slots, NamingTemplate), §6 (Label grammar), §7, §8, §9",
+      "requirement": "Every S8.3 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): every new type, public name, DU case and extension member is unique, every case name has two or more words, every *Error case ends in Err, no signature mixes a primitive with our types or puts one on a Result's Ok case (a name is NameText, a piece NamePart), conversions are one-way members on the source type, scanning helpers are locals inside members, and no function of one of our types is free.",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 268,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 269,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 270,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 271,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 272,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 273,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 274,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 275,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 276,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s27-elev-list-empty).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "454e5597d950f426a4bca4979d26fe04c8319cea6c3afaf20e3c8252a039ba48"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "454e5597d950f426a4bca4979d26fe04c8319cea6c3afaf20e3c8252a039ba48"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "454e5597d950f426a4bca4979d26fe04c8319cea6c3afaf20e3c8252a039ba48"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "454e5597d950f426a4bca4979d26fe04c8319cea6c3afaf20e3c8252a039ba48"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "454e5597d950f426a4bca4979d26fe04c8319cea6c3afaf20e3c8252a039ba48"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "454e5597d950f426a4bca4979d26fe04c8319cea6c3afaf20e3c8252a039ba48"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "454e5597d950f426a4bca4979d26fe04c8319cea6c3afaf20e3c8252a039ba48"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "454e5597d950f426a4bca4979d26fe04c8319cea6c3afaf20e3c8252a039ba48"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "454e5597d950f426a4bca4979d26fe04c8319cea6c3afaf20e3c8252a039ba48"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "454e5597d950f426a4bca4979d26fe04c8319cea6c3afaf20e3c8252a039ba48"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s27-no-vstest).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-no-vstest",
+          "selection": "command",
+          "command_sha256": "abcdb5faf4b7bc27726c8dcea70908f20e3929eb10b161024eda3c6cdfbf7ed9"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-no-vstest",
+          "selection": "command",
+          "command_sha256": "abcdb5faf4b7bc27726c8dcea70908f20e3929eb10b161024eda3c6cdfbf7ed9"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-no-vstest",
+          "selection": "command",
+          "command_sha256": "abcdb5faf4b7bc27726c8dcea70908f20e3929eb10b161024eda3c6cdfbf7ed9"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-no-vstest",
+          "selection": "command",
+          "command_sha256": "abcdb5faf4b7bc27726c8dcea70908f20e3929eb10b161024eda3c6cdfbf7ed9"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-no-vstest",
+          "selection": "command",
+          "command_sha256": "abcdb5faf4b7bc27726c8dcea70908f20e3929eb10b161024eda3c6cdfbf7ed9"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-no-vstest",
+          "selection": "command",
+          "command_sha256": "abcdb5faf4b7bc27726c8dcea70908f20e3929eb10b161024eda3c6cdfbf7ed9"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-no-vstest",
+          "selection": "command",
+          "command_sha256": "abcdb5faf4b7bc27726c8dcea70908f20e3929eb10b161024eda3c6cdfbf7ed9"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-no-vstest",
+          "selection": "command",
+          "command_sha256": "abcdb5faf4b7bc27726c8dcea70908f20e3929eb10b161024eda3c6cdfbf7ed9"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-no-vstest",
+          "selection": "command",
+          "command_sha256": "abcdb5faf4b7bc27726c8dcea70908f20e3929eb10b161024eda3c6cdfbf7ed9"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-no-vstest",
+          "selection": "command",
+          "command_sha256": "abcdb5faf4b7bc27726c8dcea70908f20e3929eb10b161024eda3c6cdfbf7ed9"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s27-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "cc1c0920549dd2f3bb469b4c2a4f9020023f239917c02afa1000c1c8b9aa264a"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "cc1c0920549dd2f3bb469b4c2a4f9020023f239917c02afa1000c1c8b9aa264a"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "cc1c0920549dd2f3bb469b4c2a4f9020023f239917c02afa1000c1c8b9aa264a"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "cc1c0920549dd2f3bb469b4c2a4f9020023f239917c02afa1000c1c8b9aa264a"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "cc1c0920549dd2f3bb469b4c2a4f9020023f239917c02afa1000c1c8b9aa264a"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "cc1c0920549dd2f3bb469b4c2a4f9020023f239917c02afa1000c1c8b9aa264a"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "cc1c0920549dd2f3bb469b4c2a4f9020023f239917c02afa1000c1c8b9aa264a"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "cc1c0920549dd2f3bb469b4c2a4f9020023f239917c02afa1000c1c8b9aa264a"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "cc1c0920549dd2f3bb469b4c2a4f9020023f239917c02afa1000c1c8b9aa264a"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "cc1c0920549dd2f3bb469b4c2a4f9020023f239917c02afa1000c1c8b9aa264a"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s27-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "e945661c303af421ed4885b09aaf93a461e4cacaa2c875b5762af7f53dc0bae9"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "e945661c303af421ed4885b09aaf93a461e4cacaa2c875b5762af7f53dc0bae9"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "e945661c303af421ed4885b09aaf93a461e4cacaa2c875b5762af7f53dc0bae9"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "e945661c303af421ed4885b09aaf93a461e4cacaa2c875b5762af7f53dc0bae9"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "e945661c303af421ed4885b09aaf93a461e4cacaa2c875b5762af7f53dc0bae9"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "e945661c303af421ed4885b09aaf93a461e4cacaa2c875b5762af7f53dc0bae9"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "e945661c303af421ed4885b09aaf93a461e4cacaa2c875b5762af7f53dc0bae9"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "e945661c303af421ed4885b09aaf93a461e4cacaa2c875b5762af7f53dc0bae9"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "e945661c303af421ed4885b09aaf93a461e4cacaa2c875b5762af7f53dc0bae9"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "e945661c303af421ed4885b09aaf93a461e4cacaa2c875b5762af7f53dc0bae9"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s27-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "af2f23e0f5d6a186b03c40000c388564375b0917fc82fc4ad0e35b9a69f79e73"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "af2f23e0f5d6a186b03c40000c388564375b0917fc82fc4ad0e35b9a69f79e73"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "af2f23e0f5d6a186b03c40000c388564375b0917fc82fc4ad0e35b9a69f79e73"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "af2f23e0f5d6a186b03c40000c388564375b0917fc82fc4ad0e35b9a69f79e73"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "af2f23e0f5d6a186b03c40000c388564375b0917fc82fc4ad0e35b9a69f79e73"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "af2f23e0f5d6a186b03c40000c388564375b0917fc82fc4ad0e35b9a69f79e73"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "af2f23e0f5d6a186b03c40000c388564375b0917fc82fc4ad0e35b9a69f79e73"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "af2f23e0f5d6a186b03c40000c388564375b0917fc82fc4ad0e35b9a69f79e73"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "af2f23e0f5d6a186b03c40000c388564375b0917fc82fc4ad0e35b9a69f79e73"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "af2f23e0f5d6a186b03c40000c388564375b0917fc82fc4ad0e35b9a69f79e73"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s27-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "695c4cefc91f2b9d5d6868b79ff4f39784327d080afab732183579b33f7470df"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "695c4cefc91f2b9d5d6868b79ff4f39784327d080afab732183579b33f7470df"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "695c4cefc91f2b9d5d6868b79ff4f39784327d080afab732183579b33f7470df"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "695c4cefc91f2b9d5d6868b79ff4f39784327d080afab732183579b33f7470df"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "695c4cefc91f2b9d5d6868b79ff4f39784327d080afab732183579b33f7470df"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "695c4cefc91f2b9d5d6868b79ff4f39784327d080afab732183579b33f7470df"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "695c4cefc91f2b9d5d6868b79ff4f39784327d080afab732183579b33f7470df"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "695c4cefc91f2b9d5d6868b79ff4f39784327d080afab732183579b33f7470df"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "695c4cefc91f2b9d5d6868b79ff4f39784327d080afab732183579b33f7470df"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "695c4cefc91f2b9d5d6868b79ff4f39784327d080afab732183579b33f7470df"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s27-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a894e2b576c4ba8d836177194ae4b44c12809ccd0ecbf419b991fd09f5da5084"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a894e2b576c4ba8d836177194ae4b44c12809ccd0ecbf419b991fd09f5da5084"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a894e2b576c4ba8d836177194ae4b44c12809ccd0ecbf419b991fd09f5da5084"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a894e2b576c4ba8d836177194ae4b44c12809ccd0ecbf419b991fd09f5da5084"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a894e2b576c4ba8d836177194ae4b44c12809ccd0ecbf419b991fd09f5da5084"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a894e2b576c4ba8d836177194ae4b44c12809ccd0ecbf419b991fd09f5da5084"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a894e2b576c4ba8d836177194ae4b44c12809ccd0ecbf419b991fd09f5da5084"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a894e2b576c4ba8d836177194ae4b44c12809ccd0ecbf419b991fd09f5da5084"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a894e2b576c4ba8d836177194ae4b44c12809ccd0ecbf419b991fd09f5da5084"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a894e2b576c4ba8d836177194ae4b44c12809ccd0ecbf419b991fd09f5da5084"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s27-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "a3a23a7392254b00e984b079e89517ebc0618178524762a9586161f18088cf66"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "a3a23a7392254b00e984b079e89517ebc0618178524762a9586161f18088cf66"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "a3a23a7392254b00e984b079e89517ebc0618178524762a9586161f18088cf66"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "a3a23a7392254b00e984b079e89517ebc0618178524762a9586161f18088cf66"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "a3a23a7392254b00e984b079e89517ebc0618178524762a9586161f18088cf66"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "a3a23a7392254b00e984b079e89517ebc0618178524762a9586161f18088cf66"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "a3a23a7392254b00e984b079e89517ebc0618178524762a9586161f18088cf66"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "a3a23a7392254b00e984b079e89517ebc0618178524762a9586161f18088cf66"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "a3a23a7392254b00e984b079e89517ebc0618178524762a9586161f18088cf66"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "a3a23a7392254b00e984b079e89517ebc0618178524762a9586161f18088cf66"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s27-no-seed-modules).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bec6a4a3f1fb5791bb3cd3544139861142e367de1f1202ea97dd5df101e5528a"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bec6a4a3f1fb5791bb3cd3544139861142e367de1f1202ea97dd5df101e5528a"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bec6a4a3f1fb5791bb3cd3544139861142e367de1f1202ea97dd5df101e5528a"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bec6a4a3f1fb5791bb3cd3544139861142e367de1f1202ea97dd5df101e5528a"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bec6a4a3f1fb5791bb3cd3544139861142e367de1f1202ea97dd5df101e5528a"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bec6a4a3f1fb5791bb3cd3544139861142e367de1f1202ea97dd5df101e5528a"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bec6a4a3f1fb5791bb3cd3544139861142e367de1f1202ea97dd5df101e5528a"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bec6a4a3f1fb5791bb3cd3544139861142e367de1f1202ea97dd5df101e5528a"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bec6a4a3f1fb5791bb3cd3544139861142e367de1f1202ea97dd5df101e5528a"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bec6a4a3f1fb5791bb3cd3544139861142e367de1f1202ea97dd5df101e5528a"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s27-no-test-db).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-no-test-db",
+          "selection": "command",
+          "command_sha256": "929cec07acad4b14bce7d970e72d9c2061a6704ca563edaa9cf2c43de4f4a94b"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-no-test-db",
+          "selection": "command",
+          "command_sha256": "929cec07acad4b14bce7d970e72d9c2061a6704ca563edaa9cf2c43de4f4a94b"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-no-test-db",
+          "selection": "command",
+          "command_sha256": "929cec07acad4b14bce7d970e72d9c2061a6704ca563edaa9cf2c43de4f4a94b"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-no-test-db",
+          "selection": "command",
+          "command_sha256": "929cec07acad4b14bce7d970e72d9c2061a6704ca563edaa9cf2c43de4f4a94b"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-no-test-db",
+          "selection": "command",
+          "command_sha256": "929cec07acad4b14bce7d970e72d9c2061a6704ca563edaa9cf2c43de4f4a94b"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-no-test-db",
+          "selection": "command",
+          "command_sha256": "929cec07acad4b14bce7d970e72d9c2061a6704ca563edaa9cf2c43de4f4a94b"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-no-test-db",
+          "selection": "command",
+          "command_sha256": "929cec07acad4b14bce7d970e72d9c2061a6704ca563edaa9cf2c43de4f4a94b"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-no-test-db",
+          "selection": "command",
+          "command_sha256": "929cec07acad4b14bce7d970e72d9c2061a6704ca563edaa9cf2c43de4f4a94b"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-no-test-db",
+          "selection": "command",
+          "command_sha256": "929cec07acad4b14bce7d970e72d9c2061a6704ca563edaa9cf2c43de4f4a94b"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-no-test-db",
+          "selection": "command",
+          "command_sha256": "929cec07acad4b14bce7d970e72d9c2061a6704ca563edaa9cf2c43de4f4a94b"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s27-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "4af6c04b7d030eb9bf2b898af4c36d20a6b15a9a0560da433b09332159f93863"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "4af6c04b7d030eb9bf2b898af4c36d20a6b15a9a0560da433b09332159f93863"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "4af6c04b7d030eb9bf2b898af4c36d20a6b15a9a0560da433b09332159f93863"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "4af6c04b7d030eb9bf2b898af4c36d20a6b15a9a0560da433b09332159f93863"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "4af6c04b7d030eb9bf2b898af4c36d20a6b15a9a0560da433b09332159f93863"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "4af6c04b7d030eb9bf2b898af4c36d20a6b15a9a0560da433b09332159f93863"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "4af6c04b7d030eb9bf2b898af4c36d20a6b15a9a0560da433b09332159f93863"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "4af6c04b7d030eb9bf2b898af4c36d20a6b15a9a0560da433b09332159f93863"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "4af6c04b7d030eb9bf2b898af4c36d20a6b15a9a0560da433b09332159f93863"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "4af6c04b7d030eb9bf2b898af4c36d20a6b15a9a0560da433b09332159f93863"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s27-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "72ec1b371c99e93030c0487f15926f2df967e453d52133d21ecedc85028bd206"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "72ec1b371c99e93030c0487f15926f2df967e453d52133d21ecedc85028bd206"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "72ec1b371c99e93030c0487f15926f2df967e453d52133d21ecedc85028bd206"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "72ec1b371c99e93030c0487f15926f2df967e453d52133d21ecedc85028bd206"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "72ec1b371c99e93030c0487f15926f2df967e453d52133d21ecedc85028bd206"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "72ec1b371c99e93030c0487f15926f2df967e453d52133d21ecedc85028bd206"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "72ec1b371c99e93030c0487f15926f2df967e453d52133d21ecedc85028bd206"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "72ec1b371c99e93030c0487f15926f2df967e453d52133d21ecedc85028bd206"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "72ec1b371c99e93030c0487f15926f2df967e453d52133d21ecedc85028bd206"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "72ec1b371c99e93030c0487f15926f2df967e453d52133d21ecedc85028bd206"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s27-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "b7379b456035bee759e1f6d16934a36df4f909b7ad5893fcc48c96c8a9c9a154"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "b7379b456035bee759e1f6d16934a36df4f909b7ad5893fcc48c96c8a9c9a154"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "b7379b456035bee759e1f6d16934a36df4f909b7ad5893fcc48c96c8a9c9a154"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "b7379b456035bee759e1f6d16934a36df4f909b7ad5893fcc48c96c8a9c9a154"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "b7379b456035bee759e1f6d16934a36df4f909b7ad5893fcc48c96c8a9c9a154"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "b7379b456035bee759e1f6d16934a36df4f909b7ad5893fcc48c96c8a9c9a154"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "b7379b456035bee759e1f6d16934a36df4f909b7ad5893fcc48c96c8a9c9a154"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "b7379b456035bee759e1f6d16934a36df4f909b7ad5893fcc48c96c8a9c9a154"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "b7379b456035bee759e1f6d16934a36df4f909b7ad5893fcc48c96c8a9c9a154"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "b7379b456035bee759e1f6d16934a36df4f909b7ad5893fcc48c96c8a9c9a154"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, nothing under Berreman/ names recent.json: the kit history replaced the 16-entry list (001 §R, established by S5.1 step 169) (section invariant s27-no-recent-json).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-no-recent-json",
+          "selection": "command",
+          "command_sha256": "9594cca328ed796bcf85da537aa1ef9cebf15c25b65edf00a966c094692ceed9"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-no-recent-json",
+          "selection": "command",
+          "command_sha256": "9594cca328ed796bcf85da537aa1ef9cebf15c25b65edf00a966c094692ceed9"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-no-recent-json",
+          "selection": "command",
+          "command_sha256": "9594cca328ed796bcf85da537aa1ef9cebf15c25b65edf00a966c094692ceed9"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-no-recent-json",
+          "selection": "command",
+          "command_sha256": "9594cca328ed796bcf85da537aa1ef9cebf15c25b65edf00a966c094692ceed9"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-no-recent-json",
+          "selection": "command",
+          "command_sha256": "9594cca328ed796bcf85da537aa1ef9cebf15c25b65edf00a966c094692ceed9"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-no-recent-json",
+          "selection": "command",
+          "command_sha256": "9594cca328ed796bcf85da537aa1ef9cebf15c25b65edf00a966c094692ceed9"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-no-recent-json",
+          "selection": "command",
+          "command_sha256": "9594cca328ed796bcf85da537aa1ef9cebf15c25b65edf00a966c094692ceed9"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-no-recent-json",
+          "selection": "command",
+          "command_sha256": "9594cca328ed796bcf85da537aa1ef9cebf15c25b65edf00a966c094692ceed9"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-no-recent-json",
+          "selection": "command",
+          "command_sha256": "9594cca328ed796bcf85da537aa1ef9cebf15c25b65edf00a966c094692ceed9"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-no-recent-json",
+          "selection": "command",
+          "command_sha256": "9594cca328ed796bcf85da537aa1ef9cebf15c25b65edf00a966c094692ceed9"
+        }
+      ]
+    },
+    {
+      "id": "S83-INV-NO-MEASURED-ELEMENT-OF",
+      "source": "specs/0050/.section-plan-jsonl section 27 (S8.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.3 step, nothing under Berreman/ names measuredElementOf: captures are decided per object (001 §R, established by S8.1 step 254) (section invariant s27-no-measured-element-of).",
+      "checks": [
+        {
+          "step": 267,
+          "gate": "invariant-s27-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "b136d4b1755bd0a9ee9ff6a3378df71d9ee8ae09b04bc766e42efdecd0d0d4f9"
+        },
+        {
+          "step": 268,
+          "gate": "invariant-s27-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "b136d4b1755bd0a9ee9ff6a3378df71d9ee8ae09b04bc766e42efdecd0d0d4f9"
+        },
+        {
+          "step": 269,
+          "gate": "invariant-s27-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "b136d4b1755bd0a9ee9ff6a3378df71d9ee8ae09b04bc766e42efdecd0d0d4f9"
+        },
+        {
+          "step": 270,
+          "gate": "invariant-s27-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "b136d4b1755bd0a9ee9ff6a3378df71d9ee8ae09b04bc766e42efdecd0d0d4f9"
+        },
+        {
+          "step": 271,
+          "gate": "invariant-s27-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "b136d4b1755bd0a9ee9ff6a3378df71d9ee8ae09b04bc766e42efdecd0d0d4f9"
+        },
+        {
+          "step": 272,
+          "gate": "invariant-s27-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "b136d4b1755bd0a9ee9ff6a3378df71d9ee8ae09b04bc766e42efdecd0d0d4f9"
+        },
+        {
+          "step": 273,
+          "gate": "invariant-s27-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "b136d4b1755bd0a9ee9ff6a3378df71d9ee8ae09b04bc766e42efdecd0d0d4f9"
+        },
+        {
+          "step": 274,
+          "gate": "invariant-s27-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "b136d4b1755bd0a9ee9ff6a3378df71d9ee8ae09b04bc766e42efdecd0d0d4f9"
+        },
+        {
+          "step": 275,
+          "gate": "invariant-s27-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "b136d4b1755bd0a9ee9ff6a3378df71d9ee8ae09b04bc766e42efdecd0d0d4f9"
+        },
+        {
+          "step": 276,
+          "gate": "invariant-s27-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "b136d4b1755bd0a9ee9ff6a3378df71d9ee8ae09b04bc766e42efdecd0d0d4f9"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -32744,6 +34055,246 @@
         "S82-INV-NO-RECENT-JSON",
         "S82-INV-NO-MEASURED-ELEMENT-OF"
       ]
+    },
+    {
+      "step": 267,
+      "sha256": "215b0f2ae3baa53ef6e23f9245fd674405248be67cb3cf30555f284d0bf33aa8",
+      "obligations": [
+        "S83-KIT-TEMPLATE",
+        "S83-BUILD",
+        "S83-ELEVATION",
+        "S83-INV-ELEV-LIST-EMPTY",
+        "S83-INV-NO-VSTEST",
+        "S83-INV-NO-KIT-KIT-JSON",
+        "S83-INV-NO-EPS-AXIS-EVALUATED",
+        "S83-INV-COMPLEXITY-MANDATORY",
+        "S83-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S83-INV-NO-SEEDING-SEAM",
+        "S83-INV-T1-NO-CODE-SEEDS",
+        "S83-INV-NO-SEED-MODULES",
+        "S83-INV-NO-TEST-DB",
+        "S83-INV-NO-VERSIONS-IN-USE",
+        "S83-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S83-INV-T4-NO-OCPROJ",
+        "S83-INV-NO-RECENT-JSON",
+        "S83-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 268,
+      "sha256": "07c0734eb9cd6249c265221e574a65f3c84ff432d9de441eb2bfd5606c0f81f7",
+      "obligations": [
+        "S83-TEMPLATE-GRAMMAR",
+        "S83-BUILD",
+        "S83-ELEVATION",
+        "S83-INV-ELEV-LIST-EMPTY",
+        "S83-INV-NO-VSTEST",
+        "S83-INV-NO-KIT-KIT-JSON",
+        "S83-INV-NO-EPS-AXIS-EVALUATED",
+        "S83-INV-COMPLEXITY-MANDATORY",
+        "S83-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S83-INV-NO-SEEDING-SEAM",
+        "S83-INV-T1-NO-CODE-SEEDS",
+        "S83-INV-NO-SEED-MODULES",
+        "S83-INV-NO-TEST-DB",
+        "S83-INV-NO-VERSIONS-IN-USE",
+        "S83-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S83-INV-T4-NO-OCPROJ",
+        "S83-INV-NO-RECENT-JSON",
+        "S83-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 269,
+      "sha256": "0008612bc48c27822ca703c16128904ad6354cc0b05c335475bd6ba8b3ee2cfe",
+      "obligations": [
+        "S83-NAME-READING",
+        "S83-BUILD",
+        "S83-ELEVATION",
+        "S83-INV-ELEV-LIST-EMPTY",
+        "S83-INV-NO-VSTEST",
+        "S83-INV-NO-KIT-KIT-JSON",
+        "S83-INV-NO-EPS-AXIS-EVALUATED",
+        "S83-INV-COMPLEXITY-MANDATORY",
+        "S83-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S83-INV-NO-SEEDING-SEAM",
+        "S83-INV-T1-NO-CODE-SEEDS",
+        "S83-INV-NO-SEED-MODULES",
+        "S83-INV-NO-TEST-DB",
+        "S83-INV-NO-VERSIONS-IN-USE",
+        "S83-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S83-INV-T4-NO-OCPROJ",
+        "S83-INV-NO-RECENT-JSON",
+        "S83-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 270,
+      "sha256": "d82bdc6a64467110378767a76a8ef1ef2b29722db9d0bcb68e9521edc22293cd",
+      "obligations": [
+        "S83-LABELS-THROUGH-TEMPLATE",
+        "S83-BUILD",
+        "S83-ELEVATION",
+        "S83-INV-ELEV-LIST-EMPTY",
+        "S83-INV-NO-VSTEST",
+        "S83-INV-NO-KIT-KIT-JSON",
+        "S83-INV-NO-EPS-AXIS-EVALUATED",
+        "S83-INV-COMPLEXITY-MANDATORY",
+        "S83-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S83-INV-NO-SEEDING-SEAM",
+        "S83-INV-T1-NO-CODE-SEEDS",
+        "S83-INV-NO-SEED-MODULES",
+        "S83-INV-NO-TEST-DB",
+        "S83-INV-NO-VERSIONS-IN-USE",
+        "S83-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S83-INV-T4-NO-OCPROJ",
+        "S83-INV-NO-RECENT-JSON",
+        "S83-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 271,
+      "sha256": "47d51f5285a237d236fafbc1c443b323e81034f0aaec0c157183c07c134b2973",
+      "obligations": [
+        "S83-SLOT-NAMES",
+        "S83-BUILD",
+        "S83-ELEVATION",
+        "S83-INV-ELEV-LIST-EMPTY",
+        "S83-INV-NO-VSTEST",
+        "S83-INV-NO-KIT-KIT-JSON",
+        "S83-INV-NO-EPS-AXIS-EVALUATED",
+        "S83-INV-COMPLEXITY-MANDATORY",
+        "S83-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S83-INV-NO-SEEDING-SEAM",
+        "S83-INV-T1-NO-CODE-SEEDS",
+        "S83-INV-NO-SEED-MODULES",
+        "S83-INV-NO-TEST-DB",
+        "S83-INV-NO-VERSIONS-IN-USE",
+        "S83-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S83-INV-T4-NO-OCPROJ",
+        "S83-INV-NO-RECENT-JSON",
+        "S83-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 272,
+      "sha256": "cfba5e7ee2ad10355a0c50ff74adcf11d573f4d0022383fb3016c33d074ed242",
+      "obligations": [
+        "S83-WINDOW-NAMES",
+        "S83-BUILD",
+        "S83-ELEVATION",
+        "S83-INV-ELEV-LIST-EMPTY",
+        "S83-INV-NO-VSTEST",
+        "S83-INV-NO-KIT-KIT-JSON",
+        "S83-INV-NO-EPS-AXIS-EVALUATED",
+        "S83-INV-COMPLEXITY-MANDATORY",
+        "S83-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S83-INV-NO-SEEDING-SEAM",
+        "S83-INV-T1-NO-CODE-SEEDS",
+        "S83-INV-NO-SEED-MODULES",
+        "S83-INV-NO-TEST-DB",
+        "S83-INV-NO-VERSIONS-IN-USE",
+        "S83-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S83-INV-T4-NO-OCPROJ",
+        "S83-INV-NO-RECENT-JSON",
+        "S83-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 273,
+      "sha256": "38d06f3894253f9463b278e1b911b92d24892c7b7005913ff4b2addad0dbf31c",
+      "obligations": [
+        "S83-TEMPLATE-EDIT",
+        "S83-BUILD",
+        "S83-ELEVATION",
+        "S83-INV-ELEV-LIST-EMPTY",
+        "S83-INV-NO-VSTEST",
+        "S83-INV-NO-KIT-KIT-JSON",
+        "S83-INV-NO-EPS-AXIS-EVALUATED",
+        "S83-INV-COMPLEXITY-MANDATORY",
+        "S83-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S83-INV-NO-SEEDING-SEAM",
+        "S83-INV-T1-NO-CODE-SEEDS",
+        "S83-INV-NO-SEED-MODULES",
+        "S83-INV-NO-TEST-DB",
+        "S83-INV-NO-VERSIONS-IN-USE",
+        "S83-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S83-INV-T4-NO-OCPROJ",
+        "S83-INV-NO-RECENT-JSON",
+        "S83-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 274,
+      "sha256": "0eeeeb1b1243551f413883afd149457f2fc53906dcb8baff985c281c48fbe538",
+      "obligations": [
+        "S83-GRID",
+        "S83-BUILD",
+        "S83-ELEVATION",
+        "S83-INV-ELEV-LIST-EMPTY",
+        "S83-INV-NO-VSTEST",
+        "S83-INV-NO-KIT-KIT-JSON",
+        "S83-INV-NO-EPS-AXIS-EVALUATED",
+        "S83-INV-COMPLEXITY-MANDATORY",
+        "S83-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S83-INV-NO-SEEDING-SEAM",
+        "S83-INV-T1-NO-CODE-SEEDS",
+        "S83-INV-NO-SEED-MODULES",
+        "S83-INV-NO-TEST-DB",
+        "S83-INV-NO-VERSIONS-IN-USE",
+        "S83-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S83-INV-T4-NO-OCPROJ",
+        "S83-INV-NO-RECENT-JSON",
+        "S83-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 275,
+      "sha256": "c70bbaac01dcc076e2825cd160ffa51a98fe1d16932de3b8ac27d5edb72eaad6",
+      "obligations": [
+        "S83-GRID-EXPERIMENTS",
+        "S83-BUILD",
+        "S83-ELEVATION",
+        "S83-INV-ELEV-LIST-EMPTY",
+        "S83-INV-NO-VSTEST",
+        "S83-INV-NO-KIT-KIT-JSON",
+        "S83-INV-NO-EPS-AXIS-EVALUATED",
+        "S83-INV-COMPLEXITY-MANDATORY",
+        "S83-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S83-INV-NO-SEEDING-SEAM",
+        "S83-INV-T1-NO-CODE-SEEDS",
+        "S83-INV-NO-SEED-MODULES",
+        "S83-INV-NO-TEST-DB",
+        "S83-INV-NO-VERSIONS-IN-USE",
+        "S83-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S83-INV-T4-NO-OCPROJ",
+        "S83-INV-NO-RECENT-JSON",
+        "S83-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 276,
+      "sha256": "846d8bf4135cf657cf02c0660e748338e546e6f8a7db7b5863f9e76afa9bbc53",
+      "obligations": [
+        "S83-GENERATE-SETUP-GRID",
+        "S83-BUILD",
+        "S83-ELEVATION",
+        "S83-INV-ELEV-LIST-EMPTY",
+        "S83-INV-NO-VSTEST",
+        "S83-INV-NO-KIT-KIT-JSON",
+        "S83-INV-NO-EPS-AXIS-EVALUATED",
+        "S83-INV-COMPLEXITY-MANDATORY",
+        "S83-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S83-INV-NO-SEEDING-SEAM",
+        "S83-INV-T1-NO-CODE-SEEDS",
+        "S83-INV-NO-SEED-MODULES",
+        "S83-INV-NO-TEST-DB",
+        "S83-INV-NO-VERSIONS-IN-USE",
+        "S83-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S83-INV-T4-NO-OCPROJ",
+        "S83-INV-NO-RECENT-JSON",
+        "S83-INV-NO-MEASURED-ELEMENT-OF"
+      ]
     }
   ],
   "behavior_seams": [
@@ -33901,6 +35452,56 @@
       "id": "s82-source-slot",
       "step": 266,
       "obligation": "S82-SOURCE-SLOT"
+    },
+    {
+      "id": "s83-kit-template",
+      "step": 267,
+      "obligation": "S83-KIT-TEMPLATE"
+    },
+    {
+      "id": "s83-template-grammar",
+      "step": 268,
+      "obligation": "S83-TEMPLATE-GRAMMAR"
+    },
+    {
+      "id": "s83-name-reading",
+      "step": 269,
+      "obligation": "S83-NAME-READING"
+    },
+    {
+      "id": "s83-labels-through-template",
+      "step": 270,
+      "obligation": "S83-LABELS-THROUGH-TEMPLATE"
+    },
+    {
+      "id": "s83-slot-names",
+      "step": 271,
+      "obligation": "S83-SLOT-NAMES"
+    },
+    {
+      "id": "s83-window-names",
+      "step": 272,
+      "obligation": "S83-WINDOW-NAMES"
+    },
+    {
+      "id": "s83-template-edit",
+      "step": 273,
+      "obligation": "S83-TEMPLATE-EDIT"
+    },
+    {
+      "id": "s83-setup-grid",
+      "step": 274,
+      "obligation": "S83-GRID"
+    },
+    {
+      "id": "s83-grid-experiments",
+      "step": 275,
+      "obligation": "S83-GRID-EXPERIMENTS"
+    },
+    {
+      "id": "s83-generate-setup-grid",
+      "step": 276,
+      "obligation": "S83-GENERATE-SETUP-GRID"
     }
   ],
   "temporal_checks": [],
@@ -34291,6 +35892,20 @@
         "Berreman/OpticalConstructor/OpticalConstructor.TestWindows",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
+        "AGENTS.md"
+      ]
+    },
+    {
+      "from": 267,
+      "step": 276,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Controls",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
+        "Berreman/BerremanTests",
         "AGENTS.md"
       ]
     }
