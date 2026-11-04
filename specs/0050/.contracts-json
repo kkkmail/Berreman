@@ -38,5 +38,13 @@
     "openTemporary": false,
     "consumers": [],
     "temporaries": []
+  },
+  "SVC_BigBoy_0001": {
+    "lifecycle": "declared",
+    "declaringStep": 182,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
   }
 }

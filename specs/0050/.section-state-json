@@ -120,14 +120,14 @@
     {
       "name": "S5.2 -- The kit start screen and the Launcher",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "ff41ee4",
       "spec_jsonl_lines": 180
     },
     {
       "name": "S5.3 -- The kit window: title, Kit menu, lock, reload and mode; Data locations",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 195
     },
     {
       "name": "S6 -- Send and receive kits; copy experiments between kits",

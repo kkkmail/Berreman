@@ -38,5 +38,13 @@
     "declaringProject": "OpticalConstructor.Domain",
     "status": "active",
     "formerNames": []
+  },
+  "SVC_BigBoy_0001": {
+    "name": "ExplorerProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
   }
 }
