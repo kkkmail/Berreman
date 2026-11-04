@@ -54365,13 +54365,19 @@
     {
       "id": "S131-RII-PARSER",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: 1. refractiveindex.info (CC0): an offline snapshot of the GitHub database plus \"Update snapshot\". The existing YAML importer (MaterialImport) is REUSED as the record parser'; 'A pulled record becomes a user material version in the database, with provenance: source, record path, snapshot date or commit, licence, citation'; 'Updating a source mints a NEW version when the record changed and never mutates one'), §P ('MaterialSourceProxy (online sources)'; 'every proxy has an in-memory stub of the same shape'; every user step is a semantic message), §C ('pulled-source records'; 'Versions are immutable'), §B ('Identity is GUID + version + hash'; 'Licence attribution'), §G ('Every path is overridable in appsettings.json'), §O (every new control a uniquely named static member of ConstructorUiId; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests); specs/0050/.section-plan-jsonl section 43 (S13.1) brief; specs/0050/.spec-md §3.9, §4, §5, §6, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
-      "requirement": "MaterialImport (the one refractiveindex.info reader) gains ImportError.describe, RefractiveIndexInfoCatalogText with hits (line-based SHELF / BOOK / PAGE reading of catalog-nk.yml, one hit per page with data, named '<book name>, <page name>', NoDataErr for a catalog without a page) and RefractiveIndexInfoText.referencesOpt (the REFERENCES value or block, joined); importMaterial is unchanged; fixtures/catalog-nk.yml holds two shelves and two pages.",
+      "requirement": "MaterialImport (the one refractiveindex.info reader) gains ImportError.describe, RefractiveIndexInfoCatalogText with hits (line-based SHELF / BOOK / PAGE reading of catalog-nk.yml, one hit per page with data, named '<book name>, <page name>', NoDataErr for a catalog without a page) and RefractiveIndexInfoText.referencesOpt (the REFERENCES value or block, joined); importMaterial is unchanged; fixtures/catalog-nk.yml holds two shelves and two pages. After this import change, AT-1 and AT-2 MUST pass under kit-acceptance over OpticalConstructor.Ui.Tests.KitAcceptanceTests with their expectations and tolerances unchanged (specs/0050/.spec-md §9).",
       "checks": [
         {
           "step": 445,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 445,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
         }
       ]
     },
@@ -56359,13 +56365,19 @@
     {
       "id": "S132-PTB-READER",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
-      "requirement": "MaterialImport reads a PTB OCDB record (PtbOcdbText.importMaterial, headlineOpt): n = 1-delta, k = beta, nm through the Units seam, sigma = (HB - LB) / (2 x level) from the bound columns and the stated sigma level, sorted rows, tryCreate then withUncertainty; malformed texts are MalformedSourceFileErr and an empty one NoDataErr; ImportError gains MalformedSourceFileErr with its describe; the tabulated entry assembly moves into TabulatedNkTable.isotropicEntry, which entryFromTabulated calls with every field unchanged; fixture ptb-Co.txt holds PTB's Co.txt header and three of its rows.",
+      "requirement": "MaterialImport reads a PTB OCDB record (PtbOcdbText.importMaterial, headlineOpt): n = 1-delta, k = beta, nm through the Units seam, sigma = (HB - LB) / (2 x level) from the bound columns and the stated sigma level, sorted rows, tryCreate then withUncertainty; malformed texts are MalformedSourceFileErr and an empty one NoDataErr; ImportError gains MalformedSourceFileErr with its describe; the tabulated entry assembly moves into TabulatedNkTable.isotropicEntry, which entryFromTabulated calls with every field unchanged; fixture ptb-Co.txt holds PTB's Co.txt header and three of its rows. After this import change, AT-1 and AT-2 MUST pass under kit-acceptance over OpticalConstructor.Ui.Tests.KitAcceptanceTests with their expectations and tolerances unchanged (specs/0050/.spec-md §9).",
       "checks": [
         {
           "step": 454,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 454,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
         }
       ]
     },
@@ -56398,13 +56410,19 @@
     {
       "id": "S132-HENKE-ADAPTER",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
-      "requirement": "MaterialImport reads a CXRO .nff file (HenkeScatteringText.factors: E(eV) header, three numbers per row, f1 = -9999 rows left out); MaterialSourceProxy.createHenkeCompounds (CXRO Henke, <sources>/cxro-henke, LicenseRef-CXRO) updates by downloading the 92 element files sf/<symbol>.nff in atomic-number order through the downloader with per-file progress and cancellation, installing them through the shared layout; its search answers the one compound its query writes; its fetch computes indexTableWith over the snapshot's files, hashed as the record text plus the element files, cited to Henke et al. 1993 and CXRO; no network in any test.",
+      "requirement": "MaterialImport reads a CXRO .nff file (HenkeScatteringText.factors: E(eV) header, three numbers per row, f1 = -9999 rows left out); MaterialSourceProxy.createHenkeCompounds (CXRO Henke, <sources>/cxro-henke, LicenseRef-CXRO) updates by downloading the 92 element files sf/<symbol>.nff in atomic-number order through the downloader with per-file progress and cancellation, installing them through the shared layout; its search answers the one compound its query writes; its fetch computes indexTableWith over the snapshot's files, hashed as the record text plus the element files, cited to Henke et al. 1993 and CXRO; no network in any test. After this import change, AT-1 and AT-2 MUST pass under kit-acceptance over OpticalConstructor.Ui.Tests.KitAcceptanceTests with their expectations and tolerances unchanged (specs/0050/.spec-md §9).",
       "checks": [
         {
           "step": 457,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 457,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
         }
       ]
     },
@@ -56493,13 +56511,19 @@
     {
       "id": "S132-AGF-READER",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
-      "requirement": "MaterialImport reads an AGF glass catalogue (GlassCatalogueText.ofBytes: UTF-16 LE/BE and UTF-8 by mark, UTF-16 LE by a zero byte, else UTF-8; importGlasses: NM name and formula, CD coefficients, LD range), rewrites each AGF formula 1-13 as the refractiveindex.info formula of the same equation (AgfFormulaNumber.riiFormOf) and lowers it through the unchanged lowerFormulaAxis and entryOfAxis (Glass category); a glass that does not lower refuses the whole text naming every such glass; no glass is NoDataErr; nothing is bundled.",
+      "requirement": "MaterialImport reads an AGF glass catalogue (GlassCatalogueText.ofBytes: UTF-16 LE/BE and UTF-8 by mark, UTF-16 LE by a zero byte, else UTF-8; importGlasses: NM name and formula, CD coefficients, LD range), rewrites each AGF formula 1-13 as the refractiveindex.info formula of the same equation (AgfFormulaNumber.riiFormOf) and lowers it through the unchanged lowerFormulaAxis and entryOfAxis (Glass category); a glass that does not lower refuses the whole text naming every such glass; no glass is NoDataErr; nothing is bundled. After this import change, AT-1 and AT-2 MUST pass under kit-acceptance over OpticalConstructor.Ui.Tests.KitAcceptanceTests with their expectations and tolerances unchanged (specs/0050/.spec-md §9).",
       "checks": [
         {
           "step": 462,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 462,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
         }
       ]
     },
@@ -74837,7 +74861,7 @@
     },
     {
       "step": 445,
-      "sha256": "544cf8702e5661a88397d5bd9504c87aa2e41eadd81c9899e20fee6c92110eb7",
+      "sha256": "311c6f599dd5e76c268c7b678175a95579975c56f2a9facee29f92f5ed6062c0",
       "obligations": [
         "S131-RII-PARSER",
         "S131-BUILD",
@@ -75109,7 +75133,7 @@
     },
     {
       "step": 454,
-      "sha256": "b2ffcca3b453ea7679e6df2d365ec9d4d214d465403476fda9a544808ed7dd97",
+      "sha256": "a82cfc82ce969f605318448597d4248032e3782669c3f80205ea29ebd97335da",
       "obligations": [
         "S132-PTB-READER",
         "S132-BUILD",
@@ -75199,7 +75223,7 @@
     },
     {
       "step": 457,
-      "sha256": "a764179b4045a72db3803b78652b13c29babdeefe6c658be683eb0a9129e0688",
+      "sha256": "701117801214e395064850a990bbdcabeeda718fcc34c4cbeeaf750fe0b39c54",
       "obligations": [
         "S132-HENKE-ADAPTER",
         "S132-BUILD",
@@ -75349,7 +75373,7 @@
     },
     {
       "step": 462,
-      "sha256": "ae88facad8d77c35265ca0fb9f788593104825cb2c57b7ab37f0e66aff9c76d1",
+      "sha256": "abcf5ae15770e46992213cd98bd73610c0d94d7c368cb9c11ebded61ece35f9b",
       "obligations": [
         "S132-AGF-READER",
         "S132-BUILD",
