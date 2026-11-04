@@ -198,14 +198,14 @@
     {
       "name": "S10.1 -- The bench noise model and the fit harness move into Optimization",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "da76018",
       "spec_jsonl_lines": 343
     },
     {
       "name": "S10.2 -- BerremanTestSupport: the shared ground truth and designs",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 347
     },
     {
       "name": "S10.3 -- The staged Mueller pipeline and its reference values are promoted",
