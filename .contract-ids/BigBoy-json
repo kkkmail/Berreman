@@ -54,5 +54,13 @@
     "declaringProject": "OpticalConstructor.Domain",
     "status": "active",
     "formerNames": []
+  },
+  "STORE_BigBoy_0006": {
+    "name": "ItemModelProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
   }
 }
