@@ -246,14 +246,14 @@
     {
       "name": "S12.1 -- AT-1 and the optics-mueller reference kit",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "72b9e7c",
       "spec_jsonl_lines": 430
     },
     {
       "name": "S12.2 -- AT-2 and the absorbing-biaxial-noisy reference kit",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 440
     },
     {
       "name": "S13.1 -- MaterialSourceProxy and refractiveindex.info",
