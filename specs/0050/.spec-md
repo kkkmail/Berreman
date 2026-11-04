@@ -49,7 +49,7 @@ What the change touches, in code, without the UI. The steps are the supporting e
 | Storage: canonical JSON, entry files, catalogue folders (`CatalogueProxy`), the library database proxies, the folder `KitProxy`, `KitHistoryProxy`, `KitArchiveProxy`, `MaterialSourceProxy` | `AppContext.create`, the start screen, the Kit menu, and the Library and Materials windows. |
 | Domain / Optimization: setups, naming template, grid generator, import profiles, studies, the study engine, fit runs, and the Planner | The constructor window's flow strip and the tests' semantic messages. |
 | `Berreman/BerremanTestSupport/` | Referenced by `BerremanTests` and `OpticalConstructor.Ui.Tests`. |
-| `OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs` (AT-1, AT-2) | The `kit-acceptance` gate. |
+| Future `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs` (AT-1, AT-2) | First produced by `.spec-jsonl` step 421 and bound to `kit-acceptance` by `.execution-contract-json:S121-AT1-ITEMS-SETUPS`; this is no evidence for an earlier consumer. The premature gate scheduling remains the handoff blocker in §4. |
 | `data/optics-mueller/`, `data/absorbing-biaxial-noisy/` | AT-1 and AT-2, and the start screen's "Open kit…". |
 
 ---
@@ -125,11 +125,11 @@ The work is implemented in 001's §S order, sections 1–14, each green on its o
 22. **The flow strip grows as its steps land.** Items, Setups and Experiments come in S7, Data in S9, Unknowns, Fit, Results and Publish in S11, and Plan in S14, each at its 001 §O position. A step appears only when it works.
 23. **The noise model's data lives in Domain.**
     - A detector item model carries its noise model (001 §I), and Domain cannot reference Optimization. So `AngleUncertainty`, `ElementUncertainty`, `ThroughputUncertainty` and `NoiseParam` (with `decentLab` and `noiseless`) MOVE from `BerremanTests/InverseFitHarness.fs` to Domain in S7.1.
-    - S10.1 moves the noise FUNCTIONS (`disturb`, `misread`, `misreadAbsolute`, `noisyObserveWith`, `noisyObserveAbsoluteWith`, `NoiseSeed`, `UniformDeviateProvider`) and the rest of 001 §Q's promoted list into Optimization, which opens the Domain types. One implementation exists throughout.
+    - S10.1 MUST move `disturb`, `misread`, `misreadAbsolute`, `noisyObserveWith`, `noisyObserveAbsoluteWith`, `NoiseSeed` and `UniformDeviateProvider` from `Berreman/BerremanTests/InverseFitHarness.fs` (declarations at lines 553, 567, 589, 626, 604, 114 and 208 respectively), and the rest of 001 §Q's promoted list, into Optimization, which opens the Domain types. Each move MUST delete the source implementation. `.execution-contract-json:S101-NOISE-MOVE` and `S101-ABSOLUTE-NOISE-MOVE` bind the numerical checks at steps 339–340; their prematurely selected `kit-acceptance` gate remains blocked under §4.
 
 ## 4. Binding constraints for every section
 
-- **Order and greenness.** Sections MUST land in plan order; each step MUST leave every effective gate green except its declared, captured ADD_RED failures. Before handoff, every effective gate and prerequisite MUST have an obligation/check binding in `.execution-contract-json`, and every filtered gate MUST have an explicit `.spec-jsonl` `gate_selection` whose classes exist after that step's effects. `kit-acceptance` MUST run only from its first test-producing step (421) onward; §9 names the verification before that producer. Superseded code MUST be deleted in the change that replaces it. A reuse MUST be a move or a call: the new home and deletion of the old body MUST land together.
+- **Order and greenness.** Sections MUST land in plan order; each step MUST leave every effective gate green except its declared, captured ADD_RED failures. Before handoff, every effective gate and prerequisite MUST have an obligation/check binding in `.execution-contract-json`, and every filtered gate MUST have an explicit `.spec-jsonl` `gate_selection` whose classes exist after that step's effects. Under 001 §U, `kit-acceptance` MUST run only from its first test-producing step (421) onward; §9 names the verification before that producer. **Handoff is blocked:** ASG's `executability.plan_view.effective_plan` schedules that gate before its producer, including steps 2 and 335–343, because `.spec-bundle` does not enable `gates_required_only` and `.gates/OpticalConstructor/kit-acceptance.gates:applies_to` admits those consumers. The bundle/gate owner MUST make the authored `required_gates` authoritative with `gates_required_only: true` in `.spec-bundle`, then revalidate the effective plan, selections and bindings. That file is outside this author cycle's write scope; this narrative does not enact the repair. Earlier selections MUST NOT name the future tests or treat an empty suite as proof. Superseded code MUST be deleted in the change that replaces it. A reuse MUST be a move or a call: the new home and deletion of the old body MUST land together.
 - **AGENTS.md walls.**
   - Release / x64 only, `dotnet` only, zero warnings from our code, LF line endings.
   - Central package versions in the root `Directory.Build.targets`; Microsoft.Testing.Platform with xUnit v3; never a VSTest package.
@@ -228,7 +228,7 @@ The kit root is flat. Subfolders hold only additional data: `library/`, `data/` 
   - migrations, up-converters, schema-version shims or fallback readers;
   - a second database engine, a sync service, or an automatic merge of divergent entries;
   - any import that silently overwrites an entry;
-  - an editor for the database outside the existing Library and Materials windows.
+  - an editor for the database outside `Berreman/OpticalConstructor/OpticalConstructor.Ui/LibraryWindow.fs:LibraryWindow` and `Berreman/OpticalConstructor/OpticalConstructor.Ui/MaterialsWindow.fs:MaterialsWindow`.
 - **Formats and sources:**
   - a bundle format other than the kit folder or its zip;
   - a Materials Project, paywalled or gyration-source adapter, or a bundled glass catalogue;
@@ -250,7 +250,7 @@ The kit root is flat. Subfolders hold only additional data: `library/`, `data/` 
   - `KitProxy`'s suite runs against the in-memory kit and a folder under the test output.
 - **UI tests.** `OpticalConstructor.Ui.Tests` covers each new view's structure and its messages. `ui-smoke` renders every new view; `ui-tests` runs the classes a step touches.
 - **Solver and harness.** `BerremanTests` (`unit-tests`) covers the core dispersion change (`EpsWithDispValueTests` and its neighbours) and every step that touches `OpticalConstructor.Optimization`, `MuellerInverse.fs`, `MuellerReconstruction.fs`, the solver or `BerremanTestSupport`. Only touched classes run; the whole suite runs at the final step.
-- **Acceptance.** `kit-acceptance` (AT-1, AT-2: trait `kit-acceptance`, `OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs`) runs from the step that creates that file onward, on every step touching the study, the run law, the import code, the acceptance files or the two kits. Before S12 the run-law and import steps are proved by `constructor-unit-tests` and the `FsxAcceptanceTests` classes under `ui-tests`.
+- **Acceptance.** Under 001 §U, `kit-acceptance` (AT-1, AT-2: trait `kit-acceptance`) MUST run from `.spec-jsonl` step 421, which creates `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs`, on every subsequent step touching the study, the run law, the import code, the acceptance files or the two kits. The effective plan currently violates that start boundary (§4). Before S12, `constructor-unit-tests` MUST prove the run-law and import behavior through the test effects bound to each step; steps 246, 301–303, 307 and 374 MUST additionally select `OpticalConstructor.Ui.Tests.FsxAcceptanceTests` under `ui-tests`. That class (`Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/FsxAcceptanceTests.fs:FsxAcceptanceTests`) checks constructor/export numerical parity against the Analytics examples; it does not replace the import-profile and study-forward behavior tests. The six selections and command checks are bound in `.execution-contract-json` to `S81-SOURCE-EMISSION`, `S92-OBSERVATION-FILE`, `S92-COLUMN-MAPPING-READ`, `S92-ONE-PROFILE-READ`, `S92-SNIFF-PREVIEW` and `S112-FORWARD-MODEL` respectively.
 - **Elevation.** `elevation` runs on every step that edits an `.fs` or `.fsproj`, and `elevation-full` at the final step.
 - **Invariants.** Each section carries `invariant-*` gates: 001 §T's greps from the part after the one that makes each true, plus the empty known-findings list and the absence of VSTest packages on every part.
 - **Done when** (001 §V):
@@ -391,7 +391,7 @@ The Planner reads the kit. Layer 1 is the exact structural table of what each sy
 
 ### C.0 Problem statement
 
-After the final composition is wired, every 001 §R removal MUST be confirmed gone and the whole suites, `elevation-full` and `kit-acceptance` MUST pass together under `.spec-jsonl` step 494's explicit whole-suite selections. Handoff MUST also require every earlier effective gate to have a valid post-effect selection and an acceptance/check binding in `.execution-contract-json`; the final whole-suite checks MUST NOT substitute for that per-step coverage or for the producer ordering in §4.
+After the final composition is wired, every 001 §R removal MUST be confirmed gone and the whole suites, `elevation-full` and `kit-acceptance` MUST pass together under `.spec-jsonl` step 494's explicit whole-suite selections. Handoff MUST remain blocked until the bundle owner resolves §4's premature `kit-acceptance` consumers and the effective-plan audit finds a valid post-effect selection and an acceptance/check binding in `.execution-contract-json` for every effective gate, prerequisites included. Step 494's whole-suite obligations do not repair those earlier missing bindings or the producer ordering.
 
 ## References
 

@@ -24531,13 +24531,19 @@
     {
       "id": "S81-SOURCE-EMISSION",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The run law walks any number of objects. ExperimentRun folds slot by slot, in light order, through each item's Mueller matrix. measuredElementOf (\"the first bound sample\") is deleted, and capture branches are decided per object'; 'The source is real: a source item with a Stokes state and an intensity scale. \"Unpolarized, unit scale after the first polarizer\" is its default parameter set, so existing charts keep their values'; 'One item-model evaluator, ItemModel × parameters × orientation × λ → MuellerMatrix: stack samples go through Berreman (Propagation.sampleMuellerSpun for the table; MuellerInverse.orientForCut + createBerremanForward for cut plates — REUSED); black-box and compound items go through the Stokes/Mueller algebra'), §R ('measuredElementOf and the \"first polarizer sets unit intensity\" special case, replaced by N objects and a real source with that default'), §I (the item-model table: light source, real LP, retarder, compound, black box, empty slot); specs/0050/.section-plan-jsonl section 25 (S8.1) brief; specs/0050/.spec-md §0.1 (ExperimentRun.fs, TableAndElementRotationView.fs rows), §3.14, §4, §6 (Table samples, Cut plates), §8, §9; specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §I; claim-check repair item 30",
-      "requirement": "Step 246: The source is real: a light source with a Stokes state and an intensity scale (001 §N 'The source is real: a source item with a Stokes state and an intensity scale'; 001 §I 'Light source | λ or tunable limits (exists) + output polarization (azimuth, ellipticity, degree of polarization) + an intensity scale'; the S8.1 brief: 'The source emits its own Stokes state x intensity scale'). (1) `OpticalConstructor.Domain/ExperimentRun.fs`, which opens `ItemModels`, gains before `RunStep`, each doc one to three lines citing spec 0050 S8.1: `SourceEmission = { azimuth : Angle; ellipticity : Angle; degreeOfPolarization : ParameterValue; intensityScale : ParameterValue }`, the light a source emits. `member this.stokes : StokesVector` is I · [1, p·cos 2χ·cos 2ψ, p·cos 2χ·sin 2ψ, p·sin 2χ] with ψ the azimuth, χ the ellipticity angle, p the degree of polarization and I the intensity scale, written through `StokesVector.create` as `Propagation.inputStokes` writes its vectors (`Propagation.fs:inputStokes`); a positive χ is +S₃, the handedness `inputStokes` calls left, so a fully polarized source at azimuth θ and χ = 0 is `inputStokes IdealLinear θ` and one at χ = 45° is `inputStokes IdealCircularLeft`. The run law is unchanged in this step; step 252 makes it start from the emission. (2) `ItemEvaluation.fs`, each doc one to three lines citing spec 0050 S8.1: `type ParameterValue with member this.angle : Angle`, the number read as radians (an `AngleParameter`'s unit, step 214). `type SourceEmission with static member ofValues (values : ParameterValues) : Result<SourceEmission, ItemEvaluationError>` checks the values against `SourcePreset.lightSourceAxes` (step 244, `checkedFor`, step 245) and reads the four through the `ParameterName` members, the two angles through `angle`. `ItemEvaluationError` gains `NotALightSourceErr of reason : string`, rendered `the model is not a light source: <reason>`. `type ItemModelChoice with member this.emissionWith (values : ParameterValues) : Result<SourceEmission, ItemEvaluationError>` is `SourceEmission.ofValues values` for a `SourcePresetChoice` (step 223) and `NotALightSourceErr` naming the model's kind for every other choice: the source arm of the one evaluator, which S8.2's source slot and S11.2's forward model call with the source item's values. The wavelength stays the preset's, as today. No other member is added. Tests, in `ItemEvaluationTests`: `the default source is unpolarized light at unit scale`: `SourceEmission.ofValues (ParameterValues.defaultsOf SourcePreset.lightSourceAxes)` answers azimuth and ellipticity 0, degree of polarization 0 and scale 1, whose `stokes` is exactly [1, 0, 0, 0] (`Propagation.unpolarizedStokes`). `a source emits its polarization state times its intensity scale`: a degree of polarization 1 at azimuth 30° with scale 2 emits 2 · `inputStokes IdealLinear (30°)`; ellipticity 45° emits `inputStokes IdealCircularLeft (0°)` and −45° `inputStokes IdealCircularRight (0°)`; a degree of polarization 0.5 at azimuth 0 emits [1, 0.5, 0, 0]; each component within 1e-15. `only a light-source model emits, and its values must be in range`: `(PolarizerPresetChoice (the PresetIds.polarizerLp polarizer)).emissionWith` of any values answers `NotALightSourceErr`; `(SourcePresetChoice (BuiltinCatalogue.source PresetIds.heNe633)).emissionWith` answers the default emission over the defaults, `ParameterOutOfRangeErr` with a degree of polarization of 2, and `MissingParameterValueErr` without `ellipticity`. `every evaluation error renders its condition and its payload` (step 245) covers `NotALightSourceErr`. All choice construction and matching in this step MUST use step 223's payloads, including the resolved ItemModelVersion for source, ideal-polarizer and stack choices. Fixtures MUST obtain those versions from step 217's shipped model entries; runtime resolution MUST use the stored version through ItemModelProxy, never manufacture a model or use a preset/sample as the model. Existing parameter values and optical results MUST be preserved. Acceptance: After the real source lands, `SourceEmission.stokes` MUST be the source's polarization state times its intensity scale, the default parameter set MUST emit unpolarized light of unit S₀, and only a light-source model MUST emit; constructor-unit-tests MUST pass, including `the default source is unpolarized light at unit scale`, `a source emits its polarization state times its intensity scale`, `only a light-source model emits, and its values must be in range` and the widened `every evaluation error renders its condition and its payload`, the count rising by 3; and build, elevation and the fourteen s25 invariants MUST pass.",
+      "requirement": "Step 246: The source is real: a light source with a Stokes state and an intensity scale (001 §N 'The source is real: a source item with a Stokes state and an intensity scale'; 001 §I 'Light source | λ or tunable limits (exists) + output polarization (azimuth, ellipticity, degree of polarization) + an intensity scale'; the S8.1 brief: 'The source emits its own Stokes state x intensity scale'). (1) `OpticalConstructor.Domain/ExperimentRun.fs`, which opens `ItemModels`, gains before `RunStep`, each doc one to three lines citing spec 0050 S8.1: `SourceEmission = { azimuth : Angle; ellipticity : Angle; degreeOfPolarization : ParameterValue; intensityScale : ParameterValue }`, the light a source emits. `member this.stokes : StokesVector` is I · [1, p·cos 2χ·cos 2ψ, p·cos 2χ·sin 2ψ, p·sin 2χ] with ψ the azimuth, χ the ellipticity angle, p the degree of polarization and I the intensity scale, written through `StokesVector.create` as `Propagation.inputStokes` writes its vectors (`Propagation.fs:inputStokes`); a positive χ is +S₃, the handedness `inputStokes` calls left, so a fully polarized source at azimuth θ and χ = 0 is `inputStokes IdealLinear θ` and one at χ = 45° is `inputStokes IdealCircularLeft`. The run law is unchanged in this step; step 252 makes it start from the emission. (2) `ItemEvaluation.fs`, each doc one to three lines citing spec 0050 S8.1: `type ParameterValue with member this.angle : Angle`, the number read as radians (an `AngleParameter`'s unit, step 214). `type SourceEmission with static member ofValues (values : ParameterValues) : Result<SourceEmission, ItemEvaluationError>` checks the values against `SourcePreset.lightSourceAxes` (step 244, `checkedFor`, step 245) and reads the four through the `ParameterName` members, the two angles through `angle`. `ItemEvaluationError` gains `NotALightSourceErr of reason : string`, rendered `the model is not a light source: <reason>`. `type ItemModelChoice with member this.emissionWith (values : ParameterValues) : Result<SourceEmission, ItemEvaluationError>` is `SourceEmission.ofValues values` for a `SourcePresetChoice` (step 223) and `NotALightSourceErr` naming the model's kind for every other choice: the source arm of the one evaluator, which S8.2's source slot and S11.2's forward model call with the source item's values. The wavelength stays the preset's, as today. No other member is added. Tests, in `ItemEvaluationTests`: `the default source is unpolarized light at unit scale`: `SourceEmission.ofValues (ParameterValues.defaultsOf SourcePreset.lightSourceAxes)` answers azimuth and ellipticity 0, degree of polarization 0 and scale 1, whose `stokes` is exactly [1, 0, 0, 0] (`Propagation.unpolarizedStokes`). `a source emits its polarization state times its intensity scale`: a degree of polarization 1 at azimuth 30° with scale 2 emits 2 · `inputStokes IdealLinear (30°)`; ellipticity 45° emits `inputStokes IdealCircularLeft (0°)` and −45° `inputStokes IdealCircularRight (0°)`; a degree of polarization 0.5 at azimuth 0 emits [1, 0.5, 0, 0]; each component within 1e-15. `only a light-source model emits, and its values must be in range`: `(PolarizerPresetChoice (the PresetIds.polarizerLp polarizer)).emissionWith` of any values answers `NotALightSourceErr`; `(SourcePresetChoice (BuiltinCatalogue.source PresetIds.heNe633)).emissionWith` answers the default emission over the defaults, `ParameterOutOfRangeErr` with a degree of polarization of 2, and `MissingParameterValueErr` without `ellipticity`. `every evaluation error renders its condition and its payload` (step 245) covers `NotALightSourceErr`. All choice construction and matching in this step MUST use step 223's payloads, including the resolved ItemModelVersion for source, ideal-polarizer and stack choices. Fixtures MUST obtain those versions from step 217's shipped model entries; runtime resolution MUST use the stored version through ItemModelProxy, never manufacture a model or use a preset/sample as the model. Existing parameter values and optical results MUST be preserved. Acceptance: After the real source lands, `SourceEmission.stokes` MUST be the source's polarization state times its intensity scale, the default parameter set MUST emit unpolarized light of unit S₀, and only a light-source model MUST emit; constructor-unit-tests MUST pass, including `the default source is unpolarized light at unit scale`, `a source emits its polarization state times its intensity scale`, `only a light-source model emits, and its values must be in range` and the widened `every evaluation error renders its condition and its payload`, the count rising by 3; and build, elevation and the fourteen s25 invariants MUST pass. At step 246, ui-tests MUST also run OpticalConstructor.Ui.Tests.FsxAcceptanceTests and preserve constructor/export numerical parity with the Analytics examples and its test count; the constructor-unit-tests behavior checks remain required (.spec-md §9, claim-check repair).",
       "checks": [
         {
           "step": 246,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 246,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
         }
       ]
     },
@@ -31764,39 +31770,57 @@
     {
       "id": "S92-OBSERVATION-FILE",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
-      "requirement": "New Storage LabFileImport.fs after MuellerDataStore.fs: KeyedObservation.observationFileText (the 25-column header, the key, cut tag and tilt, thickness m, incidence and azimuth rad, observable tag, wavelength nm, the 16 normalized elements and the throughput, every number 'R' invariant, LF, no BOM; refusing an unwritable key, an infinite thickness, a micrometre wavelength and a matrix that does not normalize) and KitFileText.parseMuellerObservations (strict header, 25 cells, measured = throughput x normalized element, the incidence kept from its radians).",
+      "requirement": "New Storage LabFileImport.fs after MuellerDataStore.fs: KeyedObservation.observationFileText (the 25-column header, the key, cut tag and tilt, thickness m, incidence and azimuth rad, observable tag, wavelength nm, the 16 normalized elements and the throughput, every number 'R' invariant, LF, no BOM; refusing an unwritable key, an infinite thickness, a micrometre wavelength and a matrix that does not normalize) and KitFileText.parseMuellerObservations (strict header, 25 cells, measured = throughput x normalized element, the incidence kept from its radians). At step 301, ui-tests MUST also run OpticalConstructor.Ui.Tests.FsxAcceptanceTests and preserve constructor/export numerical parity with the Analytics examples and its test count; the constructor-unit-tests behavior checks remain required (.spec-md §9, claim-check repair).",
       "checks": [
         {
           "step": 301,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 301,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
         }
       ]
     },
     {
       "id": "S92-COLUMN-MAPPING-READ",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
-      "requirement": "LabFileImport.fs: one private CsvFile.Parse read by delimiter and header (exceptions caught, blank rows skipped) and ImportProfile.mapText: one MappedRow per data row (scan cells, signal and sigma or Mueller elements times the throughput, timestamp, capture index, observable through tryOfCell, key), the first unreadable cell MalformedDataFileErr naming its row and column, no data row EmptyDataFileErr.",
+      "requirement": "LabFileImport.fs: one private CsvFile.Parse read by delimiter and header (exceptions caught, blank rows skipped) and ImportProfile.mapText: one MappedRow per data row (scan cells, signal and sigma or Mueller elements times the throughput, timestamp, capture index, observable through tryOfCell, key), the first unreadable cell MalformedDataFileErr naming its row and column, no data row EmptyDataFileErr. At step 302, ui-tests MUST also run OpticalConstructor.Ui.Tests.FsxAcceptanceTests and preserve constructor/export numerical parity with the Analytics examples and its test count; the constructor-unit-tests behavior checks remain required (.spec-md §9, claim-check repair).",
       "checks": [
         {
           "step": 302,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 302,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
         }
       ]
     },
     {
       "id": "S92-ONE-PROFILE-READ",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
-      "requirement": "LabFileImport.fs: ChosenImportProfile.mapText — Intensity series and Ellipsometric series call the MeasuredData parsers (SeriesPoints), Phone ROI CSV calls MuellerDataStore.parseMuellerCsv (CapturePoints, MuellerDataError mapped onto ExperimentDataError), Mueller-matrix observations calls parseMuellerObservations (ObservationPoints), a kit profile calls ImportProfile.mapText (ColumnPoints); each built-in reads its fixture exactly as its parser did. MeasuredData.fs's module doc names the parsers as the two built-in profiles' bodies.",
+      "requirement": "LabFileImport.fs: ChosenImportProfile.mapText — Intensity series and Ellipsometric series call the MeasuredData parsers (SeriesPoints), Phone ROI CSV calls MuellerDataStore.parseMuellerCsv (CapturePoints, MuellerDataError mapped onto ExperimentDataError), Mueller-matrix observations calls parseMuellerObservations (ObservationPoints), a kit profile calls ImportProfile.mapText (ColumnPoints); each built-in reads its fixture exactly as its parser did. MeasuredData.fs's module doc names the parsers as the two built-in profiles' bodies. At step 303, ui-tests MUST also run OpticalConstructor.Ui.Tests.FsxAcceptanceTests and preserve constructor/export numerical parity with the Analytics examples and its test count; the constructor-unit-tests behavior checks remain required (.spec-md §9, claim-check repair).",
       "checks": [
         {
           "step": 303,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 303,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
         }
       ]
     },
@@ -31878,13 +31902,19 @@
     {
       "id": "S92-SNIFF-PREVIEW",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('the data attachment: a relative path + hash + import profile + row selection'; 'Column-mapping import wizard: sniff the delimiter, header and BOM, and show a preview; map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns; save the mapping as a named import profile in .kit-json. Built-in profiles REUSE the existing parsers: MeasuredData.parseIntensitySeries / parseEllipsometricSeries; MuellerDataStore.parseMuellerCsv (the \"Phone ROI CSV\" profile); a Mueller-matrix observation profile (§Q, AT-2)'; 'Observables: … full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput)'; 'Status badges'), §E (the kit file holds the import profiles; lab files are read-only), §R ('The strict v1 X,Y path, whose parsers are reused as built-in import profiles'), §P (AttachDataFile), §O (Data dialog: preview, column roles, an import-profile picker; stable ids; keepOnScreen and ScrollExtentTests), §Q AT-2 (observation files written and read back through the Mueller-matrix profile, byte-identical, data identity exact), §H (copy between kits); specs/0050/.section-plan-jsonl section 30 (S9.2) brief; specs/0050/.spec-md §3.13, §4, §5 (Experiment v2 … ImportProfile, import profiles live in .kit-json), §6 (Data parsers), §8, §9, §10",
-      "requirement": "Kit.fs: FileByteContent.kitFileText (UTF-8, a leading BOM dropped) and byteOrderMark; the kit stores' decode bodies call kitFileText. ImportProfiles.fs: LabFileSniff, PreviewCell, PreviewRow, LabFilePreview and LabFileSource.sniffedLayout (BOM from the bytes; the first delimiter splitting the first ten lines evenly into two or more cells, else comma; a header when the first line reads no number or a text over a number). LabFileImport.fs: KitFileText.previewWith through step 302's CSV read (header names or Column <n>, twenty rows).",
+      "requirement": "Kit.fs: FileByteContent.kitFileText (UTF-8, a leading BOM dropped) and byteOrderMark; the kit stores' decode bodies call kitFileText. ImportProfiles.fs: LabFileSniff, PreviewCell, PreviewRow, LabFilePreview and LabFileSource.sniffedLayout (BOM from the bytes; the first delimiter splitting the first ten lines evenly into two or more cells, else comma; a header when the first line reads no number or a text over a number). LabFileImport.fs: KitFileText.previewWith through step 302's CSV read (header names or Column <n>, twenty rows). At step 307, ui-tests MUST also run OpticalConstructor.Ui.Tests.FsxAcceptanceTests and preserve constructor/export numerical parity with the Analytics examples and its test count; the constructor-unit-tests behavior checks remain required (.spec-md §9, claim-check repair).",
       "checks": [
         {
           "step": 307,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 307,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
         }
       ]
     },
@@ -42346,13 +42376,19 @@
     {
       "id": "S112-FORWARD-MODEL",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §N ('The forward model of an experiment = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ'; 'One item-model evaluator'; 'Parameter-axis generation'), §K ('Observables: intensity, Ψ / Δ, full Mueller matrices (the 0044 MuellerObservation shape, normalized + absolute throughput). A study mixes them'), §L ('Scope is the sharing rule'; 'dark from the Dark runs'; 'Weights and ablation: a weight per experiment or per detector; enable / disable per experiment'), §R ('SolverHandoffView's stub screen, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks'), §E ('A changed or missing data file is flagged on open and before each fit (\"data changed since attach / since the last fit run\")'), §Q AT-2 ('Model identity'); specs/0050/.section-plan-jsonl section 37 (S11.2) brief; specs/0050/.spec-md §3.14, §3.16, §4, §6, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
-      "requirement": "ExperimentRun.fs declares RunStep.productOf; StudyForward.fs declares ParameterValue.darkMean, DetectorReadout (intensity gain and dark, polarimeter, ellipsometer), BoundPathStep, BoundExperiment and Experiment.boundWith (the setup's slots drawn and laid out, bound through runElementWith with the assignment's values and opened materials, the emission, the operating wavelength, the first detector item's readout) and BoundExperiment.readingAt (settings turn, dial, tilt and retune the path; S0 x gain + dark, the path Mueller matrix, Psi/Delta), with ForwardSetupErr, ForwardSlotErr and StudyDetectorErr; the five new facts and the widened error fact pass.",
+      "requirement": "ExperimentRun.fs declares RunStep.productOf; StudyForward.fs declares ParameterValue.darkMean, DetectorReadout (intensity gain and dark, polarimeter, ellipsometer), BoundPathStep, BoundExperiment and Experiment.boundWith (the setup's slots drawn and laid out, bound through runElementWith with the assignment's values and opened materials, the emission, the operating wavelength, the first detector item's readout) and BoundExperiment.readingAt (settings turn, dial, tilt and retune the path; S0 x gain + dark, the path Mueller matrix, Psi/Delta), with ForwardSetupErr, ForwardSlotErr and StudyDetectorErr; the five new facts and the widened error fact pass. At step 374, ui-tests MUST also run OpticalConstructor.Ui.Tests.FsxAcceptanceTests and preserve constructor/export numerical parity with the Analytics examples and its test count; the constructor-unit-tests behavior checks remain required (.spec-md §9, claim-check repair).",
       "checks": [
         {
           "step": 374,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 374,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
         }
       ]
     },
@@ -69369,7 +69405,7 @@
     },
     {
       "step": 246,
-      "sha256": "deaedcca7a543754d8d5199f38320fdbccaff8aa74d1bf7dbc8c6d6e15d4867f",
+      "sha256": "e69b726bb77b034e08769bf3b8bc390bbe9529243c16bcd150a6e437cc213f6b",
       "obligations": [
         "S81-SOURCE-EMISSION",
         "S81-BUILD",
@@ -70704,7 +70740,7 @@
     },
     {
       "step": 301,
-      "sha256": "c796c0bec53834358c1d3938054e9895bccd0149a5af6c7a90a76a7d75a5a2e2",
+      "sha256": "1f82b1105497955767499a5459d09c4c1bf8e8e521e888bdf8a43c560927a6ad",
       "obligations": [
         "S92-OBSERVATION-FILE",
         "S92-BUILD",
@@ -70729,7 +70765,7 @@
     },
     {
       "step": 302,
-      "sha256": "d3aee9914b93b92729f756df03bf361f362135b3f9483692fb151415889e789b",
+      "sha256": "679948dcd2ff0232bf7daa80daa1315c7f5ba6cad3608447c00c8f1273ebf324",
       "obligations": [
         "S92-COLUMN-MAPPING-READ",
         "S92-BUILD",
@@ -70754,7 +70790,7 @@
     },
     {
       "step": 303,
-      "sha256": "6a803f2e1bf447bb7db7fe273055dbf6442e8aa4a868e1a85dcf9701c20183f0",
+      "sha256": "28dee658e06220a33ac167c2378c3671379f75609f4eebe926d6432a36c4f636",
       "obligations": [
         "S92-ONE-PROFILE-READ",
         "S92-BUILD",
@@ -70854,7 +70890,7 @@
     },
     {
       "step": 307,
-      "sha256": "070dfc08a4d3e3c649bb32cd557982a8b961bb084a613ccb44177894b89d83a0",
+      "sha256": "5b5f549c33448d089f22a6f5e85ede153abafc2dfdeaa533cbdac5d563a7f635",
       "obligations": [
         "S92-SNIFF-PREVIEW",
         "S92-BUILD",
@@ -72686,7 +72722,7 @@
     },
     {
       "step": 374,
-      "sha256": "6d19dd92388750771c1dbd65cd4fb7d1984c19aa5af62ce5561de45574def10e",
+      "sha256": "f1109df84210de4591295cd6cf8d46edbe6a75656499ed6367cccfb0efbc5522",
       "obligations": [
         "S112-FORWARD-MODEL",
         "S112-BUILD",
