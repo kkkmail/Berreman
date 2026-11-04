@@ -138,14 +138,14 @@
     {
       "name": "S7.1 -- Items, parameters and item models",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "bd8a879",
       "spec_jsonl_lines": 229
     },
     {
       "name": "S7.2 -- The Items panel, the flow strip and item mapping on copy",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 243
     },
     {
       "name": "S8.1 -- The run law walks every object; the source is real",

@@ -22773,6 +22773,1734 @@
           "command_sha256": "0268ca9e462f392081ebdc9a92e80e907b75c4f24b1dd166a19ae766cd480ea3"
         }
       ]
+    },
+    {
+      "id": "S72-ITEM-EDITS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "Kit.fs: ItemError gains UnknownKitItemErr (rendered 'the kit has no item of that id: <reason>'); Item gains withNotes, withPhoto (None removes the reference, never a file) and relabelledAmong (DuplicateItemLabelErr when another item's label has the same file stem ignoring case; the item's own label ignored); none of them changes parameters, revision or history; ItemIdProvider { mintItemId } is the injected id provider.",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S72-COPY-MAPPING",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "Kit.fs: ItemLabel.nextFreeAmong (label, label (2), … unique by file stem ignoring case); ItemCopyChoice (MapOntoKitItem of ItemId | AddCopiedItem); ItemCopyRow { sourceItem; choice }; Item.defaultCopyChoice (same id, else same model and label, else add); ItemCopyRow.copyRowsFor (one row per used item, a chosen choice kept, else the default); ItemCopyRow.itemsToAdd (UnknownKitItemErr for a mapping onto a missing id, DuplicateItemIdErr for an added held id, labels suffixed). Experiments.fs: Experiment.itemsUsedBy, the items whose libraryReferences meet the experiments' libraryReferences.",
+      "checks": [
+        {
+          "step": 231,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S72-RELABEL-FILE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "KitContentFiles.fs: KitLibraryContext.recordRelabelledItem previous relabelled records the relabelled item and deletes the old file (differing stems: record, then delete, the new file deleted again on a failed delete; stems equal ignoring case: delete, then record, the previous item written back on a failed record); a failure answers its first error and leaves the item under its old label.",
+      "checks": [
+        {
+          "step": 232,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S72-ITEM-MODEL-OVERLAY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "KitLibrary.fs: ItemModelProxy.overlaidWith overlay resolves a re-bound entry to the held entry, else the kit's snapshot of that version, else the store's; lists the store's item models then the kit's snapshot-only ones (one per id at its highest version, by name then id); passes saveItemModel through; a snapshot decodes only through toItemModel, a refusal being ItemModelStoreUnavailableErr.",
+      "checks": [
+        {
+          "step": 233,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S72-WINDOW-ITEMS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "KitOpening.fs: OpenedKit.items, read by openedOver through readItems after readExperiments (a refusal closes the kit and answers the error). TableAndElementRotationView.fs: the model's kitItems, set by the content function loadKit and ReloadKitChanges share (ReloadKitChanges reads readItems); a changed item file is offered for reload.",
+      "checks": [
+        {
+          "step": 234,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 234,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S72-FLOW-STATE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "TableAndElementRotationView.fs: ConstructorFlowStep (ItemsFlowStep | SetupsFlowStep | ExperimentsFlowStep, all in 001 §O order, caption); the model's flowStep (initially SetupsFlowStep); ShowFlowStep (Items alone; Setups leaving the Experiments bay for Add; Experiments opening the Experiments bay); SelectBay keeps the strip on Experiments or Setups.",
+      "checks": [
+        {
+          "step": 235,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 235,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S72-ADD-ITEM",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "KitOpening.fs: ItemIdProvider.system. TableAndElementRotationView.fs: AddItemForm with itemDraftOpt; the model's itemModels, itemIds, selectedItemOpt and addItemFormOpt (DefaultStores carries the imported itemModels); messages SelectKitItem, OpenAddItemForm (item models, source presets, polarizer presets, samples at SampleVersionId.firstOf; a minted id), ChooseNewItemModel, SetNewItemLabel, SetNewItemDial, CancelAddItemForm and AddItem (read-only guard, ItemDraft.addTo, KitLibraryContext.recordItem, label order, selection).",
+      "checks": [
+        {
+          "step": 236,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 236,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S72-ITEM-EDIT-MESSAGES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "TableAndElementRotationView.fs: ParameterStateChoice, ParameterEditField, ParameterEditDraft (ofParameter, withFieldText, tryState: invariant-culture numbers, a prior centred on the start, InvalidParameterStateErr naming the field); the model's parameterEditOpt; messages SetParameterState, EditItemParameter, SetParameterEditChoice, SetParameterEditText, CancelParameterEdit, RelabelKitItem, SetKitItemNotes, SetKitItemPhoto (attachDataFile, then withPhoto) and RemoveKitItemPhoto; the write messages pass the read-only guard, edit through the Domain members and record through recordItem / recordRelabelledItem.",
+      "checks": [
+        {
+          "step": 237,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 237,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S72-ITEMS-PANEL-VIEW",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "UiIds.fs: the Items-panel ids. ConstructorUiIdOfDomain.fs: kitItemRow, addItemOffer, newItemDialChoice, itemParameterRow, itemRevisionRow; captions of ItemModelChoice, ItemDial, ItemRevisionRecord; ParameterGridCells and Parameter.gridCells. TableAndElementRotationView.fs: pickDataFile public with a title; the model's itemModelCaption. ItemsPanelView.fs: itemsPanelView with the list, the add form, the selected item's fields, the parameter grid and editor, and the revisions; write controls withheld under a read-only kit.",
+      "checks": [
+        {
+          "step": 238,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 238,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 238,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S72-FLOW-STRIP-VIEW",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "UiIds.fs: flowStrip, flowItemsStep, flowSetupsStep, flowExperimentsStep. ConstructorFlowStep.flowUiId. FlowStripView.fs: flowStripView, one box per step of ConstructorFlowStep.all sending ShowFlowStep, the window's step marked. KitWindowView.fs: the strip docked left of a keyed surface, the Items panel for ItemsFlowStep and mainView for Setups and Experiments; ScrollExtentTests covers the Items step.",
+      "checks": [
+        {
+          "step": 239,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 239,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 239,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S72-COPY-ITEMS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "KitLibrary.fs: KitLibraryError gains KitLibraryItemErr of ItemError. KitContentFiles.fs: ExperimentCopyReport gains items; copyExperimentsFrom takes the item rows, reads both kits' items, takes Experiment.itemsUsedBy, ItemCopyRow.copyRowsFor and itemsToAdd (a refusal before any write), adds the added items' references to the closure and their photos to the lab files, writes snapshots, lab files, items (photo re-pointed) and experiments in that order. TableAndElementRotationView.fs: CopyChosenExperiments passes no row and reads kitItems after the copy.",
+      "checks": [
+        {
+          "step": 240,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 240,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S72-COPY-MESSAGES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "TableAndElementRotationView.fs: KitCopySource gains items and itemRows; ChooseCopiedItem; OpenCopySource reads the source's items; ToggleCopiedExperiment recomputes the rows through ItemCopyRow.copyRowsFor over Experiment.itemsUsedBy; CopyChosenExperiments passes the rows and names the added items in its status.",
+      "checks": [
+        {
+          "step": 241,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 241,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 241,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S72-COPY-VIEW",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "UiIds.fs: kitCopyItemList. ConstructorUiIdOfDomain.fs: kitCopyItemChoice. KitWindowView.fs: the copy panel's mapping table inside the kitCopyExperimentList scroller, one block per row with Add and Use <label> choices sending ChooseCopiedItem, the chosen one marked.",
+      "checks": [
+        {
+          "step": 242,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 242,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 242,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S72-WIRE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "Program.fs: each constructor window's seed threads itemModels = context.itemModels.overlaidWith opened.overlay; a real window adds an item through the Items panel into the kit's folder with its model snapshot, and a reopened window lists it.",
+      "checks": [
+        {
+          "step": 243,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 243,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 243,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S72-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "Every S7.2 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error, no package is added, and every new compile item (ItemsPanelView.fs and FlowStripView.fs after KitStartView.fs and before KitWindowView.fs, ItemsPanelModelTests.fs, ItemsPanelTests.fs) sits at the position its step names.",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 231,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 232,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 233,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 234,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 235,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 236,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 237,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 238,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 239,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 240,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 241,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 242,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 243,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S72-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §O ('Constructor: … a left flow strip: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly'; 'Items panel: the list, \"Add item from library model…\", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions'; 'Kit menu'; 'Automation': ids such as KitItemList, every new control a uniquely named static member of ConstructorUiId), §P (AddItem, SetParameterState; KitProxy; every user step is a semantic message, the same messages back the buttons), §H ('Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added'), §I (items: ItemId, ItemLabel, the model instantiated (pinned and snapshotted), own parameters, optional photo and notes; dial mapping; revisions), §E (library closure snapshot; so the kit opens on any machine; lab files read-only for the app), §A (<label>.item-json); specs/0050/.section-plan-jsonl section 24 (S7.2) brief; specs/0050/.spec-md §3.15, §3.22, §4, §5 (Kit module, KitProxy, KitContext), §6 (WindowFit / ScrollExtentTests), §8, §9, §10.5",
+      "requirement": "Every S7.2 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): every new type, public name, DU case and extension member is unique, every case name has two or more words, every *Error case ends in Err, no bool stands for a two-state value, no tuple repeats an element type, the new ids are static members of ConstructorUiId, and the Domain conversions are members on their source types.",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 231,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 232,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 233,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 234,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 235,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 236,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 237,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 238,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 239,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 240,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 241,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 242,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 243,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s24-elev-list-empty).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "385baa7424455f45af77c5dcf2d39deb0ce0c4a17cee392f71a2ef59d1e2d3f7"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s24-no-vstest).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-no-vstest",
+          "selection": "command",
+          "command_sha256": "974ca706fd91c76e5d118b5f0ddffb9aa5c3b7aec0bac63887c485eda7179ad1"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s24-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "48dc7ceb10becaa44a9e2821b75f945e598370d6b75a7f23be0cc828a51025bc"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s24-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "6e662adb02a99e7425fd2121a1caeb8e197b8c12ff5888826dc718782b1b2f7e"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s24-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "5afecfe0af933f48e121947e5b0e5cdb112155d7cd284f19bef8dd66dc5350ae"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s24-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "54e21bf38c65ca9dcd5ce451ad75d0f823e28fbbeca288f896d20ffa6ca089f0"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s24-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "384ae01a949f8db619b2cfb80490c93f35b42ed756a680a1d921011080283fc4"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s24-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2d2892ee30987f45dc48b05a824b2789ca666ad3507e59e56f29d63530e87f5a"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s24-no-seed-modules).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "bdf12c0632ee73df6f18ba61664c03c16bc875e6616abc90fb2640a19344ad70"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s24-no-test-db).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-no-test-db",
+          "selection": "command",
+          "command_sha256": "fec8178b9c624950a02cde999ffa8058747c027140bd49d2bda333b417c2435f"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s24-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "59c4d4d9cff2a17243fd02d7d817615231dde4f6c59e2ba2cc71c50842ab5db9"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s24-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "cd9cb1860b13b8caa4f57286b352e607f06c15bbee771c60fe5a17d0fc36de7f"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s24-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "1e29e8ead0e7413aa48c16d67e957415a44f6021ced18b38ad2910b365a41af4"
+        }
+      ]
+    },
+    {
+      "id": "S72-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 24 (S7.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S7.2 step, nothing under Berreman/ names recent.json: the kit history replaced the 16-entry list (001 §R, established by S5.1 step 169) (section invariant s24-no-recent-json).",
+      "checks": [
+        {
+          "step": 230,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 231,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 232,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 233,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 234,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 235,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 236,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 237,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 238,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 239,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 240,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 241,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 242,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        },
+        {
+          "step": 243,
+          "gate": "invariant-s24-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7f32eaa319b5f4f57911c4f714f41bc5f540748c725e87e33db5dfc159ed01f"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -27217,6 +28945,328 @@
         "S71-INV-T4-NO-OCPROJ",
         "S71-INV-NO-RECENT-JSON"
       ]
+    },
+    {
+      "step": 230,
+      "sha256": "df93f1a4bbc41b9aaaaf77df285a7b8643da50aed58162f6eacd8fc017276946",
+      "obligations": [
+        "S72-ITEM-EDITS",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 231,
+      "sha256": "9c134291f4a9fb5965f097b91d3e9e66fd15af9522e69c314ab32035f431820b",
+      "obligations": [
+        "S72-COPY-MAPPING",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 232,
+      "sha256": "da8e29d1eff972c631ee6e35a55cb505bf6aefd9b50f1209cbed4c328d809b30",
+      "obligations": [
+        "S72-RELABEL-FILE",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 233,
+      "sha256": "d996f2701e68fb56b7ff0f7bdf7acfb138155679f7695b47a144df27022258e1",
+      "obligations": [
+        "S72-ITEM-MODEL-OVERLAY",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 234,
+      "sha256": "4eb53c9db44bf27fac7c83912094e28aee479a709585ff7c8a05c056394acf46",
+      "obligations": [
+        "S72-WINDOW-ITEMS",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 235,
+      "sha256": "b7d1f0c68ce72a1ec86ec07cc1f8690baa7ab9e400e5bd107073389f217b6ce1",
+      "obligations": [
+        "S72-FLOW-STATE",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 236,
+      "sha256": "af0b0964424b2ddb2088401ca264d1a344f9ff30d99762e15fc258fa3f31e0bc",
+      "obligations": [
+        "S72-ADD-ITEM",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 237,
+      "sha256": "a12738cb9dc9b9f7b70ad4c4f5c4ff00d8230a898a0ab656e87873b6971ab538",
+      "obligations": [
+        "S72-ITEM-EDIT-MESSAGES",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 238,
+      "sha256": "835357d2a9115cf545bf88a8adf8610f1e314f955042b83292769174d27ba7af",
+      "obligations": [
+        "S72-ITEMS-PANEL-VIEW",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 239,
+      "sha256": "1796cc6fa36325a5582401d968025ab35e7ea90772eb62d069eef8091146b988",
+      "obligations": [
+        "S72-FLOW-STRIP-VIEW",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 240,
+      "sha256": "2e54dd9d4b38eda329e05d606e9708576e83a6c1b59955de81b7de9aefae0b0f",
+      "obligations": [
+        "S72-COPY-ITEMS",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 241,
+      "sha256": "dc26700885db01514bd11b14755190da8a895c85f4628551bf18d01034e18c55",
+      "obligations": [
+        "S72-COPY-MESSAGES",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 242,
+      "sha256": "84d189de70f415312164b469c2c313728950b55520ca21756fa1958010b82f28",
+      "obligations": [
+        "S72-COPY-VIEW",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 243,
+      "sha256": "4e233f3b0d54822445070791fb5800885fdd6474966a556dcb2d430bd3462ee2",
+      "obligations": [
+        "S72-WIRE",
+        "S72-BUILD",
+        "S72-ELEVATION",
+        "S72-INV-ELEV-LIST-EMPTY",
+        "S72-INV-NO-VSTEST",
+        "S72-INV-NO-KIT-KIT-JSON",
+        "S72-INV-NO-EPS-AXIS-EVALUATED",
+        "S72-INV-COMPLEXITY-MANDATORY",
+        "S72-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S72-INV-NO-SEEDING-SEAM",
+        "S72-INV-T1-NO-CODE-SEEDS",
+        "S72-INV-NO-SEED-MODULES",
+        "S72-INV-NO-TEST-DB",
+        "S72-INV-NO-VERSIONS-IN-USE",
+        "S72-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S72-INV-T4-NO-OCPROJ",
+        "S72-INV-NO-RECENT-JSON"
+      ]
     }
   ],
   "behavior_seams": [
@@ -28189,6 +30239,76 @@
       "id": "s71-app-item-models",
       "step": 229,
       "obligation": "S71-APP-ITEM-MODELS"
+    },
+    {
+      "id": "s72-item-edits",
+      "step": 230,
+      "obligation": "S72-ITEM-EDITS"
+    },
+    {
+      "id": "s72-copy-mapping",
+      "step": 231,
+      "obligation": "S72-COPY-MAPPING"
+    },
+    {
+      "id": "s72-relabel-file",
+      "step": 232,
+      "obligation": "S72-RELABEL-FILE"
+    },
+    {
+      "id": "s72-item-model-overlay",
+      "step": 233,
+      "obligation": "S72-ITEM-MODEL-OVERLAY"
+    },
+    {
+      "id": "s72-window-items",
+      "step": 234,
+      "obligation": "S72-WINDOW-ITEMS"
+    },
+    {
+      "id": "s72-flow-state",
+      "step": 235,
+      "obligation": "S72-FLOW-STATE"
+    },
+    {
+      "id": "s72-add-item",
+      "step": 236,
+      "obligation": "S72-ADD-ITEM"
+    },
+    {
+      "id": "s72-item-edit-messages",
+      "step": 237,
+      "obligation": "S72-ITEM-EDIT-MESSAGES"
+    },
+    {
+      "id": "s72-items-panel-view",
+      "step": 238,
+      "obligation": "S72-ITEMS-PANEL-VIEW"
+    },
+    {
+      "id": "s72-flow-strip-view",
+      "step": 239,
+      "obligation": "S72-FLOW-STRIP-VIEW"
+    },
+    {
+      "id": "s72-copy-items",
+      "step": 240,
+      "obligation": "S72-COPY-ITEMS"
+    },
+    {
+      "id": "s72-copy-messages",
+      "step": 241,
+      "obligation": "S72-COPY-MESSAGES"
+    },
+    {
+      "id": "s72-copy-view",
+      "step": 242,
+      "obligation": "S72-COPY-VIEW"
+    },
+    {
+      "id": "s72-wire",
+      "step": 243,
+      "obligation": "S72-WIRE"
     }
   ],
   "temporal_checks": [],
@@ -28542,6 +30662,19 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
         "Berreman/BerremanTests",
         "Berreman/OpticalConstructor/Catalogue"
+      ]
+    },
+    {
+      "from": 230,
+      "step": 243,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Controls",
+        "Berreman/OpticalConstructor/OpticalConstructor.App",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
       ]
     }
   ]
