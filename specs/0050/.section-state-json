@@ -186,14 +186,14 @@
     {
       "name": "S9.3 -- One file, many experiments; exclusions, corrections, the Data step and the experiment matrix",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "0879742",
       "spec_jsonl_lines": 328
     },
     {
       "name": "S9.4 -- The optics-mueller lab files move into the kit folder",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 331
     },
     {
       "name": "S10.1 -- The bench noise model and the fit harness move into Optimization",

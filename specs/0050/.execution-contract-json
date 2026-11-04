@@ -35976,6 +35976,501 @@
           "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
         }
       ]
+    },
+    {
+      "id": "S94-REFERENCE-FILES-IN-KIT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Data: the lab files of Berreman/Data/MuellerMatrix/ MOVE into the kit: the CSV entries of data.zip into data/optics-mueller/data/raw/, and the reference pipeline's scripts, README.md and reference_step1_summary.json / reference_step2_linear_summary.json into data/optics-mueller/data/reference/. Berreman/Data/MuellerMatrix/ is then deleted, with its Content link in BerremanTests.fsproj ... There is no second copy of the data'; 'The CSVs are read through the existing MuellerDataStore parser (parseMuellerCsv, the \"Phone ROI CSV\" import profile)'), §S9 (the last bullet: DELETE the MuellerDataSet DU and the archive-keyed MuellerDataProxy, MOVE the folder, re-point MuellerReconstructionTests through the import profile, its numbers unchanged), §R ('MuellerDataSet ..., the archive-keyed MuellerDataProxy and Berreman/Data/MuellerMatrix/'), §T ('From section 9' greps), §K ('Raw data is immutable'), §E ('Lab files are read-only for the app'; relative paths plus the SHA-256 recorded at attach), §G (committed kits are read-only to tests); specs/0050/.section-plan-jsonl section 32 (S9.4) brief; specs/0050/.spec-md §3.12, §3.20, §3.21, §4, §7, §8",
+      "requirement": "The reference pipeline's four scripts (cpl_cpl_analyzer.py, matrix_glue.py, matrix_step1_air_fit.py, matrix_fit_linear.py), its two full-precision summaries (reference_step1_summary.json, reference_step2_linear_summary.json) and README.md move by git mv from Berreman/Data/MuellerMatrix/ to data/optics-mueller/data/reference/, the scripts and summaries byte for byte and no kit file written; the README says where it now is and names the archive by its repository path, and gains the spec 0050 further-reading bullet; MuellerReconstructionTests' provenance comments name the summaries and README at their kit path; no code changes and MuellerReconstructionTests keeps its numbers and count.",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S94-LAB-FILES-IN-KIT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Data: the lab files of Berreman/Data/MuellerMatrix/ MOVE into the kit: the CSV entries of data.zip into data/optics-mueller/data/raw/, and the reference pipeline's scripts, README.md and reference_step1_summary.json / reference_step2_linear_summary.json into data/optics-mueller/data/reference/. Berreman/Data/MuellerMatrix/ is then deleted, with its Content link in BerremanTests.fsproj ... There is no second copy of the data'; 'The CSVs are read through the existing MuellerDataStore parser (parseMuellerCsv, the \"Phone ROI CSV\" import profile)'), §S9 (the last bullet: DELETE the MuellerDataSet DU and the archive-keyed MuellerDataProxy, MOVE the folder, re-point MuellerReconstructionTests through the import profile, its numbers unchanged), §R ('MuellerDataSet ..., the archive-keyed MuellerDataProxy and Berreman/Data/MuellerMatrix/'), §T ('From section 9' greps), §K ('Raw data is immutable'), §E ('Lab files are read-only for the app'; relative paths plus the SHA-256 recorded at attach), §G (committed kits are read-only to tests); specs/0050/.section-plan-jsonl section 32 (S9.4) brief; specs/0050/.spec-md §3.12, §3.20, §3.21, §4, §7, §8",
+      "requirement": "The fifteen CSV entries of Berreman/Data/MuellerMatrix/data.zip are written byte for byte to data/optics-mueller/ joined with their archive paths (data/raw/final/*.csv and data/raw/*.csv) and its three data/shapes/*.json to data/optics-mueller/data/reference/shapes/, each checked by SHA-256 against its entry; .gitattributes keeps data/optics-mueller/data/raw/** byte for byte (-text !eol) and AGENTS.md says so; data.zip, Berreman/Data/, the BerremanTests.fsproj Content link and that file's stale Storage-reference comment are deleted, so no second copy exists; the README describes the data in the kit. BerremanTests gains CommittedKits.fs (CommittedKit.OpticsMuellerKit.tryFindFolder: the repository root is the first folder above the test output holding Berreman/Berreman.slnx, writing nothing). MuellerReconstructionTests.loadDataSet reads a kit-relative file through the read-only folder KitProxy and the Phone ROI CSV profile; the Stage-1 and section 7.2 facts load the seven final files with unchanged numbers; the archive row-count fact becomes the kit row-count fact (209, 209, 209, 170, 57, 6, 2) and a new fact pins the 18 files' SHA-256 to their former archive entries.",
+      "checks": [
+        {
+          "step": 330,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S94-RETIRE-ARCHIVE-SEAM",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Data: the lab files of Berreman/Data/MuellerMatrix/ MOVE into the kit: the CSV entries of data.zip into data/optics-mueller/data/raw/, and the reference pipeline's scripts, README.md and reference_step1_summary.json / reference_step2_linear_summary.json into data/optics-mueller/data/reference/. Berreman/Data/MuellerMatrix/ is then deleted, with its Content link in BerremanTests.fsproj ... There is no second copy of the data'; 'The CSVs are read through the existing MuellerDataStore parser (parseMuellerCsv, the \"Phone ROI CSV\" import profile)'), §S9 (the last bullet: DELETE the MuellerDataSet DU and the archive-keyed MuellerDataProxy, MOVE the folder, re-point MuellerReconstructionTests through the import profile, its numbers unchanged), §R ('MuellerDataSet ..., the archive-keyed MuellerDataProxy and Berreman/Data/MuellerMatrix/'), §T ('From section 9' greps), §K ('Raw data is immutable'), §E ('Lab files are read-only for the app'; relative paths plus the SHA-256 recorded at attach), §G (committed kits are read-only to tests); specs/0050/.section-plan-jsonl section 32 (S9.4) brief; specs/0050/.spec-md §3.12, §3.20, §3.21, §4, §7, §8",
+      "requirement": "MuellerReconstruction.fs loses MuellerDataSet, MuellerArchivePath, MuellerDataProxy (STORE_XDUO_0009) and the ArchiveUnreadableErr / DataSetMissingErr cases of MuellerDataError, which keeps MalformedRowErr and EmptyFileErr; MuellerDataStore.fs loses the archiveEntryName extension, committedArchive, tryLoadFromArchive, createArchiveBacked and the System.IO / System.IO.Compression opens, keeping CaptureCsvRow and DataFileText.parseMuellerCsv unchanged; LabFileImport's Phone ROI arm loses the two archive arms; the Storage project-file comment naming the seam is deleted; MuellerReconstructionTests loses the five seam facts and the mock fixtures, and MuellerInverseTests' comment drops the retired proxy. No replacement seam is added. Nothing under Berreman/ names the retired symbols, the data-set cases, Data/MuellerMatrix or DataFilePath (001 sec T 'From section 9'). The constructor suite keeps its count and MuellerReconstructionTests keeps its numbers, its count falling by the five deleted facts.",
+      "checks": [
+        {
+          "step": 331,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 331,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S94-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Data: the lab files of Berreman/Data/MuellerMatrix/ MOVE into the kit: the CSV entries of data.zip into data/optics-mueller/data/raw/, and the reference pipeline's scripts, README.md and reference_step1_summary.json / reference_step2_linear_summary.json into data/optics-mueller/data/reference/. Berreman/Data/MuellerMatrix/ is then deleted, with its Content link in BerremanTests.fsproj ... There is no second copy of the data'; 'The CSVs are read through the existing MuellerDataStore parser (parseMuellerCsv, the \"Phone ROI CSV\" import profile)'), §S9 (the last bullet: DELETE the MuellerDataSet DU and the archive-keyed MuellerDataProxy, MOVE the folder, re-point MuellerReconstructionTests through the import profile, its numbers unchanged), §R ('MuellerDataSet ..., the archive-keyed MuellerDataProxy and Berreman/Data/MuellerMatrix/'), §T ('From section 9' greps), §K ('Raw data is immutable'), §E ('Lab files are read-only for the app'; relative paths plus the SHA-256 recorded at attach), §G (committed kits are read-only to tests); specs/0050/.section-plan-jsonl section 32 (S9.4) brief; specs/0050/.spec-md §3.12, §3.20, §3.21, §4, §7, §8",
+      "requirement": "Every S9.4 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error (no wildcard arm replaces the deleted MuellerDataError cases), no package or project is added, and the one new compile item (CommittedKits.fs, directly before MuellerReconstructionTests.fs) carries no comment; deleting data.zip's Content item and the stale project-file comments adds nothing to either project file.",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 330,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 331,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S94-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Data: the lab files of Berreman/Data/MuellerMatrix/ MOVE into the kit: the CSV entries of data.zip into data/optics-mueller/data/raw/, and the reference pipeline's scripts, README.md and reference_step1_summary.json / reference_step2_linear_summary.json into data/optics-mueller/data/reference/. Berreman/Data/MuellerMatrix/ is then deleted, with its Content link in BerremanTests.fsproj ... There is no second copy of the data'; 'The CSVs are read through the existing MuellerDataStore parser (parseMuellerCsv, the \"Phone ROI CSV\" import profile)'), §S9 (the last bullet: DELETE the MuellerDataSet DU and the archive-keyed MuellerDataProxy, MOVE the folder, re-point MuellerReconstructionTests through the import profile, its numbers unchanged), §R ('MuellerDataSet ..., the archive-keyed MuellerDataProxy and Berreman/Data/MuellerMatrix/'), §T ('From section 9' greps), §K ('Raw data is immutable'), §E ('Lab files are read-only for the app'; relative paths plus the SHA-256 recorded at attach), §G (committed kits are read-only to tests); specs/0050/.section-plan-jsonl section 32 (S9.4) brief; specs/0050/.spec-md §3.12, §3.20, §3.21, §4, §7, §8",
+      "requirement": "Every S9.4 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): the retirement removes the archive types, cases and functions without adding a replacement name, and MuellerDataError keeps only its Err-suffixed parse cases.",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 330,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 331,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s32-elev-list-empty).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "ff1cf607e6852f32c852980d94e5f0cf063e4e46afd3e7eb9eab2035129bcaeb"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "ff1cf607e6852f32c852980d94e5f0cf063e4e46afd3e7eb9eab2035129bcaeb"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "ff1cf607e6852f32c852980d94e5f0cf063e4e46afd3e7eb9eab2035129bcaeb"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s32-no-vstest).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-no-vstest",
+          "selection": "command",
+          "command_sha256": "eb457cd2bb6b195caebed4a9fdc06980a77f812fcb84712f407d43d69fc8331c"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-no-vstest",
+          "selection": "command",
+          "command_sha256": "eb457cd2bb6b195caebed4a9fdc06980a77f812fcb84712f407d43d69fc8331c"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-no-vstest",
+          "selection": "command",
+          "command_sha256": "eb457cd2bb6b195caebed4a9fdc06980a77f812fcb84712f407d43d69fc8331c"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s32-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "51674ace167429c5c625dda8dc2f32e36d9e11c78d4db3e9706103fb4de4d5dd"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "51674ace167429c5c625dda8dc2f32e36d9e11c78d4db3e9706103fb4de4d5dd"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "51674ace167429c5c625dda8dc2f32e36d9e11c78d4db3e9706103fb4de4d5dd"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s32-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "eb05366b13264bbe0cdc8890fe7026d68f8bb3d5f00e54a8a3cf8948718f34d8"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "eb05366b13264bbe0cdc8890fe7026d68f8bb3d5f00e54a8a3cf8948718f34d8"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "eb05366b13264bbe0cdc8890fe7026d68f8bb3d5f00e54a8a3cf8948718f34d8"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s32-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "2808cbf21ec4718c1bedf09610f2106aa496fb663f24b9d09d01deabf233b84a"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "2808cbf21ec4718c1bedf09610f2106aa496fb663f24b9d09d01deabf233b84a"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "2808cbf21ec4718c1bedf09610f2106aa496fb663f24b9d09d01deabf233b84a"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s32-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "c9e77849dccf93c2eb2a82a40da239e05f92d6582093885f78e40a821e8b172f"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "c9e77849dccf93c2eb2a82a40da239e05f92d6582093885f78e40a821e8b172f"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "c9e77849dccf93c2eb2a82a40da239e05f92d6582093885f78e40a821e8b172f"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s32-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "5250543ff9d61eafff58be1d005faec892e3e3a5b77235e94f4faf2904217949"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "5250543ff9d61eafff58be1d005faec892e3e3a5b77235e94f4faf2904217949"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "5250543ff9d61eafff58be1d005faec892e3e3a5b77235e94f4faf2904217949"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s32-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "f6c7d1629a285cf642805ff1ff29382765216e2f56c6afe3af1119b9bda9426c"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "f6c7d1629a285cf642805ff1ff29382765216e2f56c6afe3af1119b9bda9426c"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "f6c7d1629a285cf642805ff1ff29382765216e2f56c6afe3af1119b9bda9426c"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s32-no-seed-modules).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "f5d0964e4f2d73e13c52e36f1d043d594a10fb72a4b391bc1d7f610c64975293"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "f5d0964e4f2d73e13c52e36f1d043d594a10fb72a4b391bc1d7f610c64975293"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "f5d0964e4f2d73e13c52e36f1d043d594a10fb72a4b391bc1d7f610c64975293"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s32-no-test-db).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-no-test-db",
+          "selection": "command",
+          "command_sha256": "4b18b8e83704fea965366cf3658f79348539fa6abf123bc8f38f53f7ff6e669c"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-no-test-db",
+          "selection": "command",
+          "command_sha256": "4b18b8e83704fea965366cf3658f79348539fa6abf123bc8f38f53f7ff6e669c"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-no-test-db",
+          "selection": "command",
+          "command_sha256": "4b18b8e83704fea965366cf3658f79348539fa6abf123bc8f38f53f7ff6e669c"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s32-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "5eed0ee5068856e5a1846fd05bdba4f0c495890a4d2a2395a27db692c4660692"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "5eed0ee5068856e5a1846fd05bdba4f0c495890a4d2a2395a27db692c4660692"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "5eed0ee5068856e5a1846fd05bdba4f0c495890a4d2a2395a27db692c4660692"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s32-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "6d71e24ddc665acfb9af96c2e842de194d7ea9affe1d6fc84c8d54b5665f56ba"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "6d71e24ddc665acfb9af96c2e842de194d7ea9affe1d6fc84c8d54b5665f56ba"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "6d71e24ddc665acfb9af96c2e842de194d7ea9affe1d6fc84c8d54b5665f56ba"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s32-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "6c7c06207bc70e5f220998a9f80a14540a5d9462635158d3094277a4a3575fd8"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "6c7c06207bc70e5f220998a9f80a14540a5d9462635158d3094277a4a3575fd8"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "6c7c06207bc70e5f220998a9f80a14540a5d9462635158d3094277a4a3575fd8"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/ names recent.json: the kit history replaced the 16-entry list (001 §R, established by S5.1 step 169) (section invariant s32-no-recent-json).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-no-recent-json",
+          "selection": "command",
+          "command_sha256": "7302be9b31cabf5ddcb2425806d660bad548f954c3324b6f200074bee71ead7f"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-no-recent-json",
+          "selection": "command",
+          "command_sha256": "7302be9b31cabf5ddcb2425806d660bad548f954c3324b6f200074bee71ead7f"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-no-recent-json",
+          "selection": "command",
+          "command_sha256": "7302be9b31cabf5ddcb2425806d660bad548f954c3324b6f200074bee71ead7f"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-NO-MEASURED-ELEMENT-OF",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/ names measuredElementOf: captures are decided per object (001 §R, established by S8.1 step 254) (section invariant s32-no-measured-element-of).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "059577bb1fb0ff46acf684482282a1a264e85c359004b6f969b4bbbab4f77eb1"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "059577bb1fb0ff46acf684482282a1a264e85c359004b6f969b4bbbab4f77eb1"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "059577bb1fb0ff46acf684482282a1a264e85c359004b6f969b4bbbab4f77eb1"
+        }
+      ]
+    },
+    {
+      "id": "S94-INV-T8-NO-EXPERIMENT-REGEX",
+      "source": "specs/0050/.section-plan-jsonl section 32 (S9.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.4 step, nothing under Berreman/ names experimentRegex: the naming template replaced the label regex (001 §T 'From section 8', established by S8.3 step 270) (section invariant s32-t8-no-experiment-regex).",
+      "checks": [
+        {
+          "step": 329,
+          "gate": "invariant-s32-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "bea846253cd743c9e3e086749b09fe8697dcc0c8215b6c78679c211ed86267ef"
+        },
+        {
+          "step": 330,
+          "gate": "invariant-s32-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "bea846253cd743c9e3e086749b09fe8697dcc0c8215b6c78679c211ed86267ef"
+        },
+        {
+          "step": 331,
+          "gate": "invariant-s32-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "bea846253cd743c9e3e086749b09fe8697dcc0c8215b6c78679c211ed86267ef"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -42823,6 +43318,81 @@
         "S93-INV-NO-MEASURED-ELEMENT-OF",
         "S93-INV-T8-NO-EXPERIMENT-REGEX"
       ]
+    },
+    {
+      "step": 329,
+      "sha256": "375ddf5b6af097b670d40ce7f4b0ada7c61993d2ba6dff86e0e3ca714048717d",
+      "obligations": [
+        "S94-REFERENCE-FILES-IN-KIT",
+        "S94-BUILD",
+        "S94-ELEVATION",
+        "S94-INV-ELEV-LIST-EMPTY",
+        "S94-INV-NO-VSTEST",
+        "S94-INV-NO-KIT-KIT-JSON",
+        "S94-INV-NO-EPS-AXIS-EVALUATED",
+        "S94-INV-COMPLEXITY-MANDATORY",
+        "S94-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S94-INV-NO-SEEDING-SEAM",
+        "S94-INV-T1-NO-CODE-SEEDS",
+        "S94-INV-NO-SEED-MODULES",
+        "S94-INV-NO-TEST-DB",
+        "S94-INV-NO-VERSIONS-IN-USE",
+        "S94-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S94-INV-T4-NO-OCPROJ",
+        "S94-INV-NO-RECENT-JSON",
+        "S94-INV-NO-MEASURED-ELEMENT-OF",
+        "S94-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 330,
+      "sha256": "22f3457fc859adaa751f5ca0df914547b56b6630a53d781750ab261a4584c607",
+      "obligations": [
+        "S94-LAB-FILES-IN-KIT",
+        "S94-BUILD",
+        "S94-ELEVATION",
+        "S94-INV-ELEV-LIST-EMPTY",
+        "S94-INV-NO-VSTEST",
+        "S94-INV-NO-KIT-KIT-JSON",
+        "S94-INV-NO-EPS-AXIS-EVALUATED",
+        "S94-INV-COMPLEXITY-MANDATORY",
+        "S94-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S94-INV-NO-SEEDING-SEAM",
+        "S94-INV-T1-NO-CODE-SEEDS",
+        "S94-INV-NO-SEED-MODULES",
+        "S94-INV-NO-TEST-DB",
+        "S94-INV-NO-VERSIONS-IN-USE",
+        "S94-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S94-INV-T4-NO-OCPROJ",
+        "S94-INV-NO-RECENT-JSON",
+        "S94-INV-NO-MEASURED-ELEMENT-OF",
+        "S94-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 331,
+      "sha256": "44cecbd2360070e52cf47b5b7cbf456fd1ede02e58f0fe7103ea5578269c2931",
+      "obligations": [
+        "S94-RETIRE-ARCHIVE-SEAM",
+        "S94-BUILD",
+        "S94-ELEVATION",
+        "S94-INV-ELEV-LIST-EMPTY",
+        "S94-INV-NO-VSTEST",
+        "S94-INV-NO-KIT-KIT-JSON",
+        "S94-INV-NO-EPS-AXIS-EVALUATED",
+        "S94-INV-COMPLEXITY-MANDATORY",
+        "S94-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S94-INV-NO-SEEDING-SEAM",
+        "S94-INV-T1-NO-CODE-SEEDS",
+        "S94-INV-NO-SEED-MODULES",
+        "S94-INV-NO-TEST-DB",
+        "S94-INV-NO-VERSIONS-IN-USE",
+        "S94-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S94-INV-T4-NO-OCPROJ",
+        "S94-INV-NO-RECENT-JSON",
+        "S94-INV-NO-MEASURED-ELEMENT-OF",
+        "S94-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
     }
   ],
   "behavior_seams": [
@@ -44290,6 +44860,11 @@
       "id": "s93-data-step-end-to-end",
       "step": 328,
       "obligation": "S93-DATA-STEP-END-TO-END"
+    },
+    {
+      "id": "s94-lab-files-in-kit",
+      "step": 330,
+      "obligation": "S94-LAB-FILES-IN-KIT"
     }
   ],
   "temporal_checks": [],
@@ -44746,6 +45321,19 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Controls",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
+        "AGENTS.md"
+      ]
+    },
+    {
+      "from": 329,
+      "step": 331,
+      "paths": [
+        "Berreman/Data/MuellerMatrix",
+        "data/optics-mueller",
+        "Berreman/BerremanTests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        ".gitattributes",
         "AGENTS.md"
       ]
     }
