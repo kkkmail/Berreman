@@ -252,14 +252,14 @@
     {
       "name": "S12.2 -- AT-2 and the absorbing-biaxial-noisy reference kit",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "61ba4c1",
       "spec_jsonl_lines": 440
     },
     {
       "name": "S13.1 -- MaterialSourceProxy and refractiveindex.info",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 452
     },
     {
       "name": "S13.2 -- PTB OCDB, the Henke compound calculator and glass catalogues",
