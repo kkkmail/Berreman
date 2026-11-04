@@ -222,14 +222,14 @@
     {
       "name": "S11.2 -- The forward model of an experiment and the study residual",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "b975df1",
       "spec_jsonl_lines": 379
     },
     {
       "name": "S11.3 -- Engines, staged and joint fits, and append-only fit runs",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 393
     },
     {
       "name": "S11.4 -- Fit results: uncertainty, correlation, realizability, product check, profile likelihood",
