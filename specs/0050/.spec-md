@@ -129,7 +129,7 @@ The work is implemented in 001's §S order, sections 1–14, each green on its o
 
 ## 4. Binding constraints for every section
 
-- **Order and greenness.** Sections land in plan order, and each step leaves every gate it runs green. Superseded code is deleted in the change that replaces it. A reuse is a move or a call: the new home is created and the old body deleted in the same step.
+- **Order and greenness.** Sections MUST land in plan order; each step MUST leave every effective gate green except its declared, captured ADD_RED failures. Before handoff, every effective gate and prerequisite MUST have an obligation/check binding in `.execution-contract-json`, and every filtered gate MUST have an explicit `.spec-jsonl` `gate_selection` whose classes exist after that step's effects. `kit-acceptance` MUST run only from its first test-producing step (421) onward; §9 names the verification before that producer. Superseded code MUST be deleted in the change that replaces it. A reuse MUST be a move or a call: the new home and deletion of the old body MUST land together.
 - **AGENTS.md walls.**
   - Release / x64 only, `dotnet` only, zero warnings from our code, LF line endings.
   - Central package versions in the root `Directory.Build.targets`; Microsoft.Testing.Platform with xUnit v3; never a VSTest package.
@@ -215,7 +215,7 @@ The kit root is flat. Subfolders hold only additional data: `library/`, `data/` 
 | Preset string ids → GUIDs | Compatibility break accepted under `AGENTS.md` (“No legacy, no migration”). Old preset references MUST NOT be migrated; incompatible stored formats MUST be rejected. |
 | `MaterialEntry` (complexity mandatory), `EpsAxisDispersion` (closure → data) | Compatibility break accepted: in-memory shapes, no stored data. |
 | `Test` EF table + migration → library model | Compatibility break accepted under `AGENTS.md` (“No legacy, no migration”). The proof consumer `Berreman/OpticalConstructor/OpticalConstructor.Tests/TestDbMigrationTests.fs:125` MUST retire with the table; library contract tests MUST cover the replacement. The database MUST be created from the model (`EnsureCreated`) and stamped. A mismatch is `LibrarySchemaMismatchErr`; the remedy is to recreate it from the catalogues, after "Export my library" if needed. |
-| `.ocproj`, `recent.json`, autosave files | Compatibility break accepted: no window ever saved or opened `.ocproj`. The kit history starts empty. |
+| `.ocproj`, `recent.json`, autosave files | Compatibility break accepted under the unreleased-product policy in `AGENTS.md:Working in this repo`: `Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:FileName.saveProject` and `FileName.openProject` have no callers in the current UI, App or TestWindows sources. The kit history MUST start empty. |
 | Kit and entry files | New, versioned by `schema`. A version mismatch is `UnsupportedSchemaVersionErr`. Kit file shapes change in later parts; no migration is needed, because the committed kits are created in S12 after the shapes settle. |
 | `Berreman/Data/MuellerMatrix/` | Migration provided: moved byte-for-byte into `data/optics-mueller/data/`, then deleted. There is no second copy. |
 | Harness and samples (test → product / test support) | Migration provided: a move. Numerical preservation is a required post-implementation result: the §7.2 expectations in `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and the fixed-seed recovery bands in `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:151` MUST pass without changing their values or tolerances. |
@@ -353,13 +353,13 @@ The run law MUST walk every object in light order with a real source Stokes stat
 
 ### S9.0 Problem statement
 
-An experiment is a scan over a setup with a role, a session and a data attachment. Import profiles, stored in `.kit-json`, map lab files of any shape; one file can feed many experiments. Raw data is never modified, and corrections are audited. The optics-mueller lab files move into their kit folder.
+An experiment is a scan over a setup with a role, a session and a data attachment. Import profiles, stored in `.kit-json`, map lab files of any shape; one file can feed many experiments. Raw data is never modified, and corrections are audited. Per 001 §Q, the CSV entries of `Berreman/Data/MuellerMatrix/data.zip` MUST move into `data/optics-mueller/data/raw/`; the scripts, README and summaries catalogued in `Berreman/Data/MuellerMatrix/README.md:Contents` MUST move into `data/optics-mueller/data/reference/`, with the source folder and its `Berreman/BerremanTests/BerremanTests.fsproj` Content link deleted in the same change.
 
 ## Part S10 — Promote the inverse harness and the reference pipeline
 
 ### S10.0 Problem statement
 
-The study engine and the Planner need what `BerremanTests` holds today, so it moves into product code. The ground truth and designs move to `BerremanTestSupport`, and the §7.2 pipeline and its expected values are promoted. `BerremanTests`' numbers are unchanged.
+The study engine and the Planner need the fit and noise machinery in `Berreman/BerremanTests/InverseFitHarness.fs:InverseFitHarness`; that machinery MUST move into product code under 001 §Q. The ground truth and designs in `Berreman/BerremanTests/BiaxialSample.fs:BiaxialSample` and `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:AbsorbingBiaxialSample` MUST move to `BerremanTestSupport`. The pipeline composed in `Berreman/BerremanTests/MuellerReconstructionTests.fs:802` MUST move into product code; its expectations at `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and the separate stage-1 expectations at `Berreman/BerremanTests/MuellerReconstructionTests.fs:629` MUST move into shared test support. The test callers MUST use the promoted declarations with their numerical outcomes unchanged.
 
 ## Part S11 — Studies and fitting
 
@@ -367,13 +367,13 @@ The study engine and the Planner need what `BerremanTests` holds today, so it mo
 
 A study fits many experiments of one kit together. Its unknowns are scoped to an item, a material, a session or an experiment, and it can link them. Gain models and sessions are data.
 
-The study MUST choose staged or joint fitting automatically, reusing `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:buildDesign` / `reconstruct` and `Berreman/OpticalConstructor/OpticalConstructor.Optimization/MuellerInverseSolver.fs:createAlglibLevenbergMarquardt` through `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:createBerremanForward`. Results go into append-only fit runs, and calibrations and materials are published back. The study view MUST replace `Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:SolverHandoffView` and reuse its `validateExperiment` checks.
+The study MUST honor the requested joint or staged fit mode and MUST choose the linear or nonlinear engine automatically according to whether the unknowns enter linearly (001 §L, Fit modes / Engines), reusing `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:buildDesign` / `reconstruct` and `Berreman/OpticalConstructor/OpticalConstructor.Optimization/MuellerInverseSolver.fs:createAlglibLevenbergMarquardt` through `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:createBerremanForward`. Results go into append-only fit runs, and calibrations and materials are published back. The study view MUST replace `Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:SolverHandoffView` and reuse its `validateExperiment` checks.
 
 ## Part S12 — The two acceptance tests and the two reference kits
 
 ### S12.0 Problem statement
 
-AT-1 (optics-mueller) and AT-2 (`AbsorbingBiaxialNoisyTests`) build their kits only through semantic messages and compare them with the committed kits. They reopen those kits read-only against an empty library, run their studies, and round-trip through Send. AT-1 MUST reuse the literals in `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and the stage-1 and product-check assertions in that file's §7.2 fact. AT-2 MUST reuse `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:absorbing` and `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:recoverFromNoisy`, retaining the recovery bands at `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:151`. These expectations MUST move to shared test-support declarations, never be re-transcribed.
+AT-1 (optics-mueller) and AT-2 (`AbsorbingBiaxialNoisyTests`) build their kits only through semantic messages and compare them with the committed kits. They reopen those kits read-only against an empty library, run their studies, and round-trip through Send. AT-1 MUST reuse the matrix literals at `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and the matrix/product-check assertions in its §7.2 fact (`Berreman/BerremanTests/MuellerReconstructionTests.fs:1025`); the stage-1 literals and assertion MUST come from the separate fact beginning at `Berreman/BerremanTests/MuellerReconstructionTests.fs:593`, whose constants begin at `Berreman/BerremanTests/MuellerReconstructionTests.fs:629`. AT-2 MUST reuse `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:absorbing` and `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:recoverFromNoisy`, retaining the recovery bands at `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:151`. These expectations MUST move to shared test-support declarations, never be re-transcribed.
 
 ## Part S13 — Online material sources
 
@@ -391,7 +391,7 @@ The Planner reads the kit. Layer 1 is the exact structural table of what each sy
 
 ### C.0 Problem statement
 
-The final composition is wired, and every 001 §R removal is confirmed gone. The whole suites, `elevation-full` and `kit-acceptance` are green together.
+After the final composition is wired, every 001 §R removal MUST be confirmed gone and the whole suites, `elevation-full` and `kit-acceptance` MUST pass together under `.spec-jsonl` step 494's explicit whole-suite selections. Handoff MUST also require every earlier effective gate to have a valid post-effect selection and an acceptance/check binding in `.execution-contract-json`; the final whole-suite checks MUST NOT substitute for that per-step coverage or for the producer ordering in §4.
 
 ## References
 

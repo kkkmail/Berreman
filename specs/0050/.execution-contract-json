@@ -63523,6 +63523,1015 @@
           "command_sha256": "bac19449bcde4f0f71989a2eccc22c2248608677d9832b9829942245cc9c618c"
         }
       ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-002",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 2",
+      "requirement": "After step 2's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the material editor and n/k chart preserve their lowering and numerical preview behavior over the changed dispersion/import seam (ui-tests: OpticalConstructor.Ui.Tests.MaterialEditorWindowTests, OpticalConstructor.Ui.Tests.NkDispersionChartTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 2,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 2,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-003",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 3",
+      "requirement": "After step 3's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the material editor and n/k chart preserve their lowering and numerical preview behavior over the changed dispersion/import seam (ui-tests: OpticalConstructor.Ui.Tests.MaterialEditorWindowTests, OpticalConstructor.Ui.Tests.NkDispersionChartTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 3,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 3,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-005",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 5",
+      "requirement": "After step 5's declared edits, the following consumer regressions MUST pass: the material editor and n/k chart preserve their lowering and numerical preview behavior over the changed dispersion/import seam (ui-tests: OpticalConstructor.Ui.Tests.MaterialEditorWindowTests, OpticalConstructor.Ui.Tests.NkDispersionChartTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 5,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-041",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 41",
+      "requirement": "After step 41's declared edits, the following consumer regressions MUST pass: the app context and library window continue to consume the shared built-in catalogue fixture (ui-tests: OpticalConstructor.Ui.Tests.AppContextTests, OpticalConstructor.Ui.Tests.LibraryWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 41,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-045",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 45",
+      "requirement": "After step 45's declared edits, the following consumer regressions MUST pass: the app context and library window continue to consume the shared built-in catalogue fixture (ui-tests: OpticalConstructor.Ui.Tests.AppContextTests, OpticalConstructor.Ui.Tests.LibraryWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 45,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-059",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 59",
+      "requirement": "After step 59's declared edits, the following consumer regressions MUST pass: the app scope and launcher retain their configuration behavior after removal of the database proof-table configuration (ui-tests: OpticalConstructor.Ui.Tests.AppContextTests, OpticalConstructor.Ui.Tests.LauncherTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 59,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-069",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 69",
+      "requirement": "After step 69's declared edits, the following consumer regressions MUST pass: the materials window retains its material-store operations over the library proxy (ui-tests: OpticalConstructor.Ui.Tests.MaterialsWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 69,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-071",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 71",
+      "requirement": "After step 71's declared edits, the following consumer regressions MUST pass: the category controls retain their category-store operations (ui-tests: OpticalConstructor.Ui.Tests.CategoryControlsTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 71,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-074",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 74",
+      "requirement": "After step 74's declared edits, the following consumer regressions MUST pass: the sample selectors and library window retain their sample-store behavior (ui-tests: OpticalConstructor.Ui.Tests.SampleLibraryControlsTests, OpticalConstructor.Ui.Tests.LibraryWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 74,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-150",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 150",
+      "requirement": "After step 150's declared edits, the following consumer regressions MUST pass: the app scope retains its library and kit composition while the kit-opening seam is introduced or changed (ui-tests: OpticalConstructor.Ui.Tests.AppContextTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 150,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-169",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 169",
+      "requirement": "After step 169's declared edits, the following consumer regressions MUST pass: the app context and launcher retain their settings and entry behavior while kit history/start state is changed; the new state behavior is proved by this step's constructor tests (ui-tests: OpticalConstructor.Ui.Tests.AppContextTests, OpticalConstructor.Ui.Tests.LauncherTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 169,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-172",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 172",
+      "requirement": "After step 172's declared edits, the following consumer regressions MUST pass: the app scope retains its library and kit composition while the kit-opening seam is introduced or changed (ui-tests: OpticalConstructor.Ui.Tests.AppContextTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 172,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-176",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 176",
+      "requirement": "After step 176's declared edits, the following consumer regressions MUST pass: the app context and launcher retain their settings and entry behavior while kit history/start state is changed; the new state behavior is proved by this step's constructor tests (ui-tests: OpticalConstructor.Ui.Tests.AppContextTests, OpticalConstructor.Ui.Tests.LauncherTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 176,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-177",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 177",
+      "requirement": "After step 177's declared edits, the following consumer regressions MUST pass: the app context and launcher retain their settings and entry behavior while kit history/start state is changed; the new state behavior is proved by this step's constructor tests (ui-tests: OpticalConstructor.Ui.Tests.AppContextTests, OpticalConstructor.Ui.Tests.LauncherTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 177,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-183",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 183",
+      "requirement": "After step 183's declared edits, the following consumer regressions MUST pass: the start screen retains its kit-opening and folder actions (ui-tests: OpticalConstructor.Ui.Tests.KitStartWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 183,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-186",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 186",
+      "requirement": "After step 186's declared edits, the following consumer regressions MUST pass: the kit window retains its item and setup state projection over the changed constructor model (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 186,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-200",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 200",
+      "requirement": "After step 200's declared edits, the following consumer regressions MUST pass: the kit start and kit window retain their entry and menu behavior around the archive job seam (ui-tests: OpticalConstructor.Ui.Tests.KitStartWindowTests, OpticalConstructor.Ui.Tests.KitWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 200,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-234",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 234",
+      "requirement": "After step 234's declared edits, the following consumer regressions MUST pass: the kit window retains its item and setup state projection over the changed constructor model (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 234,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-235",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 235",
+      "requirement": "After step 235's declared edits, the following consumer regressions MUST pass: the kit window retains its item and setup state projection over the changed constructor model (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 235,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-236",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 236",
+      "requirement": "After step 236's declared edits, the following consumer regressions MUST pass: the kit window retains its item and setup state projection over the changed constructor model (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 236,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-237",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 237",
+      "requirement": "After step 237's declared edits, the following consumer regressions MUST pass: the kit window retains its item and setup state projection over the changed constructor model (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 237,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-240",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 240",
+      "requirement": "After step 240's declared edits, the following consumer regressions MUST pass: kit and experiment controls retain their item-reference and copied-experiment behavior (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests, OpticalConstructor.Ui.Tests.ExperimentControlsTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 240,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-347",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 347",
+      "requirement": "After step 347's declared edits, the following consumer regressions MUST pass: the headless numerical acceptance fixture continues to resolve its shared test-support project reference (ui-tests: OpticalConstructor.Ui.Tests.FsxAcceptanceTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 347,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-386",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 386",
+      "requirement": "After step 386's declared edits, the following consumer regressions MUST pass: the reused linear reconstruction and nonlinear inverse paths retain their reference results, residual and fit-quality behavior under the study-engine integration (unit-tests: BerremanTests.MuellerReconstructionTests, BerremanTests.MuellerInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 386,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-387",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 387",
+      "requirement": "After step 387's declared edits, the following consumer regressions MUST pass: the reused nonlinear fit, residual and covariance machinery retains its reference behavior (unit-tests: BerremanTests.MuellerInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 387,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-389",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 389",
+      "requirement": "After step 389's declared edits, the following consumer regressions MUST pass: the reused AIR calibration, reconstruction and cascade-product machinery retains its reference results (unit-tests: BerremanTests.MuellerReconstructionTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 389,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-390",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 390",
+      "requirement": "After step 390's declared edits, the following consumer regressions MUST pass: the reused AIR calibration, reconstruction and cascade-product machinery retains its reference results (unit-tests: BerremanTests.MuellerReconstructionTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 390,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-391",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 391",
+      "requirement": "After step 391's declared edits, the following consumer regressions MUST pass: the reused linear reconstruction and nonlinear inverse paths retain their reference results, residual and fit-quality behavior under the study-engine integration (unit-tests: BerremanTests.MuellerReconstructionTests, BerremanTests.MuellerInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 391,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-393",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 393",
+      "requirement": "After step 393's declared edits, the following consumer regressions MUST pass: the kit window retains its model projection while study/job state is added; this step's constructor tests prove the new study behavior (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests); the reused linear reconstruction and nonlinear inverse paths retain their reference results, residual and fit-quality behavior under the study-engine integration (unit-tests: BerremanTests.MuellerReconstructionTests, BerremanTests.MuellerInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 393,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 393,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-397",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 397",
+      "requirement": "After step 397's declared edits, the following consumer regressions MUST pass: the reused linear reconstruction and nonlinear inverse paths retain their reference results, residual and fit-quality behavior under the study-engine integration (unit-tests: BerremanTests.MuellerReconstructionTests, BerremanTests.MuellerInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 397,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-399",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 399",
+      "requirement": "After step 399's declared edits, the following consumer regressions MUST pass: the reused nonlinear fit, residual and covariance machinery retains its reference behavior (unit-tests: BerremanTests.MuellerInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 399,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-400",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 400",
+      "requirement": "After step 400's declared edits, the following consumer regressions MUST pass: the reused AIR calibration, reconstruction and cascade-product machinery retains its reference results (unit-tests: BerremanTests.MuellerReconstructionTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 400,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-401",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 401",
+      "requirement": "After step 401's declared edits, the following consumer regressions MUST pass: the reused AIR calibration, reconstruction and cascade-product machinery retains its reference results (unit-tests: BerremanTests.MuellerReconstructionTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 401,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-402",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 402",
+      "requirement": "After step 402's declared edits, the following consumer regressions MUST pass: the reused linear reconstruction and nonlinear inverse paths retain their reference results, residual and fit-quality behavior under the study-engine integration (unit-tests: BerremanTests.MuellerReconstructionTests, BerremanTests.MuellerInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 402,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-403",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 403",
+      "requirement": "After step 403's declared edits, the following consumer regressions MUST pass: the reused linear reconstruction and nonlinear inverse paths retain their reference results, residual and fit-quality behavior under the study-engine integration (unit-tests: BerremanTests.MuellerReconstructionTests, BerremanTests.MuellerInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 403,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-404",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 404",
+      "requirement": "After step 404's declared edits, the following consumer regressions MUST pass: the reused linear reconstruction and nonlinear inverse paths retain their reference results, residual and fit-quality behavior under the study-engine integration (unit-tests: BerremanTests.MuellerReconstructionTests, BerremanTests.MuellerInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 404,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-410",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 410",
+      "requirement": "After step 410's declared edits, the following consumer regressions MUST pass: the kit window retains its model projection while study/job state is added; this step's constructor tests prove the new study behavior (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 410,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-412",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 412",
+      "requirement": "After step 412's declared edits, the following consumer regressions MUST pass: the kit window retains its model projection while study/job state is added; this step's constructor tests prove the new study behavior (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 412,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-413",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 413",
+      "requirement": "After step 413's declared edits, the following consumer regressions MUST pass: the kit window retains its model projection while study/job state is added; this step's constructor tests prove the new study behavior (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 413,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-422",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 422",
+      "requirement": "After step 422's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the data surface retains its split and import projection over the changed constructor messages (ui-tests: OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 422,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 422,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-424",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 424",
+      "requirement": "After step 424's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 424,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 424,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-427",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 427",
+      "requirement": "After step 427's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 427,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 427,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-428",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 428",
+      "requirement": "After step 428's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 428,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 428,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-429",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 429",
+      "requirement": "After step 429's declared edits, the following consumer regressions MUST pass: the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 429,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-430",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 430",
+      "requirement": "After step 430's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 430,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 430,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-432",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 432",
+      "requirement": "After step 432's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 432,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 432,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-433",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 433",
+      "requirement": "After step 433's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 433,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 433,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-434",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 434",
+      "requirement": "After step 434's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 434,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 434,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-435",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 435",
+      "requirement": "After step 435's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 435,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 435,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-436",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 436",
+      "requirement": "After step 436's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 436,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 436,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-437",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 437",
+      "requirement": "After step 437's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 437,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 437,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-438",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 438",
+      "requirement": "After step 438's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 438,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 438,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-439",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 439",
+      "requirement": "After step 439's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 439,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 439,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-440",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 440",
+      "requirement": "After step 440's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the study and data views retain the semantic controls used by the kit acceptance workflow; kit-acceptance separately proves the kit assertions (ui-tests: OpticalConstructor.Ui.Tests.StudyViewTests, OpticalConstructor.Ui.Tests.DataStepTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 440,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 440,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-450",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 450",
+      "requirement": "After step 450's declared edits, the following consumer regressions MUST pass: the materials window retains the entry and library behavior into which material-source state is being integrated; constructor tests prove the new source state (ui-tests: OpticalConstructor.Ui.Tests.MaterialsWindowTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 450,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-453",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 453",
+      "requirement": "After step 453's declared edits, the following consumer regressions MUST pass: every discovered headless smoke view continues to open and render over the changed shared code or fixture (ui-smoke: all discovered smoke cases); the material editor and n/k chart preserve their lowering and numerical preview behavior over the changed dispersion/import seam (ui-tests: OpticalConstructor.Ui.Tests.MaterialEditorWindowTests, OpticalConstructor.Ui.Tests.NkDispersionChartTests); the produced AT-1 and AT-2 kit acceptance cases continue to prove the import, study and shared numerical behavior after this change (kit-acceptance: OpticalConstructor.Ui.Tests.KitAcceptanceTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 453,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 453,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-473",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 473",
+      "requirement": "After step 473's declared edits, the following consumer regressions MUST pass: the produced AT-1 and AT-2 kit acceptance cases continue to prove the import, study and shared numerical behavior after this change (kit-acceptance: OpticalConstructor.Ui.Tests.KitAcceptanceTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 473,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-474",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 474",
+      "requirement": "After step 474's declared edits, the following consumer regressions MUST pass: the produced AT-1 and AT-2 kit acceptance cases continue to prove the import, study and shared numerical behavior after this change (kit-acceptance: OpticalConstructor.Ui.Tests.KitAcceptanceTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 474,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-477",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 477",
+      "requirement": "After step 477's declared edits, the following consumer regressions MUST pass: the produced AT-1 and AT-2 kit acceptance cases continue to prove the import, study and shared numerical behavior after this change (kit-acceptance: OpticalConstructor.Ui.Tests.KitAcceptanceTests); the inverse-design rank, covariance and observability proofs remain unchanged while the Planner reuses their numerical machinery (unit-tests: BerremanTests.MuellerInverseTests, BerremanTests.BiaxialInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 477,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
+        },
+        {
+          "step": 477,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-478",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 478",
+      "requirement": "After step 478's declared edits, the following consumer regressions MUST pass: the produced AT-1 and AT-2 kit acceptance cases continue to prove the import, study and shared numerical behavior after this change (kit-acceptance: OpticalConstructor.Ui.Tests.KitAcceptanceTests); the inverse-design rank, covariance and observability proofs remain unchanged while the Planner reuses their numerical machinery (unit-tests: BerremanTests.MuellerInverseTests, BerremanTests.BiaxialInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 478,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
+        },
+        {
+          "step": 478,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-479",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 479",
+      "requirement": "After step 479's declared edits, the following consumer regressions MUST pass: the produced AT-1 and AT-2 kit acceptance cases continue to prove the import, study and shared numerical behavior after this change (kit-acceptance: OpticalConstructor.Ui.Tests.KitAcceptanceTests); the inverse-design rank, covariance and observability proofs remain unchanged while the Planner reuses their numerical machinery (unit-tests: BerremanTests.MuellerInverseTests, BerremanTests.BiaxialInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 479,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
+        },
+        {
+          "step": 479,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-480",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 480",
+      "requirement": "After step 480's declared edits, the following consumer regressions MUST pass: the produced AT-1 and AT-2 kit acceptance cases continue to prove the import, study and shared numerical behavior after this change (kit-acceptance: OpticalConstructor.Ui.Tests.KitAcceptanceTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 480,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-486",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 486",
+      "requirement": "After step 486's declared edits, the following consumer regressions MUST pass: the produced AT-1 and AT-2 kit acceptance cases continue to prove the import, study and shared numerical behavior after this change (kit-acceptance: OpticalConstructor.Ui.Tests.KitAcceptanceTests); the inverse-design rank, covariance and observability proofs remain unchanged while the Planner reuses their numerical machinery (unit-tests: BerremanTests.MuellerInverseTests, BerremanTests.BiaxialInverseTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 486,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
+        },
+        {
+          "step": 486,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-487",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 487",
+      "requirement": "After step 487's declared edits, the following consumer regressions MUST pass: the kit and study views retain their shared model projection while planner job/state is added; constructor tests prove the new planner behavior (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests, OpticalConstructor.Ui.Tests.StudyViewTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 487,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-488",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 488",
+      "requirement": "After step 488's declared edits, the following consumer regressions MUST pass: the kit and study views retain their shared model projection while planner job/state is added; constructor tests prove the new planner behavior (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests, OpticalConstructor.Ui.Tests.StudyViewTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 488,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-489",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 489",
+      "requirement": "After step 489's declared edits, the following consumer regressions MUST pass: the kit and study views retain their shared model projection while planner job/state is added; constructor tests prove the new planner behavior (ui-tests: OpticalConstructor.Ui.Tests.KitWindowTests, OpticalConstructor.Ui.Tests.StudyViewTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 489,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "GATE-COVERAGE-0050-493",
+      "source": "specs/0050/.spec-md §4, §9 and Close; .user-md/spec-author.user-md Choosing a step's gates; specs/0050/.spec-jsonl step 493",
+      "requirement": "After step 493's declared edits, the following consumer regressions MUST pass: the start, kit and study views continue to work with the changed committed-kit fixture (ui-tests: OpticalConstructor.Ui.Tests.KitStartWindowTests, OpticalConstructor.Ui.Tests.KitWindowTests, OpticalConstructor.Ui.Tests.StudyViewTests). The step's behavior-specific tests and prior acceptance obligations remain required.",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -63547,7 +64556,8 @@
         "S11-ELEVATION",
         "S11-INV-ELEV-LIST",
         "S11-INV-NO-VSTEST",
-        "S11-INV-NO-KIT-KIT-JSON"
+        "S11-INV-NO-KIT-KIT-JSON",
+        "GATE-COVERAGE-0050-002"
       ]
     },
     {
@@ -63559,7 +64569,8 @@
         "S11-ELEVATION",
         "S11-INV-ELEV-LIST",
         "S11-INV-NO-VSTEST",
-        "S11-INV-NO-KIT-KIT-JSON"
+        "S11-INV-NO-KIT-KIT-JSON",
+        "GATE-COVERAGE-0050-003"
       ]
     },
     {
@@ -63583,7 +64594,8 @@
         "S11-ELEVATION",
         "S11-INV-ELEV-LIST",
         "S11-INV-NO-VSTEST",
-        "S11-INV-NO-KIT-KIT-JSON"
+        "S11-INV-NO-KIT-KIT-JSON",
+        "GATE-COVERAGE-0050-005"
       ]
     },
     {
@@ -64094,7 +65106,8 @@
         "S16-INV-NO-KIT-KIT-JSON",
         "S16-INV-NO-EPS-AXIS-EVALUATED",
         "S16-INV-COMPLEXITY-MANDATORY",
-        "S16-INV-NO-SEEDED-STRING-PRESET-IDS"
+        "S16-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "GATE-COVERAGE-0050-041"
       ]
     },
     {
@@ -64155,7 +65168,8 @@
         "S17-INV-NO-EPS-AXIS-EVALUATED",
         "S17-INV-COMPLEXITY-MANDATORY",
         "S17-INV-NO-SEEDED-STRING-PRESET-IDS",
-        "S17-INV-NO-SEEDING-SEAM"
+        "S17-INV-NO-SEEDING-SEAM",
+        "GATE-COVERAGE-0050-045"
       ]
     },
     {
@@ -64381,7 +65395,8 @@
         "S21-INV-NO-SEEDED-STRING-PRESET-IDS",
         "S21-INV-NO-SEEDING-SEAM",
         "S21-INV-T1-NO-CODE-SEEDS",
-        "S21-INV-NO-SEED-MODULES"
+        "S21-INV-NO-SEED-MODULES",
+        "GATE-COVERAGE-0050-059"
       ]
     },
     {
@@ -64566,7 +65581,8 @@
         "S22-INV-NO-SEEDING-SEAM",
         "S22-INV-T1-NO-CODE-SEEDS",
         "S22-INV-NO-SEED-MODULES",
-        "S22-INV-NO-TEST-DB"
+        "S22-INV-NO-TEST-DB",
+        "GATE-COVERAGE-0050-069"
       ]
     },
     {
@@ -64604,7 +65620,8 @@
         "S22-INV-NO-SEEDING-SEAM",
         "S22-INV-T1-NO-CODE-SEEDS",
         "S22-INV-NO-SEED-MODULES",
-        "S22-INV-NO-TEST-DB"
+        "S22-INV-NO-TEST-DB",
+        "GATE-COVERAGE-0050-071"
       ]
     },
     {
@@ -64664,7 +65681,8 @@
         "S23-INV-T1-NO-CODE-SEEDS",
         "S23-INV-NO-SEED-MODULES",
         "S23-INV-NO-TEST-DB",
-        "S23-INV-NO-VERSIONS-IN-USE"
+        "S23-INV-NO-VERSIONS-IN-USE",
+        "GATE-COVERAGE-0050-074"
       ]
     },
     {
@@ -66184,7 +67202,8 @@
         "S43-INV-T1-NO-CODE-SEEDS",
         "S43-INV-NO-SEED-MODULES",
         "S43-INV-NO-TEST-DB",
-        "S43-INV-NO-VERSIONS-IN-USE"
+        "S43-INV-NO-VERSIONS-IN-USE",
+        "GATE-COVERAGE-0050-150"
       ]
     },
     {
@@ -66585,7 +67604,8 @@
         "S51-INV-NO-TEST-DB",
         "S51-INV-NO-VERSIONS-IN-USE",
         "S51-INV-NO-SCENE-COLLECTION-SEAMS",
-        "S51-INV-T4-NO-OCPROJ"
+        "S51-INV-T4-NO-OCPROJ",
+        "GATE-COVERAGE-0050-169"
       ]
     },
     {
@@ -66654,7 +67674,8 @@
         "S52-INV-NO-VERSIONS-IN-USE",
         "S52-INV-NO-SCENE-COLLECTION-SEAMS",
         "S52-INV-T4-NO-OCPROJ",
-        "S52-INV-NO-RECENT-JSON"
+        "S52-INV-NO-RECENT-JSON",
+        "GATE-COVERAGE-0050-172"
       ]
     },
     {
@@ -66746,7 +67767,8 @@
         "S52-INV-NO-VERSIONS-IN-USE",
         "S52-INV-NO-SCENE-COLLECTION-SEAMS",
         "S52-INV-T4-NO-OCPROJ",
-        "S52-INV-NO-RECENT-JSON"
+        "S52-INV-NO-RECENT-JSON",
+        "GATE-COVERAGE-0050-176"
       ]
     },
     {
@@ -66769,7 +67791,8 @@
         "S52-INV-NO-VERSIONS-IN-USE",
         "S52-INV-NO-SCENE-COLLECTION-SEAMS",
         "S52-INV-T4-NO-OCPROJ",
-        "S52-INV-NO-RECENT-JSON"
+        "S52-INV-NO-RECENT-JSON",
+        "GATE-COVERAGE-0050-177"
       ]
     },
     {
@@ -66907,7 +67930,8 @@
         "S53-INV-NO-VERSIONS-IN-USE",
         "S53-INV-NO-SCENE-COLLECTION-SEAMS",
         "S53-INV-T4-NO-OCPROJ",
-        "S53-INV-NO-RECENT-JSON"
+        "S53-INV-NO-RECENT-JSON",
+        "GATE-COVERAGE-0050-183"
       ]
     },
     {
@@ -66976,7 +68000,8 @@
         "S53-INV-NO-VERSIONS-IN-USE",
         "S53-INV-NO-SCENE-COLLECTION-SEAMS",
         "S53-INV-T4-NO-OCPROJ",
-        "S53-INV-NO-RECENT-JSON"
+        "S53-INV-NO-RECENT-JSON",
+        "GATE-COVERAGE-0050-186"
       ]
     },
     {
@@ -67298,7 +68323,8 @@
         "S6-INV-NO-VERSIONS-IN-USE",
         "S6-INV-NO-SCENE-COLLECTION-SEAMS",
         "S6-INV-T4-NO-OCPROJ",
-        "S6-INV-NO-RECENT-JSON"
+        "S6-INV-NO-RECENT-JSON",
+        "GATE-COVERAGE-0050-200"
       ]
     },
     {
@@ -68080,7 +69106,8 @@
         "S72-INV-NO-VERSIONS-IN-USE",
         "S72-INV-NO-SCENE-COLLECTION-SEAMS",
         "S72-INV-T4-NO-OCPROJ",
-        "S72-INV-NO-RECENT-JSON"
+        "S72-INV-NO-RECENT-JSON",
+        "GATE-COVERAGE-0050-234"
       ]
     },
     {
@@ -68103,7 +69130,8 @@
         "S72-INV-NO-VERSIONS-IN-USE",
         "S72-INV-NO-SCENE-COLLECTION-SEAMS",
         "S72-INV-T4-NO-OCPROJ",
-        "S72-INV-NO-RECENT-JSON"
+        "S72-INV-NO-RECENT-JSON",
+        "GATE-COVERAGE-0050-235"
       ]
     },
     {
@@ -68126,7 +69154,8 @@
         "S72-INV-NO-VERSIONS-IN-USE",
         "S72-INV-NO-SCENE-COLLECTION-SEAMS",
         "S72-INV-T4-NO-OCPROJ",
-        "S72-INV-NO-RECENT-JSON"
+        "S72-INV-NO-RECENT-JSON",
+        "GATE-COVERAGE-0050-236"
       ]
     },
     {
@@ -68149,7 +69178,8 @@
         "S72-INV-NO-VERSIONS-IN-USE",
         "S72-INV-NO-SCENE-COLLECTION-SEAMS",
         "S72-INV-T4-NO-OCPROJ",
-        "S72-INV-NO-RECENT-JSON"
+        "S72-INV-NO-RECENT-JSON",
+        "GATE-COVERAGE-0050-237"
       ]
     },
     {
@@ -68218,7 +69248,8 @@
         "S72-INV-NO-VERSIONS-IN-USE",
         "S72-INV-NO-SCENE-COLLECTION-SEAMS",
         "S72-INV-T4-NO-OCPROJ",
-        "S72-INV-NO-RECENT-JSON"
+        "S72-INV-NO-RECENT-JSON",
+        "GATE-COVERAGE-0050-240"
       ]
     },
     {
@@ -70895,7 +71926,8 @@
         "S102-INV-T9-NO-MUELLER-DATA-SET",
         "S102-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S102-INV-NO-ARCHIVE-DATA-PROXY",
-        "S102-INV-T10-NO-HARNESS-NOISE"
+        "S102-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-347"
       ]
     },
     {
@@ -72026,7 +73058,8 @@
         "S113-INV-T9-NO-MUELLER-DATA-SET",
         "S113-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S113-INV-NO-ARCHIVE-DATA-PROXY",
-        "S113-INV-T10-NO-HARNESS-NOISE"
+        "S113-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-386"
       ]
     },
     {
@@ -72055,7 +73088,8 @@
         "S113-INV-T9-NO-MUELLER-DATA-SET",
         "S113-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S113-INV-NO-ARCHIVE-DATA-PROXY",
-        "S113-INV-T10-NO-HARNESS-NOISE"
+        "S113-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-387"
       ]
     },
     {
@@ -72113,7 +73147,8 @@
         "S113-INV-T9-NO-MUELLER-DATA-SET",
         "S113-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S113-INV-NO-ARCHIVE-DATA-PROXY",
-        "S113-INV-T10-NO-HARNESS-NOISE"
+        "S113-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-389"
       ]
     },
     {
@@ -72142,7 +73177,8 @@
         "S113-INV-T9-NO-MUELLER-DATA-SET",
         "S113-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S113-INV-NO-ARCHIVE-DATA-PROXY",
-        "S113-INV-T10-NO-HARNESS-NOISE"
+        "S113-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-390"
       ]
     },
     {
@@ -72171,7 +73207,8 @@
         "S113-INV-T9-NO-MUELLER-DATA-SET",
         "S113-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S113-INV-NO-ARCHIVE-DATA-PROXY",
-        "S113-INV-T10-NO-HARNESS-NOISE"
+        "S113-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-391"
       ]
     },
     {
@@ -72229,7 +73266,8 @@
         "S113-INV-T9-NO-MUELLER-DATA-SET",
         "S113-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S113-INV-NO-ARCHIVE-DATA-PROXY",
-        "S113-INV-T10-NO-HARNESS-NOISE"
+        "S113-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-393"
       ]
     },
     {
@@ -72345,7 +73383,8 @@
         "S114-INV-T9-NO-MUELLER-DATA-SET",
         "S114-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S114-INV-NO-ARCHIVE-DATA-PROXY",
-        "S114-INV-T10-NO-HARNESS-NOISE"
+        "S114-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-397"
       ]
     },
     {
@@ -72403,7 +73442,8 @@
         "S114-INV-T9-NO-MUELLER-DATA-SET",
         "S114-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S114-INV-NO-ARCHIVE-DATA-PROXY",
-        "S114-INV-T10-NO-HARNESS-NOISE"
+        "S114-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-399"
       ]
     },
     {
@@ -72432,7 +73472,8 @@
         "S114-INV-T9-NO-MUELLER-DATA-SET",
         "S114-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S114-INV-NO-ARCHIVE-DATA-PROXY",
-        "S114-INV-T10-NO-HARNESS-NOISE"
+        "S114-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-400"
       ]
     },
     {
@@ -72461,7 +73502,8 @@
         "S114-INV-T9-NO-MUELLER-DATA-SET",
         "S114-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S114-INV-NO-ARCHIVE-DATA-PROXY",
-        "S114-INV-T10-NO-HARNESS-NOISE"
+        "S114-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-401"
       ]
     },
     {
@@ -72490,7 +73532,8 @@
         "S114-INV-T9-NO-MUELLER-DATA-SET",
         "S114-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S114-INV-NO-ARCHIVE-DATA-PROXY",
-        "S114-INV-T10-NO-HARNESS-NOISE"
+        "S114-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-402"
       ]
     },
     {
@@ -72519,7 +73562,8 @@
         "S114-INV-T9-NO-MUELLER-DATA-SET",
         "S114-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S114-INV-NO-ARCHIVE-DATA-PROXY",
-        "S114-INV-T10-NO-HARNESS-NOISE"
+        "S114-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-403"
       ]
     },
     {
@@ -72548,7 +73592,8 @@
         "S114-INV-T9-NO-MUELLER-DATA-SET",
         "S114-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S114-INV-NO-ARCHIVE-DATA-PROXY",
-        "S114-INV-T10-NO-HARNESS-NOISE"
+        "S114-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-404"
       ]
     },
     {
@@ -72722,7 +73767,8 @@
         "S115-INV-T9-NO-MUELLER-DATA-SET",
         "S115-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S115-INV-NO-ARCHIVE-DATA-PROXY",
-        "S115-INV-T10-NO-HARNESS-NOISE"
+        "S115-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-410"
       ]
     },
     {
@@ -72780,7 +73826,8 @@
         "S115-INV-T9-NO-MUELLER-DATA-SET",
         "S115-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S115-INV-NO-ARCHIVE-DATA-PROXY",
-        "S115-INV-T10-NO-HARNESS-NOISE"
+        "S115-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-412"
       ]
     },
     {
@@ -72809,7 +73856,8 @@
         "S115-INV-T9-NO-MUELLER-DATA-SET",
         "S115-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S115-INV-NO-ARCHIVE-DATA-PROXY",
-        "S115-INV-T10-NO-HARNESS-NOISE"
+        "S115-INV-T10-NO-HARNESS-NOISE",
+        "GATE-COVERAGE-0050-413"
       ]
     },
     {
@@ -73073,7 +74121,8 @@
         "S121-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S121-INV-NO-ARCHIVE-DATA-PROXY",
         "S121-INV-T10-NO-HARNESS-NOISE",
-        "S121-INV-NO-SOLVER-HANDOFF"
+        "S121-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-422"
       ]
     },
     {
@@ -73133,7 +74182,8 @@
         "S121-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S121-INV-NO-ARCHIVE-DATA-PROXY",
         "S121-INV-T10-NO-HARNESS-NOISE",
-        "S121-INV-NO-SOLVER-HANDOFF"
+        "S121-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-424"
       ]
     },
     {
@@ -73223,7 +74273,8 @@
         "S121-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S121-INV-NO-ARCHIVE-DATA-PROXY",
         "S121-INV-T10-NO-HARNESS-NOISE",
-        "S121-INV-NO-SOLVER-HANDOFF"
+        "S121-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-427"
       ]
     },
     {
@@ -73253,7 +74304,8 @@
         "S121-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S121-INV-NO-ARCHIVE-DATA-PROXY",
         "S121-INV-T10-NO-HARNESS-NOISE",
-        "S121-INV-NO-SOLVER-HANDOFF"
+        "S121-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-428"
       ]
     },
     {
@@ -73283,7 +74335,8 @@
         "S121-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S121-INV-NO-ARCHIVE-DATA-PROXY",
         "S121-INV-T10-NO-HARNESS-NOISE",
-        "S121-INV-NO-SOLVER-HANDOFF"
+        "S121-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-429"
       ]
     },
     {
@@ -73313,7 +74366,8 @@
         "S121-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S121-INV-NO-ARCHIVE-DATA-PROXY",
         "S121-INV-T10-NO-HARNESS-NOISE",
-        "S121-INV-NO-SOLVER-HANDOFF"
+        "S121-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-430"
       ]
     },
     {
@@ -73373,7 +74427,8 @@
         "S122-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S122-INV-NO-ARCHIVE-DATA-PROXY",
         "S122-INV-T10-NO-HARNESS-NOISE",
-        "S122-INV-NO-SOLVER-HANDOFF"
+        "S122-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-432"
       ]
     },
     {
@@ -73403,7 +74458,8 @@
         "S122-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S122-INV-NO-ARCHIVE-DATA-PROXY",
         "S122-INV-T10-NO-HARNESS-NOISE",
-        "S122-INV-NO-SOLVER-HANDOFF"
+        "S122-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-433"
       ]
     },
     {
@@ -73433,7 +74489,8 @@
         "S122-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S122-INV-NO-ARCHIVE-DATA-PROXY",
         "S122-INV-T10-NO-HARNESS-NOISE",
-        "S122-INV-NO-SOLVER-HANDOFF"
+        "S122-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-434"
       ]
     },
     {
@@ -73463,7 +74520,8 @@
         "S122-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S122-INV-NO-ARCHIVE-DATA-PROXY",
         "S122-INV-T10-NO-HARNESS-NOISE",
-        "S122-INV-NO-SOLVER-HANDOFF"
+        "S122-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-435"
       ]
     },
     {
@@ -73493,7 +74551,8 @@
         "S122-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S122-INV-NO-ARCHIVE-DATA-PROXY",
         "S122-INV-T10-NO-HARNESS-NOISE",
-        "S122-INV-NO-SOLVER-HANDOFF"
+        "S122-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-436"
       ]
     },
     {
@@ -73523,7 +74582,8 @@
         "S122-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S122-INV-NO-ARCHIVE-DATA-PROXY",
         "S122-INV-T10-NO-HARNESS-NOISE",
-        "S122-INV-NO-SOLVER-HANDOFF"
+        "S122-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-437"
       ]
     },
     {
@@ -73553,7 +74613,8 @@
         "S122-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S122-INV-NO-ARCHIVE-DATA-PROXY",
         "S122-INV-T10-NO-HARNESS-NOISE",
-        "S122-INV-NO-SOLVER-HANDOFF"
+        "S122-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-438"
       ]
     },
     {
@@ -73583,7 +74644,8 @@
         "S122-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S122-INV-NO-ARCHIVE-DATA-PROXY",
         "S122-INV-T10-NO-HARNESS-NOISE",
-        "S122-INV-NO-SOLVER-HANDOFF"
+        "S122-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-439"
       ]
     },
     {
@@ -73613,7 +74675,8 @@
         "S122-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S122-INV-NO-ARCHIVE-DATA-PROXY",
         "S122-INV-T10-NO-HARNESS-NOISE",
-        "S122-INV-NO-SOLVER-HANDOFF"
+        "S122-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-440"
       ]
     },
     {
@@ -73913,7 +74976,8 @@
         "S131-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S131-INV-NO-ARCHIVE-DATA-PROXY",
         "S131-INV-T10-NO-HARNESS-NOISE",
-        "S131-INV-NO-SOLVER-HANDOFF"
+        "S131-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-450"
       ]
     },
     {
@@ -74003,7 +75067,8 @@
         "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S132-INV-NO-ARCHIVE-DATA-PROXY",
         "S132-INV-T10-NO-HARNESS-NOISE",
-        "S132-INV-NO-SOLVER-HANDOFF"
+        "S132-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-453"
       ]
     },
     {
@@ -74603,7 +75668,8 @@
         "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S141-INV-NO-ARCHIVE-DATA-PROXY",
         "S141-INV-T10-NO-HARNESS-NOISE",
-        "S141-INV-NO-SOLVER-HANDOFF"
+        "S141-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-473"
       ]
     },
     {
@@ -74633,7 +75699,8 @@
         "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S141-INV-NO-ARCHIVE-DATA-PROXY",
         "S141-INV-T10-NO-HARNESS-NOISE",
-        "S141-INV-NO-SOLVER-HANDOFF"
+        "S141-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-474"
       ]
     },
     {
@@ -74723,7 +75790,8 @@
         "S142-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S142-INV-NO-ARCHIVE-DATA-PROXY",
         "S142-INV-T10-NO-HARNESS-NOISE",
-        "S142-INV-NO-SOLVER-HANDOFF"
+        "S142-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-477"
       ]
     },
     {
@@ -74753,7 +75821,8 @@
         "S142-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S142-INV-NO-ARCHIVE-DATA-PROXY",
         "S142-INV-T10-NO-HARNESS-NOISE",
-        "S142-INV-NO-SOLVER-HANDOFF"
+        "S142-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-478"
       ]
     },
     {
@@ -74783,7 +75852,8 @@
         "S142-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S142-INV-NO-ARCHIVE-DATA-PROXY",
         "S142-INV-T10-NO-HARNESS-NOISE",
-        "S142-INV-NO-SOLVER-HANDOFF"
+        "S142-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-479"
       ]
     },
     {
@@ -74813,7 +75883,8 @@
         "S142-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S142-INV-NO-ARCHIVE-DATA-PROXY",
         "S142-INV-T10-NO-HARNESS-NOISE",
-        "S142-INV-NO-SOLVER-HANDOFF"
+        "S142-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-480"
       ]
     },
     {
@@ -74993,7 +76064,8 @@
         "S142-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S142-INV-NO-ARCHIVE-DATA-PROXY",
         "S142-INV-T10-NO-HARNESS-NOISE",
-        "S142-INV-NO-SOLVER-HANDOFF"
+        "S142-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-486"
       ]
     },
     {
@@ -75023,7 +76095,8 @@
         "S142-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S142-INV-NO-ARCHIVE-DATA-PROXY",
         "S142-INV-T10-NO-HARNESS-NOISE",
-        "S142-INV-NO-SOLVER-HANDOFF"
+        "S142-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-487"
       ]
     },
     {
@@ -75053,7 +76126,8 @@
         "S142-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S142-INV-NO-ARCHIVE-DATA-PROXY",
         "S142-INV-T10-NO-HARNESS-NOISE",
-        "S142-INV-NO-SOLVER-HANDOFF"
+        "S142-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-488"
       ]
     },
     {
@@ -75083,7 +76157,8 @@
         "S142-INV-T9-NO-DATA-MUELLER-MATRIX",
         "S142-INV-NO-ARCHIVE-DATA-PROXY",
         "S142-INV-T10-NO-HARNESS-NOISE",
-        "S142-INV-NO-SOLVER-HANDOFF"
+        "S142-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-489"
       ]
     },
     {
@@ -75203,7 +76278,8 @@
         "CLOSE-INV-T9-NO-DATA-MUELLER-MATRIX",
         "CLOSE-INV-NO-ARCHIVE-DATA-PROXY",
         "CLOSE-INV-T10-NO-HARNESS-NOISE",
-        "CLOSE-INV-NO-SOLVER-HANDOFF"
+        "CLOSE-INV-NO-SOLVER-HANDOFF",
+        "GATE-COVERAGE-0050-493"
       ]
     },
     {
