@@ -150,14 +150,14 @@
     {
       "name": "S8.1 -- The run law walks every object; the source is real",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "bd79793",
       "spec_jsonl_lines": 254
     },
     {
       "name": "S8.2 -- Setups as slots",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 266
     },
     {
       "name": "S8.3 -- The naming template and the grid generator",

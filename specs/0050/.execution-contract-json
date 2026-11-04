@@ -25836,6 +25836,1607 @@
           "command_sha256": "188736bfb965621cee0cc325d3556c976607fdbca93269538f7e63470d6098db"
         }
       ]
+    },
+    {
+      "id": "S82-SETUP-IDENTITIES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "ItemModels.fs: DialSign.physicalAngleOf zero reading = sign·(reading − zero) (moved from MuellerReconstruction.physicalAngle, which now calls it) and DialSign.readingOf zero angle = zero + sign·angle. Kit.fs: FileStem.firstFreeText (the suffix sequence moved out of ItemLabel.nextFreeAmong, which calls it); SetupError (seven *Err cases with describe); SetupName (tryCreate refusing blank, fileStem by FileStem.ofText, nextFreeAmong by the suffix sequence, firstFree = the first free 'Setup <n>'); SetupRevision (first, next); SetupReference { name; revision } with describe. MuellerReconstructionTests' numbers are unchanged.",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 255,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S82-SETUP-SHAPE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "New Domain Setups.fs (module Setups, directly after BeamLayout.fs): SlotTurn (PlacementTurn | DialTurn of reading : Angle); SlotContent (EmptySlotContent | ItemInSlot of item : ItemId * turn : SlotTurn) with itemOpt; SetupSlot { id; placement; zoom; beam; content } with layoutElement; SetupRevisionRecord { revision; slots }; Setup { name; revision; slots; history } with reference, slotsAt (UnknownSetupRevisionErr), heldItems, create (DuplicateSetupNameErr by file stem ignoring case) and revisedWith over Lifecycle.decideVersioning (keep, in place, or mint the next revision with the old one in history when pinned). SetupTests covers them.",
+      "checks": [
+        {
+          "step": 256,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S82-SLOT-ROLES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "Setups.fs: SlotPosition; SlotRole (SourceSlotRole | PrepSlotRole | ObjectSlotRole | AnalyzerSlotRole | DetectorSlotRole, with text Source / Prep k / Obj k / Analyzer k / Detector k, never stored); RoledSlot; SetupSlot.inLightOrder lays the slots out with BeamLayout.layout: LightSource slots are sources, Sample slots objects, Detector slots detectors, any other slot a prep when its path crosses no Sample slot and an analyzer otherwise; each role ordered by light depth then table order and numbered from 1; Setup.lightOrder.",
+      "checks": [
+        {
+          "step": 257,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S82-SLOT-ASSIGNMENT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "Kit.fs: ParameterState.currentValue (the rule moved out of ParameterValues.ofParameters, which calls it) and Item.dialZeroAngle; ItemModels.fs: ParameterValue.angle moved from ItemEvaluation.fs. Setups.fs: ItemModelChoice.libraryEntryOpt and slotKinds (library entries by forKinds, item models by form, no wildcard); SetupSlot.withItem (IncompatibleSlotItemErr; ItemInSlot with DialTurn for a dial-mounted item so the drawn angle is kept; binds the library entry and its emission through placementEmissionForEntry), withoutItem, drawnWith and recordedWith (readings through the item's current zero); SetupSwap and Setup.swapTarget (the held setup with the same kinds and contents, else a new setup named fresh).",
+      "checks": [
+        {
+          "step": 258,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S82-TABLE-SLOTS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "TableAndElementRotationView.TestElement is deleted; the model's elements are Setups.SetupSlot list; TestElement's members move onto a SetupSlot extension; every table element is built with EmptySlotContent; layoutElements maps SetupSlot.layoutElement; captureScene / restoreScene map slots until step 260; the TestWindows ElementRotationView and every test naming TestElement name SetupSlot. Nothing drawn, laid out or run changes, and no file names TestElement.",
+      "checks": [
+        {
+          "step": 259,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 259,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 259,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S82-SETUP-FILE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "Setups.fs gains SetupFile (version 1) and Setup.setupFile / libraryReferences (every revision's bound entries, moved from SceneSnapshot.libraryReferences); Scene.fs keeps SnapMode alone; schema/setup.schema.json describes { schemaVersion; setup { name; revision; slots; history } }; validateSetupFile, SetupFile.fileText, KitFileText.parseSetupFile, KitProxy.writeSetup / readSetups (stem must match the name) and KitLibraryContext.recordSetup replace the scene members; OpenedKit.setups; the model's setupName, kitSetups and activeSetupOpt; SetSetupName, CreateSetup (refused read-only; Setup.create; recordSetup) and ActivateSetup (draws the setup's slots through the kit's items, keeping the view, snap mode and pivot) replace the scene messages; the setup row and its ids replace the scene row.",
+      "checks": [
+        {
+          "step": 260,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 260,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 260,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S82-EXPERIMENT-SETUP",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "Experiments.fs: ElementBinding, PlacementSummary and ElementDescriptor are deleted; VariedElement gains label; Experiment.setup is a SetupReference; variedDescriptor, detectorDescriptorOpt, versionRefs and libraryReferences go; a dark line describes its setup; commit takes a SetupReference. Lifecycle.VersionRef goes. Setups.fs: Setup.pinFor, Experiment.slotsIn, Experiment.itemsUsedBy (the items the referenced revision's slots hold). ExperimentDataLoad reads the detector from the slots; ExperimentCollectionSnapshot carries setups; KitLibrarySetupErr. experiment.schema.json's setup is { name; revision }. recordExperiment refuses a revision the kit lacks and snapshots nothing. copyExperimentsFrom brings the referenced setups, items mapped, same content not rewritten, a clash renamed by nextFreeAmong with its experiments following. ExpCommit records the active setup (revisedWith over pinFor, or a new first-free setup) before the experiment. The solver hand-off reads the slots in light order. AGENTS.md names the table as the active setup.",
+      "checks": [
+        {
+          "step": 261,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 261,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 261,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S82-SAVE-SETUP",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "TableAndElementRotationMsg.SaveSetup: refused read-only; no active setup or an unchanged revision writes nothing and says why; otherwise the active setup revisedWith the recorded slots over pinFor the window's experiments is recorded through recordSetup and becomes active. The setup row shows activeSetupText and a Save setup button (saveSetupButton) withheld with no active setup or read-only.",
+      "checks": [
+        {
+          "step": 262,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 262,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 262,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S82-ASSIGN-SLOT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "TableAndElementRotationModel.tryItemModelChoice resolves an item's model (preset, sample version, item-model version) through the window's stores, and itemModelCaption reads it. TableAndElementRotationMsg.AssignSlot (slot id, item option) writes nothing: an unknown slot or item, or an unresolved model, is told; nothing empties the slot; an item becomes SetupSlot.withItem item choice, a refusal told and nothing changed.",
+      "checks": [
+        {
+          "step": 263,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 263,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 263,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S82-SWAP-SLOT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "TableAndElementRotationMsg.SwapSlot (slot id, item): the table's slots with that slot withItem the item, recorded; Setup.swapTarget over the kit's setups with a fresh name (nextFreeAmong the active name, or firstFree): a held setup is activated with nothing written; a new one is refused read-only, else recorded through recordSetup and activated; the setup swapped from is never written; refusals are told.",
+      "checks": [
+        {
+          "step": 264,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 264,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 264,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S82-RUN-SLOT-ITEMS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "chartForRun builds a slot holding an item from the item's resolved choice boundWith model.materials over ParameterValues.ofParameters item.parameters, evaluated by muellerAt at the drawn R1 (or swept), the drawn incidence (or swept under VaryR2) and the path branch, an ObjectStep for a Sample slot and an ElementStep otherwise; unresolved items and evaluation errors show the failure chart; empty slots are unchanged; objectIds counts Sample slots holding an item; the no-analyzer and bound checks count items.",
+      "checks": [
+        {
+          "step": 265,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 265,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 265,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S82-SOURCE-SLOT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "TableAndElementRotationModel.runEmission: the first LightSource slot's item, resolved, emits through ItemModelChoice.emissionWith over ParameterValues.ofParameters item.parameters; an unavailable item answers UnknownSlotItemErr's text; without a source item it is the default parameter set. chartForRun reads with it, an error showing the run-cannot-be-evaluated chart; the wavelength stays the bound preset's.",
+      "checks": [
+        {
+          "step": 266,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 266,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 266,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S82-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "Every S8.2 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error (no wildcard arm hides a new case), no package is added, and the new and renamed compile items (Setups.fs directly after BeamLayout.fs; SetupTests.fs and SetupModelTests.fs at the end of the constructor suite; SetupRoundTripTests.fs and SetupSaveLoadTests.fs in their predecessors' places) sit where the steps name.",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 256,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 257,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 258,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 259,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 260,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 261,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 262,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 263,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 264,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 265,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 266,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S82-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §J ('Setup = an ordered optical path of slots, each holding an item or nothing: Source, Prep 1…k, Object 1…n (two or more samples in series), Analyzer 1…k, Detector; per slot: position on the beam, R1 / R2 / R3, or a dial reading. The table draws the active setup, and the BeamLayout / RayModel laws are unchanged'; 'Experiments reference setups (name + revision). The ElementDescriptor list becomes the slot list'; 'Quick swap: … choosing one is either a new setup or an existing one'), §P (CreateSetup, AssignSlot, SwapSlot), §I ('Dial mapping … Experiments record raw dial readings, and the zero is an ordinary parameter'), §A ('.setup-json'), §H ('Between kits'), §N ('The run law walks any number of objects', 'The source is real'); specs/0050/.section-plan-jsonl section 26 (S8.2) brief; specs/0050/.spec-md §0.1 (Experiments.fs, Scene.fs, TableAndElementRotationView.fs rows), §3.11, §3.15, §4, §5 (Setup, SetupName, slots), §6 (Version rule), §7, §8, §9",
+      "requirement": "Every S8.2 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): every new type, public name, DU case and extension member is unique, every case name has two or more words, every *Error case ends in Err, no tuple repeats an element type, no bare primitive sits in a record or a free signature, a dial reading stays an Angle with no wrap or bijection, and no function of one of our types is free.",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 256,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 257,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 258,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 259,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 260,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 261,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 262,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 263,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 264,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 265,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 266,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s26-elev-list-empty).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "89bc1f3bb1ad5b0cfc91d4893f4c3bf3e2d416adcc8394fa7e89f19668754b4a"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s26-no-vstest).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-no-vstest",
+          "selection": "command",
+          "command_sha256": "0d114eb24d4145fc3d92caf7fcdbc015aa57225b58adf0d13e4d0f5bca88da85"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s26-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "65106484f83887d1f20bf4ff7092ea2b5fce4034a8de6caf6311391f670d5390"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s26-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "a24c9bc04fb42c157063002ef55a7988a211c299f511def95bbeac17985ea63e"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s26-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "043720e9956e76c4750d344de2234698134746498bd0dfcec4c65e9da04ea5d2"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s26-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "64de61180e95f7a94cf4753c3fb67d5935e505edf0d80a60094eeee357ad0a4d"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s26-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "f93e3f00cd4a429cd905b3f8d9a8557be05760e6f46e438577b022a593ad2ca1"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s26-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "d18cb601eab10ffad8f2767eb0d59ee3b11918d46bebf26c3eb149413aba89dd"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s26-no-seed-modules).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "2570c1c642cfa8a4fff41033150e949eaed6f5798759f4a801bda8a91bb13d13"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s26-no-test-db).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-no-test-db",
+          "selection": "command",
+          "command_sha256": "c30f1f28709dc4846f925be6c7ec14c073f219160ecde44168b23d56f1967ca4"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s26-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "da7d1280aa6fe51c9b74e9dc9804e6ebaf65df06c3cf69089a1e6371e0004103"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s26-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "91e6844fb97ccbc2e1c6f684f43b2c886ef3976fc01d944ae3055ec29637f6f0"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s26-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ccfec94dbb6949ccd51e29590b375f6b3272462eb6af85703b1ccdc6ad731dea"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, nothing under Berreman/ names recent.json: the kit history replaced the 16-entry list (001 §R, established by S5.1 step 169) (section invariant s26-no-recent-json).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-no-recent-json",
+          "selection": "command",
+          "command_sha256": "6e0a5851aabaeebface34e997027a482711285e62e720e034afe45c7a09ef22b"
+        }
+      ]
+    },
+    {
+      "id": "S82-INV-NO-MEASURED-ELEMENT-OF",
+      "source": "specs/0050/.section-plan-jsonl section 26 (S8.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S8.2 step, nothing under Berreman/ names measuredElementOf: captures are decided per object (001 §R, established by S8.1 step 254) (section invariant s26-no-measured-element-of).",
+      "checks": [
+        {
+          "step": 255,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        },
+        {
+          "step": 256,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        },
+        {
+          "step": 257,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        },
+        {
+          "step": 258,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        },
+        {
+          "step": 259,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        },
+        {
+          "step": 260,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        },
+        {
+          "step": 261,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        },
+        {
+          "step": 262,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        },
+        {
+          "step": 263,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        },
+        {
+          "step": 264,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        },
+        {
+          "step": 265,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        },
+        {
+          "step": 266,
+          "gate": "invariant-s26-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4b49431e439e9a94d82061c710de12cb89f5bb98bcd056fd9c07f8f0410577b1"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -30855,6 +32456,294 @@
         "S81-INV-T4-NO-OCPROJ",
         "S81-INV-NO-RECENT-JSON"
       ]
+    },
+    {
+      "step": 255,
+      "sha256": "20cd46df659fbcaa1945dede8394405dc1dbe1cff36920754fa884e5ef072e55",
+      "obligations": [
+        "S82-SETUP-IDENTITIES",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 256,
+      "sha256": "47072fbc47ae65267ebdd7242e52f79a91deeedd4f67cd5b866274f7aef6f93b",
+      "obligations": [
+        "S82-SETUP-SHAPE",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 257,
+      "sha256": "22b30bb86c38eb370b59f88d93475d5d57a3683f8c4ba65608ed2c09b590e693",
+      "obligations": [
+        "S82-SLOT-ROLES",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 258,
+      "sha256": "e84b93594f4cef92a4ec3f6cb7a74c8615090aaaf59a069e8bd796f2f3d8d0d2",
+      "obligations": [
+        "S82-SLOT-ASSIGNMENT",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 259,
+      "sha256": "51908f4a33f07254b871f6e568b6009394761f4cce58c7d3de20bb3887f7d89f",
+      "obligations": [
+        "S82-TABLE-SLOTS",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 260,
+      "sha256": "e0dfaaf3af950b5d50fc4de88c97f4e19230780bdc198b88539c5f0cd37dc136",
+      "obligations": [
+        "S82-SETUP-FILE",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 261,
+      "sha256": "bf25466058788b19ec1b64b6e88f0f7f16612782c8914dd99c4cf281c8aab6ba",
+      "obligations": [
+        "S82-EXPERIMENT-SETUP",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 262,
+      "sha256": "000524b9bda4de9b6decf48719c20b4489ad5668e38d7987be49dbe43b69c908",
+      "obligations": [
+        "S82-SAVE-SETUP",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 263,
+      "sha256": "e711be331b99e52d7790232225372c9e19d13e3f41a311b18b8044d9c3e13e0f",
+      "obligations": [
+        "S82-ASSIGN-SLOT",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 264,
+      "sha256": "821fdb7f4fa94a09bf2b158c3a7cab06de355fe937d34490077dd749ce7d59e3",
+      "obligations": [
+        "S82-SWAP-SLOT",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 265,
+      "sha256": "da1069a7548fc290e53742e0076d7210da7e3d76e208d03ee5888ff4222a9ce8",
+      "obligations": [
+        "S82-RUN-SLOT-ITEMS",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
+    },
+    {
+      "step": 266,
+      "sha256": "6b79f8d4e7956c6cbb50a5cc718dd91a273f858c7a516ffcdcdc25df2cde1179",
+      "obligations": [
+        "S82-SOURCE-SLOT",
+        "S82-BUILD",
+        "S82-ELEVATION",
+        "S82-INV-ELEV-LIST-EMPTY",
+        "S82-INV-NO-VSTEST",
+        "S82-INV-NO-KIT-KIT-JSON",
+        "S82-INV-NO-EPS-AXIS-EVALUATED",
+        "S82-INV-COMPLEXITY-MANDATORY",
+        "S82-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S82-INV-NO-SEEDING-SEAM",
+        "S82-INV-T1-NO-CODE-SEEDS",
+        "S82-INV-NO-SEED-MODULES",
+        "S82-INV-NO-TEST-DB",
+        "S82-INV-NO-VERSIONS-IN-USE",
+        "S82-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S82-INV-T4-NO-OCPROJ",
+        "S82-INV-NO-RECENT-JSON",
+        "S82-INV-NO-MEASURED-ELEMENT-OF"
+      ]
     }
   ],
   "behavior_seams": [
@@ -31952,6 +33841,66 @@
       "id": "s81-capture-host",
       "step": 254,
       "obligation": "S81-CAPTURE-HOST"
+    },
+    {
+      "id": "s82-setup-identities",
+      "step": 255,
+      "obligation": "S82-SETUP-IDENTITIES"
+    },
+    {
+      "id": "s82-setup-shape",
+      "step": 256,
+      "obligation": "S82-SETUP-SHAPE"
+    },
+    {
+      "id": "s82-slot-roles",
+      "step": 257,
+      "obligation": "S82-SLOT-ROLES"
+    },
+    {
+      "id": "s82-slot-assignment",
+      "step": 258,
+      "obligation": "S82-SLOT-ASSIGNMENT"
+    },
+    {
+      "id": "s82-table-slots",
+      "step": 259,
+      "obligation": "S82-TABLE-SLOTS"
+    },
+    {
+      "id": "s82-setup-file",
+      "step": 260,
+      "obligation": "S82-SETUP-FILE"
+    },
+    {
+      "id": "s82-experiment-setup",
+      "step": 261,
+      "obligation": "S82-EXPERIMENT-SETUP"
+    },
+    {
+      "id": "s82-save-setup",
+      "step": 262,
+      "obligation": "S82-SAVE-SETUP"
+    },
+    {
+      "id": "s82-assign-slot",
+      "step": 263,
+      "obligation": "S82-ASSIGN-SLOT"
+    },
+    {
+      "id": "s82-swap-slot",
+      "step": 264,
+      "obligation": "S82-SWAP-SLOT"
+    },
+    {
+      "id": "s82-run-slot-items",
+      "step": 265,
+      "obligation": "S82-RUN-SLOT-ITEMS"
+    },
+    {
+      "id": "s82-source-slot",
+      "step": 266,
+      "obligation": "S82-SOURCE-SLOT"
     }
   ],
   "temporal_checks": [],
@@ -32326,6 +34275,20 @@
       "paths": [
         "Berreman/OpticalConstructor/OpticalConstructor.Domain",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
+        "AGENTS.md"
+      ]
+    },
+    {
+      "from": 255,
+      "step": 266,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Controls",
+        "Berreman/OpticalConstructor/OpticalConstructor.TestWindows",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
         "AGENTS.md"
