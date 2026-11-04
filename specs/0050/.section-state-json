@@ -180,14 +180,14 @@
     {
       "name": "S9.2 -- Import profiles and the column-mapping wizard",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "07262a3",
       "spec_jsonl_lines": 312
     },
     {
       "name": "S9.3 -- One file, many experiments; exclusions, corrections, the Data step and the experiment matrix",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 328
     },
     {
       "name": "S9.4 -- The optics-mueller lab files move into the kit folder",

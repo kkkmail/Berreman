@@ -33758,6 +33758,2224 @@
           "command_sha256": "15a9704503b50964ff34940bc00e28eb0a63acb3cc6760d78672e41378fbf308"
         }
       ]
+    },
+    {
+      "id": "S93-EXCLUSION-CORRECTION-SHAPES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "Kit.fs gains MappedPointNumber (tryCreate, from 1), ExclusionReason (tryCreate, non-blank) and PointExclusion; MappedAttachment gains exclusions (point order, one per point) with withExclusion, withoutExclusion and tryFindExclusion. Experiments.fs gains CorrectionNote (tryCreate, non-blank) and SetupCorrection { previous; corrected; note }; Experiment gains corrections (oldest first), [] on commit of a new experiment and kept on an edit. experiment.schema.json (version 1) requires dataOpt.exclusions and corrections; copyExperimentsFrom keeps both; the AttachDataFile arm builds exclusions = []; every fixture follows with its assertions kept.",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 313,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 313,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-KEPT-POINTS-BADGE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "ImportProfiles.fs gains MappedPoints.keptBy (the points without the excluded numbers, the case kept). loadAndValidate validates readMapped's points kept by the attachment's exclusions. ExperimentDataBadge gains ExcludedPointsBadge of kept * excluded, text 'excluded points (<k> excluded, <n> validated)', answered by ofCheck for Ok points with exclusions; its caption is 'Loaded — <n> point(s) kept, <k> excluded'.",
+      "checks": [
+        {
+          "step": 314,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 314,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 314,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-POINT-EXCLUSION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "TARV gains ReviewedData { experimentId; points }, DataStepDraft { exclusionReason; correctionNote } (empty), the model's reviewedDataOpt and dataDraft, and the messages ReviewExperimentData (reads through readMapped, writes nothing), SetExclusionReason, ExcludePoint and IncludePoint (read-only guarded; blank reason, missing data, unread data and a point above the count refused typed; otherwise recorded through recordExperiment, the badge and the review refreshed, kitStatus told).",
+      "checks": [
+        {
+          "step": 315,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 315,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 315,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-SETUP-CORRECTION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "Experiments.fs gains Experiment.correctedTo (the new reference, the correction appended, everything else kept). TARV gains SetCorrectionNote and CorrectSetup (read-only guarded; a blank note, a reference the kit's setups cannot answer and the experiment's own reference refused typed; otherwise recorded through recordExperiment, the badge and the review refreshed, kitStatus 'Corrected <name>: <previous> → <corrected> (<note>).'). The lab file and the name never change.",
+      "checks": [
+        {
+          "step": 316,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 316,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 316,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-SPLIT-GROUPS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "ImportProfiles.fs gains MuellerExperimentLabel.rowKey and MappedPoints.pointKeys, which selectedBy reads. New Domain DataSplits.fs after ExperimentDataLoad.fs: SplitKeyColumn, ChosenImportProfile.splitKeyOpt (experiment, sample, column <n>, None), KeyedGroup { key; points } and MappedPoints.splitGroups (distinct keys in first-appearance order with counts; series and keyless mappings refused with MalformedDataFileErr).",
+      "checks": [
+        {
+          "step": 317,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S93-SPLIT-MATCHING",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "DataSplits.fs gains DataRowKey.nameText, DataSplitError (SplitKeyTextErr, SplitKeyNameErr, SplitKeySetupErr, SplitKeyTwiceErr) with describe, SplitSetupOffer, SplitGroupMatch (ExperimentForGroup, SetupOfferForGroup, GroupWithoutMatch), SplitGroup, DataSplit (matched, offered, unmatched), DataSplitParam and DataSplit.ofGroups: a key matches by name identity, then by the template's written name; otherwise its reading's items and angles make the setup over the table through the grid generator and the experiment through experimentNameAmong; every refusal is typed.",
+      "checks": [
+        {
+          "step": 318,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S93-SPLIT-MESSAGES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "TARV gains DataSplitState { file; profile; key; split; creating }, the model's dataSplitOpt and the messages SplitByColumn (read-only guarded; the profile resolved, its key column required, the picked file read, mapped and split, DataSplit.ofGroups over the kit's template, experiments, setups, items and the recorded table; nothing written), ToggleSplitOffer (offered groups only) and CancelDataSplit.",
+      "checks": [
+        {
+          "step": 319,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 319,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 319,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-MATCH-BY-TEMPLATE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "TARV gains MatchByTemplate (read-only guarded; no split, or ticked offers with a draft that cannot record, write nothing; otherwise the file attached once, each matched experiment given { attachment; profile; KeyedDataRows key; exclusions = [] } and recorded, each ticked offer's setup recorded when new and a new experiment of the draft's scan named by the offer appended with its keyed rows; the first failed write stops the run; the split cleared and kitStatus told).",
+      "checks": [
+        {
+          "step": 320,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 320,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 320,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-SPLIT-WIZARD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "ImportWizardView.fs gains ImportWizardTarget (AttachWizardTarget of ExperimentId | SplitWizardTarget); the request and the applied value carry target in place of experimentId; the view's heading and Attach caption name the target. ImportWizardApplied.messages answers AttachDataFile or SplitByColumn after SaveImportProfile. TARV gains OpenSplitWizard (read-only guarded, the shell's openImportWizard with SplitWizardTarget and Phone ROI CSV as the default).",
+      "checks": [
+        {
+          "step": 321,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 321,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 321,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-EXPERIMENT-MATRIX",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "New Domain ExperimentMatrices.fs after DataSplits.fs: MatrixObject, MatrixRowKey { sources; objects }, MatrixColumnKey { analyzers }, MatrixCell, ExperimentMatrix { rows; columns; cells; unplaced } with tryFindCell and ofExperiments (slots in light order: Prep labels, objects with turnAngle, analyzer labels; first-appearance order; an unresolved setup unplaced).",
+      "checks": [
+        {
+          "step": 322,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S93-DATA-STEP",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "ConstructorFlowStep gains DataFlowStep (caption Data, flowUiId flowDataStep) and stepsOf (Inverse: all; Main: without Data); ShowFlowStep DataFlowStep sets the step; switching to Main from it lands on Experiments. pickDataFile, attachDataFileButton and dataFileRow move from TARV to the new DataStepView.fs (after FlowStripView.fs) and the collection builder loses its Data files section; dataStepView holds the data-file rows and the Split a file by key verb (OpenSplitWizard). KitWindowView shows it on DataFlowStep; FlowStripView shows stepsOf the mode; UiIds gain flowDataStep, dataStepPanel and dataSplitFileButton.",
+      "checks": [
+        {
+          "step": 323,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 323,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 323,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-SPLIT-PANEL",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "DataStepView shows a pending split: dataSplitKeyColumn ('Split <leaf> by '<key>' through '<profile>''), one row per group (matched name, offer toggle with its setup and (new setup), unmatched reason), Apply split (MatchByTemplate) and Cancel (CancelDataSplit) in one row with a gap. UiIds gain dataSplitKeyColumn, dataSplitApplyButton and dataSplitCancelButton; ConstructorUiIdOfDomain gains DataRowKey.uiKey, dataSplitGroupRow, dataSplitOfferToggle and DataSplitError.caption. New DataStepTests.",
+      "checks": [
+        {
+          "step": 324,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 324,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 324,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-REVIEW-PANEL",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "ExperimentControls gains PointMark, PlottedPoint and pointsChartView (the inline chart's frame, dots for kept points, rings for excluded ones). ConstructorUiIdOfDomain gains MappedPointNumber.uiPosition, MappedPoints.pointCaptions and chartPoints, and the ids dataReviewButton, dataPointRow, dataExcludePointButton and dataIncludePointButton; UiIds gain dataReviewPanel, dataExclusionReasonField, dataPointsChart, dataPointDot and dataExcludedPointMark. DataStepView's rows gain Review; the review panel lists every point with Exclude / Include and draws the chart.",
+      "checks": [
+        {
+          "step": 325,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 325,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 325,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-CORRECTION-PANEL",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "The review panel gains the Setup block: the current reference, the audit note field (SetCorrectionNote), one Re-point choice per other kit setup sending CorrectSetup with the note, and the audit trail. UiIds gain dataCorrectionNoteField and dataCorrectionTrail; ConstructorUiIdOfDomain gains dataCorrectSetupChoice.",
+      "checks": [
+        {
+          "step": 326,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 326,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 326,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-MATRIX-VIEW",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "ConstructorUiIdOfDomain gains MatrixRowKey.caption, MatrixColumnKey.caption and experimentMatrixEntry; UiIds gain experimentMatrix. DataStepView opens with the matrix grid over ExperimentMatrix.ofExperiments: column captions, row captions, one entry per experiment '<name> · <badge>' sending ReviewExperimentData, and the unplaced line. ScrollExtentTests' Data step fact covers every panel.",
+      "checks": [
+        {
+          "step": 327,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 327,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 327,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-DATA-STEP-END-TO-END",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "KitWindowTests gains a ui-smoke end-to-end fact over a folder kit through kitWindowView: the Data step, SplitByColumn of a Phone ROI file, an offer ticked and Apply split pressed (the file attached once, a setup and an experiment created, the matched experiment mapped by its key), a matrix entry reviewed, a point excluded with its reason and a setup corrected with its note, each read back from the kit and the lab file unchanged. AGENTS.md's Main ribbon gotcha names the Data step, and the gotcha 'The Data step never edits a lab file' is added.",
+      "checks": [
+        {
+          "step": 328,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 328,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 328,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S93-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "Every S9.3 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error (no wildcard arm hides a new case of ExperimentDataBadge, SplitGroupMatch, DataSplitError, ImportWizardTarget, ConstructorFlowStep, PointMark or the window's messages), no package is added, and the new compile items (DataSplits.fs after ExperimentDataLoad.fs and ExperimentMatrices.fs after it, DataStepView.fs after FlowStripView.fs, DataSplitTests.fs, DataSplitModelTests.fs and ExperimentMatrixTests.fs at the end of the constructor suite, DataStepTests.fs after KitWindowTests.fs) carry no comment.",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 314,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 315,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 316,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 317,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 318,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 319,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 320,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 321,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 322,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 323,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 324,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 325,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 326,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 327,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 328,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S93-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §K ('One file → many experiments: split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles)'; 'Raw data is immutable; exclusions carry a reason and stay visible in plots, marked'; 'Corrections: re-point an experiment's setup after the fact (e.g. \"LR was at −45\"), with a mandatory audit note'; 'Observables: intensity, Ψ / Δ, full Mueller matrices'; 'Status badges: … excluded points …'), §E ('Lab files are read-only for the app. Exclusions, corrections and mappings live in the experiment file'), §O ('a left flow strip: Items → Setups → Experiments → Data → …'; 'the Experiments bay's \"Data files\" section moves into Data'; 'Experiment matrix view: rows source × objects × φ, columns analyzer, with a data badge per cell'; 'Data dialog: preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason'; 'Automation: … DataSplitKeyColumn …; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests'), §P (SplitByColumn, MatchByTemplate, ExcludePoint, CorrectSetup; the same messages back the buttons), §Q AT-1 ('Attach, split by experiment, match by the lab template … The LR correction and the excluded frame are applied as data'); specs/0050/.section-plan-jsonl section 31 (S9.3) brief; specs/0050/.spec-md §3.22, §4, §5, §6, §8, §9, §10; AGENTS.md 'Main ribbon'",
+      "requirement": "Every S9.3 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): every new type, public name, DU case and extension member is unique; every case name has two or more words; point numbers, reasons, notes and key columns are single-case unions; every record field is one of our types; a key becomes a name through DataRowKey.nameText and a label a key through MuellerExperimentLabel.rowKey, never by a call-site re-wrap; the *Error cases end in Err; and ids derived from Domain values are members in ConstructorUiIdOfDomain.fs.",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 314,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 315,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 316,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 317,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 318,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 319,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 320,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 321,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 322,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 323,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 324,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 325,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 326,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 327,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 328,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s31-elev-list-empty).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "1a1723c1f49e88f1b1db50ae14801636492362d0f82622aedaa02871d7aafc61"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s31-no-vstest).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-no-vstest",
+          "selection": "command",
+          "command_sha256": "0edb7928b8547ec44d8d6ce86e71df161270d716614295104253b9be59494304"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s31-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "87fb38675b4633d2902bd23c56385b0d1fc523bf82d29db751f12943e96b5ecc"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s31-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "08c341eeabdc0e695604eef9545d48532710624ac5541977681659e9a2cb0808"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s31-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "a02d5ff904887de1a358837a1636b5bcf2355dd332d292fec7907829acca6fbf"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s31-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "4aeb55dede1372442ef9ef0f7affe3985b223199f39cdf64359466d8b40a739d"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s31-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "6a564c65629190270f4f5215b617d53f498f6213b4604af059fb193cfbec8491"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s31-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "b32769e2a763168c0cbd5e663712f59ba17386480d7f510fcfac93ef25dbf846"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s31-no-seed-modules).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "19d67859368aed8aa4b49b1bdd729dc0a1eefbb8803132748e9822a0e779ce26"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s31-no-test-db).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-no-test-db",
+          "selection": "command",
+          "command_sha256": "1dfff7327790f7efe531b6dd474f4b01c579c56000fba588c571db3ea139092b"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s31-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "64d5a90eb578b05526cdd0d9e0547116a7a4d51778faa870789f70177af1c88c"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s31-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "d73c9c3ad4514f486d6b5f9905b433de78de17609f949b0514212e4c4f653d71"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s31-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "4c4b2b64a54db5bb75244dac34014c0d72aaf0eb246a3d92d749a69392e4709b"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/ names recent.json: the kit history replaced the 16-entry list (001 §R, established by S5.1 step 169) (section invariant s31-no-recent-json).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-no-recent-json",
+          "selection": "command",
+          "command_sha256": "738eac35d6102bd5b529d362c2b9fd99319a23334b01989b0af4d60a23f06774"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-NO-MEASURED-ELEMENT-OF",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/ names measuredElementOf: captures are decided per object (001 §R, established by S8.1 step 254) (section invariant s31-no-measured-element-of).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "457a5a97d795f10086a22b8b56cb835926c302dceacdf115e23099238af37cef"
+        }
+      ]
+    },
+    {
+      "id": "S93-INV-T8-NO-EXPERIMENT-REGEX",
+      "source": "specs/0050/.section-plan-jsonl section 31 (S9.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S9.3 step, nothing under Berreman/ names experimentRegex: the naming template replaced the label regex (001 §T 'From section 8', established by S8.3 step 270) (section invariant s31-t8-no-experiment-regex).",
+      "checks": [
+        {
+          "step": 313,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 314,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 315,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 316,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 317,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 318,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 319,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 320,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 321,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 322,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 323,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 324,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 325,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 326,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 327,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        },
+        {
+          "step": 328,
+          "gate": "invariant-s31-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "4b368d1fd799b1157f6d89d787c6b204dfe624372b629d9f64661573553f2050"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -40205,6 +42423,406 @@
         "S92-INV-NO-MEASURED-ELEMENT-OF",
         "S92-INV-T8-NO-EXPERIMENT-REGEX"
       ]
+    },
+    {
+      "step": 313,
+      "sha256": "80431913b47c9dd361462f55b73042a87880c98b4d6110dd8bbdc3e33584e90a",
+      "obligations": [
+        "S93-EXCLUSION-CORRECTION-SHAPES",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 314,
+      "sha256": "e46f8931daba0276675f202671b249a1cfe0fc2245b3bd679e6e445fa5975e65",
+      "obligations": [
+        "S93-KEPT-POINTS-BADGE",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 315,
+      "sha256": "34ab6e8490cb27a1299828c28a3d986f178b42e5641091a61d76d8244db95f24",
+      "obligations": [
+        "S93-POINT-EXCLUSION",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 316,
+      "sha256": "2a48d6410f7173ac522c845c962fde8d038d97957ab5d1ba5a0275e02e2d0877",
+      "obligations": [
+        "S93-SETUP-CORRECTION",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 317,
+      "sha256": "6fd578789d20f216c9466c0099c82edd4b2d9fb3ddb82c98e5d1bfbd2578de04",
+      "obligations": [
+        "S93-SPLIT-GROUPS",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 318,
+      "sha256": "8bd0327a3ed8edc9046f65d2926650592d3ee3e2b55039bcfa2e5eb5e2477aac",
+      "obligations": [
+        "S93-SPLIT-MATCHING",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 319,
+      "sha256": "70b914ba5f7408a3bb88bee52601da1703af6d7a7dc902213296d1fe840beead",
+      "obligations": [
+        "S93-SPLIT-MESSAGES",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 320,
+      "sha256": "a676af16b1af88c07e75a89a8355cde0fad4848351c675eaa49150276b70c8e5",
+      "obligations": [
+        "S93-MATCH-BY-TEMPLATE",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 321,
+      "sha256": "62db17fe91d7c1e00085e5f101637f1632ad639ad9b98f3936cf3bab514f13e0",
+      "obligations": [
+        "S93-SPLIT-WIZARD",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 322,
+      "sha256": "e5f4dc1e6b0b8f3be6203fb470350dbb38e1e0c01d5e643cbfbfa502da896e9d",
+      "obligations": [
+        "S93-EXPERIMENT-MATRIX",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 323,
+      "sha256": "98b4d09e77377cf9a8a840f597fa6b4a05c257e4ad620befc44abdc6539b50c2",
+      "obligations": [
+        "S93-DATA-STEP",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 324,
+      "sha256": "9da3faba2a1c9158a68e9e5d652d9206d88453d1595af281eeef796bef20d6f7",
+      "obligations": [
+        "S93-SPLIT-PANEL",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 325,
+      "sha256": "7ca89c69f8e59eaef7481db4435aae9563fc8783db695ba23244fff20f48f99b",
+      "obligations": [
+        "S93-REVIEW-PANEL",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 326,
+      "sha256": "f6447a3949578c9709ad088d4c4d4b4b0f4304e3f06e8df39f37a85fdefb17d1",
+      "obligations": [
+        "S93-CORRECTION-PANEL",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 327,
+      "sha256": "862d88cf2dce3fc7b2a18e023c94018c338d1a975109866abadada6b0f5ae378",
+      "obligations": [
+        "S93-MATRIX-VIEW",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
+    },
+    {
+      "step": 328,
+      "sha256": "a36cf35e360c546d13e84f2588bf0ad7a2417b541a412a2eb05c2ae930634289",
+      "obligations": [
+        "S93-DATA-STEP-END-TO-END",
+        "S93-BUILD",
+        "S93-ELEVATION",
+        "S93-INV-ELEV-LIST-EMPTY",
+        "S93-INV-NO-VSTEST",
+        "S93-INV-NO-KIT-KIT-JSON",
+        "S93-INV-NO-EPS-AXIS-EVALUATED",
+        "S93-INV-COMPLEXITY-MANDATORY",
+        "S93-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S93-INV-NO-SEEDING-SEAM",
+        "S93-INV-T1-NO-CODE-SEEDS",
+        "S93-INV-NO-SEED-MODULES",
+        "S93-INV-NO-TEST-DB",
+        "S93-INV-NO-VERSIONS-IN-USE",
+        "S93-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S93-INV-T4-NO-OCPROJ",
+        "S93-INV-NO-RECENT-JSON",
+        "S93-INV-NO-MEASURED-ELEMENT-OF",
+        "S93-INV-T8-NO-EXPERIMENT-REGEX"
+      ]
     }
   ],
   "behavior_seams": [
@@ -41592,6 +44210,86 @@
       "id": "s92-wizard-wired",
       "step": 312,
       "obligation": "S92-WIZARD-WIRED"
+    },
+    {
+      "id": "s93-exclusion-correction-shapes",
+      "step": 313,
+      "obligation": "S93-EXCLUSION-CORRECTION-SHAPES"
+    },
+    {
+      "id": "s93-kept-points-badge",
+      "step": 314,
+      "obligation": "S93-KEPT-POINTS-BADGE"
+    },
+    {
+      "id": "s93-point-exclusion",
+      "step": 315,
+      "obligation": "S93-POINT-EXCLUSION"
+    },
+    {
+      "id": "s93-setup-correction",
+      "step": 316,
+      "obligation": "S93-SETUP-CORRECTION"
+    },
+    {
+      "id": "s93-split-groups",
+      "step": 317,
+      "obligation": "S93-SPLIT-GROUPS"
+    },
+    {
+      "id": "s93-split-matching",
+      "step": 318,
+      "obligation": "S93-SPLIT-MATCHING"
+    },
+    {
+      "id": "s93-split-messages",
+      "step": 319,
+      "obligation": "S93-SPLIT-MESSAGES"
+    },
+    {
+      "id": "s93-match-by-template",
+      "step": 320,
+      "obligation": "S93-MATCH-BY-TEMPLATE"
+    },
+    {
+      "id": "s93-split-wizard",
+      "step": 321,
+      "obligation": "S93-SPLIT-WIZARD"
+    },
+    {
+      "id": "s93-experiment-matrix",
+      "step": 322,
+      "obligation": "S93-EXPERIMENT-MATRIX"
+    },
+    {
+      "id": "s93-data-step",
+      "step": 323,
+      "obligation": "S93-DATA-STEP"
+    },
+    {
+      "id": "s93-split-panel",
+      "step": 324,
+      "obligation": "S93-SPLIT-PANEL"
+    },
+    {
+      "id": "s93-review-panel",
+      "step": 325,
+      "obligation": "S93-REVIEW-PANEL"
+    },
+    {
+      "id": "s93-correction-panel",
+      "step": 326,
+      "obligation": "S93-CORRECTION-PANEL"
+    },
+    {
+      "id": "s93-matrix-view",
+      "step": 327,
+      "obligation": "S93-MATRIX-VIEW"
+    },
+    {
+      "id": "s93-data-step-end-to-end",
+      "step": 328,
+      "obligation": "S93-DATA-STEP-END-TO-END"
     }
   ],
   "temporal_checks": [],
@@ -42033,6 +44731,19 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Ui",
         "Berreman/OpticalConstructor/OpticalConstructor.Controls",
         "Berreman/OpticalConstructor/OpticalConstructor.App",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
+        "AGENTS.md"
+      ]
+    },
+    {
+      "from": 313,
+      "step": 328,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Controls",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
         "AGENTS.md"
