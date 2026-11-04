@@ -228,14 +228,14 @@
     {
       "name": "S11.3 -- Engines, staged and joint fits, and append-only fit runs",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "5817381",
       "spec_jsonl_lines": 393
     },
     {
       "name": "S11.4 -- Fit results: uncertainty, correlation, realizability, product check, profile likelihood",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 404
     },
     {
       "name": "S11.5 -- Publishing, the study view; the solver hand-off stub goes",
