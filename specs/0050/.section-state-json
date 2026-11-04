@@ -192,14 +192,14 @@
     {
       "name": "S9.4 -- The optics-mueller lab files move into the kit folder",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "7af92b7",
       "spec_jsonl_lines": 331
     },
     {
       "name": "S10.1 -- The bench noise model and the fit harness move into Optimization",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 343
     },
     {
       "name": "S10.2 -- BerremanTestSupport: the shared ground truth and designs",
