@@ -54338,13 +54338,19 @@
     {
       "id": "S131-PULLED-ROWS",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: 1. refractiveindex.info (CC0): an offline snapshot of the GitHub database plus \"Update snapshot\". The existing YAML importer (MaterialImport) is REUSED as the record parser'; 'A pulled record becomes a user material version in the database, with provenance: source, record path, snapshot date or commit, licence, citation'; 'Updating a source mints a NEW version when the record changed and never mutates one'), §P ('MaterialSourceProxy (online sources)'; 'every proxy has an in-memory stub of the same shape'; every user step is a semantic message), §C ('pulled-source records'; 'Versions are immutable'), §B ('Identity is GUID + version + hash'; 'Licence attribution'), §G ('Every path is overridable in appsettings.json'), §O (every new control a uniquely named static member of ConstructorUiId; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests); specs/0050/.section-plan-jsonl section 43 (S13.1) brief; specs/0050/.spec-md §3.9, §4, §5, §6, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
-      "requirement": "CatalogueImportProxy.pulledRecordsOf answers every held version pulled from the named source (record text, then entry GUID text, then version) over the in-memory double and createInDatabase; LibraryEntryEnvelope.pulledSourceRows derives one LibraryPulledSourceRow from a SourcePullProvenance and none otherwise (a fork included); stageVersion keeps a version's pulled-source rows exactly its envelope's; the database model is unchanged.",
+      "requirement": "CatalogueImportProxy.pulledRecordsOf answers every held version pulled from the named source (record text, then entry GUID text, then version) over the in-memory double and createInDatabase; LibraryEntryEnvelope.pulledSourceRows derives one LibraryPulledSourceRow from a SourcePullProvenance and none otherwise (a fork included); stageVersion keeps a version's pulled-source rows exactly its envelope's; the database model is unchanged. After this import change, AT-1 and AT-2 MUST pass under kit-acceptance over OpticalConstructor.Ui.Tests.KitAcceptanceTests with their expectations and tolerances unchanged (specs/0050/.spec-md §9).",
       "checks": [
         {
           "step": 442,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 442,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
         }
       ]
     },
@@ -54364,13 +54370,19 @@
     {
       "id": "S131-PULLS",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: 1. refractiveindex.info (CC0): an offline snapshot of the GitHub database plus \"Update snapshot\". The existing YAML importer (MaterialImport) is REUSED as the record parser'; 'A pulled record becomes a user material version in the database, with provenance: source, record path, snapshot date or commit, licence, citation'; 'Updating a source mints a NEW version when the record changed and never mutates one'), §P ('MaterialSourceProxy (online sources)'; 'every proxy has an in-memory stub of the same shape'; every user step is a semantic message), §C ('pulled-source records'; 'Versions are immutable'), §B ('Identity is GUID + version + hash'; 'Licence attribution'), §G ('Every path is overridable in appsettings.json'), §O (every new control a uniquely named static member of ConstructorUiId; every new window calls WindowFit.keepOnScreen and joins ScrollExtentTests); specs/0050/.section-plan-jsonl section 43 (S13.1) brief; specs/0050/.spec-md §3.9, §4, §5, §6, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
-      "requirement": "CatalogueImportContext carries materialSources (create sets []); MaterialSourcePulls.fs (after CatalogueImport.fs) declares MaterialSourcePullError, SourcePullChange, SourcePullResult, SourceRefreshInfo and SourceRefresh and the members pullRecord (a new record: ofMaterialEntry at version 1 under SourcePullProvenance and a minted id, sealed and put with MoveLatestVersion; a held record: refreshed), refreshPulls (each entry's newest pulled row re-fetched; a retired entry is left out; an equal record hash or an absent record writes nothing; a changed hash mints latest.next with the fetched physics, nothing mutated; a pull of a record held only by retired entries is refused) and updateSourceSnapshot (update, then refresh; a cancelled update refreshes nothing), all through the import seam's sealEntry and putEntryVersion.",
+      "requirement": "CatalogueImportContext carries materialSources (create sets []); MaterialSourcePulls.fs (after CatalogueImport.fs) declares MaterialSourcePullError, SourcePullChange, SourcePullResult, SourceRefreshInfo and SourceRefresh and the members pullRecord (a new record: ofMaterialEntry at version 1 under SourcePullProvenance and a minted id, sealed and put with MoveLatestVersion; a held record: refreshed), refreshPulls (each entry's newest pulled row re-fetched; a retired entry is left out; an equal record hash or an absent record writes nothing; a changed hash mints latest.next with the fetched physics, nothing mutated; a pull of a record held only by retired entries is refused) and updateSourceSnapshot (update, then refresh; a cancelled update refreshes nothing), all through the import seam's sealEntry and putEntryVersion. After this import change, AT-1 and AT-2 MUST pass under kit-acceptance over OpticalConstructor.Ui.Tests.KitAcceptanceTests with their expectations and tolerances unchanged (specs/0050/.spec-md §9).",
       "checks": [
         {
           "step": 444,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 444,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
         }
       ]
     },
@@ -56542,13 +56554,19 @@
     {
       "id": "S132-AGF-IMPORT",
       "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
-      "requirement": "CatalogueImport gains GlassCatalogueRead and CatalogueImportContext.readGlassCatalogue (Storage create reads the bytes, hashes them, imports through GlassCatalogueText.importGlasses, refusals DroppedFileRefusedErr); decideDroppedFiles reads a .agf file's glasses as sealed version-1 envelopes under FileImportProvenance and minted ids, decided under DroppedFileOrigin with the existing rules, writing nothing; a repeat drop collides by name; contract facts run over both stores.",
+      "requirement": "CatalogueImport gains GlassCatalogueRead and CatalogueImportContext.readGlassCatalogue (Storage create reads the bytes, hashes them, imports through GlassCatalogueText.importGlasses, refusals DroppedFileRefusedErr); decideDroppedFiles reads a .agf file's glasses as sealed version-1 envelopes under FileImportProvenance and minted ids, decided under DroppedFileOrigin with the existing rules, writing nothing; a repeat drop collides by name; contract facts run over both stores. After this import change, AT-1 and AT-2 MUST pass under kit-acceptance over OpticalConstructor.Ui.Tests.KitAcceptanceTests with their expectations and tolerances unchanged (specs/0050/.spec-md §9).",
       "checks": [
         {
           "step": 463,
           "gate": "constructor-unit-tests",
           "selection": "all_discovered",
           "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 463,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
         }
       ]
     },
@@ -74785,7 +74803,7 @@
     },
     {
       "step": 442,
-      "sha256": "71c90897c89b772dc26f67c6e4c155fced33cb8010d24e5d9a13df02c98f85ee",
+      "sha256": "a744807dcfbc281cbc563ecbc46caca24989e326ac9b67ce6e9d24035e68a810",
       "obligations": [
         "S131-PULLED-ROWS",
         "S131-BUILD",
@@ -74845,7 +74863,7 @@
     },
     {
       "step": 444,
-      "sha256": "748aed8a4dd5e4f89a109b669e091270778bc1e7284104edbefa50c149a1869a",
+      "sha256": "290646a2a5c9b1dbe202e13fe0e7b592af5afd9c470c3926f7076db932ddd677",
       "obligations": [
         "S131-PULLS",
         "S131-BUILD",
@@ -75417,7 +75435,7 @@
     },
     {
       "step": 463,
-      "sha256": "a5cfbfe89d51926cc1b7a9574ac359cd34a60cf3fe86851d9d2ccb4088873ac2",
+      "sha256": "1333c6512a6a89e0d4138bddc46f1d5a710fd11f6887fb54d711e47156900bdc",
       "obligations": [
         "S132-AGF-IMPORT",
         "S132-BUILD",
