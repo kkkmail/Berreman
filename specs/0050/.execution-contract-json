@@ -62937,6 +62937,592 @@
           "command_sha256": "ba53f91c441c16ce709c6e38595174536ed13bfda600c3daa9831f0582c88038"
         }
       ]
+    },
+    {
+      "id": "CLOSE-READONLY-FIXTURE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §V ('Done when'), §R ('What is removed'), §F ('Both Launcher buttons, Main and Inverse, open the start screen'), §G ('Every path is overridable in appsettings.json; a Launcher Data locations panel shows them'; 'Tests: test kits and databases live under the test run's output directory ... The two committed reference kits ... are read-only to tests'), §O (the Launcher, the flow strip, the Experiments bay's Data files moved into Data), §Q ('Open: the test then opens the COMMITTED kit read-only'); specs/0050/.section-plan-jsonl section 47 (Close) brief; specs/0050/.spec-md §0, §3.9, §3.10, §3.12, §3.21, §4, §9 'Done when'; AGENTS.md ('Reuse, never copy', 'Comments: short, precise, useful', 'Wait for deterministic conditions', test data)",
+      "requirement": "OpticalConstructor.Ui.Tests/TestAppScope.fs declares the one openCommittedReadOnly (owner : FolderName) (kit : CommittedKit) and assertCommittedUnchanged, moved from KitAcceptanceTests with their bodies unchanged but for the owner parameter, together with the recording's type and every private helper only they call (a helper the AT builds also call moves too and the builds call it from TestAppScope); KitAcceptanceTests' two committed-kit facts (steps 429, 439) call them from TestAppScope with every assertion kept and the module declares neither, so a committed kit's read-only open exists once; kit-acceptance over KitAcceptanceTests and ui-smoke pass with their counts unchanged.",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
+        },
+        {
+          "step": 493,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-WIRE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §V ('Done when'), §R ('What is removed'), §F ('Both Launcher buttons, Main and Inverse, open the start screen'), §G ('Every path is overridable in appsettings.json; a Launcher Data locations panel shows them'; 'Tests: test kits and databases live under the test run's output directory ... The two committed reference kits ... are read-only to tests'), §O (the Launcher, the flow strip, the Experiments bay's Data files moved into Data), §Q ('Open: the test then opens the COMMITTED kit read-only'); specs/0050/.section-plan-jsonl section 47 (Close) brief; specs/0050/.spec-md §0, §3.9, §3.10, §3.12, §3.21, §4, §9 'Done when'; AGENTS.md ('Reuse, never copy', 'Comments: short, precise, useful', 'Wait for deterministic conditions', test data)",
+      "requirement": "Program.fs and AppContext.create keep composing the SQLite library over the configured DataLocations, the catalogue import of every start, the start screen behind Main and Inverse, the kit window with its mode's flow-strip steps and the Data locations window behind the Launcher's footer link, with no code change; Program.fs's file doc first paragraph, Startup.workbenchSettings' and Startup.context's docs and AppContext.fs's file doc state that composition in at most four (file doc) or three lines citing spec 0050 Close, no doc in the two files naming in-memory or re-seeded stores, an experiment collection, a scene store or a deleted STORE_XDUO seam; AGENTS.md states the test locations (Build & test), the project layout (Domain and Storage notes, BerremanTestSupport, Catalogue/Builtin, OpticalConstructor.Database, data/), three gotchas after 'The Main scene's Library is LIVE' (the library is data in the SQLite database; everything else lives in a kit folder with its flat layout; Main and Inverse open the kit start screen and the footer opens Data locations) and the flow strip in the 'Main ribbon' note; WireUiFinalCompositionTests proves under ui-smoke that the app composed as Startup composes it (a SQLite library file under the test output, the start-up import run) goes from the Launcher through the start screen to a kit under the test output, shows every flow-strip step of the Inverse and the Main window, releases the kit on Close kit and opens Data locations over the configured locations, and that each committed kit opens read-only from the start screen, shows every Inverse flow-strip step and leaves data/ unchanged; ui-smoke rises by 3 and constructor-unit-tests passes whole.",
+      "checks": [
+        {
+          "step": 494,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 494,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-REMOVALS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §V ('Done when'), §R ('What is removed'), §F ('Both Launcher buttons, Main and Inverse, open the start screen'), §G ('Every path is overridable in appsettings.json; a Launcher Data locations panel shows them'; 'Tests: test kits and databases live under the test run's output directory ... The two committed reference kits ... are read-only to tests'), §O (the Launcher, the flow strip, the Experiments bay's Data files moved into Data), §Q ('Open: the test then opens the COMMITTED kit read-only'); specs/0050/.section-plan-jsonl section 47 (Close) brief; specs/0050/.spec-md §0, §3.9, §3.10, §3.12, §3.21, §4, §9 'Done when'; AGENTS.md ('Reuse, never copy', 'Comments: short, precise, useful', 'Wait for deterministic conditions', test data)",
+      "requirement": "At the final step the 001 §R removals are gone: git grep -n -i -F \"ocproj\" -- Berreman/ and git grep -n -F -e SceneProxy -e ExperimentCollectionProxy -e recent.json -e seedAll -e TestDbContext -e SolverHandoffView -e MuellerDataSet -e MuellerDataProxy -e Data/MuellerMatrix -e experimentRegex -e measuredElementOf -- Berreman/ find nothing; the section invariants that hold each of those names out of the tree pass at that step.",
+      "checks": [
+        {
+          "step": 494,
+          "gate": "invariant-s47-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "2a638cc8f8020acc1fb8376f0795fb50e307a9c64d90bd42d7037d4609a12dd1"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4895ec251dde0eed042f04e7abf7a9871b03718eeba4ca17198ee8d4c53ac1a6"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d17dc778b9fb97b6f5072aec59d3385999b7dc49d206758bb8e3c8699ac78611"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "9c1ebdc30c298f2b7582fdd71b386ff5ac30f809e7e5d7078986a38ee1b617ac"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-test-db",
+          "selection": "command",
+          "command_sha256": "25a51b3b13de806804db4d2d3ddfbe9110001ee0e9d6e2257da2d8002b5d5959"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "bac19449bcde4f0f71989a2eccc22c2248608677d9832b9829942245cc9c618c"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "5133fd78a9f5828e4ba45707e36caf0d27fdbd410dd6260ff4af59931bb0b0d6"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "e2d91b0563650c96cedc472f933e3878fe923aae0e2446b72f60bd685db1fa26"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "a42f23bfc2b1b7a7ce96f89e8ebbc8822e7e2dd24783edfb5bbbf31ddc1f0a75"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "d23b0de2aeebb0d13fc2932df4adf3264a9e4bd6ea7b415e68ea5be1a0a308bc"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "d783dc7e8e1a03e6899fe0ac0f3c939c603b1a512469c5886e86abdafa416d10"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-WHOLE-TREE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §V ('Done when'), §R ('What is removed'), §F ('Both Launcher buttons, Main and Inverse, open the start screen'), §G ('Every path is overridable in appsettings.json; a Launcher Data locations panel shows them'; 'Tests: test kits and databases live under the test run's output directory ... The two committed reference kits ... are read-only to tests'), §O (the Launcher, the flow strip, the Experiments bay's Data files moved into Data), §Q ('Open: the test then opens the COMMITTED kit read-only'); specs/0050/.section-plan-jsonl section 47 (Close) brief; specs/0050/.spec-md §0, §3.9, §3.10, §3.12, §3.21, §4, §9 'Done when'; AGENTS.md ('Reuse, never copy', 'Comments: short, precise, useful', 'Wait for deterministic conditions', test data)",
+      "requirement": "At the final step every suite runs whole and passes, proving 001 §V: unit-tests (BerremanTests, MeasurementPlannerTests' §M facts included) with BerremanTests' numbers unchanged and its count not below its baseline; kit-acceptance (AT-1 and AT-2, the two committed kits equal to their builds, their read-only runs and their Send round trips); and ui-tests.",
+      "checks": [
+        {
+          "step": 494,
+          "gate": "unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        },
+        {
+          "step": 494,
+          "gate": "kit-acceptance",
+          "selection": "all_discovered",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
+        },
+        {
+          "step": 494,
+          "gate": "ui-tests",
+          "selection": "all_discovered",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §V ('Done when'), §R ('What is removed'), §F ('Both Launcher buttons, Main and Inverse, open the start screen'), §G ('Every path is overridable in appsettings.json; a Launcher Data locations panel shows them'; 'Tests: test kits and databases live under the test run's output directory ... The two committed reference kits ... are read-only to tests'), §O (the Launcher, the flow strip, the Experiments bay's Data files moved into Data), §Q ('Open: the test then opens the COMMITTED kit read-only'); specs/0050/.section-plan-jsonl section 47 (Close) brief; specs/0050/.spec-md §0, §3.9, §3.10, §3.12, §3.21, §4, §9 'Done when'; AGENTS.md ('Reuse, never copy', 'Comments: short, precise, useful', 'Wait for deterministic conditions', test data)",
+      "requirement": "Every Close step leaves Berreman.slnx building in Release x64 with zero warnings from our code, FS0025 an error; no project, package or compile-list entry is added or removed, and no project-file comment is added.",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 494,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §V ('Done when'), §R ('What is removed'), §F ('Both Launcher buttons, Main and Inverse, open the start screen'), §G ('Every path is overridable in appsettings.json; a Launcher Data locations panel shows them'; 'Tests: test kits and databases live under the test run's output directory ... The two committed reference kits ... are read-only to tests'), §O (the Launcher, the flow strip, the Experiments bay's Data files moved into Data), §Q ('Open: the test then opens the COMMITTED kit read-only'); specs/0050/.section-plan-jsonl section 47 (Close) brief; specs/0050/.spec-md §0, §3.9, §3.10, §3.12, §3.21, §4, §9 'Done when'; AGENTS.md ('Reuse, never copy', 'Comments: short, precise, useful', 'Wait for deterministic conditions', test data)",
+      "requirement": "Every Close step leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command), nothing under Elevation/ and nothing in .elevation-analyzers.json edited; the final step changes only docs in product code, so it adds no signature, type or name.",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 494,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-ELEVATION-FULL",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §V ('Done when'), §R ('What is removed'), §F ('Both Launcher buttons, Main and Inverse, open the start screen'), §G ('Every path is overridable in appsettings.json; a Launcher Data locations panel shows them'; 'Tests: test kits and databases live under the test run's output directory ... The two committed reference kits ... are read-only to tests'), §O (the Launcher, the flow strip, the Experiments bay's Data files moved into Data), §Q ('Open: the test then opens the COMMITTED kit read-only'); specs/0050/.section-plan-jsonl section 47 (Close) brief; specs/0050/.spec-md §0, §3.9, §3.10, §3.12, §3.21, §4, §9 'Done when'; AGENTS.md ('Reuse, never copy', 'Comments: short, precise, useful', 'Wait for deterministic conditions', test data)",
+      "requirement": "At the final step elevation-full runs the analyzers over every in-scope project of Berreman.slnx and passes against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): the whole tree is ELEV-clean.",
+      "checks": [
+        {
+          "step": 494,
+          "gate": "elevation-full",
+          "selection": "command",
+          "command_sha256": "67bbdc4cedb17dd2a68f30d41d6801d44184e7fcdff875cc7071279653ca7946"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s47-elev-list-empty).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e64cffc9fb2c8dfe2fc5e7dbf907ab8c22b7ae151d5304e6407f8758573a2c30"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e64cffc9fb2c8dfe2fc5e7dbf907ab8c22b7ae151d5304e6407f8758573a2c30"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s47-no-vstest).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-vstest",
+          "selection": "command",
+          "command_sha256": "48b32565b9cc5e25d02655aba58dc694536720d7e7a6eed73499c10cf4d5316b"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-vstest",
+          "selection": "command",
+          "command_sha256": "48b32565b9cc5e25d02655aba58dc694536720d7e7a6eed73499c10cf4d5316b"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s47-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "23c68af263496cf7ad46f4a38a6c5ce1b36844aa6538f1ad614a996a1dcd8eb6"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "23c68af263496cf7ad46f4a38a6c5ce1b36844aa6538f1ad614a996a1dcd8eb6"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s47-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "f02585edc431db15592bcea33219de44496eff12e5cc2625726f09fe4d1314c9"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "f02585edc431db15592bcea33219de44496eff12e5cc2625726f09fe4d1314c9"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s47-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "270d7cf5a920167fca37f66078283a46b4e98f270c5d8680c76b22a0fd52ffeb"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "270d7cf5a920167fca37f66078283a46b4e98f270c5d8680c76b22a0fd52ffeb"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s47-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ec6d015ab95de411f4e87bc44a3e6556605d120fa42d65de47085f4cb363306d"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "ec6d015ab95de411f4e87bc44a3e6556605d120fa42d65de47085f4cb363306d"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s47-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "9c1ebdc30c298f2b7582fdd71b386ff5ac30f809e7e5d7078986a38ee1b617ac"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "9c1ebdc30c298f2b7582fdd71b386ff5ac30f809e7e5d7078986a38ee1b617ac"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s47-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "bc604c3e90777fa50e2dcc0a6f2a58a2473e3587630c6c1080ee6e86d505a145"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "bc604c3e90777fa50e2dcc0a6f2a58a2473e3587630c6c1080ee6e86d505a145"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s47-no-seed-modules).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "7f0db965ff1ed4bee1023c5c1666988256084b64316aea2ccb3d96490904a5e1"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "7f0db965ff1ed4bee1023c5c1666988256084b64316aea2ccb3d96490904a5e1"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s47-no-test-db).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-test-db",
+          "selection": "command",
+          "command_sha256": "25a51b3b13de806804db4d2d3ddfbe9110001ee0e9d6e2257da2d8002b5d5959"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-test-db",
+          "selection": "command",
+          "command_sha256": "25a51b3b13de806804db4d2d3ddfbe9110001ee0e9d6e2257da2d8002b5d5959"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s47-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "ea57e6779a15eca9ec41df1376abc4b0053cb3a0a89180e7825f037c8446767a"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "ea57e6779a15eca9ec41df1376abc4b0053cb3a0a89180e7825f037c8446767a"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s47-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4895ec251dde0eed042f04e7abf7a9871b03718eeba4ca17198ee8d4c53ac1a6"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4895ec251dde0eed042f04e7abf7a9871b03718eeba4ca17198ee8d4c53ac1a6"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s47-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "2a638cc8f8020acc1fb8376f0795fb50e307a9c64d90bd42d7037d4609a12dd1"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "2a638cc8f8020acc1fb8376f0795fb50e307a9c64d90bd42d7037d4609a12dd1"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names recent.json (001 §R, established by S5.1 step 169) (section invariant s47-no-recent-json).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d17dc778b9fb97b6f5072aec59d3385999b7dc49d206758bb8e3c8699ac78611"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d17dc778b9fb97b6f5072aec59d3385999b7dc49d206758bb8e3c8699ac78611"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-MEASURED-ELEMENT-OF",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names measuredElementOf (001 §R, established by S8.1 step 254) (section invariant s47-no-measured-element-of).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "d783dc7e8e1a03e6899fe0ac0f3c939c603b1a512469c5886e86abdafa416d10"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "d783dc7e8e1a03e6899fe0ac0f3c939c603b1a512469c5886e86abdafa416d10"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-T8-NO-EXPERIMENT-REGEX",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names experimentRegex (001 §T 'From section 8', established by S8.3 step 270) (section invariant s47-t8-no-experiment-regex).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "d23b0de2aeebb0d13fc2932df4adf3264a9e4bd6ea7b415e68ea5be1a0a308bc"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "d23b0de2aeebb0d13fc2932df4adf3264a9e4bd6ea7b415e68ea5be1a0a308bc"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-T9-NO-MUELLER-DATA-SET",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names MuellerDataSet (001 §T 'From section 9', established by S9.4 step 331) (section invariant s47-t9-no-mueller-data-set).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "5133fd78a9f5828e4ba45707e36caf0d27fdbd410dd6260ff4af59931bb0b0d6"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "5133fd78a9f5828e4ba45707e36caf0d27fdbd410dd6260ff4af59931bb0b0d6"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-T9-NO-DATA-MUELLER-MATRIX",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names Data/MuellerMatrix (001 §T 'From section 9', established by S9.4 steps 330-331) (section invariant s47-t9-no-data-mueller-matrix).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "a42f23bfc2b1b7a7ce96f89e8ebbc8822e7e2dd24783edfb5bbbf31ddc1f0a75"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "a42f23bfc2b1b7a7ce96f89e8ebbc8822e7e2dd24783edfb5bbbf31ddc1f0a75"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-ARCHIVE-DATA-PROXY",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names MuellerDataProxy or createArchiveBacked (established by S9.4 step 331) (section invariant s47-no-archive-data-proxy).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "e2d91b0563650c96cedc472f933e3878fe923aae0e2446b72f60bd685db1fa26"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "e2d91b0563650c96cedc472f933e3878fe923aae0e2446b72f60bd685db1fa26"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-T10-NO-HARNESS-NOISE",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, no file under Berreman/BerremanTests/ declares noisyObserveAbsoluteWith (001 §T 'From section 10', established by S10.1 step 340) (section invariant s47-t10-no-harness-noise).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "a79b197dea772792ad0ecf0b5d7929e63cff344657e43abdc0e696ad12ac9d84"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "a79b197dea772792ad0ecf0b5d7929e63cff344657e43abdc0e696ad12ac9d84"
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-INV-NO-SOLVER-HANDOFF",
+      "source": "specs/0050/.section-plan-jsonl section 47 (Close) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every Close step, nothing under Berreman/ names SolverHandoff (001 §R, established by S11.5 step 416) (section invariant s47-no-solver-handoff).",
+      "checks": [
+        {
+          "step": 493,
+          "gate": "invariant-s47-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "bac19449bcde4f0f71989a2eccc22c2248608677d9832b9829942245cc9c618c"
+        },
+        {
+          "step": 494,
+          "gate": "invariant-s47-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "bac19449bcde4f0f71989a2eccc22c2248608677d9832b9829942245cc9c618c"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -74589,6 +75175,69 @@
         "S142-INV-T10-NO-HARNESS-NOISE",
         "S142-INV-NO-SOLVER-HANDOFF"
       ]
+    },
+    {
+      "step": 493,
+      "sha256": "60c7be466ca792e748b9c61c993f994ae4b4c3eca9bb6a253bc45f1fbbc7792c",
+      "obligations": [
+        "CLOSE-READONLY-FIXTURE",
+        "CLOSE-BUILD",
+        "CLOSE-ELEVATION",
+        "CLOSE-INV-ELEV-LIST-EMPTY",
+        "CLOSE-INV-NO-VSTEST",
+        "CLOSE-INV-NO-KIT-KIT-JSON",
+        "CLOSE-INV-NO-EPS-AXIS-EVALUATED",
+        "CLOSE-INV-COMPLEXITY-MANDATORY",
+        "CLOSE-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "CLOSE-INV-NO-SEEDING-SEAM",
+        "CLOSE-INV-T1-NO-CODE-SEEDS",
+        "CLOSE-INV-NO-SEED-MODULES",
+        "CLOSE-INV-NO-TEST-DB",
+        "CLOSE-INV-NO-VERSIONS-IN-USE",
+        "CLOSE-INV-NO-SCENE-COLLECTION-SEAMS",
+        "CLOSE-INV-T4-NO-OCPROJ",
+        "CLOSE-INV-NO-RECENT-JSON",
+        "CLOSE-INV-NO-MEASURED-ELEMENT-OF",
+        "CLOSE-INV-T8-NO-EXPERIMENT-REGEX",
+        "CLOSE-INV-T9-NO-MUELLER-DATA-SET",
+        "CLOSE-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "CLOSE-INV-NO-ARCHIVE-DATA-PROXY",
+        "CLOSE-INV-T10-NO-HARNESS-NOISE",
+        "CLOSE-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 494,
+      "sha256": "045e49657a96e5f9952be2793ea270387528593feceaafe4dc2ed003c615165c",
+      "obligations": [
+        "CLOSE-WIRE",
+        "CLOSE-REMOVALS",
+        "CLOSE-WHOLE-TREE",
+        "CLOSE-BUILD",
+        "CLOSE-ELEVATION",
+        "CLOSE-ELEVATION-FULL",
+        "CLOSE-INV-ELEV-LIST-EMPTY",
+        "CLOSE-INV-NO-VSTEST",
+        "CLOSE-INV-NO-KIT-KIT-JSON",
+        "CLOSE-INV-NO-EPS-AXIS-EVALUATED",
+        "CLOSE-INV-COMPLEXITY-MANDATORY",
+        "CLOSE-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "CLOSE-INV-NO-SEEDING-SEAM",
+        "CLOSE-INV-T1-NO-CODE-SEEDS",
+        "CLOSE-INV-NO-SEED-MODULES",
+        "CLOSE-INV-NO-TEST-DB",
+        "CLOSE-INV-NO-VERSIONS-IN-USE",
+        "CLOSE-INV-NO-SCENE-COLLECTION-SEAMS",
+        "CLOSE-INV-T4-NO-OCPROJ",
+        "CLOSE-INV-NO-RECENT-JSON",
+        "CLOSE-INV-NO-MEASURED-ELEMENT-OF",
+        "CLOSE-INV-T8-NO-EXPERIMENT-REGEX",
+        "CLOSE-INV-T9-NO-MUELLER-DATA-SET",
+        "CLOSE-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "CLOSE-INV-NO-ARCHIVE-DATA-PROXY",
+        "CLOSE-INV-T10-NO-HARNESS-NOISE",
+        "CLOSE-INV-NO-SOLVER-HANDOFF"
+      ]
     }
   ],
   "behavior_seams": [
@@ -76766,6 +77415,11 @@
       "id": "s142-wire",
       "step": 492,
       "obligation": "S142-WIRE"
+    },
+    {
+      "id": "close-wire",
+      "step": 494,
+      "obligation": "CLOSE-WIRE"
     }
   ],
   "temporal_checks": [],
@@ -77405,6 +78059,16 @@
         "Berreman/BerremanTestSupport",
         "Berreman/BerremanTests",
         "AGENTS.md"
+      ]
+    },
+    {
+      "from": 493,
+      "step": 494,
+      "paths": [
+        "AGENTS.md",
+        "Berreman/OpticalConstructor/OpticalConstructor.App",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
       ]
     }
   ]

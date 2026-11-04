@@ -276,14 +276,14 @@
     {
       "name": "S14.2 -- The Planner's numerical layer, the plan, the cache and the Plan view",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "55f065a",
       "spec_jsonl_lines": 492
     },
     {
       "name": "Close -- the composition root and the whole-tree proof",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 494
     }
   ]
 }
