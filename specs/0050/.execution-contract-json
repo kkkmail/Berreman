@@ -56300,6 +56300,2027 @@
           "command_sha256": "f4fb98be12bf91af8c8c2c815d7194cb8cd9ee1199fe8507a64f8be569229928"
         }
       ]
+    },
+    {
+      "id": "S132-TABLE-SIGMA",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "Dispersion.fs declares TabulatedNkUncertainty (NumericCarrier: sigmaN, sigmaK per sample); TabulatedNkTable gains uncertaintyOpt (tryCreate sets None, so no number moves); withUncertainty refuses columns of another length (SampleCountMismatchErr) and NaN, infinite or negative values (InvalidUncertaintyErr); MaterialImport maps the new case to NoDataErr; a tabulated material's uncertainties round-trip through an entry file; no schema or committed file changes.",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        },
+        {
+          "step": 453,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S132-PTB-READER",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "MaterialImport reads a PTB OCDB record (PtbOcdbText.importMaterial, headlineOpt): n = 1-delta, k = beta, nm through the Units seam, sigma = (HB - LB) / (2 x level) from the bound columns and the stated sigma level, sorted rows, tryCreate then withUncertainty; malformed texts are MalformedSourceFileErr and an empty one NoDataErr; ImportError gains MalformedSourceFileErr with its describe; the tabulated entry assembly moves into TabulatedNkTable.isotropicEntry, which entryFromTabulated calls with every field unchanged; fixture ptb-Co.txt holds PTB's Co.txt header and three of its rows.",
+      "checks": [
+        {
+          "step": 454,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S132-PTB-ADAPTER",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "MaterialSourceStore moves the refractiveindex.info snapshot body into private SourceSnapshotLayout / SourceArchiveSpec members (snapshotVersion, heldVersion, installFrom, updateFromArchive) that createRefractiveIndexInfo calls with its facts unchanged; MaterialSourceProxy.createPtbOcdb (PTB OCDB, <sources>/ptb-ocdb, CC-BY-4.0, the PTB-SR/ocdb master archive, ocdb/db/COPYING required, it and ocdb/db/data/*.txt kept) searches one hit per record file, fetches a record through PtbOcdbText with its hash, the stamp's version, the licence and the citation 'PTB Optical Constants Database (OCDB), ocdb/db/data/<record>: <headline>'; no network in any test.",
+      "checks": [
+        {
+          "step": 455,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S132-HENKE-PHYSICS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "Domain HenkeCompounds.fs (before MaterialSources.fs) holds HenkeCompoundError (eight Err cases with describe), the 92 ChemicalElements with IUPAC 2021 abridged weights (bracketed mass numbers for Tc, Pm, Po, At, Rn, Fr, Ra, Ac), ChemicalFormula.tryParse (symbols and counts, repeats merged, nothing else), CompoundDensity, CompoundSpec (recordId, entryName, tryOfRecord, tryOfQuery), AtomicScatteringFactors (NumericCarrier) and CompoundSpec.indexTableWith: n = 1 - delta, k = beta with delta, beta = r0 lambda^2 sum N_q f1/f2 / 2 pi on the union grid of the common energy range, lambda through toMeters ElectronVolt, r0 and N_A written once; no uncertainty.",
+      "checks": [
+        {
+          "step": 456,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S132-HENKE-ADAPTER",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "MaterialImport reads a CXRO .nff file (HenkeScatteringText.factors: E(eV) header, three numbers per row, f1 = -9999 rows left out); MaterialSourceProxy.createHenkeCompounds (CXRO Henke, <sources>/cxro-henke, LicenseRef-CXRO) updates by downloading the 92 element files sf/<symbol>.nff in atomic-number order through the downloader with per-file progress and cancellation, installing them through the shared layout; its search answers the one compound its query writes; its fetch computes indexTableWith over the snapshot's files, hashed as the record text plus the element files, cited to Henke et al. 1993 and CXRO; no network in any test.",
+      "checks": [
+        {
+          "step": 457,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S132-PULLS-SQLITE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "MaterialSourcePullSqliteTests proves over SQLite :memory: and fixture snapshots: a pulled PTB OCDB record is a user material version 1 whose table keeps its uncertainties, with its pulled-source row and the CC-BY attribution line; an update of changed bounds mints version 2 and keeps version 1; a pulled Henke compound is a user material version 1 under CXRO's pull provenance with its licence named and no citation shown.",
+      "checks": [
+        {
+          "step": 458,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S132-APP-SOURCES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "AppContext's shared compose sets catalogueImports.materialSources to refractiveindex.info, PTB OCDB and CXRO Henke over locations.materialSourcesFolder with SourceArchiveDownloader.http and ClockProvider.system, in that order; composing reads and writes nothing; AppContextTests' fact asserts the three names with no snapshot and nothing under the folder.",
+      "checks": [
+        {
+          "step": 459,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 459,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 459,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S132-STUDY-TABLES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "Studies.fs declares OpenedMaterialPhysics (OpenedCrystalPhysics | OpenedTablePhysics; componentNames, componentValue, withComponent, componentSigmaOpt, withoutSourceUncertainty, crystalOpt, materialPhysics); OpenedMaterial holds physics in place of crystal; openFrom opens a single isotropic TabulatedNK segment with Known components row<i>.n / row<i>.k (ParameterName.tableRowIndex / tableRowExtinction) and refuses other complexities; withParameterState gives a freed component of an uncertain table the prior centre = the opened value, sigma = its source sigma unless a prior is given; currentPhysics replaces currentCrystal; ExperimentAssignment holds physics and physicsOf, materialProxyOver substitutes materialPhysics, observedCrystalOpt reads crystalOpt; promotedMaterialWith drops the source uncertainty of a fitted table; crystal paths keep their numbers; AT-2's committed study file is rewritten to the new key.",
+      "checks": [
+        {
+          "step": 460,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 460,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 460,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        },
+        {
+          "step": 460,
+          "gate": "kit-acceptance",
+          "selection": "selected",
+          "command_sha256": "a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087"
+        }
+      ]
+    },
+    {
+      "id": "S132-FILE-PROVENANCE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "EntryProvenance gains FileImportProvenance of EntryFileImportInfo = { file : FileName; fileHash : ContentHash } (UserManaged, UserCategory, no attribution); the database stores provenance kind 7 with no catalogue; library-common.schema.json gains its shape at schema version 1; every other complete match treats it as UserProvenance; the provenance facts are widened to it.",
+      "checks": [
+        {
+          "step": 461,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S132-AGF-READER",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "MaterialImport reads an AGF glass catalogue (GlassCatalogueText.ofBytes: UTF-16 LE/BE and UTF-8 by mark, UTF-16 LE by a zero byte, else UTF-8; importGlasses: NM name and formula, CD coefficients, LD range), rewrites each AGF formula 1-13 as the refractiveindex.info formula of the same equation (AgfFormulaNumber.riiFormOf) and lowers it through the unchanged lowerFormulaAxis and entryOfAxis (Glass category); a glass that does not lower refuses the whole text naming every such glass; no glass is NoDataErr; nothing is bundled.",
+      "checks": [
+        {
+          "step": 462,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S132-AGF-IMPORT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "CatalogueImport gains GlassCatalogueRead and CatalogueImportContext.readGlassCatalogue (Storage create reads the bytes, hashes them, imports through GlassCatalogueText.importGlasses, refusals DroppedFileRefusedErr); decideDroppedFiles reads a .agf file's glasses as sealed version-1 envelopes under FileImportProvenance and minted ids, decided under DroppedFileOrigin with the existing rules, writing nothing; a repeat drop collides by name; contract facts run over both stores.",
+      "checks": [
+        {
+          "step": 463,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S132-AGF-WIRE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "The Materials window's Browse verbs row offers 'Import glass catalogue…' (materialsImportGlassCatalogueButton), whose open dialog (pickGlassCatalogueFile, *.agf) dispatches ImportGlassCatalogue, answered as DropMaterialEntryFiles [ file ] through one helper: the import dialog opens over the glasses' rows and nothing applies before Apply; MaterialsWindow.ImportGlassCatalogue is the semantic seam; a headless acceptance applies a catalogue into the app library.",
+      "checks": [
+        {
+          "step": 464,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 464,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 464,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S132-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "Every S13.2 step leaves Berreman.slnx building in Release x64 with zero warnings from our code, FS0025 an error; no project and no package is added; OpticalConstructor.Domain compiles HenkeCompounds.fs directly before MaterialSources.fs, OpticalConstructor.Tests compiles HenkeCompoundsTests.fs at the end and copies fixtures/ptb-Co.txt, fixtures/si.nff, fixtures/o.nff and fixtures/test-glasses.agf, no new line carrying a comment.",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 454,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 455,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 456,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 457,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 458,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 459,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 460,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 461,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 462,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 463,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 464,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S132-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §D ('MaterialSourceProxy (search, fetch) with adapters, in this order: ... 2. PTB OCDB (CC BY 4.0): EUV / VUV n, k with uncertainties. 3. A Henke-based compound calculator (CXRO f1, f2 + formula + density) for EUV and X-ray'; 'A pulled record becomes a user material version in the database, with provenance'; 'Updating a source mints a NEW version when the record changed'; 'Uncertainties travel with the material (PTB's sigma) and become priors in studies and inputs to the Planner'; 'User-supplied glass catalogues (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle'), §B ('Physics is pure data'; 'provenance'; 'Licence attribution'; the per-entry decision table; 'nothing is overwritten silently'), §I ('a study OPENS a material version ... with Unknown components'), §N ('a material complexity or item model publishes its ParameterAxis list'), §P (every user step is a semantic message), §O; specs/0050/.section-plan-jsonl section 44 (S13.2) brief; specs/0050/.spec-md §3.7, §3.9, §3.19, §4, §6, §7, §8, §9, §10; AGENTS.md (elevate every primitive, unique names, errors are values, functional proxies, reuse never copy, comments)",
+      "requirement": "Every S13.2 step leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command), with nothing under Elevation/ and nothing in .elevation-analyzers.json edited: every new record and signature carries only elevated types (ELEV003/003P/008/010/010P; the bulk arrays TabulatedNkUncertainty and AtomicScatteringFactors are NumericCarriers; ChemicalElement, FormulaCount, CompoundSpec, GlassCatalogueRead, EntryFileImportInfo and SourceSnapshotLayout hold elevated fields), the bare text and bytes of the file, archive and HTTP seams are confined to declarations marked ElevationBoundary, no value is wrapped at a call site or round-tripped (ELEV001/005), no two-case union is mapped to a bool (ELEV012; SourceArchiveEntryChoice is matched), tuples hold at most three elements of distinct types (ELEV011), no single-parameter free function of our types is declared (ELEV013; readers, adapters and physics are members), every new type, public, case and extension-member name is unique among ours (ELEV014/015/016/019; createPtbOcdb and createHenkeCompounds beside createRefractiveIndexInfo and createInMemory; MalformedSourceFileErr, OpenedCrystalPhysics, OpenedTablePhysics, FileImportProvenance, KeepArchiveEntry and DropArchiveEntry new), and every HenkeCompoundError case and the new ImportError and TabulatedTableError cases end in Err (ELEV020).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 454,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 455,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 456,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 457,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 458,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 459,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 460,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 461,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 462,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 463,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 464,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s44-elev-list-empty).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "47ec4423cf3ab4701f7ddcfb15c70587ee88d11a00e574e3cc491afbf0ca4ce4"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s44-no-vstest).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-vstest",
+          "selection": "command",
+          "command_sha256": "f6b8218a811c06904a21ba39c45e25ffe52b1e42040089270c781658ffa7c5b9"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s44-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "ac381f3187cadd08b154160636d21e7fb4993486bb19201df82bb1bd032a65ea"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s44-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "2bd53e20fac98ae04a0c17e7f6a523a14cbe1bbffad147687cc3d11724353f48"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s44-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "1d776c90a4db350073b96ffb3169ba67f71ba2012a55b3bd0316229553d671e0"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s44-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "d794c6579dc032a91b64bd7acfa1c50b23bba8354667f8d8e7462214ac69f865"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s44-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "7af71cd161a7705fb0a659464e5afae64d52716810bd1bea3d94073db653db5b"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s44-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "35ec4c79692dffaf408b0c5520f7d20dfefc2c4d6a8dd6262cefc50458cfac9c"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s44-no-seed-modules).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "ecdf184a3e64dacae7d65995a5f11c5b2ec839a847b805b77fbfe5968fae1d2f"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s44-no-test-db).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-test-db",
+          "selection": "command",
+          "command_sha256": "7a73c3129d3fd180da68274dd38b0e7f2c22fdf6bec7922e90eb867ac46625f5"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s44-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "1df2e5f8acb9ec9daa2a26c7a30d3bf331258b1a75813e1c491c36f53d1c0ba9"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s44-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "ade8e563ec9b53ca930c96f52fac2b0a6cc4bcf73d18d4d142caa81b988dbf76"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s44-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "ebfa072779d8ae4b8f7f22352244f7cce822c81d345ca2d9b51234342e47e100"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names recent.json (001 §R, established by S5.1 step 169) (section invariant s44-no-recent-json).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-recent-json",
+          "selection": "command",
+          "command_sha256": "e3c7b3bf8be215d637c1fc0501334af4d3894d92069e56c5229ec7c75438cc4a"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-MEASURED-ELEMENT-OF",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names measuredElementOf (001 §R, established by S8.1 step 254) (section invariant s44-no-measured-element-of).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "4f0e8adb170fde4d12fd342003cc52fcb5514cfba4ece298c60516d0b77c50ef"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-T8-NO-EXPERIMENT-REGEX",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names experimentRegex (001 §T 'From section 8', established by S8.3 step 270) (section invariant s44-t8-no-experiment-regex).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "e87231054df9a1bac291f2f2f1e9a97a66598f381ab561804367a12246f71aae"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-T9-NO-MUELLER-DATA-SET",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names MuellerDataSet (001 §T 'From section 9', established by S9.4 step 331) (section invariant s44-t9-no-mueller-data-set).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "dc4414d438fdce5d67a11a723b0e391bb82e11d5670cc3ad47e40699dc17085e"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names Data/MuellerMatrix (001 §T 'From section 9', established by S9.4 steps 330-331) (section invariant s44-t9-no-data-mueller-matrix).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "e51ee9ea8e8fc158d65ab0a52804ff78cc8b1346fdc28cdfec45119388fc7367"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-ARCHIVE-DATA-PROXY",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names MuellerDataProxy or createArchiveBacked (established by S9.4 step 331) (section invariant s44-no-archive-data-proxy).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5c1064d6a734145301593e2dac1474e13597200f7e9cb32d891c930d447e7124"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-T10-NO-HARNESS-NOISE",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, no file under Berreman/BerremanTests/ declares noisyObserveAbsoluteWith (001 §T 'From section 10', established by S10.1 step 340) (section invariant s44-t10-no-harness-noise).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "8956c4e0db6b3fe91c1294f7472bf4d299b8c336fc64c9c082e1fb2ccd1af074"
+        }
+      ]
+    },
+    {
+      "id": "S132-INV-NO-SOLVER-HANDOFF",
+      "source": "specs/0050/.section-plan-jsonl section 44 (S13.2) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S13.2 step, nothing under Berreman/ names SolverHandoff (001 §R, established by S11.5 step 416) (section invariant s44-no-solver-handoff).",
+      "checks": [
+        {
+          "step": 453,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        },
+        {
+          "step": 454,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        },
+        {
+          "step": 455,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        },
+        {
+          "step": 456,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        },
+        {
+          "step": 457,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        },
+        {
+          "step": 458,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        },
+        {
+          "step": 459,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        },
+        {
+          "step": 460,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        },
+        {
+          "step": 461,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        },
+        {
+          "step": 462,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        },
+        {
+          "step": 463,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        },
+        {
+          "step": 464,
+          "gate": "invariant-s44-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -66752,6 +68773,366 @@
         "S131-INV-T10-NO-HARNESS-NOISE",
         "S131-INV-NO-SOLVER-HANDOFF"
       ]
+    },
+    {
+      "step": 453,
+      "sha256": "81c85ed81b75a312369ffd6a8be9c71c4213a13fc802817dcfc360295fdb6bf2",
+      "obligations": [
+        "S132-TABLE-SIGMA",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 454,
+      "sha256": "b2ffcca3b453ea7679e6df2d365ec9d4d214d465403476fda9a544808ed7dd97",
+      "obligations": [
+        "S132-PTB-READER",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 455,
+      "sha256": "312c42d62ca940f9fec9cccf180b1eaae96c2162dcc74bc02f99b82e98e23cee",
+      "obligations": [
+        "S132-PTB-ADAPTER",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 456,
+      "sha256": "58886e65be24a06144ecff3350e9117399b44bfda58ee781d1b07996eebb5ca1",
+      "obligations": [
+        "S132-HENKE-PHYSICS",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 457,
+      "sha256": "a764179b4045a72db3803b78652b13c29babdeefe6c658be683eb0a9129e0688",
+      "obligations": [
+        "S132-HENKE-ADAPTER",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 458,
+      "sha256": "4376ff3ec7aed78cd6ac565ebd8735b42b21b04a793fa35a26c8ec60ec0087e2",
+      "obligations": [
+        "S132-PULLS-SQLITE",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 459,
+      "sha256": "fb9db5a507200c812008abf33c8171cd76ce750f38240e3a682ae047c7e880b7",
+      "obligations": [
+        "S132-APP-SOURCES",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 460,
+      "sha256": "455802f502247cef8dc4f099a3a4187cf1a8e4c4b880f1a9a986d5bfc63ee3a5",
+      "obligations": [
+        "S132-STUDY-TABLES",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 461,
+      "sha256": "6fa9bfbc965b48aab8e004538c2e1ce47f05e940354d902dc94dba9a0548ea81",
+      "obligations": [
+        "S132-FILE-PROVENANCE",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 462,
+      "sha256": "ae88facad8d77c35265ca0fb9f788593104825cb2c57b7ab37f0e66aff9c76d1",
+      "obligations": [
+        "S132-AGF-READER",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 463,
+      "sha256": "a5cfbfe89d51926cc1b7a9574ac359cd34a60cf3fe86851d9d2ccb4088873ac2",
+      "obligations": [
+        "S132-AGF-IMPORT",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 464,
+      "sha256": "57b94e2150b35f38b7c055945984b5e7d640e3e6ec5e1b4ed628490d76d372c5",
+      "obligations": [
+        "S132-AGF-WIRE",
+        "S132-BUILD",
+        "S132-ELEVATION",
+        "S132-INV-ELEV-LIST-EMPTY",
+        "S132-INV-NO-VSTEST",
+        "S132-INV-NO-KIT-KIT-JSON",
+        "S132-INV-NO-EPS-AXIS-EVALUATED",
+        "S132-INV-COMPLEXITY-MANDATORY",
+        "S132-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S132-INV-NO-SEEDING-SEAM",
+        "S132-INV-T1-NO-CODE-SEEDS",
+        "S132-INV-NO-SEED-MODULES",
+        "S132-INV-NO-TEST-DB",
+        "S132-INV-NO-VERSIONS-IN-USE",
+        "S132-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S132-INV-T4-NO-OCPROJ",
+        "S132-INV-NO-RECENT-JSON",
+        "S132-INV-NO-MEASURED-ELEMENT-OF",
+        "S132-INV-T8-NO-EXPERIMENT-REGEX",
+        "S132-INV-T9-NO-MUELLER-DATA-SET",
+        "S132-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S132-INV-NO-ARCHIVE-DATA-PROXY",
+        "S132-INV-T10-NO-HARNESS-NOISE",
+        "S132-INV-NO-SOLVER-HANDOFF"
+      ]
     }
   ],
   "behavior_seams": [
@@ -68729,6 +71110,66 @@
       "id": "s131-materials-wire",
       "step": 452,
       "obligation": "S131-MATERIALS-WIRE"
+    },
+    {
+      "id": "s132-table-sigma",
+      "step": 453,
+      "obligation": "S132-TABLE-SIGMA"
+    },
+    {
+      "id": "s132-ptb-reader",
+      "step": 454,
+      "obligation": "S132-PTB-READER"
+    },
+    {
+      "id": "s132-ptb-adapter",
+      "step": 455,
+      "obligation": "S132-PTB-ADAPTER"
+    },
+    {
+      "id": "s132-henke-physics",
+      "step": 456,
+      "obligation": "S132-HENKE-PHYSICS"
+    },
+    {
+      "id": "s132-henke-adapter",
+      "step": 457,
+      "obligation": "S132-HENKE-ADAPTER"
+    },
+    {
+      "id": "s132-pulls-sqlite",
+      "step": 458,
+      "obligation": "S132-PULLS-SQLITE"
+    },
+    {
+      "id": "s132-app-sources",
+      "step": 459,
+      "obligation": "S132-APP-SOURCES"
+    },
+    {
+      "id": "s132-study-tables",
+      "step": 460,
+      "obligation": "S132-STUDY-TABLES"
+    },
+    {
+      "id": "s132-file-provenance",
+      "step": 461,
+      "obligation": "S132-FILE-PROVENANCE"
+    },
+    {
+      "id": "s132-agf-reader",
+      "step": 462,
+      "obligation": "S132-AGF-READER"
+    },
+    {
+      "id": "s132-agf-import",
+      "step": 463,
+      "obligation": "S132-AGF-IMPORT"
+    },
+    {
+      "id": "s132-agf-wire",
+      "step": 464,
+      "obligation": "S132-AGF-WIRE"
     }
   ],
   "temporal_checks": [],
@@ -69326,6 +71767,21 @@
         "Berreman/OpticalConstructor/OpticalConstructor.App",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 453,
+      "step": 464,
+      "paths": [
+        "Berreman/Berreman",
+        "Berreman/BerremanTests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.Controls",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
+        "data/absorbing-biaxial-noisy"
       ]
     }
   ]
