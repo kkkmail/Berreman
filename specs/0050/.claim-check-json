@@ -1,0 +1,812 @@
+{
+  "data_version": 8,
+  "spec_md_sha": "04e2a589fd7b468a42ef45ab07ab31e83e9711df25ae7eccf1f43c3d5c4f80a1",
+  "claims": [
+    {
+      "id": 1,
+      "phrase": "| `Berreman/Berreman/Dispersion.fs` — `EpsAxisDispersion`, `EpsWithDispValue` | `EpsAxisDispersion` gains data cases for tabulated n,k and for the four transcendental oscillator models. `EpsAxisEvaluated` and the custom equality are deleted. |",
+      "spec_location": "§0.1, .spec-md line 16",
+      "evidence": "Berreman/Berreman/Dispersion.fs:365-394 declares CustomEquality EpsAxisDispersion, including EpsAxisEvaluated and its equality/hash implementations; :460 declares EpsWithDispValue. The current artifacts named under Existing artifacts exist. The proposed new data cases are future effects, not claims that they already exist.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 2,
+      "phrase": "| `OpticalConstructor.Domain/DispersionModels.fs` — `DispersionModel.toEpsAxis` | The transcendental models lower to the new data case. Their evaluation kernels move into the core. |",
+      "spec_location": "§0.1, .spec-md line 17",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Domain/DispersionModels.fs does not exist. The actual file is Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs:686 (DispersionModel.toEpsAxis); :766-769 lowers TaucLorentz, GaussianOscillator, ForouhiBloomer and BrendelBormann through EpsAxisEvaluated this.evaluate. The symbols and four-model baseline exist at that different path.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 3,
+      "phrase": "| `OpticalConstructor.Domain/MaterialLibrary.fs` — `MaterialEntry`, `builtInEntries`, `standardCategories`, `tryFindCategory` | `complexity` becomes mandatory and `properties` is derived from it. The seed values are deleted. Category names resolve through the category store. |",
+      "spec_location": "§0.1, .spec-md line 18",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Domain/MaterialLibrary.fs does not exist. Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs declares standardCategories at :146, tryFindCategory at :158, MaterialEntry at :260 and builtInEntries at :497; :266-267 has properties and optional complexity. The existing declarations resolve only after adding the omitted directory prefix.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 4,
+      "phrase": "| `OpticalConstructor.Domain/ElementId.fs` — module `Library` | Presets carry frozen GUID ids. `SeedSamples`, `SeedSources`, `seedEntries`, `seedTrees` and the self-seeding `createInMemory` are deleted. The grouping tree is derived from the entries. |",
+      "spec_location": "§0.1, .spec-md line 19",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Domain/ElementId.fs does not exist. Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs declares module Library at :19, SeedSamples at :651, SeedSources at :812, seedEntries at :884, seedTrees at :904 and createInMemory at :970-972, which closes over seedEntries and seedTrees.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 5,
+      "phrase": "| `OpticalConstructor.Domain/Lifecycle.fs` — `VersionsInUse`, `decideVersioning` | `VersionsInUse` is replaced by a one-way per-version pin. |",
+      "spec_location": "§0.1, .spec-md line 20",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Domain/Lifecycle.fs does not exist. The actual declarations are Berreman/OpticalConstructor/OpticalConstructor.Domain/Lifecycle.fs:52 (VersionsInUse) and :120 (decideVersioning). A future pin replacement is not evidence of an existing pin.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 6,
+      "phrase": "| `OpticalConstructor.Domain/MaterialStore.fs`, `SampleStore.fs` | The in-memory stores keep their shapes, read the pin and stop self-seeding. They remain the test doubles. |",
+      "spec_location": "§0.1, .spec-md line 21",
+      "evidence": "Neither OpticalConstructor.Domain/MaterialStore.fs nor SampleStore.fs resolves from the repository root. Their actual files are under Berreman/OpticalConstructor/OpticalConstructor.Domain/: MaterialStore.fs:191-195 seeds builtInEntries and SampleStore.fs:186-187 seeds SeedSamples.allSeedSamples; both accept VersionsInUse. These substantiate the in-memory, self-seeding baseline at corrected paths, not the proposed pin implementation.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 7,
+      "phrase": "| `OpticalConstructor.Seeding/` | Deleted. `SeedingProxy` / `seedAll` move to Domain as `CatalogueImport`. |",
+      "spec_location": "§0.1, .spec-md line 22",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Seeding/ directory does not exist. Berreman/OpticalConstructor/OpticalConstructor.Seeding/ contains OpticalConstructor.Seeding.fsproj and Seeding.fs; the latter declares SeedingProxy at :46 and its seedAll member at :59-67. CatalogueImport is a declared future replacement.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 8,
+      "phrase": "| `OpticalConstructor.Database/` (C#) | The `Test` entity, `TestDbContext` and the initial migration are replaced by the library model, created by `EnsureCreated` and stamped with a schema version. |",
+      "spec_location": "§0.1, .spec-md line 23",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Database/ directory does not exist. Berreman/OpticalConstructor/OpticalConstructor.Database/ contains Test.cs:8 (class Test), TestDbContext.cs:14-29 (the context and its Test entity mapping), and Migrations/20260711000000_Initial.cs:19 (CreateTable). EnsureCreated and the schema stamp are proposed changes.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 9,
+      "phrase": "| `OpticalConstructor.Storage/ProjectJson.fs`, `ProjectFile.fs`, `SchemaValidation.fs`, `RecentFiles.fs`, `Domain/Project.fs` | The shared serializer options move to a canonical-JSON module and validation becomes per kind. The `.ocproj` aggregate, `recent.json` and `Autosave` are deleted. `RecentFiles.bump` moves into the kit history. |",
+      "spec_location": "§0.1, .spec-md line 24",
+      "evidence": "The paths as written do not resolve from the repository root. Under Berreman/OpticalConstructor/OpticalConstructor.Storage/, ProjectJson.fs:131 defines options, ProjectFile.fs:19-42 defines .ocproj save/open, SchemaValidation.fs:64 defines validate, and RecentFiles.fs:36, :41 and :77 defines recent.json, bump and Autosave. The aggregate is Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs:26 (OpticalConstructorProject), not Domain/Project.fs.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 10,
+      "phrase": "| `OpticalConstructor.Storage/MaterialImport.fs` | Tabulated imports produce the tabulated case. The importer is reused as the refractiveindex.info record parser. |",
+      "spec_location": "§0.1, .spec-md line 25",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Storage/MaterialImport.fs does not exist. Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs:158 defines buildTabulatedClosure and :183-194 defines entryFromTabulated with complexity = None; :502 and :544 call it for refractiveindex.info and CSV imports. The proposed table data case is future behavior.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 11,
+      "phrase": "| `OpticalConstructor.Storage/MuellerDataStore.fs` | `DataFileText.parseMuellerCsv` stays as the \"Phone ROI CSV\" import profile. The archive store is deleted. |",
+      "spec_location": "§0.1, .spec-md line 26",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Storage/MuellerDataStore.fs does not exist. Berreman/OpticalConstructor/OpticalConstructor.Storage/MuellerDataStore.fs:106 declares DataFileText.parseMuellerCsv, and :151-199 contains the archive dataset resolution/read path that invokes this parser. The retained parser exists at the corrected path.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 12,
+      "phrase": "| `OpticalConstructor.Domain/MuellerReconstruction.fs` | `MuellerDataSet`, `MuellerArchivePath`, `MuellerDataProxy`, `experimentRegex`, `objectRegex` and `MuellerExperimentLabel.parsed` are deleted. `familyGain` becomes the first gain-model implementation. |",
+      "spec_location": "§0.1, .spec-md line 27",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Domain/MuellerReconstruction.fs does not exist. Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs declares MuellerDataSet at :360, MuellerArchivePath at :371, MuellerDataProxy at :400, experimentRegex at :504, objectRegex at :508, MuellerExperimentLabel.parsed at :516 and familyGain at :859.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 13,
+      "phrase": "| `OpticalConstructor.Domain/MuellerInverse.fs` | Receives the parameter-record builders promoted from `BerremanTests` (§3.16). |",
+      "spec_location": "§0.1, .spec-md line 28",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Domain/MuellerInverse.fs does not exist. The real module is Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:62. Builder sources do exist in Berreman/BerremanTests/BiaxialSample.fs:98 (buildTriclinic) and AbsorbingBiaxialSample.fs:73 (buildAbsorbing); their promotion is future work.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 14,
+      "phrase": "| `OpticalConstructor.Domain/ExperimentRun.fs` | The run law folds any number of objects through each item's Mueller matrix. The source is a real Stokes state. |",
+      "spec_location": "§0.1, .spec-md line 29",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Domain/ExperimentRun.fs does not exist. Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs:24-44 declares RunStep and detectorStokes. The current fold applies every SampleStep matrix and starts from unpolarizedStokes, with special handling of the first preparatory polarizer. The proposed item/source model is future work.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 15,
+      "phrase": "| `OpticalConstructor.Domain/Experiments.fs` | Experiments v2: setup reference, scan, role, session and data attachment. |",
+      "spec_location": "§0.1, .spec-md line 30",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Domain/Experiments.fs does not exist. Berreman/OpticalConstructor/OpticalConstructor.Domain/Experiments.fs:225-236 declares Experiment with setup, varied, measurement, range, dataFileOpt and sourceWaveLengthOpt. The v2 fields are proposed changes, not missing current artifacts.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 16,
+      "phrase": "| `OpticalConstructor.Domain/Scene.fs`, `ExperimentCollectionStore.fs` | The in-memory seams are deleted; `KitProxy` replaces them. |",
+      "spec_location": "§0.1, .spec-md line 31",
+      "evidence": "Neither OpticalConstructor.Domain/Scene.fs nor ExperimentCollectionStore.fs resolves from the repository root. The actual files under Berreman/OpticalConstructor/OpticalConstructor.Domain/ declare SceneProxy/createInMemory at Scene.fs:107,129 and ExperimentCollectionProxy/createInMemory at ExperimentCollectionStore.fs:73,96; both stores start as empty maps. KitProxy is a future replacement.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 17,
+      "phrase": "| `OpticalConstructor.Optimization/` | Receives the bench noise model, the fit wrappers and the recovery statistics from `BerremanTests/InverseFitHarness.fs`, the staged Mueller pipeline, the study engine and the Planner's numerical layer. |",
+      "spec_location": "§0.1, .spec-md line 32",
+      "evidence": "Neither OpticalConstructor.Optimization/ nor BerremanTests/InverseFitHarness.fs resolves from the repository root. The actual project is Berreman/OpticalConstructor/OpticalConstructor.Optimization/, whose fsproj compiles InverseFit.fs and MuellerInverseSolver.fs. The donor is Berreman/BerremanTests/InverseFitHarness.fs:171 (NoiseParam), :230/:253 (RecoveredQuantity/RecoveryStatistics), :493/:503 (fit wrappers), :553 onward (noise functions), and :645 (statisticsFor).",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 18,
+      "phrase": "| `OpticalConstructor.Ui/AppContext.fs` — `AppContext.create` | Composes the SQLite library proxies over the configured locations and imports the catalogues on start. |",
+      "spec_location": "§0.1, .spec-md line 33",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Ui/AppContext.fs does not exist. Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs:78 declares AppContext.create; :88-108 composes in-memory library, scene and collection stores. SQLite composition and catalogue import are proposed future wiring.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 19,
+      "phrase": "| `OpticalConstructor.Ui/TableAndElementRotationView.fs` | Hosts a `KitContext` in place of the scene and collection seams. `measuredElementOf` is deleted. New surfaces are hosted through messages. |",
+      "spec_location": "§0.1, .spec-md line 34",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Ui/TableAndElementRotationView.fs does not exist. Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs:1445 declares measuredElementOf; :1471-1478 uses it for captureDetectors. AppContext.fs:104,108 supplies the collection and scene proxies that the future KitContext replaces.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 20,
+      "phrase": "| `OpticalConstructor.Ui/SolverHandoffView.fs`, `SolverHandoffWindow.fs` | Deleted. Their three checks become the study's pre-fit validation. |",
+      "spec_location": "§0.1, .spec-md line 35",
+      "evidence": "Neither OpticalConstructor.Ui/SolverHandoffView.fs nor SolverHandoffWindow.fs resolves from the repository root. Under Berreman/OpticalConstructor/OpticalConstructor.Ui/, SolverHandoffView.fs:100-116 implements the three ordered validation branches: unspecified elements, missing attachment, and load/schema/range validation. SolverHandoffWindow.fs:19,30-37 hosts that view. The existing checks are real at corrected paths.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 21,
+      "phrase": "| `OpticalConstructor.App/Program.fs`, `AppConfig.fs`, `appsettings.json` | Main and Inverse open the kit start screen, and the footer gains a Data locations link. New settings keys are added; the MSSQL keys are removed. |",
+      "spec_location": "§0.1, .spec-md line 36",
+      "evidence": "The named paths do not resolve from the repository root. Under Berreman/OpticalConstructor/OpticalConstructor.App/, Program.fs:96,114 initializes Main/Inverse and :178 reads BuildInfo.version for the footer; AppConfig.fs:48,53,58 declares DatabaseProvider, OpticalConstructorMssql and OpticalConstructorSqlite keys. appsettings.json:1-4 exists but currently has empty appSettings and connectionStrings objects. The new start screen and settings are future changes.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 22,
+      "phrase": "| `OpticalConstructor.Controls/UiIds.fs` — `ConstructorUiId` | One static member per new control. |",
+      "spec_location": "§0.1, .spec-md line 37",
+      "evidence": "The cited repo-root-relative OpticalConstructor.Controls/UiIds.fs does not exist. Berreman/OpticalConstructor/OpticalConstructor.Controls/UiIds.fs:27 declares ConstructorUiId and its fixed IDs are static members (for example :275-279). The new members are prospective additions.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 23,
+      "phrase": "| `Berreman/BerremanTests/` | `InverseFitHarness.fs` keeps only assertions and formatting. `BiaxialSample.fs` and `AbsorbingBiaxialSample.fs` move to `BerremanTestSupport`. `MuellerReconstructionTests` §7.2 calls the promoted pipeline. The `Data\\MuellerMatrix` content link is removed. |",
+      "spec_location": "§0.1, .spec-md line 38",
+      "evidence": "Berreman/BerremanTests/ exists. InverseFitHarness.fs:303 declares the harness; BiaxialSample.fs:49 and AbsorbingBiaxialSample.fs:26 declare the donor modules. MuellerReconstructionTests.fs:802 contains the section 7.2 end-to-end Stage 1/2/3 reconstruction fact. BerremanTests.fsproj:59 links ../Data/MuellerMatrix/data.zip as Data/MuellerMatrix/data.zip. These are current artifacts; the support project and promoted pipeline are future effects.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 24,
+      "phrase": "| `Berreman/Data/MuellerMatrix/` | Moved into `data/optics-mueller/data/` and deleted. |",
+      "spec_location": "§0.1, .spec-md line 39",
+      "evidence": "Berreman/Data/MuellerMatrix/ exists and contains data.zip, the reconstruction Python scripts, README.md, reference_step1_summary.json and reference_step2_linear_summary.json. The stated destination is prospective; it was not required to exist for this baseline claim.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 25,
+      "phrase": "| `Berreman/Berreman.slnx` | Adds `BerremanTestSupport`; removes `OpticalConstructor.Seeding`. |",
+      "spec_location": "§0.1, .spec-md line 40",
+      "evidence": "Berreman/Berreman.slnx exists and at :23 includes OpticalConstructor/OpticalConstructor.Seeding/OpticalConstructor.Seeding.fsproj. BerremanTestSupport is a proposed addition, not an asserted existing project.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 26,
+      "phrase": "Today nothing persists. Every store is in memory and is re-seeded at each start (`OpticalConstructor.Ui/AppContext.fs:AppContext.create`).",
+      "spec_location": "§1, .spec-md line 59",
+      "evidence": "Inferred assumption-shape claim from Today and the current composition assertion. The cited root-relative file is absent; the actual AppContext.create is Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs:78. Its library stores are in memory, but not every store is seeded: SourceProxy begins empty at Domain/ElementId.fs:1101-1102, and scene/collection maps begin empty at Domain/Scene.fs:129-130 and Domain/ExperimentCollectionStore.fs:96-97 (all under Berreman/OpticalConstructor/). The literal nothing-persists statement also overreaches: AppContext.fs:109-113 composes ExperimentExportFile.createCsvFolder, Storage/ExperimentExportFile.fs:50-62 writes exports, and Ui/TableAndElementRotationView.fs:1350 invokes exportRun. This supports nonpersistent library/session stores, not absence of all disk output.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 27,
+      "phrase": "No window saves or opens an `.ocproj` file (`OpticalConstructor.Storage/ProjectFile.fs`).",
+      "spec_location": "§1, .spec-md line 59",
+      "evidence": "Inferred current-wiring claim. OpticalConstructor.Storage/ProjectFile.fs does not resolve from the repository root. At the corrected path Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:24,35, FileName.saveProject/openProject exist. Searches of OpticalConstructor.Ui, OpticalConstructor.App and OpticalConstructor.TestWindows under Berreman/OpticalConstructor/ found no calls to either member, so the behavioral assertion is supported but the supplied pointer is invalid.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 28,
+      "phrase": "The EF Core project holds one unreferenced `Test` table.",
+      "spec_location": "§1, .spec-md line 59",
+      "evidence": "Inferred current-artifact and numeric-count claim. Berreman/OpticalConstructor/OpticalConstructor.Database/TestDbContext.cs:21,29 contains one DbSet<Test> and maps it to Test; Migrations/20260711000000_Initial.cs:19 creates it. The unreferenced qualifier is false without a production-only restriction: Berreman/OpticalConstructor/OpticalConstructor.Tests/TestDbMigrationTests.fs:77-94 constructs the context, inserts Test and queries context.Tests, and OpticalConstructor.Tests.fsproj:303 references the database project. No app consumer was found, but test consumers do exist.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 29,
+      "phrase": "The library is code: `MaterialLibrary.builtInEntries`, `Library.SeedSamples`, `SeedSources`, `seedEntries` and `standardCategories`.",
+      "spec_location": "§1, .spec-md line 59",
+      "evidence": "Inferred current-library claim. Unique declarations resolve to Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs:497 (builtInEntries), :146 (standardCategories), and ElementId.fs:651 (Library.SeedSamples), :812 (SeedSources), :884 (seedEntries). ElementId.fs:970-972 builds the library from the in-code seed lists and trees, and Ui/AppContext.fs:93 invokes it.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 30,
+      "phrase": "On the inverse side, an `Experiment` (`Experiments.fs:Experiment`) is a frozen snapshot with one varied element, one capture and one machine-specific data path.",
+      "spec_location": "§1, .spec-md line 61",
+      "evidence": "Inferred current-shape claim. Experiments.fs does not exist at the repository root. The actual type is Berreman/OpticalConstructor/OpticalConstructor.Domain/Experiments.fs:225-236: setup is a captured descriptor list, measurement is one MeasurementMode, varied is VariedElement option, and dataFileOpt is DataFilePath option. Thus the varied element and data attachment are optional, not universally present. Ui/TableAndElementRotationView.fs:3402 supplies file.Path.LocalPath to DataFilePath, supporting the machine-specific-path concern.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 31,
+      "phrase": "The run law takes the first bound sample (`TableAndElementRotationView.fs:measuredElementOf`).",
+      "spec_location": "§1, .spec-md line 61",
+      "evidence": "Inferred current-behavior claim. The cited file does not exist at the repository root. In Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs:1445-1454, measuredElementOf does select the first bound sample, but its caller at :1471-1478 selects capture branches. Actual execution at :2751-2786 builds a SampleStep for each bound sample on the detector path, and Domain/ExperimentRun.fs:36-44 folds every SampleStep matrix. The first-sample limitation concerns capture selection, not limiting matrix propagation to one sample. Independently, .execution-contract-json obligation S81-CAPTURE-HOST and .spec-jsonl steps 253-254 describe the future per-object capture change; those declarations do not establish the stronger baseline assertion.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 32,
+      "phrase": "The Inverse flow ends at a stub (`SolverHandoffView.fs`).",
+      "spec_location": "§1, .spec-md line 61",
+      "evidence": "Inferred existing-wiring claim. SolverHandoffView.fs is absent at the repository root. Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:29-30 contains the no-solving message and :100-116 performs validation; SolverHandoffWindow.fs:19,37 hosts it. However, a search of non-test F# product sources found no construction of SolverHandoffWindow or use of SolverHandoffWindowKey beyond its declaration. The existence of the stub and its descriptive comments does not mechanically establish that the current Inverse flow reaches it.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 33,
+      "phrase": "The working inverse code lives outside the constructor: `MuellerReconstruction`, `MuellerInverse`, and the noise and fit harness in the TEST project (`BerremanTests/InverseFitHarness.fs`).",
+      "spec_location": "§1, .spec-md line 61",
+      "evidence": "Inferred current-placement/wiring claim. BerremanTests/InverseFitHarness.fs does not resolve from the repository root; the actual test-only harness is Berreman/BerremanTests/InverseFitHarness.fs:303, with NoiseParam at :171 and fit wrappers at :493/:503. MuellerReconstruction and MuellerInverse are product modules at Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:15 and MuellerInverse.fs:62. Their being outside the constructor can only mean outside its active inverse UI flow, not outside the constructor projects. Ui/SynthesisFitPage.fs:24 even imports MuellerInverse, so broad claims that none of its code is referenced by the UI would require qualification.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 34,
+      "phrase": "Two committed reference kits prove the whole chain by reproducing two existing results: the optics-mueller reconstruction and `AbsorbingBiaxialNoisyTests`.",
+      "spec_location": "§1, .spec-md line 76",
+      "evidence": "The two named existing baselines resolve: Berreman/BerremanTests/MuellerReconstructionTests.fs:802 declares the section 7.2 staged reconstruction fact and :978-1037 compares QZ, LR and combined matrices to reference values; Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:60 declares the uniquely named class and :100-113 runs its noisy recovery ensemble. The optics-mueller scripts and data are also present in Berreman/Data/MuellerMatrix/. This confirms existence of the two referenced result/test artifacts, not their runtime success in this audit. The kits and their end-to-end proof are declared future effects.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 35,
+      "phrase": "1. **Both closure routes become data.** 001 §B names the tabulated imports (`MaterialImport.buildTabulatedClosure`). The transcendental models (Tauc–Lorentz, Gaussian, Forouhi–Bloomer, Brendel–Bormann) lower to `EpsAxisEvaluated` closures (`DispersionModels.fs:DispersionModel.toEpsAxis`). An entry holding such a closure cannot serialise, and 001 makes that a test failure, so both routes become data.",
+      "spec_location": "§3.1, line 98",
+      "evidence": "Inferred assumption phrase: the named models lower to closures. Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs:158-193 declares buildTabulatedClosure and constructs an EpsWithDisp-backed entry with complexity = None. Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs:686,766-769 declares DispersionModel.toEpsAxis and lowers all four named models to EpsAxisEvaluated this.evaluate. Berreman/Berreman/Dispersion.fs:369 stores a WaveLength -> ComplexRefractionIndex function, not serializable coefficient data. Operator source specs/0050/.manual/001-library-files-database-multi-setup-inverse.md:182 requires pure data and treats a nonserializable entry as a test failure. The data conversion is a declared future effect in .execution-contract-json S11-TABULATED/S11-OSCILLATORS/S11-NO-CLOSURE, not a completed runtime result.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 36,
+      "phrase": "- The interpolation rule stays linear in λ, clamped at the ends, as `buildTabulatedClosure` does today. Every number is unchanged.",
+      "spec_location": "§3.1, line 100",
+      "evidence": "Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs:159 sorts by lambdaMeters; :163-164 makes a one-sample table constant; :168-169 clamps below and above the endpoints; :177-179 interpolates n and k linearly in wavelength before squaring the complex index through Eps.fromComplexRefractionIndex. The present interpolation claim is confirmed. Future numerical parity is required by .spec-jsonl steps 1-2 and .execution-contract-json S11-TABULATED; no implementation or numerical test was run by this audit.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 37,
+      "phrase": "2. **A material's physics is its complexity.** Once every material is data, `MaterialEntry.complexity` becomes mandatory and `properties` becomes a member computed from it. The `complexity = None` paths are deleted: `MaterialImport`, `Report.fs`, and the view-only Edit gating in `MaterialsControls`.",
+      "spec_location": "§3.2, line 101",
+      "evidence": "Inferred assumption phrase: the option paths proposed for deletion exist. Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs:260-268 declares MaterialEntry with stored properties and optional complexity. OpticalConstructor.Storage/MaterialImport.fs:193 and OpticalConstructor.Storage/Report.fs:108 set complexity = None. OpticalConstructor.Controls/MaterialsControls.fs:222-225 omits Edit for ViewOnly. These resolve to the stated existing artifacts; the mandatory-field and computed-member changes are future effects in .spec-jsonl steps 10-14 and .execution-contract-json S12-CONTROLS-EDIT/S12-MANDATORY.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 38,
+      "phrase": "- Source, detector and polarizer presets have string ids today (`\"src-600\"`, `\"det-intensity\"`, `\"pol-lp\"`). Each gets a GUID minted once, and a preset's `ElementValueId` becomes the GUID string, as a sample's already is (`LibraryEntry.entryId`). `newSourceId` mints a plain GUID.",
+      "spec_location": "§3.3, line 103",
+      "evidence": "Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:827,887,889 contains the exact src-600, det-intensity and pol-lp preset literals. LibraryEntry.entryId at :357-362 maps SampleItem through SampleId.toElementValueId; :36-43 defines SampleId over Guid and renders its Guid string. Current newSourceId at :594 still prefixes src-. Its plain-GUID form is a declared future change, explicitly bound by .spec-jsonl steps 19-20 and .execution-contract-json S13-GUID-IDS; it is not treated as a current fact.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 39,
+      "phrase": "- The built-ins' identity constants stay in Domain as well-known ids: `MaterialIds`, `CategoryIds`, and the sample and preset ids moved out of the seed modules. Product code (the default-scene prebinds, the band colours in `Schematic.fs`) and the tests name built-ins through them.",
+      "spec_location": "§3.3, line 104",
+      "evidence": "Inferred assumption phrase: identity constants stay in Domain. Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs:50,135 declares MaterialIds and CategoryIds. Domain/ElementId.fs SeedSamples, SeedSources and seedEntries contain the sample/preset identities. Ui/Schematic.fs:50-57 keys band colours by MaterialIds. .spec-jsonl step 15 moves sample and preset literals into SampleIds/PresetIds and changes the default-scene prebinds; those new modules are a future effect, not claimed present. Operator source 001 §B:173-186 requires frozen GUID identities and deletion of code seed values after export.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 40,
+      "phrase": "- Every other seed value is deleted: names, descriptions, physics, structures, preset records and grouping trees.",
+      "spec_location": "§3.3, line 105",
+      "evidence": "Profile 1 declared future effect. Operator source specs/0050/.manual/001-library-files-database-multi-setup-inverse.md:185 expressly requires deleting Domain seed values after exporting them. The present values resolve to Domain/MaterialLibrary.fs builtInEntries and standardCategories and Domain/ElementId.fs SeedSamples, SeedSources, seedEntries and seedTrees. .spec-jsonl S1.7 schedules their deletion and replaces consumers with catalogue-backed data. This confirms the source obligation and the existence of its targets, not completion of the deletion.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 41,
+      "phrase": "4. **`CatalogueImport` lives in Domain.** The pure import seam (`SeedingProxy`'s shape plus its orchestrator) moves from `OpticalConstructor.Seeding/Seeding.fs` to Domain, and the Seeding project is deleted. Reading files is Storage's `CatalogueProxy`.",
+      "spec_location": "§3.4, line 106",
+      "evidence": "Inferred assumption phrase: the seam proposed for movement exists. Berreman/OpticalConstructor/OpticalConstructor.Seeding/Seeding.fs:46-65 declares SeedingProxy with saveCategory/saveMaterial/saveSample/saveLibraryEntry and seedAll orchestrating them; :85-130 implements createInMemory. Operator source 001:205 explicitly calls for SeedingProxy/seedAll to become CatalogueImport. .spec-jsonl step 37 and .execution-contract-json S16-MOVE declare the Domain move and Seeding project deletion. Its RENAME_TEST actions name OpticalConstructor.Tests.SeedingProxyTests and OpticalConstructor.Tests.SeedingInMemoryTests, matching the namespace and module declarations at lines 1 and 15 of each current test file.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 42,
+      "phrase": "5. **The shipped catalogue rides Storage's content.** `OpticalConstructor.Storage.fsproj` copies `Berreman/OpticalConstructor/Catalogue/Builtin/**` to `Catalogue/Builtin/` in every output, as it already copies `schema/*.json`. The App, the TestWindows heads and both constructor test suites therefore read the same files.",
+      "spec_location": "§3.5, line 107",
+      "evidence": "Berreman/OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj:58-65 includes both schema JSON files as Content with CopyToOutputDirectory PreserveNewest. That existing-copy precedent is confirmed; it is two explicit Content entries, not a literal wildcard. Operator source 001:183-186 requires the shipped catalogue under the install directory and tests reading the same files. .spec-jsonl steps 34-35 and .execution-contract-json S15-BUILTIN-PARITY declare the new Catalogue/Builtin content and parity consumers. The catalogue output and transitive runtime availability are future effects requiring those tests, not measured current outputs.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 43,
+      "phrase": "6. **The export tool is thrown away in its own section.** It is a `.fsx` that loads the built Domain and Storage assemblies. It is run once; its output is committed, and it is deleted in the same section, after a parity test proves that the files load equal to the code seeds.",
+      "spec_location": "§3.6, line 108",
+      "evidence": "Profile 1 declared future effect supported by operator source 001:185, which requires a one-time throw-away export with preserved GUIDs and values. .spec-jsonl step 34 adds BuiltInCatalogueParityTests; step 35 builds and runs export-builtin.fsx against Domain/Storage and commits its product-writer output; step 36 deletes the script while selecting the parity class. .execution-contract-json S15-BUILTIN-PARITY and S15-EXPORT-DISCARDED bind those consumers. The acceptance hashes and live gate command identities match; the future script and its parity result have not been executed in this audit.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 44,
+      "phrase": "7. **Start-up import applies only what overwrites nothing.** Add, Reuse, Add-version and Mark-inactive rows apply automatically and are logged. Divergence and name-collision rows wait in the one import dialog, with their default action pre-selected, and nothing in them applies unconfirmed. A dropped file and a kit's snapshot always open the dialog.",
+      "spec_location": "§3.7, line 109",
+      "evidence": "Profile 1 unsupported semantic interpretation and behavior-seam mismatch. Operator source specs/0050/.manual/001-library-files-database-multi-setup-inverse.md:189-200 defines one per-entry table and says the decisions show as one dialog with a row per entry; it does not exempt nonconflicting startup rows. .execution-contract-json S31-STARTUP-IMPORT and .spec-jsonl step 98 instead apply unasked rows before any dialog, while S32-LAUNCHER-PENDING/step 112 opens a dialog only for rows awaiting choices. The final sentence also conflicts with the candidate: steps 150 and 156 filter SameContentHash out of pendingDecisions and skip the dialog when none remain; step 174 preserves that bypass. Operator source 001:271 says one dialog shows all kit-snapshot rows. The cited source does not contain the claimed automatic-startup exception, and repeating it in the contract does not establish source coverage.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 45,
+      "phrase": "8. **A registered catalogue folder is an import-log row.** Registering a read-only folder imports it and records the folder. Every start re-checks every logged folder by manifest hash. No separate registration store exists.",
+      "spec_location": "§3.8, line 110",
+      "evidence": "Profile 1 declared design interpretation, not a claim that a registration store already exists. Operator source 001:188 requires manifest-hash checks at every start; :201-203 permits additional read-only folders; :209 includes the catalogue-import log in the database. .execution-contract-json S31-IMPORT-LOG/S31-STARTUP-IMPORT/S31-REGISTRATION and .spec-jsonl steps 97-99 use the log row as the folder registry and enumerate logged folders on start. A folder with pending decisions is logged only after settle; that timing is explicit in steps 98-99. The source does not mandate an additional registration store.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 46,
+      "phrase": "9. **No test touches the user's data.** `AppContext.create` receives every location (the library connection string included) from settings. Tests pass SQLite `:memory:` or paths under the test run's output directory.",
+      "spec_location": "§3.9, line 111",
+      "evidence": "Profile 1 future effect supported by operator source 001:228-231 and :304-313: configurable SQLite connection and locations, with test kits/databases under test output and committed kits read-only. Current Ui/AppContext.fs:78 takes WorkbenchSettings and :110-112 derives the export folder from Documents, so the sentence is not a measured current fact. .spec-jsonl steps 81-83 introduce DataLocations and pass it into AppContext.create, relocate test scopes under output, and step 88 composes the database. These are bound under S2.4; the effect replay and acceptance/command binding checks pass mechanically without executing the future stores.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 47,
+      "phrase": "10. **The Launcher meets kits before the start screen exists.** Part S4 makes Main and Inverse open a kit through a folder-picker seam (`KitFolderPicker`: \"choose a folder; initialise it if needed\"). Part S5 puts the start screen in front of that same seam. Headless tests substitute the seam.",
+      "spec_location": "§3.10, line 112",
+      "evidence": "Profile 1 staged future effect. Operator source 001:283-289 requires both Launcher modes to open the kit start screen and preserve pre-existing folder contents. .spec-jsonl step 145 declares KitFolderPicker and openOrInitialise, steps 150/154 compose and test the picker, and step 174 moves the same picker code for the S5.2 start screen. The source is silent on the temporary S4 composition order, so this staging does not contradict the required final flow. KitFolderPicker is a declared future seam, not an existing repository artifact.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 48,
+      "phrase": "11. **Kit file names.** A name keeps the lab's characters. Characters Windows forbids in a file name (`: * ? \" < > |` and the separators `/`, `\\`) become `_`.",
+      "spec_location": "§3.11, line 113",
+      "evidence": "Profile 1 declared naming interpretation. Operator source 001:119-140 requires identity-based names, preserves examples containing spaces and Unicode, and requires entry names made filesystem-safe. .spec-jsonl step 24 declares FileStem.ofText with the exact listed replacements and LibraryEntryFilesTests with colon, both separators, punctuation and unchanged Unicode examples; kit naming reuses FileStem in steps 122-123. This confirms that the stated replacement rule has a planned common implementation and consumer; it does not establish a complete runtime guarantee for every Windows filename.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 49,
+      "phrase": "12. **A read-only open writes nothing**: no `.oc/lock`, no `.oc/planner/`, no snapshot, no stamp. Tests open the committed kits this way.",
+      "spec_location": "§3.12, line 114",
+      "evidence": "Profile 1 declared future behavior supported by operator source 001:276 (read-only open), :313 (reference kits read-only to tests), and :554-556 (real-folder build/open acceptance). .spec-jsonl step 131 declares KitProxy.readOnlyView, refuses write/acquireLock verbs and makes releaseLock a no-op; read-only KitContext opening uses that view. Snapshot and Planner writes must use the same protected context. Read-only behavior is a future acceptance obligation, not a current kit runtime fact.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 50,
+      "phrase": "13. **AT-1 builds the kit around its lab folder.** The test copies the committed kit's `data/` tree into a fresh folder under the test output and runs \"New kit…\" on that non-empty folder. 001 §F: its files are kept. The test then attaches the files in place, so built and committed kits compare equal file by file: kit files, `library/**` and `data/**`, with `.oc/` excluded. AT-2 instead writes its observation files through the Mueller-matrix import profile.",
+      "spec_location": "§3.13, line 115",
+      "evidence": "Profile 1 declared acceptance-fixture interpretation supported independently by operator source 001:288 (initialise a folder without losing its files), :555-558 (semantic build and equality including data/library), and :583-585 (regenerate AT-2 observations through the Mueller profile). .spec-jsonl step 421 copies only the committed optics-mueller data tree into a fresh output folder before CreateKit; step 428 checks full committed-kit equality; step 434 writes and rereads the noisy observations. .execution-contract-json S121-COMMITTED-KIT binds the equality consumer. No kit was generated or opened during this audit.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 51,
+      "phrase": "- An item instantiates a model. The rows 001 §I marks as existing — the source preset (λ), the ideal LP/CP presets and the stack `Sample` — are models themselves, and an item references them.",
+      "spec_location": "§3.14, line 117",
+      "evidence": "Profile 1 semantic interpretation. The existing physics is real: Domain/ElementId.fs:203-214 defines Sample/structure, :262-269 defines SourcePreset wavelength/tuning, :338-344 defines PolarizerPreset, and :889-891 instantiates ideal LP/CP. Operator source 001:337-342 marks that physics as existing. However, :326-334 separately requires an item to instantiate an ItemModel, a library entry with extension .item-model-json; the existing markers do not state an exception to that model contract. .execution-contract-json S71-ADD-ITEM and .spec-jsonl step 223 instead let ItemModelChoice refer directly to a source preset, polarizer preset or sample version. The cited source does not support the claim that these existing entries are themselves the required ItemModel entries; the contract repeats the interpretation rather than independently establishing it.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 52,
+      "phrase": "- `ItemModel` library entries (`.item-model-json`) carry the parameterised kinds: real LP, retarder, compound in light order, black-box Mueller, empty slot, intensity detector, Mueller polarimeter and ellipsometer.",
+      "spec_location": "§3.14, line 118",
+      "evidence": "Profile 1 declared future effect. Operator source 001:339-346 explicitly lists real polarizer, retarder, compound, black-box sample, empty slot and detector models. .execution-contract-json S71-MODEL-FORMS and .spec-jsonl step 215 declare OpticalForm/ItemModelForm for these kinds with parameterAxes and detector NoiseParam; steps 216-219 add their storage/file/import consumers. The listed new kinds are supported by the source; this does not resolve the separate direct-preset interpretation in §3.14.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 53,
+      "phrase": "- The built-in item models are written once through the export path and committed. No code seed is added.",
+      "spec_location": "§3.14, line 119",
+      "evidence": "Profile 1 declared future effect. Operator source 001:183-186 mandates file-based built-ins and one-time export, and :333-346 supplies the required item-model kinds. .spec-jsonl S7.1 adds the item-model catalogue entries to the file/store/import path, rather than naming a present code seed. The effect ledger replays without missing test/fixture consumers. This is a future catalogue construction obligation; there is no claim here that the item-model files already exist.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 54,
+      "phrase": "15. **Copying experiments between kits** (001 §H) lands in S6 with experiments, setups, data files and snapshots. Its item mapping lands with items in S7.",
+      "spec_location": "§3.15, line 120",
+      "evidence": "Profile 1 staged future effect. Operator source 001:322 requires copying experiments with setups, data and used items, with explicit mapping to held items or addition. .spec-jsonl S6 steps 203-207 supply experiment/data/library copying; S7.2 step 231 defines item mapping, step 240 extends copyExperimentsFrom to bring mapped or added items, and steps 241-242 add the semantic/UI consumers. The final obligation is represented across those stages; current repository behavior was not asserted or exercised.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 55,
+      "phrase": "16. **The crystal builders are product physics.** `buildTriclinic` (`BerremanTests/BiaxialSample.fs`), `buildAbsorbing` (`AbsorbingBiaxialSample.fs`) and the uniaxial builder used by `MuellerInverseTests` are what the study engine evaluates. They are promoted into `MuellerInverse.fs` as members of their parameter records, so ONE implementation exists. The constants, cuts, designs, `perturbedStart` and `searchBox` move to `BerremanTestSupport`, as 001 §Q says.",
+      "spec_location": "§3.16, line 121",
+      "evidence": "The existing artifacts resolve: Berreman/BerremanTests/BiaxialSample.fs:98 declares buildTriclinic, AbsorbingBiaxialSample.fs:73 declares buildAbsorbing, and MuellerInverseTests.fs:110 declares buildUniaxialGyrotropic, passed to createBerremanForward at :131. Domain/MuellerInverse.fs:851-858 evaluates the caller-supplied builder. The claimed destination is an unsupported source interpretation: operator source specs/0050/.manual/001-library-files-database-multi-setup-inverse.md:603 expressly includes buildAbsorbing among the ground truth/design artifacts to move into BerremanTestSupport. .spec-jsonl step 334 and the S101 absorbing-builder obligation instead move it into product MuellerInverse.fs. The following spec bullet acknowledges the departure, but §2.1 makes 001 authoritative and no operator source pointer authorizes overriding that explicit destination. Current builder existence is confirmed; source coverage of the proposed relocation is refuted.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 56,
+      "phrase": "17. **Case names take a second word** (`AGENTS.md`). 001's one-word cases become, for example, `KnownParameter` / `UnknownParameter` / `CalibratedParameter`, `ScienceRun` … `PlannedRun`, and `StarredKit` / `UnstarredKit`.",
+      "spec_location": "§3.17, line 124",
+      "evidence": "Profile 1 naming interpretation supported by the repository instruction: AGENTS.md requires DU case names with two or more words and unique names. Operator source 001:348 supplies Known/Unknown/Calibrated, :301 supplies the star state, and the study/experiment role definitions supply the one-word roles. Renaming their case identifiers to comply with AGENTS.md does not alter the stated states. These are proposed names, not claims that those new types already exist.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 57,
+      "phrase": "18. **One local database.** The MSSQL keys in `AppConfig.fs` (`ConfigKey.databaseProvider`, `mssqlConnectionString`) and their fixture are deleted. 001 §W excludes cloud or shared databases.",
+      "spec_location": "§3.18, line 125",
+      "evidence": "Inferred assumption phrase: the settings and fixture proposed for removal exist. Berreman/OpticalConstructor/OpticalConstructor.App/AppConfig.fs:48,53 declares ConfigKey.databaseProvider and mssqlConnectionString. OpticalConstructor.Tests/fixtures/database-appsettings.json:3,6 supplies DatabaseProvider and OpticalConstructorMssql; TestDbMigrationTests.fs:20 declares module TestDbMigrationTests and :56 consumes the provider key. .spec-jsonl step 59 carries DELETE_TEST OpticalConstructor.Tests.TestDbMigrationTests, matching that live namespace/module, and declares the fixture/settings deletion. Operator source 001:207-231 requires SQLite and no migrations; :707 excludes cloud/shared databases. Contract/step acceptance hashes, command identities and deletion-effect replay check mechanically.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 58,
+      "phrase": "- The AGF glass-catalogue import is implemented, import only and never bundled.",
+      "spec_location": "§3.19, line 127",
+      "evidence": "Profile 1 future scope interpretation supported by operator source specs/0050/.manual/001-library-files-database-multi-setup-inverse.md:243, which explicitly requires user-supplied AGF import only and forbids bundling. .spec-jsonl step 462 declares the glass-catalogue reader and step 464 its import-dialog consumer. The wording is interpreted as the required future implementation, not as a claim that an AGF importer already exists; no external formula-reference or implementation correctness claim is made by this verdict.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 59,
+      "phrase": "- Materials Project tensors, paywalled sources and gyration or magneto-optic sources get no adapter.",
+      "spec_location": "§3.19, line 128",
+      "evidence": "Profile 1 scope interpretation. Operator source 001:236-246 enumerates the three online adapters, treats Materials Project tensors as starting priors only, keeps paywalled sources as manual paste, and makes gyration/magneto-optic data user-entered. The S13 steps implement the named adapters and AGF import without adding an adapter for the three categories excluded here. This confirms the declared negative scope against the source, not current runtime adapter behavior.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 60,
+      "phrase": "- Every new control gets a stable id as a uniquely named static member of `ConstructorUiId` (`OpticalConstructor.Controls/UiIds.fs`); ids derived from Domain values go in `OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs`.",
+      "spec_location": ".spec-md:155 (§4 UI)",
+      "evidence": "Inferred assumption-shape: the required automation-id seams already exist. Berreman/OpticalConstructor/OpticalConstructor.Controls/UiIds.fs:27 declares ConstructorUiId, :33 supplies automationAttribute, and :37 onward declares fixed static ids. Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs:18 defines the augmentation module and :49 onward adds Domain-derived ConstructorUiId members. This verifies the existing extension points, not future controls.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 61,
+      "phrase": "- Every new window calls `WindowFit.keepOnScreen` (`OpticalConstructor.Controls/WindowLayout.fs`) and joins `ScrollExtentTests`.",
+      "spec_location": ".spec-md:156 (§4 UI)",
+      "evidence": "Inferred assumption-shape: the named window helper and test suite are reusable existing artefacts. Berreman/OpticalConstructor/OpticalConstructor.Controls/WindowLayout.fs:107 defines WindowFit.keepOnScreen; Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/ScrollExtentTests.fs:31 declares the suite, :34 supplies the two small-screen sizes and :89 implements its reachability check. Future windows are not being claimed as implemented.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 62,
+      "phrase": "One serializer options value, moved out of `ProjectJson`.",
+      "spec_location": ".spec-md:168 (§5 Canonical JSON + SHA-256)",
+      "evidence": "Inferred assumption-shape from 'moved out of': Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs:131 defines options : JsonSerializerOptions and :144 registers JsonFSharpConverter; :170 and :178 use that value for deserialization and serialization. Only the existing serializer-options source is verified; sorted-key canonicalization and SHA-256 are proposed work.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 63,
+      "phrase": "| `PinState` (`VersionPinned` / `VersionUnpinned`) | Domain `Lifecycle.fs` | One-way. It replaces `VersionsInUse`. |",
+      "spec_location": ".spec-md:170 (§5 PinState)",
+      "evidence": "Inferred assumption-shape from 'replaces': Berreman/OpticalConstructor/OpticalConstructor.Domain/Lifecycle.fs:52 declares VersionsInUse with versionsInUse : unit -> Set<VersionRef>; :62 supplies empty and :81 consumes it in usageOf. PinState and its one-way policy are future changes.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 64,
+      "phrase": "| JSON + schema | `ProjectJson.options`, `SchemaValidation` (System.Text.Json, FSharp.SystemTextJson, JsonSchema.Net) | The project aggregate (S4) |",
+      "spec_location": ".spec-md:188 (§6 JSON + schema)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs:131 defines options and :144 registers JsonFSharpConverter. Storage/SchemaValidation.fs:13 defines SchemaValidation, :21 loads a JsonSchema and :64 defines validate over JsonElement. Storage/OpticalConstructor.Storage.fsproj references FSharp.SystemTextJson and JsonSchema.Net; System.Text.Json is opened by both source files. Domain/Project.fs:26 declares the current OpticalConstructorProject aggregate.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 65,
+      "phrase": "| Import seam | `Seeding.SeedingProxy` / `seedAll` → `CatalogueImport` | `OpticalConstructor.Seeding/` |",
+      "spec_location": ".spec-md:189 (§6 Import seam)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Seeding/Seeding.fs:30 declares module Seeding, :46 declares SeedingProxy and :59 defines its seedAll member. The implementation pushes standardCategories, builtInEntries, SeedSamples.allSeedSamples and seedEntries through the supplied Result-returning functions. OpticalConstructor.Seeding.fsproj exists beside it. CatalogueImport is the proposed destination.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 66,
+      "phrase": "| Version rule | `Lifecycle.decideVersioning` | `VersionsInUse` |",
+      "spec_location": ".spec-md:190 (§6 Version rule)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Domain/Lifecycle.fs:52 declares VersionsInUse and :120 defines decideVersioning over the saved/incoming VersionPayload and VersionUsage.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 67,
+      "phrase": "| History MRU | `RecentFiles.bump` | `recent.json`, `loadRecent`, `pushRecent`, `maxRecent` |",
+      "spec_location": ".spec-md:191 (§6 History MRU)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs:24 defines maxRecent, :36 names recent.json, :41 defines bump, :51 defines loadRecent and :65 defines FileName.pushRecent. bump removes case-insensitive duplicates, prepends the path and truncates to maxRecent; pushRecent writes the updated list using ProjectJson.options.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 68,
+      "phrase": "| RII records | `MaterialImport` (`RefractiveIndexInfoText`) | `buildTabulatedClosure` |",
+      "spec_location": ".spec-md:192 (§6 RII records)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs:27 declares MaterialImport, :70 declares RefractiveIndexInfoText, :158 defines the private buildTabulatedClosure and :189 uses it to construct imported properties. The RefractiveIndexInfoText augmentation begins at :471.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 69,
+      "phrase": "| Data parsers | `MeasuredData` `parseIntensitySeries` / `parseEllipsometricSeries`, `MuellerDataStore` `parseMuellerCsv` | The strict v1 `X,Y` path, `MuellerDataSet`, the archive store |",
+      "spec_location": ".spec-md:193 (§6 Data parsers)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Domain/MeasuredData.fs:198 and :216 define DataFileText.parseIntensitySeries and parseEllipsometricSeries; the former consumes the strict header-plus-X,Y format. Storage/MuellerDataStore.fs:106 defines DataFileText.parseMuellerCsv, :151 augments MuellerDataSet with archiveEntryName and :183 onward implements the archive-loading boundary using ZipFile.OpenRead.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 70,
+      "phrase": "| Label grammar | `MuellerExperimentLabel.parsed` cases → the naming template's first tests | `experimentRegex`, `objectRegex`, `parsed` |",
+      "spec_location": ".spec-md:194 (§6 Label grammar)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:324 declares MuellerExperimentLabel, :504 and :508 define experimentRegex and objectRegex, and :516 defines parsed using those regexes to return source/analyzer tokens, note and object rotations.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 71,
+      "phrase": "| Gain rules | `MuellerReconstruction.familyGain` → first gain-model implementation | — |",
+      "spec_location": ".spec-md:195 (§6 Gain rules)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:859 defines familyGain (family : Family) (cal : GainCalibration) (t : DateTimeOffset) : AirGain. Berreman/BerremanTests/MuellerReconstructionTests.fs:683-704 exercises the per-family gain branches, interpolation and clamping.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 72,
+      "phrase": "| Linear engine | `MuellerReconstruction.buildDesign` + `reconstruct`, `MuellerSolverProxy` | — |",
+      "spec_location": ".spec-md:196 (§6 Linear engine)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:215 declares MuellerSolverProxy, :928 defines buildDesign and :959 defines reconstruct using the supplied solver and LeastSquaresSystem.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 73,
+      "phrase": "| Nonlinear engine | `InverseFit`, `MuellerInverseSolver.createAlglibLevenbergMarquardt`, `MuellerInverse.forwardModels` / `createBerremanForward` | — |",
+      "spec_location": ".spec-md:197 (§6 Nonlinear engine)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Optimization/InverseFit.fs:33 declares InverseFit and :115 defines invertFromCsv, which calls LocalRefinement.refine. Optimization/MuellerInverseSolver.fs:36 defines createAlglibLevenbergMarquardt. Domain/MuellerInverse.fs:850 and :876 define createBerremanForward and forwardModels.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 74,
+      "phrase": "| Cut plates | `MuellerInverse.orientForCut`, `internalAngle`, `gyrationProjection` | — |",
+      "spec_location": ".spec-md:198 (§6 Cut plates)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:437 defines gyrationProjection, :445 defines internalAngle and :462 defines orientForCut, with elevated optical inputs and outputs.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 75,
+      "phrase": "| Table samples | `Propagation.sampleMuellerSpun` | — |",
+      "spec_location": ".spec-md:199 (§6 Table samples)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Domain/Propagation.fs:324 defines sampleMuellerSpun (branch : Branch) (sample : ResolvedSample) (w : WaveLength) (inc : IncidenceAngle) (spin : Angle) : MuellerMatrix.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 76,
+      "phrase": "| Fit quality | `FitQuality.residualJacobian`, `ResidualJacobian` (`columnNorms`, `conditionNumber`, `correlation`), `FitReport.standardErrors` | — |",
+      "spec_location": ".spec-md:200 (§6 Fit quality)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Optimization/FitQuality.fs:64 declares FitReport, :73 declares its standardErrors field and :103 defines residualJacobian. Domain/MuellerInverse.fs:952 declares ResidualJacobian and :960, :971 and :999 define columnNorms, conditionNumber and correlation respectively.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 77,
+      "phrase": "| Noise / fit harness | `BerremanTests/InverseFitHarness.fs` → Optimization | Its product half |",
+      "spec_location": ".spec-md:201 (§6 Noise / fit harness)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/BerremanTests/InverseFitHarness.fs exists: :114 declares NoiseSeed, :171 NoiseParam, :208 UniformDeviateProvider and :303 InverseFitHarness. Its reusable implementations include disturb (:553), misread (:567), misreadAbsolute (:589), noisyObserveAbsoluteWith (:604) and noisyObserveWith (:626). The move into Optimization is future work.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 78,
+      "phrase": "| Ground truth | `BiaxialSample.fs`, `AbsorbingBiaxialSample.fs` → `BerremanTestSupport` | Their BerremanTests copies |",
+      "spec_location": ".spec-md:202 (§6 Ground truth)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/BerremanTests/BiaxialSample.fs:49 declares BiaxialSample, :53-78 define reference values and :98 defines buildTriclinic. Berreman/BerremanTests/AbsorbingBiaxialSample.fs:26 declares AbsorbingBiaxialSample, :45 defines absorbing, :73 buildAbsorbing, :176 perturbedStart and :197 searchBox. BerremanTestSupport is the proposed destination.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 79,
+      "phrase": "| §7.2 pipeline | `MuellerReconstructionTests` §7.2 → product staged path | The hand-composed body |",
+      "spec_location": ".spec-md:203 (§6 §7.2 pipeline)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/BerremanTests/MuellerReconstructionTests.fs:802 declares the section 7.2 end-to-end fact. Its body composes real data loading, Stage-1 calibration (:847 onward), Stage-3 gain/reduction (:883 onward), and per-kind reconstruction (:967-980), followed by reference-matrix assertions (:982 onward). The hand-composed source body exists.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 80,
+      "phrase": "| Pre-fit checks | `SolverHandoffView` three checks, `ExperimentDataLoad.loadAndValidate` | `SolverHandoffView` / `Window` |",
+      "spec_location": ".spec-md:204 (§6 Pre-fit checks)",
+      "evidence": "Inferred existing-artefact and numeric-count claim from the reuse table. Read Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:100 (validateExperiment): the three ordered checks are non-sample bindings, attached dataFileOpt, and ExperimentDataLoad.loadAndValidate. The third distinguishes parse failures from range/units validation failures. Domain/ExperimentDataLoad.fs:46 defines loadAndValidate, dispatches by detector kind and binds validateAgainstExperiment. Ui/SolverHandoffWindow.fs also exists. The live check count is three.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 81,
+      "phrase": "| Long work | `OpticalConstructor.Ui/JobRunner.fs` | — |",
+      "spec_location": ".spec-md:205 (§6 Long work)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs:132 defines runPoints, :143 runIterations and :154 startBackground. The first two route through a cancellation-aware runLoop; startBackground uses Async.Start and maps exceptions to JobRunExn.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 82,
+      "phrase": "| Windows | `WindowFit.keepOnScreen`, `ScrollExtentTests` | — |",
+      "spec_location": ".spec-md:206 (§6 Windows)",
+      "evidence": "Inferred existing-artefact claim from the reuse table. Berreman/OpticalConstructor/OpticalConstructor.Controls/WindowLayout.fs:107 defines WindowFit.keepOnScreen. Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/ScrollExtentTests.fs:31 declares the suite; :89 implements assertReachable, :123 onward exercises product windows and :198 tests opening an oversized window.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 83,
+      "phrase": "| Preset string ids → GUIDs | Compatibility break accepted: nothing persisted holds a preset id. |",
+      "spec_location": ".spec-md:215 (§7 Preset string ids)",
+      "evidence": "Inferred assumption-shape: the migration relies on an absence of persisted preset ids. This row names neither a persisted format/file nor a unique type/member whose storage contract establishes that absence. AppContext.fs:91, :104 and :108 currently constructs in-memory source, collection and scene stores, but Domain/Project.fs:41 includes placements and Domain/Placement.fs:349 includes valueId : ElementValueId option, so the existence of those in-memory stores alone does not establish the unqualified claim about all persisted data. Under Phase 2 the row has no qualifying pointer.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 84,
+      "phrase": "| `MaterialEntry` (complexity mandatory), `EpsAxisDispersion` (closure → data) | Compatibility break accepted: in-memory shapes, no stored data. |",
+      "spec_location": ".spec-md:216 (§7 MaterialEntry / EpsAxisDispersion)",
+      "evidence": "Inferred existing-format claim, checked for the physics shapes being changed. Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs:260-267 declares MaterialEntry with properties and optional complexity. Berreman/Berreman/Dispersion.fs:366-369 declares EpsAxisDispersion including the function-valued EpsAxisEvaluated case. Storage/Report.fs:38-45 persists only MaterialEntryDto metadata, and :94-110 reconstructs properties with a placeholder and complexity = None. Thus the changed physics shapes are in-memory; the existing metadata export does not serialize them.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 85,
+      "phrase": "| `Test` EF table + migration → library model | Compatibility break accepted: nothing references it. The database is created from the model (`EnsureCreated`) and stamped. A mismatch is `LibrarySchemaMismatchErr`; the remedy is to recreate it from the catalogues, after \"Export my library\" if needed. |",
+      "spec_location": ".spec-md:217 (§7 Test EF table + migration)",
+      "evidence": "Inferred assumption-shape from 'nothing references it'. The existing table and migration resolve, but the claimed absence of references is contradicted by Berreman/OpticalConstructor/OpticalConstructor.Tests/TestDbMigrationTests.fs:83-94: migrate constructs TestDbContext and calls Database.Migrate, insertRow calls context.Tests.Add(Test(Name = name)), and readSingle reads context.Tests. Its fact at :125 executes that round trip. OpticalConstructor.Tests.fsproj:303 also references the Database project. No product consumer was found; the sentence does not qualify its claim that way. This is a nonexistent no-reference relationship, not a shifted line pointer.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 86,
+      "phrase": "| `.ocproj`, `recent.json`, autosave files | Compatibility break accepted: no window ever saved or opened `.ocproj`. The kit history starts empty. |",
+      "spec_location": ".spec-md:218 (§7 .ocproj / recent.json / autosave)",
+      "evidence": "Inferred existing-wiring claim. Repository searches for saveProject, openProject, parseProject, serializeProject, .ocproj, writeAutosave, loadRecent and pushRecent find no call sites in OpticalConstructor.Ui, OpticalConstructor.App or OpticalConstructor.TestWindows source. Storage/ProjectFile.fs:24 and :35 implement save/open, with calls in storage/tests; Ui/AppContext.fs:104 and :108 instead supply in-memory collection/scene stores. The current tree confirms absence of window wiring; this does not establish historical or off-repository usage.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 87,
+      "phrase": "| `Berreman/Data/MuellerMatrix/` | Migration provided: moved byte-for-byte into `data/optics-mueller/data/`, then deleted. There is no second copy. |",
+      "spec_location": ".spec-md:220 (§7 MuellerMatrix data migration)",
+      "evidence": "Inferred existing-source claim from the proposed move. rg --files Berreman/Data/MuellerMatrix resolves data.zip, README.md, cpl_cpl_analyzer.py, matrix_fit_linear.py, matrix_glue.py, matrix_step1_air_fit.py, reference_step1_summary.json and reference_step2_linear_summary.json. Only the source artefacts are verified; byte-for-byte transfer and removal of the old copy are future obligations.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 88,
+      "phrase": "There is no release, so no stored data predates this spec except what the repository commits.",
+      "spec_location": ".spec-md:225 (§7 Migration intent)",
+      "evidence": "Inferred assumption-shape claim: this asserts the absence of pre-existing persisted data. The sentence supplies no file, symbol or inventory pointer for that assertion. AGENTS.md states that there is no release, but that alone does not mechanically establish that no uncommitted user data exists.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 89,
+      "phrase": "| Preset string ids → GUIDs | Compatibility break accepted: nothing persisted holds a preset id. |",
+      "spec_location": ".spec-md:230 (§7 Migration intent, preset identities)",
+      "evidence": "Inferred assumption-shape claim: the absence of persisted references justifies the proposed break. The row names neither a concrete preset-id type nor the persistence consumer/inventory that establishes the absence. Current serialization can carry ElementPlacement.valueId (OpticalConstructor.Domain/Placement.fs:349) through OpticalConstructorProject.placements (Project.fs:41); absence of existing saved instances needs a separately anchored claim.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 90,
+      "phrase": "| `MaterialEntry` (complexity mandatory), `EpsAxisDispersion` (closure → data) | Compatibility break accepted: in-memory shapes, no stored data. |",
+      "spec_location": ".spec-md:231 (§7 Migration intent, material shapes)",
+      "evidence": "Inferred assumption-shape claim about the current storage of the named types. Unique declarations resolve to Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs:260 (complexity is currently MaterialComplexity option at :267) and Berreman/Berreman/Dispersion.fs:366 (EpsAxisEvaluated carries a function at :369). OpticalConstructor.Ui/AppContext.fs:88-93 constructs the material/sample stores in memory; the current Project.fs:26 aggregate does not persist either named shape. Mandatory complexity and closure removal are declared future changes, not measured current facts.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 91,
+      "phrase": "| `Test` EF table + migration → library model | Compatibility break accepted: nothing references it. The database is created from the model (`EnsureCreated`) and stamped. A mismatch is `LibrarySchemaMismatchErr`; the remedy is to recreate it from the catalogues, after \"Export my library\" if needed. |",
+      "spec_location": ".spec-md:232 (§7 Migration intent, EF proof)",
+      "evidence": "Inferred assumption-shape claim, refuted specifically at 'nothing references it'. Berreman/OpticalConstructor/OpticalConstructor.Database/TestDbContext.cs:21,29 exposes DbSet<Test> and maps the Test table. OpticalConstructor.Tests/TestDbMigrationTests.fs:83-95 migrates that context, inserts Test(Name = name), and reads it; :127 onward asserts the migration and round trip. OpticalConstructor.Tests.fsproj:303 references the Database project. The profile-1 contract S21-RETIRE-EF-PROOF and .spec-jsonl step 59 correctly acknowledge this consumer and declare DELETE_TEST OpticalConstructor.Tests.TestDbMigrationTests, matching the live module at TestDbMigrationTests.fs:20. No product consumer was found, but the unqualified assertion has no matching current state. EnsureCreated and schema stamping are future effects.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 92,
+      "phrase": "| `.ocproj`, `recent.json`, autosave files | Compatibility break accepted: no window ever saved or opened `.ocproj`. The kit history starts empty. |",
+      "spec_location": ".spec-md:233 (§7 Migration intent, project persistence)",
+      "evidence": "Inferred current-wiring claim. Searching all .fs files in OpticalConstructor.Ui, OpticalConstructor.App and OpticalConstructor.Controls for saveProject, openProject, pushRecent, loadRecent, writeAutosave and .ocproj finds no executable consumer. ProjectFile.fs implements storage and RecentFiles.fs implements recent-file/autosave operations; RoundTripTests.fs:52-59 exercises file save/open without a window. This confirms the current repository's lack of window wiring, not historical executions outside the tree. The empty kit history is a future migration policy.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 93,
+      "phrase": "| Harness and samples (test → product / test support) | Migration provided: a move. `BerremanTests`' numbers are unchanged. |",
+      "spec_location": ".spec-md:236 (§7 Migration intent, harness and samples)",
+      "evidence": "Matched 'unchanged'. Berreman/BerremanTests/InverseFitHarness.fs exists, including InverseFitHarness at :303 and assertMuellerEqual at :530. The sentence declares numerical parity after a future move; it names no before/after numerical baseline that this current-tree pointer audit can compare. Existence of the harness is verified, but the future parity result is not.",
+      "verdict": "NOT-CHECKED"
+    },
+    {
+      "id": 94,
+      "phrase": "an editor for the database outside the existing Library and Materials windows.",
+      "spec_location": ".spec-md:246 (§8 Persistence and import)",
+      "evidence": "Matched 'existing'. The windows resolve uniquely to Berreman/OpticalConstructor/OpticalConstructor.Ui/LibraryWindow.fs:34 (type LibraryWindow, receiving library/sample/source/material/category proxies) and MaterialsWindow.fs:29 (type MaterialsWindow, receiving MaterialProxy and CategoryProxy). Their respective LibraryWindowView.fs and MaterialsWindowView.fs also exist. This confirms the surfaces' existence, not a current SQLite implementation.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 95,
+      "phrase": "new abstraction layers over the existing proxies;",
+      "spec_location": ".spec-md:256 (§8 Seams and extensibility)",
+      "evidence": "Matched 'existing'. Neither this bullet nor its paragraph names a proxy type, defining file or member. The repository contains multiple distinct proxy contracts, so 'the existing proxies' is unanchored under Phase 2; discovering some proxies does not identify the set this sentence means.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 96,
+      "phrase": "**Solver and harness.** `BerremanTests` (`unit-tests`) covers the core dispersion change (`EpsWithDispValueTests` and its neighbours) and every step that touches `OpticalConstructor.Optimization`, `MuellerInverse.fs`, `MuellerReconstruction.fs`, the solver or `BerremanTestSupport`. Only touched classes run; the whole suite runs at the final step.",
+      "spec_location": ".spec-md:267 (§9 Solver and harness)",
+      "evidence": "Inferred reuse assumption, checked only for current artifacts: Berreman/BerremanTests/EpsWithDispValueTests.fs:19 declares EpsWithDispValueTests and contains its dispersion facts; OpticalConstructor.Domain/MuellerInverse.fs and MuellerReconstruction.fs exist, as does OpticalConstructor.Optimization. BerremanTestSupport is a declared future destination. The future coverage and final-suite execution are requirements, not asserted as already measured by this verdict.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 97,
+      "phrase": "Before S12 the run-law and import steps are proved by `constructor-unit-tests` and the `FsxAcceptanceTests` classes under `ui-tests`.",
+      "spec_location": ".spec-md:268 (§9 Acceptance)",
+      "evidence": "Inferred reuse assumption: Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/FsxAcceptanceTests.fs:51 uniquely declares module FsxAcceptanceTests. Its facts carry Category=fsx-acceptance (for example :293,297), and the source at :218 onward compares script-calculated data with the constructor's output. The constructor unit-test project also exists. This establishes the named verification artifacts; it does not claim that future run-law/import changes already pass them.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 98,
+      "phrase": "**Invariants.** Each section carries `invariant-*` gates: 001 §T's greps from the part after the one that makes each true, plus the empty known-findings list and the absence of VSTest packages on every part.",
+      "spec_location": ".spec-md:270 (§9 Invariants)",
+      "evidence": "Inferred existing-baseline assumption: Elevation/elevation-known-findings.json has an empty findings array. A repository search of .fsproj, .props and .targets, excluding generated obj files, found no Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication. The operator source specs/0050/.manual/001-library-files-database-multi-setup-inverse.md:676-686 supplies §T's retire greps. This confirms the current baseline and source pointers; continued enforcement after every future part is a declared obligation.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 99,
+      "phrase": "`BerremanTests`' numbers are unchanged.",
+      "spec_location": ".spec-md:276 (§9 Done when)",
+      "evidence": "Matched 'unchanged'. This is explicitly a future completion condition. Berreman/BerremanTests and its numerical assertions exist, but the sentence gives no completed implementation or concrete before/after result to compare in this audit. Numerical preservation is not established by the existence of the test project.",
+      "verdict": "NOT-CHECKED"
+    },
+    {
+      "id": 100,
+      "phrase": "**Progress granularity.** Per item: one fit iteration or multi-start member, one Planner candidate, one source-snapshot file, one zipped file. Each shows a progress bar with Cancel, through `JobRunner`.",
+      "spec_location": ".spec-md:290 (§10.2 Progress granularity)",
+      "evidence": "Inferred reuse assumption: Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs:22 declares module OpticalConstructor.Ui.JobRunner; :62 defines JobProgress, :107-148 implement cooperative progress/cancellation loops, and :221-247 define and handle runner messages. The reusable progress/cancellation mechanism exists. Planner, snapshot and zip integrations are future wiring, not confirmed existing call sites.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 101,
+      "phrase": "**Committable state.** Only `/data/*/.oc/` and `/data/chroma/` are ignored (`.gitignore`).",
+      "spec_location": ".spec-md:301 (§10.6 Committable state)",
+      "evidence": "Inferred current-configuration claim, read in its data-directory context: .gitignore:333-334 contains exactly /data/chroma/ and /data/*/.oc/ as the data-specific directory exclusions. git check-ignore -v --no-index confirms those rules for data/chroma/example.json and data/test/.oc/lock. Generic exclusions such as *.tmp also exist, as the following bullet acknowledges; the sentence cannot mean these are the repository's only ignore rules.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 102,
+      "phrase": "`git check-ignore` confirms that the committed kit files, `library/`, `data/` and `Berreman/OpticalConstructor/Catalogue/Builtin/` collide with no global pattern.",
+      "spec_location": ".spec-md:302 (§10.6 Committable state)",
+      "evidence": "Inferred current ignore-configuration assumption. git check-ignore -v --no-index -- data/ library/ Berreman/OpticalConstructor/Catalogue/Builtin/ data/optics-mueller/.kit-json data/optics-mueller/data/reference_step1_summary.json produced no matches for these paths. This checks the live effective ignore configuration, including global rules; the actual kits/catalogue files are future artifacts, so this is not evidence that they are already committed.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 103,
+      "phrase": "Atomic-write `*.tmp` files match `*.tmp` and are never committed, which is intended.",
+      "spec_location": ".spec-md:303 (§10.6 Committable state)",
+      "evidence": "Inferred current-ignore assumption: .gitignore:78 is *.tmp, and git check-ignore -v --no-index data/optics-mueller/example.tmp reports that exact rule. This confirms ordinary exclusion of untracked temporary files; an ignore rule alone does not prohibit force-adding a file.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 104,
+      "phrase": "S1.1 turns the two closure routes into axis data, and S1.2 makes `complexity` mandatory.",
+      "spec_location": ".spec-md:314 (§S1.0 Problem statement)",
+      "evidence": "Inferred numeric/existing-route assumption. The sentence does not name either route or a file/type that defines the counted set; complexity is a field name, not a unique route identifier. Searches find buildTabulatedClosure in OpticalConstructor.Storage/MaterialImport.fs:158 and EpsAxisEvaluated in Berreman/Dispersion.fs:369, with multiple producers in DispersionModels.fs and MaterialLibrary.fs. Treating those as exactly two conceptual routes requires the missing definition of the counted set, so this unanchored claim cannot receive a mechanically re-derived count.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 105,
+      "phrase": "Every library proxy keeps its shape and gains a SQLite `create`, proved by contract suites run against both stores.",
+      "spec_location": ".spec-md:327 (§S2.0 Problem statement)",
+      "evidence": "Inferred 'unchanged shape' assumption. This sentence names no library proxy type, member signature or defining file; create is not a unique identifier. The adjacent VersionsInUse name identifies the usage provider, not the set of library proxy records whose shapes are promised to stay the same. The operator source §C enumerates MaterialProxy, CategoryProxy, SampleProxy, SourceProxy and LibraryProxy, but the audited paragraph itself does not anchor that set.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 106,
+      "phrase": "`Pinned` replaces `VersionsInUse`.",
+      "spec_location": ".spec-md:327 (§S2.0 Problem statement)",
+      "evidence": "Inferred assumption that the replaced contract exists. Berreman/OpticalConstructor/OpticalConstructor.Domain/Lifecycle.fs:52 uniquely defines VersionsInUse, with its empty provider at :62; Experiments.fs:281 defines versionsInUseSeam. Pinned is the declared future replacement, not a current type asserted by this verdict.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 107,
+      "phrase": "Today's experiments and scenes persist into the kit. The in-memory scene and collection seams and the `.ocproj` aggregate are deleted.",
+      "spec_location": ".spec-md:341 (§S4.0 Problem statement)",
+      "evidence": "Inferred existing-seam assumption. The paragraph supplies descriptions and a file extension, but no defining path or unique type/member for the current scene store, collection store or aggregate. Repository searches locate SceneProxy (Scene.fs:107), ExperimentCollectionProxy (ExperimentCollectionStore.fs:73), and OpticalConstructorProject (Project.fs:26), but under Phase 2 the audited paragraph must name its intended anchors rather than require this inferred mapping. Kit persistence and deletion are future effects.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 108,
+      "phrase": "The history is kept in the per-user preferences and reuses `RecentFiles.bump`.",
+      "spec_location": ".spec-md:347 (§S5.0 Problem statement)",
+      "evidence": "Inferred reuse assumption. Berreman/OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs:18 declares RecentFiles and :41 defines bump, which removes case-insensitive duplicates, prepends the new path and truncates to maxRecent=16 (:24). The operator source §F explicitly requests reuse and extension; profile-1 obligation S51-BUMP and .spec-jsonl steps 164/169 generalize it to KitHistory entries, an injected clock and KitHistoryLimit, replacing truncation with eviction. The current function exists; the paragraph's 100-entry/starred history is a future extension, not its present behavior. Step 169 also declares DELETE_TEST OpticalConstructor.Tests.HistoryTests -> OpticalConstructor.Tests.KitHistoryTests for the moved MRU test.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 109,
+      "phrase": "The run law walks every object in light order, and the source is a real Stokes state whose default reproduces today's charts.",
+      "spec_location": ".spec-md:365 (§S8.0 Problem statement)",
+      "evidence": "Inferred 'same as today' assumption. No chart, current run-law symbol, test or baseline is named in this sentence. ExperimentRun.fs:36-44 contains the present detectorStokes fold, beginning with unpolarizedStokes and special-casing the first preparing polarizer, but the audited sentence does not identify that mechanism or which chart comparisons define parity. Future preservation cannot be anchored by the generic word 'charts'.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 110,
+      "phrase": "Quick swap, the grid generator and the naming template follow; the template replaces the label regex.",
+      "spec_location": ".spec-md:365 (§S8.0 Problem statement)",
+      "evidence": "Inferred assumption that an existing label parser is being replaced. The sentence names no file, parser type or regex member. A search locates experimentRegex at Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:504 and its consumer MuellerExperimentLabel.parsed at :511-517, also named explicitly by operator source §R. The audited paragraph omits those anchors, so 'the label regex' remains unanchored under Phase 2.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 111,
+      "phrase": "It fits staged or jointly on the existing engines, chosen automatically.",
+      "spec_location": "S11.0 Problem statement, line 372",
+      "evidence": "The sentence and its paragraph name no file, symbol, or uniquely identifiable engine type. 'the existing engines' is an unanchored reuse claim; the automatic choice is proposed behavior, not evidence of an existing artifact.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 112,
+      "phrase": "The study view replaces the hand-off stub.",
+      "spec_location": "S11.0 Problem statement, line 372",
+      "evidence": "Inferred assumption phrase: replacing 'the hand-off stub' presupposes an existing artifact. No file or class name identifies it in this paragraph. Repository search finds a candidate at Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:14, whose opening documentation describes a validation-only terminal screen, but the spec does not anchor its claim to that module.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 113,
+      "phrase": "Every expected value comes from where it already lives.",
+      "spec_location": "S12.0 Problem statement, line 378",
+      "evidence": "No source file, symbol, or fixture identifies where the expected values already live. AbsorbingBiaxialNoisyTests is declared at Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:60 and is named earlier in the paragraph as AT-2, but that does not identify the sources for every expected value across both acceptance tests.",
+      "verdict": "REFUTED-NO-POINTER"
+    },
+    {
+      "id": 114,
+      "phrase": "It emits `Planned` setups and experiments into the kit, and it reproduces the existing `MuellerInverseTests` / `BiaxialInverseTests` facts.",
+      "spec_location": "S14.0 Problem statement, line 390",
+      "evidence": "Repository-wide F# declaration search resolves each named class uniquely: Berreman/BerremanTests/MuellerInverseTests.fs:49 declares MuellerInverseTests, and Berreman/BerremanTests/BiaxialInverseTests.fs:98 declares BiaxialInverseTests. Both contain [<Fact>] members, beginning at lines 372 and 296 respectively. This confirms the existing test artifacts; the Planner's future reproduction of their facts is outside this assumption audit.",
+      "verdict": "CONFIRMED"
+    }
+  ],
+  "stub_check": {
+    "verdict": "WORKING-APP-COMMITTED",
+    "evidence": "no unmatched stub-ref anchors in .spec-md (0 stub-ref / 0 impl-ref anchors; all resolved)"
+  },
+  "step_pairing": {
+    "verdict": "ALL-PAIRED",
+    "evidence": "every declare is paired with its fulfil (ADD_RED↔CLOSE_RED, ADD_CONTRACT↔IMPLEMENT_CONTRACT, ADD_COMPONENT↔IMPLEMENT_CONTRACT, MODIFY_CONTRACT↔IMPLEMENT_CONTRACT+MERGE_CONTRACT); 4 inherited contract(s) implemented without a declare in this spec (declared by an earlier arc; identity is the compiler's §9.6 check): STORE_XDUO_0001, STORE_XDUO_0002, STORE_XDUO_0003, STORE_XDUO_0008"
+  }
+}
