@@ -14,27 +14,27 @@ What the change touches, in code, without the UI. The steps are the supporting e
 | Artifact | Modification |
 |---|---|
 | `Berreman/Berreman/Dispersion.fs` — `EpsAxisDispersion`, `EpsWithDispValue` | `EpsAxisDispersion` gains data cases for tabulated n,k and for the four transcendental oscillator models. `EpsAxisEvaluated` and the custom equality are deleted. |
-| `OpticalConstructor.Domain/DispersionModels.fs` — `DispersionModel.toEpsAxis` | The transcendental models lower to the new data case. Their evaluation kernels move into the core. |
-| `OpticalConstructor.Domain/MaterialLibrary.fs` — `MaterialEntry`, `builtInEntries`, `standardCategories`, `tryFindCategory` | `complexity` becomes mandatory and `properties` is derived from it. The seed values are deleted. Category names resolve through the category store. |
-| `OpticalConstructor.Domain/ElementId.fs` — module `Library` | Presets carry frozen GUID ids. `SeedSamples`, `SeedSources`, `seedEntries`, `seedTrees` and the self-seeding `createInMemory` are deleted. The grouping tree is derived from the entries. |
-| `OpticalConstructor.Domain/Lifecycle.fs` — `VersionsInUse`, `decideVersioning` | `VersionsInUse` is replaced by a one-way per-version pin. |
-| `OpticalConstructor.Domain/MaterialStore.fs`, `SampleStore.fs` | The in-memory stores keep their shapes, read the pin and stop self-seeding. They remain the test doubles. |
-| `OpticalConstructor.Seeding/` | Deleted. `SeedingProxy` / `seedAll` move to Domain as `CatalogueImport`. |
-| `OpticalConstructor.Database/` (C#) | The `Test` entity, `TestDbContext` and the initial migration are replaced by the library model, created by `EnsureCreated` and stamped with a schema version. |
-| `OpticalConstructor.Storage/ProjectJson.fs`, `ProjectFile.fs`, `SchemaValidation.fs`, `RecentFiles.fs`, `Domain/Project.fs` | The shared serializer options move to a canonical-JSON module and validation becomes per kind. The `.ocproj` aggregate, `recent.json` and `Autosave` are deleted. `RecentFiles.bump` moves into the kit history. |
-| `OpticalConstructor.Storage/MaterialImport.fs` | Tabulated imports produce the tabulated case. The importer is reused as the refractiveindex.info record parser. |
-| `OpticalConstructor.Storage/MuellerDataStore.fs` | `DataFileText.parseMuellerCsv` stays as the "Phone ROI CSV" import profile. The archive store is deleted. |
-| `OpticalConstructor.Domain/MuellerReconstruction.fs` | `MuellerDataSet`, `MuellerArchivePath`, `MuellerDataProxy`, `experimentRegex`, `objectRegex` and `MuellerExperimentLabel.parsed` are deleted. `familyGain` becomes the first gain-model implementation. |
-| `OpticalConstructor.Domain/MuellerInverse.fs` | Receives the parameter-record builders promoted from `BerremanTests` (§3.16). |
-| `OpticalConstructor.Domain/ExperimentRun.fs` | The run law folds any number of objects through each item's Mueller matrix. The source is a real Stokes state. |
-| `OpticalConstructor.Domain/Experiments.fs` | Experiments v2: setup reference, scan, role, session and data attachment. |
-| `OpticalConstructor.Domain/Scene.fs`, `ExperimentCollectionStore.fs` | The in-memory seams are deleted; `KitProxy` replaces them. |
-| `OpticalConstructor.Optimization/` | Receives the bench noise model, the fit wrappers and the recovery statistics from `BerremanTests/InverseFitHarness.fs`, the staged Mueller pipeline, the study engine and the Planner's numerical layer. |
-| `OpticalConstructor.Ui/AppContext.fs` — `AppContext.create` | Composes the SQLite library proxies over the configured locations and imports the catalogues on start. |
-| `OpticalConstructor.Ui/TableAndElementRotationView.fs` | Hosts a `KitContext` in place of the scene and collection seams. `measuredElementOf` is deleted. New surfaces are hosted through messages. |
-| `OpticalConstructor.Ui/SolverHandoffView.fs`, `SolverHandoffWindow.fs` | Deleted. Their three checks become the study's pre-fit validation. |
-| `OpticalConstructor.App/Program.fs`, `AppConfig.fs`, `appsettings.json` | Main and Inverse open the kit start screen, and the footer gains a Data locations link. New settings keys are added; the MSSQL keys are removed. |
-| `OpticalConstructor.Controls/UiIds.fs` — `ConstructorUiId` | One static member per new control. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs` — `DispersionModel.toEpsAxis` | The transcendental models lower to the new data case. Their evaluation kernels move into the core. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs` — `MaterialEntry`, `builtInEntries`, `standardCategories`, `tryFindCategory` | `complexity` becomes mandatory and `properties` is derived from it. The seed values are deleted. Category names resolve through the category store. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs` — module `Library` | Presets carry frozen GUID ids. `SeedSamples`, `SeedSources`, `seedEntries`, `seedTrees` and the self-seeding `createInMemory` are deleted. The grouping tree is derived from the entries. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Domain/Lifecycle.fs` — `VersionsInUse`, `decideVersioning` | `VersionsInUse` is replaced by a one-way per-version pin. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialStore.fs`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/SampleStore.fs` | The in-memory stores keep their shapes, read the pin and stop self-seeding. They remain the test doubles. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Seeding/` | Deleted. `SeedingProxy` / `seedAll` move to Domain as `CatalogueImport`. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Database/` (C#) | The `Test` entity, `TestDbContext` and the initial migration are replaced by the library model, created by `EnsureCreated` and stamped with a schema version. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs`, `Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs`, `Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs`, `Berreman/OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs` | The shared serializer options move to a canonical-JSON module and validation becomes per kind. The `.ocproj` aggregate, `recent.json` and `Autosave` are deleted. `RecentFiles.bump` moves into the kit history. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs` | Tabulated imports produce the tabulated case. The importer is reused as the refractiveindex.info record parser. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Storage/MuellerDataStore.fs` | `DataFileText.parseMuellerCsv` stays as the "Phone ROI CSV" import profile. The archive store is deleted. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs` | `MuellerDataSet`, `MuellerArchivePath`, `MuellerDataProxy`, `experimentRegex`, `objectRegex` and `MuellerExperimentLabel.parsed` are deleted. `familyGain` becomes the first gain-model implementation. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs` | Receives the parameter-record builders promoted from `BerremanTests` (§3.16). |
+| `Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs` | The run law folds any number of objects through each item's Mueller matrix. The source is a real Stokes state. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Domain/Experiments.fs` | Experiments v2: setup reference, scan, role, session and data attachment. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Domain/Scene.fs`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentCollectionStore.fs` | The in-memory seams are deleted; `KitProxy` replaces them. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Optimization/` | Receives the bench noise model, the fit wrappers and the recovery statistics from `Berreman/BerremanTests/InverseFitHarness.fs`, the staged Mueller pipeline, the study engine and the Planner's numerical layer. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs` — `AppContext.create` | Composes the SQLite library proxies over the configured locations and imports the catalogues on start. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs` | Hosts a `KitContext` in place of the scene and collection seams. `measuredElementOf` is deleted. New surfaces are hosted through messages. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs`, `Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffWindow.fs` | Deleted. Their three checks become the study's pre-fit validation. |
+| `Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs`, `Berreman/OpticalConstructor/OpticalConstructor.App/AppConfig.fs`, `Berreman/OpticalConstructor/OpticalConstructor.App/appsettings.json` | Main and Inverse open the kit start screen, and the footer gains a Data locations link. New settings keys are added; the MSSQL keys are removed. |
+| `Berreman/OpticalConstructor/OpticalConstructor.Controls/UiIds.fs` — `ConstructorUiId` | One static member per new control. |
 | `Berreman/BerremanTests/` | `InverseFitHarness.fs` keeps only assertions and formatting. `BiaxialSample.fs` and `AbsorbingBiaxialSample.fs` move to `BerremanTestSupport`. `MuellerReconstructionTests` §7.2 calls the promoted pipeline. The `Data\MuellerMatrix` content link is removed. |
 | `Berreman/Data/MuellerMatrix/` | Moved into `data/optics-mueller/data/` and deleted. |
 | `Berreman/Berreman.slnx` | Adds `BerremanTestSupport`; removes `OpticalConstructor.Seeding`. |
@@ -56,9 +56,9 @@ What the change touches, in code, without the UI. The steps are the supporting e
 
 ## 1. Problem statement
 
-Today nothing persists. Every store is in memory and is re-seeded at each start (`OpticalConstructor.Ui/AppContext.fs:AppContext.create`). No window saves or opens an `.ocproj` file (`OpticalConstructor.Storage/ProjectFile.fs`). The EF Core project holds one unreferenced `Test` table. The library is code: `MaterialLibrary.builtInEntries`, `Library.SeedSamples`, `SeedSources`, `seedEntries` and `standardCategories`.
+The library and session stores composed by `Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs:AppContext.create` are in memory. Materials and samples are seeded; user sources, scenes and collections start empty (`Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:SourceProxy.createInMemory`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/Scene.fs:SceneProxy.createInMemory`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentCollectionStore.fs:ExperimentCollectionProxy.createInMemory`). Disk output does exist: `Berreman/OpticalConstructor/OpticalConstructor.Storage/ExperimentExportFile.fs:createCsvFolder` writes CSV exports. No UI, App or TestWindows caller uses `Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:FileName.saveProject` or `FileName.openProject`. The EF proof table (`Berreman/OpticalConstructor/OpticalConstructor.Database/TestDbContext.cs:TestDbContext`) is exercised by `Berreman/OpticalConstructor/OpticalConstructor.Tests/TestDbMigrationTests.fs:125`. The library is code: `MaterialLibrary.builtInEntries`, `Library.SeedSamples`, `SeedSources`, `seedEntries` and `standardCategories`.
 
-On the inverse side, an `Experiment` (`Experiments.fs:Experiment`) is a frozen snapshot with one varied element, one capture and one machine-specific data path. The run law takes the first bound sample (`TableAndElementRotationView.fs:measuredElementOf`). The Inverse flow ends at a stub (`SolverHandoffView.fs`). The working inverse code lives outside the constructor: `MuellerReconstruction`, `MuellerInverse`, and the noise and fit harness in the TEST project (`BerremanTests/InverseFitHarness.fs`).
+On the inverse side, `Berreman/OpticalConstructor/OpticalConstructor.Domain/Experiments.fs:Experiment` holds a frozen setup, an optional varied element, one measurement mode and an optional data attachment; the picker supplies a local machine path (`Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs:3402`). `Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs:measuredElementOf` chooses the first bound sample for capture selection. Propagation already folds every sample on the detector path (`Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs:detectorStokes`). The validation-only screen exists in `Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:validateExperiment`, hosted by `Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffWindow.fs:SolverHandoffWindow`; no product caller constructs that window. The inverse physics modules are product code (`Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:MuellerReconstruction`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:MuellerInverse`); the noise and fit harness remains in `Berreman/BerremanTests/InverseFitHarness.fs:InverseFitHarness`.
 
 This spec gives data two homes:
 
@@ -98,7 +98,7 @@ The work is implemented in 001's §S order, sections 1–14, each green on its o
 4. **`CatalogueImport` lives in Domain.** The pure import seam (`SeedingProxy`'s shape plus its orchestrator) moves from `OpticalConstructor.Seeding/Seeding.fs` to Domain, and the Seeding project is deleted. Reading files is Storage's `CatalogueProxy`.
 5. **The shipped catalogue rides Storage's content.** `OpticalConstructor.Storage.fsproj` copies `Berreman/OpticalConstructor/Catalogue/Builtin/**` to `Catalogue/Builtin/` in every output, as it already copies `schema/*.json`. The App, the TestWindows heads and both constructor test suites therefore read the same files.
 6. **The export tool is thrown away in its own section.** It is a `.fsx` that loads the built Domain and Storage assemblies. It is run once; its output is committed, and it is deleted in the same section, after a parity test proves that the files load equal to the code seeds.
-7. **Start-up import applies only what overwrites nothing.** Add, Reuse, Add-version and Mark-inactive rows apply automatically and are logged. Divergence and name-collision rows wait in the one import dialog, with their default action pre-selected, and nothing in them applies unconfirmed. A dropped file and a kit's snapshot always open the dialog.
+7. **Every import decision is visible before confirmation.** Under 001 §B and §E, a changed catalogue, a dropped file and a kit snapshot MUST present one dialog containing every decision row, including Reuse, with defaults pre-selected. No row or catalogue-log update MAY apply before Apply; Cancel MUST leave the library and import log unchanged. A catalogue whose recorded manifest hash is unchanged MAY skip parsing and the dialog, as 001 §B specifies. Kit resolution MUST show all snapshot rows even when all reuse; accepting their defaults MUST leave the database unchanged.
 8. **A registered catalogue folder is an import-log row.** Registering a read-only folder imports it and records the folder. Every start re-checks every logged folder by manifest hash. No separate registration store exists.
 9. **No test touches the user's data.** `AppContext.create` receives every location (the library connection string included) from settings. Tests pass SQLite `:memory:` or paths under the test run's output directory.
 10. **The Launcher meets kits before the start screen exists.** Part S4 makes Main and Inverse open a kit through a folder-picker seam (`KitFolderPicker`: "choose a folder; initialise it if needed"). Part S5 puts the start screen in front of that same seam. Headless tests substitute the seam.
@@ -106,13 +106,13 @@ The work is implemented in 001's §S order, sections 1–14, each green on its o
 12. **A read-only open writes nothing**: no `.oc/lock`, no `.oc/planner/`, no snapshot, no stamp. Tests open the committed kits this way.
 13. **AT-1 builds the kit around its lab folder.** The test copies the committed kit's `data/` tree into a fresh folder under the test output and runs "New kit…" on that non-empty folder. 001 §F: its files are kept. The test then attaches the files in place, so built and committed kits compare equal file by file: kit files, `library/**` and `data/**`, with `.oc/` excluded. AT-2 instead writes its observation files through the Mueller-matrix import profile.
 14. **What an item instantiates.**
-    - An item instantiates a model. The rows 001 §I marks as existing — the source preset (λ), the ideal LP/CP presets and the stack `Sample` — are models themselves, and an item references them.
-    - `ItemModel` library entries (`.item-model-json`) carry the parameterised kinds: real LP, retarder, compound in light order, black-box Mueller, empty slot, intensity detector, Mueller polarimeter and ellipsometer.
+    - Every item MUST instantiate a pinned, snapshotted `ItemModel` library entry (`.item-model-json`), including light sources, ideal LP/CP and samples by stack (001 §I). The “exists” markers describe reusable physics, not an exception to the model contract.
+    - Source, ideal-polarizer and stack model forms MUST reuse `Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:SourcePreset`, `PolarizerPreset` and `Sample` through typed bindings; the item MUST snapshot both its model version and the bound physics dependencies. `ItemModel` also carries real LP, retarder, compound in light order, black-box Mueller, empty slot, intensity detector, Mueller polarimeter and ellipsometer forms.
     - The built-in item models are written once through the export path and committed. No code seed is added.
 15. **Copying experiments between kits** (001 §H) lands in S6 with experiments, setups, data files and snapshots. Its item mapping lands with items in S7.
-16. **The crystal builders are product physics.** `buildTriclinic` (`BerremanTests/BiaxialSample.fs`), `buildAbsorbing` (`AbsorbingBiaxialSample.fs`) and the uniaxial builder used by `MuellerInverseTests` are what the study engine evaluates. They are promoted into `MuellerInverse.fs` as members of their parameter records, so ONE implementation exists. The constants, cuts, designs, `perturbedStart` and `searchBox` move to `BerremanTestSupport`, as 001 §Q says.
-    - This departs from 001 §Q's list for the two builders. It is recorded here because a builder confined to test support cannot back a product material.
-    - A material version can hold one of the three parameter records as its physics (S11), and its generated axes are that record's `axes`.
+16. **Test builders retain their required test-support home.** Under 001 §Q, `Berreman/BerremanTests/BiaxialSample.fs:buildTriclinic` and `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:buildAbsorbing` MUST move with their modules, constants, cuts, designs, `perturbedStart` and `searchBox` into `BerremanTestSupport`.
+    - Their reusable tensor-construction expressions MUST move into parameter-record `opticalProperties` members in `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs`; the retained test-support builders MUST call those members, preserving their contracts and callers without a duplicate kernel. The uniaxial expression in `Berreman/BerremanTests/MuellerInverseTests.fs:buildUniaxialGyrotropic` MUST use the same product-member pattern. Product projects MUST NOT reference test support.
+    - A material version MAY hold one of the three parameter records as its physics (S11); its generated axes MUST be that record's `axes`.
 17. **Case names take a second word** (`AGENTS.md`). 001's one-word cases become, for example, `KnownParameter` / `UnknownParameter` / `CalibratedParameter`, `ScienceRun` … `PlannedRun`, and `StarredKit` / `UnstarredKit`.
 18. **One local database.** The MSSQL keys in `AppConfig.fs` (`ConfigKey.databaseProvider`, `mssqlConnectionString`) and their fixture are deleted. 001 §W excludes cloud or shared databases.
 19. **The §D policy bullets.**
@@ -207,18 +207,18 @@ The kit root is flat. Subfolders hold only additional data: `library/`, `data/` 
 
 ## 7. Migration intent
 
-There is no release, so no stored data predates this spec except what the repository commits.
+`AGENTS.md` (“No legacy, no migration”) authorizes compatibility breaks before release. This spec MUST reject incompatible stored formats; it makes no assumption that user-created data is absent.
 
 | Shape | Intent |
 |---|---|
 | Code seeds → catalogue files | Migration provided once: the throw-away export carries GUIDs and values byte-for-byte, a parity test proves it, then the seeds go. |
-| Preset string ids → GUIDs | Compatibility break accepted: nothing persisted holds a preset id. |
+| Preset string ids → GUIDs | Compatibility break accepted under `AGENTS.md` (“No legacy, no migration”). Old preset references MUST NOT be migrated; incompatible stored formats MUST be rejected. |
 | `MaterialEntry` (complexity mandatory), `EpsAxisDispersion` (closure → data) | Compatibility break accepted: in-memory shapes, no stored data. |
-| `Test` EF table + migration → library model | Compatibility break accepted: nothing references it. The database is created from the model (`EnsureCreated`) and stamped. A mismatch is `LibrarySchemaMismatchErr`; the remedy is to recreate it from the catalogues, after "Export my library" if needed. |
+| `Test` EF table + migration → library model | Compatibility break accepted under `AGENTS.md` (“No legacy, no migration”). The proof consumer `Berreman/OpticalConstructor/OpticalConstructor.Tests/TestDbMigrationTests.fs:125` MUST retire with the table; library contract tests MUST cover the replacement. The database MUST be created from the model (`EnsureCreated`) and stamped. A mismatch is `LibrarySchemaMismatchErr`; the remedy is to recreate it from the catalogues, after "Export my library" if needed. |
 | `.ocproj`, `recent.json`, autosave files | Compatibility break accepted: no window ever saved or opened `.ocproj`. The kit history starts empty. |
 | Kit and entry files | New, versioned by `schema`. A version mismatch is `UnsupportedSchemaVersionErr`. Kit file shapes change in later parts; no migration is needed, because the committed kits are created in S12 after the shapes settle. |
 | `Berreman/Data/MuellerMatrix/` | Migration provided: moved byte-for-byte into `data/optics-mueller/data/`, then deleted. There is no second copy. |
-| Harness and samples (test → product / test support) | Migration provided: a move. `BerremanTests`' numbers are unchanged. |
+| Harness and samples (test → product / test support) | Migration provided: a move. Numerical preservation is a required post-implementation result: the §7.2 expectations in `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and the fixed-seed recovery bands in `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:151` MUST pass without changing their values or tolerances. |
 
 ## 8. Negative scope
 
@@ -238,7 +238,7 @@ There is no release, so no stored data predates this spec except what the reposi
   - retries on IO;
   - configuration knobs other than the 001 §G locations and `KitHistoryLimit`.
 - **Seams and extensibility:**
-  - new abstraction layers over the existing proxies;
+  - new abstraction layers over the functional-proxy contracts named in §0.1 and §5;
   - a plug-in or reflection mechanism for item models, import profiles or engines;
   - an undo history.
 
@@ -258,7 +258,7 @@ There is no release, so no stored data predates this spec except what the reposi
   - The two committed kits equal what the build produces and open from the start screen.
   - The Planner reproduces the 001 §M facts.
   - Every gate is green with zero warnings, `elevation-full` included.
-  - `BerremanTests`' numbers are unchanged.
+  - The moved solver tests MUST preserve their expected values and tolerances, including `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:151`; this is a completion requirement, not an assertion of measured parity before implementation.
   - The 001 §R removals are gone.
   - The app persists the library in the database and everything else in kit folders.
 
@@ -296,7 +296,7 @@ This spec introduces top-level surfaces (start screen, study view, plan view), l
 
 Everything later stores library versions by GUID + version + hash. That requires every library entry to be pure data and to have one file form.
 
-- S1.1 turns the two closure routes into axis data, and S1.2 makes `complexity` mandatory.
+- S1.1 MUST replace the tabulated importer closure (`Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs:buildTabulatedClosure`) and the transcendental-model lowering closures (`Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs:DispersionModel.toEpsAxis`) with axis data; S1.2 MUST make `complexity` mandatory.
 - S1.3 gives every preset a frozen GUID.
 - S1.4 defines the entry file, canonical JSON, the hash and the per-kind schemas.
 - S1.5 exports the code seeds once into `Catalogue/Builtin/`.
@@ -309,7 +309,7 @@ Everything later stores library versions by GUID + version + hash. That requires
 
 SQLite through EF Core holds only slow data: entry versions (immutable, with lifecycle, protection and pin), categories, the catalogue-import log and pulled-source records. The database is created from the model with no migrations.
 
-Every library proxy keeps its shape and gains a SQLite `create`, proved by contract suites run against both stores. `Pinned` replaces `VersionsInUse`. The app runs on the database from S2.4.
+The library contracts `MaterialProxy` and `CategoryProxy` (`Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs`), and `SampleProxy`, `SourceProxy` and `LibraryProxy` (`Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs`) MUST retain their proxy shapes and gain SQLite composition, proved by contract suites over both stores (001 §C). `Pinned` replaces `VersionsInUse`. The app runs on the database from S2.4.
 
 ## Part S3 — Catalogue import and library-entry exchange
 
@@ -323,7 +323,7 @@ Each catalogue is imported at every start, cheaply by manifest hash. One pure de
 
 A kit is a folder recognised by `.kit-json`. It is reached only through `KitProxy`: atomic writes, a lock, an external-change check, relative data paths with hashes, copy-in, and a library closure snapshot resolved on open.
 
-Today's experiments and scenes persist into the kit. The in-memory scene and collection seams and the `.ocproj` aggregate are deleted.
+The scene and collection snapshots MUST persist into the kit. `Berreman/OpticalConstructor/OpticalConstructor.Domain/Scene.fs:SceneProxy`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentCollectionStore.fs:ExperimentCollectionProxy` and `Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs:OpticalConstructorProject` MUST be retired in favor of kit persistence.
 
 ## Part S5 — Start screen and history
 
@@ -347,7 +347,7 @@ An item is one physical piece with its own parameters (`Known` / `Unknown` / `Ca
 
 ### S8.0 Problem statement
 
-The run law walks every object in light order, and the source is a real Stokes state whose default reproduces today's charts. A setup is an ordered slot list. Quick swap, the grid generator and the naming template follow; the template replaces the label regex.
+The run law MUST walk every object in light order with a real source Stokes state. Default-source parity MUST be checked against the present `Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs:detectorStokes` behavior and the exported-curve comparisons in `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/FsxAcceptanceTests.fs:assertRT`. A setup is an ordered slot list. Quick swap, the grid generator and the naming template follow; the template MUST replace `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:experimentRegex`, `objectRegex` and `MuellerExperimentLabel.parsed`.
 
 ## Part S9 — Experiments v2 and data import
 
@@ -367,13 +367,13 @@ The study engine and the Planner need what `BerremanTests` holds today, so it mo
 
 A study fits many experiments of one kit together. Its unknowns are scoped to an item, a material, a session or an experiment, and it can link them. Gain models and sessions are data.
 
-It fits staged or jointly on the existing engines, chosen automatically. Results go into append-only fit runs, and calibrations and materials are published back. The study view replaces the hand-off stub.
+The study MUST choose staged or joint fitting automatically, reusing `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:buildDesign` / `reconstruct` and `Berreman/OpticalConstructor/OpticalConstructor.Optimization/MuellerInverseSolver.fs:createAlglibLevenbergMarquardt` through `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:createBerremanForward`. Results go into append-only fit runs, and calibrations and materials are published back. The study view MUST replace `Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:SolverHandoffView` and reuse its `validateExperiment` checks.
 
 ## Part S12 — The two acceptance tests and the two reference kits
 
 ### S12.0 Problem statement
 
-AT-1 (optics-mueller) and AT-2 (`AbsorbingBiaxialNoisyTests`) build their kits only through semantic messages and compare them with the committed kits. They reopen those kits read-only against an empty library, run their studies, and round-trip through Send. Every expected value comes from where it already lives.
+AT-1 (optics-mueller) and AT-2 (`AbsorbingBiaxialNoisyTests`) build their kits only through semantic messages and compare them with the committed kits. They reopen those kits read-only against an empty library, run their studies, and round-trip through Send. AT-1 MUST reuse the literals in `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and the stage-1 and product-check assertions in that file's §7.2 fact. AT-2 MUST reuse `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:absorbing` and `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:recoverFromNoisy`, retaining the recovery bands at `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:151`. These expectations MUST move to shared test-support declarations, never be re-transcribed.
 
 ## Part S13 — Online material sources
 
