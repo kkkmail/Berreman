@@ -168,14 +168,14 @@
     {
       "name": "S8.4 -- The slot bar, quick swap and the direct problem",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "4316371",
       "spec_jsonl_lines": 284
     },
     {
       "name": "S9.1 -- Experiments v2: scans, roles, sessions and attachments",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 297
     },
     {
       "name": "S9.2 -- Import profiles and the column-mapping wizard",
