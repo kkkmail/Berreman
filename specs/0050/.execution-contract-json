@@ -58321,6 +58321,1828 @@
           "command_sha256": "d3b845d81bfc3198cb6f1faa2303e5b7d352a7af249708af88330e63273f2bef"
         }
       ]
+    },
+    {
+      "id": "S141-POINT-GROUPS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "OpticalConstructor.Domain/PlannerSymmetry.fs (module PlannerSymmetry, last in the Domain compile list) declares ComponentCount, Anisotropy.independentIndexCount (1/2/3, reusing MaterialComplexityEditor.Anisotropy), Centrosymmetry, Gyrotropy, the 32-case PointGroup (symbol, anisotropy, centrosymmetry, gyrotropy with exactly the 18 gyrotropic classes 1, 2, m, 222, mm2, 4, -4, 422, 4mm, -42m, 3, 32, 3m, 6, 622, 6mm, 23, 432, orientationAngleCount 3/1/0, all), CrystalSymmetry and CrystalParameters.symmetry (uniaxial record: 3, 32, 4, 422, 6, 622; triclinic and absorbing: 1); PlannerSymmetryTests proves the counts and the records' symmetry.",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S141-COMPONENTS-AND-CUTS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "PlannerSymmetry.fs declares CrystalAxis (with the diag(1, 4, 9) marker and normalOf over an oriented marker's eps), CrystalAxisPair, TensorComponent (principal index, gyration diagonal and off-diagonal, absorption diagonal and off-diagonal, with axes), CrystalComponent and CrystalParameters.components (parameterAxes names paired with each record's components in order); SampleCut.normalAxisOpt orients the marker through orientForCut (Z -> 3, X -> 1, Y -> 2, a tilted cut -> none) and CrystalOrientation.normalAxisOpt rotates it by toRotation; PlannerSymmetryTests proves each.",
+      "checks": [
+        {
+          "step": 466,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S141-LOOK-SIGHT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "OpticalConstructor.Domain/MeasurementPlanner.fs (module MeasurementPlanner, after PlannerSymmetry.fs) declares DetectorReach (FullMueller, Ellipsometric, IntensityOnly), LookTilt, AxisAspect, PlannerLook (normal axis, incidence, observable, reach; tilt; aspectOf), MeasurementConfiguration.plannerLookWith and LookSight with PlannerLook.sightOf: an index needs a transverse axis and, at normal incidence, two distinct transverse indices under a non-intensity reach (else NoRetardanceInLook); gyration needs a transverse axis and FullMuellerReach; an off-diagonal gyration component is NormalIncidenceInLook at normal incidence on a principal cut; absorption follows its transverse axes; gyrationProjection is not called (engine convention); PlannerReportTests proves each rule.",
+      "checks": [
+        {
+          "step": 467,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S141-TARGET-SIGHT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "MeasurementPlanner.fs declares UnseenReason (NoLook, AlongEveryPropagation, NormalIncidenceOnly, NoRetardance, FullMuellerNeeded, with text), TargetSight and CrystalParameters.targetSightOf (reachable when one look sees the component, else the reason by the priority FullMuellerNeeded > NoRetardance > NormalIncidenceOnly > AlongEveryPropagation, NoLook for no look) and CrystalParameters.snellCap = internalAngle of the smallest principal index at IncidenceAngle.maxValue; PlannerReportTests proves each.",
+      "checks": [
+        {
+          "step": 468,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S141-STRUCTURAL-REPORT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "MeasurementPlanner.fs declares SampleCut.plateText, PlannerRemedy (add plate, oblique incidence with the Snell cap, full Mueller; text), TargetFinding, OffAxisCutNeed, PlannerFinding (text), RecoverabilityReport (unrecoverable, offAxisCutOpt), PlannerError.UnknownPlannerTargetErr and CrystalParameters.structuralReport: reachable targets, one finding per unrecoverable target with remedies by reason (missing principal cuts that see it; a tilt; a full-Mueller reach; never a cut for an off-diagonal gyration component), and an off-axis-cut finding when every plate puts a target's only axis on its normal; PlannerReportTests proves each.",
+      "checks": [
+        {
+          "step": 469,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S141-LAB-PROFILE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "MeasurementPlanner.fs declares PlannerError.UnresolvedPlannerItemErr, PlannerSource, OpticRole, PlannerOptic, DetectorRecording, PlannerDetector and LabProfile with ofItems (every kit item through choiceOf: source presets, polarizer presets and polarizer / retarder / compound item models, the three detector models with their NoiseParam; an unresolved item refuses the profile), reachOf (an intensity detector is FullMuellerReach only beside two polarizing optics) and reaches; PlannerInputsTests proves each.",
+      "checks": [
+        {
+          "step": 470,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S141-PLANNER-INPUTS",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "MeasurementPlanner.fs declares PlannerError.UnopenedPlannerMaterialErr and NonCrystalPlannerMaterialErr, PlannerPlate, PlannerPrior, PlannerInputs and Study.plannerInputsWith: the lab profile of every kit item, the finite substrate plates of the material with CrystalOrientation.normalAxisOpt, the opened copy with its currentPhysics crystal, and the study's unknowns of that material (unknownsWith) as targets; PlannerInputsTests proves each.",
+      "checks": [
+        {
+          "step": 471,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S141-KIT-REPORT",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "PlannerInputs.looks enumerates each plate x each lab reach x {IncidenceAngle.normal, IncidenceAngle.maxValue} x each observable its Emission allows, and PlannerInputs.structuralReport is the prior crystal's structuralReport over the targets and those looks; PlannerInputsTests proves the enumeration, the off-axis finding of a z-cut-only kit, the full-Mueller finding of an intensity-only kit and the no-look finding of a kit without plates.",
+      "checks": [
+        {
+          "step": 472,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S141-QUARTZ-DESIGN-MOVE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "Berreman/BerremanTestSupport/QuartzSample.fs (module BerremanTestSupport.QuartzSample, last in the project's compile list) declares waveLength, the four quartz constants, quartz, thickPlate, thinPlate, configuration, c1, c2, c3, c4 and fullConfigurations, moved from MuellerInverseTests with their bodies and banners; MuellerInverseTests opens it and declares none of them; its facts pass with unchanged numbers.",
+      "checks": [
+        {
+          "step": 473,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S141-BIAXIAL-DESIGN-MOVE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "Berreman/BerremanTestSupport/BiaxialDesign.fs (module BerremanTestSupport.BiaxialDesign, after BiaxialSample.fs) declares plate, configuration, principalCuts, normalIncidenceOn (the ablation fact's normalOn), b1 (= principalCuts |> List.collect normalIncidenceOn), b2, b3 and fullConfigurations, moved from BiaxialInverseTests; BiaxialInverseTests opens it and declares none of them; its facts pass with unchanged numbers.",
+      "checks": [
+        {
+          "step": 474,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S141-PLANNER-ACCEPTANCE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "Berreman/BerremanTests/MeasurementPlannerTests.fs (class BerremanTests.MeasurementPlannerTests, last in the compile list) proves, over QuartzSample's and BiaxialDesign's designs read through plannerLookWith FullMuellerReach, that structuralReport finds C1 blind to g33 (n_o, n_e, g33 unrecoverable, the x-cut and the tilt as remedy, an off-axis finding), nothing unrecoverable over c1 @ c3 and the full C1-C4 set, n3, g33, g23, g13 and g12 unrecoverable for the normal z-cut (oblique incidence and further cuts), exactly g23, g13 and g12 for the z+x and every-cut normal designs (oblique alone), and nothing over the full biaxial set.",
+      "checks": [
+        {
+          "step": 475,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S141-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "Every S14.1 step leaves Berreman.slnx building in Release x64 with zero warnings from our code, FS0025 an error; no project and no package is added; OpticalConstructor.Domain compiles PlannerSymmetry.fs then MeasurementPlanner.fs at the end of its compile list, OpticalConstructor.Tests compiles PlannerSymmetryTests.fs, PlannerReportTests.fs and PlannerInputsTests.fs at the end of its list, BerremanTestSupport compiles QuartzSample.fs and BiaxialDesign.fs at the end of its list and BerremanTests compiles MeasurementPlannerTests.fs last, no new project-file line carrying a comment.",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 466,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 467,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 468,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 469,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 470,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 471,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 472,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 473,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 474,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 475,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S141-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §M ('Target: gyrotropic crystals, transparent and absorbing, from uniaxial to triclinic'; 'Acceptance — the planner reproduces existing facts. Their designs and helpers are reused; no new physics test is written': 'C1 is completely blind to g33, which is why a second crystal cut is required', 'C1 alone cannot determine three of the four constants', 'the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL. For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy'; 'Its inputs are the kit; there is no separate lab profile to type in'; 'Layer 1, structural (exact, tabulated): the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation; optical activity in 18 of the 21 non-centrosymmetric classes; what each cut sees ...; activity along birefringent directions needs full-Mueller or HAUP-class measurements; low-symmetry crystals need several cuts x azimuths x angles; intensity-only detectors lose phase. It answers this kit can never recover X and you need an off-axis cut'), §Q ('The ground truth and designs ... move into a shared test-support project'), §W (no new inverse-physics tests); specs/0044/.manual/004-active-anisotropic-inverse-problem.md §3.2; specs/0044/.manual/017-feasible-biaxial-experiments.md; specs/0046/.manual/018 §3; specs/0050/.section-plan-jsonl section 45 (S14.1) brief; specs/0050/.spec-md §3.16, §3.23, §4, §6, §7, §8, §9; AGENTS.md (elevate every primitive, unique names, errors are values, reuse never copy, comments)",
+      "requirement": "Every S14.1 step leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command), with nothing under Elevation/ and nothing in .elevation-analyzers.json edited: every new record and signature carries only elevated types (ELEV003/003P/008/010; ComponentCount wraps the counts; PointGroup.symbol and the text members are render members on their own types), every free function of one of our types is a member instead (ELEV013/013P; CrystalAxis.normalOf and CrystalAxis.marker are static members), no value is wrapped at a call site or round-tripped (ELEV001/005), no two-case union is mapped to a bool (ELEV012; LookTilt and AxisAspect are matched), no bool appears, every new type, public, case and extension-member name is unique among ours (ELEV014/015/016/019; the 32 point-group case names, normalAxisOpt on SampleCut and on CrystalOrientation, plateText, plannerLookWith, plannerInputsWith), and every PlannerError case ends in Err (ELEV020).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 466,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 467,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 468,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 469,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 470,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 471,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 472,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 473,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 474,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 475,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s45-elev-list-empty).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "26e1e79df066ec89c6ad7521621cfcc89cce19d567141e61443bd93ff04bbccf"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "26e1e79df066ec89c6ad7521621cfcc89cce19d567141e61443bd93ff04bbccf"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "26e1e79df066ec89c6ad7521621cfcc89cce19d567141e61443bd93ff04bbccf"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "26e1e79df066ec89c6ad7521621cfcc89cce19d567141e61443bd93ff04bbccf"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "26e1e79df066ec89c6ad7521621cfcc89cce19d567141e61443bd93ff04bbccf"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "26e1e79df066ec89c6ad7521621cfcc89cce19d567141e61443bd93ff04bbccf"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "26e1e79df066ec89c6ad7521621cfcc89cce19d567141e61443bd93ff04bbccf"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "26e1e79df066ec89c6ad7521621cfcc89cce19d567141e61443bd93ff04bbccf"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "26e1e79df066ec89c6ad7521621cfcc89cce19d567141e61443bd93ff04bbccf"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "26e1e79df066ec89c6ad7521621cfcc89cce19d567141e61443bd93ff04bbccf"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "26e1e79df066ec89c6ad7521621cfcc89cce19d567141e61443bd93ff04bbccf"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s45-no-vstest).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-vstest",
+          "selection": "command",
+          "command_sha256": "50e1ed8996bd4b222168201d23608407e8952dda3dfb3894c248304f6486b17a"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-vstest",
+          "selection": "command",
+          "command_sha256": "50e1ed8996bd4b222168201d23608407e8952dda3dfb3894c248304f6486b17a"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-vstest",
+          "selection": "command",
+          "command_sha256": "50e1ed8996bd4b222168201d23608407e8952dda3dfb3894c248304f6486b17a"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-vstest",
+          "selection": "command",
+          "command_sha256": "50e1ed8996bd4b222168201d23608407e8952dda3dfb3894c248304f6486b17a"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-vstest",
+          "selection": "command",
+          "command_sha256": "50e1ed8996bd4b222168201d23608407e8952dda3dfb3894c248304f6486b17a"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-vstest",
+          "selection": "command",
+          "command_sha256": "50e1ed8996bd4b222168201d23608407e8952dda3dfb3894c248304f6486b17a"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-vstest",
+          "selection": "command",
+          "command_sha256": "50e1ed8996bd4b222168201d23608407e8952dda3dfb3894c248304f6486b17a"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-vstest",
+          "selection": "command",
+          "command_sha256": "50e1ed8996bd4b222168201d23608407e8952dda3dfb3894c248304f6486b17a"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-vstest",
+          "selection": "command",
+          "command_sha256": "50e1ed8996bd4b222168201d23608407e8952dda3dfb3894c248304f6486b17a"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-vstest",
+          "selection": "command",
+          "command_sha256": "50e1ed8996bd4b222168201d23608407e8952dda3dfb3894c248304f6486b17a"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-vstest",
+          "selection": "command",
+          "command_sha256": "50e1ed8996bd4b222168201d23608407e8952dda3dfb3894c248304f6486b17a"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s45-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8928aaf2a1bf5a6255eacc208e6d5ce3813511a450a8d0bfe887cb88f14b9366"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8928aaf2a1bf5a6255eacc208e6d5ce3813511a450a8d0bfe887cb88f14b9366"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8928aaf2a1bf5a6255eacc208e6d5ce3813511a450a8d0bfe887cb88f14b9366"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8928aaf2a1bf5a6255eacc208e6d5ce3813511a450a8d0bfe887cb88f14b9366"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8928aaf2a1bf5a6255eacc208e6d5ce3813511a450a8d0bfe887cb88f14b9366"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8928aaf2a1bf5a6255eacc208e6d5ce3813511a450a8d0bfe887cb88f14b9366"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8928aaf2a1bf5a6255eacc208e6d5ce3813511a450a8d0bfe887cb88f14b9366"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8928aaf2a1bf5a6255eacc208e6d5ce3813511a450a8d0bfe887cb88f14b9366"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8928aaf2a1bf5a6255eacc208e6d5ce3813511a450a8d0bfe887cb88f14b9366"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8928aaf2a1bf5a6255eacc208e6d5ce3813511a450a8d0bfe887cb88f14b9366"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8928aaf2a1bf5a6255eacc208e6d5ce3813511a450a8d0bfe887cb88f14b9366"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s45-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b4915135b6eb5a5732941333a6b97baa59245236469e525d12745cdef9c3fa98"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b4915135b6eb5a5732941333a6b97baa59245236469e525d12745cdef9c3fa98"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b4915135b6eb5a5732941333a6b97baa59245236469e525d12745cdef9c3fa98"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b4915135b6eb5a5732941333a6b97baa59245236469e525d12745cdef9c3fa98"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b4915135b6eb5a5732941333a6b97baa59245236469e525d12745cdef9c3fa98"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b4915135b6eb5a5732941333a6b97baa59245236469e525d12745cdef9c3fa98"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b4915135b6eb5a5732941333a6b97baa59245236469e525d12745cdef9c3fa98"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b4915135b6eb5a5732941333a6b97baa59245236469e525d12745cdef9c3fa98"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b4915135b6eb5a5732941333a6b97baa59245236469e525d12745cdef9c3fa98"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b4915135b6eb5a5732941333a6b97baa59245236469e525d12745cdef9c3fa98"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "b4915135b6eb5a5732941333a6b97baa59245236469e525d12745cdef9c3fa98"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s45-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "c117bc88c11b603355be4da8e332662b54b941226aa0139ff641bdf00cad034b"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "c117bc88c11b603355be4da8e332662b54b941226aa0139ff641bdf00cad034b"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "c117bc88c11b603355be4da8e332662b54b941226aa0139ff641bdf00cad034b"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "c117bc88c11b603355be4da8e332662b54b941226aa0139ff641bdf00cad034b"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "c117bc88c11b603355be4da8e332662b54b941226aa0139ff641bdf00cad034b"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "c117bc88c11b603355be4da8e332662b54b941226aa0139ff641bdf00cad034b"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "c117bc88c11b603355be4da8e332662b54b941226aa0139ff641bdf00cad034b"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "c117bc88c11b603355be4da8e332662b54b941226aa0139ff641bdf00cad034b"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "c117bc88c11b603355be4da8e332662b54b941226aa0139ff641bdf00cad034b"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "c117bc88c11b603355be4da8e332662b54b941226aa0139ff641bdf00cad034b"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "c117bc88c11b603355be4da8e332662b54b941226aa0139ff641bdf00cad034b"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s45-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "b41aeefa75bfc8eaccff16f4d7240c02685209bf528f32ed76f89a973bfdc201"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "b41aeefa75bfc8eaccff16f4d7240c02685209bf528f32ed76f89a973bfdc201"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "b41aeefa75bfc8eaccff16f4d7240c02685209bf528f32ed76f89a973bfdc201"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "b41aeefa75bfc8eaccff16f4d7240c02685209bf528f32ed76f89a973bfdc201"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "b41aeefa75bfc8eaccff16f4d7240c02685209bf528f32ed76f89a973bfdc201"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "b41aeefa75bfc8eaccff16f4d7240c02685209bf528f32ed76f89a973bfdc201"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "b41aeefa75bfc8eaccff16f4d7240c02685209bf528f32ed76f89a973bfdc201"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "b41aeefa75bfc8eaccff16f4d7240c02685209bf528f32ed76f89a973bfdc201"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "b41aeefa75bfc8eaccff16f4d7240c02685209bf528f32ed76f89a973bfdc201"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "b41aeefa75bfc8eaccff16f4d7240c02685209bf528f32ed76f89a973bfdc201"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "b41aeefa75bfc8eaccff16f4d7240c02685209bf528f32ed76f89a973bfdc201"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s45-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "b9d6846e44066de62ff5d30ba62758da691a6d7d4ba3af8ccd742df2395f5579"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "b9d6846e44066de62ff5d30ba62758da691a6d7d4ba3af8ccd742df2395f5579"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "b9d6846e44066de62ff5d30ba62758da691a6d7d4ba3af8ccd742df2395f5579"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "b9d6846e44066de62ff5d30ba62758da691a6d7d4ba3af8ccd742df2395f5579"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "b9d6846e44066de62ff5d30ba62758da691a6d7d4ba3af8ccd742df2395f5579"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "b9d6846e44066de62ff5d30ba62758da691a6d7d4ba3af8ccd742df2395f5579"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "b9d6846e44066de62ff5d30ba62758da691a6d7d4ba3af8ccd742df2395f5579"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "b9d6846e44066de62ff5d30ba62758da691a6d7d4ba3af8ccd742df2395f5579"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "b9d6846e44066de62ff5d30ba62758da691a6d7d4ba3af8ccd742df2395f5579"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "b9d6846e44066de62ff5d30ba62758da691a6d7d4ba3af8ccd742df2395f5579"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "b9d6846e44066de62ff5d30ba62758da691a6d7d4ba3af8ccd742df2395f5579"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s45-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "754325d04a767c295adef678e84a6f5dc4c66967be437afa5fb7b05f10e2f138"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "754325d04a767c295adef678e84a6f5dc4c66967be437afa5fb7b05f10e2f138"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "754325d04a767c295adef678e84a6f5dc4c66967be437afa5fb7b05f10e2f138"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "754325d04a767c295adef678e84a6f5dc4c66967be437afa5fb7b05f10e2f138"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "754325d04a767c295adef678e84a6f5dc4c66967be437afa5fb7b05f10e2f138"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "754325d04a767c295adef678e84a6f5dc4c66967be437afa5fb7b05f10e2f138"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "754325d04a767c295adef678e84a6f5dc4c66967be437afa5fb7b05f10e2f138"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "754325d04a767c295adef678e84a6f5dc4c66967be437afa5fb7b05f10e2f138"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "754325d04a767c295adef678e84a6f5dc4c66967be437afa5fb7b05f10e2f138"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "754325d04a767c295adef678e84a6f5dc4c66967be437afa5fb7b05f10e2f138"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "754325d04a767c295adef678e84a6f5dc4c66967be437afa5fb7b05f10e2f138"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s45-no-seed-modules).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8113c5552c6570b8e7f7258163085f687e25c601708c20eb628917530b5ba22f"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8113c5552c6570b8e7f7258163085f687e25c601708c20eb628917530b5ba22f"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8113c5552c6570b8e7f7258163085f687e25c601708c20eb628917530b5ba22f"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8113c5552c6570b8e7f7258163085f687e25c601708c20eb628917530b5ba22f"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8113c5552c6570b8e7f7258163085f687e25c601708c20eb628917530b5ba22f"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8113c5552c6570b8e7f7258163085f687e25c601708c20eb628917530b5ba22f"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8113c5552c6570b8e7f7258163085f687e25c601708c20eb628917530b5ba22f"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8113c5552c6570b8e7f7258163085f687e25c601708c20eb628917530b5ba22f"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8113c5552c6570b8e7f7258163085f687e25c601708c20eb628917530b5ba22f"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8113c5552c6570b8e7f7258163085f687e25c601708c20eb628917530b5ba22f"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "8113c5552c6570b8e7f7258163085f687e25c601708c20eb628917530b5ba22f"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s45-no-test-db).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-test-db",
+          "selection": "command",
+          "command_sha256": "88cb8f544563259c10dc17d416fa141c2262965a7f196c80b07e9837aca71183"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-test-db",
+          "selection": "command",
+          "command_sha256": "88cb8f544563259c10dc17d416fa141c2262965a7f196c80b07e9837aca71183"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-test-db",
+          "selection": "command",
+          "command_sha256": "88cb8f544563259c10dc17d416fa141c2262965a7f196c80b07e9837aca71183"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-test-db",
+          "selection": "command",
+          "command_sha256": "88cb8f544563259c10dc17d416fa141c2262965a7f196c80b07e9837aca71183"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-test-db",
+          "selection": "command",
+          "command_sha256": "88cb8f544563259c10dc17d416fa141c2262965a7f196c80b07e9837aca71183"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-test-db",
+          "selection": "command",
+          "command_sha256": "88cb8f544563259c10dc17d416fa141c2262965a7f196c80b07e9837aca71183"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-test-db",
+          "selection": "command",
+          "command_sha256": "88cb8f544563259c10dc17d416fa141c2262965a7f196c80b07e9837aca71183"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-test-db",
+          "selection": "command",
+          "command_sha256": "88cb8f544563259c10dc17d416fa141c2262965a7f196c80b07e9837aca71183"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-test-db",
+          "selection": "command",
+          "command_sha256": "88cb8f544563259c10dc17d416fa141c2262965a7f196c80b07e9837aca71183"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-test-db",
+          "selection": "command",
+          "command_sha256": "88cb8f544563259c10dc17d416fa141c2262965a7f196c80b07e9837aca71183"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-test-db",
+          "selection": "command",
+          "command_sha256": "88cb8f544563259c10dc17d416fa141c2262965a7f196c80b07e9837aca71183"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s45-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "2374c23d49e7e19042a0c69abb6536d20130ef2b2141f1c1bf188c0395657a9a"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "2374c23d49e7e19042a0c69abb6536d20130ef2b2141f1c1bf188c0395657a9a"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "2374c23d49e7e19042a0c69abb6536d20130ef2b2141f1c1bf188c0395657a9a"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "2374c23d49e7e19042a0c69abb6536d20130ef2b2141f1c1bf188c0395657a9a"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "2374c23d49e7e19042a0c69abb6536d20130ef2b2141f1c1bf188c0395657a9a"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "2374c23d49e7e19042a0c69abb6536d20130ef2b2141f1c1bf188c0395657a9a"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "2374c23d49e7e19042a0c69abb6536d20130ef2b2141f1c1bf188c0395657a9a"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "2374c23d49e7e19042a0c69abb6536d20130ef2b2141f1c1bf188c0395657a9a"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "2374c23d49e7e19042a0c69abb6536d20130ef2b2141f1c1bf188c0395657a9a"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "2374c23d49e7e19042a0c69abb6536d20130ef2b2141f1c1bf188c0395657a9a"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "2374c23d49e7e19042a0c69abb6536d20130ef2b2141f1c1bf188c0395657a9a"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s45-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4bfb7bc63ab87f71ec3f94dfb0bef5bbf589b1d6506170c0d7f8acda6c2e6c50"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4bfb7bc63ab87f71ec3f94dfb0bef5bbf589b1d6506170c0d7f8acda6c2e6c50"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4bfb7bc63ab87f71ec3f94dfb0bef5bbf589b1d6506170c0d7f8acda6c2e6c50"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4bfb7bc63ab87f71ec3f94dfb0bef5bbf589b1d6506170c0d7f8acda6c2e6c50"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4bfb7bc63ab87f71ec3f94dfb0bef5bbf589b1d6506170c0d7f8acda6c2e6c50"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4bfb7bc63ab87f71ec3f94dfb0bef5bbf589b1d6506170c0d7f8acda6c2e6c50"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4bfb7bc63ab87f71ec3f94dfb0bef5bbf589b1d6506170c0d7f8acda6c2e6c50"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4bfb7bc63ab87f71ec3f94dfb0bef5bbf589b1d6506170c0d7f8acda6c2e6c50"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4bfb7bc63ab87f71ec3f94dfb0bef5bbf589b1d6506170c0d7f8acda6c2e6c50"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4bfb7bc63ab87f71ec3f94dfb0bef5bbf589b1d6506170c0d7f8acda6c2e6c50"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "4bfb7bc63ab87f71ec3f94dfb0bef5bbf589b1d6506170c0d7f8acda6c2e6c50"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s45-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "20e3e93316aff9b7b63022ae4b08612ea3e56f5c806dc40eda193693c69201f9"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "20e3e93316aff9b7b63022ae4b08612ea3e56f5c806dc40eda193693c69201f9"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "20e3e93316aff9b7b63022ae4b08612ea3e56f5c806dc40eda193693c69201f9"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "20e3e93316aff9b7b63022ae4b08612ea3e56f5c806dc40eda193693c69201f9"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "20e3e93316aff9b7b63022ae4b08612ea3e56f5c806dc40eda193693c69201f9"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "20e3e93316aff9b7b63022ae4b08612ea3e56f5c806dc40eda193693c69201f9"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "20e3e93316aff9b7b63022ae4b08612ea3e56f5c806dc40eda193693c69201f9"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "20e3e93316aff9b7b63022ae4b08612ea3e56f5c806dc40eda193693c69201f9"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "20e3e93316aff9b7b63022ae4b08612ea3e56f5c806dc40eda193693c69201f9"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "20e3e93316aff9b7b63022ae4b08612ea3e56f5c806dc40eda193693c69201f9"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "20e3e93316aff9b7b63022ae4b08612ea3e56f5c806dc40eda193693c69201f9"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names recent.json (001 §R, established by S5.1 step 169) (section invariant s45-no-recent-json).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-recent-json",
+          "selection": "command",
+          "command_sha256": "a803ec44ac4ac82530127bf975904f45267d2d72d7ee2a720b5edc6783a7309d"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-recent-json",
+          "selection": "command",
+          "command_sha256": "a803ec44ac4ac82530127bf975904f45267d2d72d7ee2a720b5edc6783a7309d"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-recent-json",
+          "selection": "command",
+          "command_sha256": "a803ec44ac4ac82530127bf975904f45267d2d72d7ee2a720b5edc6783a7309d"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-recent-json",
+          "selection": "command",
+          "command_sha256": "a803ec44ac4ac82530127bf975904f45267d2d72d7ee2a720b5edc6783a7309d"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-recent-json",
+          "selection": "command",
+          "command_sha256": "a803ec44ac4ac82530127bf975904f45267d2d72d7ee2a720b5edc6783a7309d"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-recent-json",
+          "selection": "command",
+          "command_sha256": "a803ec44ac4ac82530127bf975904f45267d2d72d7ee2a720b5edc6783a7309d"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-recent-json",
+          "selection": "command",
+          "command_sha256": "a803ec44ac4ac82530127bf975904f45267d2d72d7ee2a720b5edc6783a7309d"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-recent-json",
+          "selection": "command",
+          "command_sha256": "a803ec44ac4ac82530127bf975904f45267d2d72d7ee2a720b5edc6783a7309d"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-recent-json",
+          "selection": "command",
+          "command_sha256": "a803ec44ac4ac82530127bf975904f45267d2d72d7ee2a720b5edc6783a7309d"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-recent-json",
+          "selection": "command",
+          "command_sha256": "a803ec44ac4ac82530127bf975904f45267d2d72d7ee2a720b5edc6783a7309d"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-recent-json",
+          "selection": "command",
+          "command_sha256": "a803ec44ac4ac82530127bf975904f45267d2d72d7ee2a720b5edc6783a7309d"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-MEASURED-ELEMENT-OF",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names measuredElementOf (001 §R, established by S8.1 step 254) (section invariant s45-no-measured-element-of).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "5c6381bf6c52525b2b7e8362632ed44d7113ab4e6bbd324545c93665c252c319"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "5c6381bf6c52525b2b7e8362632ed44d7113ab4e6bbd324545c93665c252c319"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "5c6381bf6c52525b2b7e8362632ed44d7113ab4e6bbd324545c93665c252c319"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "5c6381bf6c52525b2b7e8362632ed44d7113ab4e6bbd324545c93665c252c319"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "5c6381bf6c52525b2b7e8362632ed44d7113ab4e6bbd324545c93665c252c319"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "5c6381bf6c52525b2b7e8362632ed44d7113ab4e6bbd324545c93665c252c319"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "5c6381bf6c52525b2b7e8362632ed44d7113ab4e6bbd324545c93665c252c319"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "5c6381bf6c52525b2b7e8362632ed44d7113ab4e6bbd324545c93665c252c319"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "5c6381bf6c52525b2b7e8362632ed44d7113ab4e6bbd324545c93665c252c319"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "5c6381bf6c52525b2b7e8362632ed44d7113ab4e6bbd324545c93665c252c319"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "5c6381bf6c52525b2b7e8362632ed44d7113ab4e6bbd324545c93665c252c319"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-T8-NO-EXPERIMENT-REGEX",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names experimentRegex (001 §T 'From section 8', established by S8.3 step 270) (section invariant s45-t8-no-experiment-regex).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "c90fec86045f910592fa3dc5171c3146739b7418d36151d0172c549d4eacd774"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "c90fec86045f910592fa3dc5171c3146739b7418d36151d0172c549d4eacd774"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "c90fec86045f910592fa3dc5171c3146739b7418d36151d0172c549d4eacd774"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "c90fec86045f910592fa3dc5171c3146739b7418d36151d0172c549d4eacd774"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "c90fec86045f910592fa3dc5171c3146739b7418d36151d0172c549d4eacd774"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "c90fec86045f910592fa3dc5171c3146739b7418d36151d0172c549d4eacd774"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "c90fec86045f910592fa3dc5171c3146739b7418d36151d0172c549d4eacd774"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "c90fec86045f910592fa3dc5171c3146739b7418d36151d0172c549d4eacd774"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "c90fec86045f910592fa3dc5171c3146739b7418d36151d0172c549d4eacd774"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "c90fec86045f910592fa3dc5171c3146739b7418d36151d0172c549d4eacd774"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "c90fec86045f910592fa3dc5171c3146739b7418d36151d0172c549d4eacd774"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-T9-NO-MUELLER-DATA-SET",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names MuellerDataSet (001 §T 'From section 9', established by S9.4 step 331) (section invariant s45-t9-no-mueller-data-set).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c049d43e255b1b8d275beefd241503de84e6785551cc0e15675e7873a46519a2"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c049d43e255b1b8d275beefd241503de84e6785551cc0e15675e7873a46519a2"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c049d43e255b1b8d275beefd241503de84e6785551cc0e15675e7873a46519a2"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c049d43e255b1b8d275beefd241503de84e6785551cc0e15675e7873a46519a2"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c049d43e255b1b8d275beefd241503de84e6785551cc0e15675e7873a46519a2"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c049d43e255b1b8d275beefd241503de84e6785551cc0e15675e7873a46519a2"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c049d43e255b1b8d275beefd241503de84e6785551cc0e15675e7873a46519a2"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c049d43e255b1b8d275beefd241503de84e6785551cc0e15675e7873a46519a2"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c049d43e255b1b8d275beefd241503de84e6785551cc0e15675e7873a46519a2"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c049d43e255b1b8d275beefd241503de84e6785551cc0e15675e7873a46519a2"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "c049d43e255b1b8d275beefd241503de84e6785551cc0e15675e7873a46519a2"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names Data/MuellerMatrix (001 §T 'From section 9', established by S9.4 steps 330-331) (section invariant s45-t9-no-data-mueller-matrix).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "6f0906b8c251c62ff3f957a010ed7943b80eb7688a76df388e118c364e88d7b6"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "6f0906b8c251c62ff3f957a010ed7943b80eb7688a76df388e118c364e88d7b6"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "6f0906b8c251c62ff3f957a010ed7943b80eb7688a76df388e118c364e88d7b6"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "6f0906b8c251c62ff3f957a010ed7943b80eb7688a76df388e118c364e88d7b6"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "6f0906b8c251c62ff3f957a010ed7943b80eb7688a76df388e118c364e88d7b6"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "6f0906b8c251c62ff3f957a010ed7943b80eb7688a76df388e118c364e88d7b6"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "6f0906b8c251c62ff3f957a010ed7943b80eb7688a76df388e118c364e88d7b6"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "6f0906b8c251c62ff3f957a010ed7943b80eb7688a76df388e118c364e88d7b6"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "6f0906b8c251c62ff3f957a010ed7943b80eb7688a76df388e118c364e88d7b6"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "6f0906b8c251c62ff3f957a010ed7943b80eb7688a76df388e118c364e88d7b6"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "6f0906b8c251c62ff3f957a010ed7943b80eb7688a76df388e118c364e88d7b6"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-ARCHIVE-DATA-PROXY",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names MuellerDataProxy or createArchiveBacked (established by S9.4 step 331) (section invariant s45-no-archive-data-proxy).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "7201cd9578cfd1a5ec8b93b84ede4757527ede3752dae976b5b5101e9ac04104"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "7201cd9578cfd1a5ec8b93b84ede4757527ede3752dae976b5b5101e9ac04104"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "7201cd9578cfd1a5ec8b93b84ede4757527ede3752dae976b5b5101e9ac04104"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "7201cd9578cfd1a5ec8b93b84ede4757527ede3752dae976b5b5101e9ac04104"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "7201cd9578cfd1a5ec8b93b84ede4757527ede3752dae976b5b5101e9ac04104"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "7201cd9578cfd1a5ec8b93b84ede4757527ede3752dae976b5b5101e9ac04104"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "7201cd9578cfd1a5ec8b93b84ede4757527ede3752dae976b5b5101e9ac04104"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "7201cd9578cfd1a5ec8b93b84ede4757527ede3752dae976b5b5101e9ac04104"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "7201cd9578cfd1a5ec8b93b84ede4757527ede3752dae976b5b5101e9ac04104"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "7201cd9578cfd1a5ec8b93b84ede4757527ede3752dae976b5b5101e9ac04104"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "7201cd9578cfd1a5ec8b93b84ede4757527ede3752dae976b5b5101e9ac04104"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-T10-NO-HARNESS-NOISE",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, no file under Berreman/BerremanTests/ declares noisyObserveAbsoluteWith (001 §T 'From section 10', established by S10.1 step 340) (section invariant s45-t10-no-harness-noise).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "9d3ea1137e02d014020c2112c5ff4ae1e013858e8d60fd8b127584e6e9707901"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "9d3ea1137e02d014020c2112c5ff4ae1e013858e8d60fd8b127584e6e9707901"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "9d3ea1137e02d014020c2112c5ff4ae1e013858e8d60fd8b127584e6e9707901"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "9d3ea1137e02d014020c2112c5ff4ae1e013858e8d60fd8b127584e6e9707901"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "9d3ea1137e02d014020c2112c5ff4ae1e013858e8d60fd8b127584e6e9707901"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "9d3ea1137e02d014020c2112c5ff4ae1e013858e8d60fd8b127584e6e9707901"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "9d3ea1137e02d014020c2112c5ff4ae1e013858e8d60fd8b127584e6e9707901"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "9d3ea1137e02d014020c2112c5ff4ae1e013858e8d60fd8b127584e6e9707901"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "9d3ea1137e02d014020c2112c5ff4ae1e013858e8d60fd8b127584e6e9707901"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "9d3ea1137e02d014020c2112c5ff4ae1e013858e8d60fd8b127584e6e9707901"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "9d3ea1137e02d014020c2112c5ff4ae1e013858e8d60fd8b127584e6e9707901"
+        }
+      ]
+    },
+    {
+      "id": "S141-INV-NO-SOLVER-HANDOFF",
+      "source": "specs/0050/.section-plan-jsonl section 45 (S14.1) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S14.1 step, nothing under Berreman/ names SolverHandoff (001 §R, established by S11.5 step 416) (section invariant s45-no-solver-handoff).",
+      "checks": [
+        {
+          "step": 465,
+          "gate": "invariant-s45-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "eb359047e5e6e135742b3514e65734ac74b919a64c4cf3f803a50411d77b8553"
+        },
+        {
+          "step": 466,
+          "gate": "invariant-s45-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "eb359047e5e6e135742b3514e65734ac74b919a64c4cf3f803a50411d77b8553"
+        },
+        {
+          "step": 467,
+          "gate": "invariant-s45-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "eb359047e5e6e135742b3514e65734ac74b919a64c4cf3f803a50411d77b8553"
+        },
+        {
+          "step": 468,
+          "gate": "invariant-s45-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "eb359047e5e6e135742b3514e65734ac74b919a64c4cf3f803a50411d77b8553"
+        },
+        {
+          "step": 469,
+          "gate": "invariant-s45-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "eb359047e5e6e135742b3514e65734ac74b919a64c4cf3f803a50411d77b8553"
+        },
+        {
+          "step": 470,
+          "gate": "invariant-s45-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "eb359047e5e6e135742b3514e65734ac74b919a64c4cf3f803a50411d77b8553"
+        },
+        {
+          "step": 471,
+          "gate": "invariant-s45-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "eb359047e5e6e135742b3514e65734ac74b919a64c4cf3f803a50411d77b8553"
+        },
+        {
+          "step": 472,
+          "gate": "invariant-s45-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "eb359047e5e6e135742b3514e65734ac74b919a64c4cf3f803a50411d77b8553"
+        },
+        {
+          "step": 473,
+          "gate": "invariant-s45-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "eb359047e5e6e135742b3514e65734ac74b919a64c4cf3f803a50411d77b8553"
+        },
+        {
+          "step": 474,
+          "gate": "invariant-s45-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "eb359047e5e6e135742b3514e65734ac74b919a64c4cf3f803a50411d77b8553"
+        },
+        {
+          "step": 475,
+          "gate": "invariant-s45-no-solver-handoff",
+          "selection": "command",
+          "command_sha256": "eb359047e5e6e135742b3514e65734ac74b919a64c4cf3f803a50411d77b8553"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -69133,6 +70955,336 @@
         "S132-INV-T10-NO-HARNESS-NOISE",
         "S132-INV-NO-SOLVER-HANDOFF"
       ]
+    },
+    {
+      "step": 465,
+      "sha256": "769a9f45d174431180a4ddcb8309f519531aaef25c8334c0112f0b58d02b3fe0",
+      "obligations": [
+        "S141-POINT-GROUPS",
+        "S141-BUILD",
+        "S141-ELEVATION",
+        "S141-INV-ELEV-LIST-EMPTY",
+        "S141-INV-NO-VSTEST",
+        "S141-INV-NO-KIT-KIT-JSON",
+        "S141-INV-NO-EPS-AXIS-EVALUATED",
+        "S141-INV-COMPLEXITY-MANDATORY",
+        "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S141-INV-NO-SEEDING-SEAM",
+        "S141-INV-T1-NO-CODE-SEEDS",
+        "S141-INV-NO-SEED-MODULES",
+        "S141-INV-NO-TEST-DB",
+        "S141-INV-NO-VERSIONS-IN-USE",
+        "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S141-INV-T4-NO-OCPROJ",
+        "S141-INV-NO-RECENT-JSON",
+        "S141-INV-NO-MEASURED-ELEMENT-OF",
+        "S141-INV-T8-NO-EXPERIMENT-REGEX",
+        "S141-INV-T9-NO-MUELLER-DATA-SET",
+        "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S141-INV-NO-ARCHIVE-DATA-PROXY",
+        "S141-INV-T10-NO-HARNESS-NOISE",
+        "S141-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 466,
+      "sha256": "207d6c09cf8138cf83f3ec0764c393e5d68084f4b0bd3708374f4cc7b4cd4304",
+      "obligations": [
+        "S141-COMPONENTS-AND-CUTS",
+        "S141-BUILD",
+        "S141-ELEVATION",
+        "S141-INV-ELEV-LIST-EMPTY",
+        "S141-INV-NO-VSTEST",
+        "S141-INV-NO-KIT-KIT-JSON",
+        "S141-INV-NO-EPS-AXIS-EVALUATED",
+        "S141-INV-COMPLEXITY-MANDATORY",
+        "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S141-INV-NO-SEEDING-SEAM",
+        "S141-INV-T1-NO-CODE-SEEDS",
+        "S141-INV-NO-SEED-MODULES",
+        "S141-INV-NO-TEST-DB",
+        "S141-INV-NO-VERSIONS-IN-USE",
+        "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S141-INV-T4-NO-OCPROJ",
+        "S141-INV-NO-RECENT-JSON",
+        "S141-INV-NO-MEASURED-ELEMENT-OF",
+        "S141-INV-T8-NO-EXPERIMENT-REGEX",
+        "S141-INV-T9-NO-MUELLER-DATA-SET",
+        "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S141-INV-NO-ARCHIVE-DATA-PROXY",
+        "S141-INV-T10-NO-HARNESS-NOISE",
+        "S141-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 467,
+      "sha256": "b82f9da6e300bea8dbfd88974d7618dcc4f008165bcdd05b4c81e049d28b7e5f",
+      "obligations": [
+        "S141-LOOK-SIGHT",
+        "S141-BUILD",
+        "S141-ELEVATION",
+        "S141-INV-ELEV-LIST-EMPTY",
+        "S141-INV-NO-VSTEST",
+        "S141-INV-NO-KIT-KIT-JSON",
+        "S141-INV-NO-EPS-AXIS-EVALUATED",
+        "S141-INV-COMPLEXITY-MANDATORY",
+        "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S141-INV-NO-SEEDING-SEAM",
+        "S141-INV-T1-NO-CODE-SEEDS",
+        "S141-INV-NO-SEED-MODULES",
+        "S141-INV-NO-TEST-DB",
+        "S141-INV-NO-VERSIONS-IN-USE",
+        "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S141-INV-T4-NO-OCPROJ",
+        "S141-INV-NO-RECENT-JSON",
+        "S141-INV-NO-MEASURED-ELEMENT-OF",
+        "S141-INV-T8-NO-EXPERIMENT-REGEX",
+        "S141-INV-T9-NO-MUELLER-DATA-SET",
+        "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S141-INV-NO-ARCHIVE-DATA-PROXY",
+        "S141-INV-T10-NO-HARNESS-NOISE",
+        "S141-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 468,
+      "sha256": "0c6b453ba374c3124a721e9e5caa84e200967a007d21ea79e436355cb6693806",
+      "obligations": [
+        "S141-TARGET-SIGHT",
+        "S141-BUILD",
+        "S141-ELEVATION",
+        "S141-INV-ELEV-LIST-EMPTY",
+        "S141-INV-NO-VSTEST",
+        "S141-INV-NO-KIT-KIT-JSON",
+        "S141-INV-NO-EPS-AXIS-EVALUATED",
+        "S141-INV-COMPLEXITY-MANDATORY",
+        "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S141-INV-NO-SEEDING-SEAM",
+        "S141-INV-T1-NO-CODE-SEEDS",
+        "S141-INV-NO-SEED-MODULES",
+        "S141-INV-NO-TEST-DB",
+        "S141-INV-NO-VERSIONS-IN-USE",
+        "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S141-INV-T4-NO-OCPROJ",
+        "S141-INV-NO-RECENT-JSON",
+        "S141-INV-NO-MEASURED-ELEMENT-OF",
+        "S141-INV-T8-NO-EXPERIMENT-REGEX",
+        "S141-INV-T9-NO-MUELLER-DATA-SET",
+        "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S141-INV-NO-ARCHIVE-DATA-PROXY",
+        "S141-INV-T10-NO-HARNESS-NOISE",
+        "S141-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 469,
+      "sha256": "8fb130368ca55d7fbdce92da5b950658d343d32ca29d9f0c57485eb4a38db72f",
+      "obligations": [
+        "S141-STRUCTURAL-REPORT",
+        "S141-BUILD",
+        "S141-ELEVATION",
+        "S141-INV-ELEV-LIST-EMPTY",
+        "S141-INV-NO-VSTEST",
+        "S141-INV-NO-KIT-KIT-JSON",
+        "S141-INV-NO-EPS-AXIS-EVALUATED",
+        "S141-INV-COMPLEXITY-MANDATORY",
+        "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S141-INV-NO-SEEDING-SEAM",
+        "S141-INV-T1-NO-CODE-SEEDS",
+        "S141-INV-NO-SEED-MODULES",
+        "S141-INV-NO-TEST-DB",
+        "S141-INV-NO-VERSIONS-IN-USE",
+        "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S141-INV-T4-NO-OCPROJ",
+        "S141-INV-NO-RECENT-JSON",
+        "S141-INV-NO-MEASURED-ELEMENT-OF",
+        "S141-INV-T8-NO-EXPERIMENT-REGEX",
+        "S141-INV-T9-NO-MUELLER-DATA-SET",
+        "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S141-INV-NO-ARCHIVE-DATA-PROXY",
+        "S141-INV-T10-NO-HARNESS-NOISE",
+        "S141-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 470,
+      "sha256": "c273edccb6ebe9e4e01fb95fa179a1f81547e4b74b88b6b0cc3e2377a38cf4a9",
+      "obligations": [
+        "S141-LAB-PROFILE",
+        "S141-BUILD",
+        "S141-ELEVATION",
+        "S141-INV-ELEV-LIST-EMPTY",
+        "S141-INV-NO-VSTEST",
+        "S141-INV-NO-KIT-KIT-JSON",
+        "S141-INV-NO-EPS-AXIS-EVALUATED",
+        "S141-INV-COMPLEXITY-MANDATORY",
+        "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S141-INV-NO-SEEDING-SEAM",
+        "S141-INV-T1-NO-CODE-SEEDS",
+        "S141-INV-NO-SEED-MODULES",
+        "S141-INV-NO-TEST-DB",
+        "S141-INV-NO-VERSIONS-IN-USE",
+        "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S141-INV-T4-NO-OCPROJ",
+        "S141-INV-NO-RECENT-JSON",
+        "S141-INV-NO-MEASURED-ELEMENT-OF",
+        "S141-INV-T8-NO-EXPERIMENT-REGEX",
+        "S141-INV-T9-NO-MUELLER-DATA-SET",
+        "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S141-INV-NO-ARCHIVE-DATA-PROXY",
+        "S141-INV-T10-NO-HARNESS-NOISE",
+        "S141-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 471,
+      "sha256": "31ae29a99cf96ce0fa336666ef536c8c5eb653d29c7e02672c09efc2d2b03f30",
+      "obligations": [
+        "S141-PLANNER-INPUTS",
+        "S141-BUILD",
+        "S141-ELEVATION",
+        "S141-INV-ELEV-LIST-EMPTY",
+        "S141-INV-NO-VSTEST",
+        "S141-INV-NO-KIT-KIT-JSON",
+        "S141-INV-NO-EPS-AXIS-EVALUATED",
+        "S141-INV-COMPLEXITY-MANDATORY",
+        "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S141-INV-NO-SEEDING-SEAM",
+        "S141-INV-T1-NO-CODE-SEEDS",
+        "S141-INV-NO-SEED-MODULES",
+        "S141-INV-NO-TEST-DB",
+        "S141-INV-NO-VERSIONS-IN-USE",
+        "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S141-INV-T4-NO-OCPROJ",
+        "S141-INV-NO-RECENT-JSON",
+        "S141-INV-NO-MEASURED-ELEMENT-OF",
+        "S141-INV-T8-NO-EXPERIMENT-REGEX",
+        "S141-INV-T9-NO-MUELLER-DATA-SET",
+        "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S141-INV-NO-ARCHIVE-DATA-PROXY",
+        "S141-INV-T10-NO-HARNESS-NOISE",
+        "S141-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 472,
+      "sha256": "2215e08fe8f37dfbe90fe781b5d22f8d1c71d7bf406b05efac27a2d451d62c36",
+      "obligations": [
+        "S141-KIT-REPORT",
+        "S141-BUILD",
+        "S141-ELEVATION",
+        "S141-INV-ELEV-LIST-EMPTY",
+        "S141-INV-NO-VSTEST",
+        "S141-INV-NO-KIT-KIT-JSON",
+        "S141-INV-NO-EPS-AXIS-EVALUATED",
+        "S141-INV-COMPLEXITY-MANDATORY",
+        "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S141-INV-NO-SEEDING-SEAM",
+        "S141-INV-T1-NO-CODE-SEEDS",
+        "S141-INV-NO-SEED-MODULES",
+        "S141-INV-NO-TEST-DB",
+        "S141-INV-NO-VERSIONS-IN-USE",
+        "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S141-INV-T4-NO-OCPROJ",
+        "S141-INV-NO-RECENT-JSON",
+        "S141-INV-NO-MEASURED-ELEMENT-OF",
+        "S141-INV-T8-NO-EXPERIMENT-REGEX",
+        "S141-INV-T9-NO-MUELLER-DATA-SET",
+        "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S141-INV-NO-ARCHIVE-DATA-PROXY",
+        "S141-INV-T10-NO-HARNESS-NOISE",
+        "S141-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 473,
+      "sha256": "b5f5b44a2f767d5e1ff63ee91527259d0be29959e21effe19ddd095a0c95c1f5",
+      "obligations": [
+        "S141-QUARTZ-DESIGN-MOVE",
+        "S141-BUILD",
+        "S141-ELEVATION",
+        "S141-INV-ELEV-LIST-EMPTY",
+        "S141-INV-NO-VSTEST",
+        "S141-INV-NO-KIT-KIT-JSON",
+        "S141-INV-NO-EPS-AXIS-EVALUATED",
+        "S141-INV-COMPLEXITY-MANDATORY",
+        "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S141-INV-NO-SEEDING-SEAM",
+        "S141-INV-T1-NO-CODE-SEEDS",
+        "S141-INV-NO-SEED-MODULES",
+        "S141-INV-NO-TEST-DB",
+        "S141-INV-NO-VERSIONS-IN-USE",
+        "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S141-INV-T4-NO-OCPROJ",
+        "S141-INV-NO-RECENT-JSON",
+        "S141-INV-NO-MEASURED-ELEMENT-OF",
+        "S141-INV-T8-NO-EXPERIMENT-REGEX",
+        "S141-INV-T9-NO-MUELLER-DATA-SET",
+        "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S141-INV-NO-ARCHIVE-DATA-PROXY",
+        "S141-INV-T10-NO-HARNESS-NOISE",
+        "S141-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 474,
+      "sha256": "49819f472360e8ce30df172ff786e2f87d76fe6e28c780d9f845a11267f40d84",
+      "obligations": [
+        "S141-BIAXIAL-DESIGN-MOVE",
+        "S141-BUILD",
+        "S141-ELEVATION",
+        "S141-INV-ELEV-LIST-EMPTY",
+        "S141-INV-NO-VSTEST",
+        "S141-INV-NO-KIT-KIT-JSON",
+        "S141-INV-NO-EPS-AXIS-EVALUATED",
+        "S141-INV-COMPLEXITY-MANDATORY",
+        "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S141-INV-NO-SEEDING-SEAM",
+        "S141-INV-T1-NO-CODE-SEEDS",
+        "S141-INV-NO-SEED-MODULES",
+        "S141-INV-NO-TEST-DB",
+        "S141-INV-NO-VERSIONS-IN-USE",
+        "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S141-INV-T4-NO-OCPROJ",
+        "S141-INV-NO-RECENT-JSON",
+        "S141-INV-NO-MEASURED-ELEMENT-OF",
+        "S141-INV-T8-NO-EXPERIMENT-REGEX",
+        "S141-INV-T9-NO-MUELLER-DATA-SET",
+        "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S141-INV-NO-ARCHIVE-DATA-PROXY",
+        "S141-INV-T10-NO-HARNESS-NOISE",
+        "S141-INV-NO-SOLVER-HANDOFF"
+      ]
+    },
+    {
+      "step": 475,
+      "sha256": "dc45ca8944d8e626ccc26ee30d051ef669dfa4022266a4a711607091591850d5",
+      "obligations": [
+        "S141-PLANNER-ACCEPTANCE",
+        "S141-BUILD",
+        "S141-ELEVATION",
+        "S141-INV-ELEV-LIST-EMPTY",
+        "S141-INV-NO-VSTEST",
+        "S141-INV-NO-KIT-KIT-JSON",
+        "S141-INV-NO-EPS-AXIS-EVALUATED",
+        "S141-INV-COMPLEXITY-MANDATORY",
+        "S141-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S141-INV-NO-SEEDING-SEAM",
+        "S141-INV-T1-NO-CODE-SEEDS",
+        "S141-INV-NO-SEED-MODULES",
+        "S141-INV-NO-TEST-DB",
+        "S141-INV-NO-VERSIONS-IN-USE",
+        "S141-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S141-INV-T4-NO-OCPROJ",
+        "S141-INV-NO-RECENT-JSON",
+        "S141-INV-NO-MEASURED-ELEMENT-OF",
+        "S141-INV-T8-NO-EXPERIMENT-REGEX",
+        "S141-INV-T9-NO-MUELLER-DATA-SET",
+        "S141-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S141-INV-NO-ARCHIVE-DATA-PROXY",
+        "S141-INV-T10-NO-HARNESS-NOISE",
+        "S141-INV-NO-SOLVER-HANDOFF"
+      ]
     }
   ],
   "behavior_seams": [
@@ -71170,6 +73322,61 @@
       "id": "s132-agf-wire",
       "step": 464,
       "obligation": "S132-AGF-WIRE"
+    },
+    {
+      "id": "s141-point-groups",
+      "step": 465,
+      "obligation": "S141-POINT-GROUPS"
+    },
+    {
+      "id": "s141-components-and-cuts",
+      "step": 466,
+      "obligation": "S141-COMPONENTS-AND-CUTS"
+    },
+    {
+      "id": "s141-look-sight",
+      "step": 467,
+      "obligation": "S141-LOOK-SIGHT"
+    },
+    {
+      "id": "s141-target-sight",
+      "step": 468,
+      "obligation": "S141-TARGET-SIGHT"
+    },
+    {
+      "id": "s141-structural-report",
+      "step": 469,
+      "obligation": "S141-STRUCTURAL-REPORT"
+    },
+    {
+      "id": "s141-lab-profile",
+      "step": 470,
+      "obligation": "S141-LAB-PROFILE"
+    },
+    {
+      "id": "s141-planner-inputs",
+      "step": 471,
+      "obligation": "S141-PLANNER-INPUTS"
+    },
+    {
+      "id": "s141-kit-report",
+      "step": 472,
+      "obligation": "S141-KIT-REPORT"
+    },
+    {
+      "id": "s141-quartz-design-move",
+      "step": 473,
+      "obligation": "S141-QUARTZ-DESIGN-MOVE"
+    },
+    {
+      "id": "s141-biaxial-design-move",
+      "step": 474,
+      "obligation": "S141-BIAXIAL-DESIGN-MOVE"
+    },
+    {
+      "id": "s141-planner-acceptance",
+      "step": 475,
+      "obligation": "S141-PLANNER-ACCEPTANCE"
     }
   ],
   "temporal_checks": [],
@@ -71782,6 +73989,16 @@
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
         "data/absorbing-biaxial-noisy"
+      ]
+    },
+    {
+      "from": 465,
+      "step": 475,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/BerremanTestSupport",
+        "Berreman/BerremanTests"
       ]
     }
   ]

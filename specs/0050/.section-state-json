@@ -264,14 +264,14 @@
     {
       "name": "S13.2 -- PTB OCDB, the Henke compound calculator and glass catalogues",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "b9601af",
       "spec_jsonl_lines": 464
     },
     {
       "name": "S14.1 -- The Measurement Planner: kit inputs and the structural layer",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 475
     },
     {
       "name": "S14.2 -- The Planner's numerical layer, the plan, the cache and the Plan view",
