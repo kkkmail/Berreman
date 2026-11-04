@@ -282,7 +282,7 @@
     {
       "name": "Close -- the composition root and the whole-tree proof",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "649bd12",
       "spec_jsonl_lines": 494
     }
   ]
