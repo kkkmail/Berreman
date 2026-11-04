@@ -240,14 +240,14 @@
     {
       "name": "S11.5 -- Publishing, the study view; the solver hand-off stub goes",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "e36b20a",
       "spec_jsonl_lines": 419
     },
     {
       "name": "S12.1 -- AT-1 and the optics-mueller reference kit",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 430
     },
     {
       "name": "S12.2 -- AT-2 and the absorbing-biaxial-noisy reference kit",
