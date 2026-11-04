@@ -46,5 +46,13 @@
     "declaringProject": "OpticalConstructor.Domain",
     "status": "active",
     "formerNames": []
+  },
+  "FILE_BigBoy_0001": {
+    "name": "KitArchiveProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
   }
 }

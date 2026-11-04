@@ -18711,6 +18711,1964 @@
           "command_sha256": "2b4644ae8908a10c24d1fe0dec150f57fa15f08ba96e432dd9d1881976d57db6"
         }
       ]
+    },
+    {
+      "id": "S6-SEND-RULE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "Kit.fs declares KitPathRole and KitRelativePath.appCacheFolder (.oc), pathRole, parentOpt and leafName, and the lock code of KitFolderStore.fs and InMemoryKitFolder names .oc through appCacheFolder; new KitArchive.fs declares GlobPathMatch, SendExcludeGlob.matchOf (** over whole segments, * and ? inside one segment, ignoring case, anchored at the kit root, no package), KitSendChoice, KitTreeEntry, KitFile.sendChoiceOf (the app cache and every path a glob matches, or a matched folder holds, is left out), KitFile.sentEntries and KitName.zipFileName (<kit name made safe>.zip).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S6-ARCHIVE-SEAM",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "KitArchive.fs declares KitArchiveError (KitArchiveIoErr, KitZipEntryEscapesErr, KitZipTargetNotEmptyErr, KitZipInsideKitErr, KitZipHoldsNoKitErr) with describe; KitTreeEntry.tryOfZipEntryName (an escaping name refused) and zipEntryName; KitArchiveFileCount, KitArchiveProgress, KitArchiveObserver (checked before each file, told after each) with unobserved, KitArchiveOutcome, KitZipJob, KitUnzipJob; the [<ReferenceEquality>] KitArchiveProxy { listKitTree; writeKitZip; listZipEntries; extractKitZip } whose zip appears only when whole and whose cancelled or failed extraction removes what it wrote; and InMemoryArchiveDisk with KitArchiveProxy.createInMemory, both run by KitArchiveProxyContract.",
+      "checks": [
+        {
+          "step": 197,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S6-SEND-RECEIVE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "KitArchiveProxy.sendKit refuses a zip inside the kit (KitZipInsideKitErr) and otherwise writes the kit file's sentEntries of listKitTree; receiveKit refuses a zip with no root .kit-json (KitZipHoldsNoKitErr) and extracts only KitContentPath entries; the [<ReferenceEquality>] KitZipPicker { pickZipToWrite; pickZipToOpen } is declared with none.",
+      "checks": [
+        {
+          "step": 198,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S6-ARCHIVE-FOLDER",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "Storage KitArchiveStore.fs declares KitArchiveProxy.create () over System.IO.Compression: the tree listing, a zip streamed into <zip>.tmp and moved in place only when whole (a cancel or a failure deletes the .tmp and keeps an existing zip), entry names read through KitTreeEntry.tryOfZipEntryName, and an extraction into an empty or new target that removes what it created on a cancel or a failure; every exception is a KitArchiveError at the seam, and the contract facts run over a real folder.",
+      "checks": [
+        {
+          "step": 199,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S6-ARCHIVE-JOB",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "Ui KitArchiveJob.fs declares KitArchiveFileCount.jobStepCount, KitArchiveProgress.jobProgress, KitArchiveJobHandle, KitArchiveJobHost (posting through JobRunner.startBackground, onUiThread through Avalonia's dispatcher, immediate, inert), KitArchiveJobState over JobRunner's JobModel (idle, started, progressed, cancel), the one progress row kitArchiveProgressView (bar, count, Cancel) and KitZipPicker.ofWindow with pickZipToWriteThen / pickZipToOpenThen; KitFolderPicker.pickThen's body moves into KitOpening.startPick, which every dialog start calls.",
+      "checks": [
+        {
+          "step": 200,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 200,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        }
+      ]
+    },
+    {
+      "id": "S6-SEND-MESSAGES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "KitWindowShell holds zipPicker, archive and archiveJobs (inert: none, an in-memory archive, the inert host) and every full shell expression becomes an update of inert; the model holds kitSend (idle); SendKit starts one send of the kit's folder through archiveJobs and archive.sendKit (a scratch kit is told and nothing starts; a running send is not doubled; a read-only kit is sent), SendKitProgressed advances the job, SendKitEnded returns it to idle telling the files zipped, the cancel or the error, and CancelSendKit cancels the running job.",
+      "checks": [
+        {
+          "step": 201,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 201,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 201,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S6-SEND-VIEW",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "UiIds declares sendKitButton, sendKitProgressBar, sendKitProgressText and sendKitCancelButton; the kit bar's Kit menu starts with Send kit… (present for a kit with a folder and no running send), whose press opens the shell's save dialog with KitName.zipFileName and dispatches SendKit of the chosen zip; a running send shows kitArchiveProgressView with those ids, its Cancel dispatching CancelSendKit.",
+      "checks": [
+        {
+          "step": 202,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 202,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 202,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S6-COPY-PLAN",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "Experiment.renumberedFor keeps an incoming id that neither the kit nor an earlier incoming experiment holds and gives a clashing one the next of the highest id seen; KitLibrary.referenceClosure holds the depth-first, once-per-version walk moved out of KitLibraryContext.snapshotReferences, which calls it and behaves as before.",
+      "checks": [
+        {
+          "step": 203,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S6-LAB-FILE-READ",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "KitProxy holds readLabFile (a lab file's absolute name in the kit and its bytes as stored, MissingKitFileErr when absent), implemented in memory (the stored text's UTF-8 bytes under kitFolder) and on disk (the file's bytes whole), and passed through by readOnlyView.",
+      "checks": [
+        {
+          "step": 204,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S6-COPY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "Storage KitContentFiles.fs declares ExperimentCopyReport and KitContext.copyExperimentsFrom: refused under ReadOnlyKitAccess; it reads the chosen source experiments (an unknown id is MissingKitFileErr), the referenceClosure of their libraryReferences over the source's snapshots (an unheld one is UnheldEntryErr), their data files through readLabFile and the target's ids, before writing the missing snapshots byte for byte, each data file once through copyInFile into its own data folder (next free suffix, re-recorded hash) and each experiment renumbered by Experiment.renumberedFor with its new attachment; it pins nothing and only reads the source.",
+      "checks": [
+        {
+          "step": 205,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S6-COPY-MESSAGES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "KitWindowShell holds kitPicker (inert: none); KitCopySource { source; experiments; chosen }; the model holds kitCopyOpt; OpenCopySource (behind the read-only guard; its own folder refused) opens the folder's kit read-only and lists its experiments, ToggleCopiedExperiment chooses in the source's order, CopyChosenExperiments (behind the guard) calls copyExperimentsFrom, re-reads the kit's experiments through loadKit's shared content function, closes the source and tells the count, and CloseCopySource closes the source.",
+      "checks": [
+        {
+          "step": 206,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 206,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 206,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S6-COPY-VIEW",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "UiIds declares kitCopyExperimentsButton, kitCopySourceText, kitCopyExperimentList, kitCopyChosenButton and kitCopyCancelButton, and ConstructorUiIdOfDomain kitCopyExperimentToggle of an ExperimentId; the kit bar offers Copy experiments from another kit… only under ControlOffered kit writes, its press opening the shell's folder dialog and dispatching OpenCopySource; an open source shows its name, a bounded scrolling list of toggles dispatching ToggleCopiedExperiment, and Copy (when something is chosen) / Cancel on one row; ScrollExtentTests keeps the bar reachable at its tallest.",
+      "checks": [
+        {
+          "step": 207,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 207,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 207,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S6-ZIP-MESSAGES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "KitStartContext holds zipPicker, archive and archiveJobs (KitStartWindow composing none, KitArchiveProxy.create () and onUiThread over its dispatch); KitZipOpening { zip; target }; the model holds zipJob and zipOpeningOpt; OpenKitZip starts one receiveKit through archiveJobs (not while one runs), OpenKitZipProgressed advances it, OpenKitZipEnded returns it to idle and opens the target as OpenKit does on a finish or tells the cancel or the error, and CancelOpenKitZip cancels it.",
+      "checks": [
+        {
+          "step": 208,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 208,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 208,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S6-ZIP-VIEW",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "UiIds declares openKitZipButton, openKitZipProgressBar, openKitZipProgressText and openKitZipCancelButton; the start screen's first row gains Open kit from zip… (absent while an extraction runs), whose press asks the zip dialog then the folder dialog and dispatches OpenKitZip; a running extraction shows kitArchiveProgressView with those ids, its Cancel dispatching CancelOpenKitZip.",
+      "checks": [
+        {
+          "step": 209,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 209,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 209,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S6-ZIP-WIRE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "KitStartWindow takes zipPickerFor : TopLevel -> KitZipPicker and composes the context's zipPicker from it; LauncherWindow builds its start screens with KitZipPicker.ofWindow over locations.exportsFolder; every other construction passes KitZipPicker.none; a shown start screen extracts a sent zip on a worker and opens it in its constructor.",
+      "checks": [
+        {
+          "step": 210,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 210,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 210,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S6-KIT-SHELL-WIRE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "AppContext holds locations, set by compose; ConstructorScene.mount builds the kit shell from KitWindowShell.inert with the system explorer, the window's close, KitZipPicker.ofWindow over locations.exportsFolder, KitArchiveProxy.create (), KitArchiveJobHost.onUiThread dispatching SendKitProgressed / SendKitEnded, and KitFolderPicker.ofWindow over locations.kitsFolder; a shown constructor window offers Send kit, and Copy experiments only to a kit opened read-write.",
+      "checks": [
+        {
+          "step": 211,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 211,
+          "gate": "ui-smoke",
+          "selection": "all_discovered",
+          "command_sha256": "6fae44aa7b072f6f81462fe486b1a12e062cb5a8e6cecdbcf7688cb0f52f11c6"
+        },
+        {
+          "step": 211,
+          "gate": "ui-tests",
+          "selection": "selected",
+          "command_sha256": "e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920"
+        }
+      ]
+    },
+    {
+      "id": "S6-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "Every S6 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error, no package is added (System.IO.Compression ships with .NET), and every new compile item (KitArchive.fs after KitHistory.fs, KitArchiveStore.fs after KitHistoryStore.fs, KitArchiveJob.fs after KitOpening.fs, KitArchiveTests.fs, KitArchiveProxyTests.fs, KitArchiveJobTests.fs, ExperimentCopyTests.fs) sits at the position its step names.",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 197,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 198,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 199,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 200,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 201,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 202,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 203,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 204,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 205,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 206,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 207,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 208,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 209,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 210,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 211,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S6-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §H ('A kit: copy its folder. Send kit… writes one <kit name>.zip (excluding .oc/ and sendExclude), and Open kit from zip… extracts it. There is no separate bundle format'; 'Between kits: Copy experiments from another kit… brings the experiments with their setups, data files and the items they use'), §E ('Large lab files … may stay in the kit. The app reads only what experiments reference, and Send kit… honours sendExclude (e.g. **/*.dng)'; references are relative paths plus SHA-256; attaching copies into data/, suffixing on collision; library closure snapshot), §F ('Open kit from zip…: choose a target folder, extract, open'), §A ('.oc/ app-owned cache and lock; safe to delete; never sent'), §O ('Kit menu: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit'; ids such as SendKitButton), §P (KitArchiveProxy (zip / unzip); every proxy has an in-memory stub of the same shape; messages OpenKitZip, SendKit; every user step is a semantic message); specs/0050/.section-plan-jsonl section 22 (S6) brief; specs/0050/.spec-md §3.15, §4, §5 (KitArchiveProxy, Kit module), §6 (JobRunner, WindowFit/ScrollExtentTests), §8, §9, §10.1, §10.2, §10.4, §10.5",
+      "requirement": "Every S6 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): every new type, public name, DU case and extension member is unique, every case name has two or more words, no bool stands for a two-state value, no tuple repeats an element type, the zip seam's primitive-carrying declarations are marked ElevationBoundary on themselves, and no free function of one of our types is added.",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 197,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 198,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 199,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 200,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 201,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 202,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 203,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 204,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 205,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 206,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 207,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 208,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 209,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 210,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 211,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s22-elev-list-empty).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "f96c210a37c9246cae2b7900267b5faefa5304916d1cee084378a7219b9254cf"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s22-no-vstest).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-no-vstest",
+          "selection": "command",
+          "command_sha256": "0b7b084826d160289ae8aae3fa07ece19323c027a85263029d6d51d25123aced"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s22-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "3afec60482541e0f889825937cd56fe7bb02f131cd33d399ab3834545b008c26"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s22-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "596e4d33ef9da0dc82013544f937ce69d7ef13476b51ef82a6616c620a3cc656"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s22-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "309c4945ae99550965701f810e1f045cbe4e692ede9a63c284a473ceac188274"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s22-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc6669459d9d781839e7e691dc154d38cd44b4a75986d777276b449f0a5ccfa4"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s22-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a81397bb296339a294e6410f63811e50165ea98efd383b9686c4b33619f1ec6a"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s22-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "46f2de2e3b5cb7ee928360730ab01338fd34b0cb46a1a3c3014513b294f04439"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s22-no-seed-modules).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "c9db6de02fd40c12acf38badc29b718dd9758f7af642e9036ca797a4aae5ec86"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s22-no-test-db).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-no-test-db",
+          "selection": "command",
+          "command_sha256": "4aa88e9f3e86cfaf8dbf1b169c629256514bbfdc7b9a913740d5f5e2748e0f56"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s22-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "af69686b133412daf3999da33b4b1c6dc22b93d8edb3089dac0e9be7855f34e4"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s22-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "51cd8f20dcb9b23827504c98fd06ea9a4c4bd8fc6185ef3a9a6aa5f0f784e91c"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s22-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "02baf7baf8be66400668b5ce67165fdd6aff0fe5b61bf31a84575e7e4c3d6388"
+        }
+      ]
+    },
+    {
+      "id": "S6-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 22 (S6) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S6 step, nothing under Berreman/ names recent.json: the kit history replaced the 16-entry list (001 §R, established by S5.1 step 169) (section invariant s22-no-recent-json).",
+      "checks": [
+        {
+          "step": 196,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 197,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 198,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 199,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 200,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 201,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 202,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 203,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 204,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 205,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 206,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 207,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 208,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 209,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 210,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        },
+        {
+          "step": 211,
+          "gate": "invariant-s22-no-recent-json",
+          "selection": "command",
+          "command_sha256": "06e7776d23d54a546b7b1b59d820ae10d8dd5171eac6fa727731e38fd8e35380"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -22373,6 +24331,374 @@
         "S53-INV-T4-NO-OCPROJ",
         "S53-INV-NO-RECENT-JSON"
       ]
+    },
+    {
+      "step": 196,
+      "sha256": "c876cef8b04f3d4b6ac789c3e358e48ea08ba36f5253f0929da69a8339fa3fa3",
+      "obligations": [
+        "S6-SEND-RULE",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 197,
+      "sha256": "8d18d29a0540b69c31eec4cbeacd3de8bf6e093d6588a60d1cffad602bacf59f",
+      "obligations": [
+        "S6-ARCHIVE-SEAM",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 198,
+      "sha256": "3b544f366b86fff47f96040340d9932ca771b9d7b3200ace226a7d9f9fb10360",
+      "obligations": [
+        "S6-SEND-RECEIVE",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 199,
+      "sha256": "9a8c1db438bed99ad93d0be3ac47d77936739d81316fd2d1e6e22e2e39ef95c8",
+      "obligations": [
+        "S6-ARCHIVE-FOLDER",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 200,
+      "sha256": "0ba6368e6cb55895c4d16aa0b7e3a25bd44c7c86e6fddbd59ecb12a8fbafb386",
+      "obligations": [
+        "S6-ARCHIVE-JOB",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 201,
+      "sha256": "11b1c1efbb3a62cb255d445b0ceb098b5b7347850f3430a450d12304070bffd3",
+      "obligations": [
+        "S6-SEND-MESSAGES",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 202,
+      "sha256": "bc17e45c3c431cca846de9e005591c9c37b9030b697d87627005a558b00aad6c",
+      "obligations": [
+        "S6-SEND-VIEW",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 203,
+      "sha256": "a3a18fa6a1fdedd9eed3af4b6ef91cc7c5bc46231fa5a5ed7228c06d44f8ce2f",
+      "obligations": [
+        "S6-COPY-PLAN",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 204,
+      "sha256": "30db895cbd85cb9ca0b87a9f17b13c7d5460100308e824e50152c6b19bab668c",
+      "obligations": [
+        "S6-LAB-FILE-READ",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 205,
+      "sha256": "babbecd6701a08f5ed52ccf949cd452ba2f01301ba99ba7bc63f937412872b82",
+      "obligations": [
+        "S6-COPY",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 206,
+      "sha256": "aa615b12e96f3be866dfa66c5f2d4f4e456970ca7e549aa47c2152b64b9cee24",
+      "obligations": [
+        "S6-COPY-MESSAGES",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 207,
+      "sha256": "eb0e690db4081ec6146f21278badcf0201a8b64a839f7313a65b0d9ccba84faa",
+      "obligations": [
+        "S6-COPY-VIEW",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 208,
+      "sha256": "72ba192b9d0341fbe177cec6e61e31a42b8464504dd43bead706d9b1555689e0",
+      "obligations": [
+        "S6-ZIP-MESSAGES",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 209,
+      "sha256": "90a6b7173a8119a557b8bfc40e8f349adff2396ac9a18194db1b095b713352d3",
+      "obligations": [
+        "S6-ZIP-VIEW",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 210,
+      "sha256": "637280ced66914a8483797cc3a8542ef814cc36f3409e4339e914de2e3fdb16a",
+      "obligations": [
+        "S6-ZIP-WIRE",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
+    },
+    {
+      "step": 211,
+      "sha256": "86e5761efeffb679cdc50976ab6cab8164f90d226ad969ad3511477ece9cbb2e",
+      "obligations": [
+        "S6-KIT-SHELL-WIRE",
+        "S6-BUILD",
+        "S6-ELEVATION",
+        "S6-INV-ELEV-LIST-EMPTY",
+        "S6-INV-NO-VSTEST",
+        "S6-INV-NO-KIT-KIT-JSON",
+        "S6-INV-NO-EPS-AXIS-EVALUATED",
+        "S6-INV-COMPLEXITY-MANDATORY",
+        "S6-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S6-INV-NO-SEEDING-SEAM",
+        "S6-INV-T1-NO-CODE-SEEDS",
+        "S6-INV-NO-SEED-MODULES",
+        "S6-INV-NO-TEST-DB",
+        "S6-INV-NO-VERSIONS-IN-USE",
+        "S6-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S6-INV-T4-NO-OCPROJ",
+        "S6-INV-NO-RECENT-JSON"
+      ]
     }
   ],
   "behavior_seams": [
@@ -23175,6 +25501,86 @@
       "id": "s53-locations-link",
       "step": 195,
       "obligation": "S53-LOCATIONS-LINK"
+    },
+    {
+      "id": "s6-send-rule",
+      "step": 196,
+      "obligation": "S6-SEND-RULE"
+    },
+    {
+      "id": "s6-archive-seam",
+      "step": 197,
+      "obligation": "S6-ARCHIVE-SEAM"
+    },
+    {
+      "id": "s6-send-receive",
+      "step": 198,
+      "obligation": "S6-SEND-RECEIVE"
+    },
+    {
+      "id": "s6-archive-folder",
+      "step": 199,
+      "obligation": "S6-ARCHIVE-FOLDER"
+    },
+    {
+      "id": "s6-archive-job",
+      "step": 200,
+      "obligation": "S6-ARCHIVE-JOB"
+    },
+    {
+      "id": "s6-send-messages",
+      "step": 201,
+      "obligation": "S6-SEND-MESSAGES"
+    },
+    {
+      "id": "s6-send-view",
+      "step": 202,
+      "obligation": "S6-SEND-VIEW"
+    },
+    {
+      "id": "s6-copy-plan",
+      "step": 203,
+      "obligation": "S6-COPY-PLAN"
+    },
+    {
+      "id": "s6-lab-file-read",
+      "step": 204,
+      "obligation": "S6-LAB-FILE-READ"
+    },
+    {
+      "id": "s6-copy",
+      "step": 205,
+      "obligation": "S6-COPY"
+    },
+    {
+      "id": "s6-copy-messages",
+      "step": 206,
+      "obligation": "S6-COPY-MESSAGES"
+    },
+    {
+      "id": "s6-copy-view",
+      "step": 207,
+      "obligation": "S6-COPY-VIEW"
+    },
+    {
+      "id": "s6-zip-messages",
+      "step": 208,
+      "obligation": "S6-ZIP-MESSAGES"
+    },
+    {
+      "id": "s6-zip-view",
+      "step": 209,
+      "obligation": "S6-ZIP-VIEW"
+    },
+    {
+      "id": "s6-zip-wire",
+      "step": 210,
+      "obligation": "S6-ZIP-WIRE"
+    },
+    {
+      "id": "s6-kit-shell-wire",
+      "step": 211,
+      "obligation": "S6-KIT-SHELL-WIRE"
     }
   ],
   "temporal_checks": [],
@@ -23493,6 +25899,19 @@
     {
       "from": 181,
       "step": 195,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui",
+        "Berreman/OpticalConstructor/OpticalConstructor.App",
+        "Berreman/OpticalConstructor/OpticalConstructor.Controls",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 196,
+      "step": 211,
       "paths": [
         "Berreman/OpticalConstructor/OpticalConstructor.Domain",
         "Berreman/OpticalConstructor/OpticalConstructor.Storage",
