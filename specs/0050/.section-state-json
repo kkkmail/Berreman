@@ -102,14 +102,14 @@
     {
       "name": "S4.3 -- Today's experiments and scenes persist in the kit; the in-memory seams go",
       "status": "authored",
-      "commit_ref": null,
+      "commit_ref": "cffbcba",
       "spec_jsonl_lines": 156
     },
     {
       "name": "S4.4 -- The .ocproj aggregate is deleted",
-      "status": "pending",
+      "status": "authored",
       "commit_ref": null,
-      "spec_jsonl_lines": null
+      "spec_jsonl_lines": 161
     },
     {
       "name": "S5.1 -- The kit history over the per-user preferences",

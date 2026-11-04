@@ -13901,6 +13901,589 @@
           "command_sha256": "fd4626a6aae468c1bb644b807abafe6bafeff1969d9015f4b13712a81571360a"
         }
       ]
+    },
+    {
+      "id": "S44-REPORT-MODULES",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §R ('`.ocproj`: `ProjectFile`, the `ProjectJson` project aggregate and the `Project` record. Kits replace them, and the JSON + schema stack is reused (§B)'), §S4 ('DELETE `.ocproj` (`ProjectFile`, the `Project` aggregate)'), §T ('From section 4: git grep -n -i -F \"ocproj\" -- Berreman/OpticalConstructor/ finds nothing'), §0 ('`.ocproj` … is never saved or opened by any window'); specs/0050/.section-plan-jsonl section 18 (S4.4) brief; specs/0050/.spec-md §0.1 (the ProjectJson / ProjectFile / RecentFiles / Project.fs row), §4, §6 ('JSON + schema'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "Report.fs's DesignHistory module (ChangeKind, DiffIdentity, DiffItem, ProjectDiff, historyFolder, appendRevision, diffRevisions) and Report module (ReportFormat, generate) are deleted with ExportImportTests' AC-I11 fact and the Storage project's Giraffe.ViewEngine.StrongName reference; the MaterialLibrary module and Export's chart-image surface stay, and nothing under Berreman/OpticalConstructor/ names DesignHistory, appendRevision, diffRevisions, ProjectDiff, ReportFormat or Giraffe.",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S44-EDIT-HISTORY",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §R ('`.ocproj`: `ProjectFile`, the `ProjectJson` project aggregate and the `Project` record. Kits replace them, and the JSON + schema stack is reused (§B)'), §S4 ('DELETE `.ocproj` (`ProjectFile`, the `Project` aggregate)'), §T ('From section 4: git grep -n -i -F \"ocproj\" -- Berreman/OpticalConstructor/ finds nothing'), §0 ('`.ocproj` … is never saved or opened by any window'); specs/0050/.section-plan-jsonl section 18 (S4.4) brief; specs/0050/.spec-md §0.1 (the ProjectJson / ProjectFile / RecentFiles / Project.fs row), §4, §6 ('JSON + schema'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "Storage's History module (EditHistory with ofPresent, push, undo, redo) is deleted with HistoryTests' two AC-I7 facts, and nothing under Berreman/ names EditHistory or OpticalConstructor.Storage.History.",
+      "checks": [
+        {
+          "step": 158,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S44-PROJECT-FILE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §R ('`.ocproj`: `ProjectFile`, the `ProjectJson` project aggregate and the `Project` record. Kits replace them, and the JSON + schema stack is reused (§B)'), §S4 ('DELETE `.ocproj` (`ProjectFile`, the `Project` aggregate)'), §T ('From section 4: git grep -n -i -F \"ocproj\" -- Berreman/OpticalConstructor/ finds nothing'), §0 ('`.ocproj` … is never saved or opened by any window'); specs/0050/.section-plan-jsonl section 18 (S4.4) brief; specs/0050/.spec-md §0.1 (the ProjectJson / ProjectFile / RecentFiles / Project.fs row), §4, §6 ('JSON + schema'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "ProjectFile.fs (extension, FileName.saveProject, FileName.openProject) and RecentFiles.fs's Autosave module (autosaveSuffix, FileName.autosavePath, FileName.writeAutosave) are deleted with RoundTripTests (its storage facts held for kit files by KitContentFileJsonTests), HistoryTests' AC-I6 fact and the .gitignore *.autosave rule; RecentFiles keeps its recent-files list, RecentFiles.bump's fact runs over kit-folder paths, and nothing under Berreman/ or in .gitignore names ProjectFile or autosave in any case.",
+      "checks": [
+        {
+          "step": 159,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S44-PROJECT-CODEC",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §R ('`.ocproj`: `ProjectFile`, the `ProjectJson` project aggregate and the `Project` record. Kits replace them, and the JSON + schema stack is reused (§B)'), §S4 ('DELETE `.ocproj` (`ProjectFile`, the `Project` aggregate)'), §T ('From section 4: git grep -n -i -F \"ocproj\" -- Berreman/OpticalConstructor/ finds nothing'), §0 ('`.ocproj` … is never saved or opened by any window'); specs/0050/.section-plan-jsonl section 18 (S4.4) brief; specs/0050/.spec-md §0.1 (the ProjectJson / ProjectFile / RecentFiles / Project.fs row), §4, §6 ('JSON + schema'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "ProjectJson.fs (schemaVersion, ProjectJsonText, parseProject, serializeProject), SchemaValidation's project schema and validate, schema/optical-constructor-project.schema.json and Domain Project.fs (OpticalConstructorProject, schemaDefAnchors) are deleted with ProjectJsonRoundtripTests (its fresh-table fact moved unchanged to TableViewTests) and PlacementTests' AC-A6 fact; MaterialLibrary.validateEntryElement validates through SchemaValidation.validateWith against schema/material-metadata.schema.json, which holds the materialEntry, dispersionModel, thermoOptic and unitOfMeasure definitions moved from the project schema, refusing an entry outside them with SchemaValidationErr; nothing under Berreman/ names ProjectJson, OpticalConstructorProject, schemaDefAnchors, optical-constructor-project or Domain.Project.",
+      "checks": [
+        {
+          "step": 160,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S44-NO-OCPROJ",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §R ('`.ocproj`: `ProjectFile`, the `ProjectJson` project aggregate and the `Project` record. Kits replace them, and the JSON + schema stack is reused (§B)'), §S4 ('DELETE `.ocproj` (`ProjectFile`, the `Project` aggregate)'), §T ('From section 4: git grep -n -i -F \"ocproj\" -- Berreman/OpticalConstructor/ finds nothing'), §0 ('`.ocproj` … is never saved or opened by any window'); specs/0050/.section-plan-jsonl section 18 (S4.4) brief; specs/0050/.spec-md §0.1 (the ProjectJson / ProjectFile / RecentFiles / Project.fs row), §4, §6 ('JSON + schema'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "No file under Berreman/OpticalConstructor/ names ocproj in any case: the groups file's docs and schema description, the environment tests' old-file literals and any remaining Domain wording drop it, and .gitignore's *.binz comment drops its .ocproj sentence while still ignoring *.binz (001 §T 'From section 4').",
+      "checks": [
+        {
+          "step": 161,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        }
+      ]
+    },
+    {
+      "id": "S44-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §R ('`.ocproj`: `ProjectFile`, the `ProjectJson` project aggregate and the `Project` record. Kits replace them, and the JSON + schema stack is reused (§B)'), §S4 ('DELETE `.ocproj` (`ProjectFile`, the `Project` aggregate)'), §T ('From section 4: git grep -n -i -F \"ocproj\" -- Berreman/OpticalConstructor/ finds nothing'), §0 ('`.ocproj` … is never saved or opened by any window'); specs/0050/.section-plan-jsonl section 18 (S4.4) brief; specs/0050/.spec-md §0.1 (the ProjectJson / ProjectFile / RecentFiles / Project.fs row), §4, §6 ('JSON + schema'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "Every S4.4 step leaves Berreman.slnx building in Release x64 with zero warnings from our code; FS0025 stays an error, and no project, compile item, content item or package reference names a deleted file.",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 158,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 159,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 160,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 161,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S44-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §R ('`.ocproj`: `ProjectFile`, the `ProjectJson` project aggregate and the `Project` record. Kits replace them, and the JSON + schema stack is reused (§B)'), §S4 ('DELETE `.ocproj` (`ProjectFile`, the `Project` aggregate)'), §T ('From section 4: git grep -n -i -F \"ocproj\" -- Berreman/OpticalConstructor/ finds nothing'), §0 ('`.ocproj` … is never saved or opened by any window'); specs/0050/.section-plan-jsonl section 18 (S4.4) brief; specs/0050/.spec-md §0.1 (the ProjectJson / ProjectFile / RecentFiles / Project.fs row), §4, §6 ('JSON + schema'), §7 ('.ocproj, recent.json, autosave files'), §8",
+      "requirement": "Every S4.4 step that edits an .fs or .fsproj leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command): the schema file a reader loads is a FileName bound once where it is born, no new name is introduced beside the material-metadata schema file, and every IO declaration carrying a primitive stays marked on itself.",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 158,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 159,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 160,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 161,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-ELEV-LIST",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s18-elev-list-empty).",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e9c0ef5a743f6c67e8451f2ba3a8da631c88eced70eccd03dd6c6a5ccad89ffd"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e9c0ef5a743f6c67e8451f2ba3a8da631c88eced70eccd03dd6c6a5ccad89ffd"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e9c0ef5a743f6c67e8451f2ba3a8da631c88eced70eccd03dd6c6a5ccad89ffd"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e9c0ef5a743f6c67e8451f2ba3a8da631c88eced70eccd03dd6c6a5ccad89ffd"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "e9c0ef5a743f6c67e8451f2ba3a8da631c88eced70eccd03dd6c6a5ccad89ffd"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s18-no-vstest).",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-no-vstest",
+          "selection": "command",
+          "command_sha256": "0502d2288f490c6ccebe395043146badb03a8bbc968ac216b0ff564539c6455e"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-no-vstest",
+          "selection": "command",
+          "command_sha256": "0502d2288f490c6ccebe395043146badb03a8bbc968ac216b0ff564539c6455e"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-no-vstest",
+          "selection": "command",
+          "command_sha256": "0502d2288f490c6ccebe395043146badb03a8bbc968ac216b0ff564539c6455e"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-no-vstest",
+          "selection": "command",
+          "command_sha256": "0502d2288f490c6ccebe395043146badb03a8bbc968ac216b0ff564539c6455e"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-no-vstest",
+          "selection": "command",
+          "command_sha256": "0502d2288f490c6ccebe395043146badb03a8bbc968ac216b0ff564539c6455e"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, nothing under Berreman/ names kit.kit-json (section invariant s18-no-kit-kit-json): the kit file is named by its extension alone, .kit-json.",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "c8185e35fc4a73d316ed433b00a471b60695c5eab30e887739d5465d83da1ae5"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "c8185e35fc4a73d316ed433b00a471b60695c5eab30e887739d5465d83da1ae5"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "c8185e35fc4a73d316ed433b00a471b60695c5eab30e887739d5465d83da1ae5"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "c8185e35fc4a73d316ed433b00a471b60695c5eab30e887739d5465d83da1ae5"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "c8185e35fc4a73d316ed433b00a471b60695c5eab30e887739d5465d83da1ae5"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, nothing under Berreman/ names EpsAxisEvaluated (section invariant s18-no-eps-axis-evaluated, established by S1.1).",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "fb3f5914acbade0886320bed933bf166e3a21faaf0f3b845d937f9070cc48a0a"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "fb3f5914acbade0886320bed933bf166e3a21faaf0f3b845d937f9070cc48a0a"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "fb3f5914acbade0886320bed933bf166e3a21faaf0f3b845d937f9070cc48a0a"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "fb3f5914acbade0886320bed933bf166e3a21faaf0f3b845d937f9070cc48a0a"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "fb3f5914acbade0886320bed933bf166e3a21faaf0f3b845d937f9070cc48a0a"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, nothing under Berreman/ says complexity = None or complexity = Some (section invariant s18-complexity-mandatory, established by S1.2).",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "4874c2df556d98b21ce040c153429766e11e957a98c0e93a007555e24f28dcb4"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "4874c2df556d98b21ce040c153429766e11e957a98c0e93a007555e24f28dcb4"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "4874c2df556d98b21ce040c153429766e11e957a98c0e93a007555e24f28dcb4"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "4874c2df556d98b21ce040c153429766e11e957a98c0e93a007555e24f28dcb4"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "4874c2df556d98b21ce040c153429766e11e957a98c0e93a007555e24f28dcb4"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, no Berreman/*.fs file holds a seeded preset string id (section invariant s18-no-seeded-string-preset-ids, established by S1.3).",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc7c6c569378df6c6a9e7f07bebe9953b490cb7bab3c2c4e9bee3166776c315e"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc7c6c569378df6c6a9e7f07bebe9953b490cb7bab3c2c4e9bee3166776c315e"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc7c6c569378df6c6a9e7f07bebe9953b490cb7bab3c2c4e9bee3166776c315e"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc7c6c569378df6c6a9e7f07bebe9953b490cb7bab3c2c4e9bee3166776c315e"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "cc7c6c569378df6c6a9e7f07bebe9953b490cb7bab3c2c4e9bee3166776c315e"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (section invariant s18-no-seeding-seam, established by S1.6).",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8fc66b1fb74127f683c45441e1b804fadd5eba55ae9e33408878ccb31d548474"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8fc66b1fb74127f683c45441e1b804fadd5eba55ae9e33408878ccb31d548474"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8fc66b1fb74127f683c45441e1b804fadd5eba55ae9e33408878ccb31d548474"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8fc66b1fb74127f683c45441e1b804fadd5eba55ae9e33408878ccb31d548474"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "8fc66b1fb74127f683c45441e1b804fadd5eba55ae9e33408878ccb31d548474"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (section invariant s18-t1-no-code-seeds, 001 §T 'From section 1', established by S1.7).",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2030e9d525fce08384a5842758fa1ee9742b98f34320f7b485c0322c6760dad2"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2030e9d525fce08384a5842758fa1ee9742b98f34320f7b485c0322c6760dad2"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2030e9d525fce08384a5842758fa1ee9742b98f34320f7b485c0322c6760dad2"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2030e9d525fce08384a5842758fa1ee9742b98f34320f7b485c0322c6760dad2"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "2030e9d525fce08384a5842758fa1ee9742b98f34320f7b485c0322c6760dad2"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (section invariant s18-no-seed-modules, established by S1.3 and S1.7).",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1af0bf398ca4e6a18e5f94c4e3ef9e6f43b66b5bea22daa43fa74dbc2ef6b700"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1af0bf398ca4e6a18e5f94c4e3ef9e6f43b66b5bea22daa43fa74dbc2ef6b700"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1af0bf398ca4e6a18e5f94c4e3ef9e6f43b66b5bea22daa43fa74dbc2ef6b700"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1af0bf398ca4e6a18e5f94c4e3ef9e6f43b66b5bea22daa43fa74dbc2ef6b700"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "1af0bf398ca4e6a18e5f94c4e3ef9e6f43b66b5bea22daa43fa74dbc2ef6b700"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (section invariant s18-no-test-db, established by S2.1).",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-no-test-db",
+          "selection": "command",
+          "command_sha256": "1eb154e402870328800bdb745957ce5db29f11b217e3937ffebe386d67c5f2da"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-no-test-db",
+          "selection": "command",
+          "command_sha256": "1eb154e402870328800bdb745957ce5db29f11b217e3937ffebe386d67c5f2da"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-no-test-db",
+          "selection": "command",
+          "command_sha256": "1eb154e402870328800bdb745957ce5db29f11b217e3937ffebe386d67c5f2da"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-no-test-db",
+          "selection": "command",
+          "command_sha256": "1eb154e402870328800bdb745957ce5db29f11b217e3937ffebe386d67c5f2da"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-no-test-db",
+          "selection": "command",
+          "command_sha256": "1eb154e402870328800bdb745957ce5db29f11b217e3937ffebe386d67c5f2da"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (section invariant s18-no-versions-in-use, established by S2.2).",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e7affb1d67b2cccbc3f403bf73340438a916df0df6cc33e13d56d6179ff88a23"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e7affb1d67b2cccbc3f403bf73340438a916df0df6cc33e13d56d6179ff88a23"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e7affb1d67b2cccbc3f403bf73340438a916df0df6cc33e13d56d6179ff88a23"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e7affb1d67b2cccbc3f403bf73340438a916df0df6cc33e13d56d6179ff88a23"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "e7affb1d67b2cccbc3f403bf73340438a916df0df6cc33e13d56d6179ff88a23"
+        }
+      ]
+    },
+    {
+      "id": "S44-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 18 (S4.4) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S4.4 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (section invariant s18-no-scene-collection-seams, established by S4.3 step 152).",
+      "checks": [
+        {
+          "step": 157,
+          "gate": "invariant-s18-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "32bf96c9b759ffc504b2c41ea4763820b588222d65b743df11730a1782672065"
+        },
+        {
+          "step": 158,
+          "gate": "invariant-s18-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "32bf96c9b759ffc504b2c41ea4763820b588222d65b743df11730a1782672065"
+        },
+        {
+          "step": 159,
+          "gate": "invariant-s18-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "32bf96c9b759ffc504b2c41ea4763820b588222d65b743df11730a1782672065"
+        },
+        {
+          "step": 160,
+          "gate": "invariant-s18-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "32bf96c9b759ffc504b2c41ea4763820b588222d65b743df11730a1782672065"
+        },
+        {
+          "step": 161,
+          "gate": "invariant-s18-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "32bf96c9b759ffc504b2c41ea4763820b588222d65b743df11730a1782672065"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -16684,6 +17267,111 @@
         "S43-INV-NO-TEST-DB",
         "S43-INV-NO-VERSIONS-IN-USE"
       ]
+    },
+    {
+      "step": 157,
+      "sha256": "d199e5dd455a4c296c1bc115ad0134c16f27b9dfb93ee94b8b7c747289f6b69f",
+      "obligations": [
+        "S44-REPORT-MODULES",
+        "S44-BUILD",
+        "S44-ELEVATION",
+        "S44-INV-ELEV-LIST",
+        "S44-INV-NO-VSTEST",
+        "S44-INV-NO-KIT-KIT-JSON",
+        "S44-INV-NO-EPS-AXIS-EVALUATED",
+        "S44-INV-COMPLEXITY-MANDATORY",
+        "S44-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S44-INV-NO-SEEDING-SEAM",
+        "S44-INV-T1-NO-CODE-SEEDS",
+        "S44-INV-NO-SEED-MODULES",
+        "S44-INV-NO-TEST-DB",
+        "S44-INV-NO-VERSIONS-IN-USE",
+        "S44-INV-NO-SCENE-COLLECTION-SEAMS"
+      ]
+    },
+    {
+      "step": 158,
+      "sha256": "800115d160d5f00365e9220356220e5352817e7d5229835533fa1f0ceeacd6bd",
+      "obligations": [
+        "S44-EDIT-HISTORY",
+        "S44-BUILD",
+        "S44-ELEVATION",
+        "S44-INV-ELEV-LIST",
+        "S44-INV-NO-VSTEST",
+        "S44-INV-NO-KIT-KIT-JSON",
+        "S44-INV-NO-EPS-AXIS-EVALUATED",
+        "S44-INV-COMPLEXITY-MANDATORY",
+        "S44-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S44-INV-NO-SEEDING-SEAM",
+        "S44-INV-T1-NO-CODE-SEEDS",
+        "S44-INV-NO-SEED-MODULES",
+        "S44-INV-NO-TEST-DB",
+        "S44-INV-NO-VERSIONS-IN-USE",
+        "S44-INV-NO-SCENE-COLLECTION-SEAMS"
+      ]
+    },
+    {
+      "step": 159,
+      "sha256": "ef52f802f14ee5ba4fc5f7e671498af4072719944ee3da90bde2007d4030f6b5",
+      "obligations": [
+        "S44-PROJECT-FILE",
+        "S44-BUILD",
+        "S44-ELEVATION",
+        "S44-INV-ELEV-LIST",
+        "S44-INV-NO-VSTEST",
+        "S44-INV-NO-KIT-KIT-JSON",
+        "S44-INV-NO-EPS-AXIS-EVALUATED",
+        "S44-INV-COMPLEXITY-MANDATORY",
+        "S44-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S44-INV-NO-SEEDING-SEAM",
+        "S44-INV-T1-NO-CODE-SEEDS",
+        "S44-INV-NO-SEED-MODULES",
+        "S44-INV-NO-TEST-DB",
+        "S44-INV-NO-VERSIONS-IN-USE",
+        "S44-INV-NO-SCENE-COLLECTION-SEAMS"
+      ]
+    },
+    {
+      "step": 160,
+      "sha256": "0bee691ca1a6506b694f0e7184e613f364d36c816043501fcc2d607053f3aa49",
+      "obligations": [
+        "S44-PROJECT-CODEC",
+        "S44-BUILD",
+        "S44-ELEVATION",
+        "S44-INV-ELEV-LIST",
+        "S44-INV-NO-VSTEST",
+        "S44-INV-NO-KIT-KIT-JSON",
+        "S44-INV-NO-EPS-AXIS-EVALUATED",
+        "S44-INV-COMPLEXITY-MANDATORY",
+        "S44-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S44-INV-NO-SEEDING-SEAM",
+        "S44-INV-T1-NO-CODE-SEEDS",
+        "S44-INV-NO-SEED-MODULES",
+        "S44-INV-NO-TEST-DB",
+        "S44-INV-NO-VERSIONS-IN-USE",
+        "S44-INV-NO-SCENE-COLLECTION-SEAMS"
+      ]
+    },
+    {
+      "step": 161,
+      "sha256": "a77d1e68e52daabbcc5d0d65a4d8ee015fc73fa4e65f50be77b47f0b55d0bb2c",
+      "obligations": [
+        "S44-NO-OCPROJ",
+        "S44-BUILD",
+        "S44-ELEVATION",
+        "S44-INV-ELEV-LIST",
+        "S44-INV-NO-VSTEST",
+        "S44-INV-NO-KIT-KIT-JSON",
+        "S44-INV-NO-EPS-AXIS-EVALUATED",
+        "S44-INV-COMPLEXITY-MANDATORY",
+        "S44-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S44-INV-NO-SEEDING-SEAM",
+        "S44-INV-T1-NO-CODE-SEEDS",
+        "S44-INV-NO-SEED-MODULES",
+        "S44-INV-NO-TEST-DB",
+        "S44-INV-NO-VERSIONS-IN-USE",
+        "S44-INV-NO-SCENE-COLLECTION-SEAMS"
+      ]
     }
   ],
   "behavior_seams": [
@@ -17291,6 +17979,31 @@
       "id": "s43-resolve-on-open",
       "step": 156,
       "obligation": "S43-RESOLVE-ON-OPEN"
+    },
+    {
+      "id": "s44-report-modules",
+      "step": 157,
+      "obligation": "S44-REPORT-MODULES"
+    },
+    {
+      "id": "s44-edit-history",
+      "step": 158,
+      "obligation": "S44-EDIT-HISTORY"
+    },
+    {
+      "id": "s44-project-file",
+      "step": 159,
+      "obligation": "S44-PROJECT-FILE"
+    },
+    {
+      "id": "s44-project-codec",
+      "step": 160,
+      "obligation": "S44-PROJECT-CODEC"
+    },
+    {
+      "id": "s44-no-ocproj",
+      "step": 161,
+      "obligation": "S44-NO-OCPROJ"
     }
   ],
   "temporal_checks": [],
@@ -17570,6 +18283,16 @@
         "Berreman/OpticalConstructor/OpticalConstructor.App",
         "Berreman/OpticalConstructor/OpticalConstructor.Tests",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 157,
+      "step": 161,
+      "paths": [
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Storage",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests",
+        ".gitignore"
       ]
     }
   ]
