@@ -39092,6 +39092,909 @@
           "command_sha256": "0e0cbb11dc53697f0e508b4ba5b448220b3a59f370c03cdbe0170ce2460d7c65"
         }
       ]
+    },
+    {
+      "id": "S103-REFERENCE-MODULE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Expected: the reference pipeline's full-precision values that MuellerReconstructionTests §7.2 (\"section 7.2 end-to-end…\") asserts (provenance data/optics-mueller/data/reference/reference_step2_linear_summary.json)'; 'Reuse, so that ONE implementation exists: the stage pipeline that §7.2 composes by hand (loadDataSet, reduceAirTraces, unwrapFit, stage-1 constants, familyGain, correctSignal, buildDesign, reconstruct) is promoted into product code as the study's staged Mueller path, and §7.2 is re-pointed to call it; the transcribed expected literals move from the §7.2 test body into one shared reference module, which both tests open. The test reads no file for its expectations (spec 0044 §8.5)'; 'Assertions: M_QZ, M_LR, M_{QZ+LR}, the CPL retardances, the angle offset and the dial zeros within the existing dataMatrixTol; the product-check RMSE ratio'), §L ('the product check for series objects (M_comb against M_LR · M_QZ)'), §S10 (third bullet: 'promote the MuellerReconstructionTests §7.2 hand-composed pipeline into product code and re-point §7.2 at it; move its expected literals into one shared reference module (no file read for expectations, spec 0044 §8.5)'; fourth bullet: 'BerremanTests stays green with unchanged numbers'), §W (no new inverse-physics tests); specs/0050/.section-plan-jsonl section 35 (S10.3) brief; specs/0050/.spec-md §4, §6, §7, §9; AGENTS.md (errors are values, elevate every primitive, reuse never copy, comments, LF line endings)",
+      "requirement": "Berreman/BerremanTestSupport/MuellerReference.fs declares module BerremanTestSupport.MuellerReference, compiled after AbsorbingBiaxialSample.fs with no fsproj comment or new reference, holding, each born elevated with a one-line doc naming its summary key: stage1Tol 1.0e-12 and dataMatrixTol 1.0e-9 with their docs and the spec 0044 §8.5/§9 band comment moved from MuellerReconstructionTests; darkMean (DarkMean 869.666), lpAnalyzerZero 155.44011830109392°, cplAnalyzerZero 96.99613336321012°, cplAnalyzerRetardance 83.66804489441891°, cplSourceAxisOffset 39.31100224361002° and cplSourceRetardance 82.55344158462403° (reference_step1_summary.json); qzMatrix, lrMatrix, combinedMatrix (the qz_matrix, lr_matrix and combined_matrix literals), cascadeFrobenius 0.5714178795538456, cascadeMeanAbs 0.11328628636347338, cascadeMaxAbs 0.26806464658062423 and cascadeLargestDeltaPositions {(3,3); (3,1)} (reference_step2_linear_summary.json); excludedPoints [LP-(LR#90)-CPL-2, 140°, capture 17] (matrix_glue.py EXCLUDED_POINTS). MuellerReconstructionTests declares none of these literals: the Stage-1 fact, the section 7.2 fact and the buildDesign fact read them as MuellerReference.<name>, comparing the same doubles at the same bands, so its numbers and count are unchanged.",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S103-STAGE-ONE",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Expected: the reference pipeline's full-precision values that MuellerReconstructionTests §7.2 (\"section 7.2 end-to-end…\") asserts (provenance data/optics-mueller/data/reference/reference_step2_linear_summary.json)'; 'Reuse, so that ONE implementation exists: the stage pipeline that §7.2 composes by hand (loadDataSet, reduceAirTraces, unwrapFit, stage-1 constants, familyGain, correctSignal, buildDesign, reconstruct) is promoted into product code as the study's staged Mueller path, and §7.2 is re-pointed to call it; the transcribed expected literals move from the §7.2 test body into one shared reference module, which both tests open. The test reads no file for its expectations (spec 0044 §8.5)'; 'Assertions: M_QZ, M_LR, M_{QZ+LR}, the CPL retardances, the angle offset and the dial zeros within the existing dataMatrixTol; the product-check RMSE ratio'), §L ('the product check for series objects (M_comb against M_LR · M_QZ)'), §S10 (third bullet: 'promote the MuellerReconstructionTests §7.2 hand-composed pipeline into product code and re-point §7.2 at it; move its expected literals into one shared reference module (no file read for expectations, spec 0044 §8.5)'; fourth bullet: 'BerremanTests stays green with unchanged numbers'), §W (no new inverse-physics tests); specs/0050/.section-plan-jsonl section 35 (S10.3) brief; specs/0050/.spec-md §4, §6, §7, §9; AGENTS.md (errors are values, elevate every primitive, reuse never copy, comments, LF line endings)",
+      "requirement": "OpticalConstructor.Optimization/StagedMuellerPath.fs (module StagedMuellerPath, compiled directly after FitUncertainty.fs, no fsproj comment) declares StagedMuellerCaptureData (the seven lab files' MuellerRawRow lists), StagedMuellerError with EmptyCaptureSetErr of reason and AirCalibrationFitErr of Family * SolverError, StageOneCalibrationData (darkMean, lpZero, cplZero, cplAnalyzerRetardance, cplSourceModel) whose lpAnalyzer, cplAnalyzer and cplSource members are the section 7.2 fact's stage-2 models with their values, private reduceAirTraces (dark mean as DarkMean) and an LP-frame fit answering Result<SourceCplModel, SolverError>, and calibrateStageOne solver captures, which answers EmptyCaptureSetErr for no darkness row and AirCalibrationFitErr (LpLp | LpCpl | CplLp, e) for a failed solve, never a throw. MuellerReconstructionTests no longer declares reduceAirTraces, lpFrameCoeffs or unwrapFit; it binds opticsMuellerCaptures over loadDataSet, and its Stage-1 and section 7.2 facts take stage 1 and the stage-2 models from calibrateStageOne with bit-identical numbers. OpticalConstructor.Tests gains StagedMuellerPathTests whose two facts reach both error cases through the real SVD proxy.",
+      "checks": [
+        {
+          "step": 349,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 349,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S103-DESIGN-READING",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Expected: the reference pipeline's full-precision values that MuellerReconstructionTests §7.2 (\"section 7.2 end-to-end…\") asserts (provenance data/optics-mueller/data/reference/reference_step2_linear_summary.json)'; 'Reuse, so that ONE implementation exists: the stage pipeline that §7.2 composes by hand (loadDataSet, reduceAirTraces, unwrapFit, stage-1 constants, familyGain, correctSignal, buildDesign, reconstruct) is promoted into product code as the study's staged Mueller path, and §7.2 is re-pointed to call it; the transcribed expected literals move from the §7.2 test body into one shared reference module, which both tests open. The test reads no file for its expectations (spec 0044 §8.5)'; 'Assertions: M_QZ, M_LR, M_{QZ+LR}, the CPL retardances, the angle offset and the dial zeros within the existing dataMatrixTol; the product-check RMSE ratio'), §L ('the product check for series objects (M_comb against M_LR · M_QZ)'), §S10 (third bullet: 'promote the MuellerReconstructionTests §7.2 hand-composed pipeline into product code and re-point §7.2 at it; move its expected literals into one shared reference module (no file read for expectations, spec 0044 §8.5)'; fourth bullet: 'BerremanTests stays green with unchanged numbers'), §W (no new inverse-physics tests); specs/0050/.section-plan-jsonl section 35 (S10.3) brief; specs/0050/.spec-md §4, §6, §7, §9; AGENTS.md (errors are values, elevate every primitive, reuse never copy, comments, LF line endings)",
+      "requirement": "MuellerReconstruction.buildDesign takes prepareRow : MuellerRawRow -> NameReading -> StokesVector * RealVector4 * DetectorIntensity, reads each row's label once through NamingTemplate.standard, keeps the same rows in the same order (matrixKind equal to kind, no AIR#0 label, not excluded) and projects each with its reading; its doc says so citing spec 0050 S10.3. The section 7.2 fact's prepareRow takes the reading and uses reading.objectPhi, with no label read or failure of its own; the buildDesign fact's stub ignores the reading. MuellerReconstructionTests' numbers and count are unchanged.",
+      "checks": [
+        {
+          "step": 350,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 350,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S103-STAGED-PATH",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Expected: the reference pipeline's full-precision values that MuellerReconstructionTests §7.2 (\"section 7.2 end-to-end…\") asserts (provenance data/optics-mueller/data/reference/reference_step2_linear_summary.json)'; 'Reuse, so that ONE implementation exists: the stage pipeline that §7.2 composes by hand (loadDataSet, reduceAirTraces, unwrapFit, stage-1 constants, familyGain, correctSignal, buildDesign, reconstruct) is promoted into product code as the study's staged Mueller path, and §7.2 is re-pointed to call it; the transcribed expected literals move from the §7.2 test body into one shared reference module, which both tests open. The test reads no file for its expectations (spec 0044 §8.5)'; 'Assertions: M_QZ, M_LR, M_{QZ+LR}, the CPL retardances, the angle offset and the dial zeros within the existing dataMatrixTol; the product-check RMSE ratio'), §L ('the product check for series objects (M_comb against M_LR · M_QZ)'), §S10 (third bullet: 'promote the MuellerReconstructionTests §7.2 hand-composed pipeline into product code and re-point §7.2 at it; move its expected literals into one shared reference module (no file read for expectations, spec 0044 §8.5)'; fourth bullet: 'BerremanTests stays green with unchanged numbers'), §W (no new inverse-physics tests); specs/0050/.section-plan-jsonl section 35 (S10.3) brief; specs/0050/.spec-md §4, §6, §7, §9; AGENTS.md (errors are values, elevate every primitive, reuse never copy, comments, LF line endings)",
+      "requirement": "StagedMuellerPath gains ObjectReconstructionErr of MatrixKind * SolverError, StagedMuellerData (stageOne, gains : GainCalibration with Day2Single, cplCplDay1Gain : InterpolatedGain, qz, lr, qzLr : ReconstructedMatrix) and reconstructStaged solver excluded captures, the rest of the section 7.2 body moved with its rules: stage one, the CPL-LP split at the earliest bullshit check, the nine AIR blocks by their reference labels (the first empty one answering EmptyCaptureSetErr naming it), the gains, the five families' projections and the Qz, Lr, QzLrProduct solves over the caller's excluded points (the first failure answering ObjectReconstructionErr); never a throw. MuellerReference gains the nine gain_summary gains as AirGains and dataMatrixTol's doc records their observed 2.9e-11. The section 7.2 fact calls reconstructStaged with MuellerReference.excludedPoints, holds only assertions and their formatting, and asserts the nine gains within dataMatrixTol beside its unchanged rank and matrix assertions; numbers and count unchanged. StagedMuellerPathTests gains two facts reaching the empty-AIR-block and failed-object-solve errors.",
+      "checks": [
+        {
+          "step": 351,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 351,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S103-PRODUCT-CHECK",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Expected: the reference pipeline's full-precision values that MuellerReconstructionTests §7.2 (\"section 7.2 end-to-end…\") asserts (provenance data/optics-mueller/data/reference/reference_step2_linear_summary.json)'; 'Reuse, so that ONE implementation exists: the stage pipeline that §7.2 composes by hand (loadDataSet, reduceAirTraces, unwrapFit, stage-1 constants, familyGain, correctSignal, buildDesign, reconstruct) is promoted into product code as the study's staged Mueller path, and §7.2 is re-pointed to call it; the transcribed expected literals move from the §7.2 test body into one shared reference module, which both tests open. The test reads no file for its expectations (spec 0044 §8.5)'; 'Assertions: M_QZ, M_LR, M_{QZ+LR}, the CPL retardances, the angle offset and the dial zeros within the existing dataMatrixTol; the product-check RMSE ratio'), §L ('the product check for series objects (M_comb against M_LR · M_QZ)'), §S10 (third bullet: 'promote the MuellerReconstructionTests §7.2 hand-composed pipeline into product code and re-point §7.2 at it; move its expected literals into one shared reference module (no file read for expectations, spec 0044 §8.5)'; fourth bullet: 'BerremanTests stays green with unchanged numbers'), §W (no new inverse-physics tests); specs/0050/.section-plan-jsonl section 35 (S10.3) brief; specs/0050/.spec-md §4, §6, §7, §9; AGENTS.md (errors are values, elevate every primitive, reuse never copy, comments, LF line endings)",
+      "requirement": "MuellerReconstruction.LeastSquaresSystem gains member residualRmseAt (solution : RealVector) : ResidualRmse, the norm of RealMatrix.create(design) * solution - RealVector.create(rhs) over sqrt(row count), and createMathNetSvd reports its rmse through it in place of its inline residual, rows and rmse bindings, its checks, errors and numbers unchanged. StagedMuellerPath gains ProductRmseRatio (value; static between productRmse fitRmse = their quotient), ProductCheckData (cascade, difference, fitRmse, productRmse; member rmseRatio) and productCheckOf lr qz combined combinedSystem (cascadeProduct lr qz, frobeniusDiff combined.matrix cascade, combined.rmse, combinedSystem.residualRmseAt cascade.vecColumnMajor); StagedMuellerData carries productCheck over the QzLrProduct system. MuellerReference gains combinedFitRmse 0.10162659513724465, productRmse 0.12833930975940816 (combined_check) and productCheckRmseRatio, and dataMatrixTol's doc records the observed 5.7e-13. The section 7.2 fact reads the cascade metrics and positions from staged.productCheck with unchanged numbers and asserts the RMSE ratio within dataMatrixTol; count unchanged. StagedMuellerPathTests gains a fact pinning the cascade, difference, both RMSEs and the ratio on a two-row synthetic system.",
+      "checks": [
+        {
+          "step": 352,
+          "gate": "constructor-unit-tests",
+          "selection": "all_discovered",
+          "command_sha256": "cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb"
+        },
+        {
+          "step": 352,
+          "gate": "unit-tests",
+          "selection": "selected",
+          "command_sha256": "022348b2d4caa5ce43eb609bee7cccf63bf725444e4a4201e8656dd642ca66ee"
+        }
+      ]
+    },
+    {
+      "id": "S103-BUILD",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Expected: the reference pipeline's full-precision values that MuellerReconstructionTests §7.2 (\"section 7.2 end-to-end…\") asserts (provenance data/optics-mueller/data/reference/reference_step2_linear_summary.json)'; 'Reuse, so that ONE implementation exists: the stage pipeline that §7.2 composes by hand (loadDataSet, reduceAirTraces, unwrapFit, stage-1 constants, familyGain, correctSignal, buildDesign, reconstruct) is promoted into product code as the study's staged Mueller path, and §7.2 is re-pointed to call it; the transcribed expected literals move from the §7.2 test body into one shared reference module, which both tests open. The test reads no file for its expectations (spec 0044 §8.5)'; 'Assertions: M_QZ, M_LR, M_{QZ+LR}, the CPL retardances, the angle offset and the dial zeros within the existing dataMatrixTol; the product-check RMSE ratio'), §L ('the product check for series objects (M_comb against M_LR · M_QZ)'), §S10 (third bullet: 'promote the MuellerReconstructionTests §7.2 hand-composed pipeline into product code and re-point §7.2 at it; move its expected literals into one shared reference module (no file read for expectations, spec 0044 §8.5)'; fourth bullet: 'BerremanTests stays green with unchanged numbers'), §W (no new inverse-physics tests); specs/0050/.section-plan-jsonl section 35 (S10.3) brief; specs/0050/.spec-md §4, §6, §7, §9; AGENTS.md (errors are values, elevate every primitive, reuse never copy, comments, LF line endings)",
+      "requirement": "Every S10.3 step leaves Berreman.slnx building in Release x64 with zero warnings from our code, FS0025 an error; no project and no package is added; OpticalConstructor.Optimization compiles StagedMuellerPath.fs directly after FitUncertainty.fs, BerremanTestSupport compiles MuellerReference.fs after AbsorbingBiaxialSample.fs, and OpticalConstructor.Tests compiles StagedMuellerPathTests.fs last, none of the three lines carrying a comment.",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 349,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 350,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 351,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        },
+        {
+          "step": 352,
+          "gate": "build",
+          "selection": "command",
+          "command_sha256": "2fdd98fcf8286952213e06aa3c1c49cf48cea7333401f7025d926ec39ba4e902"
+        }
+      ]
+    },
+    {
+      "id": "S103-ELEVATION",
+      "source": "specs/0050/.manual/001-library-files-database-multi-setup-inverse.md §Q AT-1 ('Expected: the reference pipeline's full-precision values that MuellerReconstructionTests §7.2 (\"section 7.2 end-to-end…\") asserts (provenance data/optics-mueller/data/reference/reference_step2_linear_summary.json)'; 'Reuse, so that ONE implementation exists: the stage pipeline that §7.2 composes by hand (loadDataSet, reduceAirTraces, unwrapFit, stage-1 constants, familyGain, correctSignal, buildDesign, reconstruct) is promoted into product code as the study's staged Mueller path, and §7.2 is re-pointed to call it; the transcribed expected literals move from the §7.2 test body into one shared reference module, which both tests open. The test reads no file for its expectations (spec 0044 §8.5)'; 'Assertions: M_QZ, M_LR, M_{QZ+LR}, the CPL retardances, the angle offset and the dial zeros within the existing dataMatrixTol; the product-check RMSE ratio'), §L ('the product check for series objects (M_comb against M_LR · M_QZ)'), §S10 (third bullet: 'promote the MuellerReconstructionTests §7.2 hand-composed pipeline into product code and re-point §7.2 at it; move its expected literals into one shared reference module (no file read for expectations, spec 0044 §8.5)'; fourth bullet: 'BerremanTests stays green with unchanged numbers'), §W (no new inverse-physics tests); specs/0050/.section-plan-jsonl section 35 (S10.3) brief; specs/0050/.spec-md §4, §6, §7, §9; AGENTS.md (errors are values, elevate every primitive, reuse never copy, comments, LF line endings)",
+      "requirement": "Every S10.3 step leaves the projects it touches, and their dependents, ELEV-clean against the empty Elevation/elevation-known-findings.json (ELEV004 excluded in the gate command), with nothing under Elevation/ and nothing in .elevation-analyzers.json edited: StagedMuellerPath's public and private signatures and record fields carry only elevated types (ELEV003/003P/008/010/010P), no value is wrapped at a call site (ELEV001), its tuples hold at most three distinct types (ELEV011), it declares no single-parameter free function of our types (ELEV013), its new type, public and case names are unique among ours (ELEV014/015/016) and its error cases end in Err (ELEV020); MuellerReconstruction.fs's changes (buildDesign's projection, residualRmseAt) keep the same.",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 349,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 350,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 351,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        },
+        {
+          "step": 352,
+          "gate": "elevation",
+          "selection": "command",
+          "command_sha256": "70fd6a693a067d56e584e4e341b3dc2c73e416e65204aac581b530d51971c52f"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-ELEV-LIST-EMPTY",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, Elevation/elevation-known-findings.json lists no ELEV finding (section invariant s35-elev-list-empty).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0e39e311f320f62eaa3f74b382877785eb4441047bf196525ecce08136ea32d8"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0e39e311f320f62eaa3f74b382877785eb4441047bf196525ecce08136ea32d8"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0e39e311f320f62eaa3f74b382877785eb4441047bf196525ecce08136ea32d8"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0e39e311f320f62eaa3f74b382877785eb4441047bf196525ecce08136ea32d8"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-elev-list-empty",
+          "selection": "command",
+          "command_sha256": "0e39e311f320f62eaa3f74b382877785eb4441047bf196525ecce08136ea32d8"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-VSTEST",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, no .fsproj, .props or .targets file names Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, Xunit.SkippableFact or IsTestingPlatformApplication (section invariant s35-no-vstest).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-vstest",
+          "selection": "command",
+          "command_sha256": "b98562ed025dbb2b63237f96b5f2b6abbf01d5d0e8434780e74fa7e14dd0da93"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-vstest",
+          "selection": "command",
+          "command_sha256": "b98562ed025dbb2b63237f96b5f2b6abbf01d5d0e8434780e74fa7e14dd0da93"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-vstest",
+          "selection": "command",
+          "command_sha256": "b98562ed025dbb2b63237f96b5f2b6abbf01d5d0e8434780e74fa7e14dd0da93"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-vstest",
+          "selection": "command",
+          "command_sha256": "b98562ed025dbb2b63237f96b5f2b6abbf01d5d0e8434780e74fa7e14dd0da93"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-vstest",
+          "selection": "command",
+          "command_sha256": "b98562ed025dbb2b63237f96b5f2b6abbf01d5d0e8434780e74fa7e14dd0da93"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-KIT-KIT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names kit.kit-json: the kit file is named by its extension alone, .kit-json (section invariant s35-no-kit-kit-json).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8cab74118124f06501fe6a90a8b226ab158a1417a2f79703dc08e52b85a5c154"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8cab74118124f06501fe6a90a8b226ab158a1417a2f79703dc08e52b85a5c154"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8cab74118124f06501fe6a90a8b226ab158a1417a2f79703dc08e52b85a5c154"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8cab74118124f06501fe6a90a8b226ab158a1417a2f79703dc08e52b85a5c154"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-kit-kit-json",
+          "selection": "command",
+          "command_sha256": "8cab74118124f06501fe6a90a8b226ab158a1417a2f79703dc08e52b85a5c154"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-EPS-AXIS-EVALUATED",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names EpsAxisEvaluated (established by S1.1) (section invariant s35-no-eps-axis-evaluated).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "73a2ac156ada4e5d409150390c613faa39d278dac518553bc5b3307e33a9039c"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "73a2ac156ada4e5d409150390c613faa39d278dac518553bc5b3307e33a9039c"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "73a2ac156ada4e5d409150390c613faa39d278dac518553bc5b3307e33a9039c"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "73a2ac156ada4e5d409150390c613faa39d278dac518553bc5b3307e33a9039c"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-eps-axis-evaluated",
+          "selection": "command",
+          "command_sha256": "73a2ac156ada4e5d409150390c613faa39d278dac518553bc5b3307e33a9039c"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-COMPLEXITY-MANDATORY",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ says complexity = None or complexity = Some (established by S1.2) (section invariant s35-complexity-mandatory).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3f3ab8b7dfd3c8ee53f04c53846b645230fc6da4bde78e6352ea649c29c8b602"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3f3ab8b7dfd3c8ee53f04c53846b645230fc6da4bde78e6352ea649c29c8b602"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3f3ab8b7dfd3c8ee53f04c53846b645230fc6da4bde78e6352ea649c29c8b602"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3f3ab8b7dfd3c8ee53f04c53846b645230fc6da4bde78e6352ea649c29c8b602"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-complexity-mandatory",
+          "selection": "command",
+          "command_sha256": "3f3ab8b7dfd3c8ee53f04c53846b645230fc6da4bde78e6352ea649c29c8b602"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-SEEDED-STRING-PRESET-IDS",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, no Berreman/*.fs file holds a seeded preset string id (established by S1.3) (section invariant s35-no-seeded-string-preset-ids).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "81880b880ed05ca991106ecd3454224992afa84686b4565497756cc3632404b1"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "81880b880ed05ca991106ecd3454224992afa84686b4565497756cc3632404b1"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "81880b880ed05ca991106ecd3454224992afa84686b4565497756cc3632404b1"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "81880b880ed05ca991106ecd3454224992afa84686b4565497756cc3632404b1"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-seeded-string-preset-ids",
+          "selection": "command",
+          "command_sha256": "81880b880ed05ca991106ecd3454224992afa84686b4565497756cc3632404b1"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-SEEDING-SEAM",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names SeedingProxy, seedAll or OpticalConstructor.Seeding (established by S1.6) (section invariant s35-no-seeding-seam).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a4626ba81d7f2ce7a3a0a7aaac13a953dc2276e3d0a3cf890c9cbe2714a76c77"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a4626ba81d7f2ce7a3a0a7aaac13a953dc2276e3d0a3cf890c9cbe2714a76c77"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a4626ba81d7f2ce7a3a0a7aaac13a953dc2276e3d0a3cf890c9cbe2714a76c77"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a4626ba81d7f2ce7a3a0a7aaac13a953dc2276e3d0a3cf890c9cbe2714a76c77"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-seeding-seam",
+          "selection": "command",
+          "command_sha256": "a4626ba81d7f2ce7a3a0a7aaac13a953dc2276e3d0a3cf890c9cbe2714a76c77"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-T1-NO-CODE-SEEDS",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, no file under Berreman/OpticalConstructor/ declares builtInEntries, seedEntries or standardCategories (001 §T 'From section 1', established by S1.7) (section invariant s35-t1-no-code-seeds).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "9a4d3fb068a95f1f3ecca950c337beb94986f8e3d09b54102bd3d74ac89b15c3"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "9a4d3fb068a95f1f3ecca950c337beb94986f8e3d09b54102bd3d74ac89b15c3"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "9a4d3fb068a95f1f3ecca950c337beb94986f8e3d09b54102bd3d74ac89b15c3"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "9a4d3fb068a95f1f3ecca950c337beb94986f8e3d09b54102bd3d74ac89b15c3"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-t1-no-code-seeds",
+          "selection": "command",
+          "command_sha256": "9a4d3fb068a95f1f3ecca950c337beb94986f8e3d09b54102bd3d74ac89b15c3"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-SEED-MODULES",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names SeedSamples, SeedSources or SeedEntryIds (established by S1.3 and S1.7) (section invariant s35-no-seed-modules).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "76a3281c14f7455981e52e6f5f9d86bc7b22c7e893f30212e96ac0a9ea19367f"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "76a3281c14f7455981e52e6f5f9d86bc7b22c7e893f30212e96ac0a9ea19367f"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "76a3281c14f7455981e52e6f5f9d86bc7b22c7e893f30212e96ac0a9ea19367f"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "76a3281c14f7455981e52e6f5f9d86bc7b22c7e893f30212e96ac0a9ea19367f"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-seed-modules",
+          "selection": "command",
+          "command_sha256": "76a3281c14f7455981e52e6f5f9d86bc7b22c7e893f30212e96ac0a9ea19367f"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-TEST-DB",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names TestDbContext, DatabaseProvider, databaseProvider or OpticalConstructorMssql as a word (established by S2.1) (section invariant s35-no-test-db).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-test-db",
+          "selection": "command",
+          "command_sha256": "b8f6b645d4bf1e9cbb203b447ec66675a424a3a82a7ac0968d84bd61ba13b192"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-test-db",
+          "selection": "command",
+          "command_sha256": "b8f6b645d4bf1e9cbb203b447ec66675a424a3a82a7ac0968d84bd61ba13b192"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-test-db",
+          "selection": "command",
+          "command_sha256": "b8f6b645d4bf1e9cbb203b447ec66675a424a3a82a7ac0968d84bd61ba13b192"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-test-db",
+          "selection": "command",
+          "command_sha256": "b8f6b645d4bf1e9cbb203b447ec66675a424a3a82a7ac0968d84bd61ba13b192"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-test-db",
+          "selection": "command",
+          "command_sha256": "b8f6b645d4bf1e9cbb203b447ec66675a424a3a82a7ac0968d84bd61ba13b192"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-VERSIONS-IN-USE",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names VersionsInUse or versionsInUseSeam (established by S2.2) (section invariant s35-no-versions-in-use).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "5629fc9ff8aed7c1f8ef089d11df0de02a29a65053a27b0017f2ddfd551f4056"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "5629fc9ff8aed7c1f8ef089d11df0de02a29a65053a27b0017f2ddfd551f4056"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "5629fc9ff8aed7c1f8ef089d11df0de02a29a65053a27b0017f2ddfd551f4056"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "5629fc9ff8aed7c1f8ef089d11df0de02a29a65053a27b0017f2ddfd551f4056"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-versions-in-use",
+          "selection": "command",
+          "command_sha256": "5629fc9ff8aed7c1f8ef089d11df0de02a29a65053a27b0017f2ddfd551f4056"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-SCENE-COLLECTION-SEAMS",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names SceneProxy or ExperimentCollectionProxy (established by S4.3 step 152) (section invariant s35-no-scene-collection-seams).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "6b8680f96db3b9dbfb0efacc8b2423640f8a1703ad727b109b2827db54dc363d"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "6b8680f96db3b9dbfb0efacc8b2423640f8a1703ad727b109b2827db54dc363d"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "6b8680f96db3b9dbfb0efacc8b2423640f8a1703ad727b109b2827db54dc363d"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "6b8680f96db3b9dbfb0efacc8b2423640f8a1703ad727b109b2827db54dc363d"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-scene-collection-seams",
+          "selection": "command",
+          "command_sha256": "6b8680f96db3b9dbfb0efacc8b2423640f8a1703ad727b109b2827db54dc363d"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-T4-NO-OCPROJ",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/OpticalConstructor/ names ocproj in any case (001 §T 'From section 4', established by S4.4 step 161) (section invariant s35-t4-no-ocproj).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "840371e5e382320b284b6031a936f4a6a556bdd038d23d519a5dce16cda82fde"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "840371e5e382320b284b6031a936f4a6a556bdd038d23d519a5dce16cda82fde"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "840371e5e382320b284b6031a936f4a6a556bdd038d23d519a5dce16cda82fde"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "840371e5e382320b284b6031a936f4a6a556bdd038d23d519a5dce16cda82fde"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-t4-no-ocproj",
+          "selection": "command",
+          "command_sha256": "840371e5e382320b284b6031a936f4a6a556bdd038d23d519a5dce16cda82fde"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-RECENT-JSON",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names recent.json: the kit history replaced the 16-entry list (001 §R, established by S5.1 step 169) (section invariant s35-no-recent-json).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7dedc2b499b2013fa92e094a2e5c52a82ea561e78311eb024bac43ebea42074"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7dedc2b499b2013fa92e094a2e5c52a82ea561e78311eb024bac43ebea42074"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7dedc2b499b2013fa92e094a2e5c52a82ea561e78311eb024bac43ebea42074"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7dedc2b499b2013fa92e094a2e5c52a82ea561e78311eb024bac43ebea42074"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-recent-json",
+          "selection": "command",
+          "command_sha256": "d7dedc2b499b2013fa92e094a2e5c52a82ea561e78311eb024bac43ebea42074"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-MEASURED-ELEMENT-OF",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names measuredElementOf: captures are decided per object (001 §R, established by S8.1 step 254) (section invariant s35-no-measured-element-of).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "228c6fa0cdb8cbc9c64dcc4982b3e0c6903de24272d0a40f1e57592b1fe1b598"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "228c6fa0cdb8cbc9c64dcc4982b3e0c6903de24272d0a40f1e57592b1fe1b598"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "228c6fa0cdb8cbc9c64dcc4982b3e0c6903de24272d0a40f1e57592b1fe1b598"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "228c6fa0cdb8cbc9c64dcc4982b3e0c6903de24272d0a40f1e57592b1fe1b598"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-measured-element-of",
+          "selection": "command",
+          "command_sha256": "228c6fa0cdb8cbc9c64dcc4982b3e0c6903de24272d0a40f1e57592b1fe1b598"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-T8-NO-EXPERIMENT-REGEX",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names experimentRegex: the naming template replaced the label regex (001 §T 'From section 8', established by S8.3 step 270) (section invariant s35-t8-no-experiment-regex).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "1ea64cce0c4abb7bc43490866f7807d86377216c5d111b3f9cbd85b7df886a16"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "1ea64cce0c4abb7bc43490866f7807d86377216c5d111b3f9cbd85b7df886a16"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "1ea64cce0c4abb7bc43490866f7807d86377216c5d111b3f9cbd85b7df886a16"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "1ea64cce0c4abb7bc43490866f7807d86377216c5d111b3f9cbd85b7df886a16"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-t8-no-experiment-regex",
+          "selection": "command",
+          "command_sha256": "1ea64cce0c4abb7bc43490866f7807d86377216c5d111b3f9cbd85b7df886a16"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-T9-NO-MUELLER-DATA-SET",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names MuellerDataSet (001 §T 'From section 9', established by S9.4 step 331) (section invariant s35-t9-no-mueller-data-set).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "e05aadd8c846393207b1cd835a40eec8c4d40bd2c379830112fcb59ac8fe9059"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "e05aadd8c846393207b1cd835a40eec8c4d40bd2c379830112fcb59ac8fe9059"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "e05aadd8c846393207b1cd835a40eec8c4d40bd2c379830112fcb59ac8fe9059"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "e05aadd8c846393207b1cd835a40eec8c4d40bd2c379830112fcb59ac8fe9059"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-t9-no-mueller-data-set",
+          "selection": "command",
+          "command_sha256": "e05aadd8c846393207b1cd835a40eec8c4d40bd2c379830112fcb59ac8fe9059"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-T9-NO-DATA-MUELLER-MATRIX",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names Data/MuellerMatrix (001 §T 'From section 9', established by S9.4 steps 330-331), so the moved code and the reference module name the summaries and scripts at data/optics-mueller/data/reference/ (section invariant s35-t9-no-data-mueller-matrix).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "78ee2adccae2b566e23f52dcedd0d36f0196ebdd36de0c807e46cf5d44f6173e"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "78ee2adccae2b566e23f52dcedd0d36f0196ebdd36de0c807e46cf5d44f6173e"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "78ee2adccae2b566e23f52dcedd0d36f0196ebdd36de0c807e46cf5d44f6173e"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "78ee2adccae2b566e23f52dcedd0d36f0196ebdd36de0c807e46cf5d44f6173e"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-t9-no-data-mueller-matrix",
+          "selection": "command",
+          "command_sha256": "78ee2adccae2b566e23f52dcedd0d36f0196ebdd36de0c807e46cf5d44f6173e"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-NO-ARCHIVE-DATA-PROXY",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, nothing under Berreman/ names MuellerDataProxy or createArchiveBacked (established by S9.4 step 331) (section invariant s35-no-archive-data-proxy).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5a3285d8eca477a225ad2902fa37fb790f2e874552dcee9946bfbe768842b80a"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5a3285d8eca477a225ad2902fa37fb790f2e874552dcee9946bfbe768842b80a"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5a3285d8eca477a225ad2902fa37fb790f2e874552dcee9946bfbe768842b80a"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5a3285d8eca477a225ad2902fa37fb790f2e874552dcee9946bfbe768842b80a"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-no-archive-data-proxy",
+          "selection": "command",
+          "command_sha256": "5a3285d8eca477a225ad2902fa37fb790f2e874552dcee9946bfbe768842b80a"
+        }
+      ]
+    },
+    {
+      "id": "S103-INV-T10-NO-HARNESS-NOISE",
+      "source": "specs/0050/.section-plan-jsonl section 35 (S10.3) invariants; .user-md/spec-author.user-md 'Section invariants'",
+      "requirement": "After every S10.3 step, no file under Berreman/BerremanTests/ declares noisyObserveAbsoluteWith: the absorbing noise path lives in OpticalConstructor.Optimization's BenchNoise (001 §T 'From section 10', established by S10.1 step 340) (section invariant s35-t10-no-harness-noise).",
+      "checks": [
+        {
+          "step": 348,
+          "gate": "invariant-s35-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "ab9e3142673f94d3d47f726f9e78515abb2a6cac7de5e2c7e84b8600d445c5ed"
+        },
+        {
+          "step": 349,
+          "gate": "invariant-s35-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "ab9e3142673f94d3d47f726f9e78515abb2a6cac7de5e2c7e84b8600d445c5ed"
+        },
+        {
+          "step": 350,
+          "gate": "invariant-s35-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "ab9e3142673f94d3d47f726f9e78515abb2a6cac7de5e2c7e84b8600d445c5ed"
+        },
+        {
+          "step": 351,
+          "gate": "invariant-s35-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "ab9e3142673f94d3d47f726f9e78515abb2a6cac7de5e2c7e84b8600d445c5ed"
+        },
+        {
+          "step": 352,
+          "gate": "invariant-s35-t10-no-harness-noise",
+          "selection": "command",
+          "command_sha256": "ab9e3142673f94d3d47f726f9e78515abb2a6cac7de5e2c7e84b8600d445c5ed"
+        }
+      ]
     }
   ],
   "acceptance_bindings": [
@@ -46466,6 +47369,151 @@
         "S102-INV-NO-ARCHIVE-DATA-PROXY",
         "S102-INV-T10-NO-HARNESS-NOISE"
       ]
+    },
+    {
+      "step": 348,
+      "sha256": "4c3b24421b48b9a94b381f23d332b48b669ae329ea1c165ef6ec8d1b40e6590f",
+      "obligations": [
+        "S103-REFERENCE-MODULE",
+        "S103-BUILD",
+        "S103-ELEVATION",
+        "S103-INV-ELEV-LIST-EMPTY",
+        "S103-INV-NO-VSTEST",
+        "S103-INV-NO-KIT-KIT-JSON",
+        "S103-INV-NO-EPS-AXIS-EVALUATED",
+        "S103-INV-COMPLEXITY-MANDATORY",
+        "S103-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S103-INV-NO-SEEDING-SEAM",
+        "S103-INV-T1-NO-CODE-SEEDS",
+        "S103-INV-NO-SEED-MODULES",
+        "S103-INV-NO-TEST-DB",
+        "S103-INV-NO-VERSIONS-IN-USE",
+        "S103-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S103-INV-T4-NO-OCPROJ",
+        "S103-INV-NO-RECENT-JSON",
+        "S103-INV-NO-MEASURED-ELEMENT-OF",
+        "S103-INV-T8-NO-EXPERIMENT-REGEX",
+        "S103-INV-T9-NO-MUELLER-DATA-SET",
+        "S103-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S103-INV-NO-ARCHIVE-DATA-PROXY",
+        "S103-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 349,
+      "sha256": "b5939c5831d2a26fae2f84326603e3bd4ec6ae7bdc15f8def3df5ab4d9f6d8f0",
+      "obligations": [
+        "S103-STAGE-ONE",
+        "S103-BUILD",
+        "S103-ELEVATION",
+        "S103-INV-ELEV-LIST-EMPTY",
+        "S103-INV-NO-VSTEST",
+        "S103-INV-NO-KIT-KIT-JSON",
+        "S103-INV-NO-EPS-AXIS-EVALUATED",
+        "S103-INV-COMPLEXITY-MANDATORY",
+        "S103-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S103-INV-NO-SEEDING-SEAM",
+        "S103-INV-T1-NO-CODE-SEEDS",
+        "S103-INV-NO-SEED-MODULES",
+        "S103-INV-NO-TEST-DB",
+        "S103-INV-NO-VERSIONS-IN-USE",
+        "S103-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S103-INV-T4-NO-OCPROJ",
+        "S103-INV-NO-RECENT-JSON",
+        "S103-INV-NO-MEASURED-ELEMENT-OF",
+        "S103-INV-T8-NO-EXPERIMENT-REGEX",
+        "S103-INV-T9-NO-MUELLER-DATA-SET",
+        "S103-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S103-INV-NO-ARCHIVE-DATA-PROXY",
+        "S103-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 350,
+      "sha256": "375ced35b567ff9e3a991b39065d919765a8fecec861946f371ba520dc1deb86",
+      "obligations": [
+        "S103-DESIGN-READING",
+        "S103-BUILD",
+        "S103-ELEVATION",
+        "S103-INV-ELEV-LIST-EMPTY",
+        "S103-INV-NO-VSTEST",
+        "S103-INV-NO-KIT-KIT-JSON",
+        "S103-INV-NO-EPS-AXIS-EVALUATED",
+        "S103-INV-COMPLEXITY-MANDATORY",
+        "S103-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S103-INV-NO-SEEDING-SEAM",
+        "S103-INV-T1-NO-CODE-SEEDS",
+        "S103-INV-NO-SEED-MODULES",
+        "S103-INV-NO-TEST-DB",
+        "S103-INV-NO-VERSIONS-IN-USE",
+        "S103-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S103-INV-T4-NO-OCPROJ",
+        "S103-INV-NO-RECENT-JSON",
+        "S103-INV-NO-MEASURED-ELEMENT-OF",
+        "S103-INV-T8-NO-EXPERIMENT-REGEX",
+        "S103-INV-T9-NO-MUELLER-DATA-SET",
+        "S103-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S103-INV-NO-ARCHIVE-DATA-PROXY",
+        "S103-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 351,
+      "sha256": "766ab83a573e3b905ee9344e9d67b7fcc3d2b953b671f7a9d67e5d670ab7513d",
+      "obligations": [
+        "S103-STAGED-PATH",
+        "S103-BUILD",
+        "S103-ELEVATION",
+        "S103-INV-ELEV-LIST-EMPTY",
+        "S103-INV-NO-VSTEST",
+        "S103-INV-NO-KIT-KIT-JSON",
+        "S103-INV-NO-EPS-AXIS-EVALUATED",
+        "S103-INV-COMPLEXITY-MANDATORY",
+        "S103-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S103-INV-NO-SEEDING-SEAM",
+        "S103-INV-T1-NO-CODE-SEEDS",
+        "S103-INV-NO-SEED-MODULES",
+        "S103-INV-NO-TEST-DB",
+        "S103-INV-NO-VERSIONS-IN-USE",
+        "S103-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S103-INV-T4-NO-OCPROJ",
+        "S103-INV-NO-RECENT-JSON",
+        "S103-INV-NO-MEASURED-ELEMENT-OF",
+        "S103-INV-T8-NO-EXPERIMENT-REGEX",
+        "S103-INV-T9-NO-MUELLER-DATA-SET",
+        "S103-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S103-INV-NO-ARCHIVE-DATA-PROXY",
+        "S103-INV-T10-NO-HARNESS-NOISE"
+      ]
+    },
+    {
+      "step": 352,
+      "sha256": "4f5bc5d7c58a5729bb096cadc5d29d8d0c89b775e50d50c0724bbeed75024940",
+      "obligations": [
+        "S103-PRODUCT-CHECK",
+        "S103-BUILD",
+        "S103-ELEVATION",
+        "S103-INV-ELEV-LIST-EMPTY",
+        "S103-INV-NO-VSTEST",
+        "S103-INV-NO-KIT-KIT-JSON",
+        "S103-INV-NO-EPS-AXIS-EVALUATED",
+        "S103-INV-COMPLEXITY-MANDATORY",
+        "S103-INV-NO-SEEDED-STRING-PRESET-IDS",
+        "S103-INV-NO-SEEDING-SEAM",
+        "S103-INV-T1-NO-CODE-SEEDS",
+        "S103-INV-NO-SEED-MODULES",
+        "S103-INV-NO-TEST-DB",
+        "S103-INV-NO-VERSIONS-IN-USE",
+        "S103-INV-NO-SCENE-COLLECTION-SEAMS",
+        "S103-INV-T4-NO-OCPROJ",
+        "S103-INV-NO-RECENT-JSON",
+        "S103-INV-NO-MEASURED-ELEMENT-OF",
+        "S103-INV-T8-NO-EXPERIMENT-REGEX",
+        "S103-INV-T9-NO-MUELLER-DATA-SET",
+        "S103-INV-T9-NO-DATA-MUELLER-MATRIX",
+        "S103-INV-NO-ARCHIVE-DATA-PROXY",
+        "S103-INV-T10-NO-HARNESS-NOISE"
+      ]
     }
   ],
   "behavior_seams": [
@@ -47938,6 +48986,21 @@
       "id": "s94-lab-files-in-kit",
       "step": 330,
       "obligation": "S94-LAB-FILES-IN-KIT"
+    },
+    {
+      "id": "s103-stage-one-errors",
+      "step": 349,
+      "obligation": "S103-STAGE-ONE"
+    },
+    {
+      "id": "s103-staged-path-errors",
+      "step": 351,
+      "obligation": "S103-STAGED-PATH"
+    },
+    {
+      "id": "s103-product-check",
+      "step": 352,
+      "obligation": "S103-PRODUCT-CHECK"
     }
   ],
   "temporal_checks": [],
@@ -48427,6 +49490,17 @@
         "Berreman/BerremanTests",
         "Berreman/Berreman.slnx",
         "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests"
+      ]
+    },
+    {
+      "from": 348,
+      "step": 352,
+      "paths": [
+        "Berreman/BerremanTestSupport",
+        "Berreman/BerremanTests",
+        "Berreman/OpticalConstructor/OpticalConstructor.Optimization",
+        "Berreman/OpticalConstructor/OpticalConstructor.Domain",
+        "Berreman/OpticalConstructor/OpticalConstructor.Tests"
       ]
     }
   ]
