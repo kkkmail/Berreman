@@ -248,7 +248,7 @@ module LibraryWindowTests =
         Assert.Equal("LibraryRemoveCancelButton", ConstructorUiId.libraryRemoveCancelButton.value)
         Assert.Equal("LibraryWindowMessage", ConstructorUiId.libraryWindowMessage.value)
         // The entry-leaf id derives from the tree-node code family, prefixed so it cannot collide.
-        Assert.Equal("FacetTreeNode_entry:src-600", (ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value)
+        Assert.Equal("FacetTreeNode_entry:" + PresetIds.source600.value, (ConstructorUiId.libraryEntryNode PresetIds.source600).value)
         // The constructor-side entry point: the ribbon strip's right-aligned button.
         Assert.Equal("OpenLibraryWindowButton", ConstructorUiId.openLibraryWindowButton.value)
 
@@ -271,7 +271,7 @@ module LibraryWindowTests =
             Assert.StartsWith("entry:", leaf.code.value)
         // Samples AND presets both lead as leaves.
         Assert.Contains(entries.children, fun (n : FacetedTreeControls.TreeNode) -> n.code.value = glassFilm600EntryId.libraryEntryCode.value)
-        Assert.Contains(entries.children, fun (n : FacetedTreeControls.TreeNode) -> n.code.value = (ElementValueId "src-600").libraryEntryCode.value)
+        Assert.Contains(entries.children, fun (n : FacetedTreeControls.TreeNode) -> n.code.value = PresetIds.source600.libraryEntryCode.value)
         // The ONE seeded representation is "By kind", active by default.
         Assert.Equal<string list>([ "by-kind" ], state.representations |> List.map (fun r -> r.code.value))
         Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey "by-kind"), state.activeRepresentationOpt)
@@ -366,9 +366,9 @@ module LibraryWindowTests =
         // The branch-nested leaf code `branch:<facet>:<value>:entry:<entryId>` resolves to its id (so
         // an entry selected THROUGH a facet branch works), yet the bare branch/heading codes remain
         // grouping-only — the selection contract after the fix.
-        let leafCode = (ConstructorUiKey ("branch:" + entryKindFacetKey.value + ":Source")).libraryBranchLeaf (ElementValueId "src-600")
-        Assert.Equal("branch:" + entryKindFacetKey.value + ":Source:entry:src-600", leafCode.value)
-        Assert.Equal(Some (ElementValueId "src-600"), leafCode.tryLibraryEntryId)
+        let leafCode = (ConstructorUiKey ("branch:" + entryKindFacetKey.value + ":Source")).libraryBranchLeaf PresetIds.source600
+        Assert.Equal("branch:" + entryKindFacetKey.value + ":Source:entry:" + PresetIds.source600.value, leafCode.value)
+        Assert.Equal(Some PresetIds.source600, leafCode.tryLibraryEntryId)
         Assert.Equal<ElementValueId option>(None, (ConstructorUiKey ("facet:" + entryKindFacetKey.value)).tryLibraryEntryId)
         Assert.Equal<ElementValueId option>(None, (ConstructorUiKey ("branch:" + entryKindFacetKey.value + ":Source")).tryLibraryEntryId)
 
@@ -378,17 +378,17 @@ module LibraryWindowTests =
         // highlight the matching row in the "Library" corpus group instead of the clicked branch
         // row. The projected `selectedCode` must now be the EXACT clicked node code.
         let _, m = freshModel ()
-        let leafCode = (ConstructorUiKey ("branch:" + entryKindFacetKey.value + ":Source")).libraryBranchLeaf (ElementValueId "src-600")
-        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntryNode (ElementValueId "src-600", leafCode)) m
+        let leafCode = (ConstructorUiKey ("branch:" + entryKindFacetKey.value + ":Source")).libraryBranchLeaf PresetIds.source600
+        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntryNode (PresetIds.source600, leafCode)) m
         let state = LW.libraryFacetedState selected
         // The highlight is on the clicked branch row — NOT the flat corpus-group `entry:<id>` code.
         Assert.Equal<ConstructorUiKey option>(Some leafCode, state.selectedCodeOpt)
-        Assert.NotEqual<ConstructorUiKey option>(Some (ElementValueId "src-600").libraryEntryCode, state.selectedCodeOpt)
+        Assert.NotEqual<ConstructorUiKey option>(Some PresetIds.source600.libraryEntryCode, state.selectedCodeOpt)
         // The domain selection still resolves (the view panel / verbs target the entry).
-        Assert.Equal<ElementValueId option>(Some (ElementValueId "src-600"), selected.selectedEntryId)
+        Assert.Equal<ElementValueId option>(Some PresetIds.source600, selected.selectedEntryId)
         // The id-only path (programmatic / verb-driven) still highlights the corpus-group row.
-        let viaId = LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "src-600")) m
-        Assert.Equal<ConstructorUiKey option>(Some (ElementValueId "src-600").libraryEntryCode, (LW.libraryFacetedState viaId).selectedCodeOpt)
+        let viaId = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.source600) m
+        Assert.Equal<ConstructorUiKey option>(Some PresetIds.source600.libraryEntryCode, (LW.libraryFacetedState viaId).selectedCodeOpt)
 
     [<Fact>]
     let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
@@ -422,11 +422,11 @@ module LibraryWindowTests =
         // projects it from the Model's already-tracked selection (nothing selected → empty string).
         let _, m = freshModel ()
         Assert.Equal<ConstructorUiKey option>(None, (LW.libraryFacetedState m).selectedCodeOpt)
-        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "src-600")) m
-        Assert.Equal<ConstructorUiKey option>(Some (ElementValueId "src-600").libraryEntryCode, (LW.libraryFacetedState selected).selectedCodeOpt)
+        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.source600) m
+        Assert.Equal<ConstructorUiKey option>(Some PresetIds.source600.libraryEntryCode, (LW.libraryFacetedState selected).selectedCodeOpt)
         // A re-selection re-targets the highlight in the same projection.
-        let retargeted = LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "pol-lp")) selected
-        Assert.Equal<ConstructorUiKey option>(Some (ElementValueId "pol-lp").libraryEntryCode, (LW.libraryFacetedState retargeted).selectedCodeOpt)
+        let retargeted = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.polarizerLp) selected
+        Assert.Equal<ConstructorUiKey option>(Some PresetIds.polarizerLp.libraryEntryCode, (LW.libraryFacetedState retargeted).selectedCodeOpt)
 
     [<Fact>]
     let ``the committed text filter narrows the corpus over display names and echoes as the box draft`` () =
@@ -434,7 +434,7 @@ module LibraryWindowTests =
         let narrowed = LW.updateLibraryWindow (LW.CommitLibraryTextFilter (TextQuery "glass")) m
         Assert.Equal(6, List.length (narrowed.filteredEntries))
         Assert.Contains(glassFilm600EntryId.value, filteredEntryIds narrowed)
-        Assert.DoesNotContain("src-600", filteredEntryIds narrowed)
+        Assert.DoesNotContain(PresetIds.source600.value, filteredEntryIds narrowed)
         Assert.Equal("glass", (LW.libraryFacetedState narrowed).filterDraft.value)
         let restored = LW.updateLibraryWindow (LW.CommitLibraryTextFilter (TextQuery "")) narrowed
         Assert.Equal(seededCorpus, List.length (restored.filteredEntries))
@@ -444,7 +444,7 @@ module LibraryWindowTests =
         let _, m = freshModel ()
         let constrained = LW.updateLibraryWindow (kindConstraint "Polarizer") m
         Assert.Equal(3, List.length (constrained.filteredEntries))
-        Assert.Contains("pol-lp", filteredEntryIds constrained)
+        Assert.Contains(PresetIds.polarizerLp.value, filteredEntryIds constrained)
         let chips = (LW.libraryFacetedState constrained).breadcrumbs
         Assert.Equal(1, List.length chips)
         Assert.Equal(entryKindFacetKey.value, (List.head chips).code.value)
@@ -600,7 +600,7 @@ module LibraryWindowTests =
         Assert.Equal<string list>([ "sample-edit:Glass thin film (n=1.75, 600 nm)" ], List.ofSeq calls)
         calls.Clear()
         // A preset has no editor — the verb is absent and the dispatch inert.
-        m |> LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "pol-lp")) |> LW.updateLibraryWindow LW.EditSelectedEntry |> ignore
+        m |> LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.polarizerLp) |> LW.updateLibraryWindow LW.EditSelectedEntry |> ignore
         LW.updateLibraryWindow LW.EditSelectedEntry m |> ignore
         Assert.Empty(calls)
 
@@ -609,7 +609,7 @@ module LibraryWindowTests =
         let samples, m = freshModelWithStores ()
         let refused =
             m
-            |> LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "src-600"))
+            |> LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.source600)
             |> LW.updateLibraryWindow LW.RequestRemoveSelectedEntry
         // The typed reason NAMES the entry; the confirm gate never arms.
         match refused.lastError with
@@ -620,7 +620,7 @@ module LibraryWindowTests =
         Assert.Equal(LW.NoPendingLibraryRemove, refused.removeGate)
         // Nothing changed: the corpus, the stores, the selection.
         Assert.Equal(seededCorpus, (LW.libraryFacetedState refused).resultCount.value)
-        Assert.Contains("src-600", filteredEntryIds refused)
+        Assert.Contains(PresetIds.source600.value, filteredEntryIds refused)
         match samples.listSamples ActiveOnly with
         | Ok all -> Assert.Equal(11, List.length all)
         | Error e -> Assert.Fail($"listSamples failed: %A{e}")
@@ -684,13 +684,13 @@ module LibraryWindowTests =
         Assert.Equal(LW.NoPendingLibraryRemove, (LW.updateLibraryWindow (LW.CommitLibraryTextFilter (TextQuery "film")) (armed ())).removeGate)
         Assert.Equal(LW.NoPendingLibraryRemove, (LW.updateLibraryWindow (kindConstraint "Sample") (armed ())).removeGate)
         Assert.Equal(LW.NoPendingLibraryRemove, (LW.updateLibraryWindow (LW.RemoveLibraryFacet entryKindFacetKey) (armed ())).removeGate)
-        let retargeted = LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "src-600")) (armed ())
-        Assert.Equal(Some (ElementValueId "src-600"), retargeted.selectedEntryId)
+        let retargeted = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.source600) (armed ())
+        Assert.Equal(Some PresetIds.source600, retargeted.selectedEntryId)
         Assert.Equal(LW.NoPendingLibraryRemove, retargeted.removeGate)
         // The typed protected refusal clears on the next query edit (not on a mere cancel).
         let refused =
             let _, m = freshModel ()
-            m |> LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "src-600")) |> LW.updateLibraryWindow LW.RequestRemoveSelectedEntry
+            m |> LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.source600) |> LW.updateLibraryWindow LW.RequestRemoveSelectedEntry
         match refused.lastError with
         | Some (LW.ProtectedEntryRefusedErr _) -> ()
         | other -> Assert.Fail($"expected ProtectedEntryRefused, got %A{other}")
@@ -698,17 +698,17 @@ module LibraryWindowTests =
 
     [<Fact>]
     let ``only an entry node code selects — branches and headings are grouping display`` () =
-        Assert.Equal(Some (ElementValueId "src-600"), (ElementValueId "src-600").libraryEntryCode.tryLibraryEntryId)
+        Assert.Equal(Some PresetIds.source600, PresetIds.source600.libraryEntryCode.tryLibraryEntryId)
         Assert.Equal<ElementValueId option>(None, (ConstructorUiKey "branch:entry-kind:Sample").tryLibraryEntryId)
         Assert.Equal<ElementValueId option>(None, (ConstructorUiKey "entries").tryLibraryEntryId)
         let dispatched = ResizeArray<LW.LibraryWindowMsg>()
         let handlers = LW.libraryFacetedHandlers dispatched.Add
-        handlers.selectNode (ElementValueId "src-600").libraryEntryCode
+        handlers.selectNode PresetIds.source600.libraryEntryCode
         handlers.selectNode (ConstructorUiKey "branch:entry-kind:Sample")
         handlers.selectNode (ConstructorUiKey "entries")
         // Only the entry-leaf click selects — carrying the EXACT clicked code (a corpus-group leaf
         // here) so the highlight lands on the clicked row; the bare branch/heading codes are inert.
-        Assert.Equal<LW.LibraryWindowMsg list>([ LW.SelectLibraryEntryNode (ElementValueId "src-600", (ElementValueId "src-600").libraryEntryCode) ], List.ofSeq dispatched)
+        Assert.Equal<LW.LibraryWindowMsg list>([ LW.SelectLibraryEntryNode (PresetIds.source600, PresetIds.source600.libraryEntryCode) ], List.ofSeq dispatched)
         // A discrete offer click lifts its tokens back to elevated engine values at the boundary.
         handlers.applyConstraint entryKindFacetKey.uiKey (ConstructorUiKey "Polarizer")
         Assert.Equal(kindConstraint "Polarizer", dispatched.[1])
@@ -718,7 +718,7 @@ module LibraryWindowTests =
         let samples, m = freshModelWithStores ()
         Assert.Equal<LibraryEntry option>(None, m.selectedEntry)
         // A preset selection: shown, protected, NOT editable.
-        let source = LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "src-600")) m
+        let source = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.source600) m
         match source.selectedEntry with
         | Some entry ->
             Assert.Equal("Monochromatic 600 nm", entry.displayName)
@@ -823,7 +823,7 @@ module LibraryWindowTests =
             Assert.Equal($"%d{seededCorpus} results", textOf window ConstructorUiId.facetResultCount.value)
             // Sample and preset leaves both render (entries is auto-expanded by the mount helper).
             Assert.True(isPresent window ((ConstructorUiId.libraryEntryNode glassFilm600EntryId).value))
-            Assert.True(isPresent window ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value))
+            Assert.True(isPresent window ((ConstructorUiId.libraryEntryNode PresetIds.source600).value))
             // The kind facet's branches: every entry kind, each with its count. The facet group
             // opens collapsed (spec 0040 step 002); collapse the entries group first (so the facet
             // rows rise back to the top and the facet chevron is reachable), then expand the kind
@@ -882,7 +882,7 @@ module LibraryWindowTests =
             let window = mountLibraryWindow library samples materials
             // Narrow to the protected source and select its leaf.
             commitFilter window "Monochromatic"
-            clickOn window ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value)
+            clickOn window ((ConstructorUiId.libraryEntryNode PresetIds.source600).value)
             clickOn window ConstructorUiId.libraryRemoveButton.value
             // The typed refusal renders inline; the confirm gate never armed.
             let message = textOf window ConstructorUiId.libraryWindowMessage.value
@@ -891,7 +891,7 @@ module LibraryWindowTests =
             Assert.False(isPresent window ConstructorUiId.libraryRemoveConfirmButton.value,
                          "the confirm gate must never arm for a protected entry")
             // Nothing changed: the entry is still listed and the samples store untouched.
-            Assert.True(isPresent window ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value))
+            Assert.True(isPresent window ((ConstructorUiId.libraryEntryNode PresetIds.source600).value))
             Assert.Equal("1 results", textOf window ConstructorUiId.facetResultCount.value)
             match samples.listSamples ActiveOnly with
             | Ok all -> Assert.Equal(11, List.length all)
@@ -962,7 +962,7 @@ module LibraryWindowTests =
             let window = mountLibraryWindow library samples materials
             Assert.False(isPresent window ConstructorUiId.libraryViewPanel.value, "no selection → no view panel")
             commitFilter window "Monochromatic"
-            clickOn window ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value)
+            clickOn window ((ConstructorUiId.libraryEntryNode PresetIds.source600).value)
             Assert.True(isPresent window ConstructorUiId.libraryViewPanel.value, "the view panel must render for the selected entry")
             let panelText = textOf window ConstructorUiId.libraryViewPanel.value
             Assert.Contains("Monochromatic 600 nm", panelText)
@@ -1002,7 +1002,7 @@ module LibraryWindowTests =
             // The materialized tree opens collapsed (spec 0040 step 002) — expand entries to reach
             // the leaves.
             expandEntries window
-            Assert.True(isPresent window ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value))
+            Assert.True(isPresent window ((ConstructorUiId.libraryEntryNode PresetIds.source600).value))
             window.Close())
 
     [<Fact>]
@@ -1023,13 +1023,13 @@ module LibraryWindowTests =
             // do NOT render.
             Assert.True(isPresent window (ConstructorUiId.facetTreeNode (ConstructorUiKey "entries")).value, "the entries group row must render")
             Assert.True(isPresent window (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value, "the entries group must carry a disclosure chevron")
-            Assert.False(isPresent window ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value), "a collapsed tree must hide its entry leaves on first open")
+            Assert.False(isPresent window ((ConstructorUiId.libraryEntryNode PresetIds.source600).value), "a collapsed tree must hide its entry leaves on first open")
             // Clicking the chevron expands the group — the leaves render in the same pass.
             expandEntries window
-            Assert.True(isPresent window ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value), "the chevron click must reveal the entry leaves")
+            Assert.True(isPresent window ((ConstructorUiId.libraryEntryNode PresetIds.source600).value), "the chevron click must reveal the entry leaves")
             // A second click collapses it again.
             expandEntries window
-            Assert.False(isPresent window ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value), "a second chevron click must collapse the group")
+            Assert.False(isPresent window ((ConstructorUiId.libraryEntryNode PresetIds.source600).value), "a second chevron click must collapse the group")
             window.Close())
 
     [<Fact>]
@@ -1041,10 +1041,10 @@ module LibraryWindowTests =
             // Narrow to the three ideal polarizers so both leaves render near the top and stay clickable.
             commitFilter window "polarizer"
             // Before any selection every leaf is idle (no row carries the chosen fill).
-            Assert.Equal(Some idleFill, backgroundColorOf (labelBorderOf window ((ConstructorUiId.libraryEntryNode (ElementValueId "pol-lp")).value)))
-            clickOn window ((ConstructorUiId.libraryEntryNode (ElementValueId "pol-lp")).value)
-            let selected = labelBorderOf window ((ConstructorUiId.libraryEntryNode (ElementValueId "pol-lp")).value)
-            let sibling = labelBorderOf window ((ConstructorUiId.libraryEntryNode (ElementValueId "pol-cp-left")).value)
+            Assert.Equal(Some idleFill, backgroundColorOf (labelBorderOf window ((ConstructorUiId.libraryEntryNode PresetIds.polarizerLp).value)))
+            clickOn window ((ConstructorUiId.libraryEntryNode PresetIds.polarizerLp).value)
+            let selected = labelBorderOf window ((ConstructorUiId.libraryEntryNode PresetIds.polarizerLp).value)
+            let sibling = labelBorderOf window ((ConstructorUiId.libraryEntryNode PresetIds.polarizerCpLeft).value)
             // Exactly the selected row reads the chosen fill; the sibling stays idle.
             Assert.Equal(Some chosenFill, backgroundColorOf selected)
             Assert.Equal(Some idleFill, backgroundColorOf sibling)
@@ -1070,17 +1070,17 @@ module LibraryWindowTests =
         // window state (filter, offers, representation) is otherwise untouched.
         let _, _, m = freshSelectModel CircularPolarizer (TableElementTarget (ElementId "el-1"))
         Assert.Equal<string list>(
-            [ "pol-cp-left"; "pol-cp-right" ],
+            List.sort [ PresetIds.polarizerCpLeft.value; PresetIds.polarizerCpRight.value ],
             filteredEntryIds m |> List.sort)
         let state = LW.libraryFacetedState m
         Assert.Equal(2, state.resultCount.value)
         Assert.Empty(state.breadcrumbs)
         // A LinearPolarizer constraint narrows to the one LP preset (forKinds, never re-derived).
         let _, _, lp = freshSelectModel LinearPolarizer (TableElementTarget (ElementId "el-1"))
-        Assert.Equal<string list>([ "pol-lp" ], filteredEntryIds lp)
+        Assert.Equal<string list>([ PresetIds.polarizerLp.value ], filteredEntryIds lp)
         // The selection resolves through the CONSTRAINED corpus: an out-of-constraint id
         // resolves to nothing (Select can never return an entry outside its constraint).
-        let stray = LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "src-600")) lp
+        let stray = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.source600) lp
         Assert.Equal<LibraryEntry option>(None, stray.selectedEntry)
         // Browse mode is byte-for-byte the ordinary window corpus.
         let _, browse = freshModel ()
@@ -1097,13 +1097,13 @@ module LibraryWindowTests =
         // cancelled again by the host's dismissal hook).
         let resolved =
             m
-            |> LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "det-intensity"))
+            |> LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.detectorIntensity)
             |> LW.updateLibraryWindow LW.ConfirmLibrarySelect
-        Assert.Equal<string list>([ "selected:det-intensity" ], List.ofSeq events)
+        Assert.Equal<string list>([ "selected:" + PresetIds.detectorIntensity.value ], List.ofSeq events)
         Assert.Contains("close-requested", calls)
         Assert.Equal<LibraryWindowMode<LibraryEntry>>(Browse, resolved.mode)
         Assert.Equal<LW.LibraryWindowModel>(resolved, LW.updateLibraryWindow LW.LibrarySelectDismissed resolved)
-        Assert.Equal<string list>([ "selected:det-intensity" ], List.ofSeq events)
+        Assert.Equal<string list>([ "selected:" + PresetIds.detectorIntensity.value ], List.ofSeq events)
         // Browse-mode Confirm/Cancel are inert (the pair does not exist there).
         let _, browse = freshModel ()
         Assert.Equal<LW.LibraryWindowModel>(browse, LW.updateLibraryWindow LW.ConfirmLibrarySelect browse)
@@ -1131,7 +1131,7 @@ module LibraryWindowTests =
     [<Fact>]
     let ``RetargetSelect cancels the superseded session, re-points the constraint and target, and clears the highlight`` () =
         let events, _, m = freshSelectModel LinearPolarizer (TableElementTarget (ElementId "el-1"))
-        let highlighted = LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "pol-lp")) m
+        let highlighted = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.polarizerLp) m
         // A second Select open re-targets the live single instance: the FIRST session is
         // cancelled (a second Choose closes the first, logically) and the window now serves
         // the new constraint/target with a fresh highlight.
@@ -1141,14 +1141,14 @@ module LibraryWindowTests =
         Assert.Empty(events2)
         Assert.Equal<ElementValueId option>(None, retargeted.selectedEntryId)
         Assert.Equal<string list>(
-            [ "det-ellipsometer"; "det-intensity" ],
+            List.sort [ PresetIds.detectorEllipsometer.value; PresetIds.detectorIntensity.value ],
             filteredEntryIds retargeted |> List.sort)
         // The re-pointed session then resolves through the NEW context.
         retargeted
-        |> LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "det-ellipsometer"))
+        |> LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.detectorEllipsometer)
         |> LW.updateLibraryWindow LW.ConfirmLibrarySelect
         |> ignore
-        Assert.Equal<string list>([ "selected:det-ellipsometer" ], List.ofSeq events2)
+        Assert.Equal<string list>([ "selected:" + PresetIds.detectorEllipsometer.value ], List.ofSeq events2)
 
     // ============================ step 016 — Select mode (headless) ============================
 
@@ -1217,8 +1217,8 @@ module LibraryWindowTests =
             Assert.Equal("2 results", textOf window ConstructorUiId.facetResultCount.value)
             Assert.False(isPresent window (ConstructorUiId.facetBreadcrumbChip (ConstructorUiKey entryKindFacetKey.value)).value,
                          "the pre-applied constraint must take NO removable breadcrumb chip")
-            Assert.True(isPresent window ((ConstructorUiId.libraryEntryNode (ElementValueId "pol-cp-left")).value))
-            Assert.False(isPresent window ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value), "an out-of-kind entry must not be listed")
+            Assert.True(isPresent window ((ConstructorUiId.libraryEntryNode PresetIds.polarizerCpLeft).value))
+            Assert.False(isPresent window ((ConstructorUiId.libraryEntryNode PresetIds.source600).value), "an out-of-kind entry must not be listed")
             // Everything else IS the ordinary window: the add-on-the-fly verbs are all there.
             Assert.True(isPresent window ConstructorUiId.libraryAddSampleButton.value, "Add sample must survive Select state")
             Assert.True(isPresent window ConstructorUiId.libraryMakeMultilayerButton.value, "Make multilayer must survive Select state")
@@ -1246,7 +1246,7 @@ module LibraryWindowTests =
                     onCancelled = fun () -> cancels.Add "cancelled"
                 }
             let selectWindow = mountSelectLibraryWindow library samples materials selectCtx
-            clickOn selectWindow ((ConstructorUiId.libraryEntryNode (ElementValueId "det-intensity")).value)
+            clickOn selectWindow ((ConstructorUiId.libraryEntryNode PresetIds.detectorIntensity).value)
             clickOn selectWindow ConstructorUiId.librarySelectButton.value
             Dispatcher.UIThread.RunJobs()
             // The window closed itself after onSelected — and never cancelled.
@@ -1308,7 +1308,7 @@ module LibraryWindowTests =
             dispatch Scene.RemoveSelectedElement
             Dispatcher.UIThread.RunJobs()
             // The return is a NO-OP plus the status line, never a throw.
-            clickOn selectWindow ((ConstructorUiId.libraryEntryNode (ElementValueId "det-intensity")).value)
+            clickOn selectWindow ((ConstructorUiId.libraryEntryNode PresetIds.detectorIntensity).value)
             clickOn selectWindow ConstructorUiId.librarySelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "the Select window still closes after its return")
@@ -1369,7 +1369,7 @@ module LibraryWindowTests =
             let window, _, getModel = mountMainExposed (detectorSelectorModel ())
             Assert.Equal<Scene.SelectorOffer>(Scene.QuickPickAndChoose, (getModel ()).selectorOffer)
             Assert.True(isPresent window ConstructorUiId.selectorQuickPickStrip.value, "the strip must render below the threshold")
-            Assert.True(isPresent window (ConstructorUiId.libraryEntry (ConstructorUiKey "det-intensity")).value, "the kind-constrained rows render inline")
+            Assert.True(isPresent window (ConstructorUiId.libraryEntry PresetIds.detectorIntensity.uiKey).value, "the kind-constrained rows render inline")
             Assert.True(isPresent window ConstructorUiId.selectorChooseButton.value, "Choose… is offered beside the strip")
             window.Close()
             Dispatcher.UIThread.RunJobs())
@@ -1380,10 +1380,10 @@ module LibraryWindowTests =
         HeadlessSession.run (fun () ->
             // ---- Path 1: the inline quick-pick strip (under threshold). ----
             let stripWindow, _, stripModel = mountMainExposed (detectorSelectorModel ())
-            clickOn stripWindow (ConstructorUiId.libraryEntry (ConstructorUiKey "det-intensity")).value   // pending
+            clickOn stripWindow (ConstructorUiId.libraryEntry PresetIds.detectorIntensity.uiKey).value   // pending
             clickOn stripWindow ConstructorUiId.libraryConfirmButton.value                   // ConfirmBindValueId → the targeted bind
             let stripBound = ((stripModel ()).elements |> List.item 1).placement.valueId
-            Assert.Equal(Some (ElementValueId "det-intensity"), stripBound)
+            Assert.Equal(Some PresetIds.detectorIntensity, stripBound)
             stripWindow.Close()
             Dispatcher.UIThread.RunJobs()
             // ---- Path 2: the Choose… verb → the kind-constrained Select-state Library window. ----
@@ -1409,21 +1409,21 @@ module LibraryWindowTests =
             // The launcher-opened window opens collapsed (spec 0040 step 002) — expand its entries
             // group to reach the offered leaves.
             expandEntries selectWindow
-            Assert.True(isPresent selectWindow ((ConstructorUiId.libraryEntryNode (ElementValueId "det-intensity")).value))
-            Assert.False(isPresent selectWindow ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value), "an out-of-kind entry must not be offered")
+            Assert.True(isPresent selectWindow ((ConstructorUiId.libraryEntryNode PresetIds.detectorIntensity).value))
+            Assert.False(isPresent selectWindow ((ConstructorUiId.libraryEntryNode PresetIds.source600).value), "an out-of-kind entry must not be offered")
             Assert.True(isPresent selectWindow ConstructorUiId.librarySelectButton.value)
             // The workbench holds the session's staleness handle while the window is open.
             (match (getModel ()).activeSelect with
              | Some session -> Assert.Equal<ElementId>(ElementId "det", session.target)
              | None -> Assert.Fail "Choose… must register the Select session handle")
             // Bind through the window: highlight the entry, then Select.
-            clickOn selectWindow ((ConstructorUiId.libraryEntryNode (ElementValueId "det-intensity")).value)
+            clickOn selectWindow ((ConstructorUiId.libraryEntryNode PresetIds.detectorIntensity).value)
             clickOn selectWindow ConstructorUiId.librarySelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "the Select window closes after its return")
             let windowBound = ((getModel ()).elements |> List.item 1).placement.valueId
             // THE step acceptance: both paths committed the IDENTICAL valueId bind.
-            Assert.Equal(Some (ElementValueId "det-intensity"), windowBound)
+            Assert.Equal(Some PresetIds.detectorIntensity, windowBound)
             Assert.Equal<ElementValueId option>(stripBound, windowBound)
             (match (getModel ()).activeSelect with
              | None -> ()
@@ -1465,13 +1465,13 @@ module LibraryWindowTests =
              | Some session -> Assert.Equal<ElementId>(ElementId "src", session.target)
              | None -> Assert.Fail "the menu's Choose… must register the Select session handle")
             expandEntries selectWindow
-            Assert.True(isPresent selectWindow ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value))
-            Assert.False(isPresent selectWindow ((ConstructorUiId.libraryEntryNode (ElementValueId "det-intensity")).value), "an out-of-kind entry must not be offered")
-            clickOn selectWindow ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value)
+            Assert.True(isPresent selectWindow ((ConstructorUiId.libraryEntryNode PresetIds.source600).value))
+            Assert.False(isPresent selectWindow ((ConstructorUiId.libraryEntryNode PresetIds.detectorIntensity).value), "an out-of-kind entry must not be offered")
+            clickOn selectWindow ((ConstructorUiId.libraryEntryNode PresetIds.source600).value)
             clickOn selectWindow ConstructorUiId.librarySelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "the Select window closes after its return")
-            Assert.Equal(Some (ElementValueId "src-600"), ((getModel ()).elements |> List.item 0).placement.valueId)
+            Assert.Equal(Some PresetIds.source600, ((getModel ()).elements |> List.item 0).placement.valueId)
             Assert.Contains("bound: Monochromatic 600 nm", textOf mainWindow ConstructorUiId.teReadout.value)
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())
@@ -1558,7 +1558,7 @@ module LibraryWindowTests =
     let ``no lifecycle verbs on a protected preset; a sample offers Mark inactive and Supersede`` () =
         let _, m = freshModel ()
         // A protected preset (ProtectedBuiltIn) offers NONE (removed, not greyed).
-        let preset = LW.updateLibraryWindow (LW.SelectLibraryEntry (ElementValueId "src-600")) m
+        let preset = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.source600) m
         Assert.Empty(preset.offeredLifecycleActions)
         // A UserManaged sample offers Mark inactive + Supersede…
         let sample = LW.updateLibraryWindow (LW.SelectLibraryEntry glassFilm600EntryId) m
@@ -1595,7 +1595,7 @@ module LibraryWindowTests =
         let srcLeaf =
             (LW.libraryFacetedState shown).tree
             |> List.head
-            |> fun entries -> entries.children |> List.find (fun n -> n.code.value = (ElementValueId "src-600").libraryEntryCode.value)
+            |> fun entries -> entries.children |> List.find (fun n -> n.code.value = PresetIds.source600.libraryEntryCode.value)
         Assert.DoesNotContain("inactive", srcLeaf.label.value)
 
     [<Fact>]
@@ -1646,7 +1646,7 @@ module LibraryWindowTests =
             let window = mountLibraryWindow library samples materials
             // The protected source: none of the three lifecycle verbs render.
             commitFilter window "Monochromatic"
-            clickOn window ((ConstructorUiId.libraryEntryNode (ElementValueId "src-600")).value)
+            clickOn window ((ConstructorUiId.libraryEntryNode PresetIds.source600).value)
             Assert.False(isPresent window ConstructorUiId.libraryMarkInactiveButton.value, "a protected entry shows no Mark inactive verb")
             Assert.False(isPresent window ConstructorUiId.librarySupersedeButton.value, "a protected entry shows no Supersede verb")
             Assert.False(isPresent window ConstructorUiId.libraryMarkActiveButton.value, "a protected entry shows no Mark active verb")
