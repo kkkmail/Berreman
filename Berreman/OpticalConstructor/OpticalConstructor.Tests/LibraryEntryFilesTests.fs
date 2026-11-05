@@ -2,6 +2,7 @@ namespace OpticalConstructor.Tests
 
 open System
 open Xunit
+open Berreman.Geometry
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
@@ -9,8 +10,8 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 
-/// The kinds, provenance, ids and name rule of the library-entry files (spec 0050 001 §A, §B;
-/// .spec-md §3.11).
+/// The kinds, provenance, ids, name rule and content of the library-entry files, with the builders
+/// and decoders that join the content to the domain values (spec 0050 001 §A, §B; .spec-md §3.11, §5).
 module LibraryEntryFilesTests =
 
     let private kindsInTagOrder : LibraryEntryKind list =
@@ -80,3 +81,132 @@ module LibraryEntryFilesTests =
 
         let notAGuid = ElementValueId "not-a-guid"
         Assert.Equal<LibraryEntryId option>(None, notAGuid.tryToLibraryEntryId)
+
+    let private builtInCatalogue : EntryProvenance = BuiltInProvenance (CatalogueId (Guid.Parse "6d2f4b8a-0c1e-4f3a-9b5d-7e8f0a1b2c3d"))
+
+    let private okOf (result : Result<'Value, LibraryEntryError>) : 'Value =
+        match result with
+        | Ok value -> value
+        | Error error -> failwith $"expected Ok, got %A{error}"
+
+    let private langasite : MaterialEntry = builtInEntries |> List.find (fun e -> e.id = MaterialIds.langasite)
+
+    let private intensityDetector : DetectorPreset =
+        seedEntries
+        |> List.pick (fun entry ->
+            match entry with
+            | DetectorItem d when d.id = PresetIds.detectorIntensity -> Some d
+            | _ -> None)
+
+    let private glassCategory : MaterialCategory = standardCategories |> List.find (fun c -> c.id = CategoryIds.glass)
+
+    let private tunableTiSapphire : SourcePreset = SeedSources.tunables |> List.find (fun s -> s.id = PresetIds.tiSapphireTunable)
+
+    let private tiSapphire800 : SourcePreset = SeedSources.lasers |> List.find (fun s -> s.id = PresetIds.tiSapphire800)
+
+    /// A user's compound polarizer: two linear components 45° apart, in light order.
+    let private userCompoundPolarizer : PolarizerPreset =
+        let atDegrees (d : float) : Angle = Angle.degree (d * 1.0<Berreman.Constants.deg>)
+        let lp0 = Propagation.analyzerMueller IdealLinear (atDegrees 0.0)
+
+        {
+            id = ElementValueId "5c0e9a7b-3d2f-4e61-8a4b-9f1c2d3e4a5b"
+            name = EntryName "My LP + LP at 45°"
+            behavior = ConstantMueller [ { matrix = lp0; offset = atDegrees 0.0 }; { matrix = lp0; offset = atDegrees 45.0 } ]
+            category = CustomMueller
+            protection = UserManaged
+        }
+
+    let private schemaOf (kind : LibraryEntryKind) : EntrySchema = { kind = kind; version = FileSchemaVersion 1 }
+
+    [<Fact>]
+    let ``every kind's builder and decoder are inverse`` () =
+        let materialContent = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue langasite
+        Assert.Equal<EntrySchema>(schemaOf MaterialEntryKind, materialContent.schema)
+        Assert.Equal<CategoryId option>(Some CategoryIds.crystal, materialContent.categoryOpt)
+        Assert.Equal<Result<MaterialEntry, LibraryEntryError>>(Ok langasite, materialContent.toMaterialEntry)
+
+        let sampleContent = LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue SeedSamples.multilayerQw
+        Assert.Equal<EntrySchema>(schemaOf SampleEntryKind, sampleContent.schema)
+        Assert.Equal<Result<Sample, LibraryEntryError>>(Ok SeedSamples.multilayerQw, sampleContent.toSample)
+
+        let sourceContent = LibraryEntryContent.ofSourcePreset VersionNumber.first builtInCatalogue tunableTiSapphire |> okOf
+        Assert.Equal<EntrySchema>(schemaOf SourceEntryKind, sourceContent.schema)
+        Assert.Equal<Result<SourcePreset, LibraryEntryError>>(Ok tunableTiSapphire, sourceContent.toSourcePreset)
+
+        let detectorContent = LibraryEntryContent.ofDetectorPreset VersionNumber.first builtInCatalogue intensityDetector |> okOf
+        Assert.Equal<EntrySchema>(schemaOf DetectorEntryKind, detectorContent.schema)
+        Assert.Equal<Result<DetectorPreset, LibraryEntryError>>(Ok intensityDetector, detectorContent.toDetectorPreset)
+
+        let polarizerContent = LibraryEntryContent.ofPolarizerPreset VersionNumber.first.next UserProvenance userCompoundPolarizer |> okOf
+        Assert.Equal<EntrySchema>(schemaOf PolarizerEntryKind, polarizerContent.schema)
+        Assert.Equal<VersionNumber>(VersionNumber.first.next, polarizerContent.version)
+        Assert.Equal<Result<PolarizerPreset, LibraryEntryError>>(Ok userCompoundPolarizer, polarizerContent.toPolarizerPreset)
+
+        let categoryContent = LibraryEntryContent.ofMaterialCategory VersionNumber.first builtInCatalogue glassCategory |> okOf
+        Assert.Equal<EntrySchema>(schemaOf CategoryEntryKind, categoryContent.schema)
+        Assert.Equal<EntryName>(EntryName "Glass", categoryContent.name)
+        Assert.Equal<Result<MaterialCategory, LibraryEntryError>>(Ok glassCategory, categoryContent.toMaterialCategory)
+
+        let notMaterials = [ sampleContent; sourceContent; detectorContent; polarizerContent; categoryContent ]
+        Assert.Equal<CategoryId option list>(notMaterials |> List.map (fun _ -> None), notMaterials |> List.map (fun c -> c.categoryOpt))
+
+    [<Fact>]
+    let ``a decoder refuses another kind's content`` () =
+        let materialContent = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue langasite
+
+        match materialContent.toSample with
+        | Error (EntryKindMismatchErr _) -> ()
+        | other -> Assert.Fail($"expected EntryKindMismatchErr, got %A{other}")
+
+    [<Fact>]
+    let ``a preset or category filed under a provenance that disagrees is refused`` () =
+        match LibraryEntryContent.ofSourcePreset VersionNumber.first UserProvenance tunableTiSapphire with
+        | Error (ProvenanceMismatchErr _) -> ()
+        | other -> Assert.Fail($"a protected built-in source under a user provenance: expected ProvenanceMismatchErr, got %A{other}")
+
+        let userCategory : MaterialCategory =
+            {
+                id = CategoryId (Guid.Parse "1e7c5a3b-9d2f-4b8e-a6c0-3f5d7b9e1a2c")
+                name = CategoryName "Oxides"
+                visibility = SelectableOnCreate
+                origin = UserCategory
+            }
+
+        match LibraryEntryContent.ofMaterialCategory VersionNumber.first builtInCatalogue userCategory with
+        | Error (ProvenanceMismatchErr _) -> ()
+        | other -> Assert.Fail($"a user category under a built-in provenance: expected ProvenanceMismatchErr, got %A{other}")
+
+        let notAGuidPolarizer : PolarizerPreset = { userCompoundPolarizer with id = ElementValueId "my-own-polarizer" }
+
+        match LibraryEntryContent.ofPolarizerPreset VersionNumber.first UserProvenance notAGuidPolarizer with
+        | Error (EntryIdNotGuidErr _) -> ()
+        | other -> Assert.Fail($"a preset id that is not a GUID: expected EntryIdNotGuidErr, got %A{other}")
+
+        let upperCaseGuidPolarizer : PolarizerPreset = { userCompoundPolarizer with id = ElementValueId "5C0E9A7B-3D2F-4E61-8A4B-9F1C2D3E4A5B" }
+
+        match LibraryEntryContent.ofPolarizerPreset VersionNumber.first UserProvenance upperCaseGuidPolarizer with
+        | Error (EntryIdNotGuidErr _) -> ()
+        | other -> Assert.Fail($"a preset id in upper-case GUID text: expected EntryIdNotGuidErr, got %A{other}")
+
+    [<Fact>]
+    let ``a material without a category or a sample without a description does not decode`` () =
+        let materialContent = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue langasite
+
+        match { materialContent with categoryOpt = None }.toMaterialEntry with
+        | Error (MissingEntryFieldErr _) -> ()
+        | other -> Assert.Fail($"a material without a category: expected MissingEntryFieldErr, got %A{other}")
+
+        let sampleContent = LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue SeedSamples.multilayerQw
+
+        match { sampleContent with descriptionOpt = None }.toSample with
+        | Error (MissingEntryFieldErr _) -> ()
+        | other -> Assert.Fail($"a sample without a description: expected MissingEntryFieldErr, got %A{other}")
+
+    [<Fact>]
+    let ``an entry's file name is its name made safe plus its kind's extension`` () =
+        let sourceContent = LibraryEntryContent.ofSourcePreset VersionNumber.first builtInCatalogue tiSapphire800 |> okOf
+        Assert.Equal<FileName>(FileName "Ti_sapphire laser 800 nm.source-json", sourceContent.fileName)
+
+        let materialContent = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue langasite
+        Assert.Equal<FileName>(FileName "Langasite (La3Ga5SiO14).material-json", materialContent.fileName)
