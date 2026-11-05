@@ -62,45 +62,45 @@ module Library =
         let langasiteSiliconId : SampleId = Guid.Parse "8fa9867a-b1dd-4571-a83c-46a0acf16b4f" |> SampleId
 
     /// The frozen identity of every seeded light-source, detector and polarizer preset: the one place
-    /// a built-in preset's entry id is written (spec 0050 §3.3).
+    /// a built-in preset's entry id is written, each a GUID string minted once (spec 0050 §3.3).
     module PresetIds =
-        let source600 : ElementValueId = ElementValueId "src-600"
+        let source600 : ElementValueId = ElementValueId "0c4d0c67-137f-4c9f-8f31-d8837b725dc5"
 
-        let heNe633 : ElementValueId = ElementValueId "src-hene-633"
-        let heNe543 : ElementValueId = ElementValueId "src-hene-543"
-        let argon488 : ElementValueId = ElementValueId "src-ar-488"
-        let argon515 : ElementValueId = ElementValueId "src-ar-515"
-        let heCd442 : ElementValueId = ElementValueId "src-hecd-442"
-        let heCd325 : ElementValueId = ElementValueId "src-hecd-325"
-        let diode405 : ElementValueId = ElementValueId "src-diode-405"
-        let ruby694 : ElementValueId = ElementValueId "src-ruby-694"
-        let tiSapphire800 : ElementValueId = ElementValueId "src-tisa-800"
-        let ndYag1064 : ElementValueId = ElementValueId "src-ndyag-1064"
-        let ndYag532 : ElementValueId = ElementValueId "src-ndyag-532"
-        let ndYag355 : ElementValueId = ElementValueId "src-ndyag-355"
-        let ndYag266 : ElementValueId = ElementValueId "src-ndyag-266"
-        let erbium1550 : ElementValueId = ElementValueId "src-er-1550"
-        let co2Laser10600 : ElementValueId = ElementValueId "src-co2-10600"
+        let heNe633 : ElementValueId = ElementValueId "a77786fe-f38e-4af3-8cfc-bd94be27567e"
+        let heNe543 : ElementValueId = ElementValueId "ba473d8c-3eff-449c-84df-2e2e759c9306"
+        let argon488 : ElementValueId = ElementValueId "66b97a5c-5564-440c-9076-7c92c0148529"
+        let argon515 : ElementValueId = ElementValueId "5820d1d3-f4d0-4c99-ba4e-2642734e82a2"
+        let heCd442 : ElementValueId = ElementValueId "035b5b32-d944-4150-8fa0-5d0f93aaa871"
+        let heCd325 : ElementValueId = ElementValueId "f92c2370-a8e6-4cac-ad1f-42e6fa7a0f5e"
+        let diode405 : ElementValueId = ElementValueId "d4d22b59-58ee-483b-996c-ae8dc1a76705"
+        let ruby694 : ElementValueId = ElementValueId "657aad0a-943e-443e-8d18-868d5655ca75"
+        let tiSapphire800 : ElementValueId = ElementValueId "209ac4b5-fb84-4be8-a764-32d320522c42"
+        let ndYag1064 : ElementValueId = ElementValueId "6a34b9ee-3f1e-4409-9118-6eb34d5b1a93"
+        let ndYag532 : ElementValueId = ElementValueId "9fee5fb8-2789-484f-8cde-569095cb13ef"
+        let ndYag355 : ElementValueId = ElementValueId "b1838994-8787-47f4-889a-dca3a4978d3e"
+        let ndYag266 : ElementValueId = ElementValueId "3e8195ab-c4a1-45b1-83fb-f7a7956a020e"
+        let erbium1550 : ElementValueId = ElementValueId "361bf54d-8a62-4ed2-ad65-2d919db4879e"
+        let co2Laser10600 : ElementValueId = ElementValueId "7644ce3a-efa2-4e62-8ff0-50622d962e4d"
 
-        let mercuryG436 : ElementValueId = ElementValueId "src-hg-g-436"
-        let mercuryH405 : ElementValueId = ElementValueId "src-hg-h-405"
-        let mercuryI365 : ElementValueId = ElementValueId "src-hg-i-365"
-        let krf248 : ElementValueId = ElementValueId "src-krf-248"
-        let arf193 : ElementValueId = ElementValueId "src-arf-193"
-        let f2Excimer157 : ElementValueId = ElementValueId "src-f2-157"
-        let euv13p5 : ElementValueId = ElementValueId "src-euv-13p5"
-        let beuv6p7 : ElementValueId = ElementValueId "src-beuv-6p7"
+        let mercuryG436 : ElementValueId = ElementValueId "f92b95e0-9077-4d0a-b506-7eebd0671f99"
+        let mercuryH405 : ElementValueId = ElementValueId "08632463-ddb8-4a2b-a9e2-0b7c0e1d6f51"
+        let mercuryI365 : ElementValueId = ElementValueId "5a71721a-c4c4-475f-ace9-18531a0e8c40"
+        let krf248 : ElementValueId = ElementValueId "68c23345-c207-4dd1-9c67-bd82d2de4ab8"
+        let arf193 : ElementValueId = ElementValueId "a890f53e-4727-47f7-8392-5774c58219f9"
+        let f2Excimer157 : ElementValueId = ElementValueId "2f7a45ee-4fa2-4dd3-b0c5-f81e44eaa1c9"
+        let euv13p5 : ElementValueId = ElementValueId "eba5ec72-b129-416f-93bd-858b92116fe3"
+        let beuv6p7 : ElementValueId = ElementValueId "f7a747e7-a0da-4fae-a28e-0abd36d32b08"
 
-        let xenonMonochromator : ElementValueId = ElementValueId "src-xe-mono"
-        let tiSapphireTunable : ElementValueId = ElementValueId "src-tisa-tunable"
-        let supercontinuum : ElementValueId = ElementValueId "src-supercontinuum"
-        let euvBeamline : ElementValueId = ElementValueId "src-euv-beamline"
+        let xenonMonochromator : ElementValueId = ElementValueId "d09c967d-18f5-437e-b119-64f645e5b431"
+        let tiSapphireTunable : ElementValueId = ElementValueId "cb376458-dc3c-41f9-8a5f-54f0f575978b"
+        let supercontinuum : ElementValueId = ElementValueId "090b09f6-99f4-403b-b25f-e085383215e1"
+        let euvBeamline : ElementValueId = ElementValueId "28ec84c4-fd9b-49e9-878e-0ef731be686f"
 
-        let detectorIntensity : ElementValueId = ElementValueId "det-intensity"
-        let detectorEllipsometer : ElementValueId = ElementValueId "det-ellipsometer"
-        let polarizerLp : ElementValueId = ElementValueId "pol-lp"
-        let polarizerCpLeft : ElementValueId = ElementValueId "pol-cp-left"
-        let polarizerCpRight : ElementValueId = ElementValueId "pol-cp-right"
+        let detectorIntensity : ElementValueId = ElementValueId "ffa07a4d-1fd4-4e71-83e9-d15f5dfa25b6"
+        let detectorEllipsometer : ElementValueId = ElementValueId "0340c670-c323-40c7-9b00-5af7a1ec41af"
+        let polarizerLp : ElementValueId = ElementValueId "f1d38e6a-16e7-405d-9678-45c990f5a155"
+        let polarizerCpLeft : ElementValueId = ElementValueId "7fb025f4-d117-4025-9008-d11f2132c34a"
+        let polarizerCpRight : ElementValueId = ElementValueId "83c1e5a0-48da-43df-bcdd-8d0b37295811"
 
     /// A specific version of a sample entry (spec 0038 Part H): the sample identity plus the version
     /// number. Mirrors `MaterialVersionId` (`MaterialLibrary.fs`) — a versioned binding (an
@@ -408,8 +408,9 @@ module Library =
         | DetectorItem of DetectorPreset
         | PolarizerItem of PolarizerPreset
 
-        /// The entry id (== the `valueId` written onto the bound table element). A sample's elevated
-        /// `SampleId` crosses this seam as its Guid STRING form (spec 0033 step 002).
+        /// The entry id (== the `valueId` written onto the bound table element): always the string of
+        /// a GUID — a sample's `SampleId`, a preset's `PresetIds` member, a user source's minted
+        /// `newSourceId` (spec 0033 step 002; spec 0050 §3.3).
         member this.entryId : ElementValueId =
             match this with
             | SampleItem s -> s.id.toElementValueId
@@ -646,8 +647,9 @@ module Library =
         }
 
     /// Mint the entry id of a NEW user source (spec 0046) — at the editor's window open, like a new
-    /// sample's `SampleId`, so the launcher keys the editor by the id Save persists under.
-    let newSourceId () : ElementValueId = ElementValueId $"src-%s{Guid.NewGuid().ToString()}"
+    /// sample's `SampleId`, so the launcher keys the editor by the id Save persists under. The id is a
+    /// plain GUID string, as a sample's is (`SampleId.toElementValueId`; spec 0050 §3.3).
+    let newSourceId () : ElementValueId = ElementValueId (string (Guid.NewGuid ()))
 
     /// A single-layer thin-film structure between vacuum (the common seed shape). The layer pins
     /// version one of the material (spec 0038 step 022 — the seeds carry version-pinned references).

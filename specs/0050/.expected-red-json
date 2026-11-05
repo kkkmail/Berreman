@@ -23,6 +23,7 @@
       "OpticalConstructor.Ui.Tests.LightSourceEditorTests.Add source opens the editor on a freshly minted source id"
     ]
   },
+  "19": {},
   "2": {},
   "3": {
     "constructor-unit-tests": [

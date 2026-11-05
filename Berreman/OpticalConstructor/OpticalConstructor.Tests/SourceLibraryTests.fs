@@ -157,3 +157,24 @@ module SourceLibraryTests =
         | Error e -> Assert.Fail($"%A{e}")
         // The read-only seeded Library alone never sees it (the gap the live Library closes).
         Assert.Equal(Ok None, (createInMemory ()).tryGetEntry entryId)
+
+    /// Spec 0050 §3.3: every id is now a GUID, so `liveLibrary`'s sample probe parses a preset's id too;
+    /// it finds no sample there and falls through to the presets.
+    [<Fact>]
+    let ``the live Library resolves a seeded preset, a user source and a sample by their GUID ids`` () =
+        let samples = SampleProxy.createInMemory VersionsInUse.empty
+        let sources = SourceProxy.createInMemory ()
+        let live = liveLibrary (createInMemory ()) samples sources
+        let mine : SourcePreset = { id = newSourceId (); name = MaterialLibrary.EntryName "My GUID line"; waveLength = WaveLength.nm 532.0<nm>; tuning = FixedLine; protection = UserManaged }
+        Assert.Equal(Ok (), sources.saveSource mine)
+        let created = { SeedSamples.glassFilm200 with id = newSampleId (); name = MaterialLibrary.EntryName "My GUID film" }
+        Assert.Equal(Ok (), samples.saveSample created)
+        match live.tryGetEntry PresetIds.detectorEllipsometer with
+        | Ok (Some (DetectorItem d)) -> Assert.Equal<DetectorKind>(Ellipsometer, d.kind)
+        | other -> Assert.Fail($"the ellipsometer preset must resolve, got %A{other}")
+        Assert.Equal(Ok (Some (SourceItem mine)), live.tryGetEntry mine.id)
+        match live.tryGetEntry created.id.toElementValueId with
+        | Ok (Some (SampleItem s)) -> Assert.Equal<SampleId>(created.id, s.id)
+        | other -> Assert.Fail($"the saved sample must resolve, got %A{other}")
+        let nothing = ElementValueId (string (System.Guid.NewGuid ()))
+        Assert.Equal(Ok None, live.tryGetEntry nothing)
