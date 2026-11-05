@@ -413,7 +413,7 @@ module DispersionModels =
         /// parameter set (with units) and one box per oscillator-list element; the raw
         /// `SumOfTerms` escape hatch exposes every term scalar of its n/k (or complex ε)
         /// formulas, so it is fully editable too; over a tabulated n,k table, a
-        /// transcendental or published law, or the evaluated case it exposes none.
+        /// transcendental law or a published law it exposes none.
         member this.parameters : ModelParameter list =
             let p = ModelParameter.create
             let listParams (name : string) (label : string) (unitOpt : CoefficientUnit option) (xs : float list) (rebuild : float list -> DispersionModel) : ModelParameter list =
@@ -493,15 +493,14 @@ module DispersionModels =
                 | ComplexEps cF ->
                     complexFormulaParams PermittivitySlot cF (fun f -> SumOfTerms (ComplexEps f))
                 // A tabulated n,k table (spec 0050 step 2), a transcendental law (steps 5
-                // and 7), a published law (step 8) and the evaluated case carry no finite
-                // term data, so they expose no editable term scalars.
+                // and 7) and a published law (step 8) carry no finite term data, so they
+                // expose no editable term scalars.
                 | TabulatedNK _
                 | TaucLorentzAxis _
                 | GaussianOscillatorAxis _
                 | ForouhiBloomerAxis _
                 | BrendelBormannAxis _
-                | PublishedLawAxis _
-                | EpsAxisEvaluated _ -> []
+                | PublishedLawAxis _ -> []
 
     /// The isothermal complex index at the reference temperature: the analytic
     /// formula evaluated against the model's abscissa (λ for Sellmeier/Cauchy in

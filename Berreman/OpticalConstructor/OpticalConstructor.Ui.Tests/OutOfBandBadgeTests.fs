@@ -1,6 +1,5 @@
 namespace OpticalConstructor.Ui.Tests
 
-open System.Numerics
 open Avalonia
 open OpticalConstructor.Controls
 open Avalonia.Controls
@@ -10,13 +9,13 @@ open Avalonia.FuncUI
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open Xunit
-open Berreman.MathNetNumericsMath
 open Berreman.MaterialProperties
 open Berreman.Dispersion
 open Berreman.Media
 open Berreman.Constants
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Experiments
@@ -48,9 +47,10 @@ module OutOfBandBadgeTests =
             | _ -> None)
 
     /// A dispersive material complexity DEFINED over 300–700 nm (the per-axis content is irrelevant to
-    /// the diagnostic — only the segment interval is read).
+    /// the diagnostic — only the segment interval is read — so a flat data axis seeds it: the constant
+    /// `RealNK` n = 1.5, k = 0 that `ConstantNK` lowers to, spec 0050 step 9).
     let private dispersiveComplexity : MaterialComplexity =
-        let axis = EpsAxisEvaluated (fun _ -> ComplexRefractionIndex (Complex.create 1.5 0.0))
+        let axis = (ConstantNK { n = 1.5; k = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }).toEpsAxis
         {
             eps =
                 EpsWithDispValue

@@ -86,11 +86,11 @@ module LibraryFacets =
         /// (Sellmeier lowers to complex-ε terms, the transcendental four to their
         /// laws); recognizing term shapes back into model kinds would re-derive
         /// physics (§D.0 forbids it). The facet therefore classifies the storable
-        /// shapes, a tabulated n,k table (`TabulatedNK`, spec 0050 step 2) included,
-        /// and the four transcendental laws (steps 5 and 7) and the coded presets'
-        /// published laws (step 8) share the evaluated key;
-        /// `DispersionModel.facetKey` (below) pins how each `DispersionModel` case
-        /// maps onto this vocabulary.
+        /// shapes: the two term-data shapes, a tabulated n,k table (`TabulatedNK`,
+        /// spec 0050 step 2), and one "Evaluated (transcendental)" key shared by the
+        /// four transcendental laws (steps 5 and 7) and the coded presets' published
+        /// laws (step 8); `DispersionModel.facetKey` (below) pins how each
+        /// `DispersionModel` case maps onto this vocabulary.
         member this.facetKey : DiscreteKey =
             match this with
             | RealNK _ -> DiscreteKey "Real n/k terms"
@@ -100,8 +100,7 @@ module LibraryFacets =
             | GaussianOscillatorAxis _
             | ForouhiBloomerAxis _
             | BrendelBormannAxis _
-            | PublishedLawAxis _
-            | EpsAxisEvaluated _ -> DiscreteKey "Evaluated (transcendental)"
+            | PublishedLawAxis _ -> DiscreteKey "Evaluated (transcendental)"
 
     type DispersionModel with
 
@@ -110,7 +109,7 @@ module LibraryFacets =
         /// `ConstantNK`/`Cauchy`/raw real-n/k `SumOfTerms` → real n/k terms;
         /// `Sellmeier`/`Lorentz`/`Drude`/raw complex-ε `SumOfTerms` → complex ε
         /// terms; the transcendental four (`TaucLorentz`/`GaussianOscillator`/
-        /// `ForouhiBloomer`/`BrendelBormann`) → evaluated.
+        /// `ForouhiBloomer`/`BrendelBormann`) → their laws' "Evaluated (transcendental)" key.
         member this.facetKey : DiscreteKey = this.toEpsAxis.facetKey
 
     type Handedness with

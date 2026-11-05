@@ -1,11 +1,10 @@
 namespace OpticalConstructor.Tests
 
-open System.Numerics
-open Berreman.MathNetNumericsMath
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Dispersion
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.OutOfBandDiagnostic
@@ -33,9 +32,10 @@ module OutOfBandDiagnosticTests =
         { eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.5)); magnetic = None; active = None }
 
     /// A dispersive material complexity whose eps carries exactly the given segment intervals (the
-    /// per-axis dispersion content is irrelevant to the diagnostic, so a flat evaluated axis seeds it).
+    /// per-axis dispersion content is irrelevant to the diagnostic, so a flat data axis seeds it: the
+    /// constant `RealNK` n = 1.5, k = 0 that `ConstantNK` lowers to, spec 0050 step 9).
     let private dispersiveComplexity (segments : WaveLengthInterval list) : MaterialComplexity =
-        let axis = EpsAxisEvaluated (fun _ -> ComplexRefractionIndex (Complex.create 1.5 0.0))
+        let axis = (ConstantNK { n = 1.5; k = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }).toEpsAxis
         {
             eps =
                 segments

@@ -650,20 +650,12 @@ module Dispersion =
                 Complex (n, k) |> ComplexRefractionIndex
 
 
-    /// The dispersion of ONE principal axis: either separate real n and k
-    /// formulas (k = the zero formula for a transparent medium), one complex
-    /// eps formula for inherently complex models (Lorentz / Drude), a tabulated
-    /// n,k table (`TabulatedNK`, spec 0050 step 2), a Tauc–Lorentz or
-    /// Gaussian-oscillator law (spec 0050 step 5), a Forouhi–Bloomer or
-    /// Brendel–Bormann law (step 7), a coded preset's published law (step 8), or an
-    /// evaluated-directly closure, which nothing built in carries any more — it carries a
-    /// `WaveLength -> ComplexRefractionIndex` exactly as the engine's own `EpsWithDisp`
-    /// case does, and `complexIndex` applies it. A function-typed case removes F#'s
-    /// structural equality type-wide, so the type provides custom equality: every data
-    /// case compares structurally (keeping the `DispersionModel` / `EpsWithDispValue` /
-    /// `MaterialComplexity` equality the round-trip tests use) and the evaluated case
-    /// compares by closure reference.
-    [<CustomEquality; NoComparison>]
+    /// The dispersion of ONE principal axis, as data (spec 0050 step 9, 001 §B): term data, either
+    /// separate real n and k formulas (`RealNK`; k = the zero formula for a transparent medium) or one
+    /// complex eps formula for an inherently complex model (`ComplexEps`; Lorentz / Drude), a tabulated
+    /// n,k table (`TabulatedNK`, step 2), the four oscillator laws (Tauc–Lorentz and Gaussian, step 5;
+    /// Forouhi–Bloomer and Brendel–Bormann, step 7) or a coded preset's published law (step 8). Every
+    /// case is data, so equality and hashing are F#'s structural ones.
     type EpsAxisDispersion =
         | RealNK of RealNkFormulas
         | ComplexEps of ComplexDispersionFormula
@@ -673,7 +665,6 @@ module Dispersion =
         | ForouhiBloomerAxis of ForouhiBloomerLaw
         | BrendelBormannAxis of BrendelBormannLaw
         | PublishedLawAxis of PublishedIndexLaw
-        | EpsAxisEvaluated of (WaveLength -> ComplexRefractionIndex)
 
         member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
             match this with
@@ -688,35 +679,6 @@ module Dispersion =
             | ForouhiBloomerAxis law -> law.complexIndex w
             | BrendelBormannAxis law -> law.complexIndex w
             | PublishedLawAxis law -> law.complexIndex w
-            | EpsAxisEvaluated f -> f w
-
-        override this.Equals (o : obj) : bool =
-            match o with
-            | :? EpsAxisDispersion as other ->
-                match this, other with
-                | RealNK f1, RealNK f2 -> f1 = f2
-                | ComplexEps e1, ComplexEps e2 -> e1 = e2
-                | TabulatedNK t1, TabulatedNK t2 -> t1 = t2
-                | TaucLorentzAxis l1, TaucLorentzAxis l2 -> l1 = l2
-                | GaussianOscillatorAxis l1, GaussianOscillatorAxis l2 -> l1 = l2
-                | ForouhiBloomerAxis l1, ForouhiBloomerAxis l2 -> l1 = l2
-                | BrendelBormannAxis l1, BrendelBormannAxis l2 -> l1 = l2
-                | PublishedLawAxis l1, PublishedLawAxis l2 -> l1 = l2
-                | EpsAxisEvaluated f1, EpsAxisEvaluated f2 -> LanguagePrimitives.PhysicalEquality f1 f2
-                | _ -> false
-            | _ -> false
-
-        override this.GetHashCode () : int =
-            match this with
-            | RealNK f -> hash (0, f.nFormula, f.kFormula)
-            | ComplexEps e -> hash (1, e)
-            | TabulatedNK t -> hash (2, t)
-            | TaucLorentzAxis l -> hash (3, l)
-            | GaussianOscillatorAxis l -> hash (4, l)
-            | ForouhiBloomerAxis l -> hash (5, l)
-            | BrendelBormannAxis l -> hash (6, l)
-            | PublishedLawAxis l -> hash (7, l)
-            | EpsAxisEvaluated f -> LanguagePrimitives.PhysicalHash f
 
 
     /// One isotropic dispersion segment: a single axis over one interval.

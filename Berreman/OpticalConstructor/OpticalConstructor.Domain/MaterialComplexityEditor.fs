@@ -177,8 +177,8 @@ type MaterialComplexityEditState =
 
 /// The typed rejections of the edit arms (errors as values, each case carrying a
 /// diagnostic `reason` — never a throw). Derivation (`toComplexity`) no longer
-/// rejects: every `DispersionModel` lowers (the transcendental cases through the
-/// evaluated segment), so there is no `SegmentNotLowerable`.
+/// rejects: every `DispersionModel` lowers (the transcendental cases to their law
+/// segment, spec 0050 steps 5 and 7), so there is no `SegmentNotLowerable`.
 type MaterialComplexityEditError =
     /// A segment edit aimed at an index outside the segment list.
     | NoSuchSegmentErr of reason : string
@@ -753,7 +753,8 @@ type MaterialComplexityEditState with
     /// The dispersive eps of the current anisotropy: each edit segment lowers its
     /// active axis models into the engine's per-symmetry segment records through
     /// `DispersionModels.toEpsAxis`. Lowering is TOTAL — every model lowers, the
-    /// transcendental cases to the evaluated segment — so this never fails.
+    /// transcendental cases to their law segment (spec 0050 steps 5 and 7) — so this
+    /// never fails.
     member private state.dispersiveEps : EpsDispersiveValue =
         match state.anisotropy with
         | Isotropic ->
@@ -783,8 +784,8 @@ type MaterialComplexityEditState with
     /// Derive the `MaterialComplexity` the state currently denotes. Each toggle
     /// off means its aspect's DEFAULT (constant eps / absent option) regardless of
     /// the stored facet — the lossless-uncheck mechanic. Derivation never fails now
-    /// (every segment model lowers, the transcendental cases to the evaluated
-    /// segment); the `Result` return is kept for the consumer contract, mirroring
+    /// (every segment model lowers, the transcendental cases to their law segment);
+    /// the `Result` return is kept for the consumer contract, mirroring
     /// `ofComplexity`.
     member state.toComplexity : Result<MaterialComplexity, MaterialComplexityEditError> =
         let eps =
@@ -857,25 +858,25 @@ type MaterialComplexity with
     /// misleading `SumOfTerms` segment the user cannot meaningfully change. Such an
     /// entry opens VIEW-ONLY instead: the host editability seams
     /// (`MaterialEditorView.init`, `MaterialsWindowModel.editableSelection`) gate on
-    /// this predicate rather than on `complexity` presence alone. That covers the
-    /// evaluated closure, a tabulated n,k table (`TabulatedNK`, spec 0050 step 2), a
-    /// transcendental law (steps 5 and 7) and a published law (`PublishedLawAxis`, the
-    /// form the re-seeded Silicon / Langasite carry, step 8). A constant or
-    /// finite-term (`RealNK` / `ComplexEps`) dispersion is fully editable.
+    /// this predicate rather than on `complexity` presence alone. A constant eps is
+    /// editable, and a dispersive one exactly when every axis is `RealNK` or
+    /// `ComplexEps` term data (spec 0050 step 9). A tabulated n,k table (step 2), a
+    /// transcendental law (steps 5 and 7) and a published law (the form the re-seeded
+    /// Silicon / Langasite carry, step 8) open view-only.
     member this.isEditable : bool =
-        let axisHasNoTermData (axis : EpsAxisDispersion) : bool =
+        let axisIsEditable (axis : EpsAxisDispersion) : bool =
             match axis with
-            | EpsAxisEvaluated _
+            | RealNK _
+            | ComplexEps _ -> true
             | TabulatedNK _
             | TaucLorentzAxis _
             | GaussianOscillatorAxis _
             | ForouhiBloomerAxis _
             | BrendelBormannAxis _
-            | PublishedLawAxis _ -> true
-            | RealNK _ | ComplexEps _ -> false
+            | PublishedLawAxis _ -> false
         match this.eps with
         | EpsWithoutDispValue _ -> true
-        | EpsWithDispValue dispersive -> not (dispersive.axisDispersions |> List.exists axisHasNoTermData)
+        | EpsWithDispValue dispersive -> dispersive.axisDispersions |> List.forall axisIsEditable
 
 /// Seed the editor from an existing `MaterialComplexity` (the entry's editable
 /// source of truth). Verbatim — no snapping, no clamping — so

@@ -109,6 +109,16 @@ type EpsWithDispValueTests() =
         for (w, expected) in references do
             Assert.Equal<ComplexRefractionIndex>(expected, complexIndex w)
 
+    /// Builds an axis twice from `value` and once from `changed`, each build fresh, with no shared
+    /// array or list. The two equal builds MUST be equal under F#'s structural equality and hash
+    /// equal, and the changed build MUST differ (spec 0050 step 9).
+    let verifyStructuralEquality (caseName : string) (build : 'Param -> EpsAxisDispersion) (value : 'Param) (changed : 'Param) : unit =
+        let first = build value
+        let second = build value
+        Assert.True((first = second), $"{caseName}: two separately built equal values must be equal")
+        Assert.True((hash first = hash second), $"{caseName}: two separately built equal values must hash equal")
+        Assert.False((first = build changed), $"{caseName}: a changed value must break equality")
+
 
     [<Fact>]
     member _.``Constant isotropic transparent value reproduces the directly-constructed Eps`` () =
@@ -515,3 +525,54 @@ type EpsWithDispValueTests() =
 
         for tag in [ 0; 4; -1 ] do
             Assert.Equal<PublishedIndexLaw option>(None, PublishedIndexLaw.tryOfWire tag)
+
+
+    [<Fact>]
+    member _.``Equal axis data of every case is equal and hashes equal, and a changed value breaks equality`` () =
+        verifyStructuralEquality "RealNK" (fun (a : double) -> RealNK { nFormula = cauchyFormula a 0.004; kFormula = constFormula 0.01 }) 1.5 1.6
+
+        verifyStructuralEquality "ComplexEps"
+            (fun (eps : Complex) ->
+                ComplexEps { terms = [ { lambda = Complex.Zero; coefficients = [| eps |]; power = 1; multiplier = Complex.One } ]; wavelengthScale = 1.0e-6<meter> })
+            (Complex (4.0, 0.5))
+            (Complex (4.0, 0.6))
+
+        // The k sample at 500 nm; the n column is copied so the two builds share no array.
+        verifyStructuralEquality "TabulatedNK" (fun (k : double) -> TabulatedNK (tableOf tableWaveLengthsNm (Array.copy tableN) (Array.updateAt 1 k tableK))) 0.10 0.12
+
+        verifyStructuralEquality "TaucLorentzAxis"
+            (fun (bandGap : double) ->
+                TaucLorentzAxis { epsInf = 1.5; amplitude = 100.0; resonance = 3.5; broadening = 0.8; bandGap = bandGap; abscissa = electronVolt })
+            2.2
+            2.3
+
+        verifyStructuralEquality "GaussianOscillatorAxis"
+            (fun (energy : double) ->
+                GaussianOscillatorAxis { epsInf = 2.0; amplitude = 0.5; energy = energy; broadening = 0.4; abscissa = electronVolt })
+            2.5
+            2.6
+
+        verifyStructuralEquality "ForouhiBloomerAxis"
+            (fun (c : double) ->
+                ForouhiBloomerAxis { nInf = sqrt 3.453; a = 0.865; b = 6.703; c = c; bandGap = 0.906; abscissa = electronVolt })
+            13.237
+            13.3
+
+        // The second oscillator's resonance, one element of a per-oscillator list.
+        verifyStructuralEquality "BrendelBormannAxis"
+            (fun (resonance : double) ->
+                BrendelBormannAxis
+                    {
+                        plasmaFrequency = 9.03
+                        intrabandStrength = 0.770
+                        intrabandDamping = 0.050
+                        strength = [ 0.054; 0.050; 0.312; 0.719; 1.648 ]
+                        resonance = [ 0.218; resonance; 4.069; 6.137; 27.97 ]
+                        damping = [ 0.074; 0.035; 0.083; 0.125; 0.179 ]
+                        broadening = [ 0.742; 0.349; 0.830; 1.246; 1.795 ]
+                        abscissa = electronVolt
+                    })
+            2.885
+            2.9
+
+        verifyStructuralEquality "PublishedLawAxis" PublishedLawAxis SiliconIndexLaw LangasiteOrdinaryIndexLaw
