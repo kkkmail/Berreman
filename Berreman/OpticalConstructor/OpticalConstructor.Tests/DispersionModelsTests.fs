@@ -323,16 +323,17 @@ module DispersionModelsTests =
     [<Fact>]
     let ``AC-B5 transcendental models lower to the evaluated case and match evaluate`` () =
         // TaucLorentz / GaussianOscillator are not finite term sums (band-gap step,
-        // exp): toEpsAxis lowers them to EpsAxisEvaluated carrying `evaluate`, so its
-        // complexIndex reproduces `evaluate` exactly and toOpticalProperties keeps
-        // them fully working through the evaluated segment.
+        // exp): toEpsAxis lowers each to its own core law (spec 0050 step 5), the one
+        // kernel `evaluate` answers too, so its complexIndex reproduces `evaluate`
+        // exactly and toOpticalProperties keeps them fully working through the law segment.
         let tl = TaucLorentz (taucLorentzCoefficients ())
         let go = GaussianOscillator (gaussianOscillatorCoefficients ())
         for model in [ tl; go ] do
             let axis = model.toEpsAxis
-            match axis with
-            | EpsAxisEvaluated _ -> ()
-            | other -> Assert.Fail($"a transcendental model must lower to the evaluated case, got {other}")
+            match model, axis with
+            | TaucLorentz _, TaucLorentzAxis _
+            | GaussianOscillator _, GaussianOscillatorAxis _ -> ()
+            | _, other -> Assert.Fail($"a transcendental model must lower to its own law case, got {other}")
             let f = model.evaluate
             let op = model.toOpticalProperties
             for w in visibleGrid do
@@ -407,11 +408,11 @@ module DispersionModelsTests =
                     wavelengthUnit = ElectronVolt
                     thermoOptic = None
                 }
-        // A transcendental model is now total too: one isotropic segment carrying
-        // the evaluated case (no lowering error).
+        // A transcendental model is total too: one isotropic segment carrying its
+        // law (spec 0050 step 5; no lowering error).
         match tl.toEpsValue with
-        | EpsWithDispValue (IsotropicDispersive [ { dispersion = EpsAxisEvaluated _ } ]) -> ()
-        | other -> Assert.Fail($"a transcendental model must become one evaluated segment, got {other}")
+        | EpsWithDispValue (IsotropicDispersive [ { dispersion = TaucLorentzAxis _ } ]) -> ()
+        | other -> Assert.Fail($"a Tauc-Lorentz model must become one law segment, got {other}")
 
     [<Fact>]
     let ``AC-B5 toOpticalProperties routes a lowerable model through the serializable tree`` () =

@@ -18,7 +18,8 @@ open OpticalConstructor.Domain.Units
 /// finite-term model to the serializable per-axis term data of `Dispersion.fs`
 /// (spec 0033 §B), and `toOpticalProperties` composes through
 /// `EpsWithDispValue.toEpsWithDisp` exactly as `Silicon`/`Langasite` build by hand
-/// (`OpticalProperties/Dispersive.fs:87,52`); the transcendental cases stay
+/// (`OpticalProperties/Dispersive.fs:87,52`); Tauc–Lorentz and Gaussian lower to
+/// their core law (spec 0050 step 5), and Forouhi–Bloomer and Brendel–Bormann stay
 /// closure-evaluated. No parallel tensor type, no re-derived EVD/matrix-exponential
 /// math.
 module DispersionModels =
@@ -39,6 +40,22 @@ module DispersionModels =
             dndT : float<1/K>
             referenceTemperature : float<K>
         }
+
+    type AbscissaKind with
+
+        /// Classify a tabulation unit against the formula variable. The scale and the
+        /// reciprocal numerator are derived THROUGH the `Units` seam (§D.11):
+        /// scale = `toMeters u 1.0` for length units; the reciprocal units use
+        /// x = λ[nm] and numerator = `fromMeters u (toMeters Nanometer 1.0)`
+        /// (`evNmProduct` for eV, the cm⁻¹ relation for `Wavenumber`) — no literal
+        /// factor appears here.
+        static member ofUnit (u : UnitOfMeasure) : AbscissaKind =
+            match u with
+            | Meter | Millimeter | Micrometer | Nanometer | Angstrom ->
+                LinearInX (toMeters u (UnitMagnitude 1.0))
+            | ElectronVolt | Wavenumber ->
+                let nanometer = toMeters Nanometer (UnitMagnitude 1.0)
+                ReciprocalInX { wavelengthScale = nanometer; numerator = (fromMeters u nanometer).value }
 
     /// Sellmeier `n² = 1 + Σ bᵢ·λ²/(λ² − cᵢ)`. The `c` terms are conventionally
     /// µm², so `wavelengthUnit` is typically `Micrometer`.
@@ -101,6 +118,17 @@ module DispersionModels =
             thermoOptic : ThermoOptic option
         }
 
+        /// The isothermal law (spec 0050 step 5): `thermoOptic` is not carried; `evaluateAt` adds it on top.
+        member this.toTaucLorentzLaw : TaucLorentzLaw =
+            {
+                epsInf = this.epsInf
+                amplitude = this.amplitude
+                resonance = this.resonance
+                broadening = this.broadening
+                bandGap = this.bandGap
+                abscissa = AbscissaKind.ofUnit this.wavelengthUnit
+            }
+
     /// Gaussian oscillator: `ε₂(E) = A·exp(−((E − E₀)/σ)²)`, `ε₁ = εInf`.
     [<Softellect.Sys.NumericCarrier("the four coefficients of one Gaussian-oscillator formula, read by its evaluation kernel at every wavelength of a sweep (R3; as Dispersion.DispersionTerm)")>]
     type GaussianOscillatorCoefficients =
@@ -112,6 +140,16 @@ module DispersionModels =
             wavelengthUnit : UnitOfMeasure
             thermoOptic : ThermoOptic option
         }
+
+        /// The isothermal law (spec 0050 step 5): `thermoOptic` is not carried; `evaluateAt` adds it on top.
+        member this.toGaussianOscillatorLaw : GaussianOscillatorLaw =
+            {
+                epsInf = this.epsInf
+                amplitude = this.amplitude
+                energy = this.energy
+                broadening = this.broadening
+                abscissa = AbscissaKind.ofUnit this.wavelengthUnit
+            }
 
     /// Forouhi–Bloomer five-parameter amorphous form (Forouhi & Bloomer,
     /// Phys. Rev. B 34, 7018 (1986)): `k(E) = a·(E − bandGap)²/(E² − b·E + c)`
@@ -431,10 +469,12 @@ module DispersionModels =
                     @ realFormulaParams ExtinctionSlot nk.kFormula (fun f -> SumOfTerms (RealNK { nk with kFormula = f }))
                 | ComplexEps cF ->
                     complexFormulaParams PermittivitySlot cF (fun f -> SumOfTerms (ComplexEps f))
-                // A tabulated n,k table (spec 0050 step 2) and the evaluated case (a
-                // transcendental model lowered to its closure) carry no finite term data,
-                // so they expose no editable term scalars.
+                // A tabulated n,k table (spec 0050 step 2), a transcendental law (step 5)
+                // and the evaluated case carry no finite term data, so they expose no
+                // editable term scalars.
                 | TabulatedNK _
+                | TaucLorentzAxis _
+                | GaussianOscillatorAxis _
                 | EpsAxisEvaluated _ -> []
 
     /// Term count of the Faddeeva rational series below. Weideman shows N = 24
@@ -489,7 +529,8 @@ module DispersionModels =
     /// formula evaluated against the model's abscissa (λ for Sellmeier/Cauchy in
     /// `wavelengthUnit`; photon energy E for the oscillator models). The abscissa
     /// is obtained from the canonical meters via `Units.fromMeters` (the sole
-    /// conversion seam, §D.11) — no literal factor appears here.
+    /// conversion seam, §D.11) — no literal factor appears here. Tauc–Lorentz and
+    /// Gaussian answer their core law's index, the one kernel (spec 0050 step 5).
     let private baseIndex (model : DispersionModel) (w : WaveLength) : Complex =
         let x = (fromMeters model.wavelengthUnit w.value).value
         match model with
@@ -509,15 +550,11 @@ module DispersionModels =
             let eps = Complex(c.epsInf, 0.0) - Complex(c.plasmaFrequency * c.plasmaFrequency, 0.0) / Complex(x * x, c.dampingFrequency * x)
             Complex.Sqrt eps
         | TaucLorentz c ->
-            let eps2 =
-                if x > c.bandGap then
-                    (c.amplitude * c.resonance * c.broadening * (x - c.bandGap) ** 2.0)
-                    / (x * ((x * x - c.resonance * c.resonance) ** 2.0 + c.broadening * c.broadening * x * x))
-                else 0.0
-            Complex.Sqrt (Complex(c.epsInf, eps2))
+            let (ComplexRefractionIndex n) = c.toTaucLorentzLaw.complexIndex w
+            n
         | GaussianOscillator c ->
-            let d = (x - c.energy) / c.broadening
-            Complex.Sqrt (Complex(c.epsInf, c.amplitude * exp (-(d * d))))
+            let (ComplexRefractionIndex n) = c.toGaussianOscillatorLaw.complexIndex w
+            n
         | ForouhiBloomer c ->
             let q = 0.5 * sqrt (4.0 * c.c - c.b * c.b)
             let b0 = c.a / q * (-0.5 * c.b * c.b + c.bandGap * c.b - c.bandGap * c.bandGap + c.c)
@@ -581,22 +618,6 @@ module DispersionModels =
     // AC-B5 grid tests in OpticalConstructor.Tests pin the two encodings of each
     // formula together.
     // ==========================================================================
-
-    type AbscissaKind with
-
-        /// Classify a tabulation unit against the formula variable. The scale and the
-        /// reciprocal numerator are derived THROUGH the `Units` seam (§D.11):
-        /// scale = `toMeters u 1.0` for length units; the reciprocal units use
-        /// x = λ[nm] and numerator = `fromMeters u (toMeters Nanometer 1.0)`
-        /// (`evNmProduct` for eV, the cm⁻¹ relation for `Wavenumber`) — no literal
-        /// factor appears here.
-        static member ofUnit (u : UnitOfMeasure) : AbscissaKind =
-            match u with
-            | Meter | Millimeter | Micrometer | Nanometer | Angstrom ->
-                LinearInX (toMeters u (UnitMagnitude 1.0))
-            | ElectronVolt | Wavenumber ->
-                let nanometer = toMeters Nanometer (UnitMagnitude 1.0)
-                ReciprocalInX { wavelengthScale = nanometer; numerator = (fromMeters u nanometer).value }
 
     /// The zero formula — the k of a transparent medium.
     let private zeroFormula (scale : float<Berreman.Constants.meter>) : DispersionFormula =
@@ -672,14 +693,16 @@ module DispersionModels =
         /// Lorentz and Drude to `ComplexEps` inverse terms (complex is genuine — the
         /// damping); `SumOfTerms` to itself. Reciprocal-abscissa tabulations (eV,
         /// cm⁻¹ — the oscillator convention) substitute abscissa = k/x and stay exact
-        /// through `rationalXSquaredTerms`. TaucLorentz / GaussianOscillator /
-        /// ForouhiBloomer / BrendelBormann are NOT finite term sums (band-gap steps,
-        /// exp, the Faddeeva function), so they lower to the evaluated case
-        /// `EpsAxisEvaluated` carrying `evaluate model` — the same closure route the
-        /// engine's own `EpsWithDisp` case takes — which makes the lowering TOTAL (all
-        /// ten models lower). The lowering is isothermal: like `evaluate`, a `Some`
-        /// thermo-optic model is taken at its reference temperature (Δn = 0); the
-        /// operating temperature enters only at the `evaluateAt` boundary (§D.12).
+        /// through `rationalXSquaredTerms`. The transcendental models are NOT finite
+        /// term sums (band-gap steps, exp, the Faddeeva function): TaucLorentz and
+        /// GaussianOscillator lower to their core law as data (`TaucLorentzAxis` /
+        /// `GaussianOscillatorAxis`, spec 0050 step 5); ForouhiBloomer and
+        /// BrendelBormann lower to the evaluated case `EpsAxisEvaluated` carrying
+        /// `evaluate model` — the same closure route the engine's own `EpsWithDisp`
+        /// case takes — which makes the lowering TOTAL (all ten models lower). The
+        /// lowering is isothermal: like `evaluate`, a `Some` thermo-optic model is taken
+        /// at its reference temperature (Δn = 0); the operating temperature enters only
+        /// at the `evaluateAt` boundary (§D.12).
         member this.toEpsAxis : EpsAxisDispersion =
             // A real constant term c·x⁰.
             let realConstant (c : double) : DispersionTerm =
@@ -757,11 +780,10 @@ module DispersionModels =
                     let k = reciprocal.numerator
                     let free = rationalXSquaredTerms negPlasmaSq (Complex (k * k, 0.0)) (Complex (0.0, c.dampingFrequency * k)) Complex.Zero
                     ComplexEps { terms = constant :: free; wavelengthScale = reciprocal.wavelengthScale }
-            // The transcendental models are not finite term sums (band-gap steps, exp,
-            // the Faddeeva function), so they lower to the evaluated case: the SAME
-            // `evaluate` closure the engine's `EpsWithDisp` case applies.
-            | TaucLorentz _
-            | GaussianOscillator _
+            | TaucLorentz c -> TaucLorentzAxis c.toTaucLorentzLaw
+            | GaussianOscillator c -> GaussianOscillatorAxis c.toGaussianOscillatorLaw
+            // These two carry no law: they lower to the SAME `evaluate` closure the
+            // engine's `EpsWithDisp` case applies.
             | ForouhiBloomer _
             | BrendelBormann _ -> EpsAxisEvaluated this.evaluate
 
@@ -791,7 +813,8 @@ module DispersionModels =
         /// `ConstantNK` short-circuits to the non-dispersive constant
         /// (`EpsWithoutDispValue`, `Dispersion.fs:379` — no closure overhead); every
         /// other model becomes a single-segment isotropic tree over its lowered
-        /// dispersion. The transcendental cases lower to the evaluated segment (their
+        /// dispersion. Tauc–Lorentz and Gaussian lower to their law segment (spec 0050
+        /// step 5), Forouhi–Bloomer and Brendel–Bormann to the evaluated segment (their
         /// `EpsAxisEvaluated` closure), so this is TOTAL — no lowering error.
         member this.toEpsValue : EpsWithDispValue =
             match this with
@@ -804,9 +827,11 @@ module DispersionModels =
         /// through the serializable eps tree: `toEpsValue`, then
         /// `EpsWithDispValue.toEpsWithDisp` (`Dispersion.fs:383`), then the
         /// `isotropicProperties` vacuum-μ/ρ wrapper. `ConstantNK` still emits
-        /// `EpsWithoutDisp` (no closure overhead); the transcendental cases ride the
-        /// evaluated segment, whose `complexIndex` applies `evaluate` — identical to
-        /// wrapping the closure directly. One route, no lowering error.
+        /// `EpsWithoutDisp` (no closure overhead); Tauc–Lorentz and Gaussian ride their
+        /// law segment, whose `complexIndex` is the kernel `evaluate` answers (spec 0050
+        /// step 5); Forouhi–Bloomer and Brendel–Bormann ride the evaluated segment, whose
+        /// `complexIndex` applies `evaluate` — identical to wrapping the closure directly.
+        /// One route, no lowering error.
         member this.toOpticalProperties : OpticalPropertiesWithDisp =
             this.toEpsValue.toEpsWithDisp.isotropicProperties
 

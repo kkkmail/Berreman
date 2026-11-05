@@ -860,13 +860,13 @@ type MaterialComplexity with
     /// entry opens VIEW-ONLY instead: the host editability seams
     /// (`MaterialEditorView.init`, `MaterialsWindowModel.editableSelection`) gate on
     /// this predicate rather than on `complexity` presence alone. A tabulated n,k
-    /// table (`TabulatedNK`, spec 0050 step 2) is data but not term data either, so it
-    /// opens view-only too. A constant or finite-term (`RealNK` / `ComplexEps`)
-    /// dispersion is fully editable.
+    /// table (`TabulatedNK`, spec 0050 step 2) and a Tauc–Lorentz or Gaussian law (step 5)
+    /// are data but not term data either, so they open view-only too. A constant or
+    /// finite-term (`RealNK` / `ComplexEps`) dispersion is fully editable.
     member this.isEditable : bool =
         let axisHasNoTermData (axis : EpsAxisDispersion) : bool =
             match axis with
-            | EpsAxisEvaluated _ | TabulatedNK _ -> true
+            | EpsAxisEvaluated _ | TabulatedNK _ | TaucLorentzAxis _ | GaussianOscillatorAxis _ -> true
             | RealNK _ | ComplexEps _ -> false
         match this.eps with
         | EpsWithoutDispValue _ -> true

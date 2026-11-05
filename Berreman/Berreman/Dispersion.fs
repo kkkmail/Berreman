@@ -289,6 +289,13 @@ module Dispersion =
         }
 
 
+    /// A dispersion law's abscissa at one wavelength: a reduced wavelength or a photon energy.
+    type AbscissaValue =
+        | AbscissaValue of float
+
+        member this.value = let (AbscissaValue v) = this in v
+
+
     /// How a model's abscissa relates to the formula's reduced wavelength
     /// x = λ / wavelengthScale (`DispersionFormula.wavelengthScale`): a length unit reads its
     /// abscissa as x itself; the energy-like units are reciprocal,
@@ -297,6 +304,55 @@ module Dispersion =
     type AbscissaKind =
         | LinearInX of wavelengthScale : float<meter>
         | ReciprocalInX of ReciprocalAbscissa
+
+        /// The abscissa at `w`. It is the arithmetic `Units.fromMeters` performs over the scale
+        /// and numerator `ofUnit` derives, so the value is bit-identical for every unit (spec
+        /// 0050 step 5).
+        member this.abscissaAt (w : WaveLength) : AbscissaValue =
+            match this with
+            | LinearInX scale -> w.value / scale |> AbscissaValue
+            | ReciprocalInX r -> r.numerator / (w.value / r.wavelengthScale) |> AbscissaValue
+
+
+    /// Tauc–Lorentz: `ε₂(E)` above the band gap, `ε₁ = εInf` (no Kramers–Kronig `ε₁`), over the
+    /// model's abscissa. The kernel lives here once (spec 0050 §3.1).
+    [<Softellect.Sys.NumericCarrier("the five coefficients and the abscissa of one Tauc-Lorentz law, read by its kernel at every wavelength of a sweep (R3; as DispersionTerm)")>]
+    type TaucLorentzLaw =
+        {
+            epsInf : float
+            amplitude : float
+            resonance : float
+            broadening : float
+            bandGap : float
+            abscissa : AbscissaKind
+        }
+
+        member c.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            let (AbscissaValue x) = c.abscissa.abscissaAt w
+            let eps2 =
+                if x > c.bandGap then
+                    (c.amplitude * c.resonance * c.broadening * (x - c.bandGap) ** 2.0)
+                    / (x * ((x * x - c.resonance * c.resonance) ** 2.0 + c.broadening * c.broadening * x * x))
+                else 0.0
+            Complex.Sqrt (Complex(c.epsInf, eps2)) |> ComplexRefractionIndex
+
+
+    /// Gaussian oscillator: `ε₂(E) = A·exp(−((E − E₀)/σ)²)`, `ε₁ = εInf`, over the model's
+    /// abscissa. The kernel lives here once (spec 0050 §3.1).
+    [<Softellect.Sys.NumericCarrier("the four coefficients and the abscissa of one Gaussian-oscillator law, read by its kernel at every wavelength of a sweep (R3; as DispersionTerm)")>]
+    type GaussianOscillatorLaw =
+        {
+            epsInf : float
+            amplitude : float
+            energy : float
+            broadening : float
+            abscissa : AbscissaKind
+        }
+
+        member c.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            let (AbscissaValue x) = c.abscissa.abscissaAt w
+            let d = (x - c.energy) / c.broadening
+            Complex.Sqrt (Complex(c.epsInf, c.amplitude * exp (-(d * d)))) |> ComplexRefractionIndex
 
 
     // ==========================================================================
@@ -451,20 +507,22 @@ module Dispersion =
     /// The dispersion of ONE principal axis: either separate real n and k
     /// formulas (k = the zero formula for a transparent medium), one complex
     /// eps formula for inherently complex models (Lorentz / Drude), a tabulated
-    /// n,k table (`TabulatedNK`, spec 0050 step 2), or an evaluated-directly
-    /// closure for the transcendental models (Tauc–Lorentz, Gaussian,
-    /// Forouhi–Bloomer, Brendel–Bormann) that are not finite term sums — it
-    /// carries a `WaveLength -> ComplexRefractionIndex` exactly as the engine's
-    /// own `EpsWithDisp` case does, and `complexIndex` applies it. A function-typed
-    /// case removes F#'s structural equality type-wide, so the type provides custom
-    /// equality: `RealNK` / `ComplexEps` / `TabulatedNK` compare structurally (keeping
-    /// the `DispersionModel` / `EpsWithDispValue` / `MaterialComplexity` equality the
+    /// n,k table (`TabulatedNK`, spec 0050 step 2), a Tauc–Lorentz or
+    /// Gaussian-oscillator law (spec 0050 step 5), or an evaluated-directly
+    /// closure for the transcendental models still without a law (Forouhi–Bloomer,
+    /// Brendel–Bormann) — it carries a `WaveLength -> ComplexRefractionIndex` exactly
+    /// as the engine's own `EpsWithDisp` case does, and `complexIndex` applies it. A
+    /// function-typed case removes F#'s structural equality type-wide, so the type
+    /// provides custom equality: every data case compares structurally (keeping the
+    /// `DispersionModel` / `EpsWithDispValue` / `MaterialComplexity` equality the
     /// round-trip tests use) and the evaluated case compares by closure reference.
     [<CustomEquality; NoComparison>]
     type EpsAxisDispersion =
         | RealNK of RealNkFormulas
         | ComplexEps of ComplexDispersionFormula
         | TabulatedNK of TabulatedNkTable
+        | TaucLorentzAxis of TaucLorentzLaw
+        | GaussianOscillatorAxis of GaussianOscillatorLaw
         | EpsAxisEvaluated of (WaveLength -> ComplexRefractionIndex)
 
         member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
@@ -475,6 +533,8 @@ module Dispersion =
                 Complex (n, k) |> ComplexRefractionIndex
             | ComplexEps eps -> eps.evaluate w |> sqrt |> ComplexRefractionIndex
             | TabulatedNK table -> table.complexIndex w
+            | TaucLorentzAxis law -> law.complexIndex w
+            | GaussianOscillatorAxis law -> law.complexIndex w
             | EpsAxisEvaluated f -> f w
 
         override this.Equals (o : obj) : bool =
@@ -484,6 +544,8 @@ module Dispersion =
                 | RealNK f1, RealNK f2 -> f1 = f2
                 | ComplexEps e1, ComplexEps e2 -> e1 = e2
                 | TabulatedNK t1, TabulatedNK t2 -> t1 = t2
+                | TaucLorentzAxis l1, TaucLorentzAxis l2 -> l1 = l2
+                | GaussianOscillatorAxis l1, GaussianOscillatorAxis l2 -> l1 = l2
                 | EpsAxisEvaluated f1, EpsAxisEvaluated f2 -> LanguagePrimitives.PhysicalEquality f1 f2
                 | _ -> false
             | _ -> false
@@ -493,6 +555,8 @@ module Dispersion =
             | RealNK f -> hash (0, f.nFormula, f.kFormula)
             | ComplexEps e -> hash (1, e)
             | TabulatedNK t -> hash (2, t)
+            | TaucLorentzAxis l -> hash (3, l)
+            | GaussianOscillatorAxis l -> hash (4, l)
             | EpsAxisEvaluated f -> LanguagePrimitives.PhysicalHash f
 
 

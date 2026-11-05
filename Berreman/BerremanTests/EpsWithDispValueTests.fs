@@ -98,6 +98,15 @@ type EpsWithDispValueTests() =
         | Error e -> e
         | Ok table -> failwith $"expected a refusal, got a table over {table.wavelengths.Length} samples"
 
+    /// The electron-volt abscissa E = 1239.84 / λ[nm], as `AbscissaKind.ofUnit ElectronVolt` derives it.
+    let electronVolt : AbscissaKind = ReciprocalInX { wavelengthScale = 1.0e-9<meter>; numerator = 1239.84 }
+
+    /// A law's index equals each reference exactly. The references are the start tree's
+    /// `DispersionModel.evaluate` as G17, recorded before the kernels moved into the core (spec 0050 step 5).
+    let verifyLawReferences (complexIndex : WaveLength -> ComplexRefractionIndex) (references : (WaveLength * ComplexRefractionIndex) list) : unit =
+        for (w, expected) in references do
+            Assert.Equal<ComplexRefractionIndex>(expected, complexIndex w)
+
 
     [<Fact>]
     member _.``Constant isotropic transparent value reproduces the directly-constructed Eps`` () =
@@ -316,3 +325,71 @@ type EpsWithDispValueTests() =
 
         for tag in [ 0; 2; -1 ] do
             Assert.Equal<TabulatedInterpolation option>(None, TabulatedInterpolation.tryOfWire tag)
+
+
+    [<Fact>]
+    member _.``The Tauc-Lorentz law reproduces its reference index on both sides of the band gap`` () =
+        // Eg = 2.2 eV sits at 563.6 nm: 300 and 450 nm absorb; 600, 900 and 2000 nm give √ε∞ alone.
+        let law : TaucLorentzLaw =
+            {
+                epsInf = 1.5
+                amplitude = 100.0
+                resonance = 3.5
+                broadening = 0.8
+                bandGap = 2.2
+                abscissa = electronVolt
+            }
+
+        verifyLawReferences law.complexIndex
+            [
+                WaveLength.nm 300.0<nm>, ComplexRefractionIndex (Complex (2.1258164116865936, 1.7375544354626891))
+                WaveLength.nm 450.0<nm>, ComplexRefractionIndex (Complex (1.3053863577573146, 0.45170072284523471))
+                WaveLength.nm 600.0<nm>, ComplexRefractionIndex (Complex (1.2247448713915889, 0.0))
+                WaveLength.nm 900.0<nm>, ComplexRefractionIndex (Complex (1.2247448713915889, 0.0))
+                WaveLength.nm 2000.0<nm>, ComplexRefractionIndex (Complex (1.2247448713915889, 0.0))
+            ]
+
+
+    [<Fact>]
+    member _.``The Tauc-Lorentz law over a micrometre abscissa reproduces its reference index`` () =
+        // The abscissa is λ in µm and Eg = 0.7 µm: 300, 450 and 600 nm give √ε∞ = 1.5; 900 and 2000 nm absorb.
+        let law : TaucLorentzLaw =
+            {
+                epsInf = 2.25
+                amplitude = 60.0
+                resonance = 1.1
+                broadening = 0.6
+                bandGap = 0.7
+                abscissa = LinearInX 1.0e-6<meter>
+            }
+
+        verifyLawReferences law.complexIndex
+            [
+                WaveLength.nm 300.0<nm>, ComplexRefractionIndex (Complex (1.5, 0.0))
+                WaveLength.nm 450.0<nm>, ComplexRefractionIndex (Complex (1.5, 0.0))
+                WaveLength.nm 600.0<nm>, ComplexRefractionIndex (Complex (1.5, 0.0))
+                WaveLength.nm 900.0<nm>, ComplexRefractionIndex (Complex (1.8371337933094558, 1.0606887264978306))
+                WaveLength.nm 2000.0<nm>, ComplexRefractionIndex (Complex (1.8053783060899984, 1.0046844420515288))
+            ]
+
+
+    [<Fact>]
+    member _.``The Gaussian-oscillator law reproduces its reference index`` () =
+        // E0 = 2.5 eV sits at 495.9 nm: the absorption peaks between 450 and 600 nm and falls off on both sides.
+        let law : GaussianOscillatorLaw =
+            {
+                epsInf = 2.0
+                amplitude = 0.5
+                energy = 2.5
+                broadening = 0.4
+                abscissa = electronVolt
+            }
+
+        verifyLawReferences law.complexIndex
+            [
+                WaveLength.nm 300.0<nm>, ComplexRefractionIndex (Complex (1.4142135623730951, 1.0254061649130814E-08))
+                WaveLength.nm 450.0<nm>, ComplexRefractionIndex (Complex (1.4190667922939262, 0.11726278604644001))
+                WaveLength.nm 600.0<nm>, ComplexRefractionIndex (Complex (1.4152651785687922, 0.054548379163411681))
+                WaveLength.nm 900.0<nm>, ComplexRefractionIndex (Complex (1.4142135639739488, 6.7289661413197214E-05))
+                WaveLength.nm 2000.0<nm>, ComplexRefractionIndex (Complex (1.4142135623730951, 4.4982481974802987E-11))
+            ]
