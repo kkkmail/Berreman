@@ -47,6 +47,9 @@
     "ui_smoke_tests": 208
   },
   "21": {},
+  "22": {
+    "constructor_unit_tests": 742
+  },
   "3": {},
   "4": {
     "constructor_unit_tests": 733,

@@ -69,30 +69,43 @@ module CanonicalJson =
             | true -> OpticalConstructor.Domain.Groups.ToggleEnabled
             | false -> OpticalConstructor.Domain.Groups.ToggleDisabled
 
+    /// Keeps a `System.Numerics.Complex` (an absorbing material's `ComplexRefractionIndex`, a complex
+    /// matrix's cell) on the wire as `[re, im]`: System.Text.Json alone writes its four properties and
+    /// reads back zero (spec 0050 001 §B).
+    type private ComplexConverter() =
+        inherit JsonConverter<Complex>()
+
+        override _.Write(writer, value, _options) =
+            writer.WriteStartArray()
+            writer.WriteNumberValue value.Real
+            writer.WriteNumberValue value.Imaginary
+            writer.WriteEndArray()
+
+        override _.Read(reader, _typeToConvert, options) =
+            match JsonSerializer.Deserialize<float[]>(&reader, options) with
+            | [| re; im |] -> Complex(re, im)
+            | _ -> raise (JsonException "a complex number is the pair [re, im]")
+
     /// Custom converter for the engine's Math.NET complex matrix
     /// (`Matrix<Complex>`). FSharp.SystemTextJson unwraps the single-case
     /// `Eps`/`Mu`/`Rho` -> `ComplexMatrix3x3` -> `ComplexMatrix` wrappers down to
     /// this Math.NET type, which System.Text.Json cannot round-trip on its own.
-    /// It is serialized as a rectangular array of `[re, im]` pairs and rebuilt as
+    /// It is serialized as a rectangular array of cells, each through `ComplexConverter`, and rebuilt as
     /// a dense matrix on read, so Math.NET's element-wise value-equality makes a
     /// whole-`OpticalConstructorProject` round-trip compare equal.
     type private ComplexMatrixConverter() =
         inherit JsonConverter<Matrix<Complex>>()
 
-        override _.Write(writer, value, _options) =
+        override _.Write(writer, value, options) =
             writer.WriteStartArray()
             for i in 0 .. value.RowCount - 1 do
                 writer.WriteStartArray()
                 for j in 0 .. value.ColumnCount - 1 do
-                    let c = value.[i, j]
-                    writer.WriteStartArray()
-                    writer.WriteNumberValue c.Real
-                    writer.WriteNumberValue c.Imaginary
-                    writer.WriteEndArray()
+                    JsonSerializer.Serialize<Complex>(writer, value.[i, j], options)
                 writer.WriteEndArray()
             writer.WriteEndArray()
 
-        override _.Read(reader, _typeToConvert, _options) =
+        override _.Read(reader, _typeToConvert, options) =
             use doc = JsonDocument.ParseValue(&reader)
             let root = doc.RootElement
             let rows = root.GetArrayLength()
@@ -102,22 +115,44 @@ module CanonicalJson =
             for rowEl in root.EnumerateArray() do
                 let mutable j = 0
                 for cellEl in rowEl.EnumerateArray() do
-                    let re = cellEl.[0].GetDouble()
-                    let im = cellEl.[1].GetDouble()
-                    arr.[i, j] <- Complex(re, im)
+                    arr.[i, j] <- cellEl.Deserialize<Complex>(options)
                     j <- j + 1
                 i <- i + 1
             Matrix<Complex>.Build.DenseOfArray arr
+
+    /// Keeps a Math.NET real matrix (`Matrix<double>`: a `MuellerMatrix` unwrapped through
+    /// `RealMatrix4x4` and `RealMatrix`) on the wire as its array of rows of numbers: it is abstract, so
+    /// System.Text.Json alone cannot read it back (spec 0050 001 §B).
+    type private RealMatrixConverter() =
+        inherit JsonConverter<Matrix<double>>()
+
+        override _.Write(writer, value, _options) =
+            writer.WriteStartArray()
+            for i in 0 .. value.RowCount - 1 do
+                writer.WriteStartArray()
+                for j in 0 .. value.ColumnCount - 1 do
+                    writer.WriteNumberValue value.[i, j]
+                writer.WriteEndArray()
+            writer.WriteEndArray()
+
+        override _.Read(reader, _typeToConvert, options) =
+            let rows = JsonSerializer.Deserialize<float[][]>(&reader, options)
+            match rows |> Array.forall (fun row -> not (isNull row) && row.Length = rows.[0].Length) with
+            | true -> Matrix<double>.Build.DenseOfArray(array2D rows)
+            | false -> raise (JsonException "a real matrix is an array of equal-length rows of numbers")
 
     /// The single shared `JsonSerializerOptions` (§I.1 — registered once): the one options value every
     /// JSON store of the app reads (spec 0050). F# records, `option` values, and discriminated unions
     /// round-trip idiomatically via FSharp.SystemTextJson: single-case unions unwrap (`Eps`,
     /// `WaveLength`'s magnitudes, `RefractionIndex`, ...), `option` unwraps to value-or-null, and
     /// fieldless union cases (`UnitOfMeasure`, `BeamBranch`, the nullary `ConstructorElement` cases)
-    /// serialize as plain strings.
+    /// serialize as plain strings. A `Complex` is `[re, im]` (`ComplexConverter`) and a real matrix its
+    /// rows (`RealMatrixConverter`), as an entry file holds them (001 §B).
     let options : JsonSerializerOptions =
         let o = JsonSerializerOptions(WriteIndented = true)
+        o.Converters.Add(ComplexConverter())
         o.Converters.Add(ComplexMatrixConverter())
+        o.Converters.Add(RealMatrixConverter())
         o.Converters.Add(BeamBranchConverter())
         o.Converters.Add(RotationLockConverter())
         o.Converters.Add(BeamPresenceConverter())
