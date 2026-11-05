@@ -1,7 +1,5 @@
 namespace OpticalConstructor.Tests
 
-open System
-open System.IO
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
@@ -39,7 +37,7 @@ module BuiltInCatalogueParityTests =
             | _ -> None)
 
     let private readBuiltIn () : CatalogueData =
-        (CatalogueProxy.create (FolderName (Path.Combine(AppContext.BaseDirectory, "Catalogue", "Builtin")))).readCatalogue ()
+        (CatalogueProxy.createBuiltIn ()).readCatalogue ()
         |> okOf
 
     /// What the seeds seal to, computed here and not taken from anything the export (step 35) wrote. A function, so a

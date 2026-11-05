@@ -148,3 +148,8 @@ module CatalogueFolderStore =
                 readCatalogue = fun () -> folder.readCatalogueFolder ()
                 writeCatalogue = fun (catalogue : CatalogueData) -> folder.writeCatalogueFolder catalogue
             }
+
+        /// The shipped catalogue proxy over Catalogue/Builtin beside the assembly (spec 0050 §3.5).
+        static member createBuiltIn () : CatalogueProxy =
+            let folder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "Catalogue", "Builtin"))
+            CatalogueProxy.create folder

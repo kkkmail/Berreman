@@ -93,6 +93,17 @@ module CatalogueFolderTests =
         | other -> Assert.Fail($"expected UnlistedEntryFileErr naming '{file}', got %A{other}")
 
     [<Fact>]
+    let ``the Built-in catalogue proxy reads the catalogue the build copies beside the assembly`` () : unit =
+        let catalogue = (CatalogueProxy.createBuiltIn ()).readCatalogue () |> okOf
+        let expectedName = CatalogueName "Built-in"
+        let folder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "Catalogue", "Builtin"))
+        let expected = (CatalogueProxy.create folder).readCatalogue () |> okOf
+
+        Assert.Equal<CatalogueId>(CatalogueIds.builtInCatalogue, catalogue.manifest.id)
+        Assert.Equal<CatalogueName>(expectedName, catalogue.manifest.name)
+        Assert.Equal<CatalogueData>(expected, catalogue)
+
+    [<Fact>]
     let ``a catalogue folder written and read back is equal`` () =
         let first = catalogueOf (tunableSource ())
         let folder, proxy = writtenFolder "written-and-read" first
