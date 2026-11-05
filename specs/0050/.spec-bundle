@@ -30,5 +30,6 @@
     "arc-runner": ".user-md/Berreman/arc-runner.user-md"
   },
   "description": "",
+  "gates_required_only": true,
   "executability_profile": 1
 }
