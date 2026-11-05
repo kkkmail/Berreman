@@ -233,6 +233,7 @@
         <Compile Include="LibraryEntryFilesTests.fs" />
         <Compile Include="EntryFileJsonTests.fs" />
         <Compile Include="CatalogueProxyTests.fs" />
+        <Compile Include="CatalogueFolderTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

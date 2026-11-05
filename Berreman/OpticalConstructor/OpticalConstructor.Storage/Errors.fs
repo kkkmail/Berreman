@@ -49,3 +49,16 @@ module Errors =
         | SidecarMissingErr of FileName
         | UnsupportedSchemaVersionErr of SchemaVersionMismatchInfo
         | ContentHashMismatchErr of ContentHashMismatchInfo
+
+        /// The one-line render a Domain error's reason carries, so no caller formats this union with `%A` (ELEV002;
+        /// spec 0050 .spec-md §4).
+        member this.describe : string =
+            match this with
+            | MalformedJsonErr text -> text
+            | SchemaValidationErr messages -> String.concat "; " messages
+            | SchemaMissingErr -> "a build-copied schema file is missing beside the assembly"
+            | FileIoExn e
+            | BinzExn e -> e.Message
+            | SidecarMissingErr file -> $"the sidecar file '{file.value}' is missing"
+            | UnsupportedSchemaVersionErr info -> $"a {info.fileExtension.value} file declares schema version {info.found.value}, and this app reads version {info.expected.value}"
+            | ContentHashMismatchErr info -> $"entry {info.entryId.value}: recorded hash {info.recorded.value}, computed hash {info.computed.value}"
