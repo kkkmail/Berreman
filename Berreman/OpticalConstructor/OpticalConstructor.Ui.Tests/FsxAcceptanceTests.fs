@@ -23,6 +23,8 @@ open OpticalProperties.Dispersive
 open Analytics.Variables
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
@@ -81,11 +83,16 @@ module FsxAcceptanceTests =
         | Ok () -> ()
         | Error e -> failwith $"store refused: %A{e}"
 
-    /// Store a material with exactly the script's optical properties.
-    let private material (b : Bench) (name : string) (properties : OpticalPropertiesWithDisp) : MaterialId =
+    /// Store the script's material as data. The table reads `complexity.toProperties` and the script
+    /// keeps its own properties, so a match proves the data states the script's physics (spec 0050 step 11).
+    let private material (b : Bench) (name : string) (complexity : MaterialComplexity) : MaterialId =
         let id = newMaterialId ()
-        ok (b.materials.saveMaterial { id = id; name = EntryName name; category = CategoryIds.glass; description = None; properties = properties; complexity = None })
+        ok (b.materials.saveMaterial { id = id; name = EntryName name; category = CategoryIds.glass; description = None; properties = complexity.toProperties; complexity = Some complexity })
         id
+
+    /// A constant material with no magnetic or active aspect.
+    let private constantComplexity (eps : ConstantEpsValue) : MaterialComplexity =
+        { eps = EpsWithoutDispValue eps; magnetic = None; active = None }
 
     let private layer (id : MaterialId) (thickness : Thickness) : SampleLayer =
         { materialId = MaterialVersionId.firstOf id; thickness = thickness; orientation = PrimaryAxes }
@@ -270,7 +277,7 @@ module FsxAcceptanceTests =
 
     let private glassOnTable (plate : bool) : unit =
         let b = bench ()
-        let glass = material b "n = 1.78052" (constantN 1.78052)
+        let glass = material b "n = 1.78052" (constantComplexity (IsotropicTransparent (RefractionIndex 1.78052)))
         let structure : SampleStructure =
             if plate then { films = []; substrate = Some (layer glass (Thickness.mm 0.001<mm>)); lower = None }
             else { films = [ SingleLayer (layer glass (Thickness.mm 0.001<mm>)) ]; substrate = None; lower = None }
@@ -352,9 +359,19 @@ module FsxAcceptanceTests =
             rhoWithDisp = Rho.vacuum.dispersive
         }
 
+    /// The same Sellmeier as data: the Domain lowering, one isotropic segment over the 300–700 nm sweep.
+    let private dispersiveGlassComplexity : MaterialComplexity =
+        let sellmeier = Sellmeier { b = [ 1.43; 0.65 ]; c = [ 0.073 * 0.073; 0.12 * 0.12 ]; wavelengthUnit = Micrometer; thermoOptic = None }
+        let sweep : WaveLengthInterval = { lower = WaveLength.nm 300.0<nm>; upper = WaveLength.nm 700.0<nm> }
+        {
+            eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = sweep; dispersion = sellmeier.toEpsAxis } ])
+            magnetic = None
+            active = None
+        }
+
     let private dispersiveGlassOnTable (plate : bool) : unit =
         let b = bench ()
-        let glass = material b "Sellmeier glass" dispersiveGlass
+        let glass = material b "Sellmeier glass" dispersiveGlassComplexity
         let thickness = Thickness.mm 0.001<mm>
         let entry =
             if plate then sample b "Glass_Dispersive.fsx plate" ThickPlate { films = []; substrate = Some (layer glass thickness); lower = None }
@@ -381,10 +398,36 @@ module FsxAcceptanceTests =
 
     // ------------------------------ LangasiteOnSilicon.fsx ------------------------------
 
+    /// The script's 250–600 nm sweep, the band of each material below.
+    let private langasiteOnSiliconSweep : WaveLengthInterval = { lower = WaveLength.nm 250.0<nm>; upper = WaveLength.nm 600.0<nm> }
+
+    /// The engine Langasite preset as data: its two published index laws and its published gyration law.
+    let private langasiteComplexity : MaterialComplexity =
+        {
+            eps =
+                EpsWithDispValue
+                    (UniaxialDispersive
+                        [ {
+                            wavelengthInterval = langasiteOnSiliconSweep
+                            ordinaryDispersion = PublishedLawAxis LangasiteOrdinaryIndexLaw
+                            extraordinaryDispersion = PublishedLawAxis LangasiteExtraordinaryIndexLaw
+                          } ])
+            magnetic = None
+            active = Some (PublishedLawRho LangasiteGyrationLaw)
+        }
+
+    /// The engine Silicon preset as data: its published index law.
+    let private siliconComplexity : MaterialComplexity =
+        {
+            eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = langasiteOnSiliconSweep; dispersion = PublishedLawAxis SiliconIndexLaw } ])
+            magnetic = None
+            active = None
+        }
+
     let private langasiteOnSiliconOnTable (incidence : float) : unit =
         let b = bench ()
-        let langasite = material b "Langasite" langasiteOpticalProperties
-        let silicon = material b "Silicon" siliconOpticalProperties
+        let langasite = material b "Langasite" langasiteComplexity
+        let silicon = material b "Silicon" siliconComplexity
         let thickness = Thickness.mm 0.01<mm>
         let entry = filmsSample b "LangasiteOnSilicon.fsx film" [ langasite, thickness ] (Some silicon)
         let light = if incidence = 0.0 then light600nmNormalLPs else light600nmInclinedDegreeLPs (incidence * 1.0<deg>)
@@ -407,8 +450,8 @@ module FsxAcceptanceTests =
     let private quarterWaveStack (b : Bench) : string * OpticalSystemWithDisp =
         let t1 = Thickness.nm ((600.0 / 1.52 / 4.0) * oneNanometer)
         let t2 = Thickness.nm ((600.0 / 1.00 / 4.0) * oneNanometer)
-        let glass = material b "Glass n = 1.52" OpticalProperties.transparentGlass.dispersive
-        let gap = material b "Vacuum spacer" OpticalProperties.vacuum.dispersive
+        let glass = material b "Glass n = 1.52" (constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass))
+        let gap = material b "Vacuum spacer" (constantComplexity (IsotropicTransparent RefractionIndex.vacuum))
         let pairs = List.replicate 20 [ (glass, t1); (gap, t2) ] |> List.concat
         let entry = filmsSample b "MultilayerThinFilm.fsx" (pairs @ [ glass, t1 ]) None
         let layers =
@@ -439,8 +482,8 @@ module FsxAcceptanceTests =
     let private glassPairsStack (b : Bench) : string * OpticalSystemWithDisp =
         let t1 = Thickness.nm ((600.0 / 1.75 / 4.0) * 1.0<nm>)
         let t2 = Thickness.nm ((600.0 / 1.50 / 4.0) * 1.0<nm>)
-        let high = material b "Glass n = 1.75" OpticalProperties.transparentGlass175.dispersive
-        let low = material b "Glass n = 1.50" OpticalProperties.transparentGlass150.dispersive
+        let high = material b "Glass n = 1.75" (constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass175))
+        let low = material b "Glass n = 1.50" (constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass150))
         let entry = filmsSample b "MultilayerThinFilm_02.fsx" (List.replicate 100 [ (high, t1); (low, t2) ] |> List.concat) (Some low)
         let p12 =
             [
@@ -474,27 +517,30 @@ module FsxAcceptanceTests =
 
     // ------------------------------ MultilayerThinFilm_EUV.fsx / MultilayerThinFilm_EUV__002.fsx ------------------------------
 
-    /// The EUV scripts: 100 pairs of 2.65 nm layers in vacuum, with the given optical properties.
-    let private euvStack (b : Bench) (high : OpticalProperties) (low : OpticalProperties) : string * OpticalSystemWithDisp =
+    /// The EUV scripts: 100 pairs of 2.65 nm layers in vacuum, each layer one complex index. The table
+    /// stores it as data; the script builds each layer as the scripts do (Standard.fs `Eps.euvMolybdenum`).
+    let private euvStack (b : Bench) (high : ComplexRefractionIndex) (low : ComplexRefractionIndex) : string * OpticalSystemWithDisp =
         let t = Thickness.nm (10.6 / 4.0 * 1.0<nm>)
-        let highId = material b "EUV layer 1" high.dispersive
-        let lowId = material b "EUV layer 2" low.dispersive
+        let highId = material b "EUV layer 1" (constantComplexity (IsotropicAbsorbing high))
+        let lowId = material b "EUV layer 2" (constantComplexity (IsotropicAbsorbing low))
         let entry = filmsSample b "EUV multilayer" (List.replicate 100 [ (highId, t); (lowId, t) ] |> List.concat) None
+        let highProperties = high |> Eps.fromComplexRefractionIndex |> OpticalProperties.fromEpsion
+        let lowProperties = low |> Eps.fromComplexRefractionIndex |> OpticalProperties.fromEpsion
         let system : BaseOpticalSystem =
             {
                 description = Some (OpticalSystemDescription "Multilayer thin film system for EUV")
                 upper = OpticalProperties.vacuum
-                films = [ { properties = high; thickness = t }; { properties = low; thickness = t } ] |> List.replicate 100 |> List.concat
+                films = [ { properties = highProperties; thickness = t }; { properties = lowProperties; thickness = t } ] |> List.replicate 100 |> List.concat
                 lower = OpticalProperties.vacuum
             }
         entry, system.fullSystem.dispersive
 
-    /// MultilayerThinFilm_EUV__002.fsx's own materials: n = 1 − δ + iβ.
-    let private euvComplex (delta : float) (beta : float) : OpticalProperties =
-        (Complex.create (1.0 - delta) beta) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex |> OpticalProperties.fromEpsion
+    /// The EUV scripts' layer index n = 1 − δ + iβ.
+    let private euvLayerIndex (delta : float) (beta : float) : ComplexRefractionIndex =
+        Complex.create (1.0 - delta) beta |> ComplexRefractionIndex
 
     /// The scripts' light is a fixed 10 nm line — a user source on the table.
-    let private euvAgainstIncidence (high : OpticalProperties) (low : OpticalProperties) : unit =
+    let private euvAgainstIncidence (high : ComplexRefractionIndex) (low : ComplexRefractionIndex) : unit =
         let b = bench ()
         let entry, system = euvStack b high low
         let source = userSource b "src-test-10nm" "10 nm line" 10.0 FixedLine
@@ -502,7 +548,7 @@ module FsxAcceptanceTests =
         compare b (infoOf light10nmNormalLPs system) range (tableRun source entry 0.0 sweep)
 
     /// The wavelength sweep runs on the seeded tunable EUV beamline (5–20 nm).
-    let private euvAgainstWaveLength (high : OpticalProperties) (low : OpticalProperties) : unit =
+    let private euvAgainstWaveLength (high : ComplexRefractionIndex) (low : ComplexRefractionIndex) : unit =
         let b = bench ()
         let entry, system = euvStack b high low
         let range, sweep = waveLengthSweep 30 5.0 20.0
@@ -511,19 +557,19 @@ module FsxAcceptanceTests =
     [<Fact>]
     [<Trait("Category", "fsx-acceptance")>]
     let ``MultilayerThinFilm_EUV.fsx — 100 Mo/Si pairs at 10 nm: R and T against incidence match the script`` () =
-        euvAgainstIncidence OpticalProperties.euvMolybdenum OpticalProperties.euvSilicon
+        euvAgainstIncidence (euvLayerIndex Eps.euvMolybdenumDelta Eps.euvMolybdenumBeta) (euvLayerIndex Eps.euvSiliconDelta Eps.euvSiliconBeta)
 
     [<Fact>]
     [<Trait("Category", "fsx-acceptance")>]
     let ``MultilayerThinFilm_EUV.fsx — 100 Mo/Si pairs: R and T against wavelength match the script`` () =
-        euvAgainstWaveLength OpticalProperties.euvMolybdenum OpticalProperties.euvSilicon
+        euvAgainstWaveLength (euvLayerIndex Eps.euvMolybdenumDelta Eps.euvMolybdenumBeta) (euvLayerIndex Eps.euvSiliconDelta Eps.euvSiliconBeta)
 
     [<Fact>]
     [<Trait("Category", "fsx-acceptance")>]
     let ``MultilayerThinFilm_EUV__002.fsx — 100 pairs of its own complex-index layers at 10 nm: R and T against incidence match the script`` () =
-        euvAgainstIncidence (euvComplex 0.100 0.045) (euvComplex 0.006 0.002)
+        euvAgainstIncidence (euvLayerIndex 0.100 0.045) (euvLayerIndex 0.006 0.002)
 
     [<Fact>]
     [<Trait("Category", "fsx-acceptance")>]
     let ``MultilayerThinFilm_EUV__002.fsx — 100 pairs of its own complex-index layers: R and T against wavelength match the script`` () =
-        euvAgainstWaveLength (euvComplex 0.100 0.045) (euvComplex 0.006 0.002)
+        euvAgainstWaveLength (euvLayerIndex 0.100 0.045) (euvLayerIndex 0.006 0.002)

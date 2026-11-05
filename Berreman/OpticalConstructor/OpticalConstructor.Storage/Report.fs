@@ -43,17 +43,14 @@ module MaterialLibrary =
             description : string option
         }
 
-    /// Vacuum (n = 1) optical properties — the documented placeholder for the
-    /// `properties` of an entry rebuilt from a metadata-only library JSON. Rebuilding
-    /// the full `OpticalPropertiesWithDisp` from a persisted dispersion model is the
-    /// §D.9 mapping (Part D); this module owns only the metadata boundary.
-    let private vacuumProperties : OpticalPropertiesWithDisp =
-        let eps =
-            System.Numerics.Complex.create 1.0 0.0
-            |> ComplexRefractionIndex
-            |> Eps.fromComplexRefractionIndex
-            |> EpsWithoutDisp
-        eps.isotropicProperties
+    /// The physics of an entry rebuilt from a metadata-only library JSON: vacuum (n = 1 + 0i) as
+    /// constant term data, editable like any constant material (spec 0050 step 11).
+    let vacuumPlaceholderComplexity : MaterialComplexity =
+        {
+            eps = EpsWithoutDispValue (IsotropicAbsorbing (ComplexRefractionIndex (System.Numerics.Complex.create 1.0 0.0)))
+            magnetic = None
+            active = None
+        }
 
     /// A standalone JSON-Schema that validates a single `materialEntry` document.
     /// Built from the published project schema (the slice-003 build-copied content
@@ -102,10 +99,8 @@ module MaterialLibrary =
                     name = EntryName dto.name
                     category = category.id
                     description = dto.description |> Option.map EntryDescription
-                    properties = vacuumProperties
-                    // The metadata-only library file carries no dispersion data; the
-                    // rebuilt entry is view-only until the §D.9 mapping lands.
-                    complexity = None
+                    properties = vacuumPlaceholderComplexity.toProperties
+                    complexity = Some vacuumPlaceholderComplexity
                 }
         | None, _ -> Error (MalformedJsonErr $"materialEntry id '%s{dto.id}' is not a Guid")
         | _, None -> Error (MalformedJsonErr $"materialEntry category '%s{dto.category}' is not a known category")

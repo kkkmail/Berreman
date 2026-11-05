@@ -140,21 +140,31 @@ module DispersionModelsTests =
     [<Fact>]
     let ``a minted MaterialId round-trips create-store-lookup through the library`` () =
         // Spec 0033 step 002 acceptance: create an entry with a MINTED id, store it in a library,
-        // and the by-id lookup returns THAT entry's properties; the id also round-trips its Guid
-        // string form through the `tryCreate` IO-boundary parse.
+        // and the by-id lookup resolves THAT entry's physics; the id also round-trips its Guid
+        // string form through the `tryCreate` IO-boundary parse. The physics is compared by value,
+        // not by reference, because step 13 derives `properties` on every read (spec 0050 step 11).
         let id = MaterialId.create ()
+        let complexity : MaterialComplexity =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.5))
+                magnetic = None
+                active = None
+            }
         let entry =
             {
                 id = id
                 name = EntryName "Round-trip entry"
                 category = CategoryIds.glass
                 description = None
-                properties = siliconOpticalProperties
-                complexity = None
+                properties = complexity.toProperties
+                complexity = Some complexity
             }
         let lib : MaterialLibrary = { entries = entry :: standard.entries }
         match resolveMaterialWithDisp lib id with
-        | Ok p -> Assert.True(System.Object.ReferenceEquals(p, entry.properties), "lookup must return the STORED entry's properties")
+        | Ok p ->
+            for nm in [ 400.0<nm>; 600.0<nm>; 800.0<nm> ] do
+                let w = WaveLength.nm nm
+                Assert.True(epsClose 1e-12 (p.epsWithDisp.getEps w) (complexity.eps.toEpsWithDisp.getEps w), $"λ={nm}")
         | Error e -> Assert.Fail($"expected Ok, got {e}")
         Assert.Equal(Some id, MaterialId.tryCreate (string id.value))
         Assert.Equal(None, MaterialId.tryCreate "not-a-guid")

@@ -138,6 +138,28 @@ module ExportImportTests =
         finally
             if File.Exists path.value then File.Delete path.value
 
+    [<Fact>]
+    let ``a metadata-only library file re-imports each entry as vacuum data`` () =
+        // Spec 0050 step 11: the file carries no physics, so `dtoToEntry` states vacuum as term data
+        // (`vacuumPlaceholderComplexity`), and `properties` is derived from it. Filtered as the 0035
+        // round-trip filters, because the DTO requires the `description` field on read.
+        let entries =
+            builtInEntries
+            |> List.filter (fun e -> match e.description with | Some _ -> true | None -> false)
+        let path = FileName (Path.Combine(AppContext.BaseDirectory, $"""oc-vacuum-%s{(Guid.NewGuid().ToString("N"))}.json"""))
+        try
+            match path.exportMaterials entries with
+            | Error e -> Assert.Fail($"export failed: %A{e}")
+            | Ok () ->
+                match path.importMaterials () with
+                | Error e -> Assert.Fail($"import failed: %A{e}")
+                | Ok imported ->
+                    Assert.Equal(List.length entries, List.length imported)
+                    for e in imported do
+                        Assert.Equal(Some vacuumPlaceholderComplexity, e.complexity)
+        finally
+            if File.Exists path.value then File.Delete path.value
+
     // --- AC-I11: appendRevision twice + diffRevisions (no external VCS) -------------
 
     let private filmThickness : float<meter> = 1.0e-7<meter>
