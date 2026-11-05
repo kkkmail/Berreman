@@ -24,16 +24,8 @@ type FacetOption =
 /// (`MaterialProxy.searchMaterials` over a `MaterialQuery`) and flattens the result into `Row`s and
 /// the facets into `FacetOption`s; the control renders the rows it is given and never touches a
 /// proxy. Behaviour is injected as a `Handlers` function record (the functional-proxy seam; tests
-/// pass stubs). Rows for view-only entries (no edit model — spec 0033 step 013's
-/// `complexity = None` built-ins) carry no Edit affordance: the Edit verb is REMOVED from the verb
-/// row while such a row is selected, not greyed.
+/// pass stubs).
 module MaterialsControls =
-
-    /// Whether a listed material carries an edit model. A `ViewOnly` entry (a built-in whose
-    /// complexity is not editable) can still be selected, viewed, and removed — but never edited.
-    type MaterialEditability =
-        | Editable
-        | ViewOnly
 
     /// One row the host pre-flattens from its materials search (Controls carries no domain types).
     /// `materialId` is the material's stable id, as the host keys it.
@@ -41,7 +33,6 @@ module MaterialsControls =
         {
             materialId : ConstructorUiKey
             label : ControlCaption
-            editability : MaterialEditability
         }
 
     /// The bay's pure, serializable state. The search text and the two facet selections mirror the
@@ -139,25 +130,20 @@ module MaterialsControls =
 
     /// A verb button (Add / Edit / Remove / View), on the accent background when it is the primary verb.
     let private verbButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-        let keyedButton =
-            Border.create [
-                id.automationAttribute<Border> ()
-                Border.isEnabled availability.isEnabled
-                Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-                Border.background (brush background)
-                Border.borderBrush (brush idleBorder)
-                Border.borderThickness 1.0
-                Border.cornerRadius (CornerRadius 3.0)
-                Border.padding (Thickness(12.0, 5.0))
-                Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-                Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text label.value ])
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, availability.isEnabled)))
-            ]
-            // Keyed: the verb row's membership changes (a view-only selection REMOVES the Edit verb),
-            // so a shifted verb recreates instead of patching its neighbour's styled control.
-            |> Avalonia.FuncUI.DSL.View.withKey id.value
-        keyedButton :> IView
+        Border.create [
+            id.automationAttribute<Border> ()
+            Border.isEnabled availability.isEnabled
+            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
+            Border.background (brush background)
+            Border.borderBrush (brush idleBorder)
+            Border.borderThickness 1.0
+            Border.cornerRadius (CornerRadius 3.0)
+            Border.padding (Thickness(12.0, 5.0))
+            Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
+            Border.verticalAlignment VerticalAlignment.Center
+            Border.child (TextBlock.create [ TextBlock.text label.value ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, availability.isEnabled)))
+        ] :> IView
 
     /// The search row: a label and the live search box (the host filters on every text change —
     /// the same idiom as the Ui materials panel's search field).
@@ -210,29 +196,21 @@ module MaterialsControls =
                 ])
         ] :> IView
 
-    /// The verb row. Add always applies; Remove / View need a listed selection; Edit additionally
-    /// needs the selection to be `Editable` — a `ViewOnly` selection REMOVES the Edit verb from the
-    /// row (no Edit affordance at all, per the slice), it does not grey it out.
+    /// The verb row. Add always applies; Edit / Remove / View need a listed selection.
     let private verbRow (state : MaterialsControlsState) (handlers : MaterialsControlsHandlers) : IView =
-        let selected = state.selectedRow
         let onSelection =
-            match selected with
+            match state.selectedRow with
             | Some _ -> ControlOffered
             | None -> ControlWithheld
-        let editVerb =
-            match selected with
-            | Some { editability = ViewOnly } -> []
-            | Some { editability = Editable } | None -> [ verbButton ConstructorUiId.editMaterialButton (ControlCaption "Edit") idleBackground onSelection handlers.editMaterial ]
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 0.0
-            StackPanel.children (
-                [ verbButton ConstructorUiId.addMaterialButton (ControlCaption "Add") chosenBackground ControlOffered handlers.addMaterial ]
-                @ editVerb
-                @ [
-                    verbButton ConstructorUiId.removeMaterialButton (ControlCaption "Remove") idleBackground onSelection handlers.removeMaterial
-                    verbButton ConstructorUiId.viewMaterialButton (ControlCaption "View") idleBackground onSelection handlers.viewMaterial
-                ])
+            StackPanel.children [
+                verbButton ConstructorUiId.addMaterialButton (ControlCaption "Add") chosenBackground ControlOffered handlers.addMaterial
+                verbButton ConstructorUiId.editMaterialButton (ControlCaption "Edit") idleBackground onSelection handlers.editMaterial
+                verbButton ConstructorUiId.removeMaterialButton (ControlCaption "Remove") idleBackground onSelection handlers.removeMaterial
+                verbButton ConstructorUiId.viewMaterialButton (ControlCaption "View") idleBackground onSelection handlers.viewMaterial
+            ]
         ] :> IView
 
     /// The materials workbench surface — search box, the two facet selectors, the materials list,

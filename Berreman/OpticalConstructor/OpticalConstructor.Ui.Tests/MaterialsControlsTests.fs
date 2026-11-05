@@ -19,21 +19,20 @@ module MaterialsControlsTests =
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the verb /
     /// row / facet-option boxes carry an AutomationId — a mutable attached property — so they survive
-    /// membership changes such as the Edit verb's removal; see the control).
+    /// membership changes; see the control).
     let private matchesId (id : string) (c : Control) : bool =
         c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
 
-    /// A known flattened row set: two editable materials and one view-only (no edit model — the
-    /// spec-0033 step-013 `complexity = None` shape the host flattens to `ViewOnly`).
+    /// A known flattened row set of three materials.
     let private knownRows : MaterialsControls.MaterialsControlsRow list =
         [
-            { materialId = ConstructorUiKey "bk7"; label = ControlCaption "BK7 glass"; editability = MaterialsControls.Editable }
-            { materialId = ConstructorUiKey "gold"; label = ControlCaption "Gold"; editability = MaterialsControls.Editable }
-            { materialId = ConstructorUiKey "silicon"; label = ControlCaption "Silicon (tabulated)"; editability = MaterialsControls.ViewOnly }
+            { materialId = ConstructorUiKey "bk7"; label = ControlCaption "BK7 glass" }
+            { materialId = ConstructorUiKey "gold"; label = ControlCaption "Gold" }
+            { materialId = ConstructorUiKey "silicon"; label = ControlCaption "Silicon (tabulated)" }
         ]
 
-    /// The known State the structure tests mount: both facets populated, an EDITABLE row selected
-    /// (so every verb — including Edit — is present).
+    /// The known State the structure tests mount: both facets populated, a row selected (so every
+    /// verb is offered).
     let private knownState : MaterialsControls.MaterialsControlsState =
         {
             searchText = ControlCaption ""
@@ -164,7 +163,7 @@ module MaterialsControlsTests =
             Assert.Equal(0, count "edit")
             Assert.Equal(0, count "remove")
             Assert.Equal(0, count "view")
-            // Each remaining verb dispatches ITS handler (the selected row is editable, so Edit is live).
+            // Each remaining verb dispatches ITS handler.
             clickOn window ConstructorUiId.editMaterialButton.value
             Assert.Equal(1, count "edit")
             clickOn window ConstructorUiId.removeMaterialButton.value
@@ -182,20 +181,16 @@ module MaterialsControlsTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``a view-only selection carries no Edit affordance — the button is removed, not greyed`` () =
+    let ``every selected row offers the Edit verb and a click dispatches editMaterial`` () =
         HeadlessSession.run (fun () ->
-            let _, handlers = recorder ()
-            let state = { knownState with selectedId = Some (ConstructorUiKey "silicon") }   // the view-only row
+            let calls, handlers = recorder ()
+            let state = { knownState with selectedId = Some (ConstructorUiKey "silicon") }
             let window = Window(Width = 640.0, Height = 560.0)
             window.Content <- Component(fun _ -> MaterialsControls.materialsControlsView state handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            // REMOVED means absent from the tree entirely — a greyed/hidden button would still be found.
-            Assert.False(
-                isPresent window ConstructorUiId.editMaterialButton.value,
-                "the Edit verb must be REMOVED (not greyed) for a view-only selection")
-            // The other verbs remain for the view-only entry.
-            Assert.True(isPresent window ConstructorUiId.addMaterialButton.value)
-            Assert.True(isPresent window ConstructorUiId.removeMaterialButton.value)
-            Assert.True(isPresent window ConstructorUiId.viewMaterialButton.value)
+            // Spec 0050 §3.2: the control no longer gates Edit; the Materials window keeps its own gate.
+            Assert.True(isPresent window ConstructorUiId.editMaterialButton.value, "the Edit verb must be offered on every selected row")
+            clickOn window ConstructorUiId.editMaterialButton.value
+            Assert.Equal<string list>([ "edit" ], List.ofSeq calls)
             window.Close())
