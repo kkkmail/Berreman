@@ -297,33 +297,37 @@ module DispersionModelsTests =
                 }
         assertLoweringMatchesEvaluate 1e-8 model
 
+    /// The Tauc-Lorentz set the transcendental lowering facts share, a fresh record on every call.
+    let private taucLorentzCoefficients () : TaucLorentzCoefficients =
+        {
+            epsInf = 1.5
+            amplitude = 100.0
+            resonance = 3.5
+            broadening = 0.8
+            bandGap = 2.2
+            wavelengthUnit = ElectronVolt
+            thermoOptic = None
+        }
+
+    /// The Gaussian-oscillator set the transcendental lowering facts share, a fresh record on every call.
+    let private gaussianOscillatorCoefficients () : GaussianOscillatorCoefficients =
+        {
+            epsInf = 2.0
+            amplitude = 0.5
+            energy = 2.5
+            broadening = 0.4
+            wavelengthUnit = ElectronVolt
+            thermoOptic = None
+        }
+
     [<Fact>]
     let ``AC-B5 transcendental models lower to the evaluated case and match evaluate`` () =
         // TaucLorentz / GaussianOscillator are not finite term sums (band-gap step,
         // exp): toEpsAxis lowers them to EpsAxisEvaluated carrying `evaluate`, so its
         // complexIndex reproduces `evaluate` exactly and toOpticalProperties keeps
         // them fully working through the evaluated segment.
-        let tl =
-            TaucLorentz
-                {
-                    epsInf = 1.5
-                    amplitude = 100.0
-                    resonance = 3.5
-                    broadening = 0.8
-                    bandGap = 2.2
-                    wavelengthUnit = ElectronVolt
-                    thermoOptic = None
-                }
-        let go =
-            GaussianOscillator
-                {
-                    epsInf = 2.0
-                    amplitude = 0.5
-                    energy = 2.5
-                    broadening = 0.4
-                    wavelengthUnit = ElectronVolt
-                    thermoOptic = None
-                }
+        let tl = TaucLorentz (taucLorentzCoefficients ())
+        let go = GaussianOscillator (gaussianOscillatorCoefficients ())
         for model in [ tl; go ] do
             let axis = model.toEpsAxis
             match axis with
@@ -335,6 +339,34 @@ module DispersionModelsTests =
                 Assert.Equal((f w).value, (axis.complexIndex w).value)
                 let expected = Eps.fromComplexRefractionIndex (f w)
                 Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, $"λ={w}")
+
+    /// One model lowered twice, and two separately built equal models, give equal axes with equal
+    /// hashes and equal eps values; `shifted`, one coefficient away, gives an unequal axis.
+    let private assertLowersToEqualData (label : string) (build : unit -> DispersionModel) (shifted : DispersionModel) : unit =
+        let model = build ()
+        let twin = build ()
+        let first = model.toEpsAxis
+        let second = model.toEpsAxis
+        Assert.True((first = second), $"{label}: one model lowered twice gave unequal axes ({first} vs {second})")
+        Assert.True((hash first = hash second), $"{label}: one model lowered twice gave unequal axis hashes")
+        let twinAxis = twin.toEpsAxis
+        Assert.True((first = twinAxis), $"{label}: two equal models lowered to unequal axes ({first} vs {twinAxis})")
+        Assert.True((hash first = hash twinAxis), $"{label}: two equal models lowered to unequal axis hashes")
+        Assert.True((model.toEpsValue = model.toEpsValue), $"{label}: one model's toEpsValue twice gave unequal values")
+        Assert.True((model.toEpsValue = twin.toEpsValue), $"{label}: two equal models' toEpsValue gave unequal values")
+        Assert.False((first = shifted.toEpsAxis), $"{label}: a model one coefficient away lowered to an equal axis")
+
+    [<Fact>]
+    let ``equal Tauc-Lorentz and Gaussian-oscillator models lower to equal axis data`` () =
+        // An analytic model lowers to DATA, so equal models lower to equal axes (spec 0050 §3.1, 001 §B).
+        assertLowersToEqualData
+            "Tauc-Lorentz"
+            (fun () -> TaucLorentz (taucLorentzCoefficients ()))
+            (TaucLorentz { (taucLorentzCoefficients ()) with bandGap = 2.4 })
+        assertLowersToEqualData
+            "Gaussian oscillator"
+            (fun () -> GaussianOscillator (gaussianOscillatorCoefficients ()))
+            (GaussianOscillator { (gaussianOscillatorCoefficients ()) with energy = 2.7 })
 
     [<Fact>]
     let ``AC-B5 SumOfTerms is the identity under toEpsAxis and evaluates through complexIndex`` () =
