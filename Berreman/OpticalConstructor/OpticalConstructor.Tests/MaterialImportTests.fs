@@ -10,6 +10,7 @@ open Berreman.Dispersion
 open Analytics.Variables
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Storage.MaterialImport
 open Xunit
 
@@ -58,6 +59,107 @@ module MaterialImportTests =
             // 0.55 µm is the midpoint of 0.5 (4.293, 0.045) and 0.6 (3.939, 0.025).
             let got = epsAt entry (toWaveLength Micrometer (UnitMagnitude 0.55))
             Assert.True(closeC 1e-9 got (nkSquared 4.116 0.035), $"got {got}")
+
+    /// One fixture row written out by hand, λ in the file's own unit, so no fact parses a
+    /// fixture a second way (spec 0050 step 1).
+    type private TabulatedSample =
+        {
+            magnitude : UnitMagnitude
+            n : float
+            k : float
+        }
+
+    type private TabulatedFixture =
+        {
+            waveLengthUnit : UnitOfMeasure
+            samples : TabulatedSample list
+        }
+
+        member this.waveLengthAt (magnitude : UnitMagnitude) : WaveLength = toWaveLength this.waveLengthUnit magnitude
+
+        member this.first : WaveLength = this.waveLengthAt (List.head this.samples).magnitude
+
+        member this.last : WaveLength = this.waveLengthAt (List.last this.samples).magnitude
+
+    let private siYmlRows : TabulatedFixture =
+        {
+            waveLengthUnit = Micrometer
+            samples =
+                [
+                    { magnitude = UnitMagnitude 0.250; n = 1.694; k = 3.666 }
+                    { magnitude = UnitMagnitude 0.300; n = 5.020; k = 4.220 }
+                    { magnitude = UnitMagnitude 0.400; n = 5.570; k = 0.387 }
+                    { magnitude = UnitMagnitude 0.500; n = 4.293; k = 0.045 }
+                    { magnitude = UnitMagnitude 0.600; n = 3.939; k = 0.025 }
+                    { magnitude = UnitMagnitude 0.700; n = 3.785; k = 0.013 }
+                ]
+        }
+
+    let private sampleNkCsvRows : TabulatedFixture =
+        {
+            waveLengthUnit = Nanometer
+            samples =
+                [
+                    { magnitude = UnitMagnitude 400.0; n = 1.500; k = 0.010 }
+                    { magnitude = UnitMagnitude 500.0; n = 1.480; k = 0.005 }
+                    { magnitude = UnitMagnitude 600.0; n = 1.460; k = 0.002 }
+                    { magnitude = UnitMagnitude 700.0; n = 1.450; k = 0.001 }
+                ]
+        }
+
+    /// A tabulated import is axis data (spec 0050 step 1, 001 §B): one isotropic dispersive
+    /// segment over the sample range, view-only (a table is not editable term data), and
+    /// `properties` IS `complexity.toProperties` (the seed invariant).
+    let private assertViewOnlyTabulatedSegment (fixture : TabulatedFixture) (imported : Result<MaterialEntry, ImportError>) =
+        match imported with
+        | Error e -> Assert.Fail($"{e}")
+        | Ok entry ->
+            match entry.complexity with
+            | None -> Assert.Fail "expected the tabulated import to carry a dispersive complexity, got a None complexity"
+            | Some c ->
+                match c.eps with
+                | EpsWithDispValue (IsotropicDispersive [ segment ]) ->
+                    let lower = segment.wavelengthInterval.lower.value
+                    let upper = segment.wavelengthInterval.upper.value
+                    Assert.True(abs (lower - fixture.first.value) <= 1e-15<meter>, $"segment lower {lower}, want {fixture.first.value}")
+                    Assert.True(abs (upper - fixture.last.value) <= 1e-15<meter>, $"segment upper {upper}, want {fixture.last.value}")
+                | other -> Assert.Fail($"expected a single isotropic dispersive segment, got {other}")
+                match c.magnetic, c.active with
+                | None, None -> ()
+                | magnetic, active -> Assert.Fail($"expected no magnetic and no active aspect, got {magnetic} and {active}")
+                Assert.False(c.isEditable, "a tabulated table is not editable term data")
+                for sample in fixture.samples do
+                    let w = fixture.waveLengthAt sample.magnitude
+                    Assert.True(entry.properties.epsWithDisp.getEps w = c.toProperties.epsWithDisp.getEps w, $"properties = complexity.toProperties at {w.value}")
+
+    [<Fact>]
+    let ``a tabulated refractiveindex.info page imports as one view-only dispersive segment over its sample range`` () =
+        assertViewOnlyTabulatedSegment siYmlRows (readYaml "Si.yml").importMaterial
+
+    [<Fact>]
+    let ``an n,k CSV imports as one view-only dispersive segment over its sample range`` () =
+        assertViewOnlyTabulatedSegment sampleNkCsvRows (readCsv "sample-nk.csv").importMaterial
+
+    /// Every sample, and the linear interpolation at the midpoint of every neighbouring pair: green
+    /// on the closure and on the table that replaces it, so no number moves (spec 0050 step 1).
+    let private assertSamplesAndMidpoints (fixture : TabulatedFixture) (imported : Result<MaterialEntry, ImportError>) =
+        match imported with
+        | Error e -> Assert.Fail($"{e}")
+        | Ok entry ->
+            for sample in fixture.samples do
+                let w = fixture.waveLengthAt sample.magnitude
+                let got = epsAt entry w
+                Assert.True(closeC 1e-12 got (nkSquared sample.n sample.k), $"sample at {w.value}: got {got}")
+            for (a, b) in List.pairwise fixture.samples do
+                let w = fixture.waveLengthAt (UnitMagnitude ((a.magnitude.value + b.magnitude.value) / 2.0))
+                let got = epsAt entry w
+                let want = nkSquared ((a.n + b.n) / 2.0) ((a.k + b.k) / 2.0)
+                Assert.True(closeC 1e-12 got want, $"midpoint at {w.value}: got {got}, want {want}")
+
+    [<Fact>]
+    let ``tabulated imports reproduce every sample and the linear interpolation between neighbours`` () =
+        assertSamplesAndMidpoints siYmlRows (readYaml "Si.yml").importMaterial
+        assertSamplesAndMidpoints sampleNkCsvRows (readCsv "sample-nk.csv").importMaterial
 
     /// The imported entry MUST be editable (spec 0033 step 025): a `Some`
     /// complexity whose eps is the dispersive segment tree (`EpsWithDispValue`).
