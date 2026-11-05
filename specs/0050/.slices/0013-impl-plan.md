@@ -73,3 +73,16 @@ complexity, so the change is mechanical. It lands in one step so the build stays
    do not undo the authorized deletion.
 
 No product or test edits are planned. The tree the gate measured is the tree the slice asks for.
+
+## Relaunch after the operator reply
+
+The operator committed the tree (`d8a56f5`), landed the ASG credit for an authorized
+method-granularity delete, and ruled: "Make no product or test edit." The plan:
+
+1. Confirm that the committed product tree is the judged tree `969e23357ffd`: rehash the step's
+   diff with ASG's `cleaned_sha256`.
+2. Confirm it meets every slice clause with read-only checks.
+3. Confirm the ASG credit change.
+4. Refresh the impl-log and the state-of-the-world, and hand the tree to the gate engine.
+
+No gate is run, and no product or test file is edited.

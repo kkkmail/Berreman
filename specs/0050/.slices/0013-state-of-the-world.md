@@ -11,6 +11,10 @@ build stayed green. Every `None` arm that stood for a coded, view-only preset is
 view-only editor carries the complexity it shows. Step 14 sweeps the last three test-side
 mentions of the option.
 
+The step's tree was judged review-green as `969e23357ffd`. Its only red was an engine floor that
+did not credit the authorized delete. The operator committed the tree as `d8a56f5` and fixed the
+ASG credit, and this relaunch hands that tree, unchanged, to the gates.
+
 ## What's working
 
 - `MaterialEntry.complexity` is mandatory, and `properties` is a member computed from it; entries compare structurally
@@ -21,30 +25,36 @@ mentions of the option.
 
 ## Tests
 
-These runs are local observations, made to confirm the change. The arc-runner's gate engine runs
-and records the gates.
+**This relaunch ran no gate.** The gate engine is the only gate authority (Invariant 6), and the
+operator's note hands the tree to it. This round made read-only checks only.
 
-- `build`: 0 errors. The only warnings are the two vendored MathNet SYSLIB0051 ones already on
-  the start tree (`.artifacts/0013-build.log`).
-- `constructor-unit-tests` (whole suite): 736/736. That is the 737 at checkpoint `"10"` (slice
-  0011) less the deleted `every built-in carries Some complexity after the step-004 re-seed`.
-  **The gate engine failed this gate**: `constructor_unit_tests count 736 < baseline 737`.
-  - The identity check passed: the census expects exactly these 736.
-  - The floor was not credited for the authorized delete, because `authorized_count_credits`
-    credits only `"granularity": "row"` suites, and this suite is `"method"`.
-  - The fix lies outside this step's authority (the arc-runner's checkpoint record, or ASG).
-    This attempt is therefore `commit_ready: false`, an authority conflict. The impl-log's
-    Testing state ("Attempt 2") has the evidence and the operator's options.
-- `ui-smoke` (whole suite): 208/208. Both renamed facts pass under their new names.
-- `ui-tests` (MaterialEditorWindowTests, MaterialsWindowTests, NkDispersionChartTests,
-  OutOfBandBadgeTests, FsxAcceptanceTests): 93/93. That is one fewer for the deleted
-  `spec 0040 006: a coded preset with no stored tree still renders all components`, and
-  `Save adds a NEW material with its complexity, …` passes under its new name.
-- `elevation`: `ELEV-GATE: OK - 0 new finding(s) in 8 project(s)` (`.artifacts/0013-elevation.log`).
-  Domain, Storage and Ui changed, and Optimization, Seeding, App and the two TestWindows heads
-  were analysed with them. The test files are outside the analyzers' scope.
-- The four s02 invariants (`elev-list-empty`, `no-vstest`, `no-kit-kit-json` and
-  `no-eps-axis-evaluated`) each find nothing (`.artifacts/0013-invariants.log`).
+- **The tree is the judged tree.** The `cleaned_sha256` of
+  `git diff --binary f53174e d8a56f5 -- Berreman/` is
+  `969e23357ffdabcbfb7e6f02b042dfd0672f6ae7002799903925d378e89ddf6e`. That is the fingerprint the
+  code-judge reviewed green and the engine measured. The diff is saved as
+  `.artifacts/0013-relaunch-step-diff.txt`.
+- **The tree meets the slice.**
+  - The record holds `complexity : MaterialComplexity` and `member this.properties`.
+  - `previewAnisotropy`, `presetProperties` and `viewOnlyComplexity` occur nowhere.
+  - The editor case is `ViewOnlyMaterial of reason : ControlCaption * shown : MaterialComplexity`.
+  - The test attributes drop by one in each test project.
+  - The three successor names are present, and the old names and the two deleted facts are gone.
+  - No changed file says `complexity = None`, `complexity = Some` or `Some complexity`.
+  - Line endings are LF.
+- **The floor fix is in ASG.** `authorized_count_credits` (`executability/runtime_tests.py:106`)
+  now credits `"method"` suites. Both the gate baseline (`evaluate_gate.py:408-412`) and the
+  checkpoint write (`run_arc_runner.py:4826-4831`) read it. So `constructor-unit-tests` is held
+  to 737 − 1 = 736.
+- **What the gates should find** on this tree, from attempt 1's local runs and the engine's
+  attempt-2 measurement:
+  - `build` green, 0 errors;
+  - `elevation` `ELEV-GATE: OK`, 0 new findings in 8 projects;
+  - `constructor-unit-tests` 736/736, with the identity census accepted by the engine;
+  - `ui-smoke` 208/208, both renamed facts passing;
+  - `ui-tests` 93/93 under the five-class filter;
+  - the four s02 invariants find nothing.
+
+  The engine has not yet run ui-smoke, ui-tests or the invariants on this tree.
 
 ```yaml
 gates:
@@ -54,8 +64,8 @@ gates:
 ```
 
 `constructor_unit_tests` falls by one by design: the deleted fact's subject is now guaranteed by
-the type. `ui_tests` is the count under this step's five-class filter, so it is not comparable
-with step 12's MaterialsControlsTests filter.
+the type, and the engine credits that delete. `ui_tests` is the count under this step's
+five-class filter, so it is not comparable with step 12's MaterialsControlsTests filter.
 
 ## Architecture
 
@@ -80,20 +90,20 @@ with step 12's MaterialsControlsTests filter.
 
 - **`ExportImportTests.fs` was edited outside the listed effects.** Its
   `Assert.Equal(Some vacuumPlaceholderComplexity, e.complexity)` no longer type-checks once the
-  field is not an option. The fix drops `Some` and nothing else. This is recorded as a deviation
-  in the impl-log.
+  field is not an option. The fix drops `Some` and nothing else. It is recorded as a deviation
+  in the impl-log, and the code-judge accepted it.
 - **The view-only caption changed in both windows.** The Materials window's caption is now
   ` (view-only)`, and the editor's readout says `view-only`. The editor's reason text is now
   "this entry's physics is not editable term data — view-only".
 - **`properties` is recomputed on each read.** A caller that needs it more than once in a tight
   path should bind it once, as `MaterialEntry.dispersion` now does.
-- **A deletion in a method-granularity suite never lowers its `count_at_least` floor.** ASG's
-  `authorized_count_credits` and `write_checkpoint_counts` credit only `"row"` suites. All four
-  of this repo's suites are `"method"` in `.repository-inventory-json`. As a result:
-  - this step fails at 736 < 737;
-  - accepting it alone leaves the floor at 737, and the refused checkpoint write keeps the
-    older floor;
-  - every later whole-suite run of `constructor-unit-tests` would then fail the same way.
+- **The relaunch's `BASELINE` line still logs `constructor_unit_tests: 737`.** That is expected.
+  The credit for the authorized delete is applied inside the gate evaluation
+  (`credited_counts`), not at baseline resolution.
+- **The boot's "worktree fingerprint drift" comes from the operator's commit, not from an
+  edit.** The product content still hashes to `969e23357ffd`.
+- **A local test count is not the gate.** Attempt 1 read 736 as a pass without comparing it with
+  the engine's credited floor. Only the engine's floor decides the gate.
 
 ## Changelog
 
@@ -104,5 +114,10 @@ with step 12's MaterialsControlsTests filter.
   - The tests follow: two deleted, three renamed, the rest read the value.
 - 2026-11-05 — step 0013, attempt 2:
   - Diagnosed the `constructor-unit-tests` failure (736 < 737): the drop is exactly the
-    authorized delete, which the engine does not credit for a method-granularity suite.
+    authorized delete, which the engine did not credit for a method-granularity suite.
   - No code changed. Reported as an authority conflict (`commit_ready: false`).
+- 2026-11-05 — step 0013, relaunch after the operator reply:
+  - No product or test edit. Confirmed that the committed tree `d8a56f5` is byte-identical to the
+    judged tree `969e23357ffd` and meets every clause of the slice.
+  - Confirmed that ASG now credits the authorized delete (737 − 1 = 736), and handed the tree to
+    the gates.
