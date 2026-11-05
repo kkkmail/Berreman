@@ -138,24 +138,26 @@ module PolarizerBehaviorTests =
         // The protected built-ins are exactly the seeded presets the spec names (F.0) plus, since spec
         // 0046, every seeded light source (the lasers and the UV / EUV lithography sources).
         Assert.Equal<string list>(
-            [ "det-ellipsometer"; "det-intensity"; "pol-cp-left"; "pol-cp-right"; "pol-lp" ] @ (SeedSources.allSeedSources |> List.map (fun s -> s.id.value))
+            [ PresetIds.detectorEllipsometer; PresetIds.detectorIntensity; PresetIds.polarizerCpLeft; PresetIds.polarizerCpRight; PresetIds.polarizerLp ]
+            @ (SeedSources.allSeedSources |> List.map (fun s -> s.id))
+            |> List.map (fun i -> i.value)
             |> List.sort,
             presets |> List.map (fun e -> e.entryId.value) |> List.sort)
 
     [<Fact>]
     let ``the three seeded ideals are ComputedIdeal entries with their Lp and Cp categories`` () =
-        let polarizer (id : string) : PolarizerPreset =
+        let polarizer (id : Placement.ElementValueId) : PolarizerPreset =
             seedEntries
             |> List.pick (fun e ->
                 match e with
-                | PolarizerItem p when p.id.value = id -> Some p
+                | PolarizerItem p when p.id = id -> Some p
                 | _ -> None)
-        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealLinear, (polarizer "pol-lp").behavior)
-        Assert.Equal<PolarizerCategory>(LpCategory, (polarizer "pol-lp").category)
-        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealCircularLeft, (polarizer "pol-cp-left").behavior)
-        Assert.Equal<PolarizerCategory>(CpCategory, (polarizer "pol-cp-left").category)
-        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealCircularRight, (polarizer "pol-cp-right").behavior)
-        Assert.Equal<PolarizerCategory>(CpCategory, (polarizer "pol-cp-right").category)
+        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealLinear, (polarizer PresetIds.polarizerLp).behavior)
+        Assert.Equal<PolarizerCategory>(LpCategory, (polarizer PresetIds.polarizerLp).category)
+        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealCircularLeft, (polarizer PresetIds.polarizerCpLeft).behavior)
+        Assert.Equal<PolarizerCategory>(CpCategory, (polarizer PresetIds.polarizerCpLeft).category)
+        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealCircularRight, (polarizer PresetIds.polarizerCpRight).behavior)
+        Assert.Equal<PolarizerCategory>(CpCategory, (polarizer PresetIds.polarizerCpRight).category)
 
     // ============================ the polarizer-category facet ============================
 
@@ -170,11 +172,11 @@ module PolarizerBehaviorTests =
                 | PolarizerItem _ -> ApplicableAttribute
                 | SampleItem _ | SourceItem _ | DetectorItem _ -> InapplicableAttribute
             Assert.Equal<Applicability>(expected, def.appliesTo entry)
-        let extractedLabels (id : string) : string list =
+        let extractedLabels (id : Placement.ElementValueId) : string list =
             seedEntries
-            |> List.find (fun e -> e.entryId.value = id)
+            |> List.find (fun e -> e.entryId = id)
             |> def.extract
             |> List.map (fun v -> v.label)
-        Assert.Equal<string list>([ "Linear" ], extractedLabels "pol-lp")
-        Assert.Equal<string list>([ "Circular" ], extractedLabels "pol-cp-left")
-        Assert.Equal<string list>([ "Circular" ], extractedLabels "pol-cp-right")
+        Assert.Equal<string list>([ "Linear" ], extractedLabels PresetIds.polarizerLp)
+        Assert.Equal<string list>([ "Circular" ], extractedLabels PresetIds.polarizerCpLeft)
+        Assert.Equal<string list>([ "Circular" ], extractedLabels PresetIds.polarizerCpRight)

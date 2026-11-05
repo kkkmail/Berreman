@@ -35,8 +35,8 @@ module ExperimentProxyTests =
         BoundByVersion (SampleVersionRef (SampleVersionId.firstOf SeedSamples.glassPlate1mm.id))
 
     // A single-source setup and a single-polarizer setup for the interactive-commit tests.
-    let private srcSetup : ElementDescriptor list = [ desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600")) ]
-    let private polSetup : ElementDescriptor list = [ desc "pol" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp")) ]
+    let private srcSetup : ElementDescriptor list = [ desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600) ]
+    let private polSetup : ElementDescriptor list = [ desc "pol" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp) ]
 
     // ============================ variable capability (attached to the kind, as DATA) ============================
 
@@ -194,11 +194,11 @@ module ExperimentProxyTests =
             id = ExperimentId 1
             setup =
                 [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600"))
-                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
+                    desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600)
+                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
                     desc "s" "Sample #3" Sample glassPlateBinding
-                    desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
-                    desc "det" "Detector #5" Detector (BoundByEntryId (ElementValueId "det-intensity"))
+                    desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
+                    desc "det" "Detector #5" Detector (BoundByEntryId PresetIds.detectorIntensity)
                 ]
             varied = Some { elementId = el "lp2"; variable = VaryR1 }
             measurement = CaptureTransmitted
@@ -213,10 +213,10 @@ module ExperimentProxyTests =
             id = ExperimentId 2
             setup =
                 [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600"))
-                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
-                    desc "lp2" "Linear polarizer #3" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
-                    desc "det" "Detector #4" Detector (BoundByEntryId (ElementValueId "det-intensity"))
+                    desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600)
+                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
+                    desc "lp2" "Linear polarizer #3" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
+                    desc "det" "Detector #4" Detector (BoundByEntryId PresetIds.detectorIntensity)
                 ] }
 
     /// E3 = an empty dark line (nothing varied) — how much ambient light reaches the detector with no source.
@@ -235,7 +235,7 @@ module ExperimentProxyTests =
         match e1.detectorDescriptorOpt with
         | Some d ->
             Assert.Equal(Detector, d.kind)
-            Assert.Equal(BoundByEntryId (ElementValueId "det-intensity"), d.binding)
+            Assert.Equal(BoundByEntryId PresetIds.detectorIntensity, d.binding)
         | None -> Assert.Fail "E1 lost its detector from the captured chain"
 
     [<Fact>]
@@ -335,7 +335,7 @@ module ExperimentProxyTests =
         Assert.Equal(Some (el "lp2"), exp.varied |> Option.map (fun v -> v.elementId))
         Assert.Equal(Some VaryR1, exp.varied |> Option.map (fun v -> v.variable))
         match exp.detectorDescriptorOpt with
-        | Some d -> Assert.Equal(BoundByEntryId (ElementValueId "det-intensity"), d.binding)
+        | Some d -> Assert.Equal(BoundByEntryId PresetIds.detectorIntensity, d.binding)
         | None -> Assert.Fail "the committed chain lost its detector"
         // the sample binding rides along BY VERSION, so it counts as in-use
         Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SeedSamples.glassPlate1mm.id), boundVersions c.experiments)
@@ -362,7 +362,7 @@ module ExperimentProxyTests =
         let only : Experiment =
             {
                 id = ExperimentId 7
-                setup = [ desc "stub-el" "Stub" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp")) ]
+                setup = [ desc "stub-el" "Stub" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp) ]
                 varied = Some { elementId = el "stub-el"; variable = VaryR1 }
                 measurement = CaptureTransmitted
                 range = VariableRange.forVariable VaryR1

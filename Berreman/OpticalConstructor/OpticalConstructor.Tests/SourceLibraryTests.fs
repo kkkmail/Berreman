@@ -35,14 +35,14 @@ module SourceLibraryTests =
         Assert.Equal(List.length all, all |> List.map (fun s -> s.id) |> List.distinct |> List.length)
         Assert.All(all, fun s -> Assert.Equal<EntryProtection>(ProtectedBuiltIn, s.protection))
         Assert.All(all, fun s -> Assert.True(nm s.waveLength > 0.0, $"%s{s.name.value} has a positive wavelength"))
-        let wavelengthOf (id : string) : float = all |> List.find (fun s -> s.id.value = id) |> fun s -> nm s.waveLength
-        Assert.True(abs (wavelengthOf "src-600" - 600.0) < 1.0e-9, "the reference source stays")
-        Assert.True(abs (wavelengthOf "src-hene-633" - 632.8) < 1.0e-9)
-        Assert.True(abs (wavelengthOf "src-ndyag-1064" - 1064.0) < 1.0e-9)
-        Assert.True(abs (wavelengthOf "src-hg-i-365" - 365.0) < 1.0e-9)
-        Assert.True(abs (wavelengthOf "src-krf-248" - 248.4) < 1.0e-9)
-        Assert.True(abs (wavelengthOf "src-arf-193" - 193.4) < 1.0e-9)
-        Assert.True(abs (wavelengthOf "src-euv-13p5" - 13.5) < 1.0e-9)
+        let wavelengthOf (id : ElementValueId) : float = all |> List.find (fun s -> s.id = id) |> fun s -> nm s.waveLength
+        Assert.True(abs (wavelengthOf PresetIds.source600 - 600.0) < 1.0e-9, "the reference source stays")
+        Assert.True(abs (wavelengthOf PresetIds.heNe633 - 632.8) < 1.0e-9)
+        Assert.True(abs (wavelengthOf PresetIds.ndYag1064 - 1064.0) < 1.0e-9)
+        Assert.True(abs (wavelengthOf PresetIds.mercuryI365 - 365.0) < 1.0e-9)
+        Assert.True(abs (wavelengthOf PresetIds.krf248 - 248.4) < 1.0e-9)
+        Assert.True(abs (wavelengthOf PresetIds.arf193 - 193.4) < 1.0e-9)
+        Assert.True(abs (wavelengthOf PresetIds.euv13p5 - 13.5) < 1.0e-9)
         // Every seeded source is a Library entry for the light-source kind.
         match (createInMemory ()).entriesForKind LightSource with
         | Ok entries -> Assert.Equal<string list>(all |> List.map (fun s -> s.id.value), sourceIds entries)
@@ -111,7 +111,7 @@ module SourceLibraryTests =
         | Error e -> Assert.Fail($"%A{e}")
         Assert.Equal(Ok (Some (SourceItem mine)), live.tryGetEntry mine.id)
         // The seeded presets still resolve; a removed user source no longer does.
-        Assert.Equal(Ok (Some (DetectorItem { id = ElementValueId "det-intensity"; name = MaterialLibrary.EntryName "Intensity detector"; kind = Intensity; protection = ProtectedBuiltIn })), live.tryGetEntry (ElementValueId "det-intensity"))
+        Assert.Equal(Ok (Some (DetectorItem { id = PresetIds.detectorIntensity; name = MaterialLibrary.EntryName "Intensity detector"; kind = Intensity; protection = ProtectedBuiltIn })), live.tryGetEntry PresetIds.detectorIntensity)
         Assert.Equal(Ok (), sources.removeSource mine.id)
         Assert.Equal(Ok None, live.tryGetEntry mine.id)
 

@@ -43,9 +43,9 @@ module ExperimentCollectionProxyTests =
             id = ExperimentId n
             setup =
                 [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600"))
-                    desc "lp" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
-                    desc "det" "Detector #3" Detector (BoundByEntryId (ElementValueId "det-intensity"))
+                    desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600)
+                    desc "lp" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
+                    desc "det" "Detector #3" Detector (BoundByEntryId PresetIds.detectorIntensity)
                 ]
             varied = Some { elementId = el "lp"; variable = VaryR1 }
             measurement = CaptureTransmitted

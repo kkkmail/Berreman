@@ -61,8 +61,8 @@ module LibraryProxyTests =
 
     [<Fact>]
     let ``tryGetEntry hits a known id and misses an unknown id`` () =
-        match proxy.tryGetEntry (ElementValueId "src-600") with
-        | Ok (Some (SourceItem s)) -> Assert.Equal("src-600", s.id.value)
+        match proxy.tryGetEntry PresetIds.source600 with
+        | Ok (Some (SourceItem s)) -> Assert.Equal(PresetIds.source600, s.id)
         | other -> Assert.Fail($"expected the 600 nm source, got %A{other}")
         match proxy.tryGetEntry (ElementValueId "no-such-id") with
         | Ok None -> ()

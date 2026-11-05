@@ -22,19 +22,19 @@ module PlacedSampleEmissionTests =
     let private lib : LibraryProxy = Library.createInMemory ()
 
     /// Resolve a seeded entry by its id (the entry id is the `valueId` written onto a bound element).
-    let private entry (id : string) : LibraryEntry =
-        match lib.tryGetEntry (ElementValueId id) with
+    let private entry (id : ElementValueId) : LibraryEntry =
+        match lib.tryGetEntry id with
         | Ok (Some e) -> e
-        | other -> failwith $"seed entry '%s{id}' unexpectedly not resolvable: %A{other}"
+        | other -> failwith $"seed entry '%s{id.value}' unexpectedly not resolvable: %A{other}"
 
     /// The seeded MIRROR sample (`supportedEmission = EmitReflectedOnly`; spec 0046 — the EUV multilayer).
-    let private mirrorId : string = (SampleItem SeedSamples.euvMoSi).entryId.value
+    let private mirrorId : ElementValueId = (SampleItem SeedSamples.euvMoSi).entryId
     /// A seeded ThinFilm sample — spec 0046: a thin film reflects AND transmits (`EmitBoth`).
-    let private thinFilmId : string = (SampleItem SeedSamples.glassFilm600).entryId.value
+    let private thinFilmId : ElementValueId = (SampleItem SeedSamples.glassFilm600).entryId
     /// A seeded Plate sample supporting BOTH branches (`supportedEmission = EmitBoth`).
-    let private plateId : string = (SampleItem SeedSamples.glassPlate1mm).entryId.value
+    let private plateId : ElementValueId = (SampleItem SeedSamples.glassPlate1mm).entryId
     /// A non-sample seeded entry (the 600 nm source) — carries no geometry emission constraint.
-    let private sourceId : string = "src-600"
+    let private sourceId : ElementValueId = PresetIds.source600
 
     // ============================ pure Domain: placementEmissionForEntry ============================
 
@@ -64,8 +64,8 @@ module PlacedSampleEmissionTests =
 
     /// Select the element at index `i`, then bind it to a Library entry (the `BindValueId` MVU path,
     /// which converges on the one targeted `BindValueIdTo` commit arm).
-    let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
-        { m with selection = ElementSelected (SceneElementIndex i) } |> updateTableAndElementRotation (BindValueId (ElementValueId entryId))
+    let private bind (i : int) (entryId : ElementValueId) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
+        { m with selection = ElementSelected (SceneElementIndex i) } |> updateTableAndElementRotation (BindValueId entryId)
 
     let private emissionOf (i : int) (m : TableAndElementRotationModel) : Emission = (List.item i m.elements).placement.emission
     let private idOf (i : int) (m : TableAndElementRotationModel) : Library.ElementId = (List.item i m.elements).id

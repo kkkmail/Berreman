@@ -29,13 +29,13 @@ module SceneRoundTripTests =
 
     let private sourceEl : TestElement =
         { TestElement.id = Library.ElementId "src"
-          placement = { ElementPlacement.create LightSource { x = -0.75<meter>; y = 0.10<meter> } with valueId = Some (ElementValueId "src-600") }
+          placement = { ElementPlacement.create LightSource { x = -0.75<meter>; y = 0.10<meter> } with valueId = Some Library.PresetIds.source600 }
           zoom = BeamLayout.ElementZoom 1.5
           beam = BeamLayout.OnMainBeam }
 
     let private polarizerEl : TestElement =
         { TestElement.id = Library.ElementId "pol"
-          placement = { ElementPlacement.create LinearPolarizer { x = 0.0<meter>; y = 0.0<meter> } with valueId = Some (ElementValueId "pol-lp") }
+          placement = { ElementPlacement.create LinearPolarizer { x = 0.0<meter>; y = 0.0<meter> } with valueId = Some Library.PresetIds.polarizerLp }
           zoom = BeamLayout.ElementZoom 3.25
           beam = BeamLayout.OnMainBeam }
 
@@ -102,7 +102,7 @@ module SceneRoundTripTests =
             restored.elements |> List.map (fun e -> e.placement.catalogueKind))
         // ... bindings (the Library `valueId`) ...
         Assert.Equal<ElementValueId option list>(
-            [ Some (ElementValueId "src-600"); Some (ElementValueId "pol-lp"); None ],
+            [ Some Library.PresetIds.source600; Some Library.PresetIds.polarizerLp; None ],
             restored.elements |> List.map (fun e -> e.placement.valueId))
         // ... full placements + draw zoom (the whole `TestElement`, in order) ...
         Assert.Equal<TestElement list>([ sourceEl; polarizerEl; detectorEl ], restored.elements)

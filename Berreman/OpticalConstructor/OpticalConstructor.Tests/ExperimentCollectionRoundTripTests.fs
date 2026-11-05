@@ -53,11 +53,11 @@ module ExperimentCollectionRoundTripTests =
             id = ExperimentId 1
             setup =
                 [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600"))
-                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
+                    desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600)
+                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
                     desc "s" "Sample #3" Sample glassPlateBinding
-                    desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
-                    desc "det" "Detector #5" Detector (BoundByEntryId (ElementValueId "det-intensity"))
+                    desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
+                    desc "det" "Detector #5" Detector (BoundByEntryId PresetIds.detectorIntensity)
                 ]
             varied = Some { elementId = el "lp2"; variable = VaryR1 }
             measurement = CaptureTransmitted
@@ -73,10 +73,10 @@ module ExperimentCollectionRoundTripTests =
             id = ExperimentId 2
             setup =
                 [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId (ElementValueId "src-600"))
-                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
-                    desc "lp2" "Linear polarizer #3" LinearPolarizer (BoundByEntryId (ElementValueId "pol-lp"))
-                    desc "det" "Detector #4" Detector (BoundByEntryId (ElementValueId "det-intensity"))
+                    desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600)
+                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
+                    desc "lp2" "Linear polarizer #3" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
+                    desc "det" "Detector #4" Detector (BoundByEntryId PresetIds.detectorIntensity)
                 ]
             dataFileOpt = None
             sourceWaveLengthOpt = None }
