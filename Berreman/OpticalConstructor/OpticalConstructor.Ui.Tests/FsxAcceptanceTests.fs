@@ -98,7 +98,7 @@ module FsxAcceptanceTests =
         { materialId = MaterialVersionId.firstOf id; thickness = thickness; orientation = PrimaryAxes }
 
     /// Store a sample (thin films over a lower half-space, or a plate) and return its entry id.
-    let private sample (b : Bench) (name : string) (geometry : SubstrateKind) (structure : SampleStructure) : string =
+    let private sample (b : Bench) (name : string) (geometry : SubstrateKind) (structure : SampleStructure) : ElementValueId =
         let s : Sample =
             {
                 id = newSampleId ()
@@ -109,11 +109,11 @@ module FsxAcceptanceTests =
                 supportedEmission = geometry.defaultSupportedEmission
             }
         ok (b.samples.saveSample s)
-        (SampleItem s).entryId.value
+        (SampleItem s).entryId
 
     /// Store a user light source and return its entry id.
-    let private userSource (b : Bench) (id : string) (name : string) (nm : float) (tuning : SourceTuning) : string =
-        ok (b.sources.saveSource { id = ElementValueId id; name = EntryName name; waveLength = WaveLength.nm (nm * 1.0<nm>); tuning = tuning; protection = UserManaged })
+    let private userSource (b : Bench) (id : ElementValueId) (name : string) (nm : float) (tuning : SourceTuning) : ElementValueId =
+        ok (b.sources.saveSource { id = id; name = EntryName name; waveLength = WaveLength.nm (nm * 1.0<nm>); tuning = tuning; protection = UserManaged })
         id
 
     // ------------------------------ driving the headless app ------------------------------
@@ -121,9 +121,9 @@ module FsxAcceptanceTests =
     /// What the table and the experiment are (the script's light, sample and sweep).
     type private TableRun =
         {
-            sourceEntry : string
+            sourceEntry : ElementValueId
             polarizationDegrees : float
-            sampleEntry : string
+            sampleEntry : ElementValueId
             incidenceDegrees : float
             variable : ExperimentControls.VariableChoice
             low : float
@@ -183,18 +183,18 @@ module FsxAcceptanceTests =
                 sources = b.sources
                 experimentExport = b.export.proxy }
             |> apply
-                [ BindValueIdTo (ElementId "src", ElementValueId run.sourceEntry)
-                  BindValueIdTo (ElementId "det", ElementValueId SeedEntryIds.detectorIntensity)
+                [ BindValueIdTo (ElementId "src", run.sourceEntry)
+                  BindValueIdTo (ElementId "det", PresetIds.detectorIntensity)
                   // The input polarizer (pre-bound to the ideal LP) at the script's polarization angle.
                   AddElement LinearPolarizer
                   RotSetAxis (RotationControls.R1, BarDegrees run.polarizationDegrees)
                   // The sample (index 3), tilted to the script's incidence; bound below.
                   AddElement CatalogueKind.Sample
                   RotSetAxis (RotationControls.R2, BarDegrees run.incidenceDegrees) ]
-            |> fun m -> updateTableAndElementRotation (BindValueIdTo (idAt 3 m, ElementValueId run.sampleEntry)) m
+            |> fun m -> updateTableAndElementRotation (BindValueIdTo (idAt 3 m, run.sampleEntry)) m
             // A second detector (index 4): it goes to the first free ray — the sample's reflected ray.
             |> updateTableAndElementRotation (AddElement Detector)
-            |> fun m -> updateTableAndElementRotation (BindValueIdTo (idAt 4 m, ElementValueId SeedEntryIds.detectorIntensity)) m
+            |> fun m -> updateTableAndElementRotation (BindValueIdTo (idAt 4 m, PresetIds.detectorIntensity)) m
         let varied =
             match run.variable with
             | ExperimentControls.VaryWaveLength -> ElementId "src"
@@ -285,7 +285,7 @@ module FsxAcceptanceTests =
         let exported =
             runOnTable b
                 {
-                    sourceEntry = SeedEntryIds.source600
+                    sourceEntry = PresetIds.source600
                     polarizationDegrees = 0.0
                     sampleEntry = entry
                     incidenceDegrees = 0.0
@@ -319,7 +319,7 @@ module FsxAcceptanceTests =
         Range<_>.create (NumberOfPoints n) (WaveLength.nm (lowNm * 1.0<nm>)) (WaveLength.nm (highNm * 1.0<nm>)) |> WaveLengthRange,
         (ExperimentControls.VaryWaveLength, lowNm, highNm, n + 1)
 
-    let private tableRun (source : string) (sampleEntry : string) (incidence : float) (variable, low, high, points) : TableRun =
+    let private tableRun (source : ElementValueId) (sampleEntry : ElementValueId) (incidence : float) (variable, low, high, points) : TableRun =
         {
             sourceEntry = source
             polarizationDegrees = 0.0      // the scripts' "LPs" light: polarization angle 0
@@ -334,7 +334,7 @@ module FsxAcceptanceTests =
     let private infoOf (light : IncidentLightInfo) (system : OpticalSystemWithDisp) : FixedInfo =
         { incidentLightInfo = light; opticalSystem = system }
 
-    let private filmsSample (b : Bench) (name : string) (films : (MaterialId * Thickness) list) (lower : MaterialId option) : string =
+    let private filmsSample (b : Bench) (name : string) (films : (MaterialId * Thickness) list) (lower : MaterialId option) : ElementValueId =
         sample b name ThinFilm
             {
                 films = films |> List.map (fun (id, t) -> SingleLayer (layer id t))
@@ -343,7 +343,7 @@ module FsxAcceptanceTests =
             }
 
     /// The seeded tunable xenon lamp + monochromator (190–1000 nm) — every visible-range wavelength sweep.
-    let private xenon : string = "src-xe-mono"
+    let private xenon : ElementValueId = PresetIds.xenonMonochromator
 
     // ------------------------------ Glass_Dispersive.fsx ------------------------------
 
@@ -447,7 +447,7 @@ module FsxAcceptanceTests =
     // ------------------------------ MultilayerThinFilm.fsx ------------------------------
 
     /// MultilayerThinFilm.fsx's 41-layer quarter-wave stack: glass (n = 1.52) / vacuum, ending on glass.
-    let private quarterWaveStack (b : Bench) : string * OpticalSystemWithDisp =
+    let private quarterWaveStack (b : Bench) : ElementValueId * OpticalSystemWithDisp =
         let t1 = Thickness.nm ((600.0 / 1.52 / 4.0) * oneNanometer)
         let t2 = Thickness.nm ((600.0 / 1.00 / 4.0) * oneNanometer)
         let glass = material b "Glass n = 1.52" (constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass))
@@ -466,7 +466,7 @@ module FsxAcceptanceTests =
         let b = bench ()
         let entry, system = quarterWaveStack b
         let range, sweep = incidenceSweep 44 88.0
-        compare b (infoOf light600nmNormalLPs system) range (tableRun SeedEntryIds.source600 entry 0.0 sweep)
+        compare b (infoOf light600nmNormalLPs system) range (tableRun PresetIds.source600 entry 0.0 sweep)
 
     [<Fact>]
     [<Trait("Category", "fsx-acceptance")>]
@@ -479,7 +479,7 @@ module FsxAcceptanceTests =
     // ------------------------------ MultilayerThinFilm_02.fsx ------------------------------
 
     /// MultilayerThinFilm_02.fsx: 100 pairs of n = 1.75 / n = 1.50 quarter-wave layers on n = 1.50 glass.
-    let private glassPairsStack (b : Bench) : string * OpticalSystemWithDisp =
+    let private glassPairsStack (b : Bench) : ElementValueId * OpticalSystemWithDisp =
         let t1 = Thickness.nm ((600.0 / 1.75 / 4.0) * 1.0<nm>)
         let t2 = Thickness.nm ((600.0 / 1.50 / 4.0) * 1.0<nm>)
         let high = material b "Glass n = 1.75" (constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass175))
@@ -505,7 +505,7 @@ module FsxAcceptanceTests =
         let b = bench ()
         let entry, system = glassPairsStack b
         let range, sweep = incidenceSweep 30 87.0
-        compare b (infoOf light600nmNormalLPs system) range (tableRun SeedEntryIds.source600 entry 0.0 sweep)
+        compare b (infoOf light600nmNormalLPs system) range (tableRun PresetIds.source600 entry 0.0 sweep)
 
     [<Fact>]
     [<Trait("Category", "fsx-acceptance")>]
@@ -519,7 +519,7 @@ module FsxAcceptanceTests =
 
     /// The EUV scripts: 100 pairs of 2.65 nm layers in vacuum, each layer one complex index. The table
     /// stores it as data; the script builds each layer as the scripts do (Standard.fs `Eps.euvMolybdenum`).
-    let private euvStack (b : Bench) (high : ComplexRefractionIndex) (low : ComplexRefractionIndex) : string * OpticalSystemWithDisp =
+    let private euvStack (b : Bench) (high : ComplexRefractionIndex) (low : ComplexRefractionIndex) : ElementValueId * OpticalSystemWithDisp =
         let t = Thickness.nm (10.6 / 4.0 * 1.0<nm>)
         let highId = material b "EUV layer 1" (constantComplexity (IsotropicAbsorbing high))
         let lowId = material b "EUV layer 2" (constantComplexity (IsotropicAbsorbing low))
@@ -543,7 +543,7 @@ module FsxAcceptanceTests =
     let private euvAgainstIncidence (high : ComplexRefractionIndex) (low : ComplexRefractionIndex) : unit =
         let b = bench ()
         let entry, system = euvStack b high low
-        let source = userSource b "src-test-10nm" "10 nm line" 10.0 FixedLine
+        let source = userSource b (ElementValueId "src-test-10nm") "10 nm line" 10.0 FixedLine
         let range, sweep = incidenceSweep 30 60.0
         compare b (infoOf light10nmNormalLPs system) range (tableRun source entry 0.0 sweep)
 
@@ -552,7 +552,7 @@ module FsxAcceptanceTests =
         let b = bench ()
         let entry, system = euvStack b high low
         let range, sweep = waveLengthSweep 30 5.0 20.0
-        compare b (infoOf light10nmNormalLPs system) range (tableRun "src-euv-beamline" entry 0.0 sweep)
+        compare b (infoOf light10nmNormalLPs system) range (tableRun PresetIds.euvBeamline entry 0.0 sweep)
 
     [<Fact>]
     [<Trait("Category", "fsx-acceptance")>]

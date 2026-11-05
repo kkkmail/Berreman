@@ -30,7 +30,7 @@ module Library =
 
     /// Elevated sample identity (spec 0033 step 002): a Guid-backed single-case DU — no raw string
     /// sample id appears in a domain record. `create` MINTS a fresh id; the seeded samples parse FIXED
-    /// literal Guids (`SeedSamples`) so the grouping trees and the tests stay deterministic across
+    /// literal Guids (`SampleIds`) so the grouping trees and the tests stay deterministic across
     /// runs. The Selector `valueId` binding seam stays a string: `LibraryEntry.entryId` carries the
     /// Guid STRING form.
     type SampleId =
@@ -45,6 +45,62 @@ module Library =
     /// Module-level mint helper for `SampleId` (the case name and type name collide — so a qualified
     /// `Library.SampleId.create` resolves to the case rather than the static member).
     let newSampleId () : SampleId = SampleId.create ()
+
+    /// The frozen identity of every seeded sample: the one place a built-in sample's fixed Guid
+    /// literal is written (spec 0050 §3.3).
+    module SampleIds =
+        let glassPlate1mmId : SampleId = Guid.Parse "a8ceb21b-0719-4553-8f07-e782cb206800" |> SampleId
+        let glassPlate2mmId : SampleId = Guid.Parse "962a3eff-4c25-467e-9739-a5ff8922cac3" |> SampleId
+        let glassFilm600Id : SampleId = Guid.Parse "66cc0291-7b61-42c1-933e-5c39f2c41917" |> SampleId
+        let glassVacuumId : SampleId = Guid.Parse "b880a749-812d-415c-b1fb-6041360e85ee" |> SampleId
+        let glassFilm200Id : SampleId = Guid.Parse "9f49dcfa-dede-4858-8757-216443deeba3" |> SampleId
+        let multilayerQwId : SampleId = Guid.Parse "80e5b7b0-8f10-42f6-9d87-bae692454fd5" |> SampleId
+        let euvMoSiId : SampleId = Guid.Parse "ea947362-10cf-46e8-ad03-c267fba9de50" |> SampleId
+        let uniaxialId : SampleId = Guid.Parse "2669348a-029b-48db-b39e-02f78e5aa1ab" |> SampleId
+        let biaxialId : SampleId = Guid.Parse "53b01f16-faf9-4413-a419-14592670a03c" |> SampleId
+        let activeCrystalPlateId : SampleId = Guid.Parse "1c170dcc-0528-466e-98a7-cabfdaf9007a" |> SampleId
+        let langasiteSiliconId : SampleId = Guid.Parse "8fa9867a-b1dd-4571-a83c-46a0acf16b4f" |> SampleId
+
+    /// The frozen identity of every seeded light-source, detector and polarizer preset: the one place
+    /// a built-in preset's entry id is written (spec 0050 §3.3).
+    module PresetIds =
+        let source600 : ElementValueId = ElementValueId "src-600"
+
+        let heNe633 : ElementValueId = ElementValueId "src-hene-633"
+        let heNe543 : ElementValueId = ElementValueId "src-hene-543"
+        let argon488 : ElementValueId = ElementValueId "src-ar-488"
+        let argon515 : ElementValueId = ElementValueId "src-ar-515"
+        let heCd442 : ElementValueId = ElementValueId "src-hecd-442"
+        let heCd325 : ElementValueId = ElementValueId "src-hecd-325"
+        let diode405 : ElementValueId = ElementValueId "src-diode-405"
+        let ruby694 : ElementValueId = ElementValueId "src-ruby-694"
+        let tiSapphire800 : ElementValueId = ElementValueId "src-tisa-800"
+        let ndYag1064 : ElementValueId = ElementValueId "src-ndyag-1064"
+        let ndYag532 : ElementValueId = ElementValueId "src-ndyag-532"
+        let ndYag355 : ElementValueId = ElementValueId "src-ndyag-355"
+        let ndYag266 : ElementValueId = ElementValueId "src-ndyag-266"
+        let erbium1550 : ElementValueId = ElementValueId "src-er-1550"
+        let co2Laser10600 : ElementValueId = ElementValueId "src-co2-10600"
+
+        let mercuryG436 : ElementValueId = ElementValueId "src-hg-g-436"
+        let mercuryH405 : ElementValueId = ElementValueId "src-hg-h-405"
+        let mercuryI365 : ElementValueId = ElementValueId "src-hg-i-365"
+        let krf248 : ElementValueId = ElementValueId "src-krf-248"
+        let arf193 : ElementValueId = ElementValueId "src-arf-193"
+        let f2Excimer157 : ElementValueId = ElementValueId "src-f2-157"
+        let euv13p5 : ElementValueId = ElementValueId "src-euv-13p5"
+        let beuv6p7 : ElementValueId = ElementValueId "src-beuv-6p7"
+
+        let xenonMonochromator : ElementValueId = ElementValueId "src-xe-mono"
+        let tiSapphireTunable : ElementValueId = ElementValueId "src-tisa-tunable"
+        let supercontinuum : ElementValueId = ElementValueId "src-supercontinuum"
+        let euvBeamline : ElementValueId = ElementValueId "src-euv-beamline"
+
+        let detectorIntensity : ElementValueId = ElementValueId "det-intensity"
+        let detectorEllipsometer : ElementValueId = ElementValueId "det-ellipsometer"
+        let polarizerLp : ElementValueId = ElementValueId "pol-lp"
+        let polarizerCpLeft : ElementValueId = ElementValueId "pol-cp-left"
+        let polarizerCpRight : ElementValueId = ElementValueId "pol-cp-right"
 
     /// A specific version of a sample entry (spec 0038 Part H): the sample identity plus the version
     /// number. Mirrors `MaterialVersionId` (`MaterialLibrary.fs`) — a versioned binding (an
@@ -644,15 +700,14 @@ module Library =
         }
 
     /// The seeded samples (spec §2a), let-bound so `seedEntries`, the grouping tree, and the tests
-    /// all reference the SAME values programmatically — the id literals are never repeated (spec 0033
-    /// step 002). Each id is a FIXED literal Guid parsed at seed construction, deterministic across
-    /// runs; a new seeded sample adds a new literal here — seed construction never calls
-    /// `SampleId.create`.
+    /// all reference the SAME values programmatically (spec 0033 step 002). Each id is its FIXED
+    /// literal Guid in `SampleIds` (spec 0050 §3.3), deterministic across runs; seed construction
+    /// never calls `SampleId.create`.
     module SeedSamples =
 
         let glassPlate1mm : Sample =
             {
-                id = Guid.Parse "a8ceb21b-0719-4553-8f07-e782cb206800" |> SampleId
+                id = SampleIds.glassPlate1mmId
                 name = EntryName "Glass plate (n=1.52, 1 mm)"
                 structure = plateStructure MaterialIds.glass152 (Thickness.mm 1.0<mm>)
                 substrate = ThickPlate
@@ -662,7 +717,7 @@ module Library =
 
         let glassPlate2mm : Sample =
             {
-                id = Guid.Parse "962a3eff-4c25-467e-9739-a5ff8922cac3" |> SampleId
+                id = SampleIds.glassPlate2mmId
                 name = EntryName "Glass plate (n=1.52, 2 mm)"
                 structure = plateStructure MaterialIds.glass152 (Thickness.mm 2.0<mm>)
                 substrate = ThickPlate
@@ -672,7 +727,7 @@ module Library =
 
         let glassFilm600 : Sample =
             {
-                id = Guid.Parse "66cc0291-7b61-42c1-933e-5c39f2c41917" |> SampleId
+                id = SampleIds.glassFilm600Id
                 name = EntryName "Glass thin film (n=1.75, 600 nm)"
                 structure = filmStructure MaterialIds.glass175 (Thickness.nm 600.0<nm>)
                 substrate = ThinFilm
@@ -682,7 +737,7 @@ module Library =
 
         let glassVacuum : Sample =
             {
-                id = Guid.Parse "b880a749-812d-415c-b1fb-6041360e85ee" |> SampleId
+                id = SampleIds.glassVacuumId
                 name = EntryName "Glass / vacuum interface (n=1.50)"
                 structure = plateStructure MaterialIds.glass150 (Thickness.mm 1.0<mm>)
                 substrate = ThickPlate
@@ -692,7 +747,7 @@ module Library =
 
         let glassFilm200 : Sample =
             {
-                id = Guid.Parse "9f49dcfa-dede-4858-8757-216443deeba3" |> SampleId
+                id = SampleIds.glassFilm200Id
                 name = EntryName "Glass thin film (n=1.52, 200 nm)"
                 structure = filmStructure MaterialIds.glass152 (Thickness.nm 200.0<nm>)
                 substrate = ThinFilm
@@ -702,7 +757,7 @@ module Library =
 
         let multilayerQw : Sample =
             {
-                id = Guid.Parse "80e5b7b0-8f10-42f6-9d87-bae692454fd5" |> SampleId
+                id = SampleIds.multilayerQwId
                 name = EntryName "Quarter-wave glass/vacuum multilayer (41 layers)"
                 structure =
                     {
@@ -729,7 +784,7 @@ module Library =
 
         let euvMoSi : Sample =
             {
-                id = Guid.Parse "ea947362-10cf-46e8-ad03-c267fba9de50" |> SampleId
+                id = SampleIds.euvMoSiId
                 name = EntryName "EUV Mo/Si multilayer (100 pairs)"
                 structure =
                     {
@@ -755,7 +810,7 @@ module Library =
 
         let uniaxial : Sample =
             {
-                id = Guid.Parse "2669348a-029b-48db-b39e-02f78e5aa1ab" |> SampleId
+                id = SampleIds.uniaxialId
                 name = EntryName "Uniaxial crystal film (1 µm)"
                 structure = filmStructure MaterialIds.uniaxialCrystal (Thickness.nm 1000.0<nm>)
                 substrate = ThinFilm
@@ -765,7 +820,7 @@ module Library =
 
         let biaxial : Sample =
             {
-                id = Guid.Parse "53b01f16-faf9-4413-a419-14592670a03c" |> SampleId
+                id = SampleIds.biaxialId
                 name = EntryName "Biaxial crystal film (1 µm)"
                 structure = filmStructure MaterialIds.biaxialCrystal (Thickness.nm 1000.0<nm>)
                 substrate = ThinFilm
@@ -775,7 +830,7 @@ module Library =
 
         let activeCrystalPlate : Sample =
             {
-                id = Guid.Parse "1c170dcc-0528-466e-98a7-cabfdaf9007a" |> SampleId
+                id = SampleIds.activeCrystalPlateId
                 name = EntryName "Active gyrotropic crystal plate (1 cm)"
                 structure = plateStructure MaterialIds.activeCrystal Thickness.oneCentiMeter
                 substrate = ThickPlate
@@ -785,7 +840,7 @@ module Library =
 
         let langasiteSilicon : Sample =
             {
-                id = Guid.Parse "8fa9867a-b1dd-4571-a83c-46a0acf16b4f" |> SampleId
+                id = SampleIds.langasiteSiliconId
                 name = EntryName "Langasite film on silicon (10 µm, dispersive)"
                 structure =
                     {
@@ -824,50 +879,50 @@ module Library =
             }
 
         /// The reference source every scene defaulted to before spec 0046.
-        let reference600 : SourcePreset = source (ElementValueId "src-600") (EntryName "Monochromatic 600 nm") (WaveLength.nm 600.0<nm>)
+        let reference600 : SourcePreset = source PresetIds.source600 (EntryName "Monochromatic 600 nm") (WaveLength.nm 600.0<nm>)
 
         /// Well-known lasers, by gain medium (the harmonics of Nd:YAG included).
         let lasers : SourcePreset list =
             [
-                source (ElementValueId "src-hene-633") (EntryName "HeNe laser 632.8 nm") (WaveLength.nm 632.8<nm>)
-                source (ElementValueId "src-hene-543") (EntryName "HeNe laser 543.5 nm (green)") (WaveLength.nm 543.5<nm>)
-                source (ElementValueId "src-ar-488") (EntryName "Argon-ion laser 488 nm") (WaveLength.nm 488.0<nm>)
-                source (ElementValueId "src-ar-515") (EntryName "Argon-ion laser 514.5 nm") (WaveLength.nm 514.5<nm>)
-                source (ElementValueId "src-hecd-442") (EntryName "HeCd laser 441.6 nm") (WaveLength.nm 441.6<nm>)
-                source (ElementValueId "src-hecd-325") (EntryName "HeCd laser 325 nm (UV)") (WaveLength.nm 325.0<nm>)
-                source (ElementValueId "src-diode-405") (EntryName "GaN diode laser 405 nm") (WaveLength.nm 405.0<nm>)
-                source (ElementValueId "src-ruby-694") (EntryName "Ruby laser 694.3 nm") (WaveLength.nm 694.3<nm>)
-                source (ElementValueId "src-tisa-800") (EntryName "Ti:sapphire laser 800 nm") (WaveLength.nm 800.0<nm>)
-                source (ElementValueId "src-ndyag-1064") (EntryName "Nd:YAG laser 1064 nm") (WaveLength.nm 1064.0<nm>)
-                source (ElementValueId "src-ndyag-532") (EntryName "Nd:YAG ×2 532 nm") (WaveLength.nm 532.0<nm>)
-                source (ElementValueId "src-ndyag-355") (EntryName "Nd:YAG ×3 355 nm (UV)") (WaveLength.nm 355.0<nm>)
-                source (ElementValueId "src-ndyag-266") (EntryName "Nd:YAG ×4 266 nm (DUV)") (WaveLength.nm 266.0<nm>)
-                source (ElementValueId "src-er-1550") (EntryName "Erbium fibre laser 1550 nm") (WaveLength.nm 1550.0<nm>)
-                source (ElementValueId "src-co2-10600") (EntryName "CO₂ laser 10.6 µm") (WaveLength.nm 10600.0<nm>)
+                source PresetIds.heNe633 (EntryName "HeNe laser 632.8 nm") (WaveLength.nm 632.8<nm>)
+                source PresetIds.heNe543 (EntryName "HeNe laser 543.5 nm (green)") (WaveLength.nm 543.5<nm>)
+                source PresetIds.argon488 (EntryName "Argon-ion laser 488 nm") (WaveLength.nm 488.0<nm>)
+                source PresetIds.argon515 (EntryName "Argon-ion laser 514.5 nm") (WaveLength.nm 514.5<nm>)
+                source PresetIds.heCd442 (EntryName "HeCd laser 441.6 nm") (WaveLength.nm 441.6<nm>)
+                source PresetIds.heCd325 (EntryName "HeCd laser 325 nm (UV)") (WaveLength.nm 325.0<nm>)
+                source PresetIds.diode405 (EntryName "GaN diode laser 405 nm") (WaveLength.nm 405.0<nm>)
+                source PresetIds.ruby694 (EntryName "Ruby laser 694.3 nm") (WaveLength.nm 694.3<nm>)
+                source PresetIds.tiSapphire800 (EntryName "Ti:sapphire laser 800 nm") (WaveLength.nm 800.0<nm>)
+                source PresetIds.ndYag1064 (EntryName "Nd:YAG laser 1064 nm") (WaveLength.nm 1064.0<nm>)
+                source PresetIds.ndYag532 (EntryName "Nd:YAG ×2 532 nm") (WaveLength.nm 532.0<nm>)
+                source PresetIds.ndYag355 (EntryName "Nd:YAG ×3 355 nm (UV)") (WaveLength.nm 355.0<nm>)
+                source PresetIds.ndYag266 (EntryName "Nd:YAG ×4 266 nm (DUV)") (WaveLength.nm 266.0<nm>)
+                source PresetIds.erbium1550 (EntryName "Erbium fibre laser 1550 nm") (WaveLength.nm 1550.0<nm>)
+                source PresetIds.co2Laser10600 (EntryName "CO₂ laser 10.6 µm") (WaveLength.nm 10600.0<nm>)
             ]
 
         /// The UV / EUV lithography sources: the mercury-lamp lines, the DUV excimer lasers, and the
         /// tin-plasma EUV source with its beyond-EUV successor.
         let lithography : SourcePreset list =
             [
-                source (ElementValueId "src-hg-g-436") (EntryName "Mercury g-line 435.8 nm") (WaveLength.nm 435.8<nm>)
-                source (ElementValueId "src-hg-h-405") (EntryName "Mercury h-line 404.7 nm") (WaveLength.nm 404.7<nm>)
-                source (ElementValueId "src-hg-i-365") (EntryName "Mercury i-line 365 nm") (WaveLength.nm 365.0<nm>)
-                source (ElementValueId "src-krf-248") (EntryName "KrF excimer 248 nm (DUV)") (WaveLength.nm 248.4<nm>)
-                source (ElementValueId "src-arf-193") (EntryName "ArF excimer 193 nm (DUV, dry / immersion)") (WaveLength.nm 193.4<nm>)
-                source (ElementValueId "src-f2-157") (EntryName "F₂ excimer 157 nm (VUV)") (WaveLength.nm 157.6<nm>)
-                source (ElementValueId "src-euv-13p5") (EntryName "EUV 13.5 nm (Sn plasma)") (WaveLength.nm 13.5<nm>)
-                source (ElementValueId "src-beuv-6p7") (EntryName "BEUV 6.7 nm (beyond EUV)") (WaveLength.nm 6.7<nm>)
+                source PresetIds.mercuryG436 (EntryName "Mercury g-line 435.8 nm") (WaveLength.nm 435.8<nm>)
+                source PresetIds.mercuryH405 (EntryName "Mercury h-line 404.7 nm") (WaveLength.nm 404.7<nm>)
+                source PresetIds.mercuryI365 (EntryName "Mercury i-line 365 nm") (WaveLength.nm 365.0<nm>)
+                source PresetIds.krf248 (EntryName "KrF excimer 248 nm (DUV)") (WaveLength.nm 248.4<nm>)
+                source PresetIds.arf193 (EntryName "ArF excimer 193 nm (DUV, dry / immersion)") (WaveLength.nm 193.4<nm>)
+                source PresetIds.f2Excimer157 (EntryName "F₂ excimer 157 nm (VUV)") (WaveLength.nm 157.6<nm>)
+                source PresetIds.euv13p5 (EntryName "EUV 13.5 nm (Sn plasma)") (WaveLength.nm 13.5<nm>)
+                source PresetIds.beuv6p7 (EntryName "BEUV 6.7 nm (beyond EUV)") (WaveLength.nm 6.7<nm>)
             ]
 
         /// Tunable sources (spec 0046): an experiment varies their wavelength within their limits, or sets
         /// it there when it varies something else.
         let tunables : SourcePreset list =
             [
-                tunable (ElementValueId "src-xe-mono") (EntryName "Xenon lamp + monochromator, 190–1000 nm") (WaveLength.nm 190.0<nm>) (WaveLength.nm 1000.0<nm>) (WaveLength.nm 600.0<nm>)
-                tunable (ElementValueId "src-tisa-tunable") (EntryName "Ti:sapphire laser, tunable 700–1000 nm") (WaveLength.nm 700.0<nm>) (WaveLength.nm 1000.0<nm>) (WaveLength.nm 800.0<nm>)
-                tunable (ElementValueId "src-supercontinuum") (EntryName "Supercontinuum source, 450–2400 nm") (WaveLength.nm 450.0<nm>) (WaveLength.nm 2400.0<nm>) (WaveLength.nm 600.0<nm>)
-                tunable (ElementValueId "src-euv-beamline") (EntryName "EUV beamline (synchrotron), 5–20 nm") (WaveLength.nm 5.0<nm>) (WaveLength.nm 20.0<nm>) (WaveLength.nm 13.5<nm>)
+                tunable PresetIds.xenonMonochromator (EntryName "Xenon lamp + monochromator, 190–1000 nm") (WaveLength.nm 190.0<nm>) (WaveLength.nm 1000.0<nm>) (WaveLength.nm 600.0<nm>)
+                tunable PresetIds.tiSapphireTunable (EntryName "Ti:sapphire laser, tunable 700–1000 nm") (WaveLength.nm 700.0<nm>) (WaveLength.nm 1000.0<nm>) (WaveLength.nm 800.0<nm>)
+                tunable PresetIds.supercontinuum (EntryName "Supercontinuum source, 450–2400 nm") (WaveLength.nm 450.0<nm>) (WaveLength.nm 2400.0<nm>) (WaveLength.nm 600.0<nm>)
+                tunable PresetIds.euvBeamline (EntryName "EUV beamline (synchrotron), 5–20 nm") (WaveLength.nm 5.0<nm>) (WaveLength.nm 20.0<nm>) (WaveLength.nm 13.5<nm>)
             ]
 
         /// Every seeded source, in Library display order.
@@ -884,17 +939,17 @@ module Library =
     let seedEntries : LibraryEntry list =
         (SeedSamples.allSeedSamples |> List.map SampleItem)
         @ [
-            DetectorItem { id = ElementValueId "det-intensity"; name = EntryName "Intensity detector"; kind = Intensity; protection = ProtectedBuiltIn }
-            DetectorItem { id = ElementValueId "det-ellipsometer"; name = EntryName "Ellipsometer"; kind = Ellipsometer; protection = ProtectedBuiltIn }
-            PolarizerItem { id = ElementValueId "pol-lp"; name = EntryName "Ideal linear polarizer"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = ProtectedBuiltIn }
-            PolarizerItem { id = ElementValueId "pol-cp-left"; name = EntryName "Ideal circular polarizer (left)"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = ProtectedBuiltIn }
-            PolarizerItem { id = ElementValueId "pol-cp-right"; name = EntryName "Ideal circular polarizer (right)"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = ProtectedBuiltIn }
+            DetectorItem { id = PresetIds.detectorIntensity; name = EntryName "Intensity detector"; kind = Intensity; protection = ProtectedBuiltIn }
+            DetectorItem { id = PresetIds.detectorEllipsometer; name = EntryName "Ellipsometer"; kind = Ellipsometer; protection = ProtectedBuiltIn }
+            PolarizerItem { id = PresetIds.polarizerLp; name = EntryName "Ideal linear polarizer"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = ProtectedBuiltIn }
+            PolarizerItem { id = PresetIds.polarizerCpLeft; name = EntryName "Ideal circular polarizer (left)"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = ProtectedBuiltIn }
+            PolarizerItem { id = PresetIds.polarizerCpRight; name = EntryName "Ideal circular polarizer (right)"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = ProtectedBuiltIn }
         ]
         // Spec 0046: the seeded sources — the 600 nm reference, the lasers, the lithography sources.
         @ (SeedSources.allSeedSources |> List.map SourceItem)
 
     /// A grouping-tree leaf for a seeded sample: references the sample VALUE programmatically
-    /// (spec 0033 step 002 — the id literal lives only in `SeedSamples`), carrying its Guid-string
+    /// (spec 0033 step 002 — the id literal lives only in `SampleIds`), carrying its Guid-string
     /// entry id exactly as `tryGetEntry` resolves it.
     let private sampleLeaf (label : TreeLabel) (s : Sample) : LibraryTreeNode =
         Leaf (label, (SampleItem s).entryId)
@@ -951,15 +1006,15 @@ module Library =
                              Group
                                  (TreeLabel "Detectors",
                                   [
-                                      Leaf (TreeLabel "Intensity", ElementValueId "det-intensity")
-                                      Leaf (TreeLabel "Ellipsometer", ElementValueId "det-ellipsometer")
+                                      Leaf (TreeLabel "Intensity", PresetIds.detectorIntensity)
+                                      Leaf (TreeLabel "Ellipsometer", PresetIds.detectorEllipsometer)
                                   ])
                              Group
                                  (TreeLabel "Polarizers",
                                   [
-                                      Leaf (TreeLabel "Linear", ElementValueId "pol-lp")
-                                      Leaf (TreeLabel "Circular (L)", ElementValueId "pol-cp-left")
-                                      Leaf (TreeLabel "Circular (R)", ElementValueId "pol-cp-right")
+                                      Leaf (TreeLabel "Linear", PresetIds.polarizerLp)
+                                      Leaf (TreeLabel "Circular (L)", PresetIds.polarizerCpLeft)
+                                      Leaf (TreeLabel "Circular (R)", PresetIds.polarizerCpRight)
                                   ])
                          ])
             }

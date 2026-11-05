@@ -28,23 +28,23 @@ module ExperimentControlsTests =
     let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
 
     /// Select the element at index `i`, then bind it to a Library entry id (the `BindValueId` MVU path).
-    let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
-        { m with selection = ElementSelected (SceneElementIndex i) } |> updateTableAndElementRotation (BindValueId (ElementValueId entryId))
+    let private bind (i : int) (entryId : ElementValueId) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
+        { m with selection = ElementSelected (SceneElementIndex i) } |> updateTableAndElementRotation (BindValueId entryId)
 
     /// Spec 0046: the Main scene with its source bound to a TUNABLE source (xenon lamp + monochromator,
     /// 190–1000 nm) — only a tunable source's wavelength can be varied.
-    let private withTunableSource () : TableAndElementRotationModel = bind 0 "src-xe-mono" (initMain ())
+    let private withTunableSource () : TableAndElementRotationModel = bind 0 Library.PresetIds.xenonMonochromator (initMain ())
 
     /// The Guid-string entry id of the seeded 200 nm glass film these tests bind (referenced
-    /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
-    let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId.value
+    /// programmatically — the id literal lives only in `Library.SampleIds`, spec 0050 §3.3).
+    let private glassFilm200Id : ElementValueId = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId
 
     /// A seeded ThinFilm and a seeded Plate sample — both supporting BOTH branches (spec 0046) — and the
     /// seeded MIRROR (the EUV multilayer, `EmitReflectedOnly`): the geometries spec 0040 D.3 bounds a
     /// placed sample's emission by.
-    let private glassFilm600Id : string = (Library.SampleItem Library.SeedSamples.glassFilm600).entryId.value
-    let private glassPlate1mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId.value
-    let private euvMirrorId : string = (Library.SampleItem Library.SeedSamples.euvMoSi).entryId.value
+    let private glassFilm600Id : ElementValueId = (Library.SampleItem Library.SeedSamples.glassFilm600).entryId
+    let private glassPlate1mmId : ElementValueId = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
+    let private euvMirrorId : ElementValueId = (Library.SampleItem Library.SeedSamples.euvMoSi).entryId
 
     /// The live id of the element at index `i`.
     let private idOf (i : int) (m : TableAndElementRotationModel) : string = (elem i m).id.value
@@ -106,7 +106,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``a fixed-line or unbound source varies nothing — its wavelength cannot be changed`` () =
-        for m in [ initMain (); bind 0 "src-hene-633" (initMain ()) ] do
+        for m in [ initMain (); bind 0 Library.PresetIds.heNe633 (initMain ()) ] do
             let chosen = m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src"))
             Assert.Equal(None, chosen.experimentCollection.draft.variable)
             Assert.Empty((chosen.experimentState).variableChoices)
@@ -277,7 +277,7 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``an ellipsometer VaryR2 experiment yields two series (Psi and Delta)`` () =
         let m =
-            initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassFilm200Id |> bind 1 "det-ellipsometer"
+            initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassFilm200Id |> bind 1 Library.PresetIds.detectorEllipsometer
             |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
@@ -304,8 +304,8 @@ module ExperimentControlsTests =
         // scene's last bound polarizer only serves a non-polarizer varied element.
         let m =
             initMain ()
-            |> updateTableAndElementRotation (AddElement LinearPolarizer)                                                  // pre-bound pol-lp
-            |> updateTableAndElementRotation (AddElementBoundTo (CircularPolarizer, Some (ElementValueId SeedEntryIds.polarizerCpRight)))   // pre-bound pol-cp-right
+            |> updateTableAndElementRotation (AddElement LinearPolarizer)                                                       // pre-bound PresetIds.polarizerLp
+            |> updateTableAndElementRotation (AddElementBoundTo (CircularPolarizer, Some Library.PresetIds.polarizerCpRight))   // pre-bound PresetIds.polarizerCpRight
         Assert.Equal(ResolvedAnalyzer Library.IdealLinear, runAnalyzerKind m (Some (elem 2 m).id))
         Assert.Equal(ResolvedAnalyzer Library.IdealCircularRight, runAnalyzerKind m (Some (elem 3 m).id))
 
@@ -315,7 +315,7 @@ module ExperimentControlsTests =
         // fallback would have silently answered IdealLinear here.
         let m =
             initMain ()
-            |> updateTableAndElementRotation (AddElement CircularPolarizer)   // pre-bound pol-cp-left
+            |> updateTableAndElementRotation (AddElement CircularPolarizer)   // pre-bound PresetIds.polarizerCpLeft
             |> updateTableAndElementRotation (AddElement Sample)              // unbound (the inverse hook)
         Assert.Equal(ResolvedAnalyzer Library.IdealCircularLeft, runAnalyzerKind m (Some (elem 3 m).id))
 
@@ -344,7 +344,7 @@ module ExperimentControlsTests =
         // The step-018 add path pre-binds the polarizer, so the analyzer resolves from the BOUND
         // entry — the surface that used to lean on the silent fallback keeps its curve.
         let m = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
-        Assert.Equal(Some (ElementValueId SeedEntryIds.polarizerLp), (elem 2 m).placement.valueId)
+        Assert.Equal(Some Library.PresetIds.polarizerLp, (elem 2 m).placement.valueId)
         let chart = (m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m)))).experimentResult
         Assert.Single(chart.series) |> ignore
         Assert.Equal("Rotating analyzer (Malus)", chart.title.value)
@@ -628,7 +628,7 @@ module ExperimentControlsTests =
             let seed =
                 initMain () |> updateTableAndElementRotation (AddElement Sample)
                 |> (fun m -> { m with selection = ElementSelected (SceneElementIndex 2) })
-                |> updateTableAndElementRotation (BindValueId (ElementValueId glassFilm200Id))
+                |> updateTableAndElementRotation (BindValueId glassFilm200Id)
                 |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
                 |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
                 |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)   // two series (T + R)

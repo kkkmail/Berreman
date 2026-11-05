@@ -982,36 +982,19 @@ let private setSelectedAxis (axis : RotationControls.RotationAxis) (v : BarDegre
 // identical to the static test scene — these just grow / shrink the `elements` list.
 // ---------------------------------------------------------------------------
 
-/// Spec 0038 (018): the stable ids of the seeded Library entries the pre-binding maps to
-/// (`Library.seedEntries` — the Domain seeds; entry ids are strings by the spec-0033 string-id
-/// decision). Centralized here so the add path, the palette buttons, and the tests never repeat
-/// the literals.
-[<RequireQualifiedAccess>]
-module SeedEntryIds =
-    [<Literal>]
-    let source600 = "src-600"
-    [<Literal>]
-    let detectorIntensity = "det-intensity"
-    [<Literal>]
-    let polarizerLp = "pol-lp"
-    [<Literal>]
-    let polarizerCpLeft = "pol-cp-left"
-    [<Literal>]
-    let polarizerCpRight = "pol-cp-right"
-
 type CatalogueKind with
 
     /// Spec 0038 (018) pre-binding (spec Part G, operator Q7/Q28): the seeded Library entry a NEW
     /// table element of this kind is created PRE-BOUND to. A sample stays UNBOUND — the inverse-flow
     /// hook — and the lens / mirror kinds have no Library entries to bind (not bindable). The
     /// circular-polarizer kind defaults to the LEFT seed (the seed order); the palette's CPR button
-    /// carries its explicit `pol-cp-right` pre-bind through `AddElementBoundTo`.
+    /// carries its explicit `PresetIds.polarizerCpRight` pre-bind through `AddElementBoundTo`.
     member kind.defaultSeedEntry : ElementValueId option =
         match kind with
-        | LightSource -> Some (ElementValueId SeedEntryIds.source600)
-        | Detector -> Some (ElementValueId SeedEntryIds.detectorIntensity)
-        | LinearPolarizer -> Some (ElementValueId SeedEntryIds.polarizerLp)
-        | CircularPolarizer -> Some (ElementValueId SeedEntryIds.polarizerCpLeft)
+        | LightSource -> Some Library.PresetIds.source600
+        | Detector -> Some Library.PresetIds.detectorIntensity
+        | LinearPolarizer -> Some Library.PresetIds.polarizerLp
+        | CircularPolarizer -> Some Library.PresetIds.polarizerCpLeft
         | Sample -> None
         | Lens | FlatMirror | CurvedMirror -> None
 
@@ -2049,8 +2032,8 @@ type TableAndElementRotationModel with
         |> List.collect (fun k ->
             match k with
             | CircularPolarizer ->
-                [ { code = ConstructorUiKey "CPL"; label = ControlCaption $"{CircularPolarizer.kindName} (L)"; kind = CircularPolarizer; prebind = Some (ElementValueId SeedEntryIds.polarizerCpLeft) }
-                  { code = ConstructorUiKey "CPR"; label = ControlCaption $"{CircularPolarizer.kindName} (R)"; kind = CircularPolarizer; prebind = Some (ElementValueId SeedEntryIds.polarizerCpRight) } ]
+                [ { code = ConstructorUiKey "CPL"; label = ControlCaption $"{CircularPolarizer.kindName} (L)"; kind = CircularPolarizer; prebind = Some Library.PresetIds.polarizerCpLeft }
+                  { code = ConstructorUiKey "CPR"; label = ControlCaption $"{CircularPolarizer.kindName} (R)"; kind = CircularPolarizer; prebind = Some Library.PresetIds.polarizerCpRight } ]
             | LightSource | LinearPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector ->
                 [ { code = ConstructorUiKey k.kindCode; label = ControlCaption k.kindName; kind = k; prebind = k.defaultSeedEntry } ])
 

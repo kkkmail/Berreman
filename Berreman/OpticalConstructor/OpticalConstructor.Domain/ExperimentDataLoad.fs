@@ -21,10 +21,11 @@ open OpticalConstructor.Domain.ExperimentData          // ExperimentDataProxy
 module ExperimentDataLoad =
 
     /// Resolve an experiment's detector kind through the Library (spec 034/037): the captured setup's
-    /// detector descriptor binds a protected preset by its entry id (`det-intensity` / `det-ellipsometer`),
-    /// which resolves through the read-only `LibraryProxy` to the `DetectorKind` that fixes the expected
-    /// data-file shape. Defaults to `Intensity` when the setup captured no detector, its binding is not a
-    /// preset id, or the id does not resolve — mirroring the live scene's `runDetectorKind` default.
+    /// detector descriptor binds a protected preset by its entry id (`PresetIds.detectorIntensity` /
+    /// `PresetIds.detectorEllipsometer`), which resolves through the read-only `LibraryProxy` to the
+    /// `DetectorKind` that fixes the expected data-file shape. Defaults to `Intensity` when the setup
+    /// captured no detector, its binding is not a preset id, or the id does not resolve — mirroring the
+    /// live scene's `runDetectorKind` default.
     let detectorKindOf (library : LibraryProxy) (experiment : Experiment) : DetectorKind =
         match experiment.detectorDescriptorOpt with
         | Some descriptor ->

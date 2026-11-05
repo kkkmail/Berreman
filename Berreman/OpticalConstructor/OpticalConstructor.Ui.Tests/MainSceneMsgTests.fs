@@ -39,6 +39,16 @@ module MainSceneMsgTests =
         | [ k ] -> k
         | matches -> failwith $"catalogue code '{code}' matched {List.length matches} kinds"
 
+    /// The seeded entry a pre-binding row's kind code expects (a `PresetIds` member cannot ride
+    /// `InlineData`).
+    let private expectedSeedOf (code : string) : ElementValueId =
+        match code with
+        | "S" -> PresetIds.source600
+        | "D" -> PresetIds.detectorIntensity
+        | "LP" -> PresetIds.polarizerLp
+        | "CP" -> PresetIds.polarizerCpLeft
+        | other -> failwith $"catalogue code '{other}' has no seeded default entry"
+
     /// The common Lego fixture: the Main scene with one added Sample, selected (index 2).
     let private withSample () : TableAndElementRotationModel = updateTableAndElementRotation (AddElement Sample) (initMain ())
 
@@ -106,19 +116,20 @@ module MainSceneMsgTests =
     // ============ step 018 — pre-binding (spec 0038 Part G, operator Q7/Q28) ============
 
     [<Theory>]
-    [<InlineData("S", SeedEntryIds.source600)>]
-    [<InlineData("D", SeedEntryIds.detectorIntensity)>]
-    [<InlineData("LP", SeedEntryIds.polarizerLp)>]
-    [<InlineData("CP", SeedEntryIds.polarizerCpLeft)>]
-    let ``AddElement lands PRE-BOUND to the kind's seeded default entry`` (code : string) (seedId : string) =
+    [<InlineData("S")>]
+    [<InlineData("D")>]
+    [<InlineData("LP")>]
+    [<InlineData("CP")>]
+    let ``AddElement lands PRE-BOUND to the kind's seeded default entry`` (code : string) =
         let kind = kindOfCode code
-        Assert.Equal(Some (ElementValueId seedId), kind.defaultSeedEntry)
+        let seedId = expectedSeedOf code
+        Assert.Equal(Some seedId, kind.defaultSeedEntry)
         let m = updateTableAndElementRotation (AddElement kind) (initMain ())
-        Assert.Equal(Some (ElementValueId seedId), (elem 2 m).placement.valueId)
+        Assert.Equal(Some seedId, (elem 2 m).placement.valueId)
         // The pre-bound id RESOLVES through the live Library seam to an entry valid for the kind.
-        match m.library.tryGetEntry (ElementValueId seedId) with
+        match m.library.tryGetEntry seedId with
         | Ok (Some entry) -> Assert.Contains(kind, entry.forKinds)
-        | other -> Assert.Fail($"the seed id %s{seedId} did not resolve: %A{other}")
+        | other -> Assert.Fail($"the seed id %s{seedId.value} did not resolve: %A{other}")
 
     [<Theory>]
     [<InlineData("Sa")>]
@@ -133,11 +144,11 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``AddElementBoundTo carries an explicit pre-bind — the CPR palette button's path`` () =
-        let m = updateTableAndElementRotation (AddElementBoundTo (CircularPolarizer, Some (ElementValueId SeedEntryIds.polarizerCpRight))) (initMain ())
+        let m = updateTableAndElementRotation (AddElementBoundTo (CircularPolarizer, Some PresetIds.polarizerCpRight)) (initMain ())
         Assert.Equal(3, List.length m.elements)
         Assert.Equal(ElementSelected (SceneElementIndex 2), m.selection)
         Assert.Equal(CircularPolarizer, (elem 2 m).placement.catalogueKind)
-        Assert.Equal(Some (ElementValueId SeedEntryIds.polarizerCpRight), (elem 2 m).placement.valueId)
+        Assert.Equal(Some PresetIds.polarizerCpRight, (elem 2 m).placement.valueId)
 
     [<Fact>]
     let ``the palette offers THREE polarizer buttons over the UNCHANGED CatalogueKinds`` () =
@@ -148,9 +159,9 @@ module MainSceneMsgTests =
             buttons
             |> List.filter (fun b -> match b.kind with LinearPolarizer | CircularPolarizer -> true | _ -> false)
         Assert.Equal<(ConstructorUiKey * CatalogueKind * ElementValueId option) list>(
-            [ ConstructorUiKey "LP", LinearPolarizer, Some (ElementValueId SeedEntryIds.polarizerLp)
-              ConstructorUiKey "CPL", CircularPolarizer, Some (ElementValueId SeedEntryIds.polarizerCpLeft)
-              ConstructorUiKey "CPR", CircularPolarizer, Some (ElementValueId SeedEntryIds.polarizerCpRight) ],
+            [ ConstructorUiKey "LP", LinearPolarizer, Some PresetIds.polarizerLp
+              ConstructorUiKey "CPL", CircularPolarizer, Some PresetIds.polarizerCpLeft
+              ConstructorUiKey "CPR", CircularPolarizer, Some PresetIds.polarizerCpRight ],
             polarizers |> List.map (fun b -> b.code, b.kind, b.prebind))
         // The codes are unique (they are the `PaletteAdd_<code>` automation-id suffixes)…
         Assert.Equal(List.length buttons, buttons |> List.map (fun b -> b.code) |> List.distinct |> List.length)
@@ -476,8 +487,8 @@ module MainSceneMsgTests =
         // (never "the current selection" — the modeless Select window may outlive it).
         let m = initMain ()
         Assert.Equal(TableSelected, m.selection)
-        let bound = updateTableAndElementRotation (BindValueIdTo (ElementId "det", ElementValueId "det-intensity")) m
-        Assert.Equal(Some (ElementValueId "det-intensity"), (elem 1 bound).placement.valueId)
+        let bound = updateTableAndElementRotation (BindValueIdTo (ElementId "det", PresetIds.detectorIntensity)) m
+        Assert.Equal(Some PresetIds.detectorIntensity, (elem 1 bound).placement.valueId)
         Assert.Equal<ElementValueId option>(None, (elem 0 bound).placement.valueId)
         Assert.Equal<ControlCaption option>(None, bound.selectStatus)
         Assert.Equal<ElementValueId option>(None, bound.pendingEntry)
@@ -486,14 +497,14 @@ module MainSceneMsgTests =
     [<Fact>]
     let ``BindValueIdTo on a vanished element is a NO-OP plus the status line — never a throw`` () =
         let m = initMain ()
-        let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "not-on-the-table", ElementValueId "det-intensity")) m
+        let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "not-on-the-table", PresetIds.detectorIntensity)) m
         // Nothing changed but the status line.
         Assert.Equal<TestElement list>(m.elements, vanished.elements)
         match vanished.selectStatus with
         | Some text -> Assert.Contains("no longer on the table", text.value)
         | None -> Assert.Fail "the vanished target must surface the status line"
         // The next SUCCESSFUL targeted bind clears it; so does a selection change.
-        let recovered = updateTableAndElementRotation (BindValueIdTo (ElementId "det", ElementValueId "det-intensity")) vanished
+        let recovered = updateTableAndElementRotation (BindValueIdTo (ElementId "det", PresetIds.detectorIntensity)) vanished
         Assert.Equal<ControlCaption option>(None, recovered.selectStatus)
         Assert.Equal<ControlCaption option>(None, (clickAt offPlate vanished).selectStatus)
 
@@ -584,12 +595,12 @@ module MainSceneMsgTests =
         // open — the bind ends the session AND closes its window (on the window path the
         // window already closed itself; the extra Close is the safe no-op).
         let cancels, session = recordingSession (ElementId "det")
-        let bound = updateTableAndElementRotation (BindValueIdTo (ElementId "det", ElementValueId "det-intensity")) { initMain () with activeSelect = Some session }
+        let bound = updateTableAndElementRotation (BindValueIdTo (ElementId "det", PresetIds.detectorIntensity)) { initMain () with activeSelect = Some session }
         Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels)
         Assert.Equal<SelectSession option>(None, bound.activeSelect)
-        Assert.Equal(Some (ElementValueId "det-intensity"), (elem 1 bound).placement.valueId)
+        Assert.Equal(Some PresetIds.detectorIntensity, (elem 1 bound).placement.valueId)
         // The vanished-target no-op still ends the session (the choice was made either way).
         let cancels2, session2 = recordingSession (ElementId "gone")
-        let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "gone", ElementValueId "det-intensity")) { initMain () with activeSelect = Some session2 }
+        let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "gone", PresetIds.detectorIntensity)) { initMain () with activeSelect = Some session2 }
         Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels2)
         Assert.Equal<SelectSession option>(None, vanished.activeSelect)

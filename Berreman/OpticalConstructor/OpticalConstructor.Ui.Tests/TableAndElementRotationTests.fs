@@ -529,6 +529,6 @@ module TableAndElementRotationTests =
                 [ LinearPolarizer; CircularPolarizer; CircularPolarizer; Sample ],
                 added |> List.map (fun e -> e.placement.catalogueKind))
             Assert.Equal<ElementValueId option list>(
-                [ Some (ElementValueId SeedEntryIds.polarizerLp); Some (ElementValueId SeedEntryIds.polarizerCpLeft); Some (ElementValueId SeedEntryIds.polarizerCpRight); None ],
+                [ Some Library.PresetIds.polarizerLp; Some Library.PresetIds.polarizerCpLeft; Some Library.PresetIds.polarizerCpRight; None ],
                 added |> List.map (fun e -> e.placement.valueId))
             window.Close())
