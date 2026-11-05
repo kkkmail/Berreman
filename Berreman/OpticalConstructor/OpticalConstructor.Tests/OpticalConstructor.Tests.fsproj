@@ -230,6 +230,7 @@
              (place a Sample, bind it, choose it to vary) for both a ThinFilm and a Plate seed. -->
         <Compile Include="PlacedSampleEmissionTests.fs" />
         <Compile Include="CanonicalJsonTests.fs" />
+        <Compile Include="LibraryEntryFilesTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
