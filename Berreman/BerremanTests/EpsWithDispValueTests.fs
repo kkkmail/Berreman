@@ -71,6 +71,33 @@ type EpsWithDispValueTests() =
             { wavelengthInterval = interval 600.0<nm> 900.0<nm>; dispersion = RealNK { nFormula = constFormula 2.0; kFormula = zeroFormula } }
         ]
 
+    /// The hand-written table of the tabulated facts (spec 0050 step 2): 400, 500 and 700 nm,
+    /// n 1.50, 1.60 and 1.90, k 0.00, 0.10 and 0.30.
+    let tableWaveLengthsNm : double<nm> array = [| 400.0<nm>; 500.0<nm>; 700.0<nm> |]
+    let tableN : double array = [| 1.50; 1.60; 1.90 |]
+    let tableK : double array = [| 0.00; 0.10; 0.30 |]
+
+    /// The table over wavelengths given in nm, each reduced to metres through `WaveLength.nm`.
+    let tryTable (wavelengthsNm : double<nm> array) (n : double array) (k : double array) : Result<TabulatedNkTable, TabulatedTableError> =
+        TabulatedNkTable.tryCreate (wavelengthsNm |> Array.map (fun w -> (WaveLength.nm w).value)) n k
+
+    let tableOf (wavelengthsNm : double<nm> array) (n : double array) (k : double array) : TabulatedNkTable =
+        match tryTable wavelengthsNm n k with
+        | Ok table -> table
+        | Error (EmptyTableErr reason)
+        | Error (SampleCountMismatchErr reason)
+        | Error (UnsortedSamplesErr reason) -> failwith reason
+
+    /// Compares an index with the expected n + ik through the engine Eps both build.
+    let verifyIndex (result : ComplexRefractionIndex) (n : double) (k : double) =
+        verifyMatrixEqualityEps output (Eps.fromComplexRefractionIndex result) (ComplexRefractionIndex (Complex (n, k)) |> Eps.fromComplexRefractionIndex)
+
+    /// The reason a refusal carries, failing the fact on an accepted table.
+    let refusalOf (result : Result<TabulatedNkTable, TabulatedTableError>) : TabulatedTableError =
+        match result with
+        | Error e -> e
+        | Ok table -> failwith $"expected a refusal, got a table over {table.wavelengths.Length} samples"
+
 
     [<Fact>]
     member _.``Constant isotropic transparent value reproduces the directly-constructed Eps`` () =
@@ -207,3 +234,85 @@ type EpsWithDispValueTests() =
 
         let result = epsAt (EpsWithDispValue (BiaxialDispersive segments)) (WaveLength.nm 500.0<nm>)
         verifyMatrixEqualityEps output result (Eps.fromComplexRefractionIndex (nx, ny, nz))
+
+
+    [<Fact>]
+    member _.``A tabulated axis returns each sample at its own wavelength and interpolates linearly between neighbours`` () =
+        let table = tableOf tableWaveLengthsNm tableN tableK
+        let axis = TabulatedNK table
+
+        for i in 0 .. tableWaveLengthsNm.Length - 1 do
+            verifyIndex (axis.complexIndex (WaveLength.nm tableWaveLengthsNm.[i])) tableN.[i] tableK.[i]
+
+        // Between neighbours i and i + 1 the index is linear in λ: t = (λ − λᵢ)/(λᵢ₊₁ − λᵢ).
+        let lerp (i : int) (lambda : double<nm>) : Complex =
+            let t = (lambda - tableWaveLengthsNm.[i]) / (tableWaveLengthsNm.[i + 1] - tableWaveLengthsNm.[i])
+            Complex (tableN.[i] + (tableN.[i + 1] - tableN.[i]) * t, tableK.[i] + (tableK.[i + 1] - tableK.[i]) * t)
+
+        for (i, lambda) in [ (0, 450.0<nm>); (0, 420.0<nm>); (1, 600.0<nm>); (1, 650.0<nm>) ] do
+            let expected = lerp i lambda
+            verifyIndex (axis.complexIndex (WaveLength.nm lambda)) expected.Real expected.Imaginary
+
+        // The engine Eps the tree builds is the Eps of the interpolated index.
+        let value = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = table.sampleRange; dispersion = axis } ])
+        let expected = lerp 1 650.0<nm>
+        let result = epsAt value (WaveLength.nm 650.0<nm>)
+        verifyMatrixEqualityEps output result (Eps.fromComplexRefractionIndex (ComplexRefractionIndex expected))
+
+
+    [<Fact>]
+    member _.``A tabulated axis clamps to its first sample below the table and to its last sample above it`` () =
+        let axis = TabulatedNK (tableOf tableWaveLengthsNm tableN tableK)
+        let last = tableWaveLengthsNm.Length - 1
+
+        for lambda in [ 200.0<nm>; 399.0<nm> ] do
+            verifyIndex (axis.complexIndex (WaveLength.nm lambda)) tableN.[0] tableK.[0]
+
+        for lambda in [ 701.0<nm>; 1500.0<nm> ] do
+            verifyIndex (axis.complexIndex (WaveLength.nm lambda)) tableN.[last] tableK.[last]
+
+
+    [<Fact>]
+    member _.``A single-sample tabulated axis is constant at every wavelength`` () =
+        let axis = TabulatedNK (tableOf [| 550.0<nm> |] [| 1.70 |] [| 0.05 |])
+
+        for lambda in [ 200.0<nm>; 549.0<nm>; 550.0<nm>; 551.0<nm>; 1500.0<nm> ] do
+            verifyIndex (axis.complexIndex (WaveLength.nm lambda)) 1.70 0.05
+
+
+    [<Fact>]
+    member _.``TabulatedNkTable tryCreate refuses an empty table, unequal columns and a decreasing wavelength column`` () =
+        match refusalOf (tryTable [||] [||] [||]) with
+        | EmptyTableErr _ -> ()
+        | other -> Assert.Fail($"an empty table: expected EmptyTableErr, got %A{other}")
+
+        match refusalOf (tryTable tableWaveLengthsNm [| 1.50; 1.60 |] tableK) with
+        | SampleCountMismatchErr reason -> Assert.Contains("2 n values", reason)
+        | other -> Assert.Fail($"a short n column: expected SampleCountMismatchErr, got %A{other}")
+
+        match refusalOf (tryTable tableWaveLengthsNm tableN [| 0.00 |]) with
+        | SampleCountMismatchErr reason -> Assert.Contains("1 k values", reason)
+        | other -> Assert.Fail($"a short k column: expected SampleCountMismatchErr, got %A{other}")
+
+        match refusalOf (tryTable [| 400.0<nm>; 700.0<nm>; 500.0<nm> |] tableN tableK) with
+        | UnsortedSamplesErr reason -> Assert.Contains("index 2", reason)
+        | other -> Assert.Fail($"a decreasing wavelength column: expected UnsortedSamplesErr, got %A{other}")
+
+        // Accepted columns are kept as given (never sorted), read linearly and clamped; a
+        // repeated wavelength does not decrease, so it is accepted.
+        let table = tableOf tableWaveLengthsNm tableN tableK
+        Assert.Equal<double array>(tableN, table.n)
+        Assert.Equal<double array>(tableK, table.k)
+        Assert.Equal<TabulatedInterpolation>(LinearInWaveLengthClamped, table.interpolation)
+        match tryTable [| 400.0<nm>; 400.0<nm>; 500.0<nm> |] tableN tableK with
+        | Ok _ -> ()
+        | Error e -> Assert.Fail($"a repeated wavelength must be accepted, got %A{e}")
+
+
+    [<Fact>]
+    member _.``The tabulated interpolation rule round-trips its wire tag and refuses an unknown tag`` () =
+        Assert.Equal(1, LinearInWaveLengthClamped.value)
+        Assert.Equal<TabulatedInterpolation option>(Some LinearInWaveLengthClamped, TabulatedInterpolation.tryOfWire LinearInWaveLengthClamped.value)
+
+        for tag in [ 0; 2; -1 ] do
+            Assert.Equal<TabulatedInterpolation option>(None, TabulatedInterpolation.tryOfWire tag)

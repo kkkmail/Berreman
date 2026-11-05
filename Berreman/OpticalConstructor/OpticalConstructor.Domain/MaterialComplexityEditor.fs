@@ -859,16 +859,18 @@ type MaterialComplexity with
     /// misleading `SumOfTerms` segment the user cannot meaningfully change. Such an
     /// entry opens VIEW-ONLY instead: the host editability seams
     /// (`MaterialEditorView.init`, `MaterialsWindowModel.editableSelection`) gate on
-    /// this predicate rather than on `complexity` presence alone. A constant or
-    /// finite-term (`RealNK` / `ComplexEps`) dispersion is fully editable.
+    /// this predicate rather than on `complexity` presence alone. A tabulated n,k
+    /// table (`TabulatedNK`, spec 0050 step 2) is data but not term data either, so it
+    /// opens view-only too. A constant or finite-term (`RealNK` / `ComplexEps`)
+    /// dispersion is fully editable.
     member this.isEditable : bool =
-        let axisIsEvaluated (axis : EpsAxisDispersion) : bool =
+        let axisHasNoTermData (axis : EpsAxisDispersion) : bool =
             match axis with
-            | EpsAxisEvaluated _ -> true
+            | EpsAxisEvaluated _ | TabulatedNK _ -> true
             | RealNK _ | ComplexEps _ -> false
         match this.eps with
         | EpsWithoutDispValue _ -> true
-        | EpsWithDispValue dispersive -> not (dispersive.axisDispersions |> List.exists axisIsEvaluated)
+        | EpsWithDispValue dispersive -> not (dispersive.axisDispersions |> List.exists axisHasNoTermData)
 
 /// Seed the editor from an existing `MaterialComplexity` (the entry's editable
 /// source of truth). Verbatim — no snapping, no clamping — so

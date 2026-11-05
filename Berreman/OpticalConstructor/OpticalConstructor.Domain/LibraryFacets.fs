@@ -86,12 +86,14 @@ module LibraryFacets =
         /// (Sellmeier lowers to complex-ε terms, the transcendental four to an
         /// opaque closure); recognizing term shapes back into model kinds would
         /// re-derive physics (§D.0 forbids it). The facet therefore classifies
-        /// the three storable shapes; `DispersionModel.facetKey` (below) pins how
+        /// the four storable shapes, a tabulated n,k table (`TabulatedNK`, spec
+        /// 0050 step 2) included; `DispersionModel.facetKey` (below) pins how
         /// each `DispersionModel` case maps onto this vocabulary.
         member this.facetKey : DiscreteKey =
             match this with
             | RealNK _ -> DiscreteKey "Real n/k terms"
             | ComplexEps _ -> DiscreteKey "Complex ε terms"
+            | TabulatedNK _ -> DiscreteKey "Tabulated n/k"
             | EpsAxisEvaluated _ -> DiscreteKey "Evaluated (transcendental)"
 
     type DispersionModel with
@@ -275,7 +277,7 @@ module LibraryFacets =
     /// biaxial entry carries one classification per axis per segment, so
     /// counts need not sum to the total); offered only when the entry
     /// carries a dispersive eps segment tree. See `EpsAxisDispersion.facetKey` for
-    /// why the vocabulary is the three storable `EpsAxisDispersion` shapes
+    /// why the vocabulary is the four storable `EpsAxisDispersion` shapes
     /// rather than the ten analytic kinds.
     let private materialDispersionModelDef : AttributeDef<MaterialEntry> =
         {

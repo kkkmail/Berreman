@@ -351,7 +351,8 @@ module DispersionModels =
         /// gap G7 / comment 009). Every analytic model exposes its full scalar
         /// parameter set (with units) and one box per oscillator-list element; the raw
         /// `SumOfTerms` escape hatch exposes every term scalar of its n/k (or complex ε)
-        /// formulas, so it is fully editable too.
+        /// formulas, so it is fully editable too; over a tabulated n,k table or the
+        /// evaluated case it exposes none.
         member this.parameters : ModelParameter list =
             let p = ModelParameter.create
             let listParams (name : string) (label : string) (unitOpt : CoefficientUnit option) (xs : float list) (rebuild : float list -> DispersionModel) : ModelParameter list =
@@ -430,8 +431,10 @@ module DispersionModels =
                     @ realFormulaParams ExtinctionSlot nk.kFormula (fun f -> SumOfTerms (RealNK { nk with kFormula = f }))
                 | ComplexEps cF ->
                     complexFormulaParams PermittivitySlot cF (fun f -> SumOfTerms (ComplexEps f))
-                // The evaluated case (a transcendental model lowered to its closure)
-                // carries no finite term data, so it exposes no editable term scalars.
+                // A tabulated n,k table (spec 0050 step 2) and the evaluated case (a
+                // transcendental model lowered to its closure) carry no finite term data,
+                // so they expose no editable term scalars.
+                | TabulatedNK _
                 | EpsAxisEvaluated _ -> []
 
     /// Term count of the Faddeeva rational series below. Weideman shows N = 24

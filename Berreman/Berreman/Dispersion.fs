@@ -343,17 +343,6 @@ module Dispersion =
             | BiaxialAbsorbing b -> Eps.fromComplexRefractionIndex (b.nxComplex, b.nyComplex, b.nzComplex)
 
 
-    /// The dispersion of ONE principal axis: either separate real n and k
-    /// formulas (k = the zero formula for a transparent medium), one complex
-    /// eps formula for inherently complex models (Lorentz / Drude), or an
-    /// evaluated-directly closure for the transcendental models (Tauc–Lorentz,
-    /// Gaussian, Forouhi–Bloomer, Brendel–Bormann) that are not finite term sums —
-    /// it carries a `WaveLength -> ComplexRefractionIndex` exactly as the engine's
-    /// own `EpsWithDisp` case does, and `complexIndex` applies it. A function-typed
-    /// case removes F#'s structural equality type-wide, so the type provides custom
-    /// equality: `RealNK` / `ComplexEps` compare structurally (keeping the
-    /// `DispersionModel` / `EpsWithDispValue` / `MaterialComplexity` equality the
-    /// round-trip tests use) and the evaluated case compares by closure reference.
     /// The real n and k formulas of one principal axis.
     type RealNkFormulas =
         {
@@ -362,10 +351,101 @@ module Dispersion =
         }
 
 
+    /// How a tabulated n,k table reads between and beyond its samples. `value` is the wire tag.
+    type TabulatedInterpolation =
+        /// Linear in λ between neighbouring samples, clamped to the end samples outside the table.
+        | LinearInWaveLengthClamped
+
+        member this.value : int =
+            match this with
+            | LinearInWaveLengthClamped -> 1
+
+        static member tryOfWire (v : int) : TabulatedInterpolation option =
+            match v with
+            | 1 -> Some LinearInWaveLengthClamped
+            | _ -> None
+
+
+    /// Why `TabulatedNkTable.tryCreate` refused its columns.
+    type TabulatedTableError =
+        | EmptyTableErr of reason : string
+        | SampleCountMismatchErr of reason : string
+        | UnsortedSamplesErr of reason : string
+
+
+    /// A tabulated n,k table (spec 0050 step 2, 001 §B): the samples of one principal axis,
+    /// wavelengths ascending, read through `interpolation`.
+    [<Softellect.Sys.NumericCarrier("the wavelength, n and k columns of a tabulated n,k table, a measured data series (R3): complexIndex scans them at every wavelength of a sweep")>]
+    type TabulatedNkTable =
+        {
+            wavelengths : float<meter> array
+            n : float array
+            k : float array
+            interpolation : TabulatedInterpolation
+        }
+
+        /// The table over these columns, read linearly in λ and clamped. Refuses an empty table,
+        /// columns of unequal length and a wavelength column that decreases anywhere; never sorts.
+        static member tryCreate (wavelengths : float<meter> array) (n : float array) (k : float array) : Result<TabulatedNkTable, TabulatedTableError> =
+            if n.Length <> wavelengths.Length || k.Length <> wavelengths.Length then
+                Error (SampleCountMismatchErr $"{wavelengths.Length} wavelengths, {n.Length} n values and {k.Length} k values")
+            elif wavelengths.Length = 0 then
+                Error (EmptyTableErr "a tabulated n,k table needs at least one sample")
+            else
+                match wavelengths |> Array.pairwise |> Array.tryFindIndex (fun (a, b) -> b < a) with
+                | Some i -> Error (UnsortedSamplesErr $"the wavelength at index {i + 1} ({wavelengths.[i + 1]} m) is below the one at index {i} ({wavelengths.[i]} m)")
+                | None -> Ok { wavelengths = wavelengths; n = n; k = k; interpolation = LinearInWaveLengthClamped }
+
+        /// The first to the last sample.
+        member this.sampleRange : WaveLengthInterval =
+            {
+                lower = WaveLength.nm (this.wavelengths.[0] / nmToMeter)
+                upper = WaveLength.nm (this.wavelengths.[this.wavelengths.Length - 1] / nmToMeter)
+            }
+
+        /// The index at `w`: one sample answers itself; at or below the first sample the first, at
+        /// or above the last the last; otherwise linear in λ between the bracketing pair (spec 0050
+        /// step 2).
+        member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            match this.interpolation with
+            | LinearInWaveLengthClamped ->
+                let lam = w.value
+                let count = this.wavelengths.Length
+                let n, k =
+                    if count = 1 then
+                        this.n.[0], this.k.[0]
+                    else
+                        let last = count - 1
+                        if lam <= this.wavelengths.[0] then this.n.[0], this.k.[0]
+                        elif lam >= this.wavelengths.[last] then this.n.[last], this.k.[last]
+                        else
+                            let mutable i = 0
+                            while i < count - 2 && this.wavelengths.[i + 1] < lam do
+                                i <- i + 1
+                            let a = this.wavelengths.[i]
+                            let b = this.wavelengths.[i + 1]
+                            let t = if b = a then 0.0 else (lam - a) / (b - a)
+                            this.n.[i] + (this.n.[i + 1] - this.n.[i]) * t, this.k.[i] + (this.k.[i + 1] - this.k.[i]) * t
+                Complex (n, k) |> ComplexRefractionIndex
+
+
+    /// The dispersion of ONE principal axis: either separate real n and k
+    /// formulas (k = the zero formula for a transparent medium), one complex
+    /// eps formula for inherently complex models (Lorentz / Drude), a tabulated
+    /// n,k table (`TabulatedNK`, spec 0050 step 2), or an evaluated-directly
+    /// closure for the transcendental models (Tauc–Lorentz, Gaussian,
+    /// Forouhi–Bloomer, Brendel–Bormann) that are not finite term sums — it
+    /// carries a `WaveLength -> ComplexRefractionIndex` exactly as the engine's
+    /// own `EpsWithDisp` case does, and `complexIndex` applies it. A function-typed
+    /// case removes F#'s structural equality type-wide, so the type provides custom
+    /// equality: `RealNK` / `ComplexEps` / `TabulatedNK` compare structurally (keeping
+    /// the `DispersionModel` / `EpsWithDispValue` / `MaterialComplexity` equality the
+    /// round-trip tests use) and the evaluated case compares by closure reference.
     [<CustomEquality; NoComparison>]
     type EpsAxisDispersion =
         | RealNK of RealNkFormulas
         | ComplexEps of ComplexDispersionFormula
+        | TabulatedNK of TabulatedNkTable
         | EpsAxisEvaluated of (WaveLength -> ComplexRefractionIndex)
 
         member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
@@ -375,6 +455,7 @@ module Dispersion =
                 let (DispersionValue k) = f.kFormula.evaluate w
                 Complex (n, k) |> ComplexRefractionIndex
             | ComplexEps eps -> eps.evaluate w |> sqrt |> ComplexRefractionIndex
+            | TabulatedNK table -> table.complexIndex w
             | EpsAxisEvaluated f -> f w
 
         override this.Equals (o : obj) : bool =
@@ -383,6 +464,7 @@ module Dispersion =
                 match this, other with
                 | RealNK f1, RealNK f2 -> f1 = f2
                 | ComplexEps e1, ComplexEps e2 -> e1 = e2
+                | TabulatedNK t1, TabulatedNK t2 -> t1 = t2
                 | EpsAxisEvaluated f1, EpsAxisEvaluated f2 -> LanguagePrimitives.PhysicalEquality f1 f2
                 | _ -> false
             | _ -> false
@@ -391,6 +473,7 @@ module Dispersion =
             match this with
             | RealNK f -> hash (0, f.nFormula, f.kFormula)
             | ComplexEps e -> hash (1, e)
+            | TabulatedNK t -> hash (2, t)
             | EpsAxisEvaluated f -> LanguagePrimitives.PhysicalHash f
 
 

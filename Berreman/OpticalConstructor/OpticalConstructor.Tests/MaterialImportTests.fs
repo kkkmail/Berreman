@@ -161,6 +161,33 @@ module MaterialImportTests =
         assertSamplesAndMidpoints siYmlRows (readYaml "Si.yml").importMaterial
         assertSamplesAndMidpoints sampleNkCsvRows (readCsv "sample-nk.csv").importMaterial
 
+    /// The table a tabulated import carries: the fixture's rows in ascending λ, in metres, read
+    /// linearly and clamped (spec 0050 step 2).
+    let private assertTableColumns (fixture : TabulatedFixture) (imported : Result<MaterialEntry, ImportError>) =
+        match imported with
+        | Error e -> Assert.Fail($"{e}")
+        | Ok entry ->
+            match entry.complexity with
+            | Some { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]) } ->
+                Assert.Equal<TabulatedInterpolation>(LinearInWaveLengthClamped, table.interpolation)
+                Assert.Equal(List.length fixture.samples, table.wavelengths.Length)
+                Assert.Equal(List.length fixture.samples, table.n.Length)
+                Assert.Equal(List.length fixture.samples, table.k.Length)
+                fixture.samples
+                |> List.iteri (fun i sample ->
+                    let want = (fixture.waveLengthAt sample.magnitude).value
+                    Assert.True(abs (table.wavelengths.[i] - want) <= 1e-15<meter>, $"wavelength {i}: {table.wavelengths.[i]} m, want {want} m")
+                    Assert.Equal(sample.n, table.n.[i])
+                    Assert.Equal(sample.k, table.k.[i]))
+            | other -> Assert.Fail($"expected one isotropic segment carrying a TabulatedNK table, got {other}")
+
+    [<Fact>]
+    let ``the imported table holds the samples sorted by wavelength in metres under the linear clamped rule`` () =
+        assertTableColumns siYmlRows (readYaml "Si.yml").importMaterial
+        // The same rows shuffled: the importer sorts them before the table is built.
+        let shuffled = NkCsvText "wavelength_nm,n,k\n600,1.460,0.002\n400,1.500,0.010\n700,1.450,0.001\n500,1.480,0.005\n"
+        assertTableColumns sampleNkCsvRows shuffled.importMaterial
+
     /// The imported entry MUST be editable (spec 0033 step 025): a `Some`
     /// complexity whose eps is the dispersive segment tree (`EpsWithDispValue`).
     let private assertEditableDispersive (entry : MaterialEntry) =

@@ -515,6 +515,30 @@ module LibraryFacetsTests =
             [ "Complex ε terms", 1; "Evaluated (transcendental)", 1; "Real n/k terms", 1 ],
             branchSummary node)
 
+    [<Fact>]
+    let ``a tabulated axis lands on the tabulated n,k facet key`` () =
+        // Spec 0050 step 2: a tabulated n,k table is its own storable shape, on the axis
+        // and through the dispersion-model facet of an entry that carries it.
+        let samples = [| toWaveLength Nanometer (UnitMagnitude 400.0); toWaveLength Nanometer (UnitMagnitude 700.0) |]
+        match TabulatedNkTable.tryCreate (samples |> Array.map (fun w -> w.value)) [| 1.5; 1.4 |] [| 0.01; 0.0 |] with
+        | Error (EmptyTableErr reason)
+        | Error (SampleCountMismatchErr reason)
+        | Error (UnsortedSamplesErr reason) -> Assert.Fail reason
+        | Ok table ->
+            Assert.Equal("Tabulated n/k", (TabulatedNK table).facetKey.value)
+            let entry =
+                materialEntryWith
+                    "8d2a8dc0-3c41-4e5f-a07c-b12d3e4f5061"
+                    "Synthetic tabulated"
+                    {
+                        eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = table.sampleRange; dispersion = TabulatedNK table } ])
+                        magnetic = None
+                        active = None
+                    }
+            let def = materialDef materialDispersionModelKey
+            Assert.True(applies def entry)
+            Assert.Equal<string list>([ "Tabulated n/k" ], extractedKeys def entry)
+
     // =======================================================================
     // Library facets — kind, lifted material facets.
     // =======================================================================

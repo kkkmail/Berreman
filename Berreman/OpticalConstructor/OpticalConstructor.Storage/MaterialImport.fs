@@ -18,10 +18,10 @@ open OpticalConstructor.Domain.MaterialLibrary
 /// refractiveindex.info YAML + CSV import and CSV export (§D.9). Importers produce
 /// in-memory `MaterialEntry` values (never FsPickler-pickled, §I.4); every parsed
 /// wavelength is reduced to the engine meter base through the sole `Units` seam
-/// (§D.2/§D.11) according to the file's declared unit. Tabulated entries interpolate
-/// LINEARLY in λ so the closure is total over the chart range (no caching layer).
-/// The error channel is `Result<_, ImportError>` — parsing never throws past the
-/// boundary. The importers read, and `exportCsv` returns, the raw file TEXT
+/// (§D.2/§D.11) according to the file's declared unit. A tabulated page or CSV becomes
+/// a `TabulatedNK` axis table, read linearly in λ and clamped to its end samples (spec
+/// 0050 step 2). The error channel is `Result<_, ImportError>` — parsing never throws
+/// past the boundary. The importers read, and `exportCsv` returns, the raw file TEXT
 /// (`RefractiveIndexInfoText` / `NkCsvText`), keeping filesystem IO and its exceptions
 /// out of the parser.
 module MaterialImport =
@@ -81,10 +81,10 @@ module MaterialImport =
     let private inv = CultureInfo.InvariantCulture
 
     /// One row of an imported n,k table: λ in meters, n and k.
-    [<Softellect.Sys.NumericCarrier("one row of an imported n,k table, a measured data series (R3): the interpolation closure reads every row at every wavelength of a sweep")>]
+    [<Softellect.Sys.NumericCarrier("one row of an imported n,k table, a measured data series (R3): the rows are sorted by λ and split into the columns of a TabulatedNkTable")>]
     type private NkTableRow =
         {
-            lambdaMeters : float
+            wavelength : float<meter>
             n : float
             k : float
         }
@@ -112,8 +112,7 @@ module MaterialImport =
                 if t.Length > 0 && (Char.IsDigit t.[0] || t.[0] = '-' || t.[0] = '.') then
                     let f = RiiPage.floatsOn t
                     if f.Length >= 2 then
-                        let lamMeters = (toMeters unit (UnitMagnitude f.[0])) / 1.0<meter>
-                        Some { lambdaMeters = lamMeters; n = f.[1]; k = (if f.Length >= 3 then f.[2] else 0.0) }
+                        Some { wavelength = toMeters unit (UnitMagnitude f.[0]); n = f.[1]; k = (if f.Length >= 3 then f.[2] else 0.0) }
                     else None
                 else None)
 
@@ -153,45 +152,37 @@ module MaterialImport =
                 let nominal = toWaveLength Micrometer (UnitMagnitude 0.0)
                 { lower = nominal; upper = nominal }
 
-    /// Linear-in-λ interpolation over the tabulated samples, clamped to the ends so
-    /// the closure is total. Samples are sorted by λ.
-    let private buildTabulatedClosure (points : NkTableRow[]) : WaveLength -> Eps =
-        let sorted = points |> Array.sortBy (fun r -> r.lambdaMeters)
-        fun w ->
-            let lam = w.value / 1.0<meter>
-            let n, k =
-                if sorted.Length = 1 then
-                    let r = sorted.[0] in r.n, r.k
-                else
-                    let first = sorted.[0]
-                    let last = sorted.[sorted.Length - 1]
-                    if lam <= first.lambdaMeters then first.n, first.k
-                    elif lam >= last.lambdaMeters then last.n, last.k
-                    else
-                        // Find the bracketing pair [i, i+1] and lerp.
-                        let mutable i = 0
-                        while i < sorted.Length - 2 && sorted.[i + 1].lambdaMeters < lam do
-                            i <- i + 1
-                        let a = sorted.[i]
-                        let b = sorted.[i + 1]
-                        let t = if b.lambdaMeters = a.lambdaMeters then 0.0 else (lam - a.lambdaMeters) / (b.lambdaMeters - a.lambdaMeters)
-                        a.n + (b.n - a.n) * t, a.k + (b.k - a.k) * t
-            Complex.create n k |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
-
-    /// An imported entry MINTS a fresh `MaterialId` (spec 0033 step 002) — imports carry no
-    /// persisted identity of their own; the stable Guid ids live with the library seeds.
-    let private entryFromTabulated (name : EntryName) (category : CategoryId) (points : NkTableRow[]) : MaterialEntry =
-        {
-            id = MaterialId.create ()
-            name = name
-            category = category
-            description = Some (EntryDescription "Imported tabulated n,k (refractiveindex.info).")
-            properties = (EpsWithDisp (buildTabulatedClosure points)).isotropicProperties
-            // Tabulated imports stay closure-backed (view-only): linear interpolation
-            // over samples is not finite term data. Formula imports carry an editable
-            // complexity instead (spec 0033 step 025).
-            complexity = None
-        }
+    /// A tabulated import is axis data (spec 0050 step 2, 001 §B): its rows, sorted by λ, become
+    /// one `TabulatedNK` table carried as a single isotropic dispersive segment over the sample
+    /// range, view-only because a table is not editable term data; `properties` IS
+    /// `complexity.toProperties` (the seed invariant). A refused table is `NoDataErr` with its
+    /// reason. An imported entry MINTS a fresh `MaterialId` (spec 0033 step 002) — imports carry
+    /// no persisted identity of their own; the stable Guid ids live with the library seeds.
+    let private entryFromTabulated (name : EntryName) (category : CategoryId) (points : NkTableRow[]) : Result<MaterialEntry, ImportError> =
+        let sorted = points |> Array.sortBy (fun r -> r.wavelength)
+        let wavelengths = sorted |> Array.map (fun r -> r.wavelength)
+        let n = sorted |> Array.map (fun r -> r.n)
+        let k = sorted |> Array.map (fun r -> r.k)
+        match TabulatedNkTable.tryCreate wavelengths n k with
+        | Error (EmptyTableErr reason)
+        | Error (SampleCountMismatchErr reason)
+        | Error (UnsortedSamplesErr reason) -> Error (NoDataErr reason)
+        | Ok table ->
+            let complexity =
+                {
+                    eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = table.sampleRange; dispersion = TabulatedNK table } ])
+                    magnetic = None
+                    active = None
+                }
+            Ok
+                {
+                    id = MaterialId.create ()
+                    name = name
+                    category = category
+                    description = Some (EntryDescription "Imported tabulated n,k (refractiveindex.info).")
+                    properties = complexity.toProperties
+                    complexity = Some complexity
+                }
 
     // ==========================================================================
     // Analytic formula blocks (spec 0033 step 025). Each refractiveindex.info
@@ -499,7 +490,7 @@ module MaterialImport =
                 | None ->
                     let rows = page.tabulatedRows Micrometer
                     if rows.Length = 0 then Error (NoDataErr "no tabulated rows found")
-                    else Ok (entryFromTabulated (EntryName "Imported (refractiveindex.info)") CategoryIds.semiconductor rows)
+                    else entryFromTabulated (EntryName "Imported (refractiveindex.info)") CategoryIds.semiconductor rows
             with e -> Error (MalformedYamlErr e.Message)
 
     type NkCsvText with
@@ -536,12 +527,12 @@ module MaterialImport =
                             match tryFloat cols.[0], tryFloat cols.[1] with
                             | Some lam, Some n ->
                                 let k = if cols.Length >= 3 then (tryFloat cols.[2] |> Option.defaultValue 0.0) else 0.0
-                                Some { lambdaMeters = (toMeters unit (UnitMagnitude lam)) / 1.0<meter>; n = n; k = k }
+                                Some { wavelength = toMeters unit (UnitMagnitude lam); n = n; k = k }
                             | _ -> None
                         else None)
                     |> Array.ofSeq
                 if rows.Length = 0 then Error (NoDataErr "no CSV data rows found")
-                else Ok (entryFromTabulated (EntryName "Imported (CSV)") CategoryIds.glass rows)
+                else entryFromTabulated (EntryName "Imported (CSV)") CategoryIds.glass rows
             with e -> Error (MalformedCsvErr e.Message)
 
     /// Export n,k sampled over a `Range<WaveLength>` to CSV text (§D.9), reading the

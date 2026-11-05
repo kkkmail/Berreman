@@ -4,5 +4,6 @@
       "OpticalConstructor.Tests.MaterialImportTests.a tabulated refractiveindex.info page imports as one view-only dispersive segment over its sample range",
       "OpticalConstructor.Tests.MaterialImportTests.an n,k CSV imports as one view-only dispersive segment over its sample range"
     ]
-  }
+  },
+  "1": {}
 }
