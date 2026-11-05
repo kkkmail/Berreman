@@ -36,7 +36,7 @@ type LanguageCode =
     member this.value = let (LanguageCode c) = this in c
 
 /// The selectable UI language (I.2.1). A fieldless DU, so the shared
-/// `ProjectJson.options` serialize it as a bare string ("English"/"Russian") and the
+/// `CanonicalJson.options` serialize it as a bare string ("English"/"Russian") and the
 /// environment schema constrains it with an `enum`. EN and RU ship; the `strings.json`
 /// mechanism supports adding a further language by editing the file (no third language
 /// ships — constraint 0.6).

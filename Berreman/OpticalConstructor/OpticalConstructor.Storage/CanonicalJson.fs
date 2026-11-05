@@ -1,0 +1,132 @@
+namespace OpticalConstructor.Storage
+
+open System.Numerics
+open System.Text.Json
+open System.Text.Json.Serialization
+open MathNet.Numerics.LinearAlgebra
+
+/// The canonical JSON stack every JSON store of the app shares (spec 0050 001 §B, `.spec-md` §5).
+module CanonicalJson =
+
+    /// Keeps `BeamBranch` on the wire as the schema's `"Reflected"` / `"Transmitted"`: the cases were
+    /// renamed apart from the engine's `RT` (spec 0048 `.manual/005`), the stored format was not.
+    type private BeamBranchConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.BeamTree.BeamBranch>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.BeamTree.ReflectedBeam -> writer.WriteStringValue "Reflected"
+            | OpticalConstructor.Domain.BeamTree.TransmittedBeam -> writer.WriteStringValue "Transmitted"
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetString() with
+            | "Reflected" -> OpticalConstructor.Domain.BeamTree.ReflectedBeam
+            | "Transmitted" -> OpticalConstructor.Domain.BeamTree.TransmittedBeam
+            | other -> raise (JsonException $"unknown beam branch '{other}'")
+
+    /// Keeps a rotation lock on the wire as the schema's boolean, `true` for locked: the
+    /// lock became a union (spec 0048 E013), the stored format did not.
+    type private RotationLockConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Placement.RotationLock>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Placement.RotationLocked -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Placement.RotationFree -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Placement.RotationLocked
+            | false -> OpticalConstructor.Domain.Placement.RotationFree
+
+    /// Keeps a group member's presence on the wire as the groups schema's boolean `inBeam`, `true`
+    /// for in the beam: it became a union (spec 0048 E014), the stored format did not.
+    type private BeamPresenceConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Groups.BeamPresence>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Groups.InBeam -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Groups.OutOfBeam -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Groups.InBeam
+            | false -> OpticalConstructor.Domain.Groups.OutOfBeam
+
+    /// Keeps a toggle's state on the wire as the groups schema's boolean `enabled`, `true` for
+    /// enabled: it became a union (spec 0048 E014), the stored format did not.
+    type private ToggleStateConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Groups.ToggleState>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Groups.ToggleEnabled -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Groups.ToggleDisabled -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Groups.ToggleEnabled
+            | false -> OpticalConstructor.Domain.Groups.ToggleDisabled
+
+    /// Custom converter for the engine's Math.NET complex matrix
+    /// (`Matrix<Complex>`). FSharp.SystemTextJson unwraps the single-case
+    /// `Eps`/`Mu`/`Rho` -> `ComplexMatrix3x3` -> `ComplexMatrix` wrappers down to
+    /// this Math.NET type, which System.Text.Json cannot round-trip on its own.
+    /// It is serialized as a rectangular array of `[re, im]` pairs and rebuilt as
+    /// a dense matrix on read, so Math.NET's element-wise value-equality makes a
+    /// whole-`OpticalConstructorProject` round-trip compare equal.
+    type private ComplexMatrixConverter() =
+        inherit JsonConverter<Matrix<Complex>>()
+
+        override _.Write(writer, value, _options) =
+            writer.WriteStartArray()
+            for i in 0 .. value.RowCount - 1 do
+                writer.WriteStartArray()
+                for j in 0 .. value.ColumnCount - 1 do
+                    let c = value.[i, j]
+                    writer.WriteStartArray()
+                    writer.WriteNumberValue c.Real
+                    writer.WriteNumberValue c.Imaginary
+                    writer.WriteEndArray()
+                writer.WriteEndArray()
+            writer.WriteEndArray()
+
+        override _.Read(reader, _typeToConvert, _options) =
+            use doc = JsonDocument.ParseValue(&reader)
+            let root = doc.RootElement
+            let rows = root.GetArrayLength()
+            let cols = if rows = 0 then 0 else root.[0].GetArrayLength()
+            let arr = Array2D.zeroCreate rows cols
+            let mutable i = 0
+            for rowEl in root.EnumerateArray() do
+                let mutable j = 0
+                for cellEl in rowEl.EnumerateArray() do
+                    let re = cellEl.[0].GetDouble()
+                    let im = cellEl.[1].GetDouble()
+                    arr.[i, j] <- Complex(re, im)
+                    j <- j + 1
+                i <- i + 1
+            Matrix<Complex>.Build.DenseOfArray arr
+
+    /// The single shared `JsonSerializerOptions` (§I.1 — registered once): the one options value every
+    /// JSON store of the app reads (spec 0050). F# records, `option` values, and discriminated unions
+    /// round-trip idiomatically via FSharp.SystemTextJson: single-case unions unwrap (`Eps`,
+    /// `WaveLength`'s magnitudes, `RefractionIndex`, ...), `option` unwraps to value-or-null, and
+    /// fieldless union cases (`UnitOfMeasure`, `BeamBranch`, the nullary `ConstructorElement` cases)
+    /// serialize as plain strings.
+    let options : JsonSerializerOptions =
+        let o = JsonSerializerOptions(WriteIndented = true)
+        o.Converters.Add(ComplexMatrixConverter())
+        o.Converters.Add(BeamBranchConverter())
+        o.Converters.Add(RotationLockConverter())
+        o.Converters.Add(BeamPresenceConverter())
+        o.Converters.Add(ToggleStateConverter())
+        let fsharpOptions =
+            JsonFSharpOptions
+                .Default()
+                .WithUnionUnwrapFieldlessTags()
+                .WithUnionUnwrapSingleCaseUnions()
+                .WithUnwrapOption()
+        o.Converters.Add(JsonFSharpConverter(fsharpOptions))
+        o

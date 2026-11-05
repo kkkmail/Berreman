@@ -20,11 +20,12 @@
     <ItemGroup>
         <Compile Include="Errors.fs" />
         <Compile Include="SchemaValidation.fs" />
+        <Compile Include="CanonicalJson.fs" />
         <Compile Include="ProjectJson.fs" />
         <Compile Include="ProjectFile.fs" />
         <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-
-             collections store. Reuses ProjectJson.options + the validate-on-load seam;
-             compiles after ProjectJson (its shared options) and ProjectFile. -->
+             collections store. Reuses CanonicalJson.options + the validate-on-load seam;
+             compiles after CanonicalJson (its shared options) and ProjectFile. -->
         <Compile Include="GroupsLibrary.fs" />
         <Compile Include="Sidecar.fs" />
         <Compile Include="MaterialImport.fs" />

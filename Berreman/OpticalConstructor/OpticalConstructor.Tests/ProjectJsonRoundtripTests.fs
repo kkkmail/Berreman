@@ -10,6 +10,7 @@ open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.Project
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.ProjectJson
 open Xunit
 
 /// Canonical-JSON round-trip + validate-on-load over the project aggregate
@@ -61,19 +62,19 @@ module ProjectJsonRoundtripTests =
 
     [<Fact>]
     let ``AC-A2 a valid canonical project validates on load`` () =
-        let json = sampleProject Nanometer |> ProjectJson.serializeProject |> okOr
+        let json = (sampleProject Nanometer).serializeProject |> okOr
         // The canonical artefact is JSON text (never a .binz pickle).
         Assert.StartsWith("{", json.value.TrimStart())
         Assert.Contains("schemaVersion", json.value)
         // Validate-on-load admits the document.
-        (sampleProject Nanometer |> ProjectJson.serializeProject |> okOr).parseProject
+        ((sampleProject Nanometer).serializeProject |> okOr).parseProject
         |> okOr
         |> ignore
 
     [<Fact>]
     let ``AC-D6 round-trip preserves the defaultUnit label and the canonical SI datum`` () =
         let project = sampleProject Micrometer
-        let back = (project |> ProjectJson.serializeProject |> okOr).parseProject |> okOr
+        let back = (project.serializeProject |> okOr).parseProject |> okOr
         // The display-only label survives the round-trip ...
         Assert.Equal(Micrometer, back.beamTree.root.defaultUnit)
         // ... and the stored SI magnitude is byte-identical (no conversion applied).
@@ -82,7 +83,7 @@ module ProjectJsonRoundtripTests =
     [<Fact>]
     let ``AC-A5 the canonical SI magnitudes are stored verbatim`` () =
         let project = sampleProject Nanometer
-        let back = (project |> ProjectJson.serializeProject |> okOr).parseProject |> okOr
+        let back = (project.serializeProject |> okOr).parseProject |> okOr
         Assert.Equal(filmThickness, rootThickness back)
         Assert.Equal(light.waveLength.value, back.beamTree.root.incident.waveLength.value)
         // The transmitted detector child survived the Map round-trip.
@@ -109,7 +110,7 @@ module ProjectJsonRoundtripTests =
 
     [<Fact>]
     let ``AC-B9 beam tree and systems round-trip through the schema-validated canonical project`` () =
-        let json = richProject |> ProjectJson.serializeProject |> okOr
+        let json = richProject.serializeProject |> okOr
         // The canonical artefact is JSON text and is NEVER a .binz pickle (Part A constraint 4).
         Assert.StartsWith("{", json.value.TrimStart())
         Assert.DoesNotContain(".binz", json.value)
@@ -137,7 +138,7 @@ module ProjectJsonRoundtripTests =
         // non-number; the filled beamNode `$def` MUST reject it on validate-on-load.
         let bad =
             ProjectJson.ProjectJsonText
-                ((richProject |> ProjectJson.serializeProject |> okOr)
+                ((richProject.serializeProject |> okOr)
                     .value.Replace("\"refractionIndex\": 1", "\"refractionIndex\": \"not-a-number\""))
         match bad.parseProject with
         | Error (SchemaValidationErr _) -> ()
@@ -160,7 +161,7 @@ module ProjectJsonRoundtripTests =
         let project = { sampleProject Nanometer with table = edited }
         // ... serialize -> validate-on-load -> bind: the table validates against the
         // opticalTable $def and the edited size survives byte-identically (no conversion).
-        let json = project |> ProjectJson.serializeProject |> okOr
+        let json = project.serializeProject |> okOr
         Assert.Contains("\"table\"", json.value)
         let back = json.parseProject |> okOr
         Assert.Equal(1.5<meter>, back.table.width)

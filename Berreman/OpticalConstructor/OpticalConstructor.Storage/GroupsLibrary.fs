@@ -14,7 +14,7 @@ open OpticalConstructor.Storage.SchemaValidation
 /// 007 / R-3, R-4). Element groups (G.1) and experiment collections (H.1) are persisted in
 /// their OWN JSON file, kept apart from the per-project `.ocproj`, so reusable groups and
 /// sample-centred collections are available across projects (G.3.1). This module owns that
-/// file's load/save and validate-on-load. It REUSES the slice-003 shared `ProjectJson.options`
+/// file's load/save and validate-on-load. It REUSES the slice-003 shared `CanonicalJson.options`
 /// `JsonSerializerOptions` (§I.1 — never a second JSON stack) and the schema-validate-on-load
 /// SEAM the spec names by line (R-4 / G.3.1, `SchemaValidation.fs:61`): `validate` shares
 /// `SchemaValidation.collectMessages` (exposed for this) for the `results.Details`-recursive
@@ -79,18 +79,18 @@ module GroupsLibrary =
                 match validateGroupsLibrary doc.RootElement with
                 | Error e -> Error e
                 | Ok () ->
-                    try Ok(doc.RootElement.Deserialize<Groups.GroupsLibrary>(ProjectJson.options))
+                    try Ok(doc.RootElement.Deserialize<Groups.GroupsLibrary>(CanonicalJson.options))
                     with e -> Error(MalformedJsonErr e.Message)
 
     /// Serialize the groups/collections library to canonical JSON (G.4), injecting the envelope
-    /// `schemaVersion`, REUSING the slice-003 shared `ProjectJson.options` (§I.1) — never a second
+    /// `schemaVersion`, REUSING the slice-003 shared `CanonicalJson.options` (§I.1) — never a second
     /// JSON stack.
     let serialize (library : Groups.GroupsLibrary) : Result<GroupsLibraryJsonText, StorageError> =
         try
-            let node = JsonSerializer.SerializeToNode(library, ProjectJson.options)
+            let node = JsonSerializer.SerializeToNode(library, CanonicalJson.options)
             let envelope = node.AsObject()
             envelope.["schemaVersion"] <- JsonValue.Create(groupsLibrarySchemaVersion)
-            Ok(GroupsLibraryJsonText (envelope.ToJsonString(ProjectJson.options)))
+            Ok(GroupsLibraryJsonText (envelope.ToJsonString(CanonicalJson.options)))
         with e -> Error(MalformedJsonErr e.Message)
 
     /// The single fixed per-user groups path under the OS application-data folder (G.3.2 — outside

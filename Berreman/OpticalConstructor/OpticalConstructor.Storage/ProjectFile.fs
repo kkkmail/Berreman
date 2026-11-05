@@ -20,9 +20,9 @@ module ProjectFile =
 
     type FileName with
 
-        /// Serialize via `ProjectJson.serializeProject` and write the UTF-8 text here.
+        /// Serialize via `OpticalConstructorProject.serializeProject` and write the UTF-8 text here.
         member this.saveProject (project : OpticalConstructorProject) : Result<unit, StorageError> =
-            match serializeProject project with
+            match project.serializeProject with
             | Error e -> Error e
             | Ok json ->
                 try

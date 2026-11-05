@@ -10,7 +10,7 @@
 /// Persistence is JSON validated on load against `optical-constructor-environment.
 /// schema.json` (added to the §A.7 schema family, same `JsonSchema.Net` library) —
 /// NOT FsPickler/`.binz`, because it is hand/LLM-inspectable config (binding rule
-/// 4 / §A.7). The serialization REUSES the slice-003 shared `ProjectJson.options`
+/// 4 / §A.7). The serialization REUSES the slice-003 shared `CanonicalJson.options`
 /// `JsonSerializerOptions` (§I.1) — never a second JSON stack — so the favorites'
 /// `Layer`/`OpticalSystem` (and their `Matrix<Complex>` tensors) round-trip through
 /// the same converters the canonical project does. Schema versioning/migration is
@@ -138,7 +138,7 @@ type Preferences =
 // (Part I / UserEnvironment.fs:141). Reuses the settings store rather than a parallel
 // preferences file (E.8.1). A pure, serializable shape — no Avalonia handle and no
 // dependency on `Commands` — so it round-trips through the shared
-// `ProjectJson.options` and `Commands` parses the gesture strings against its
+// `CanonicalJson.options` and `Commands` parses the gesture strings against its
 // registry without a module cycle.
 // ---------------------------------------------------------------------------
 
@@ -247,7 +247,7 @@ type EnvironmentSettings =
         /// next launch. Defaults to `English`. The *Settings*-ribbon selector (Part D /
         /// slice 006) writes through `save`; every UI string resolves through
         /// `Localization` against this language. A fieldless DU, so the shared
-        /// `ProjectJson.options` round-trip it as a bare string.
+        /// `CanonicalJson.options` round-trip it as a bare string.
         language : Language
         /// The configurable constructor key map (Spec 0026 Part E §E.8.1): the user's
         /// key-binding overrides + the rotation step (§E.3.1), persisted here so a
@@ -364,20 +364,20 @@ type EnvironmentJsonText =
             match validateUserEnvironment doc.RootElement with
             | Error e -> Error e
             | Ok () ->
-                try Ok(doc.RootElement.Deserialize<EnvironmentSettings>(ProjectJson.options))
+                try Ok(doc.RootElement.Deserialize<EnvironmentSettings>(CanonicalJson.options))
                 with e -> Error(MalformedJsonErr e.Message)
 
 type EnvironmentSettings with
 
     /// Serialize the environment to canonical JSON (§J.6 item 1), injecting the
-    /// envelope `schemaVersion`, REUSING the slice-003 shared `ProjectJson.options`
+    /// envelope `schemaVersion`, REUSING the slice-003 shared `CanonicalJson.options`
     /// (§I.1) — never a second JSON stack, never `.binz`.
     member this.serialize : Result<EnvironmentJsonText, StorageError> =
         try
-            let node = JsonSerializer.SerializeToNode(this, ProjectJson.options)
+            let node = JsonSerializer.SerializeToNode(this, CanonicalJson.options)
             let envelope = node.AsObject()
             envelope.["schemaVersion"] <- JsonValue.Create(userEnvironmentSchemaVersion)
-            Ok(EnvironmentJsonText (envelope.ToJsonString(ProjectJson.options)))
+            Ok(EnvironmentJsonText (envelope.ToJsonString(CanonicalJson.options)))
         with e -> Error(MalformedJsonErr e.Message)
 
     /// Persist the environment to `path` as schema-validated canonical JSON (§J.6 item

@@ -14,6 +14,7 @@ open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.Export
+open OpticalConstructor.Storage.ProjectJson
 
 /// Shareable material-library file format (§I.8 / R-4). Import accepts the canonical
 /// library JSON `exportMaterials` writes AND refractiveindex.info-style external CSV
@@ -108,7 +109,7 @@ module MaterialLibrary =
 
         /// Import the material library in this file (§I.8 / AC-I10). A document that begins with `[`/`{`
         /// is the canonical library JSON `exportMaterials` wrote (deserialized through the
-        /// shared `ProjectJson.options` — no second JSON stack); anything else is treated
+        /// shared `CanonicalJson.options` — no second JSON stack); anything else is treated
         /// as refractiveindex.info-style tabulated CSV and parsed by `MaterialImport`
         /// (FSharp.Data). Returns `MaterialEntry list`; file/parse failures are values,
         /// never thrown.
@@ -122,7 +123,7 @@ module MaterialLibrary =
                 let trimmed = text.TrimStart()
                 if trimmed.StartsWith "[" || trimmed.StartsWith "{" then
                     try
-                        let dtos = JsonSerializer.Deserialize<MaterialEntryDto list>(text, ProjectJson.options)
+                        let dtos = JsonSerializer.Deserialize<MaterialEntryDto list>(text, CanonicalJson.options)
                         let rec toEntries (pending : MaterialEntryDto list) (acc : MaterialEntry list) : Result<MaterialEntry list, StorageError> =
                             match pending with
                             | [] -> Ok(List.rev acc)
@@ -141,7 +142,7 @@ module MaterialLibrary =
         /// projected to its `materialEntry` display fields (a `description = None` field
         /// is omitted, never written as `null`, so the `$def`'s string-typed `description`
         /// is satisfied), validated against the `$def`, and the array is written through
-        /// the shared `ProjectJson.options` formatting. A validation failure short-circuits
+        /// the shared `CanonicalJson.options` formatting. A validation failure short-circuits
         /// to `SchemaValidationErr` so an `Ok` guarantees a schema-checked file.
         member this.exportMaterials (entries : MaterialEntry list) : Result<unit, StorageError> =
             try
@@ -165,7 +166,7 @@ module MaterialLibrary =
                     match ds with
                     | [] -> Ok()
                     | d :: rest ->
-                        let json = JsonSerializer.Serialize(d, ProjectJson.options)
+                        let json = JsonSerializer.Serialize(d, CanonicalJson.options)
                         use doc = JsonDocument.Parse json
                         match validateEntryElement doc.RootElement with
                         | Ok() -> validateAll rest
@@ -173,7 +174,7 @@ module MaterialLibrary =
                 match validateAll nodes with
                 | Error e -> Error e
                 | Ok() ->
-                    let json = JsonSerializer.Serialize(nodes, ProjectJson.options)
+                    let json = JsonSerializer.Serialize(nodes, CanonicalJson.options)
                     File.WriteAllText(this.value, json, System.Text.UTF8Encoding false)
                     Ok()
             with e -> Error(FileIoExn e)
@@ -225,7 +226,7 @@ module DesignHistory =
     /// `<projectFolder>/history/` (§I.8 / AC-I11), reusing `serializeProject`. The
     /// number is the count of existing `rev-*.json` snapshots plus one, zero-padded.
     let appendRevision (projectFolder : FolderName) (project : OpticalConstructorProject) : Result<unit, StorageError> =
-        match ProjectJson.serializeProject project with
+        match project.serializeProject with
         | Error e -> Error e
         | Ok json ->
             try

@@ -9,7 +9,7 @@ open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.ProjectFile
 
 /// Recent-files persistence + autosave (§I.5 / R-1). Both go through the slice-003
-/// storage core: the recent-files preferences travel the shared `ProjectJson.options`
+/// storage core: the recent-files preferences travel the shared `CanonicalJson.options`
 /// JSON stack (NO second serializer), and autosave reuses `FileName.saveProject`
 /// so it writes the SAME canonical JSON the user's `.ocproj` does — never a `.binz`
 /// pickle (binding rule 4). The recent-files list is the discoverability surface the
@@ -52,7 +52,7 @@ module RecentFiles =
         try
             let p = prefsPath ()
             if File.Exists p.value then
-                JsonSerializer.Deserialize<string list>(File.ReadAllText p.value, ProjectJson.options)
+                JsonSerializer.Deserialize<string list>(File.ReadAllText p.value, CanonicalJson.options)
                 |> List.map FileName
             else []
         with _ -> []
@@ -67,7 +67,7 @@ module RecentFiles =
             try
                 let p = prefsPath ()
                 Directory.CreateDirectory(Path.GetDirectoryName p.value) |> ignore
-                File.WriteAllText(p.value, JsonSerializer.Serialize(updated |> List.map (fun f -> f.value), ProjectJson.options))
+                File.WriteAllText(p.value, JsonSerializer.Serialize(updated |> List.map (fun f -> f.value), CanonicalJson.options))
             with _ -> ()
             updated
 

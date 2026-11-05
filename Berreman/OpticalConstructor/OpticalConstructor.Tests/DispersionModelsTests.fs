@@ -115,8 +115,8 @@ module DispersionModelsTests =
                     wavelengthUnit = Micrometer
                     thermoOptic = Some { dndT = 1.0e-4<1/K>; referenceTemperature = 293.15<K> }
                 }
-        let json = JsonSerializer.Serialize(model, ProjectJson.options)
-        let back = JsonSerializer.Deserialize<DispersionModel>(json, ProjectJson.options)
+        let json = JsonSerializer.Serialize(model, CanonicalJson.options)
+        let back = JsonSerializer.Deserialize<DispersionModel>(json, CanonicalJson.options)
         Assert.Equal(model, back)
         Assert.Contains("dndT", json)
         Assert.Contains("referenceTemperature", json)

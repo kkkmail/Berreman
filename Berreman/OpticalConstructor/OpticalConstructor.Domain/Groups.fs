@@ -13,14 +13,14 @@ namespace OpticalConstructor.Domain
 module Groups =
 
     /// The two member modes a group can take (G.1.2). There is deliberately NO third mode
-    /// (non-requirement). A fieldless DU — the shared `ProjectJson.options` serialize it as a
+    /// (non-requirement). A fieldless DU — the shared `CanonicalJson.options` serialize it as a
     /// bare string, and the groups schema constrains it with an `enum`.
     type MemberMode =
         | MutuallyExclusive
         | MultiSelect
 
     /// Whether a group member is currently in the beam (G.1.2). On the wire it is the schema's
-    /// boolean `inBeam`, `true` for `InBeam` (`ProjectJson`'s converter).
+    /// boolean `inBeam`, `true` for `InBeam` (`CanonicalJson`'s converter).
     type BeamPresence =
         | InBeam
         | OutOfBeam
@@ -120,7 +120,7 @@ module Groups =
         member this.value = let (ToggleName n) = this in n
 
     /// A toggle's on/off state across its collection (H.1.1). On the wire it is the schema's
-    /// boolean `enabled`, `true` for `ToggleEnabled` (`ProjectJson`'s converter).
+    /// boolean `enabled`, `true` for `ToggleEnabled` (`CanonicalJson`'s converter).
     type ToggleState =
         | ToggleEnabled
         | ToggleDisabled

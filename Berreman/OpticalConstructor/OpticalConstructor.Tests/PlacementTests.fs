@@ -11,6 +11,7 @@ open OpticalConstructor.Domain.Project
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.ProjectJson
 open Xunit
 
 /// Part A headless geometry / placement tests (Spec 0026, slice 001): rest-pose
@@ -185,7 +186,7 @@ module PlacementTests =
             { beamTree = { root = rootNode }; systems = [ vacuumSystem ]; sources = []; placements = [ placement ]; table = OpticalConstructor.Domain.Table.defaultTable }
         // serialize -> validate-on-load -> bind. validate-on-load runs the published
         // schema against the document before binding (AC-A6).
-        let json = project |> ProjectJson.serializeProject |> okOr
+        let json = project.serializeProject |> okOr
         Assert.StartsWith("{", json.value.TrimStart())
         let back = json.parseProject |> okOr
         // Exactly one placement survived ...
