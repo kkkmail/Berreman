@@ -456,7 +456,7 @@ module MaterialsWindowTests =
         m |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) |> MW.updateMaterialsWindow MW.EditSelected |> ignore
         Assert.Equal<string list>([ "material-edit:Transparent glass (n = 1.52)" ], List.ofSeq calls)
         calls.Clear()
-        // A view-only engine preset (complexity = None) offers no Edit — the dispatch is inert.
+        // Silicon is view-only (its complexity is not editable term data), so Edit is inert.
         m |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.silicon) |> MW.updateMaterialsWindow MW.EditSelected |> ignore
         // No selection is inert too.
         MW.updateMaterialsWindow MW.EditSelected m |> ignore
@@ -477,7 +477,7 @@ module MaterialsWindowTests =
         match glass.editableSelection with
         | Some _ -> ()
         | None -> Assert.Fail "glass152 carries the edit model and must offer Edit"
-        // Silicon is a coded engine preset: selectable (the panel shows it) but NOT editable.
+        // Silicon is selectable (the panel shows it) but view-only: its complexity is not editable term data.
         let silicon = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.silicon) m
         match silicon.selectedEntry, silicon.editableSelection with
         | Some _, None -> ()

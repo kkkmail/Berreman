@@ -24,7 +24,7 @@ open OpticalConstructor.Ui.NkDispersionChart
 /// display unit rescales only the x-axis (AC-D7).
 module NkDispersionChartTests =
 
-    /// Silicon — a DISPERSIVE built-in (engine preset, dispersion coded, `complexity = None`).
+    /// Silicon — a DISPERSIVE built-in: its dispersion is the published silicon law.
     let private siliconEntry : MaterialEntry =
         builtInEntries |> List.find (fun e -> e.id = MaterialIds.silicon)
 
@@ -192,10 +192,10 @@ module NkDispersionChartTests =
         Assert.Equal(ActivityOn, NkDispersionChart.assembledActivity active)
 
     [<Fact>]
-    let ``spec 0040 006: the gyration builder draws all six components for a coded preset with no stored class`` () =
+    let ``spec 0040 006: the gyration builder draws all six components when every component is requested`` () =
         let active = propsOf [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
         let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 8)
-        // The fallback set — every component, the pre-restriction rendering a coded preset keeps.
+        // The full set — what a complexity that names no gyration class draws.
         let chart = NkDispersionChart.gyrationChart NkDispersionChart.allGyrationComponents active Nanometer range
         Assert.Equal<string list>([ "g₁₁"; "g₂₂"; "g₃₃"; "g₁₂"; "g₁₃"; "g₂₃" ], chart.series |> List.map (fun s -> s.name.value))
 
