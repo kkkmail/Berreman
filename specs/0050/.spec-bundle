@@ -3,7 +3,16 @@
   "ticket": null,
   "created": "2026-11-03T10:57:25Z",
   "status": "in-authoring",
-  "gates": [],
+  "gates": [
+    "build",
+    "elevation",
+    "constructor-unit-tests",
+    "unit-tests",
+    "ui-smoke",
+    "ui-tests",
+    "kit-acceptance",
+    "elevation-full"
+  ],
   "agent_files": {
     "spec_author": "default",
     "feature_list": "default",
@@ -31,5 +40,6 @@
   },
   "description": "",
   "gates_required_only": true,
+  "gates_section_union": false,
   "executability_profile": 1
 }
