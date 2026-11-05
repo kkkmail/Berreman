@@ -202,112 +202,112 @@
       "id": 29,
       "phrase": "The library and session stores composed by `Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs:AppContext.create` are in memory.",
       "spec_location": "§1 Problem statement, line 59",
-      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs:78-108: AppContext.create constructs the sample, material, category, user-source, experiment-template, experiment-collection and scene stores with their in-memory constructors; library is Library.liveLibrary over those stores. The separate file-backed measured-data reader and CSV exporter are composed at lines 103 and 109-113.",
+      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs:78-115: AppContext.create builds samples (SampleProxy.createInMemory), materials (MaterialProxy.createInMemory), categories (CategoryProxy.createInMemory), sources (Library.SourceProxy.createInMemory), library = Library.liveLibrary (Library.createInMemory ()) samples sources, experiments (Experiments.createInMemoryExperiments), experimentCollections (ExperimentCollectionProxy.createInMemory) and scenes (SceneProxy.createInMemory). The only file-backed members are the measured-data reader (ExperimentDataStore.createFileBacked) and the CSV exporter, neither of which is a library or session store.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 30,
       "phrase": "Materials and samples are seeded; user sources, scenes and collections start empty (`Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:SourceProxy.createInMemory`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/Scene.fs:SceneProxy.createInMemory`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentCollectionStore.fs:ExperimentCollectionProxy.createInMemory`).",
       "spec_location": "§1 Problem statement, line 59",
-      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. AppContext.fs:88-108 calls the cited constructors. Under Berreman/OpticalConstructor/OpticalConstructor.Domain/, MaterialStore.fs:191-195 seeds builtInEntries; SampleStore.fs:186-187 seeds SeedSamples.allSeedSamples; ElementId.fs:1096-1102 defines SourceProxy.createInMemory with an empty SourcePreset list; Scene.fs:129-130 and ExperimentCollectionStore.fs:96-97 initialize empty maps.",
+      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Under Berreman/OpticalConstructor/OpticalConstructor.Domain/: MaterialStore.fs:191-195 MaterialProxy.createInMemory seeds builtInEntries; SampleStore.fs:186-187 SampleProxy.createInMemory seeds SeedSamples.allSeedSamples; ElementId.fs:1101-1102 SourceProxy.createInMemory starts from ref ([] : SourcePreset list); Scene.fs:129-130 SceneProxy.createInMemory starts from Map.empty; ExperimentCollectionStore.fs:96-97 ExperimentCollectionProxy.createInMemory starts from Map.empty. AppContext.fs:91,104,108 calls the three cited constructors.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 31,
       "phrase": "Disk output does exist: `Berreman/OpticalConstructor/OpticalConstructor.Storage/ExperimentExportFile.fs:createCsvFolder` writes CSV exports.",
       "spec_location": "§1 Problem statement, line 59",
-      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Storage/ExperimentExportFile.fs:50-64: createCsvFolder returns an exportRun function which creates the folder, names an experiment-<time>.csv file and calls exportTableCsv. Export.fs:63-73 writes UTF-8 text with File.WriteAllText; AppContext.fs:111 composes the adapter.",
+      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Storage/ExperimentExportFile.fs:50-64: createCsvFolder returns an ExperimentExportProxy whose exportRun creates the folder, names experiment-<fileStamp>.csv and calls exportTableCsv. AppContext.fs:109-113 composes it over Documents/Optical Constructor/Exports.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 32,
       "phrase": "No UI, App or TestWindows caller uses `Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:FileName.saveProject` or `FileName.openProject`.",
       "spec_location": "§1 Problem statement, line 59",
-      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:21-42: FileName.saveProject and FileName.openProject exist. Repository source searches for saveProject/openProject found the Storage declarations, Storage autosave use and test calls, with no matches in UI, App or TestWindows product code.",
+      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:24,35: FileName.saveProject and FileName.openProject exist as type-extension members. Grep for saveProject|openProject over every *.fs under Berreman/ (bin/obj excluded) finds only ProjectFile.fs, a comment in ExperimentDataStore.fs:19, RecentFiles.fs:96 (writeAutosave, Storage) and tests (HistoryTests.fs, RoundTripTests.fs). writeAutosave itself is called only from OpticalConstructor.Tests/HistoryTests.fs:101, so no UI, App or TestWindows code reaches either member.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 33,
       "phrase": "The EF proof table (`Berreman/OpticalConstructor/OpticalConstructor.Database/TestDbContext.cs:TestDbContext`) is exercised by `Berreman/OpticalConstructor/OpticalConstructor.Tests/TestDbMigrationTests.fs:125`.",
       "spec_location": "§1 Problem statement, line 59",
-      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Database/TestDbContext.cs:14-29: TestDbContext derives from DbContext, exposes DbSet<Test>, and maps it to Test. Berreman/OpticalConstructor/OpticalConstructor.Tests/TestDbMigrationTests.fs:125 is exactly the initial-migration round-trip fact; lines 140-149 migrate, assert the table name, insert a row and assert its stored values through this context.",
+      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Database/TestDbContext.cs:14-29: public class TestDbContext : DbContext with DbSet<Test> Tests mapped to table Test. Berreman/OpticalConstructor/OpticalConstructor.Tests/TestDbMigrationTests.fs:125 is exactly the fact `the initial migration creates and round-trips the Test table against SQLite`; its helpers at :77-93 build DbContextOptions<TestDbContext> and open new TestDbContext(options), and :140-149 migrate, assert the table name and round-trip a row.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 34,
       "phrase": "The library is code: `MaterialLibrary.builtInEntries`, `Library.SeedSamples`, `SeedSources`, `seedEntries` and `standardCategories`.",
       "spec_location": "§1 Problem statement, line 59",
-      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Resolved the named definitions under Berreman/OpticalConstructor/OpticalConstructor.Domain/: MaterialLibrary.fs:23 defines MaterialLibrary, :146 standardCategories and :497 builtInEntries; ElementId.fs:19 defines Library, :651 SeedSamples, :812 SeedSources and :884 seedEntries. These are F# list/module definitions; seedEntries combines the sample and source lists with the other presets.",
+      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Grep under Berreman/OpticalConstructor/OpticalConstructor.Domain/: MaterialLibrary.fs:23 module MaterialLibrary, :146 let standardCategories : MaterialCategory list, :497 let builtInEntries : MaterialEntry list; ElementId.fs:19 module Library, :651 module SeedSamples, :812 module SeedSources, :884 let seedEntries : LibraryEntry list. All are F# source definitions.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 35,
       "phrase": "On the inverse side, `Berreman/OpticalConstructor/OpticalConstructor.Domain/Experiments.fs:Experiment` holds a frozen setup, an optional varied element, one measurement mode and an optional data attachment; the picker supplies a local machine path (`Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs:3402`).",
       "spec_location": "§1 Problem statement, line 61",
-      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Domain/Experiments.fs:225-239: Experiment has setup : ElementDescriptor list, varied : VariedElement option, measurement : MeasurementMode and dataFileOpt : DataFilePath option; the setup is documented as a frozen snapshot. Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs:3402 exactly constructs DataFilePath from file.Path.LocalPath after the picker returns.",
+      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Domain/Experiments.fs:225-236: type Experiment has setup : ElementDescriptor list, varied : VariedElement option, measurement : MeasurementMode, dataFileOpt : DataFilePath option (plus id, range, sourceWaveLengthOpt); :239 documents the setup as a frozen snapshot. Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs:3402 is exactly `| file :: _ -> UserEnvironment.FilePicked (Experiments.DataFilePath file.Path.LocalPath)`.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 36,
       "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs:measuredElementOf` chooses the first bound sample for capture selection.",
       "spec_location": "§1 Problem statement, line 61",
-      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs:1445-1454: measuredElementOf uses List.tryPick over model.elements and returns the first element resolving to Library.SampleItem, falling back to the varied element. Its capture-selection consumer at :1472-1478 uses that measured id on the detector path.",
+      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs:1445-1454: measuredElementOf runs List.tryPick over model.elements, returning the first element whose bound entry resolves to Library.SampleItem, else the varied element. Its consumer at :1469-1472 uses that measured id when selecting the captured light.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 37,
       "phrase": "Propagation already folds every sample on the detector path (`Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs:detectorStokes`).",
       "spec_location": "§1 Problem statement, line 61",
-      "evidence": "Read Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs:36-44: detectorStokes folds the complete RunStep list, applying mueller * sv for every SampleStep. TableAndElementRotationView.fs:2762-2778 produces a SampleStep for each bound sample, buildersFor at :2780-2785 folds the path, and :2867 passes the resulting steps to ExperimentRun.read.",
+      "evidence": "Read Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs:36-45: detectorStokes folds the whole RunStep list from unpolarized Stokes, applying `mueller * sv` for every SampleStep (no first-sample cut-off) and polarizer Mueller matrices around them.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 38,
       "phrase": "The validation-only screen exists in `Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:validateExperiment`, hosted by `Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffWindow.fs:SolverHandoffWindow`; no product caller constructs that window.",
       "spec_location": "§1 Problem statement, line 61",
-      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:100-116: validateExperiment checks bindings, attachment presence and load/validation errors; :131-142 builds validation rows. SolverHandoffWindow.fs:19-39 declares the window and hosts this view. A source search for SolverHandoffWindow found constructor calls only in OpticalConstructor.Ui.Tests (SolverHandoffWindowTests, ScrollExtentTests and WireUiFinalCompositionTests); product code contains the declaration and launcher key, with no construction call.",
+      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:100 defines validateExperiment, used for per-experiment status rows at :141. SolverHandoffWindow.fs:19 declares type SolverHandoffWindow. Grep for SolverHandoffWindow over *.fs under Berreman/ outside OpticalConstructor.Ui.Tests finds only the declaration, doc comments, ConstructorUiId.solverHandoffWindow (OpticalConstructor.Controls/UiIds.fs:275) and the SolverHandoffWindowKey case (WindowLauncher.fs:37); constructions occur only in Ui.Tests (ScrollExtentTests, SolverHandoffWindowTests, WindowLauncherTests, WireUiFinalCompositionTests).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 39,
       "phrase": "The inverse physics modules are product code (`Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:MuellerReconstruction`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:MuellerInverse`); the noise and fit harness remains in `Berreman/BerremanTests/InverseFitHarness.fs:InverseFitHarness`.",
       "spec_location": "§1 Problem statement, line 61",
-      "evidence": "Inferred current-artifact claim, rather than a literal trigger-phrase match. Read Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:15 and MuellerInverse.fs:62: both modules exist and OpticalConstructor.Domain.fsproj:196,203 compiles them. Berreman/BerremanTests/InverseFitHarness.fs:303 declares the harness; :465,493,503 define fit drivers and :604,626 define noisy-observation generation. BerremanTests.fsproj:39 compiles that harness in the test project.",
+      "evidence": "Inferred current-artifact claim ('remains in'), rather than a literal trigger-phrase match. MuellerReconstruction.fs:15 module MuellerReconstruction and MuellerInverse.fs:62 module MuellerInverse exist; OpticalConstructor.Domain.fsproj:196,203 compiles both. Berreman/BerremanTests/InverseFitHarness.fs:303 declares module InverseFitHarness and BerremanTests.fsproj:39 compiles it in the test project.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 40,
       "phrase": "Two committed reference kits prove the whole chain by reproducing two existing results: the optics-mueller reconstruction and `AbsorbingBiaxialNoisyTests`.",
       "spec_location": "§1 Problem statement, line 76",
-      "evidence": "The existing-results clause resolves to Berreman/BerremanTests/MuellerReconstructionTests.fs:802 (end-to-end reference reconstruction) and the unique AbsorbingBiaxialNoisyTests declaration at Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:60, with its noisy recovery fact at :100. Berreman/Data/MuellerMatrix/README.md:16 identifies optics-mueller as the reconstruction data/reference source; BerremanTests.fsproj:35,48 includes both result suites. Operator source specs/0050/.manual/001-library-files-database-multi-setup-inverse.md:554,561-604 assigns these results to future AT-1/AT-2 kit construction. Confirmation concerns the two existing result artifacts; the committed-kit proof is a declared future effect, not evidence of current kit existence or a test run in this audit.",
+      "evidence": "The 'existing results' clause resolves to Berreman/BerremanTests/MuellerReconstructionTests.fs:802 (the section 7.2 end-to-end reconstruction fact reproducing the reference pipeline) and the unique type AbsorbingBiaxialNoisyTests at Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:60 with its noisy-recovery fact at :100; BerremanTests.fsproj:35,48 compiles both. Berreman/Data/MuellerMatrix/README.md:16 names optics-mueller as the data source. The committed kits (data/optics-mueller/, data/absorbing-biaxial-noisy/; data/ currently holds only chroma/) are a declared future effect per specs/0050/.manual/001-library-files-database-multi-setup-inverse.md:554,561, not a current-artifact claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 41,
       "phrase": "1. **Both closure routes become data.** 001 §B names the tabulated imports (`MaterialImport.buildTabulatedClosure`). The transcendental models (Tauc–Lorentz, Gaussian, Forouhi–Bloomer, Brendel–Bormann) lower to `EpsAxisEvaluated` closures (`DispersionModels.fs:DispersionModel.toEpsAxis`). An entry holding such a closure cannot serialise, and 001 makes that a test failure, so both routes become data.",
       "spec_location": "§3.1; .spec-md:90",
-      "evidence": "Measured current facts, inferred assumption wording: Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs:158-179 defines buildTabulatedClosure; entryFromTabulated at 183-194 stores its function in EpsWithDisp and sets complexity = None. Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs:686 defines DispersionModel.toEpsAxis; its arms at 766-769 lower all four named models to EpsAxisEvaluated this.evaluate. Berreman/Berreman/Dispersion.fs:369 carries a function in that case, whereas operator 001:182 requires pure serializable physics and treats inability to serialize as failure. The replacement is a declared future effect, not an implemented serializer result.",
+      "evidence": "Re-verified current facts (wording inferred, not list-matched): Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs:158 declares the private buildTabulatedClosure; entryFromTabulated stores EpsWithDisp (buildTabulatedClosure points) at :189 and complexity = None at :193. OpticalConstructor.Domain/DispersionModels.fs:686 declares member toEpsAxis; the TaucLorentz | GaussianOscillator | ForouhiBloomer | BrendelBormann arm at :766-769 returns EpsAxisEvaluated this.evaluate. Berreman/Berreman/Dispersion.fs:369 declares EpsAxisEvaluated of (WaveLength -> ComplexRefractionIndex), a function payload. Operator 001:182 requires a tabulated data case replacing the closure. Replacing both routes is a declared future effect.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 42,
       "phrase": "Both new data cases MUST live at the axis level (`Berreman/Berreman/Dispersion.fs:EpsAxisDispersion`) inside the `EpsWithDispValue` tree declared in that file; this is the target interpretation of 001 §B's \"tabulated `EpsWithDispValue` case\". `.execution-contract-json:S11-TABULATED` and `S11-OSCILLATORS` bind the planned implementation and numerical checks at `.spec-jsonl` steps 1–7.",
       "spec_location": "§3.1; .spec-md:91",
-      "evidence": "Profile-1 contract audit: EpsAxisDispersion exists at Berreman/Berreman/Dispersion.fs:366 and EpsWithDispValue at 460. S11-TABULATED/S11-OSCILLATORS and steps 1-7 specify the axis-data implementation and numerical assertions consistently with operator 001:182. Their command hashes match the live descriptors. However, independently computing effective_plan selects kit-acceptance at steps 2, 3, 5 and 7, and no execution-contract obligation/check points to any of those required step/gate pairs. There are no corresponding gate_selection entries; replay_effects has no kit-acceptance test before step 421. REFUTED concerns missing executable check bindings, not the existence of the named types or the future nature of their implementation.",
-      "verdict": "REFUTED-POINTER-HALLUCINATED"
+      "evidence": "Re-verified: EpsAxisDispersion is declared at Berreman/Berreman/Dispersion.fs:366 and is the axis type of IsotropicEpsSegment/UniaxialEpsSegment/BiaxialEpsSegment (:398-420), which sit under EpsDispersiveValue (:437) and EpsWithDispValue (:460), so the axis level is inside that tree. .execution-contract-json declares S11-TABULATED (step 1 constructor-unit-tests selected; step 2 unit-tests selected and constructor-unit-tests all_discovered) and S11-OSCILLATORS (steps 4-7: constructor-unit-tests, unit-tests, ui-smoke, ui-tests). Profile-1 audit against the current committed bundle (specs/0050/.spec-bundle gates_required_only: true, added by commit e73bbaf after this spec text was written): effective_plan, explicit_selections and check_plan (the oracle-freeze check bypassed, because .acceptance-oracle-json is not frozen yet) report zero findings over the whole plan, and kit-acceptance is first selected at step 421. Steps 1-7 now select only build, elevation, constructor-unit-tests, ui-smoke, ui-tests, unit-tests and the S01 invariants. Every pair is bound. The earlier refutation (kit-acceptance unbound at steps 2, 3, 5 and 7) no longer reproduces.",
+      "verdict": "CONFIRMED"
     },
     {
       "id": 43,
       "phrase": "These are future obligations, not completed behavior or proof of profile-1 coverage: §4's inferred-roster diagnostic adds `kit-acceptance` at steps 2, 3, 5 and 7 without selections or obligation/check bindings, and its test producer is only at step 421.",
       "spec_location": "§3.1; .spec-md:91",
-      "evidence": "Measured planning facts: the read-only effective_plan computation includes kit-acceptance at steps 2, 3, 5 and 7. Each lacks its selection and any contract check for that gate. explicit_selections reports SELECTION_REQUIRED for each. Replaying declared test effects leaves the kit-acceptance inventory empty through step 420; step 421 creates OpticalConstructor.Ui.Tests.KitAcceptanceTests and declares ADD_TEST for that module. This confirms the diagnostic; it does not cure the missing bindings.",
-      "verdict": "CONFIRMED"
+      "evidence": "Stale against the current tree. Profile-1 audit against the current committed bundle (specs/0050/.spec-bundle gates_required_only: true, added by commit e73bbaf after this spec text was written): effective_plan, explicit_selections and check_plan (the oracle-freeze check bypassed, because .acceptance-oracle-json is not frozen yet) report zero findings over the whole plan, and kit-acceptance is first selected at step 421. Steps 2, 3, 5 and 7 (and their neighbourhood, steps 1-20) carry no kit-acceptance. Recomputing effective_plan with gates_required_only forced to false reproduces the roster this sentence describes (kit-acceptance at 2, 3, 5, 7, 8, 9, 10, ...), so the sentence describes the superseded roster. The step-421 half still holds: step 421 is ADD_TEST OpticalConstructor.Ui.Tests.KitAcceptanceTests and creates the first kit-acceptance tests. Operator fix: drop or rewrite the diagnostic clause.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
     },
     {
       "id": 44,
       "phrase": "The interpolation rule stays linear in λ, clamped at the ends, as `buildTabulatedClosure` does today. Every number is unchanged.",
       "spec_location": "§3.1; .spec-md:92",
-      "evidence": "Measured current algorithm: MaterialImport.fs:158-179 sorts by wavelength, clamps to first/last sample, treats a singleton as constant, and linearly interpolates n and k using the wavelength fraction before squaring the complex index into eps. The promise that replacement preserves numbers is future acceptance: steps 1-2 specify fixture sample/midpoint comparisons and core endpoint/singleton checks; it is not a test result from this audit.",
+      "evidence": "Read MaterialImport.fs:155-178: points are sorted by lambdaMeters; a singleton is constant; lam <= first / >= last clamps to the end samples; otherwise the bracketing pair is found and n and k are lerped by the wavelength fraction, then Complex.create n k -> ComplexRefractionIndex -> Eps.fromComplexRefractionIndex. The phrases 'does today' and 'unchanged' resolve to this algorithm. Keeping the numbers is a future acceptance obligation (steps 1-2), not a test result from this audit.",
       "verdict": "CONFIRMED"
     },
     {
@@ -321,28 +321,28 @@
       "id": 46,
       "phrase": "Source, detector and polarizer presets have string ids today (`\"src-600\"`, `\"det-intensity\"`, `\"pol-lp\"`). Each gets a GUID minted once, and a preset's `ElementValueId` becomes the GUID string, as a sample's already is (`LibraryEntry.entryId`). `newSourceId` mints a plain GUID.",
       "spec_location": "§3.3; .spec-md:95",
-      "evidence": "ElementId.fs:827,887,889 contains the exact src-600, det-intensity and pol-lp preset IDs. LibraryEntry.entryId at 357-361 uses SampleId.toElementValueId, whose implementation at 43 renders the Guid. Current newSourceId at 594 still prefixes src-; the plain-GUID sentence is a future change explicitly scheduled by step 20 and S13-GUID-IDS, not a description of current behavior.",
+      "evidence": "Re-verified: OpticalConstructor.Domain/ElementId.fs:827 binds ElementValueId \"src-600\", :887 \"det-intensity\", :889 \"pol-lp\" (also tree leaves at :954/:960, and Ui/TableAndElementRotationView.fs:992-996 SeedEntryIds). LibraryEntry.entryId at ElementId.fs:357 maps SampleItem s -> s.id.toElementValueId, whose body at :43 is ElementValueId (string this.value), the Guid string, so 'as a sample's already is' holds. newSourceId at :594 currently mints src-<guid>; the plain-GUID sentence is the declared future change.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 47,
       "phrase": "The built-ins' identity constants stay in Domain as well-known ids: `MaterialIds`, `CategoryIds`, and the sample and preset ids moved out of the seed modules. Product code (the default-scene prebinds, the band colours in `Schematic.fs`) and the tests name built-ins through them.",
       "spec_location": "§3.3; .spec-md:96",
-      "evidence": "Measured current anchors: Domain/MaterialLibrary.fs:50 and :135 declare MaterialIds and CategoryIds; Ui/Schematic.fs:48-58 keys its band-color map by MaterialIds. Ui/TableAndElementRotationView.fs:990-1015 defines SeedEntryIds and consumes them for default prebindings. Steps 15-18/S13-WELL-KNOWN-IDS move the sample/preset constants and convert their callers. Keeping those identities while deleting other seed data is a future effect.",
+      "evidence": "Re-verified: OpticalConstructor.Domain/MaterialLibrary.fs:50 declares module MaterialIds and :135 module CategoryIds. Ui/Schematic.fs:50-53 keys its BandColorHex map by MaterialIds.silicon/langasite/glass152/glass150. Ui/TableAndElementRotationView.fs:990 declares module SeedEntryIds, consumed at :1011-1014 for the default-scene prebindings. Moving the sample and preset ids out of the seed modules is the declared future effect.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 48,
       "phrase": "4. **`CatalogueImport` lives in Domain.** The pure import seam (`SeedingProxy`'s shape plus its orchestrator) moves from `OpticalConstructor.Seeding/Seeding.fs` to Domain, and the Seeding project is deleted. Reading files is Storage's `CatalogueProxy`.",
       "spec_location": "§3.4; .spec-md:98",
-      "evidence": "Measured seam, inferred from the move wording: Berreman/OpticalConstructor/OpticalConstructor.Seeding/Seeding.fs declares SeedingProxy with saveCategory, saveMaterial, saveSample and saveLibraryEntry Result-returning fields and its seedAll orchestrator; createInMemory adapts the four stores. Operator 001:205 requires this seam to become CatalogueImport. Step 37/S16-MOVE specifies the Domain move and Seeding-project deletion. CatalogueProxy file IO is a future Storage implementation.",
+      "evidence": "Re-verified: Berreman/OpticalConstructor/OpticalConstructor.Seeding/Seeding.fs exists (with OpticalConstructor.Seeding.fsproj); it declares type SeedingProxy at :46 and member seedAll at :59. Operator 001:205 states 'SeedingProxy / seedAll become CatalogueImport'. Step 37 (RENAME_CONTRACT, S1.6) carries the move into Domain. CatalogueProxy is a future Storage implementation.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 49,
       "phrase": "5. **The shipped catalogue rides Storage's content.** `OpticalConstructor.Storage.fsproj` copies `Berreman/OpticalConstructor/Catalogue/Builtin/**` to `Catalogue/Builtin/` in every output, as it already copies `schema/*.json`. The App, the TestWindows heads and both constructor test suites therefore read the same files.",
       "spec_location": "§3.5; .spec-md:99",
-      "evidence": "The existing-content comparison is confirmed: Storage/OpticalConstructor.Storage.fsproj contains both schema JSON Content items with CopyToOutputDirectory=PreserveNewest. Step 35/S15-BUILTIN-PARITY adds the ..\\Catalogue\\Builtin\\** item linked to Catalogue\\Builtin\\%(RecursiveDir)%(Filename)%(Extension), and steps 34-35 require output-catalogue parity. Operator 001:183-186 independently requires build-copied catalogue files and common test inputs. Catalogue files are planned, not currently copied by that project.",
+      "evidence": "'already copies' confirmed: OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj:58 and :63 hold Content items for schema\\optical-constructor-project.schema.json and schema\\optical-constructor-groups.schema.json with CopyToOutputDirectory PreserveNewest; both files exist under Storage/schema/. No Catalogue item exists in that fsproj yet and Berreman/OpticalConstructor/Catalogue/ does not exist: the catalogue copy is the step 34-35 future effect. Operator 001:185 requires the once-exported catalogue.",
       "verdict": "CONFIRMED"
     },
     {
@@ -370,7 +370,7 @@
       "id": 53,
       "phrase": "9. **No test touches the user's data.** `AppContext.create` receives every location (the library connection string included) from settings. Tests pass SQLite `:memory:` or paths under the test run's output directory.",
       "spec_location": "§3.9; .spec-md:103",
-      "evidence": "Supported future effect: operator 001:311,313 requires overridable locations and test output directories, and §Q requires SQLite :memory: acceptance libraries. Steps 81-83 introduce/read DataLocations; step 88 changes AppContext.create to take locations and settings and supplies TestAppScope locations under test output. The current AppContext signature is not claimed to implement those future arguments.",
+      "evidence": "AppContext.create exists at OpticalConstructor.Ui/AppContext.fs:78 as static member create (settings : WorkbenchSettings) : AppContext. Operator 001:313 places test kits and databases under the test output directory. Receiving every location from settings is the declared future change; the current signature is not claimed to implement it.",
       "verdict": "CONFIRMED"
     },
     {
@@ -405,14 +405,14 @@
       "id": 58,
       "phrase": "Every item MUST instantiate a pinned, snapshotted `ItemModel` library entry (`.item-model-json`), including light sources, ideal LP/CP and samples by stack (001 §I). The “exists” markers describe reusable physics, not an exception to the model contract.",
       "spec_location": "§3.14; .spec-md:109",
-      "evidence": "Operator 001:326-338 states every physical Item has a pinned/snapshotted ItemModel, while the exists annotations describe source and ideal-polarizer physics. Steps 207-210 define model forms including source/ideal-polarizer/stack binding models and export their entries; steps 213-219 carry/resolvе model versions and physics bindings. This confirms the interpretation without claiming those new model artifacts exist in the baseline.",
+      "evidence": "Operator 001:333 declares ItemModel as a parameterised library entry (.item-model-json). Steps 207, 210 and 212 (S6) carry the shared item contracts, their export and the exporter's removal. This confirms the interpretation without claiming that the new model artefacts exist in the baseline.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 59,
       "phrase": "Source, ideal-polarizer and stack model forms MUST reuse `Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:SourcePreset`, `PolarizerPreset` and `Sample` through typed bindings; the item MUST snapshot both its model version and the bound physics dependencies. `ItemModel` also carries real LP, retarder, compound in light order, black-box Mueller, empty slot, intensity detector, Mueller polarimeter and ellipsometer forms.",
       "spec_location": "§3.14; .spec-md:110",
-      "evidence": "Inferred reuse claim: Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs declares Sample at 203, SourcePreset at 262 and PolarizerPreset at 338. Operator 001:335-346 lists their model roles and the additional real-polarizer, retarder, compound, black-box, empty-slot and detector forms. Steps 207-210 and 216 use typed model/physics bindings and preserve exact versions; new ItemModel forms are future declarations.",
+      "evidence": "Re-verified reuse anchors: Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs declares type Sample at :203, SourcePreset at :262 and PolarizerPreset at :338 (with extensions at :1018/:1066). The additional ItemModel forms are future declarations of steps 207-210.",
       "verdict": "CONFIRMED"
     },
     {
@@ -426,56 +426,56 @@
       "id": 61,
       "phrase": "15. **Copying experiments between kits MUST preserve physical identity in S6.** Under 001 §H and §S6 (`specs/0050/.manual/001-library-files-database-multi-setup-inverse.md:322` and `specs/0050/.manual/001-library-files-database-multi-setup-inverse.md:640`), `.spec-jsonl` step 221 MUST store explicit ItemIds in captured descriptors and resolve used items by those ids; step 227 MUST rewrite copied descriptors to the selected target identities before writing. Steps 228–229 MUST carry the choices through the semantic messages and buttons. `.execution-contract-json:S72-COPY-MAPPING`, `S72-COPY-ITEMS`, `S72-COPY-MESSAGES` and `S72-COPY-VIEW` bind the same-preset/distinct-piece and copy/reopen tests, including target parameters and missing-id refusal. Step 261 MUST preserve those obligations when setup slots replace descriptors. The S6 shared item/model stores and serializers MUST remain the single declarations used by S7; no preset-based identity inference, second parser or copy-only stored format is permitted.",
       "spec_location": "§3.15; .spec-md:112",
-      "evidence": "Operator pointers are exact: 001:322 requires copying experiments with their physical items and user-chosen mapping; :640 requires it in S6. Steps 221/227 explicitly store, resolve and rewrite ItemIds, refuse missing IDs before writes, preserve target parameters, and test distinct same-preset pieces and reopening. Steps 228/229 carry choices through semantic messages and button smoke tests. Step 261 replaces descriptors with slots while retaining those IDs and assertions. All four S72-COPY-* obligations exist; their command hashes match, selected classes exist in declared post-state, and coverage/package/effect replay reports no finding for these steps. This confirms planned preservation, not an implemented copy result.",
+      "evidence": "Operator pointers exact: 001:322 is the 'Between kits: Copy experiments from another kit...' bullet with item mapping; 001:640 is S6 'Send and receive kits ... copy experiments between kits with item mapping'. .execution-contract-json declares S72-COPY-MAPPING (step 221), S72-COPY-ITEMS (227), S72-COPY-MESSAGES (228) and S72-COPY-VIEW (229), each binding constructor-unit-tests and ui-smoke, and ui-tests selected at 221/228/229. Effective plan at 221/227-229 is build, elevation, constructor-unit-tests, ui-smoke, ui-tests plus the S22 invariants; check_plan reports zero findings, so every pair is bound. Step 261 (S8.2) is present. This confirms planned preservation, not an implemented copy result.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 62,
       "phrase": "**Test builders retain their required test-support home.** Under 001 §Q, `Berreman/BerremanTests/BiaxialSample.fs:buildTriclinic` and `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:buildAbsorbing` MUST move with their modules, constants, cuts, designs, `perturbedStart` and `searchBox` into `BerremanTestSupport`.",
       "spec_location": "§3.16; .spec-md:113",
-      "evidence": "Measured source declarations: BiaxialSample.fs:49,98 declares module BiaxialSample and buildTriclinic; AbsorbingBiaxialSample.fs:26,73 declares its module and buildAbsorbing, with cuts/designs/fullConfigurations/perturbedStart/searchBox at 134-197. Neither source declares Fact/Theory tests. Operator 001 §Q and §S10 explicitly requires their test-support destination; steps 345-346 retain both builders and move their modules. Selected live consumers are BiaxialInverseTests, FeasibleBiaxialInverseTests and AbsorbingBiaxialInverseTests. The reuse anchors and intended destination are confirmed.",
+      "evidence": "Re-verified: BerremanTests/BiaxialSample.fs:49 module BiaxialSample, :98 buildTriclinic; BerremanTests/AbsorbingBiaxialSample.fs:26 module AbsorbingBiaxialSample, :73 buildAbsorbing, cuts at :134-135, configurations a1/a2/a3 at :142-165, perturbedStart at :176, searchBox at :197. Neither file holds a Fact/Theory (0 matches). BerremanTestSupport does not exist yet: it is the declared destination.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 63,
       "phrase": "`.spec-jsonl` steps 345–346 and `.execution-contract-json:S102-BIAXIAL-SAMPLE-MOVE` / `S102-ABSORBING-SAMPLE-MOVE` bind that preservation to live solver test classes.",
       "spec_location": "§3.16; .spec-md:113",
-      "evidence": "Profile-1 audit: the named S102 obligations exist and bind unit-tests at 345/346 with matching command hashes and live selected solver classes. The independently inferred roster also requires kit-acceptance at 344,345,346, but the execution contract contains no obligation/check for those pairs and the steps declare no kit selection. Declared discovery has no kit tests until 421. This is a missing executable binding, despite the valid source moves and the spec's accurate warning.",
-      "verdict": "REFUTED-POINTER-HALLUCINATED"
+      "evidence": "S102-BIAXIAL-SAMPLE-MOVE binds unit-tests (selected) at step 345, whose gate_selection names BerremanTests.BiaxialInverseTests and BerremanTests.FeasibleBiaxialInverseTests; S102-ABSORBING-SAMPLE-MOVE binds unit-tests (selected) at step 346, naming BerremanTests.AbsorbingBiaxialInverseTests. All three classes are live (BiaxialInverseTests.fs:98, FeasibleBiaxialInverseTests.fs:77, AbsorbingBiaxialInverseTests.fs:85). Profile-1 audit against the current committed bundle (specs/0050/.spec-bundle gates_required_only: true, added by commit e73bbaf after this spec text was written): effective_plan, explicit_selections and check_plan (the oracle-freeze check bypassed, because .acceptance-oracle-json is not frozen yet) report zero findings over the whole plan, and kit-acceptance is first selected at step 421. Steps 344-346 select build, elevation, unit-tests and the S34 invariants only. The moved sample modules declare no tests and keep their module names, so no test-lifetime verb is needed. The earlier kit-acceptance refutation no longer reproduces.",
+      "verdict": "CONFIRMED"
     },
     {
       "id": 64,
       "phrase": "This does not establish complete executable coverage: §4's inferred-roster diagnostic also selects `kit-acceptance` at steps 344–346 without selections or obligation/check bindings, before its step-421 test producer.",
       "spec_location": "§3.16; .spec-md:113",
-      "evidence": "The warning reproduces mechanically: effective_plan includes kit-acceptance at 344-346, explicit_selections reports SELECTION_REQUIRED for those pairs, no contract check binds them, and replay_effects leaves the gate empty until its step-421 producer. The report preserves the verified builder destination; it does not edit the roster.",
-      "verdict": "CONFIRMED"
+      "evidence": "Stale against the current tree. Profile-1 audit against the current committed bundle (specs/0050/.spec-bundle gates_required_only: true, added by commit e73bbaf after this spec text was written): effective_plan, explicit_selections and check_plan (the oracle-freeze check bypassed, because .acceptance-oracle-json is not frozen yet) report zero findings over the whole plan, and kit-acceptance is first selected at step 421. Steps 344, 345 and 346 carry no kit-acceptance and no SELECTION_REQUIRED finding. Recomputing with gates_required_only forced to false reproduces kit-acceptance at 335-346, so the clause describes the superseded roster. Operator fix: drop the diagnostic clause; the builder destinations it protects are confirmed in claims 22-23.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
     },
     {
       "id": 65,
       "phrase": "Their reusable tensor-construction expressions MUST move into parameter-record `opticalProperties` members in `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs`; the retained test-support builders MUST call those members, preserving their contracts and callers without a duplicate kernel. The uniaxial expression in `Berreman/BerremanTests/MuellerInverseTests.fs:buildUniaxialGyrotropic` MUST use the same product-member pattern. Product projects MUST NOT reference test support.",
       "spec_location": "§3.16; .spec-md:114",
-      "evidence": "Measured kernels: BiaxialSample.fs:98 builds eps/mu/rho from TriclinicParameters; AbsorbingBiaxialSample.fs:73 builds the absorbing tensor; MuellerInverseTests.fs:110 defines buildUniaxialGyrotropic. Domain/MuellerInverse.fs declares UniaxialParameters, TriclinicParameters and AbsorbingTriclinicParameters. Steps 332-334 extract opticalProperties members and leave delegating test builders; steps 345-346 move the retained builders to support. This is a planned move/call sequence, not a present product-to-test-support dependency.",
+      "evidence": "Re-verified: BiaxialSample.fs:98 buildTriclinic (TriclinicParameters -> OpticalProperties); AbsorbingBiaxialSample.fs:73 buildAbsorbing; BerremanTests/MuellerInverseTests.fs:110 buildUniaxialGyrotropic (UniaxialParameters -> OpticalProperties). OpticalConstructor.Domain/MuellerInverse.fs declares UniaxialParameters at :182, TriclinicParameters at :228 and AbsorbingTriclinicParameters at :331. No opticalProperties member exists yet: it is the declared future extraction.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 66,
       "phrase": "A material version MAY hold one of the three parameter records as its physics (S11); its generated axes MUST be that record's `axes`.",
       "spec_location": "§3.16; .spec-md:115",
-      "evidence": "Current reusable axes resolve at Domain/MuellerInverse.fs:192,244,359 on the uniaxial, triclinic and absorbing parameter records. Operator 001:505 and §Q AT-2 require generated axes to equal the parameter record's axes. S11 is a future material-physics extension; no independent second axis definition is authorized.",
+      "evidence": "Numeric count re-derived: exactly three parameter records in Domain/MuellerInverse.fs carry static member axes: UniaxialParameters (:192), TriclinicParameters (:244), AbsorbingTriclinicParameters (:359). A material version holding one as physics is the S11 future extension.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 67,
       "phrase": "17. **Case names take a second word** (`AGENTS.md`). 001's one-word cases become, for example, `KnownParameter` / `UnknownParameter` / `CalibratedParameter`, `ScienceRun` … `PlannedRun`, and `StarredKit` / `UnstarredKit`.",
       "spec_location": "§3.17; .spec-md:116",
-      "evidence": "AGENTS.md explicitly requires two-or-more-word DU cases; operator 001:348 uses Known/Unknown/Calibrated as conceptual parameter states. The spec's longer names implement the repository naming rule; this is a naming interpretation rather than a claim that the future cases are already declared.",
+      "evidence": "AGENTS.md:277 'DU case names have two or more words' resolves. The two-word case names are a naming interpretation, not a claim that the future cases exist.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 68,
       "phrase": "18. **One local database.** The MSSQL keys in `AppConfig.fs` (`ConfigKey.databaseProvider`, `mssqlConnectionString`) and their fixture are deleted. 001 §W excludes cloud or shared databases.",
       "spec_location": "§3.18; .spec-md:117",
-      "evidence": "Measured pointers: App/AppConfig.fs:48 and :53 declare ConfigKey.databaseProvider and mssqlConnectionString. OpticalConstructor.Tests/fixtures/database-appsettings.json contains both configuration entries; TestDbMigrationTests.fs:20 declares module TestDbMigrationTests and consumes the provider key. Step 59 deletes that fixture/test and explicitly carries DELETE_TEST OpticalConstructor.Tests.TestDbMigrationTests, satisfying the secondary test-lifetime verb rule. Operator 001 §W excludes cloud/shared databases; the chosen SQLite-only target is supported.",
+      "evidence": "Re-verified: OpticalConstructor.App/AppConfig.fs module ConfigKey (:22) declares databaseProvider = \"DatabaseProvider\" (:48) and mssqlConnectionString = \"OpticalConstructorMssql\" (:53). Their fixture OpticalConstructor.Tests/fixtures/database-appsettings.json holds both keys; OpticalConstructor.Tests/TestDbMigrationTests.fs:20 declares module TestDbMigrationTests. Step 59 carries actions ['DELETE_TEST OpticalConstructor.Tests.TestDbMigrationTests'], satisfying the test-lifetime verb rule.",
       "verdict": "CONFIRMED"
     },
     {
@@ -496,21 +496,21 @@
       "id": 71,
       "phrase": "`data.zip`'s CSV entries keep their archive-relative paths under `data/optics-mueller/data/raw/` (`raw/final/…` included).",
       "spec_location": "§3.20; .spec-md:122",
-      "evidence": "Measured archive facts: Python zipfile inspection of Berreman/Data/MuellerMatrix/data.zip finds CSV entries under data/raw/ and data/raw/final/, including data/raw/final/bullshit_checks.csv and cpl_cpl_day1_main.csv. Step 330 joins their archive paths under data/optics-mueller/ and deletes the old archive; this matches operator 001 §Q AT-1's move without duplicate data.",
+      "evidence": "Re-derived with Python zipfile over Berreman/Data/MuellerMatrix/data.zip: 15 CSV entries, all under data/raw/ or data/raw/final/. Step 330 (S9.4) moves the measured data byte for byte into the optics-mueller kit.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 72,
       "phrase": "Its three `data/shapes/*.json` go to `data/optics-mueller/data/reference/shapes/` beside the scripts, `README.md` and summaries, so nothing is lost.",
       "spec_location": "§3.20; .spec-md:123",
-      "evidence": "Re-derived archive count: data.zip contains exactly data/shapes/standard_air_ellipse_scale_095.json, data/shapes/standard_air_ellipse_scale_105.json and data/shapes/standard_air_ellipse_v1.json. Step 330 moves each by its own name into data/optics-mueller/data/reference/shapes/; step 329 moves the reference scripts, README and summaries. The numeric claim and future preservation destinations agree with the archive.",
+      "evidence": "Count re-derived: data.zip holds exactly three JSON files under data/shapes/ (standard_air_ellipse_scale_095.json, standard_air_ellipse_scale_105.json, standard_air_ellipse_v1.json; plus the directory entry). README.md, the scripts and reference_step1_summary.json / reference_step2_linear_summary.json sit beside data.zip in Berreman/Data/MuellerMatrix/. COUNT confirmed.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 73,
       "phrase": "21. **The committed kits are found from the repository root.** `MuellerReconstructionTests` and AT-1/AT-2 walk up from their output directory to the folder holding `Berreman/Berreman.slnx`, and open `data/<kit>/` read-only. The helper lives in `BerremanTests` until S10 moves it to `BerremanTestSupport`.",
       "spec_location": "§3.21; .spec-md:124",
-      "evidence": "Declared locator lifecycle: step 330 adds BerremanTests/CommittedKits.fs and CommittedKit.tryFindFolder, walking parents from System.AppContext.BaseDirectory until Berreman/Berreman.slnx exists and opening optics-mueller data through readOnlyView. Step 344 moves that file/type to BerremanTestSupport; step 431 adds the absorbing kit. The solution marker exists in this repository. This is a future helper, not a claim that CommittedKits.fs exists today.",
+      "evidence": "Berreman/Berreman.slnx exists (the walk-up marker). MuellerReconstructionTests is live at BerremanTests/MuellerReconstructionTests.fs:38. Step 330 (S9.4) adds the committed-kit locator; S10 moves it to BerremanTestSupport (absent today). This is a future helper.",
       "verdict": "CONFIRMED"
     },
     {
@@ -524,588 +524,679 @@
       "id": 75,
       "phrase": "Under 001 §Q and §S10, `AngleUncertainty`, `ElementUncertainty`, `ThroughputUncertainty` and `NoiseParam`, including `decentLab` and `noiseless` (`Berreman/BerremanTests/InverseFitHarness.fs:AngleUncertainty`, `ElementUncertainty`, `ThroughputUncertainty`, `NoiseParam`), MUST move together to `OpticalConstructor.Optimization/BenchNoise.fs` in S10.1. Detector item models MUST carry their noise defaults as Domain `ItemParameterAxis` data, and items MUST carry the corresponding parameter states; this satisfies 001 §I without a Domain-to-Optimization reference or a duplicate budget type. The one-time catalogue exporter MUST derive the defaults from the harness; Optimization MUST interpret the detector's parameter values through the promoted model.",
       "spec_location": "§3.23; .spec-md:127",
-      "evidence": "Measured current facts: InverseFitHarness.fs declares AngleUncertainty at 122, ElementUncertainty at 140, ThroughputUncertainty at 158 and NoiseParam at 171, with decentLab at 186 and noiseless at 195. Operator 001 §Q names all four in the promotion list and §I:345-346 requires detector noise. Step 210 reads the harness budget in the temporary exporter, step 206 supplies Domain ItemParameterAxis data, and step 339 moves the four types to Optimization/BenchNoise and adds a catalogue-budget/declaring-assembly parity fact. These future effects preserve one noise model; no production Domain-to-Optimization reference is asserted.",
+      "evidence": "Re-verified BerremanTests/InverseFitHarness.fs: type AngleUncertainty :122, ElementUncertainty :140, ThroughputUncertainty :158, NoiseParam :171, static member decentLab :186, noiseless :195. Moving them to Optimization/BenchNoise.fs (absent today) is the step-339 future effect; Domain ItemParameterAxis defaults are future declarations.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 76,
       "phrase": "S10.1 MUST move `disturb`, `misread`, `misreadAbsolute`, `noisyObserveWith`, `noisyObserveAbsoluteWith`, `NoiseSeed` and `UniformDeviateProvider` from `Berreman/BerremanTests/InverseFitHarness.fs` (declarations at lines 553, 567, 589, 626, 604, 114 and 208 respectively), and the rest of 001 §Q's promoted list, into Optimization alongside those four noise data types.",
       "spec_location": "§3.23; .spec-md:128",
-      "evidence": "All numeric pointers match the live file exactly: InverseFitHarness.fs:553 disturb; :567 misread; :589 misreadAbsolute; :626 noisyObserveWith; :604 noisyObserveAbsoluteWith; :114 NoiseSeed; :208 UniformDeviateProvider. Steps 339-340 remove these source declarations and move them to BenchNoise, preserving draw order and changing error channels explicitly. Operator 001 §Q/§S10 requires that move. No pointer drift was found.",
+      "evidence": "All seven line pointers match InverseFitHarness.fs exactly: :553 let disturb, :567 let misread, :589 let misreadAbsolute, :626 let noisyObserveWith, :604 let noisyObserveAbsoluteWith, :114 type NoiseSeed, :208 type UniformDeviateProvider. No drift.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 77,
       "phrase": "`.execution-contract-json:S101-NOISE-MOVE` and `S101-ABSOLUTE-NOISE-MOVE` bind the numerical checks at steps 339–340; their prematurely selected `kit-acceptance` gate remains blocked under §4.",
       "spec_location": "§3.23; .spec-md:128",
-      "evidence": "The two S101 obligations exist and their hashes match the live constructor-unit-tests and unit-tests commands. Declared post-state selectors resolve MuellerInverseTests at 339 and AbsorbingBiaxialNoisyTests at 340. Nevertheless the effective roster also requires kit-acceptance at both steps, with no selection or obligation/check binding and no test producer before 421. Under profile 1 the executable obligation coverage is refuted by those missing bindings; the final clause accurately acknowledges the defect.",
+      "evidence": "Binding half confirmed: S101-NOISE-MOVE checks step 339 (constructor-unit-tests all_discovered; unit-tests selected BerremanTests.MuellerInverseTests, live at MuellerInverseTests.fs:49), and S101-ABSOLUTE-NOISE-MOVE checks step 340 likewise (BerremanTests.AbsorbingBiaxialNoisyTests, live at AbsorbingBiaxialNoisyTests.fs:60). The clause 'their prematurely selected kit-acceptance gate remains blocked under §4' names a selection that no longer exists. Profile-1 audit against the current committed bundle (specs/0050/.spec-bundle gates_required_only: true, added by commit e73bbaf after this spec text was written): effective_plan, explicit_selections and check_plan (the oracle-freeze check bypassed, because .acceptance-oracle-json is not frozen yet) report zero findings over the whole plan, and kit-acceptance is first selected at step 421. Steps 339-340 select build, elevation, constructor-unit-tests, unit-tests and the S33 invariants only. kit-acceptance appears there only when gates_required_only is forced to false (the superseded roster). Operator fix: drop the clause.",
       "verdict": "REFUTED-POINTER-HALLUCINATED"
     },
     {
       "id": 78,
       "phrase": "`.spec-bundle` has `gates: []`, no `gates_required_only` field, and no `.spec-gates` snapshot exists.",
-      "spec_location": "§4, line 133",
-      "evidence": "Measured current facts: parsed specs/0050/.spec-bundle; gates is an empty array and gates_required_only is absent. Directory inspection and Path.exists confirm specs/0050/.spec-gates is absent. This is an inferred current-state claim rather than a literal default-trigger match.",
-      "verdict": "CONFIRMED"
+      "spec_location": "§4 Order and greenness, Current candidate, line 133",
+      "evidence": "Parsed specs/0050/.spec-bundle: gates is [] and specs/0050/.spec-gates is absent, but the bundle now carries \"gates_required_only\": true (spec_bundle.read returns gates_required_only=True). git show HEAD (e73bbaf, 2026-11-04 21:57 -0500) added that field after the spec revision c7f7fb8 (21:26). The 'no gates_required_only field' part was true of the pre-edit bundle and is now stale; it was not invented. Inferred current-state claim (no default trigger phrase).",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
     },
     {
       "id": 79,
       "phrase": "`C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/spec_writer/gates_override.py:_candidate_plan`, called without extra gates, returns an empty descriptor roster and empty per-step gate lists with `UNKNOWN_GATE_REFERENCE` diagnostics.",
-      "spec_location": "§4, line 133",
-      "evidence": "Measured current behavior: read gates_override.py:742 (_candidate_plan), then invoked it read-only with the actual spec folder, repository root, include_override=False and no extra_gates. Descriptors were empty and every plan entry had an empty gate_names tuple; diagnostics included UNKNOWN_GATE_REFERENCE, NO_VERIFY_GATES and NO_APPLICABLE_BUILD_PRODUCER. Inferred current-state claim; no gates or candidate files were changed.",
+      "spec_location": "§4 Order and greenness, Current candidate, line 133",
+      "evidence": "Read gates_override.py:742 (_candidate_plan): names = bundle.gates + extra_gates; gates_required_only only reaches build_gate_plan as required_only. Read-only call on the current bundle (include_override=False, no extra_gates): descriptors []; all 494 entries have empty gate_names; diagnostics UNKNOWN_GATE_REFERENCE x1972, NO_VERIFY_GATES x494, NO_APPLICABLE_BUILD_PRODUCER x8. Still holds after the gates_required_only edit. Inferred current-behavior claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 80,
       "phrase": "`C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/spec_writer/gate_plan_audit.py:audit` likewise reads the snapshot or bundle-selected roster. This candidate has no resolved execution schedule; it does not currently schedule early kit tests or establish executable coverage.",
-      "spec_location": "§4, line 133",
-      "evidence": "Read gate_plan_audit.py:191 (audit): it reads .spec-gates when present; otherwise it scans the catalog and selects only bundle.gates. The actual snapshot is absent and bundle.gates is empty. The separate _candidate_plan invocation returned empty per-step lists and unresolved-gate diagnostics. This confirms the current-candidate distinction; the inferred-roster plan is a separate diagnostic. Inferred current-state claim.",
+      "spec_location": "§4 Order and greenness, Current candidate, line 133",
+      "evidence": "Read gate_plan_audit.py:191 (audit): it reads .spec-gates if it is a file, otherwise resolves bundle.gates against the scanned catalog, and ignores gates_required_only. The snapshot is absent and bundle.gates is empty, so it gets no descriptors. The no-extra-gates _candidate_plan call (claim 2) returned empty per-step lists. The claim covers only the candidate plan: plan_view.effective_plan now does resolve a required-only schedule (claim 5). Inferred current-state claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 81,
       "phrase": "`C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/plan_view.py:roster_names` instead derives a roster from the steps when the bundle roster is empty.",
-      "spec_location": "§4, line 134",
-      "evidence": "Read plan_view.py:26: roster_names calls compute_required_roster when bundle.gates_required_only is true OR bundle.gates is empty. Read required_gates.py:81: that function reads the authored steps and their required_gates and expected_red, adds exact-override gates if present, and closes over transitive prerequisites. Inferred current-wiring claim.",
+      "spec_location": "§4 Order and greenness, Inferred-roster diagnostic, line 134",
+      "evidence": "Read plan_view.py:26: `if bundle.gates_required_only or not bundle.gates:` calls compute_required_roster (required_gates.py:81). Both conditions hold now. A live call returns [build, elevation, constructor-unit-tests, unit-tests, ui-smoke, ui-tests, kit-acceptance, elevation-full] with no missing names. Inferred current-wiring claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 82,
       "phrase": "In that diagnostic, `effective_plan` retains automatic `applies_to` selection and adds `kit-acceptance` at steps 2, 3, 5, 7–10, 205, 335–346, 348–349, 351–353, 356, 376, 380–381, 386–391, 393 and 397–404. Explicitly supplying the full catalog to `_candidate_plan` reproduces those early consumers. Neither result is the current bundle-selected schedule.",
-      "spec_location": "§4, line 134",
-      "evidence": "Measured read-only calls to plan_view.effective_plan and _candidate_plan(extra_gates=[each scanned catalog name]) both produced exactly the stated pre-421 kit-acceptance step set. plan_view.py:40 passes the actual false gates_required_only value through to the planner; .gates/OpticalConstructor/kit-acceptance.gates supplies applies_to paths. The no-extra-gates candidate call instead produced empty lists. Inferred current-behavior claim; the explicit step roster was re-derived, not accepted from the narrative.",
-      "verdict": "CONFIRMED"
+      "spec_location": "§4 Order and greenness, Inferred-roster diagnostic, line 134",
+      "evidence": "plan_view.py:40 passes bundle.gates_required_only to _compute_per_step_gate_names, and the bundle now sets it to true. Live effective_plan puts kit-acceptance only at 421–440, 442, 444–445, 453–454, 457, 460, 462–463, 473–474, 476–480, 486 and 493–494, so no step before 421 has it. _candidate_plan(include_override=False, extra_gates=all 8 scanned catalog gates) gives the same set with no diagnostics, so the claimed early consumers do not occur. Patching spec_bundle.read in memory to gates_required_only=False (the pre-e73bbaf bundle) reproduces exactly the spec's 44-step pre-421 list from both calls. The claim is therefore stale after the operator's bundle edit, not invented. Because required-only is now the bundle's own mode, and roster_names is 'the roster a compile of this spec would freeze now', 'neither result is the current bundle-selected schedule' no longer describes the live effective plan either. Inferred current-behavior claim.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
     },
     {
       "id": 83,
       "phrase": "Those pairs have neither a `.spec-jsonl` selection nor a `.execution-contract-json` obligation/check binding; `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/checker.py:explicit_selections` reports `SELECTION_REQUIRED`. Matching checks for other pairs cannot cover these omissions.",
-      "spec_location": "§4, line 134",
-      "evidence": "Parsed every step gate_selection and every obligation checks entry independently. None of the inferred pre-421 kit-acceptance consumers has that gate selection or a matching (step, gate) check. Running explicit_selections on the inferred plan returned SELECTION_REQUIRED for exactly those kit pairs. checker.py:58 checks declarations per step/gate, and check_plan uses covered (step, gate) pairs, so checks for different pairs do not cover them. Inferred current-contract claim.",
-      "verdict": "CONFIRMED"
+      "spec_location": "§4 Order and greenness, Inferred-roster diagnostic, line 134",
+      "evidence": "checker.py:58 explicit_selections on the live effective plan returns zero findings, with no SELECTION_REQUIRED. The step facts are still true: no step before 421 has a kit-acceptance gate_selection, required_gates/expected_red entry or obligation check, since each of those first appears at 421. With the in-memory pre-edit bundle (gates_required_only=False), explicit_selections returns exactly 44 SELECTION_REQUIRED findings for kit-acceptance, matching the narrative. So the reported finding is stale after e73bbaf. The per-(step, gate) covered set in check_plan (checker.py ~140-166) is consistent with 'other pairs cannot cover', but the omissions it refers to no longer arise. Inferred current-contract claim.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
     },
     {
       "id": 84,
       "phrase": "The authored requirements, selections and bindings first name `kit-acceptance` at `.spec-jsonl` step 421 and `.execution-contract-json:S121-AT1-ITEMS-SETUPS`; `.gates/OpticalConstructor/kit-acceptance.gates:requires_path` names the test file first created there.",
-      "spec_location": "§4, line 134",
-      "evidence": "Measured the minimum step naming kit-acceptance in required_gates, gate_selection and obligation checks: each is 421. S121-AT1-ITEMS-SETUPS binds its selected kit check at 421. That step declares ADD_TEST OpticalConstructor.Ui.Tests.KitAcceptanceTests and the first create effect for its test in Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs, exactly the descriptor requires_path. The file does not exist on the current tree: creation is a declared future effect, not completed behavior. The operator source specs/0050/.manual/001-library-files-database-multi-setup-inverse.md:690 independently says this gate is forward-pointing until section 12 creates the file. Inferred producer-binding claim.",
+      "spec_location": "§4 Order and greenness, Inferred-roster diagnostic, line 134",
+      "evidence": "Parsed .spec-jsonl and .execution-contract-json. kit-acceptance first appears at step 421 in required_gates/expected_red, in gate_selection and in obligation checks; that first check belongs to S121-AT1-ITEMS-SETUPS, whose checks are (421, kit-acceptance, selected), (421, ui-smoke, all_discovered) and (421, ui-tests, selected). Step 421's actions are ['ADD_TEST OpticalConstructor.Ui.Tests.KitAcceptanceTests'], and its effects.tests has op=create, path Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs, discovery_gate kit-acceptance. Step 421 is the first step whose effects name that path. kit-acceptance.gates requires_path is exactly that file, which does not exist in the tree yet (a declared future effect). Inferred producer-binding claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 85,
       "phrase": "the bundle/gate owner MUST populate `.spec-bundle.gates` with the roster derived by `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/spec_writer/required_gates.py:compute_required_roster` from `required_gates`, `expected_red` and transitive prerequisites, set `gates_required_only: true`, and publish the matching `.spec-gates` snapshot.",
-      "spec_location": "§4, line 135",
-      "evidence": "Existing-helper portion of this future instruction: required_gates.py:81 declares compute_required_roster and reads both named step fields, then traverses requires_gates transitively. Calling it against this spec resolves the required roster without missing gate names. It also supports exact overrides, which are absent here. The requested bundle update and snapshot publication are future effects; neither is asserted or recorded as completed. The existing helper reference is inferred rather than a default-trigger match.",
+      "spec_location": "§4 Order and greenness, Required owner action, line 135",
+      "evidence": "Only the existing-helper part is checked. required_gates.py:81 declares compute_required_roster: it collects step.required_gates and step.expected_red plus any exact-override gates (none here), then closes over requires_gates transitively. A live call returns an 8-gate roster with missing=(). The requested actions are partly applied: gates_required_only: true is now in the bundle (e73bbaf), but .spec-bundle.gates is still [] and .spec-gates is still absent. Inferred existing-helper reference.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 86,
       "phrase": "The read-only required-only simulation has no early kit consumers, missing selections or missing gate/check pairs, and its first kit gate is at step 421; this verifies the proposed repair without applying it.",
-      "spec_location": "§4, line 135",
-      "evidence": "Independently reproduced in memory: dataclasses.replace of the parsed bundle with gates=compute_required_roster(...).roster and gates_required_only=True, injected only into spec_bundle.read using unittest.mock.patch. Recomputed both candidate and effective plans. Candidate diagnostics, explicit-selection findings and effective (step, gate) pairs absent from obligation checks were all empty; the earliest kit gate was 421. Command identities also matched the contract and scheduled prerequisites were present. This confirms the stated structural simulation only. Full check_plan stops with EVIDENCE_INVALID because .acceptance-oracle-json is absent; no frozen-oracle validation, test execution or runtime coverage is established. Inferred measured-simulation claim; no bundle, contract or snapshot was written.",
+      "spec_location": "§4 Order and greenness, Required owner action, line 135",
+      "evidence": "The bundle is now actually in required-only mode (gates still empty), and the live effective plan satisfies the stated facts. First kit-acceptance step is 421, explicit_selections returns zero findings, and all 9223 effective (step, gate) pairs have a contract check. No check lies outside the plan, command_identity shows no drift against check command_sha256, and no requires_gates prerequisite is omitted. The full proposed repair was also simulated in memory (gates = computed roster, gates_required_only=True, via mock.patch of spec_bundle.read): _candidate_plan diagnostics were empty, the first kit gate was 421, and the effective-plan results were identical. 'Without applying it' is now partly stale: the flag is applied; the roster and snapshot are not. This is structural only: .acceptance-oracle-json is absent, so no frozen-oracle validation or test execution is established. Inferred measured-simulation claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 87,
-      "phrase": "Its empty array establishes only the baseline-file fact, not a current analyzer result.",
-      "spec_location": "§4, line 141",
-      "evidence": "The adjacent pointer resolves to Elevation/elevation-known-findings.json; parsing it confirms findings is an empty array. No analyzer execution is asserted or inferred from this stored baseline. Inferred current-artifact claim.",
+      "phrase": "`Elevation/elevation-known-findings.json:findings` MUST remain empty. Its empty array establishes only the baseline-file fact, not a current analyzer result.",
+      "spec_location": "§4 Elevation, line 141",
+      "evidence": "Parsed Elevation/elevation-known-findings.json: findings == []. No analyzer run is asserted or inferred. Inferred current-artifact claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 88,
       "phrase": "The move MUST preserve the expected matrices, rank assertions, cascade metrics and `dataMatrixTol` comparisons in `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003`, and the seeded recovery and numerical acceptance bands in `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:100`; promotion changes their code home, not those numerical expectations.",
-      "spec_location": "§4, line 142",
-      "evidence": "Inferred existing-test claim within a future preservation requirement. MuellerReconstructionTests.fs:1003 begins expectedQz; expectedLr and expectedComb follow at 1010 and 1017, rank assertions at 1025–1027, matrix comparison at 1036, and cascade metrics/comparison at 1041–1049. dataMatrixTol is defined at 181. AbsorbingBiaxialNoisyTests.fs:100 declares the cited ensemble fact, uses seeded recoverFromNoisy at 107, checks nonzero scatter at 125–127 and bias at 141–144, then starts the acceptance bands at 146–154. Both pointers resolve exactly; this verifies existing assertions, not future preservation or numerical test results.",
+      "spec_location": "§4 Elevation, line 142",
+      "evidence": "Read MuellerReconstructionTests.fs:1003 `let expectedQz =`; expectedLr follows at 1010 and expectedComb at 1017. Rank assertions (MatrixRank 16 x3) are at 1025–1027, the all-matrix dataMatrixTol assertion at ~1035, and the cascade frobenius/meanAbs/maxAbs metrics against dataMatrixTol at ~1040–1050. dataMatrixTol = 1.0e-9 is defined at 181. Read AbsorbingBiaxialNoisyTests.fs:100: the ensemble [<Fact>] member, which maps seeds through recoverFromNoisy NoiseParam.decentLab (107), asserts non-zero scatter, checks bias against 5 standard errors, then pins scatter bands (~146–156). Both pointers resolve exactly. Only the existing assertions are checked, not future preservation. Inferred existing-test claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 89,
-      "phrase": "`C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/step_compiler/compile.py:section_invariant_gates` constructs the section gates, and `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/plan_view.py:effective_plan` appends them to every matching step's gate list.",
-      "spec_location": "§4, line 162",
-      "evidence": "Read compile.py:1719: section_invariant_gates reads section-plan invariants and creates command GateDescriptors grouped by section.name. Read plan_view.py:40: effective_plan adds those descriptors and appends invariant.get(step.section, []) to each step roster. A read-only call against this spec verified the declared invariant descriptors occur at the end of every matching step list. Inferred current-wiring claim.",
+      "phrase": "Every new control gets a stable id as a uniquely named static member of `ConstructorUiId` (`OpticalConstructor.Controls/UiIds.fs`); ids derived from Domain values go in `OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs`.",
+      "spec_location": "§4 UI, line 158",
+      "evidence": "Berreman/OpticalConstructor/OpticalConstructor.Controls/UiIds.fs:27 declares `type ConstructorUiId = | ConstructorUiId of string`, the only declaration of the type. Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs:49 holds `type ConstructorUiId with`, the Domain-derived extension home. Phrase inferred, not matched against the trigger list: these pointers presume existing files.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 90,
-      "phrase": "- **Current candidate:** `.spec-bundle` has `gates: []`, no `gates_required_only` field, and no `.spec-gates` snapshot exists. `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/spec_writer/gates_override.py:_candidate_plan`, called without extra gates, returns an empty descriptor roster and empty per-step gate lists with `UNKNOWN_GATE_REFERENCE` diagnostics. `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/spec_writer/gate_plan_audit.py:audit` likewise reads the snapshot or bundle-selected roster. This candidate has no resolved execution schedule; it does not currently schedule early kit tests or establish executable coverage.",
-      "spec_location": "§4, .spec-md line 167",
-      "evidence": "Inferred current-artifact claim. Read specs/0050/.spec-bundle: gates is [], gates_required_only is absent; specs/0050/.spec-gates does not exist. Read gates_override.py:742-793 and gate_plan_audit.py:212-224 in C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/spec_writer/. Invoked _candidate_plan with include_override=False and no extra_gates: descriptors and every entry.gate_names are empty; diagnostics include UNKNOWN_GATE_REFERENCE (also NO_APPLICABLE_BUILD_PRODUCER and NO_VERIFY_GATES). The audit function selects the snapshot when present, otherwise exactly bundle.gates. These are measured planning facts, not executed gates or accepted coverage.",
+      "phrase": "Every new window calls `WindowFit.keepOnScreen` (`OpticalConstructor.Controls/WindowLayout.fs`) and joins `ScrollExtentTests`.",
+      "spec_location": "§4 UI, line 159",
+      "evidence": "Berreman/OpticalConstructor/OpticalConstructor.Controls/WindowLayout.fs:79 `module WindowFit =`, and :107 `let keepOnScreen (window : Window) : unit =`. Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/ScrollExtentTests.fs:31 `module ScrollExtentTests =`. Phrase inferred, not matched against the trigger list.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 91,
-      "phrase": "- **Inferred-roster diagnostic:** `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/plan_view.py:roster_names` instead derives a roster from the steps when the bundle roster is empty. In that diagnostic, `effective_plan` retains automatic `applies_to` selection and adds `kit-acceptance` at steps 2, 3, 5, 7–10, 205, 335–346, 348–349, 351–353, 356, 376, 380–381, 386–391, 393 and 397–404. Explicitly supplying the full catalog to `_candidate_plan` reproduces those early consumers. Neither result is the current bundle-selected schedule. Those pairs have neither a `.spec-jsonl` selection nor a `.execution-contract-json` obligation/check binding; `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/checker.py:explicit_selections` reports `SELECTION_REQUIRED`. Matching checks for other pairs cannot cover these omissions. References elsewhere in this narrative to the effective-plan coverage gap mean this inferred-roster diagnostic. The authored requirements, selections and bindings first name `kit-acceptance` at `.spec-jsonl` step 421 and `.execution-contract-json:S121-AT1-ITEMS-SETUPS`; `.gates/OpticalConstructor/kit-acceptance.gates:requires_path` names the test file first created there. Under 001 §U, that gate MUST run only from its first test-producing step onward; §9 names the verification before that producer. Earlier selections MUST NOT name future tests or treat an empty suite as proof.",
-      "spec_location": "§4, .spec-md line 168",
-      "evidence": "Inferred current-plan claim. Read ASG executability/plan_view.py:26-73 and checker.py:58-91. Independently invoked effective_plan on the unchanged bundle and _candidate_plan with all scanned catalog names: both early kit-acceptance consumer sets exactly match the expanded list in this paragraph. explicit_selections returns SELECTION_REQUIRED for those pairs. Parsed .spec-jsonl gate_selection and every .execution-contract-json obligation check: none binds any of those early kit pairs. The earliest required_gates entry, selection and check are step 421; its check belongs to S121-AT1-ITEMS-SETUPS, and its ADD_TEST action and create effect name OpticalConstructor.Ui.Tests.KitAcceptanceTests in Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs. That file is absent on disk and is the requires_path in .gates/OpticalConstructor/kit-acceptance.gates:7. Operator source .manual/001-library-files-database-multi-setup-inverse.md:688-691 makes this a forward-pointing gate until section 12. The step-421 file and test are declared future effects, not current runnable evidence.",
+      "phrase": "New surfaces live in their own files. `TableAndElementRotationView.fs` hosts them through messages and does not absorb their views.",
+      "spec_location": "§4 UI, line 160",
+      "evidence": "Glob finds exactly one file, Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs, whose line 9 is `module OpticalConstructor.Ui.TableAndElementRotationView`. Only the existing host is checked; the hosting rule is a future constraint. Phrase inferred, not matched against the trigger list.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 92,
-      "phrase": "- **Required owner action:** the bundle/gate owner MUST populate `.spec-bundle.gates` with the roster derived by `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/spec_writer/required_gates.py:compute_required_roster` from `required_gates`, `expected_red` and transitive prerequisites, set `gates_required_only: true`, and publish the matching `.spec-gates` snapshot. The owner MUST then revalidate the candidate and effective plans, every post-effect selection and every obligation/check, including prerequisites and section invariants. The read-only required-only simulation has no early kit consumers, missing selections or missing gate/check pairs, and its first kit gate is at step 421; this verifies the proposed repair without applying it. Bundle metadata and snapshots are outside this author cycle's write scope, so handoff remains blocked. Superseded code MUST be deleted in the change that replaces it. A reuse MUST be a move or a call: the new home and deletion of the old body MUST land together.",
-      "spec_location": "§4, .spec-md line 169",
-      "evidence": "Inferred simulation claim. Read ASG spec_writer/required_gates.py:81-160: compute_required_roster collects required_gates, expected_red and transitive requires_gates (and exact overrides when present). Independently ran a read-only simulation using dataclasses.replace and an in-memory patch of spec_bundle.read, setting the derived roster and gates_required_only=True; no bundle or snapshot was written. Both candidate and effective plans first select kit-acceptance at 421; the candidate has no diagnostics. explicit_selections finds no missing or invalid selections. Compared every effective step/gate, including section invariants and prerequisites, with the contract obligation checks: no missing pair. Recomputed command_identity for all check gates: no hash mismatch. These results confirm the specified plan repair simulation only; they do not prove future behavior, runtime gate success or frozen acceptance. AGENTS.md:491-498 supplies the replacement and reuse rules.",
+      "phrase": "`C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/step_compiler/compile.py:section_invariant_gates` constructs the section gates, and `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/plan_view.py:effective_plan` appends them to every matching step's gate list.",
+      "spec_location": "§4 Section invariants, line 162",
+      "evidence": "Read compile.py:1719: section_invariant_gates reads the section plan and creates one command/verify GateDescriptor per ASSERT_INVARIANT, keyed by section.name. Read plan_view.py:40: effective_plan adds those descriptors to its gate map and appends invariant.get(step.section, []) to each step's names. Live run: 47 sections, 669 invariant descriptors, and every step whose section declares invariants ends with exactly those names. Inferred current-wiring claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 93,
-      "phrase": "- Each step editing an `.fs` or `.fsproj` file MUST pass its scoped `elevation` gate, and the final composition MUST pass `elevation-full`; `Elevation/elevation-known-findings.json:findings` MUST remain empty. Its empty array establishes only the baseline-file fact, not a current analyzer result. `.elevation-analyzers.json`, `Elevation/` and the analyzers are never edited.",
-      "spec_location": "§4, .spec-md line 175",
-      "evidence": "Inferred baseline-file claim. Read Elevation/elevation-known-findings.json: the findings property is an empty array. This confirms only the declared baseline fact; no analyzer was run and no future gate result is inferred.",
-      "verdict": "CONFIRMED"
+      "phrase": "- **Current candidate:** `.spec-bundle` has `gates: []`, no `gates_required_only` field, and no `.spec-gates` snapshot exists. `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/spec_writer/gates_override.py:_candidate_plan`, called without extra gates, returns an empty descriptor roster and empty per-step gate lists with `UNKNOWN_GATE_REFERENCE` diagnostics. `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/spec_writer/gate_plan_audit.py:audit` likewise reads the snapshot or bundle-selected roster. This candidate has no resolved execution schedule; it does not currently schedule early kit tests or establish executable coverage.",
+      "spec_location": "§4, .spec-md line 167",
+      "evidence": "Inferred current-artifact claim, now stale. Read specs/0050/.spec-bundle: gates is [] and no .spec-gates snapshot exists, but the bundle now carries \"gates_required_only\": true (added by operator commit e73bbaf, 2026-11-04 21:57, after the spec's last edit in c7f7fb8). The cited file contradicts the claim's 'no gates_required_only field'. The rest still holds: gates_override.py:742 _candidate_plan(include_override=False), no extra gates, returns 0 descriptors and empty gate_names on all 494 entries, with diagnostics UNKNOWN_GATE_REFERENCE x1972, NO_VERIFY_GATES x494 and NO_APPLICABLE_BUILD_PRODUCER x8. gate_plan_audit.py:191 audit reads .spec-gates when present, else exactly bundle.gates (lines 213-225). The spec-writer needs to re-measure this paragraph against the current bundle.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
     },
     {
       "id": 94,
-      "phrase": "- Code MOVED from a test project into a product project (S10) MUST meet every ELEV rule in its new home. The move MUST preserve the expected matrices, rank assertions, cascade metrics and `dataMatrixTol` comparisons in `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003`, and the seeded recovery and numerical acceptance bands in `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:100`; promotion changes their code home, not those numerical expectations.",
-      "spec_location": "§4, .spec-md line 176",
-      "evidence": "Inferred existing-numerical-baseline claim. Berreman/BerremanTests/MuellerReconstructionTests.fs:1003 begins expectedQz, followed by expectedLr at 1010 and expectedComb at 1017; rank-16 assertions are at 1025-1027, matrix comparisons against dataMatrixTol at 1030-1037, and cascade metrics and their comparison at 1041-1050. dataMatrixTol is defined at 181. Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:100 starts the ensemble fact; seeds at 70 and recoverFromNoisy at 73 feed it at 107, with bias assertions at 140-144, scatter bands at 151-159 and absorption/gyration acceptance below. The cited baselines exist; their preservation after a future move is a requirement, not a measured result.",
-      "verdict": "CONFIRMED"
+      "phrase": "- **Inferred-roster diagnostic:** `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/plan_view.py:roster_names` instead derives a roster from the steps when the bundle roster is empty. In that diagnostic, `effective_plan` retains automatic `applies_to` selection and adds `kit-acceptance` at steps 2, 3, 5, 7–10, 205, 335–346, 348–349, 351–353, 356, 376, 380–381, 386–391, 393 and 397–404. Explicitly supplying the full catalog to `_candidate_plan` reproduces those early consumers. Neither result is the current bundle-selected schedule. Those pairs have neither a `.spec-jsonl` selection nor a `.execution-contract-json` obligation/check binding; `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/checker.py:explicit_selections` reports `SELECTION_REQUIRED`. Matching checks for other pairs cannot cover these omissions. References elsewhere in this narrative to the effective-plan coverage gap mean this inferred-roster diagnostic. The authored requirements, selections and bindings first name `kit-acceptance` at `.spec-jsonl` step 421 and `.execution-contract-json:S121-AT1-ITEMS-SETUPS`; `.gates/OpticalConstructor/kit-acceptance.gates:requires_path` names the test file first created there. Under 001 §U, that gate MUST run only from its first test-producing step onward; §9 names the verification before that producer. Earlier selections MUST NOT name future tests or treat an empty suite as proof.",
+      "spec_location": "§4, .spec-md line 168",
+      "evidence": "Inferred current-plan claim, now stale. plan_view.py:26 roster_names derives compute_required_roster when 'bundle.gates_required_only or not bundle.gates' (confirmed). But effective_plan passes required_only=bundle.gates_required_only, which is now True (e73bbaf). Invoked on the current bundle, effective_plan first selects kit-acceptance at step 421 and selects it at no step before 421. explicit_selections returns no findings. Every effective (step, gate) pair, section invariants included, has an .execution-contract-json check. _candidate_plan with the full scanned catalog also first selects kit-acceptance at 421, with 0 diagnostics. The listed early consumers (2, 3, 5, 7-10, 205, 335-346, ..., 397-404) and their SELECTION_REQUIRED findings reproduce exactly only in a read-only simulation with gates_required_only=False, i.e. the pre-e73bbaf bundle. Still true: .spec-jsonl first names kit-acceptance in required_gates and gate_selection at step 421; the first contract check is S121-AT1-ITEMS-SETUPS step 421 (kit-acceptance, selected); .gates/OpticalConstructor/kit-acceptance.gates:7 requires_path is Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs; that file is absent; step 421's effects create it (class OpticalConstructor.Ui.Tests.KitAcceptanceTests). .manual/001:690 makes the gate forward-pointing until section 12.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
     },
     {
       "id": 95,
-      "phrase": "- Every new control gets a stable id as a uniquely named static member of `ConstructorUiId` (`OpticalConstructor.Controls/UiIds.fs`); ids derived from Domain values go in `OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs`.",
-      "spec_location": "§4, .spec-md line 192",
-      "evidence": "Inferred existing-UI-contract claim. Resolving the literal pointers against C:/GitHub/Berreman finds neither OpticalConstructor.Controls/UiIds.fs nor OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs. Grep locates the intended declarations at Berreman/OpticalConstructor/OpticalConstructor.Controls/UiIds.fs:27 (ConstructorUiId, automationAttribute and fixed static ids) and Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs:49 (ConstructorUiId extensions over Domain values). The symbols exist, but the cited repository-relative files do not; both pointers omit Berreman/OpticalConstructor/.",
-      "verdict": "REFUTED-POINTER-HALLUCINATED"
+      "phrase": "- **Required owner action:** the bundle/gate owner MUST populate `.spec-bundle.gates` with the roster derived by `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/spec_writer/required_gates.py:compute_required_roster` from `required_gates`, `expected_red` and transitive prerequisites, set `gates_required_only: true`, and publish the matching `.spec-gates` snapshot. The owner MUST then revalidate the candidate and effective plans, every post-effect selection and every obligation/check, including prerequisites and section invariants. The read-only required-only simulation has no early kit consumers, missing selections or missing gate/check pairs, and its first kit gate is at step 421; this verifies the proposed repair without applying it. Bundle metadata and snapshots are outside this author cycle's write scope, so handoff remains blocked. Superseded code MUST be deleted in the change that replaces it. A reuse MUST be a move or a call: the new home and deletion of the old body MUST land together.",
+      "spec_location": "§4, .spec-md line 169",
+      "evidence": "Inferred simulation claim. required_gates.py:81 compute_required_roster exists and returns [build, elevation, constructor-unit-tests, unit-tests, ui-smoke, ui-tests, kit-acceptance, elevation-full], none missing. Read-only re-simulation (spec_bundle.read patched in memory to gates=that roster, gates_required_only=True; nothing written): effective_plan first selects kit-acceptance at 421; explicit_selections finds no SELECTION_REQUIRED/SELECTION_INVALID; no effective (step, gate) pair, section invariants included, lacks an .execution-contract-json check; _candidate_plan has 0 diagnostics and first selects kit-acceptance at step 421. Note: one part of the owner action, gates_required_only: true, is already in the bundle (e73bbaf). gates is still [] and .spec-gates is still absent, so the populate/publish actions remain open. AGENTS.md:491-498 holds the replacement and reuse rules.",
+      "verdict": "CONFIRMED"
     },
     {
       "id": 96,
-      "phrase": "- Every new window calls `WindowFit.keepOnScreen` (`OpticalConstructor.Controls/WindowLayout.fs`) and joins `ScrollExtentTests`.",
-      "spec_location": "§4, .spec-md line 193",
-      "evidence": "Inferred existing-window-helper claim. C:/GitHub/Berreman/OpticalConstructor.Controls/WindowLayout.fs does not exist when the cited path is resolved against the required repository root. The intended helper is Berreman/OpticalConstructor/OpticalConstructor.Controls/WindowLayout.fs:107, WindowFit.keepOnScreen. ScrollExtentTests resolves to Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/ScrollExtentTests.fs:31. The named declarations exist, but the file pointer omits Berreman/OpticalConstructor/.",
-      "verdict": "REFUTED-POINTER-HALLUCINATED"
+      "phrase": "- Each step editing an `.fs` or `.fsproj` file MUST pass its scoped `elevation` gate, and the final composition MUST pass `elevation-full`; `Elevation/elevation-known-findings.json:findings` MUST remain empty. Its empty array establishes only the baseline-file fact, not a current analyzer result. `.elevation-analyzers.json`, `Elevation/` and the analyzers are never edited.",
+      "spec_location": "§4, .spec-md line 175",
+      "evidence": "Read Elevation/elevation-known-findings.json: 'findings' is an empty array (version 1). .elevation-analyzers.json exists at the repo root. This is a baseline-file fact, not an analyzer run, as the claim itself says.",
+      "verdict": "CONFIRMED"
     },
     {
       "id": 97,
-      "phrase": "- **Section invariants.** `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/step_compiler/compile.py:section_invariant_gates` constructs the section gates, and `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/plan_view.py:effective_plan` appends them to every matching step's gate list. Every step MUST keep its section's invariants.",
-      "spec_location": "§4, .spec-md line 196",
-      "evidence": "Inferred existing-wiring claim. Read C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/step_compiler/compile.py:1719-1754: section_invariant_gates reads the section plan and constructs GateDescriptor values grouped by section.name. Read executability/plan_view.py:73-82: effective_plan registers those descriptors and appends the names for step.section. Independently compared all returned step lists against section_invariant_gates: every matching invariant is present.",
+      "phrase": "- Code MOVED from a test project into a product project (S10) MUST meet every ELEV rule in its new home. The move MUST preserve the expected matrices, rank assertions, cascade metrics and `dataMatrixTol` comparisons in `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003`, and the seeded recovery and numerical acceptance bands in `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:100`; promotion changes their code home, not those numerical expectations.",
+      "spec_location": "§4, .spec-md line 176",
+      "evidence": "Read Berreman/BerremanTests/MuellerReconstructionTests.fs:1003: 'let expectedQz = RealMatrix4x4.create ...', followed by expectedLr and the combined matrix. Within the next ~50 lines: Assert.Equal(MatrixRank 16, ...) for mQz/mLr/mComb, the section 8 cascade identity (cascadeProduct, frobeniusDiff) and worst-deviation asserts against dataMatrixTol (declared at :181 = 1.0e-9). Read Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:100: the [<Fact>] member 'an ensemble of noisy experiments recovers the absorption far better than the optical activity', running the fixed seeds (:70 seeds = ensembleSeeds |> List.truncate 5) through recoverFromNoisy NoiseParam.decentLab, then non-vacuity and band assertions.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 98,
-      "phrase": "| Canonical JSON + SHA-256 | Storage | Sorted keys, invariant-culture round-trip numbers. One serializer options value, moved out of `ProjectJson`. |",
-      "spec_location": "§5, .spec-md line 205",
-      "evidence": "Inferred source-of-reuse claim, limited to the serializer options being moved. Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs:131-145 declares ProjectJson.options with JsonSerializerOptions and the F# and application converters. Sorted-key canonical JSON and SHA-256 in this shared-shape row are declared target behavior, not asserted current capabilities.",
-      "verdict": "CONFIRMED"
+      "phrase": "- Every new control gets a stable id as a uniquely named static member of `ConstructorUiId` (`OpticalConstructor.Controls/UiIds.fs`); ids derived from Domain values go in `OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs`.",
+      "spec_location": "§4, .spec-md line 192",
+      "evidence": "Inferred existing-UI-contract claim. Resolved against repo root C:/GitHub/Berreman, neither OpticalConstructor.Controls/UiIds.fs nor OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs exists. The symbols exist at Berreman/OpticalConstructor/OpticalConstructor.Controls/UiIds.fs:27 (type ConstructorUiId) and Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs:49 (type ConstructorUiId with ...). Both cited paths omit the Berreman/OpticalConstructor/ prefix.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
     },
     {
       "id": 99,
-      "phrase": "| `PinState` (`VersionPinned` / `VersionUnpinned`) | Domain `Lifecycle.fs` | One-way. It replaces `VersionsInUse`. |",
-      "spec_location": "§5, .spec-md line 207",
-      "evidence": "Inferred retired-source claim. Grep uniquely resolves VersionsInUse to Berreman/OpticalConstructor/OpticalConstructor.Domain/Lifecycle.fs:52-62, a record exposing versionsInUse and an empty implementation. PinState and its replacement behavior are future shapes; no current declaration of them is asserted.",
-      "verdict": "CONFIRMED"
+      "phrase": "- Every new window calls `WindowFit.keepOnScreen` (`OpticalConstructor.Controls/WindowLayout.fs`) and joins `ScrollExtentTests`.",
+      "spec_location": "§4, .spec-md line 193",
+      "evidence": "Inferred existing-window-helper claim. C:/GitHub/Berreman/OpticalConstructor.Controls/WindowLayout.fs does not exist. The helper is at Berreman/OpticalConstructor/OpticalConstructor.Controls/WindowLayout.fs:79 (module WindowFit) / :107 (let keepOnScreen). ScrollExtentTests resolves to Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/ScrollExtentTests.fs:31. The declarations exist, but the cited path omits Berreman/OpticalConstructor/.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
     },
     {
       "id": 100,
-      "phrase": "| JSON + schema | `ProjectJson.options`, `SchemaValidation` (System.Text.Json, FSharp.SystemTextJson, JsonSchema.Net) | The project aggregate (S4) |",
-      "spec_location": "§6, .spec-md line 225",
-      "evidence": "Inferred existing-reuse claim. ProjectJson uniquely resolves to Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs:16, with options at 131 using System.Text.Json and JsonFSharpConverter. SchemaValidation is declared in the sibling SchemaValidation.fs:13 and evaluates Json.Schema at 64-76. OpticalConstructor.Storage.fsproj:69-71 references FSharp.SystemTextJson and JsonSchema.Net. The planned retirement of the project aggregate is not a current deletion claim.",
+      "phrase": "- **Section invariants.** `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/step_compiler/compile.py:section_invariant_gates` constructs the section gates, and `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/plan_view.py:effective_plan` appends them to every matching step's gate list. Every step MUST keep its section's invariants.",
+      "spec_location": "§4, .spec-md line 196",
+      "evidence": "Read ASG step_compiler/compile.py:1719 section_invariant_gates: it builds one KIND_COMMAND verify GateDescriptor per ASSERT_INVARIANT of each section in the section plan. Read executability/plan_view.py:41 effective_plan: it calls section_invariant_gates(spec_folder) and appends each section's invariant gate names to every step of that section (per_step = [[*step_names, *(g.name for g in invariant.get(step.section, []))] ...]).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 101,
-      "phrase": "| Import seam | `Seeding.SeedingProxy` / `seedAll` → `CatalogueImport` | `OpticalConstructor.Seeding/` |",
-      "spec_location": "§6, .spec-md line 226",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Seeding/Seeding.fs:30 declares module Seeding; its nested SeedingProxy record is at 46 and its seedAll member at 59. Thus Seeding.SeedingProxy and its orchestrator resolve uniquely in the Seeding project. CatalogueImport is the declared future destination.",
+      "phrase": "| Canonical JSON + SHA-256 | Storage | Sorted keys, invariant-culture round-trip numbers. One serializer options value, moved out of `ProjectJson`. |",
+      "spec_location": "§5, .spec-md line 205",
+      "evidence": "Inferred existing-artifact claim ('moved out of ProjectJson'). Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs:16 module ProjectJson; :131 'let options : JsonSerializerOptions ='.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 102,
-      "phrase": "| Version rule | `Lifecycle.decideVersioning` | `VersionsInUse` |",
-      "spec_location": "§6, .spec-md line 227",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Domain/Lifecycle.fs:120-132 defines decideVersioning over stored and incoming payloads plus VersionUsage; VersionsInUse is declared in the same file at 52. The old version rule and the type named for retirement both exist.",
+      "phrase": "| `PinState` (`VersionPinned` / `VersionUnpinned`) | Domain `Lifecycle.fs` | One-way. It replaces `VersionsInUse`. |",
+      "spec_location": "§5, .spec-md line 207",
+      "evidence": "Inferred replaced-artifact claim. Berreman/OpticalConstructor/OpticalConstructor.Domain/Lifecycle.fs:15 module Lifecycle; :52 type VersionsInUse (:62 static member empty). PinState is the new shape.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 103,
-      "phrase": "| History MRU | `RecentFiles.bump` | `recent.json`, `loadRecent`, `pushRecent`, `maxRecent` |",
-      "spec_location": "§6, .spec-md line 228",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs:18 declares RecentFiles, maxRecent at 24, the recent.json path at 36, bump at 41, loadRecent at 51 and FileName.pushRecent at 65. bump removes an existing occurrence, prepends the path and truncates to maxRecent. All named reuse and retirement artifacts are present.",
+      "phrase": "| JSON + schema | `ProjectJson.options`, `SchemaValidation` (System.Text.Json, FSharp.SystemTextJson, JsonSchema.Net) | The project aggregate (S4) |",
+      "spec_location": "§6, .spec-md line 225",
+      "evidence": "ProjectJson.fs:131 ProjectJson.options; OpticalConstructor.Storage/SchemaValidation.fs:13 module SchemaValidation; ProjectJson.fs:4 opens System.Text.Json; root Directory.Build.targets:48 PackageVersion FSharp.SystemTextJson 1.4.36 and :50 JsonSchema.Net 9.4.0.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 104,
-      "phrase": "| RII records | `MaterialImport` (`RefractiveIndexInfoText`) | `buildTabulatedClosure` |",
-      "spec_location": "§6, .spec-md line 229",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs:27 declares MaterialImport, RefractiveIndexInfoText is declared at 70 and extended with import behavior at 471, and buildTabulatedClosure is defined at 158 and consumed by entryFromTabulated at 189. The source parser and closure named for replacement exist.",
+      "phrase": "| Import seam | `Seeding.SeedingProxy` / `seedAll` → `CatalogueImport` | `OpticalConstructor.Seeding/` |",
+      "spec_location": "§6, .spec-md line 226",
+      "evidence": "Berreman/OpticalConstructor/OpticalConstructor.Seeding/Seeding.fs:30 module Seeding; :46 type SeedingProxy; :59 member this.seedAll () : Result<unit, SeedingError>. The folder Berreman/OpticalConstructor/OpticalConstructor.Seeding/ exists.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 105,
-      "phrase": "| Data parsers | `MeasuredData` `parseIntensitySeries` / `parseEllipsometricSeries`, `MuellerDataStore` `parseMuellerCsv` | The strict v1 `X,Y` path, `MuellerDataSet`, the archive store |",
-      "spec_location": "§6, .spec-md line 230",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Domain/MeasuredData.fs:198 and :216 define DataFileText.parseIntensitySeries and parseEllipsometricSeries; the intensity parser requires comma-separated X,Y pairs and reports malformed rows at 209. Berreman/OpticalConstructor/OpticalConstructor.Storage/MuellerDataStore.fs:106 defines DataFileText.parseMuellerCsv, extends MuellerDataSet with archiveEntryName at 151-153, and reads the mapped ZIP entry via ZipFile.OpenRead at 189 before invoking the parser at 199. These declarations substantiate both parser reuse and the named strict-format/archive retirement targets.",
+      "phrase": "| Version rule | `Lifecycle.decideVersioning` | `VersionsInUse` |",
+      "spec_location": "§6, .spec-md line 227",
+      "evidence": "OpticalConstructor.Domain/Lifecycle.fs:120 let decideVersioning (generic over Physics and Metadata) inside module Lifecycle (:15); VersionsInUse at Lifecycle.fs:52.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 106,
-      "phrase": "| Label grammar | `MuellerExperimentLabel.parsed` cases → the naming template's first tests | `experimentRegex`, `objectRegex`, `parsed` |",
-      "spec_location": "§6, .spec-md line 231",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:504 and :508 define experimentRegex and objectRegex; the MuellerExperimentLabel extension begins at 511 and its parsed member at 516 uses both expressions to produce ParsedExperiment. Reusing these cases as future naming-template tests is a declared effect.",
+      "phrase": "| History MRU | `RecentFiles.bump` | `recent.json`, `loadRecent`, `pushRecent`, `maxRecent` |",
+      "spec_location": "§6, .spec-md line 228",
+      "evidence": "Berreman/OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs:18 module RecentFiles; :41 let bump; :24 let maxRecent = 16; :36 'recent.json'; :51 let loadRecent; :65 member this.pushRecent ().",
       "verdict": "CONFIRMED"
     },
     {
       "id": 107,
-      "phrase": "| Gain rules | `MuellerReconstruction.familyGain` → first gain-model implementation | — |",
-      "spec_location": "§6, .spec-md line 232",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:859-873 defines familyGain: mean repeat gain for LpLp/LpCpl, timestamp split for CplLp, and fixed or clamped interpolated gain for CplCpl. The gain-rule implementation to reuse exists.",
+      "phrase": "| RII records | `MaterialImport` (`RefractiveIndexInfoText`) | `buildTabulatedClosure` |",
+      "spec_location": "§6, .spec-md line 229",
+      "evidence": "OpticalConstructor.Storage/MaterialImport.fs:27 module MaterialImport; :70 type RefractiveIndexInfoText; :158 let private buildTabulatedClosure.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 108,
-      "phrase": "| Linear engine | `MuellerReconstruction.buildDesign` + `reconstruct`, `MuellerSolverProxy` | — |",
-      "spec_location": "§6, .spec-md line 233",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:215 declares MuellerSolverProxy; buildDesign is defined at 928-950 and reconstruct at 959-966. reconstruct calls solver.solveLinearLeastSquares and carries the resulting matrix, rank and rmse. All named linear-engine seams resolve.",
+      "phrase": "| Data parsers | `MeasuredData` `parseIntensitySeries` / `parseEllipsometricSeries`, `MuellerDataStore` `parseMuellerCsv` | The strict v1 `X,Y` path, `MuellerDataSet`, the archive store |",
+      "spec_location": "§6, .spec-md line 230",
+      "evidence": "OpticalConstructor.Domain/MeasuredData.fs:32 module MeasuredData; :198 member parseIntensitySeries; :216 member parseEllipsometricSeries; :18-19 the STRICT schema-v1 X,Y shape. OpticalConstructor.Storage/MuellerDataStore.fs:37 module MuellerDataStore; :106 member parseMuellerCsv; :210 createArchiveBacked (the archive store). MuellerDataSet: OpticalConstructor.Domain/MuellerReconstruction.fs:360.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 109,
-      "phrase": "| Nonlinear engine | `Berreman/BerremanTests/InverseFitHarness.fs:InverseFit<'Parameters>` (fit-result carrier promoted with the harness), `Berreman/OpticalConstructor/OpticalConstructor.Optimization/MuellerInverseSolver.fs:createAlglibLevenbergMarquardt`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:forwardModels` / `createBerremanForward` | The test-harness carrier's source declaration (S10) |",
-      "spec_location": "§6, .spec-md line 234",
-      "evidence": "Inferred existing-reuse claim. Berreman/BerremanTests/InverseFitHarness.fs:44-56 declares InverseFit<'Parameters> with recovered, solution, scaling, residual, chiSquared and rmsResidual. Berreman/OpticalConstructor/OpticalConstructor.Optimization/MuellerInverseSolver.fs:36 defines createAlglibLevenbergMarquardt returning NonlinearSolverProxy. Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:850 and :876 define createBerremanForward and forwardModels respectively. Promotion of the carrier is a future effect; the source declarations exist now.",
+      "phrase": "| Label grammar | `MuellerExperimentLabel.parsed` cases → the naming template's first tests | `experimentRegex`, `objectRegex`, `parsed` |",
+      "spec_location": "§6, .spec-md line 231",
+      "evidence": "OpticalConstructor.Domain/MuellerReconstruction.fs:324 type MuellerExperimentLabel; :516 member this.parsed : ParsedExperiment; :504 let private experimentRegex; :508 let private objectRegex.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 110,
-      "phrase": "| Cut plates | `MuellerInverse.orientForCut`, `internalAngle`, `gyrationProjection` | — |",
-      "spec_location": "§6, .spec-md line 235",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:437 defines gyrationProjection, :445 internalAngle using Snell's relation, and :462 orientForCut using the engine's rotations for cut and azimuth. The qualified module resolves all three symbols.",
+      "phrase": "| Gain rules | `MuellerReconstruction.familyGain` → first gain-model implementation | — |",
+      "spec_location": "§6, .spec-md line 232",
+      "evidence": "OpticalConstructor.Domain/MuellerReconstruction.fs:859 let familyGain (family : Family) (cal : GainCalibration) ...",
       "verdict": "CONFIRMED"
     },
     {
       "id": 111,
-      "phrase": "| Table samples | `Propagation.sampleMuellerSpun` | — |",
-      "spec_location": "§6, .spec-md line 236",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Domain/Propagation.fs:324 declares sampleMuellerSpun; it rotates layer tensors, constructs OpticalSystemSolver, and returns the selected branch matrix with transmitted flux correction. The named sample evaluation seam exists.",
+      "phrase": "| Linear engine | `MuellerReconstruction.buildDesign` + `reconstruct`, `MuellerSolverProxy` | — |",
+      "spec_location": "§6, .spec-md line 233",
+      "evidence": "OpticalConstructor.Domain/MuellerReconstruction.fs:928 let buildDesign; :959 let reconstruct (solver : MuellerSolverProxy) ...; :215 type MuellerSolverProxy.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 112,
-      "phrase": "| Fit quality | `FitQuality.residualJacobian`, `ResidualJacobian` (`columnNorms`, `conditionNumber`, `correlation`), `FitReport.standardErrors` | — |",
-      "spec_location": "§6, .spec-md line 237",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Optimization/FitQuality.fs:103 defines residualJacobian; FitReport is declared at 64 with its standardErrors field at 73. Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:952 declares ResidualJacobian with columnNorms at 960, conditionNumber at 971 and correlation at 999. Every named fit-quality member resolves.",
+      "phrase": "| Nonlinear engine | `Berreman/BerremanTests/InverseFitHarness.fs:InverseFit<'Parameters>` (fit-result carrier promoted with the harness), `Berreman/OpticalConstructor/OpticalConstructor.Optimization/MuellerInverseSolver.fs:createAlglibLevenbergMarquardt`, `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:forwardModels` / `createBerremanForward` | The test-harness carrier's source declaration (S10) |",
+      "spec_location": "§6, .spec-md line 234",
+      "evidence": "Berreman/BerremanTests/InverseFitHarness.fs:44 type InverseFit<'Parameters> ([<ReferenceEquality>]); OpticalConstructor.Optimization/MuellerInverseSolver.fs:36 let createAlglibLevenbergMarquardt (); OpticalConstructor.Domain/MuellerInverse.fs:876 let forwardModels and :850 let createBerremanForward.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 113,
-      "phrase": "| Noise / fit harness | `Berreman/BerremanTests/InverseFitHarness.fs:InverseFitHarness` → Optimization | Its product half |",
-      "spec_location": "§6, .spec-md line 238",
-      "evidence": "Inferred existing-reuse claim. Berreman/BerremanTests/InverseFitHarness.fs:303 declares InverseFitHarness. The file contains fitWithResidual at 465, fitObservations at 493, fitAbsorbingObservations at 503, deterministic seeds at 544, noisyObserveAbsoluteWith at 604 and noisyObserveWith at 626; UniformDeviateProvider is declared at 208. This verifies the fit/noise source to promote, not completion of the future move.",
+      "phrase": "| Cut plates | `MuellerInverse.orientForCut`, `internalAngle`, `gyrationProjection` | — |",
+      "spec_location": "§6, .spec-md line 235",
+      "evidence": "OpticalConstructor.Domain/MuellerInverse.fs:62 module MuellerInverse; :462 let orientForCut; :445 let internalAngle; :437 let gyrationProjection.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 114,
-      "phrase": "| Ground truth | `Berreman/BerremanTests/BiaxialSample.fs:BiaxialSample`, `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:AbsorbingBiaxialSample` → `BerremanTestSupport` | Their BerremanTests copies |",
-      "spec_location": "§6, .spec-md line 239",
-      "evidence": "Inferred existing-reuse claim. Berreman/BerremanTests/BiaxialSample.fs:49 declares BiaxialSample with reference constants and triclinic at 78. Berreman/BerremanTests/AbsorbingBiaxialSample.fs:26 declares AbsorbingBiaxialSample with absorbing at 45, buildAbsorbing at 73 and fullConfigurations at 165. Both cited source modules exist; BerremanTestSupport is their future destination.",
+      "phrase": "| Table samples | `Propagation.sampleMuellerSpun` | — |",
+      "spec_location": "§6, .spec-md line 236",
+      "evidence": "OpticalConstructor.Domain/Propagation.fs:106 module Propagation; :324 let sampleMuellerSpun.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 115,
-      "phrase": "| §7.2 pipeline | `MuellerReconstructionTests` §7.2 → product staged path | The hand-composed body |",
-      "spec_location": "§6, .spec-md line 240",
-      "evidence": "Inferred existing-reuse claim. The unique BerremanTests.MuellerReconstructionTests type is declared in Berreman/BerremanTests/MuellerReconstructionTests.fs:38. Its section 7.2 end-to-end fact starts at 802 and manually composes loadDataSet, reduceAirTraces, unwrapFit, gains and corrected signals, buildDesign and reconstruct, finishing with rank, matrix and cascade assertions at 1025-1050. The hand-composed source pipeline exists; product promotion is not yet measured.",
+      "phrase": "| Fit quality | `FitQuality.residualJacobian`, `ResidualJacobian` (`columnNorms`, `conditionNumber`, `correlation`), `FitReport.standardErrors` | — |",
+      "spec_location": "§6, .spec-md line 237",
+      "evidence": "OpticalConstructor.Optimization/FitQuality.fs:29 module FitQuality; :103 let residualJacobian ... : ResidualJacobian; :64 type FitReport with :73 field standardErrors. OpticalConstructor.Domain/MuellerInverse.fs:952 type ResidualJacobian with :960 columnNorms, :971 conditionNumber, :999 correlation.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 116,
-      "phrase": "| Pre-fit checks | `SolverHandoffView` three checks, `ExperimentDataLoad.loadAndValidate` | `SolverHandoffView` / `Window` |",
-      "spec_location": "§6, .spec-md line 241",
-      "evidence": "Inferred existing-reuse and numeric-count claim. Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:100-116 implements validateExperiment as three ordered checks: unspecified non-sample elements, absent attachment, then load/parse/range validation through ExperimentDataLoad.loadAndValidate. The latter is defined in Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentDataLoad.fs:46-62 and selects the detector parser before validateAgainstExperiment. The code substantiates the stated three-check count. SolverHandoffView is the module declared at :14; the window is the separate SolverHandoffWindow.fs host.",
+      "phrase": "| Noise / fit harness | `Berreman/BerremanTests/InverseFitHarness.fs:InverseFitHarness` → Optimization | Its product half |",
+      "spec_location": "§6, .spec-md line 238",
+      "evidence": "Berreman/BerremanTests/InverseFitHarness.fs:303 module InverseFitHarness (namespace BerremanTests).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 117,
-      "phrase": "| Long work | `Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs:OpticalConstructor.Ui.JobRunner` | — |",
-      "spec_location": "§6, .spec-md line 242",
-      "evidence": "Inferred existing-reuse claim. Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs:23 declares module OpticalConstructor.Ui.JobRunner. Its JobProgress, job execution, cancellation and job-state declarations provide the named long-work seam. The complete file-and-module pointer resolves.",
+      "phrase": "| Ground truth | `Berreman/BerremanTests/BiaxialSample.fs:BiaxialSample`, `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:AbsorbingBiaxialSample` → `BerremanTestSupport` | Their BerremanTests copies |",
+      "spec_location": "§6, .spec-md line 239",
+      "evidence": "Berreman/BerremanTests/BiaxialSample.fs:49 module BiaxialSample; Berreman/BerremanTests/AbsorbingBiaxialSample.fs:26 module AbsorbingBiaxialSample. BerremanTestSupport is the declared destination and does not exist yet (no folder or project). It is a future effect, not an existence claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 118,
-      "phrase": "| Windows | `WindowFit.keepOnScreen`, `ScrollExtentTests` | — |",
-      "spec_location": "§6, .spec-md line 243",
-      "evidence": "Inferred existing-reuse claim. WindowFit uniquely resolves to Berreman/OpticalConstructor/OpticalConstructor.Controls/WindowLayout.fs:79, with keepOnScreen at 107 fitting the window on its Opened event. ScrollExtentTests is the module at Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/ScrollExtentTests.fs:31, testing visible-control scroll reachability on small screens. These symbol-only pointers resolve independently of the malformed file pointer in section 4.",
+      "phrase": "| §7.2 pipeline | `MuellerReconstructionTests` §7.2 → product staged path | The hand-composed body |",
+      "spec_location": "§6, .spec-md line 240",
+      "evidence": "Berreman/BerremanTests/MuellerReconstructionTests.fs:38 type MuellerReconstructionTests; :802 the 'section 7.2 end-to-end: the Stage 1 to 2 to 3 pipeline ...' fact.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 119,
-      "phrase": "`AGENTS.md` (“No legacy, no migration”) authorizes compatibility breaks before release. This spec MUST reject incompatible stored formats; it makes no assumption that user-created data is absent.",
-      "spec_location": "§7, .spec-md line 247",
-      "evidence": "Inferred existing-policy claim. AGENTS.md:491-495 explicitly says there is no release yet, requires superseded code to be deleted, treats a stored-format version mismatch as a typed error, and prohibits up-converters, migrations, compatibility shims and fallback readers. This supports the stated pre-release compatibility-break policy; it supplies no assertion that user-created data is absent.",
+      "phrase": "| Pre-fit checks | `SolverHandoffView` three checks, `ExperimentDataLoad.loadAndValidate` | `SolverHandoffView` / `Window` |",
+      "spec_location": "§6, .spec-md line 241",
+      "evidence": "Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs exists; :92 documents 'the BASIC per-experiment validation, three checks in order'. SolverHandoffWindow.fs exists beside it. OpticalConstructor.Domain/ExperimentDataLoad.fs:21 module ExperimentDataLoad; :46 let loadAndValidate.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 120,
-      "phrase": "an editor for the database outside `Berreman/OpticalConstructor/OpticalConstructor.Ui/LibraryWindow.fs:LibraryWindow` and `Berreman/OpticalConstructor/OpticalConstructor.Ui/MaterialsWindow.fs:MaterialsWindow`.",
-      "spec_location": ".spec-md:256",
-      "evidence": "Inferred assumption: the named editor windows are existing artefacts. Read Berreman/OpticalConstructor/OpticalConstructor.Ui/LibraryWindow.fs:34 and MaterialsWindow.fs:29: both declare the exact window types and accept library/material proxy arguments. The restriction on additional editors is a future negative-scope requirement, not evidence that a database editor has already been implemented.",
+      "phrase": "| Long work | `Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs:OpticalConstructor.Ui.JobRunner` | — |",
+      "spec_location": "§6, .spec-md line 242",
+      "evidence": "Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs exists; :23 'module OpticalConstructor.Ui.JobRunner'.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 121,
-      "phrase": "**Solver and harness.** `BerremanTests` (`unit-tests`) covers the core dispersion change (`EpsWithDispValueTests` and its neighbours) and every step that touches `OpticalConstructor.Optimization`, `MuellerInverse.fs`, `MuellerReconstruction.fs`, the solver or `BerremanTestSupport`. Only touched classes run; the whole suite runs at the final step.",
-      "spec_location": ".spec-md:277",
-      "evidence": "Inferred current anchors and profile-1 plan check. Berreman/BerremanTests/EpsWithDispValueTests.fs:19 declares EpsWithDispValueTests; BerremanTests.fsproj:31 compiles it. Independently computed effective_plan from .spec-jsonl, .section-plan-jsonl and the live .gates catalog: no declared edit of Berreman/Berreman/, Berreman/BerremanTestSupport/, OpticalConstructor.Optimization/, MuellerInverse.fs or MuellerReconstruction.fs lacks unit-tests. Every explicit unit-tests selection before the final step is selected, and step 494 declares all_discovered. This confirms the test surface and planned selection policy, not that future solver changes already pass. Operator source: .manual/001-library-files-database-multi-setup-inverse.md:690-691.",
+      "phrase": "| Windows | `WindowFit.keepOnScreen`, `ScrollExtentTests` | — |",
+      "spec_location": "§6, .spec-md line 243",
+      "evidence": "Berreman/OpticalConstructor/OpticalConstructor.Controls/WindowLayout.fs:79 module WindowFit, :107 let keepOnScreen; Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/ScrollExtentTests.fs:31 module ScrollExtentTests.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 122,
-      "phrase": "Under 001 §U, `kit-acceptance` (AT-1, AT-2: trait `kit-acceptance`) MUST run from `.spec-jsonl` step 421, which creates `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs`, on every subsequent step touching the study, the run law, the import code, the acceptance files or the two kits.",
-      "spec_location": ".spec-md:278",
-      "evidence": "Profile-1 future producer/consumer check. Operator .manual/001:690 makes the gate forward-pointing until section 12 creates its file. Step 421 declares ADD_TEST OpticalConstructor.Ui.Tests.KitAcceptanceTests, an effects.edits entry for KitAcceptanceTests.fs and its fsproj, and a create effect for the first AT-1 fact with discovery_gate and suite kit-acceptance, bound to S121-AT1-ITEMS-SETUPS. Its selection is that exact class. Subsequent declared edits to the study/run/import/acceptance/kit surfaces retain the kit-acceptance gate. The current test file does not exist; its production is declared future work. Premature effective consumers are separately acknowledged and audited below.",
+      "phrase": "`AGENTS.md` (“No legacy, no migration”) authorizes compatibility breaks before release. This spec MUST reject incompatible stored formats; it makes no assumption that user-created data is absent.",
+      "spec_location": "§7, .spec-md line 247",
+      "evidence": "AGENTS.md:491 '**No legacy, no migration** (there is no release yet)' under 'Working in this repo': stored-format version mismatch is a typed error, with no up-converters, migrations or fallback readers.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 123,
-      "phrase": "In particular, the `MaterialImport.fs` changes at steps 445, 454, 457 and 462 MUST select `OpticalConstructor.Ui.Tests.KitAcceptanceTests`; `.execution-contract-json` binds those checks to `S131-RII-PARSER`, `S132-PTB-READER`, `S132-HENKE-ADAPTER` and `S132-AGF-READER` respectively.",
-      "spec_location": ".spec-md:278",
-      "evidence": "Profile-1 contract-to-plan check: the four named obligations have selected kit-acceptance checks at steps 445, 454, 457 and 462 respectively. Each step declares the MaterialImport.fs edit, required kit-acceptance and selection OpticalConstructor.Ui.Tests.KitAcceptanceTests; effective_plan retains them. All four bindings equal command_identity of .gates/OpticalConstructor/kit-acceptance.gates, a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087, including its command, cwd, trait, selector, result policy and deadline. Matching behavior_seams and constructor test effects exist. Fixture edits are explicitly produced at the same steps: catalog-nk.yml, ptb-Co.txt, si.nff/o.nff and test-glasses.agf. Operator .manual/001 §D and §U supply the source-import and acceptance requirements; no runtime success is inferred from these declarations.",
+      "phrase": "an editor for the database outside `Berreman/OpticalConstructor/OpticalConstructor.Ui/LibraryWindow.fs:LibraryWindow` and `Berreman/OpticalConstructor/OpticalConstructor.Ui/MaterialsWindow.fs:MaterialsWindow`.",
+      "spec_location": ".spec-md:256 (§8 Negative scope, Persistence and import)",
+      "evidence": "Inferred assumption (not in the trigger list): the two named editor windows are existing artefacts. Grep: Berreman/OpticalConstructor/OpticalConstructor.Ui/LibraryWindow.fs:34 declares `type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : SourceProxy, materials : MaterialProxy, categories : CategoryProxy, ...)`; MaterialsWindow.fs:29 declares `type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, ...)`. Both file:symbol pointers resolve. The ban on any other database editor is a future negative-scope rule and is not checked here.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 124,
-      "phrase": "The `CatalogueImport.fs` / `CatalogueImportStore.fs` changes at steps 442, 444 and 463 MUST select the same class; `.execution-contract-json` binds those checks to `S131-PULLED-ROWS`, `S131-PULLS` and `S132-AGF-IMPORT` respectively.",
-      "spec_location": ".spec-md:278",
-      "evidence": "Profile-1 contract-to-plan check: S131-PULLED-ROWS, S131-PULLS and S132-AGF-IMPORT contain selected kit-acceptance checks at 442, 444 and 463 respectively. Each step lists the catalogue import edits and selects OpticalConstructor.Ui.Tests.KitAcceptanceTests; the effective gate plan retains that gate. Their command hash is the measured a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087. Each obligation also has a behavior_seam and constructor test effects for the relevant pull/import behavior, including both in-memory and SQLite catalogue classes at 442/463. Step 421 is the earlier declared producer of the selected acceptance class. These are future execution bindings, not current test results.",
+      "phrase": "**Solver and harness.** `BerremanTests` (`unit-tests`) covers the core dispersion change (`EpsWithDispValueTests` and its neighbours) and every step that touches `OpticalConstructor.Optimization`, `MuellerInverse.fs`, `MuellerReconstruction.fs`, the solver or `BerremanTestSupport`. Only touched classes run; the whole suite runs at the final step.",
+      "spec_location": ".spec-md:277 (§9 Solver and harness)",
+      "evidence": "Inferred current anchor plus a profile-1 plan check. Berreman/BerremanTests/EpsWithDispValueTests.fs:19 declares `type EpsWithDispValueTests()`, compiled at BerremanTests.fsproj:31. Recomputed the plan with ai_strategy_generator.executability.plan_view.effective_plan, which uses the current bundle's `gates_required_only: true` (commit e73bbaf). 62 steps declare edits under Berreman/Berreman/, Berreman/BerremanTestSupport/, OpticalConstructor.Optimization/, MuellerInverse.fs or MuellerReconstruction.fs, and none lacks unit-tests. Of the steps that carry unit-tests, 66 select classes and one, final step 494, is all_discovered. Every step editing Berreman/Berreman/Dispersion.fs (2, 3, 5, 7, 8, 9, 10, 453) selects BerremanTests.EpsWithDispValueTests, alongside DispersionFormulaTests or RhoWithDispValueTests where present. Recomputed unit-tests command_identity 022348b2... equals the contract's bindings.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 125,
-      "phrase": "The effective plan currently violates that start boundary (§4).",
-      "spec_location": ".spec-md:278",
-      "evidence": "Measured current plan fact, independently reproduced with ai_strategy_generator.executability.plan_view.effective_plan, without compiling or writing: kit-acceptance is effective at steps 2, 3, 5, 7, 8, 9, 10 and other steps before its step-421 test producer. explicit_selections reports SELECTION_REQUIRED for those premature kit-acceptance consumers. No required_gates declaration before 421 explicitly requests it; the effective roster adds it. .gates/OpticalConstructor/kit-acceptance.gates requires KitAcceptanceTests.fs, which is absent now and is first declared by step 421. This supports the sentence acknowledging the violation; it does not claim the plan is executable.",
+      "phrase": "Under 001 §U, `kit-acceptance` (AT-1, AT-2: trait `kit-acceptance`) MUST run from `.spec-jsonl` step 421, which creates `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs`, on every subsequent step touching the study, the run law, the import code, the acceptance files or the two kits.",
+      "spec_location": ".spec-md:278 (§9 Acceptance)",
+      "evidence": "Profile-1 producer/consumer check. KitAcceptanceTests.fs is absent today (ls fails), and 001:690 makes the gate forward-pointing until section 12. Step 421 carries actions [`ADD_TEST OpticalConstructor.Ui.Tests.KitAcceptanceTests`] and edits KitAcceptanceTests.fs and OpticalConstructor.Ui.Tests.fsproj. Its create effect (AT-1, suite and discovery_gate kit-acceptance) is bound to S121-AT1-ITEMS-SETUPS, and its kit-acceptance selection is that class. In the current effective plan (required-only roster), kit-acceptance is on 39 steps, from 421 onward, and on none before 421. No step from 421 on that edits MaterialImport.fs, CatalogueImport*, ExperimentRun.fs, Study*, LabFileImport*, ImportProfile*, OpticalConstructor.Optimization/, BerremanTestSupport/, KitAcceptance* or data/optics-mueller|absorbing-biaxial-noisy lacks kit-acceptance.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 126,
-      "phrase": "Before S12, `constructor-unit-tests` MUST prove the run-law and import behavior through the test effects bound to each step; steps 246, 301–303, 307 and 374 MUST additionally select `OpticalConstructor.Ui.Tests.FsxAcceptanceTests` under `ui-tests`.",
-      "spec_location": ".spec-md:278",
-      "evidence": "Profile-1 future verification check against operator .manual/001 §K:375-395 and §N:499-506. Step 246 creates source-emission behavior facts in ItemEvaluationTests; 301-303 create observation round-trip, column-mapping and built-in-profile facts in LabFileImportTests; 307 creates sniff/preview facts in ImportProfileTests and LabFileImportTests; 374 creates ordered-product/readout/settings/refusal facts in ExperimentRunTests and StudyForwardTests. Those effects name the corresponding contract obligations and constructor-unit-tests discovery. All six steps declare constructor-unit-tests all_discovered plus ui-tests selected to OpticalConstructor.Ui.Tests.FsxAcceptanceTests, and the effective plan preserves both gates. FsxAcceptanceTests is a current compiled class, with no intervening delete/rename effect in the ledger. This establishes declared behavior-test consumers, not their future numerical outcome.",
+      "phrase": "In particular, the `MaterialImport.fs` changes at steps 445, 454, 457 and 462 MUST select `OpticalConstructor.Ui.Tests.KitAcceptanceTests`; `.execution-contract-json` binds those checks to `S131-RII-PARSER`, `S132-PTB-READER`, `S132-HENKE-ADAPTER` and `S132-AGF-READER` respectively.",
+      "spec_location": ".spec-md:278 (§9 Acceptance)",
+      "evidence": "Read the live .execution-contract-json and .spec-jsonl. Each of S131-RII-PARSER/445, S132-PTB-READER/454, S132-HENKE-ADAPTER/457 and S132-AGF-READER/462 has a check {gate kit-acceptance, selection selected, command_sha256 a679969bf13611cde47aea02f5fc1b2bcf1e38668c5bf21ec69055b6f5c1a087} at exactly that step. Each step edits OpticalConstructor.Storage/MaterialImport.fs, lists kit-acceptance in required_gates and selects ['OpticalConstructor.Ui.Tests.KitAcceptanceTests']. command_identity recomputed from .gates/OpticalConstructor/kit-acceptance.gates equals a679969b..., and all four steps carry kit-acceptance in the effective plan.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 127,
-      "phrase": "That class (`Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/FsxAcceptanceTests.fs:FsxAcceptanceTests`) checks constructor/export numerical parity against the Analytics examples; it does not replace the import-profile and study-forward behavior tests.",
-      "spec_location": ".spec-md:278",
-      "evidence": "Inferred current-test claim. Read FsxAcceptanceTests.fs:51 (module), :65-76 (in-memory stores and export proxy), :218-241 (Variables.calculate, exported-series lookup and pointwise numerical assertions) and :271-298 (headless table run compared with Glass.fsx). OpticalConstructor.Ui.Tests.fsproj:201 compiles the file. Its source verifies constructor/export curves against Analytics; the separate future import and study-forward facts are explicitly declared in steps 301-303, 307 and 374. The evidence is inspection of assertions, not a claim that this audit ran the suite.",
+      "phrase": "The `CatalogueImport.fs` / `CatalogueImportStore.fs` changes at steps 442, 444 and 463 MUST select the same class; `.execution-contract-json` binds those checks to `S131-PULLED-ROWS`, `S131-PULLS` and `S132-AGF-IMPORT` respectively.",
+      "spec_location": ".spec-md:278 (§9 Acceptance)",
+      "evidence": "S131-PULLED-ROWS/442, S131-PULLS/444 and S132-AGF-IMPORT/463 each have a selected kit-acceptance check at that step with command_sha256 a679969b... (equal to the recomputed kit-acceptance command_identity). Each step edits OpticalConstructor.Domain/CatalogueImport.fs and OpticalConstructor.Storage/CatalogueImportStore.fs, lists kit-acceptance in required_gates and selects ['OpticalConstructor.Ui.Tests.KitAcceptanceTests']. All three are after the step-421 producer and carry kit-acceptance in the effective plan.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 128,
-      "phrase": "The six selections and command checks are bound in `.execution-contract-json` to `S81-SOURCE-EMISSION`, `S92-OBSERVATION-FILE`, `S92-COLUMN-MAPPING-READ`, `S92-ONE-PROFILE-READ`, `S92-SNIFF-PREVIEW` and `S112-FORWARD-MODEL` respectively.",
-      "spec_location": ".spec-md:278",
-      "evidence": "Re-derived the count and mapping from the live JSON: 246/S81-SOURCE-EMISSION, 301/S92-OBSERVATION-FILE, 302/S92-COLUMN-MAPPING-READ, 303/S92-ONE-PROFILE-READ, 307/S92-SNIFF-PREVIEW and 374/S112-FORWARD-MODEL. Each obligation has a selected ui-tests check and each corresponding step selects OpticalConstructor.Ui.Tests.FsxAcceptanceTests. Recomputed command_identity is e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920 for every ui-tests binding; the accompanying constructor-unit-tests binding is cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb. Matching behavior_seams exist for each obligation. Thus both the numeric count and the actual bindings resolve independently of the narrative.",
-      "verdict": "CONFIRMED"
+      "phrase": "The effective plan currently violates that start boundary (§4).",
+      "spec_location": ".spec-md:278 (§9 Acceptance)",
+      "evidence": "Measured current-plan claim; it does not hold for the tree as it is now. Commit e73bbaf (after the spec commit c7f7fb8) added `\"gates_required_only\": true` to specs/0050/.spec-bundle, so plan_view.roster_names now takes the roster from each step's required gates. Recomputing ai_strategy_generator.executability.plan_view.effective_plan (read-only) gives kit-acceptance on 39 steps, the first being 421, with 0 steps before 421. Only steps from 421 on list kit-acceptance in required_gates. checker.explicit_selections over that plan returns 0 findings in total, none for kit-acceptance. Earlier runs measured premature consumers at steps 2, 3, 5 and others, but no such step remains. The spec must re-measure this claim: the cited violation is absent from the current plan.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
     },
     {
       "id": 129,
-      "phrase": "**Elevation.** `elevation` runs on every step that edits an `.fs` or `.fsproj`, and `elevation-full` at the final step.",
-      "spec_location": ".spec-md:279",
-      "evidence": "Inferred plan-wiring claim. Checked every .spec-jsonl effects.edits entry ending .fs or .fsproj against an independently computed effective_plan: none lacks elevation. Final step 494 requires both elevation and elevation-full, and both are in its effective roster. Their descriptors exist in .gates/Elevation/. This confirms scheduled checks, not a green result from running the analyzers.",
+      "phrase": "Before S12, `constructor-unit-tests` MUST prove the run-law and import behavior through the test effects bound to each step; steps 246, 301–303, 307 and 374 MUST additionally select `OpticalConstructor.Ui.Tests.FsxAcceptanceTests` under `ui-tests`.",
+      "spec_location": ".spec-md:278 (§9 Acceptance)",
+      "evidence": "Profile-1 plan check. Each of steps 246, 301, 302, 303, 307 and 374 carries ui-tests and constructor-unit-tests in the effective plan. Each selects ui-tests values ['OpticalConstructor.Ui.Tests.FsxAcceptanceTests'] and runs constructor-unit-tests all_discovered. Their constructor test effects carry the obligations: 246 creates ItemEvaluationTests facts (S81-SOURCE-EMISSION); 301/302/303 create LabFileImportTests facts (S92-OBSERVATION-FILE / S92-COLUMN-MAPPING-READ / S92-ONE-PROFILE-READ); 307 creates ImportProfileTests and LabFileImportTests facts (S92-SNIFF-PREVIEW); 374 creates ExperimentRunTests and StudyForwardTests facts (S112-FORWARD-MODEL). Every one has discovery_gate constructor-unit-tests.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 130,
-      "phrase": "**Invariants.** Each section carries `invariant-*` gates: 001 §T's greps from the part after the one that makes each true, plus the empty known-findings list and the absence of VSTest packages on every part.",
-      "spec_location": ".spec-md:280",
-      "evidence": "Inferred plan-wiring claim checked against operator .manual/001:676-686. .section-plan-jsonl invariants first add the code-seed grep in section 8 (S2.1), ocproj in section 19 (S5.1), experimentRegex in section 28 (S9.1), MuellerDataSet and Data/MuellerMatrix in section 33 (S10.1), and the harness-noise grep in section 34 (S10.2), following the parts that retire each subject. kit.kit-json, elev-list-empty and no-vstest start in section 1. Independently computed effective_plan carries elev-list-empty and no-vstest invariant gates on every step. Elevation/elevation-known-findings.json currently has an empty findings array. Future absence of retired code is the purpose of the gates, not assumed current state.",
+      "phrase": "That class (`Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/FsxAcceptanceTests.fs:FsxAcceptanceTests`) checks constructor/export numerical parity against the Analytics examples; it does not replace the import-profile and study-forward behavior tests.",
+      "spec_location": ".spec-md:278 (§9 Acceptance)",
+      "evidence": "Inferred existing-test claim. FsxAcceptanceTests.fs:51 declares `module FsxAcceptanceTests =`, compiled at OpticalConstructor.Ui.Tests.fsproj:201. Doc comments at :36 (`Variables.calculate`), :218 (\"The script's data: `Variables.calculate` over the range\") and the Glass.fsx facts at :294/:298 show headless-table R/T compared against the Analytics script. The import-profile and study-forward facts are separate constructor-unit-tests effects at steps 301-303, 307 and 374. The pointer resolves; the suite was not run.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 131,
-      "phrase": "The moved solver tests MUST preserve their expected values and tolerances, including `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:151`; this is a completion requirement, not an assertion of measured parity before implementation.",
-      "spec_location": ".spec-md:286",
-      "evidence": "Inferred baseline-pointer claim only. Read Berreman/BerremanTests/MuellerReconstructionTests.fs:1003: let expectedQz begins the pinned matrix, followed by expectedLr at :1010. Read Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:151: let scatterBand begins the quantity-specific acceptance bands, asserted at :159. Both exact numeric pointers resolve. Operator .manual/001:699 requires unchanged solver numbers. The sentence explicitly defers parity to implementation/completion, so no moved-test execution or measured parity is claimed here.",
+      "phrase": "The six selections and command checks are bound in `.execution-contract-json` to `S81-SOURCE-EMISSION`, `S92-OBSERVATION-FILE`, `S92-COLUMN-MAPPING-READ`, `S92-ONE-PROFILE-READ`, `S92-SNIFF-PREVIEW` and `S112-FORWARD-MODEL` respectively.",
+      "spec_location": ".spec-md:278 (§9 Acceptance)",
+      "evidence": "Count and mapping re-derived from the live contract: 246/S81-SOURCE-EMISSION, 301/S92-OBSERVATION-FILE, 302/S92-COLUMN-MAPPING-READ, 303/S92-ONE-PROFILE-READ, 307/S92-SNIFF-PREVIEW and 374/S112-FORWARD-MODEL, six in all. Each obligation has a selected ui-tests check at its step with command_sha256 e062cbd61602c4ac5f46641b10dbaeccecb7c85960d5faed76f1ef5c98c61920, which equals the command_identity recomputed from .gates/OpticalConstructor/ui-tests.gates. Each also has an all_discovered constructor-unit-tests check with cdb6ee4a..., which equals the recomputed constructor-unit-tests identity.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 132,
-      "phrase": "2. **Progress granularity.** Per item: one fit iteration or multi-start member, one Planner candidate, one source-snapshot file, one zipped file. Each shows a progress bar with Cancel, through `JobRunner`.",
-      "spec_location": ".spec-md:300",
-      "evidence": "Inferred reusable-harness anchor. The unique production declaration is module OpticalConstructor.Ui.JobRunner at Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs:23, compiled by OpticalConstructor.Ui.fsproj:53. Its runLoop at :106-127 checks CancellationToken between steps and emits JobProgress; runPoints/:132, runIterations/:143 and startBackground/:154 are the hosting seams; its messages include CancelRequested, ProgressReported and RunCompleted at :226-228. Operator .manual/001:506 requires long fits to use this harness. The per-item progress bars and future Planner/snapshot/zip wiring remain UX commitments, not claims of current implementations.",
+      "phrase": "**Elevation.** `elevation` runs on every step that edits an `.fs` or `.fsproj`, and `elevation-full` at the final step.",
+      "spec_location": ".spec-md:279 (§9 Elevation)",
+      "evidence": "Inferred plan-wiring claim. Over the current effective plan (required-only roster), no step whose effects.edits include a path ending .fs or .fsproj lacks elevation. elevation-full is effective only at step 494, the final step, which carries both elevation and elevation-full. Descriptors .gates/Elevation/elevation.gates and elevation-full.gates exist (identities 70fd6a69... and 67bbdc4c...). This checks the schedule; the analyzers were not run.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 133,
-      "phrase": "6. **Committable state.** `.gitignore:333` and `.gitignore:334` exclude `/data/chroma/` and `/data/*/.oc/`; global patterns also apply within kits, including `*.binz` (`.gitignore:339`), `*.autosave` (`.gitignore:343`) and `*.tmp` (`.gitignore:78`).",
-      "spec_location": ".spec-md:311",
-      "evidence": "Inferred current-file claim. Read .gitignore:333 = /data/chroma/, :334 = /data/*/.oc/, :339 = *.binz, :343 = *.autosave and :78 = *.tmp; all line pointers match exactly. git check-ignore --no-index -v also matches prospective nested kit cache.binz, file.autosave and atomic.tmp paths to the cited global rules.",
+      "phrase": "**Invariants.** Each section carries `invariant-*` gates: 001 §T's greps from the part after the one that makes each true, plus the empty known-findings list and the absence of VSTest packages on every part.",
+      "spec_location": ".spec-md:280 (§9 Invariants)",
+      "evidence": "Inferred plan-wiring claim, checked against 001 §T (.manual/001:677-686) and .section-plan-jsonl. In the effective plan every one of the 494 steps carries an `*-elev-list-empty` and a `*-no-vstest` invariant. Elevation/elevation-known-findings.json has no ELEV0 entry. The §T greps start right after the section that retires each subject: t1-no-code-seeds at section 8 (S2.1, after S1.7); t4-no-ocproj at 19 (S5.1, after S4.4); t8-no-experiment-regex at 28 (S8.4, after step 270 in S8.3); t9-no-mueller-data-set and t9-no-data-mueller-matrix at 33 (S10.1, after S9.4); t10-no-harness-noise at 34 (S10.2, after steps 339-340 in S10.1). Each then holds to step 494. For t8 and t10 the gate starts earlier than the next part, so it is also present from the part after.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 134,
-      "phrase": "`git check-ignore` confirms that the committed kit files, `library/`, `data/` and `Berreman/OpticalConstructor/Catalogue/Builtin/` collide with no global pattern.",
-      "spec_location": ".spec-md:312",
-      "evidence": "Inferred ignore-check claim, verified without creating files. Derived the prospective kit/catalogue paths from .spec-jsonl effects.edits and passed them, plus library/, data/, Berreman/OpticalConstructor/Catalogue/Builtin/ and the kit library/data subdirectories, to git check-ignore --no-index -v -z --stdin. It returned exit 1 with no matches or errors. git ls-files finds no current files in the two reference-kit folders, so this confirms committability of the declared future paths, not the existence of completed/committed kits.",
+      "phrase": "The moved solver tests MUST preserve their expected values and tolerances, including `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:151`; this is a completion requirement, not an assertion of measured parity before implementation.",
+      "spec_location": ".spec-md:286 (§9 Done when)",
+      "evidence": "Inferred baseline-pointer claim. Read MuellerReconstructionTests.fs:1003: `let expectedQz =` opens the pinned RealMatrix4x4 (rows at :1005-1008), with expectedLr following at :1009. Read AbsorbingBiaxialNoisyTests.fs:151: `let scatterBand =` opens the quantity-specific acceptance bands (n 1.0e-3, differences 1.5e-3, e 1.5e-2, isotropic absorption 2.0e-3, g 1.0e1), asserted at :159. Both exact line pointers resolve. The sentence defers parity to completion, so no measured parity is claimed.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 135,
-      "phrase": "Atomic-write `*.tmp` files match `*.tmp` and are never committed, which is intended.",
-      "spec_location": ".spec-md:313",
-      "evidence": "Inferred ignore-rule claim. git check-ignore --no-index -v resolves data/optics-mueller/atomic.tmp, data/absorbing-biaxial-noisy/library/atomic.tmp and Berreman/OpticalConstructor/Catalogue/Builtin/atomic.tmp to .gitignore:78:*.tmp. Thus the temporary filenames are excluded from normal git additions as intended. The future atomic-write implementation itself is not asserted to exist by this check.",
+      "phrase": "2. **Progress granularity.** Per item: one fit iteration or multi-start member, one Planner candidate, one source-snapshot file, one zipped file. Each shows a progress bar with Cancel, through `JobRunner`.",
+      "spec_location": ".spec-md:300 (§10.2 Progress granularity)",
+      "evidence": "Inferred reuse anchor (class-anchored). The only production declaration is Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs:23 `module OpticalConstructor.Ui.JobRunner`, compiled at OpticalConstructor.Ui.fsproj:53 and described in that project as the shared background sweep/fit harness. The harness exists. The per-item bars for the Planner, snapshot and zip are future work and not checked.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 136,
-      "phrase": "This explicitly declines the web-control treatment described in `C:/GitHub/AI-Strategy-Generator/src/schemas/spec_writer/spec_author/spec-author.system-md:590`.",
-      "spec_location": ".spec-md:314",
-      "evidence": "Inferred document-pointer claim. Read the cited absolute path at :589-596: :590 requires an explicit decision on mirroring hidden controls; :591-594 lists the LLM-profile select, web-search-provider select, token counters, .specrc.agent dropdown and spec_writer.set_agent wiring. The pointer and described treatment match. The preceding MUST omit/MUST NOT add statements are future desktop requirements, not a claim that the new screens exist.",
+      "phrase": "6. **Committable state.** `.gitignore:333` and `.gitignore:334` exclude `/data/chroma/` and `/data/*/.oc/`; global patterns also apply within kits, including `*.binz` (`.gitignore:339`), `*.autosave` (`.gitignore:343`) and `*.tmp` (`.gitignore:78`).",
+      "spec_location": ".spec-md:311 (§10.6 Committable state)",
+      "evidence": "sed -n over .gitignore: :333 = `/data/chroma/`, :334 = `/data/*/.oc/`, :339 = `*.binz`, :343 = `*.autosave`, :78 = `*.tmp`. All five line pointers match exactly. `git check-ignore --no-index -v` matches data/x/.oc/a to .gitignore:334, data/x/cache.binz to :339, data/x/f.autosave to :343 and data/optics-mueller/atomic.tmp to :78.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 137,
-      "phrase": "S1.1 MUST replace the tabulated importer closure (`Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs:buildTabulatedClosure`) and the transcendental-model lowering closures (`Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs:DispersionModel.toEpsAxis`) with axis data; S1.2 MUST make `complexity` mandatory.",
-      "spec_location": ".spec-md:324",
-      "evidence": "Inferred current implementation anchors. MaterialImport.fs:158-179 declares buildTabulatedClosure, returning a wavelength function with linear interpolation and endpoint clamping; entryFromTabulated invokes it at :189 and sets complexity = None at :193. DispersionModels.fs:686 declares DispersionModel.toEpsAxis; :766-769 lowers TaucLorentz, GaussianOscillator, ForouhiBloomer and BrendelBormann to EpsAxisEvaluated this.evaluate. These are the actual closure seams to replace. Operator .manual/001:182 requires serializable tabulated physics. Replacement with axis data and mandatory complexity are future changes, not measured existing behavior.",
+      "phrase": "`git check-ignore` confirms that the committed kit files, `library/`, `data/` and `Berreman/OpticalConstructor/Catalogue/Builtin/` collide with no global pattern.",
+      "spec_location": ".spec-md:312 (§10.6 Committable state)",
+      "evidence": "Inferred ignore-check claim, verified without creating files. Gathered the 234 effects.edits paths in .spec-jsonl under data/optics-mueller/, data/absorbing-biaxial-noisy/ and Berreman/OpticalConstructor/Catalogue/Builtin/. Fed them, plus library/, data/ and Berreman/OpticalConstructor/Catalogue/Builtin/, to `git -c core.quotepath=off check-ignore --no-index -v --stdin`: exit 1, no output, no error, so nothing is ignored. `git ls-files` finds 0 tracked files under the two kit folders and Catalogue/Builtin today, so this confirms the declared future paths are committable, not that the kits exist.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 138,
-      "phrase": "S1.4 MUST define the entry file, canonical JSON, the hash and the per-kind schemas. `.execution-contract-json:S14-NUMBERS` MUST be proved by the future `OpticalConstructor.Tests.CanonicalJsonTests` class, explicitly produced by `.spec-jsonl` step 22's `ADD_TEST` action and create/discovery effects, then made green by its paired close; no current test declaration is claimed.",
-      "spec_location": ".spec-md:326",
-      "evidence": "Profile-1 future producer and red/green lifetime check. .execution-contract-json S14-NUMBERS explicitly binds constructor-unit-tests at step 22 (selected) and 23 (all_discovered). Step 22 has ADD_TEST OpticalConstructor.Tests.CanonicalJsonTests, red_in naming that class, RED_0005, file/fsproj edits, and create effects for its complex-number, real-matrix and absorbing-material facts, all with matching suite, class, discovery_gate and S14-NUMBERS. Step 23 closes RED_0005 and declares the ComplexConverter/RealMatrixConverter implementation. The effective plan retains both checks and their measured command identity cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb. No current CanonicalJsonTests declaration was found. Operator .manual/001:172-182 requires canonical JSON and serializable entries; this confirms a declared future test producer and its consumer, not an existing or passing test.",
+      "phrase": "Atomic-write `*.tmp` files match `*.tmp` and are never committed, which is intended.",
+      "spec_location": ".spec-md:313 (§10.6 Committable state)",
+      "evidence": "Inferred ignore-rule claim. `git check-ignore --no-index -v` resolves data/optics-mueller/atomic.tmp to `.gitignore:78:*.tmp`, and `*.tmp` is unanchored, so it applies at any depth, kit and Catalogue folders included. The atomic-write implementation itself is future work and not checked.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 139,
-      "phrase": "The library contracts `MaterialProxy` and `CategoryProxy` (`Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs`), and `SampleProxy`, `SourceProxy` and `LibraryProxy` (`Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs`) MUST retain their proxy shapes and gain SQLite composition, proved by contract suites over both stores (001 §C). `Pinned` replaces `VersionsInUse`. The app runs on the database from S2.4.",
-      "spec_location": ".spec-md:337",
-      "evidence": "Inferred current proxy anchors plus profile-1 future composition check. MaterialLibrary.fs:201 and :708 declare CategoryProxy and MaterialProxy as records of Result-returning functions. ElementId.fs:482, :546 and :584 declare LibraryProxy, SampleProxy and SourceProxy in the same functional-proxy form. Lifecycle.fs:52 declares the current VersionsInUse record. Operator .manual/001:218-227 requires one-way pinning, preserved proxy shapes and both-store contract suites. The execution contract and steps 66-79 retain the in-memory suites and explicitly create MaterialProxySqliteTests (69), CategoryProxySqliteTests (71), SampleProxySqliteTests (74), SourceProxySqliteTests (76) and LibraryProxySqliteTests (79), with SQLite :memory: factories and constructor-unit-tests consumers. Step 65 retires VersionsInUse; step 88 in S2.4 declares AppContext database composition and AppContextTests/LauncherTests discovery. Microsoft.EntityFrameworkCore.Sqlite is already referenced by OpticalConstructor.Database.csproj:29 and centrally pinned in Directory.Build.targets:52; the S2 package effects declare no provider transition. The database model/composition and pin replacement are future effects, not assertions that the current app already uses them.",
+      "phrase": "This explicitly declines the web-control treatment described in `C:/GitHub/AI-Strategy-Generator/src/schemas/spec_writer/spec_author/spec-author.system-md:590`.",
+      "spec_location": ".spec-md:314 (§10.6 Committable state)",
+      "evidence": "Inferred document-pointer claim. sed -n 588,595 of the cited absolute path: :589 'When the spec introduces a new top-level page, it MUST also', :590 'state **explicitly** whether that page mirrors the', then (:591-595) the spec-writer's hidden-controls treatment: LLM-profile select, web-search-provider select, session token counters, and the `.specrc.agent` dropdown wired to `spec_writer.set_agent`. The pointer and the treatment described both match.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 140,
-      "phrase": "Default-source parity MUST be checked against the present `Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs:detectorStokes` behavior and the exported-curve comparisons in `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/FsxAcceptanceTests.fs:assertRT`.",
-      "spec_location": "S8.0; .spec-md:355 (chunk 7)",
-      "evidence": "Inferred existing-artifact claim from \"present\" and \"comparisons\". Read Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs:36-45: detectorStokes folds PolarizerStep/SampleStep from unpolarizedStokes, with the first preparation setting unit intensity. Read Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/FsxAcceptanceTests.fs:218-241: assertRT compares exported Intensity (T)/(R) against Variables.calculate through assertSameCurve, at 1e-6 tolerance. Both baselines exist; future source-parity execution is not asserted as measured.",
+      "phrase": "S1.1 MUST replace the tabulated importer closure (`Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs:buildTabulatedClosure`) and the transcendental-model lowering closures (`Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs:DispersionModel.toEpsAxis`) with axis data; S1.2 MUST make `complexity` mandatory.",
+      "spec_location": ".spec-md:324 (Part S1, S1.0)",
+      "evidence": "Inferred current-implementation anchors. MaterialImport.fs:158 declares `let private buildTabulatedClosure (points : NkTableRow[]) : WaveLength -> Eps`, returning a closure; it is used at :189 (`EpsWithDisp (buildTabulatedClosure points)`), and :193 sets `complexity = None`. DispersionModels.fs:686 declares `member this.toEpsAxis : EpsAxisDispersion`; :766-769 lower TaucLorentz, GaussianOscillator, ForouhiBloomer and BrendelBormann to `EpsAxisEvaluated this.evaluate`, the closure route. Both pointers resolve to the closures named.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 141,
-      "phrase": "Quick swap, the grid generator and the naming template follow; the template MUST replace `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:experimentRegex`, `objectRegex` and `MuellerExperimentLabel.parsed`.",
-      "spec_location": "S8.0; .spec-md:355 (chunk 7)",
-      "evidence": "Inferred existing-artifact claim from \"replace\". Read Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:504,508,511-537: experimentRegex and objectRegex are private Regex values; the MuellerExperimentLabel.parsed extension invokes both to parse source, analyzer, note and object tokens. The proposed replacement names real declarations.",
+      "phrase": "S1.4 MUST define the entry file, canonical JSON, the hash and the per-kind schemas. `.execution-contract-json:S14-NUMBERS` MUST be proved by the future `OpticalConstructor.Tests.CanonicalJsonTests` class, explicitly produced by `.spec-jsonl` step 22's `ADD_TEST` action and create/discovery effects, then made green by its paired close; no current test declaration is claimed.",
+      "spec_location": ".spec-md:326 (Part S1, S1.0)",
+      "evidence": "Profile-1 producer and red/green check. The S14-NUMBERS checks are constructor-unit-tests at step 22 (selected) and step 23 (all_discovered), both with cdb6ee4a..., which equals the recomputed identity. Step 22 is ADD_RED RED_0005 with actions [`ADD_TEST OpticalConstructor.Tests.CanonicalJsonTests`] and red_in that class. It edits CanonicalJsonTests.fs and OpticalConstructor.Tests.fsproj and creates three facts, each with class CanonicalJsonTests, suite and discovery_gate constructor-unit-tests and obligation S14-NUMBERS; its selection is that class. Step 23 is CLOSE_RED with closes RED_0005. CanonicalJsonTests.fs is absent and no CanonicalJsonTests declaration exists in Berreman/, which matches 'no current test declaration'.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 142,
-      "phrase": "Per 001 §Q, the CSV entries of `Berreman/Data/MuellerMatrix/data.zip` MUST move into `data/optics-mueller/data/raw/`; the scripts, README and summaries catalogued in `Berreman/Data/MuellerMatrix/README.md:Contents` MUST move into `data/optics-mueller/data/reference/`, with the source folder and its `Berreman/BerremanTests/BerremanTests.fsproj` Content link deleted in the same change.",
-      "spec_location": "S9.0; .spec-md:361 (chunk 7)",
-      "evidence": "Inferred existing-artifact claim from the named move sources. Opened Berreman/Data/MuellerMatrix/data.zip with ZipFile.namelist: CSV entries exist under data/raw/ and data/raw/final/. Read README.md Contents and enumerated the source folder: cpl_cpl_analyzer.py, matrix_glue.py, matrix_fit_linear.py, matrix_step1_air_fit.py, README.md and both reference summary JSON files exist. Berreman/BerremanTests/BerremanTests.fsproj:59-61 contains the data.zip Content link with CopyToOutputDirectory. Independently read operator requirement 001:564 and 650, which requires these destinations and deletion of that link. These are current inputs to a future move, not evidence that the destination kit already exists.",
+      "phrase": "The library contracts `MaterialProxy` and `CategoryProxy` (`Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs`), and `SampleProxy`, `SourceProxy` and `LibraryProxy` (`Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs`) MUST retain their proxy shapes and gain SQLite composition, proved by contract suites over both stores (001 §C). `Pinned` replaces `VersionsInUse`. The app runs on the database from S2.4.",
+      "spec_location": ".spec-md:337 (Part S2, S2.0)",
+      "evidence": "Current proxy anchors plus a profile-1 future-composition check. MaterialLibrary.fs:201 `type CategoryProxy =` and :708 `type MaterialProxy =`; ElementId.fs:482 `type LibraryProxy =`, :546 `type SampleProxy =` and :584 `type SourceProxy =`. Lifecycle.fs:52 declares the current `type VersionsInUse =`. Step 65 (S2.2, 'Pinned replaces VersionsInUse') edits Lifecycle.fs and LifecycleTests.fs. Steps 69, 71, 74, 76 and 79 carry ADD_TEST for MaterialProxySqliteTests, CategoryProxySqliteTests, SampleProxySqliteTests, SourceProxySqliteTests and LibraryProxySqliteTests. Step 88 (S2.4) edits AppContext.fs with AppContextTests and LauncherTests effects. Microsoft.EntityFrameworkCore.Sqlite is already referenced at OpticalConstructor.Database.csproj:29 and pinned at Directory.Build.targets:52 (10.0.13). All pointers resolve.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 143,
-      "phrase": "The study engine and the Planner need the fit and noise machinery in `Berreman/BerremanTests/InverseFitHarness.fs:InverseFitHarness`; that machinery MUST move into product code under 001 §Q.",
-      "spec_location": "S10.0; .spec-md:367 (chunk 7)",
-      "evidence": "Inferred existing-artifact claim from the named promotion source. Berreman/BerremanTests/InverseFitHarness.fs:303 declares InverseFitHarness; configurationOf/observeWith/residualFor/throughputResidualFor are at 307/326/344/374, fitWithResidual/fitObservations/fitAbsorbingObservations at 465/493/503, noise generation at 553-626, and statisticsFor/predictedRelativeErrors at 645/686. The noise carrier declarations are in the same file. Operator 001:595-602 explicitly requires these product promotions.",
+      "phrase": "Default-source parity MUST be checked against the present `Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs:detectorStokes` behavior",
+      "spec_location": "§S8.0 (line 353)",
+      "evidence": "Phrase 'the present' inferred as current-implementation shape. Read ExperimentRun.fs:36 -> `let detectorStokes (steps : RunStep list) : StokesVector =` (used at :49).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 144,
-      "phrase": "The ground truth and designs in `Berreman/BerremanTests/BiaxialSample.fs:BiaxialSample` and `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:AbsorbingBiaxialSample` MUST move to `BerremanTestSupport`.",
-      "spec_location": "S10.0; .spec-md:367 (chunk 7)",
-      "evidence": "Inferred existing-artifact claim from the named move sources. Berreman/BerremanTests/BiaxialSample.fs:49 declares BiaxialSample and its reference indices, gyration and triclinic truth at 53-89. AbsorbingBiaxialSample.fs:26 declares AbsorbingBiaxialSample, with absorbing at 45, buildAbsorbing at 73 and its cuts/configuration lists later in the file. Operator 001:603 specifies the shared test-support destination. Steps 345-346 declare git moves retaining the module names; these source files contain shared fixtures rather than test-class deletions. The destination is declared future work and is absent now.",
+      "phrase": "the exported-curve comparisons in `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/FsxAcceptanceTests.fs:assertRT`",
+      "spec_location": "§S8.0 (line 353)",
+      "evidence": "Grep FsxAcceptanceTests.fs:238 -> `let private assertRT (info : FixedInfo) (range : RangedVariable) (exported : ExperimentExport.ExportedRun) : unit`, called at :290 and :304 over exported runs.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 145,
-      "phrase": "The pipeline composed in `Berreman/BerremanTests/MuellerReconstructionTests.fs:802` MUST move into product code; its expectations at `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and the separate stage-1 expectations at `Berreman/BerremanTests/MuellerReconstructionTests.fs:629` MUST move into shared test support. The test callers MUST use the promoted declarations with their numerical outcomes unchanged.",
-      "spec_location": "S10.0; .spec-md:367 (chunk 7)",
-      "evidence": "Inferred existing-artifact claim for the pipeline and its expected-value baselines; \"unchanged\" here is a future preservation obligation. Read Berreman/BerremanTests/MuellerReconstructionTests.fs:802: the section 7.2 fact composes the archive-backed data, AIR calibration, gain correction and matrix reconstruction. Line 1003 starts expectedQz, followed by expectedLr and expectedComb; line 629 starts the separate stage-1 constants in the fact at 593. The existing assertions compare those values at 637-639 and 1025-1050. Step 348 declares a move of these literals and tolerances into MuellerReference; no post-move runtime parity was measured by this audit.",
+      "phrase": "the template MUST replace `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:experimentRegex`, `objectRegex` and `MuellerExperimentLabel.parsed`",
+      "spec_location": "§S8.0 (line 353)",
+      "evidence": "Replace-target existence (inferred). MuellerReconstruction.fs:504 `let private experimentRegex : Regex`, :508 `let private objectRegex : Regex`, :511 `type MuellerExperimentLabel with` / :516 `member this.parsed : ParsedExperiment`.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 146,
-      "phrase": "The study MUST honor the requested joint or staged fit mode and MUST choose the linear or nonlinear engine automatically according to whether the unknowns enter linearly (001 §L, Fit modes / Engines), reusing `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:buildDesign` / `reconstruct` and `Berreman/OpticalConstructor/OpticalConstructor.Optimization/MuellerInverseSolver.fs:createAlglibLevenbergMarquardt` through `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:createBerremanForward`.",
-      "spec_location": "S11.0; .spec-md:375 (chunk 7)",
-      "evidence": "Inferred reuse claim. Read Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:928-950 (buildDesign) and 959-966 (reconstruct through solveLinearLeastSquares); OpticalConstructor.Optimization/MuellerInverseSolver.fs:36-74 defines createAlglibLevenbergMarquardt and delegates to the ALGLIB-backed optimization request; Domain/MuellerInverse.fs:850-873 defines createBerremanForward and 876-884 defines forwardModels. Operator 001:421-428 independently requires joint/staged modes and automatic linear/nonlinear choice using these existing engines. The future study composition is not present runtime wiring.",
+      "phrase": "Per 001 §Q, the CSV entries of `Berreman/Data/MuellerMatrix/data.zip` MUST move into `data/optics-mueller/data/raw/`",
+      "spec_location": "§S9.0 (line 359)",
+      "evidence": "Move-source existence (inferred). Berreman/Data/MuellerMatrix/data.zip exists (62777 bytes); zip listing shows 15 CSV entries (7 under data/raw/final/, 8 under data/raw/) plus 3 data/shapes/*.json. .manual/001 §Q 'Data' bullet states the same move.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 147,
-      "phrase": "With fixed preparation, analyzer and gain, any non-empty subset of unknown black-box Mueller coefficients that enters linearly MUST use the linear engine, including ideal circular preparation of either handedness (`Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:PolarizerKind`) and fixed constant or compound optics.",
-      "spec_location": "S11.0; .spec-md:375 (chunk 7)",
-      "evidence": "Inferred current-type claim within a future dispatch requirement. Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:293-296 declares PolarizerKind with IdealLinear, IdealCircularLeft and IdealCircularRight. Lines 302-317 define MuellerComponent and PolarizerBehavior, including ConstantMueller of an ordered component list. Thus both handednesses and constant/compound optical data exist. This does not claim the future study engine already handles them.",
+      "phrase": "the scripts, README and summaries catalogued in `Berreman/Data/MuellerMatrix/README.md:Contents` MUST move into `data/optics-mueller/data/reference/`",
+      "spec_location": "§S9.0 (line 359)",
+      "evidence": "README.md:33 `## Contents`, whose sub-tables catalogue matrix_step1_air_fit.py, matrix_glue.py, matrix_fit_linear.py, cpl_cpl_analyzer.py (lines 67-73) and reference_step1_summary.json / reference_step2_linear_summary.json (lines 81-84); every catalogued file is present in the folder.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 148,
-      "phrase": "Steps 386, 390 and 391 MUST prove classification, real reduced-system recovery and automatic dispatch for those cases under both object-stage and joint requests.",
-      "spec_location": "S11.0; .spec-md:375 (chunk 7)",
-      "evidence": "Profile-1 declared-future audit against operator 001:414,421-428, not acceptance of a repeated candidate assertion. Read .spec-jsonl steps 386/390/391: 386 requires engineWith classification in ObjectStage and JointStage for partial matrices, both ideal-CP handednesses, fixed optics and equality links; 390 requires real createMathNetSvd delegation, A*P columns and b-A*k targets, cross-object/fixed-leader links, recovered values, exact preservation of fixed values and reduced rank; 391 drives those fixtures through runFit in both stages and fails on an unexpected nonlinear solve or prefit error. Their effects name the StudyEngineTests facts. Those tests and StudyEngine.fs are future declarations, not current test results. The independently reproduced empty gate roster prevents treating these declarations as effective execution coverage.",
+      "phrase": "with the source folder and its `Berreman/BerremanTests/BerremanTests.fsproj` Content link deleted in the same change",
+      "spec_location": "§S9.0 (line 359)",
+      "evidence": "BerremanTests.fsproj:59 `<Content Include=\"..\\Data\\MuellerMatrix\\data.zip\" Link=\"Data\\MuellerMatrix\\data.zip\">`; folder Berreman/Data/MuellerMatrix/ exists.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 149,
-      "phrase": "`.execution-contract-json:S113-ENGINE-CHOICE`, `S113-LINEAR-OBJECTS` and `S113-FIT-RUN` MUST bind classification, reduced-system recovery and automatic fit dispatch to `.spec-jsonl` steps 386, 390 and 391 respectively, preserving fixed values and reporting rank for the free columns.",
-      "spec_location": "S11.0; .spec-md:375 (chunk 7)",
-      "evidence": "Profile-1 binding audit: read all three named obligation records, their acceptance_bindings and behavior_seams, and the corresponding step test effects. S113-ENGINE-CHOICE checks constructor-unit-tests at 386,390,391; S113-LINEAR-OBJECTS at 390; S113-FIT-RUN at 391. Each declares all_discovered, matching those steps. The fixed-optics-linked-classification/svd/dispatch seams bind to 386/390/391 respectively. Independently recomputed command_identity from the live catalog: each constructor-unit-tests hash matches cdb6ee4a6879a7bbbc38d901bdfa972591e5904957e9c3497894b0ec48ed92eb. Read the step bodies for fixed-value preservation and rank rather than relying on the repeated obligation requirement. These are consistent declared bindings; the missing effective roster and acceptance oracle remain separately unresolved as C.0 states.",
+      "phrase": "the fit and noise machinery in `Berreman/BerremanTests/InverseFitHarness.fs:InverseFitHarness`; that machinery MUST move into product code under 001 §Q",
+      "spec_location": "§S10.0 (line 365)",
+      "evidence": "InverseFitHarness.fs:303 `module InverseFitHarness =` (namespace BerremanTests). .manual/001 §Q names the same move ('BerremanTests/InverseFitHarness.fs keeps only test assertions ... This is a MOVE').",
       "verdict": "CONFIRMED"
     },
     {
       "id": 150,
-      "phrase": "The study view MUST replace `Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:SolverHandoffView` and reuse its `validateExperiment` checks.",
-      "spec_location": "S11.0; .spec-md:375 (chunk 7)",
-      "evidence": "Inferred existing-artifact claim from \"replace\" and \"reuse\". Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:14 declares OpticalConstructor.Ui.SolverHandoffView. validateExperiment at 100-116 checks unspecified elements, the data-file attachment, and schema/range validation through ExperimentDataLoad.loadAndValidate. The proposed study validation has a concrete existing source.",
+      "phrase": "The ground truth and designs in `Berreman/BerremanTests/BiaxialSample.fs:BiaxialSample` and `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:AbsorbingBiaxialSample` MUST move to `BerremanTestSupport`",
+      "spec_location": "§S10.0 (line 365)",
+      "evidence": "BiaxialSample.fs:49 `module BiaxialSample =`; AbsorbingBiaxialSample.fs:26 `module AbsorbingBiaxialSample =`. `BerremanTestSupport` is the declared new destination (spec-md line 51 project table), not an existing-artefact claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 151,
-      "phrase": "AT-1 MUST reuse the matrix literals at `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and the matrix/product-check assertions in its §7.2 fact (`Berreman/BerremanTests/MuellerReconstructionTests.fs:1025`); the stage-1 literals and assertion MUST come from the separate fact beginning at `Berreman/BerremanTests/MuellerReconstructionTests.fs:593`, whose constants begin at `Berreman/BerremanTests/MuellerReconstructionTests.fs:629`.",
-      "spec_location": "S12.0; .spec-md:381 (chunk 7)",
-      "evidence": "Inferred existing-test-baseline claim from \"reuse\". Read Berreman/BerremanTests/MuellerReconstructionTests.fs:1003-1023: expectedQz/expectedLr/expectedComb are matrix literals. The assertion block starts at 1025 with rank 16, compares matrix deviations at 1030-1037, and checks cascadeProduct plus Frobenius/mean/max deviations at 1041-1050. The separate stage-1 fact is exactly at 593, with constants at 629-635 and its combined assertion at 637-639. These precise pointers resolve without drift; the future acceptance test is not claimed to exist today.",
+      "phrase": "The pipeline composed in `Berreman/BerremanTests/MuellerReconstructionTests.fs:802` MUST move into product code",
+      "spec_location": "§S10.0 (line 365)",
+      "evidence": "Read MuellerReconstructionTests.fs:802 -> member ``section 7.2 end-to-end: the Stage 1 to 2 to 3 pipeline reconstructs M_QZ, M_LR and M_{QZ+LR} at rank 16 and reproduces the reference pipeline exactly``, which wires createArchiveBacked / createMathNetSvd and composes the three stages.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 152,
-      "phrase": "AT-2 MUST reuse `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:absorbing` and `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:recoverFromNoisy`, retaining the recovery bands at `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:151`.",
-      "spec_location": "S12.0; .spec-md:381 (chunk 7)",
-      "evidence": "Inferred existing-test-baseline claim from \"reuse\" and \"retaining\". Berreman/BerremanTests/AbsorbingBiaxialSample.fs:45-62 defines absorbing. AbsorbingBiaxialNoisyTests.fs:60 declares the class; recoverFromNoisy at 73-78 calls noisyObserveAbsoluteWith and fitAbsorbingObservations. Line 151 starts scatterBand, with index/birefringence/absorption/isotropic/gyration bands at 153-157 and the assertion at 159. Operator 001:580-603 independently names this truth, noise/fit machinery and shared band checks. Those are extant baselines, not measured results of future AT-2.",
+      "phrase": "its expectations at `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and the separate stage-1 expectations at `Berreman/BerremanTests/MuellerReconstructionTests.fs:629` MUST move into shared test support",
+      "spec_location": "§S10.0 (line 365)",
+      "evidence": "Read :1003 -> `let expectedQz =` (followed by expectedLr :1010, expectedComb :1017) inside the §7.2 fact; Read :629 -> `let constants =` (the six stage-1 reference constants) inside the Stage-1 fact that begins at :593.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 153,
-      "phrase": "It emits `Planned` setups and experiments into the kit, and it reproduces the existing `MuellerInverseTests` / `BiaxialInverseTests` facts.",
-      "spec_location": "S14.0; .spec-md:393 (chunk 7)",
-      "evidence": "Matched \"existing\". Repository F# declaration search resolves exactly one type declaration each: Berreman/BerremanTests/MuellerInverseTests.fs:49 and Berreman/BerremanTests/BiaxialInverseTests.fs:98. Their facts include C1 blindness to g33 (MuellerInverseTests.fs:665), full-set observability and the C1 rank limitations, and the cuts/tilt gyration distinction (BiaxialInverseTests.fs:687). Operator 001:454-457 names these as Planner reference facts. Existence of those facts is confirmed; reproduction by the future Planner is not a measured current result.",
+      "phrase": "The test callers MUST use the promoted declarations with their numerical outcomes unchanged.",
+      "spec_location": "§S10.0 (line 365)",
+      "evidence": "'unchanged' matched; anchored by the adjacent pointers in the same paragraph. Callers exist: Grep BerremanTests/*.fs for InverseFitHarness / BiaxialSample / AbsorbingBiaxialSample -> AbsorbingBiaxialInverseTests.fs, AbsorbingBiaxialNoisyTests.fs, BiaxialInverseTests.fs, FeasibleBiaxialInverseTests.fs, MuellerInverseTests.fs; the §7.2 and Stage-1 facts in MuellerReconstructionTests.fs carry the pinned numerical expectations.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 154,
-      "phrase": "After the final composition is wired, every 001 §R removal MUST be confirmed gone and the whole suites, `elevation-full` and `kit-acceptance` MUST pass together under `.spec-jsonl` step 494's explicit whole-suite selections.",
-      "spec_location": "C.0; .spec-md:399 (chunk 7)",
-      "evidence": "Inferred existing-step declaration claim. Read .spec-jsonl step 494: required_gates includes build, elevation, elevation-full, constructor-unit-tests, ui-smoke, ui-tests, unit-tests and kit-acceptance; all five test gate_selection entries explicitly use all_discovered. Its acceptance requires the removal greps and whole-suite proof. CLOSE-WHOLE-TREE has the unit-tests/kit-acceptance/ui-tests checks at 494, and their command identities match the live descriptors. This confirms the authored selections, not a green runtime result or effective roster.",
+      "phrase": "reusing `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs:buildDesign` / `reconstruct`",
+      "spec_location": "§S11.0 (line 373)",
+      "evidence": "Reuse-of-existing (inferred; .manual/001 §L 'Engines — the existing ones, reused'). MuellerReconstruction.fs:928 `let buildDesign`; :959 `let reconstruct (solver : MuellerSolverProxy) (system : LeastSquaresSystem) : Result<ReconstructedMatrix, SolverError>`.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 155,
-      "phrase": "**Unresolved authority conflict:** the current candidate has an empty gate roster and `UNKNOWN_GATE_REFERENCE` diagnostics (§4), not a measured schedule of early `kit-acceptance` consumers.",
-      "spec_location": "C.0; .spec-md:399 (chunk 7)",
-      "evidence": "Read specs/0050/.spec-bundle: executability_profile is 1 and gates is empty; .spec-gates is absent. The parsed bundle defaults gates_required_only to false. Independently invoked the read-only ai_strategy_generator.spec_writer.gate_plan_audit.audit against this repo and candidate: UNKNOWN_GATE_REFERENCE diagnostics name required gates, planned gate lists are empty, and the result is not green. Direct build_gate_plan with the candidate roster schedules no early kit-acceptance consumer. This is measured current configuration, as the sentence states.",
+      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Optimization/MuellerInverseSolver.fs:createAlglibLevenbergMarquardt` through `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs:createBerremanForward`",
+      "spec_location": "§S11.0 (line 373)",
+      "evidence": "MuellerInverseSolver.fs:36 `let createAlglibLevenbergMarquardt () : NonlinearSolverProxy =`; MuellerInverse.fs:850 `let createBerremanForward`.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 156,
-      "phrase": "Only the inferred-roster diagnostic and full-catalog simulation select that gate before its step-421 test producer, without post-effect selections or obligation/check bindings; `.gates/OpticalConstructor/kit-acceptance.gates:requires_path` names the future `KitAcceptanceTests.fs`.",
-      "spec_location": "C.0; .spec-md:399 (chunk 7)",
-      "evidence": "Independently recomputed build_gate_plan using (a) the required-gate-name union as an inferred roster and (b) the full live catalog, with current affected scopes and full-sweep anchors. Both simulations select kit-acceptance first at step 2; step 2 has no kit-acceptance gate_selection or obligation check, and explicit_selections reports SELECTION_REQUIRED. Neither authored required_gates nor contract kit-acceptance checks begin before step 421. Step 421 has ADD_TEST OpticalConstructor.Ui.Tests.KitAcceptanceTests and the matching create/discovery effect bound to S121-AT1-ITEMS-SETUPS. Read .gates/OpticalConstructor/kit-acceptance.gates: requires_path names that file, which is currently absent. Simulations were performed in memory without changing the candidate.",
+      "phrase": "including ideal circular preparation of either handedness (`Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:PolarizerKind`)",
+      "spec_location": "§S11.0 (line 373)",
+      "evidence": "ElementId.fs:293 `type PolarizerKind =` with cases `IdealCircularLeft` (:295) and `IdealCircularRight` (:296).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 157,
-      "phrase": "Neither the unresolved candidate nor those simulations establish profile-1 coverage or handoff readiness.",
-      "spec_location": "C.0; .spec-md:399 (chunk 7)",
-      "evidence": "Profile-1 current-evidence claim. Independently reproduced the empty candidate plan and the simulations with early kit-acceptance SELECTION_REQUIRED findings. Read ASG executability/checker.py: effective gate membership, explicit selections, command identity, post-effect test state and coverage are separately checked; a candidate requirement string does not prove them. The current .spec-gates and .acceptance-oracle-json are absent. Consequently the cited diagnostics cannot be treated as established effective coverage; this row makes no overall ship decision.",
+      "phrase": "Steps 386, 390 and 391 MUST prove classification, real reduced-system recovery and automatic dispatch for those cases under both object-stage and joint requests.",
+      "spec_location": "§S11.0 (line 373)",
+      "evidence": ".spec-jsonl step 386 (AC-S113g: StagedStudy.engineWith classification incl. both handednesses, equality links and constant/compound optics, 'stage 2 or joint'), step 390 (AC-S113k: reconstructLinear on A_U * m_U = b - A_K * m_K, object stage and joint), step 391 (AC-S113l: runFit automatic dispatch under ObjectStage and JointStage, extending the fit-run fact to every step-390 case) all exist in section S11.3.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 158,
+      "phrase": "`.execution-contract-json:S113-ENGINE-CHOICE`, `S113-LINEAR-OBJECTS` and `S113-FIT-RUN` MUST bind classification, reduced-system recovery and automatic fit dispatch to `.spec-jsonl` steps 386, 390 and 391 respectively, preserving fixed values and reporting rank for the free columns.",
+      "spec_location": "§S11.0 (line 373)",
+      "evidence": ".execution-contract-json obligations[910] S113-ENGINE-CHOICE, [914] S113-LINEAR-OBJECTS, [915] S113-FIT-RUN exist (texts name fixed values and rank; LINEAR-OBJECTS names free columns); acceptance_bindings[385] step 386 -> S113-ENGINE-CHOICE, [389] step 390 -> S113-LINEAR-OBJECTS, [390] step 391 -> S113-FIT-RUN; behavior_seams 328/332/333 and 436/437/438 bind the same step/obligation pairs.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 159,
+      "phrase": "The study view MUST replace `Berreman/OpticalConstructor/OpticalConstructor.Ui/SolverHandoffView.fs:SolverHandoffView` and reuse its `validateExperiment` checks.",
+      "spec_location": "§S11.0 (line 373)",
+      "evidence": "SolverHandoffView.fs:14 `module OpticalConstructor.Ui.SolverHandoffView`; :100 `let validateExperiment` (used at :141).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 160,
+      "phrase": "AT-2 (`AbsorbingBiaxialNoisyTests`)",
+      "spec_location": "§S12.0 (line 379)",
+      "evidence": "Class-anchored; Grep -> unique `type AbsorbingBiaxialNoisyTests() =` at Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:60.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 161,
+      "phrase": "AT-1 MUST reuse the matrix literals at `Berreman/BerremanTests/MuellerReconstructionTests.fs:1003` and the matrix/product-check assertions in its §7.2 fact (`Berreman/BerremanTests/MuellerReconstructionTests.fs:1025`)",
+      "spec_location": "§S12.0 (line 379)",
+      "evidence": "Read :1003 `let expectedQz =` (literal 4x4 matrices through :1023); :1025 `Assert.Equal(MatrixRank 16, mQz.rank)` opening the rank / worst-deviation / cascade-product assertions (:1025-1050), all inside the §7.2 fact that begins at :802.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 162,
+      "phrase": "the stage-1 literals and assertion MUST come from the separate fact beginning at `Berreman/BerremanTests/MuellerReconstructionTests.fs:593`, whose constants begin at `Berreman/BerremanTests/MuellerReconstructionTests.fs:629`",
+      "spec_location": "§S12.0 (line 379)",
+      "evidence": "Read :593 -> member ``Stage-1 re-derived calibration constants match the reference pipeline's full-precision values``; :629 -> `let constants =` followed by the six literals and the single `Assert.True(worst < stage1Tol, ...)`.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 163,
+      "phrase": "AT-2 MUST reuse `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:absorbing` and `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:recoverFromNoisy`",
+      "spec_location": "§S12.0 (line 379)",
+      "evidence": "AbsorbingBiaxialSample.fs:45 `let absorbing : AbsorbingTriclinicParameters =`; AbsorbingBiaxialNoisyTests.fs:73 `let recoverFromNoisy (noise : NoiseParam) (seed : NoiseSeed) : NoisyExperiment<AbsorbingTriclinicParameters> =`.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 164,
+      "phrase": "retaining the recovery bands at `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs:151`",
+      "spec_location": "§S12.0 (line 379)",
+      "evidence": "Read :151 -> `let scatterBand =` with the per-quantity band match (:152-158) and its Assert at :159, under the comment 'Bands pinned per the spec §9 protocol' (:146).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 165,
+      "phrase": "it reproduces the existing `MuellerInverseTests` / `BiaxialInverseTests` facts",
+      "spec_location": "§S14.0 (line 391)",
+      "evidence": "Class-anchored; Grep -> unique `type MuellerInverseTests() =` at Berreman/BerremanTests/MuellerInverseTests.fs:49 and `type BiaxialInverseTests() =` at Berreman/BerremanTests/BiaxialInverseTests.fs:98.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 166,
+      "phrase": "`elevation-full` and `kit-acceptance` MUST pass together under `.spec-jsonl` step 494's explicit whole-suite selections",
+      "spec_location": "§C.0 (line 397)",
+      "evidence": ".spec-jsonl step 494 (WIRE_UI, AC-Cb): required_gates [build, elevation, elevation-full, constructor-unit-tests, ui-smoke, ui-tests, unit-tests, kit-acceptance]; gate_selection all_discovered for constructor-unit-tests, ui-smoke, ui-tests, unit-tests and kit-acceptance.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 167,
+      "phrase": "the current candidate has an empty gate roster and `UNKNOWN_GATE_REFERENCE` diagnostics (§4)",
+      "spec_location": "§C.0 (line 397)",
+      "evidence": "'current' matched. .spec-bundle `gates: []`; read-only run of spec_writer.gates_override._candidate_plan(include_override=False) on the live tree -> 0 descriptors and diagnostics {UNKNOWN_GATE_REFERENCE: 1972, NO_VERIFY_GATES: 494, NO_APPLICABLE_BUILD_PRODUCER: 8} (e.g. \"step 1: required_gates names unknown gate 'build'\"). No .spec-gates snapshot in the spec folder.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 168,
+      "phrase": "Only the inferred-roster diagnostic and full-catalog simulation select that gate before its step-421 test producer, without post-effect selections or obligation/check bindings",
+      "spec_location": "§C.0 (line 397)",
+      "evidence": "Step 421 is the producer (actions `ADD_TEST OpticalConstructor.Ui.Tests.KitAcceptanceTests`), and no step < 421 lists kit-acceptance in required_gates or gate_selection. But the live .spec-bundle now carries `\"gates_required_only\": true` (added by HEAD commit e73bbaf, after pre-cycle ref c7f7fb8). Read-only re-runs on the live tree: executability.plan_view.effective_plan (inferred roster) -> kit-acceptance at 0 steps before 421; spec_writer.gates_override._candidate_plan with extra_gates = all 8 catalog gates -> kit-acceptance at 0 steps before 421 and no diagnostics. Neither cited simulation selects the gate early any more, so the described early-consumer schedule (§4 line 134's step list) does not resolve against the tree.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 169,
+      "phrase": "`.gates/OpticalConstructor/kit-acceptance.gates:requires_path` names the future `KitAcceptanceTests.fs`",
+      "spec_location": "§C.0 (line 397)",
+      "evidence": "Read .gates/OpticalConstructor/kit-acceptance.gates -> `requires_path: [\"Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs\"]`; find shows no KitAcceptanceTests.fs in the tree (future file, created by step 421).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 170,
+      "phrase": "The bundle owner MUST populate the roster, enable required-only selection, publish its snapshot and rerun the plan/selection/check audit including prerequisites and invariants as specified in §4.",
+      "spec_location": "§C.0 (line 397)",
+      "evidence": "Inferred current-state claim (required-only selection not yet enabled; §4 line 133 says '.spec-bundle has ... no gates_required_only field'). Read .spec-bundle -> `\"gates_required_only\": true` already present (git show e73bbaf adds it). The roster is still `gates: []` and no .spec-gates snapshot exists, so populate/publish remain open, but 'enable required-only selection' describes a bundle state the tree no longer has.",
+      "verdict": "REFUTED-POINTER-HALLUCINATED"
+    },
+    {
+      "id": 171,
       "phrase": "The supervisor MUST independently review and freeze acceptance in `.acceptance-oracle-json`, which is absent and outside this cycle's write scope.",
-      "spec_location": "C.0; .spec-md:399 (chunk 7)",
-      "evidence": "Measured absence: Path(specs/0050/.acceptance-oracle-json).exists() is false. Read ASG executability/contracts.py: freeze_acceptance writes the separately reviewed obligations to that filename, while checker.check_plan validates the oracle before checking the effective plan. The supplied chunk override authorizes only .artifacts/claim-check/chunk-07-of-07.md for this report, not creation or modification of an oracle. The supervisor review/freeze is a future action, not an action performed by this audit.",
+      "spec_location": "§C.0 (line 397)",
+      "evidence": "ls specs/0050/ -> no .acceptance-oracle-json (the folder holds .artifacts, .claim-check-json, .contracts-json, .execution-contract-json, .gate-history, .history, .manual, .repository-inventory-json, .required-executability-json, .section-plan-jsonl, .section-state-json, .spec-bundle, .spec-jsonl, .spec-md).",
       "verdict": "CONFIRMED"
     }
   ],
