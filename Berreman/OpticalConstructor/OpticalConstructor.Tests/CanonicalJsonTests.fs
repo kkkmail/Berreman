@@ -7,11 +7,14 @@ open System.Security.Cryptography
 open System.Text
 open System.Text.Json
 open System.Text.Json.Nodes
+open Microsoft.FSharp.Reflection
 open Xunit
 open Berreman.Constants
 open Berreman.Geometry
 open Berreman.Fields
+open Berreman.Dispersion
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Propagation
@@ -20,8 +23,8 @@ open OpticalConstructor.Storage
 open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.Errors
 
-/// The numbers an entry file holds survive `CanonicalJson.options`, and the canonical text and content
-/// hash do not depend on key order, whitespace or culture (spec 0050 001 §B).
+/// The numbers and int tags an entry file holds survive `CanonicalJson.options`, and the canonical text and
+/// content hash do not depend on key order, whitespace or culture (spec 0050 001 §B, step 28).
 module CanonicalJsonTests =
 
     let private toJson<'Value> (value : 'Value) : string = JsonSerializer.Serialize<'Value>(value, CanonicalJson.options)
@@ -197,3 +200,38 @@ module CanonicalJsonTests =
         match contentHashOf nan with
         | Error (MalformedJsonErr _) -> ()
         | other -> Assert.Fail($"the hash of nan: expected MalformedJsonErr, got %A{other}")
+
+    /// Every case of a fieldless union, read off the type, so a case added later is covered too.
+    let private everyCaseOf<'Tag> () : 'Tag list =
+        [ for case in FSharpType.GetUnionCases typeof<'Tag> -> FSharpValue.MakeUnion(case, [||]) :?> 'Tag ]
+
+    let private assertWrittenAsTag<'Tag when 'Tag : equality> (tagOf : 'Tag -> int) : unit =
+        let cases = everyCaseOf<'Tag> ()
+        Assert.NotEmpty(cases)
+
+        for case in cases do
+            let json = toJson case
+            use doc = JsonDocument.Parse json
+            Assert.Equal(JsonValueKind.Number, doc.RootElement.ValueKind)
+            Assert.Equal(tagOf case, doc.RootElement.GetInt32())
+            Assert.Equal<'Tag>(case, ofJson<'Tag> json)
+
+    [<Fact>]
+    let ``every closed set with an int tag is written as its tag and read back`` () =
+        assertWrittenAsTag<LibraryEntryKind> (fun kind -> kind.value)
+        assertWrittenAsTag<TabulatedInterpolation> (fun interpolation -> interpolation.value)
+        assertWrittenAsTag<PublishedIndexLaw> (fun law -> law.value)
+        assertWrittenAsTag<PublishedGyrationLaw> (fun law -> law.value)
+
+        let schema : EntrySchema = { kind = SourceEntryKind; version = FileSchemaVersion 1 }
+        let json = toJson schema
+        use doc = JsonDocument.Parse json
+        Assert.Equal(SourceEntryKind.value, doc.RootElement.GetProperty("kind").GetInt32())
+        Assert.Equal<EntrySchema>(schema, ofJson<EntrySchema> json)
+
+    [<Fact>]
+    let ``an unknown disk tag is refused`` () =
+        Assert.Throws<JsonException>(fun () -> ofJson<LibraryEntryKind> "9" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<PublishedIndexLaw> "4" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<LibraryEntryKind> "0" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<LibraryEntryKind> "\"MaterialEntryKind\"" |> ignore) |> ignore

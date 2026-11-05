@@ -10,6 +10,7 @@ open System.Text.Json
 open System.Text.Json.Nodes
 open System.Text.Json.Serialization
 open MathNet.Numerics.LinearAlgebra
+open Berreman.Dispersion
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.Errors
 
@@ -76,6 +77,29 @@ module CanonicalJson =
             match reader.GetBoolean() with
             | true -> OpticalConstructor.Domain.Groups.ToggleEnabled
             | false -> OpticalConstructor.Domain.Groups.ToggleDisabled
+
+    /// Keeps a closed set on the wire as its int tag, its `value`, read back through its `tryOfWire`
+    /// (AGENTS.md; spec 0050 step 28). Anything else, an old case name included, throws `JsonException`,
+    /// which the callers report as `MalformedJsonErr`.
+    type private ClosedSetTagConverter<'Tag>(tagOf : 'Tag -> int, tryOfWire : int -> 'Tag option) =
+        inherit JsonConverter<'Tag>()
+
+        override _.Write(writer, value, _options) = writer.WriteNumberValue(tagOf value)
+
+        override _.Read(reader, _typeToConvert, _options) =
+            let read =
+                match reader.TokenType with
+                | JsonTokenType.Number ->
+                    match reader.TryGetInt32() with
+                    | true, tag -> tryOfWire tag
+                    | false, _ -> None
+                | _ -> None
+
+            match read with
+            | Some value -> value
+            | None ->
+                let token = Encoding.UTF8.GetString(reader.ValueSpan)
+                raise (JsonException $"'{token}' is not a {typeof<'Tag>.Name} tag")
 
     /// Keeps a `System.Numerics.Complex` (an absorbing material's `ComplexRefractionIndex`, a complex
     /// matrix's cell) on the wire as `[re, im]`: System.Text.Json alone writes its four properties and
@@ -155,7 +179,9 @@ module CanonicalJson =
     /// `WaveLength`'s magnitudes, `RefractionIndex`, ...), `option` unwraps to value-or-null, and
     /// fieldless union cases (`UnitOfMeasure`, `BeamBranch`, the nullary `ConstructorElement` cases)
     /// serialize as plain strings. A `Complex` is `[re, im]` (`ComplexConverter`) and a real matrix its
-    /// rows (`RealMatrixConverter`), as an entry file holds them (001 §B).
+    /// rows (`RealMatrixConverter`), as an entry file holds them (001 §B). The closed sets with an int tag
+    /// (`LibraryEntryKind`, `TabulatedInterpolation`, `PublishedIndexLaw`, `PublishedGyrationLaw`) are
+    /// that int (`ClosedSetTagConverter`, step 28).
     let options : JsonSerializerOptions =
         let o = JsonSerializerOptions(WriteIndented = true)
         o.Converters.Add(ComplexConverter())
@@ -165,6 +191,10 @@ module CanonicalJson =
         o.Converters.Add(RotationLockConverter())
         o.Converters.Add(BeamPresenceConverter())
         o.Converters.Add(ToggleStateConverter())
+        o.Converters.Add(ClosedSetTagConverter<LibraryEntryKind>((fun kind -> kind.value), LibraryEntryKind.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<TabulatedInterpolation>((fun interpolation -> interpolation.value), TabulatedInterpolation.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<PublishedIndexLaw>((fun law -> law.value), PublishedIndexLaw.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<PublishedGyrationLaw>((fun law -> law.value), PublishedGyrationLaw.tryOfWire))
         let fsharpOptions =
             JsonFSharpOptions
                 .Default()
