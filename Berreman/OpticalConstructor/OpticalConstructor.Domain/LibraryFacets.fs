@@ -87,7 +87,8 @@ module LibraryFacets =
         /// laws); recognizing term shapes back into model kinds would re-derive
         /// physics (§D.0 forbids it). The facet therefore classifies the storable
         /// shapes, a tabulated n,k table (`TabulatedNK`, spec 0050 step 2) included,
-        /// and the four transcendental laws (steps 5 and 7) share the evaluated key;
+        /// and the four transcendental laws (steps 5 and 7) and the coded presets'
+        /// published laws (step 8) share the evaluated key;
         /// `DispersionModel.facetKey` (below) pins how each `DispersionModel` case
         /// maps onto this vocabulary.
         member this.facetKey : DiscreteKey =
@@ -99,6 +100,7 @@ module LibraryFacets =
             | GaussianOscillatorAxis _
             | ForouhiBloomerAxis _
             | BrendelBormannAxis _
+            | PublishedLawAxis _
             | EpsAxisEvaluated _ -> DiscreteKey "Evaluated (transcendental)"
 
     type DispersionModel with

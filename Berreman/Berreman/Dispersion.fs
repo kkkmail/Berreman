@@ -463,6 +463,44 @@ module Dispersion =
             Complex.Sqrt (Complex.One - intraband + interband) |> ComplexRefractionIndex
 
 
+    /// The published closed-form index laws of the engine's coded presets (spec 0050 step 8):
+    /// Silicon's k is a ratio of polynomials in λ, Langasite's k a Gaussian in λ. Each closed form
+    /// lives here once; `value` is the wire tag.
+    type PublishedIndexLaw =
+        | SiliconIndexLaw
+        | LangasiteOrdinaryIndexLaw
+        | LangasiteExtraordinaryIndexLaw
+
+        member this.value : int =
+            match this with
+            | SiliconIndexLaw -> 1
+            | LangasiteOrdinaryIndexLaw -> 2
+            | LangasiteExtraordinaryIndexLaw -> 3
+
+        static member tryOfWire (v : int) : PublishedIndexLaw option =
+            match v with
+            | 1 -> Some SiliconIndexLaw
+            | 2 -> Some LangasiteOrdinaryIndexLaw
+            | 3 -> Some LangasiteExtraordinaryIndexLaw
+            | _ -> None
+
+        /// The index at `w`. The Langasite laws are published for 0.4 µm < λ < 1.0 µm.
+        member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            let lambda = w.value / 1.0<meter>
+            let numberE = exp 1.0
+            match this with
+            | SiliconIndexLaw ->
+                let nSi = 3.41696 - 2.09e7 * lambda ** 2.0 + 1.48e17 * lambda ** 4.0 + 0.013924/(-0.028 + 1.e12 * lambda ** 2.0) ** 2.0 + 0.138497/(-0.028 + 1.e12 * lambda ** 2.0)
+                let xiSiFinal = (4.402681698765214e9 * lambda ** 2.0)/(0.0001 + (-0.12189462353667012 + 1.0e12 * lambda ** 2.0) ** 2.0)
+                Complex.create nSi xiSiFinal |> ComplexRefractionIndex
+            | LangasiteOrdinaryIndexLaw ->
+                ((Complex.ofReal 0.00005) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> Complex.ofReal) + (sqrt(1.0 + (2.4981088 * lambda**2.0) / (-1.6845031370328092e-14 + lambda**2.0)) |> Complex.ofReal)
+                |> ComplexRefractionIndex
+            | LangasiteExtraordinaryIndexLaw ->
+                ((Complex.ofReal 0.0001) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> Complex.ofReal) + (sqrt(1.0 + (2.5408145 * lambda**2.0) / (-1.6679115500522497e-14 + lambda**2.0)) |> Complex.ofReal)
+                |> ComplexRefractionIndex
+
+
     // ==========================================================================
     // Serializable eps tree (spec 0033 Part B).
     // Pure data from which toEpsWithDisp BUILDS the engine's EpsWithDisp above
@@ -617,8 +655,8 @@ module Dispersion =
     /// eps formula for inherently complex models (Lorentz / Drude), a tabulated
     /// n,k table (`TabulatedNK`, spec 0050 step 2), a Tauc–Lorentz or
     /// Gaussian-oscillator law (spec 0050 step 5), a Forouhi–Bloomer or
-    /// Brendel–Bormann law (step 7), or an evaluated-directly closure, which no
-    /// analytic model lowers to any more (the coded presets still carry one) — it carries a
+    /// Brendel–Bormann law (step 7), a coded preset's published law (step 8), or an
+    /// evaluated-directly closure, which nothing built in carries any more — it carries a
     /// `WaveLength -> ComplexRefractionIndex` exactly as the engine's own `EpsWithDisp`
     /// case does, and `complexIndex` applies it. A function-typed case removes F#'s
     /// structural equality type-wide, so the type provides custom equality: every data
@@ -634,6 +672,7 @@ module Dispersion =
         | GaussianOscillatorAxis of GaussianOscillatorLaw
         | ForouhiBloomerAxis of ForouhiBloomerLaw
         | BrendelBormannAxis of BrendelBormannLaw
+        | PublishedLawAxis of PublishedIndexLaw
         | EpsAxisEvaluated of (WaveLength -> ComplexRefractionIndex)
 
         member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
@@ -648,6 +687,7 @@ module Dispersion =
             | GaussianOscillatorAxis law -> law.complexIndex w
             | ForouhiBloomerAxis law -> law.complexIndex w
             | BrendelBormannAxis law -> law.complexIndex w
+            | PublishedLawAxis law -> law.complexIndex w
             | EpsAxisEvaluated f -> f w
 
         override this.Equals (o : obj) : bool =
@@ -661,6 +701,7 @@ module Dispersion =
                 | GaussianOscillatorAxis l1, GaussianOscillatorAxis l2 -> l1 = l2
                 | ForouhiBloomerAxis l1, ForouhiBloomerAxis l2 -> l1 = l2
                 | BrendelBormannAxis l1, BrendelBormannAxis l2 -> l1 = l2
+                | PublishedLawAxis l1, PublishedLawAxis l2 -> l1 = l2
                 | EpsAxisEvaluated f1, EpsAxisEvaluated f2 -> LanguagePrimitives.PhysicalEquality f1 f2
                 | _ -> false
             | _ -> false
@@ -674,6 +715,7 @@ module Dispersion =
             | GaussianOscillatorAxis l -> hash (4, l)
             | ForouhiBloomerAxis l -> hash (5, l)
             | BrendelBormannAxis l -> hash (6, l)
+            | PublishedLawAxis l -> hash (7, l)
             | EpsAxisEvaluated f -> LanguagePrimitives.PhysicalHash f
 
 

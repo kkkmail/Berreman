@@ -387,85 +387,39 @@ module MaterialLibrary =
 
     // ==========================================================================
     // The three coded-preset complexities (spec 0040 step 004, Part B). Silicon,
-    // Langasite and the Vacuum spacer used to carry `complexity = None` (their
-    // physics is a coded engine closure, not data), so `MaterialComplexity.anisotropy` /
-    // `ConstantEpsValue.transparency` could not read their single-valued class and the facets did
-    // not sum to the population (spec 0040 Part B.0). They now carry a
-    // `complexity = Some` value tree that ENCODES the class as data — Silicon
-    // Isotropic, Langasite Uniaxial (retaining its optical activity), Vacuum
-    // Isotropic + Transparent — with `properties = complexity.toProperties`, exactly
-    // the seed convention every other built-in already uses.
+    // Langasite and the Vacuum spacer carry a value tree that ENCODES their class as
+    // data — Silicon Isotropic, Langasite Uniaxial (retaining its optical activity),
+    // Vacuum Isotropic + Transparent — with `properties = complexity.toProperties`, the
+    // seed convention of every other built-in, so the facets sum to the population
+    // (spec 0040 Part B.0).
     //
-    // The dispersion is REPRODUCED through the ladder's `EpsAxisEvaluated` rung
-    // (`DispersionModel.toEpsAxis` lowers the transcendental models to the very
-    // same case): the engine exposes only the Eps-VALUED closure of Silicon /
-    // Langasite (`OpticalProperties/Dispersive.fs`), not the scalar index, so
-    // faithful reproduction re-states the published closed-form index. This is
-    // REPRODUCTION, never CLASSIFICATION — the anisotropy is read from the value
-    // tree's CASE (Isotropic/Uniaxial/Biaxial), never by evaluating the engine ε
-    // tensor (spec 0040 Part B.1 / §0.4). `DispersionModelsTests` pins the Silicon
-    // reproduction to the engine preset at 1e-12; a Langasite ε reproduction test
-    // guards the copied index. Because a coded preset carries an OPAQUE evaluated
-    // segment (no editable coefficients), the editor keeps it VIEW-ONLY through
-    // `MaterialComplexity.isEditable` (MaterialComplexityEditor).
+    // Silicon's and Langasite's dispersion is the published law their engine preset
+    // evaluates (`PublishedLawAxis`, spec 0050 step 8): one closed form, in the core.
+    // The anisotropy is read from the tree's CASE, never by evaluating ε (spec 0040
+    // Part B.1). A published law has no editable coefficients, so these entries open
+    // VIEW-ONLY (`MaterialComplexity.isEditable`).
     // ==========================================================================
 
-    /// The spectrum-spanning interval of a coded preset's single segment (spec 0040
-    /// step 004): the evaluated closure is valid at every wavelength — it extrapolates
-    /// exactly as the engine's own `EpsWithDisp` case does — so its band is UNBOUNDED.
-    /// The topmost (only) segment always applies (`Dispersion.fs` `selectSegment`), and
-    /// the out-of-band diagnostic sees a band covering every request, so a coded preset
-    /// never flags out of band. `1.0e12<nm>` is 1 km — far beyond any optical request.
+    /// The band of a coded preset's single segment (spec 0040 step 004): a published law
+    /// holds at every wavelength, extrapolating as the engine preset does, so the band is
+    /// unbounded and a coded preset never flags out of band. `1.0e12<nm>` is 1 km.
     let private codedPresetInterval : WaveLengthInterval =
         { lower = WaveLength.nm 0.0<nm>; upper = WaveLength.nm 1.0e12<nm> }
 
-    type WaveLength with
-
-        /// Reproduction of the engine `Silicon` preset's scalar complex refraction index
-        /// (`OpticalProperties/Dispersive.fs`), re-stated verbatim so the isotropic
-        /// dispersive value tree can carry it. Pinned to the engine preset at 1e-12 by
-        /// `DispersionModelsTests`.
-        member private w.siliconRefractionIndex : ComplexRefractionIndex =
-            let lambda = w.value / 1.0<meter>
-            let n = 3.41696 - 2.09e7 * lambda ** 2.0 + 1.48e17 * lambda ** 4.0 + 0.013924 / (-0.028 + 1.e12 * lambda ** 2.0) ** 2.0 + 0.138497 / (-0.028 + 1.e12 * lambda ** 2.0)
-            let xi = (4.402681698765214e9 * lambda ** 2.0) / (0.0001 + (-0.12189462353667012 + 1.0e12 * lambda ** 2.0) ** 2.0)
-            Complex.create n xi |> ComplexRefractionIndex
-
-        /// Reproduction of the engine `Langasite` preset's ORDINARY complex refraction
-        /// index (`OpticalProperties/Dispersive.fs`), re-stated verbatim; `exp 1.0` is the
-        /// preset's `numberE`.
-        member private w.langasiteOrdinaryIndex : ComplexRefractionIndex =
-            let lambda = w.value / 1.0<meter>
-            (((Complex.ofReal 0.00005) * complexI) / ((exp 1.0) ** (1.2011325347955075e15 * (-2.8e-7 + lambda) ** 2.0) |> Complex.ofReal) + (sqrt (1.0 + (2.4981088 * lambda ** 2.0) / (-1.6845031370328092e-14 + lambda ** 2.0)) |> Complex.ofReal))
-            |> ComplexRefractionIndex
-
-        /// Reproduction of the engine `Langasite` preset's EXTRAORDINARY complex
-        /// refraction index (`OpticalProperties/Dispersive.fs`), re-stated verbatim.
-        member private w.langasiteExtraordinaryIndex : ComplexRefractionIndex =
-            let lambda = w.value / 1.0<meter>
-            (((Complex.ofReal 0.0001) * complexI) / ((exp 1.0) ** (1.2011325347955075e15 * (-2.8e-7 + lambda) ** 2.0) |> Complex.ofReal) + (sqrt (1.0 + (2.5408145 * lambda ** 2.0) / (-1.6679115500522497e-14 + lambda ** 2.0)) |> Complex.ofReal))
-            |> ComplexRefractionIndex
-
-    /// Silicon (spec 0040 step 004): Isotropic, dispersive, absorbing. The isotropic
-    /// dispersive tree carries the engine index through the ladder's evaluated rung,
-    /// so `MaterialComplexity.anisotropy` reads Isotropic from the CASE and `toProperties` reproduces
-    /// `siliconOpticalProperties`.
+    /// Silicon (spec 0040 step 004): Isotropic, dispersive, absorbing. Its axis is the
+    /// published law `siliconOpticalProperties` evaluates (spec 0050 step 8).
     let private siliconComplexity : MaterialComplexity =
         {
-            eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = codedPresetInterval; dispersion = EpsAxisEvaluated (fun w -> w.siliconRefractionIndex) } ])
+            eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = codedPresetInterval; dispersion = PublishedLawAxis SiliconIndexLaw } ])
             magnetic = None
             active = None
         }
 
-    /// Langasite (spec 0040 step 004): Uniaxial, dispersive, optically active. The
-    /// uniaxial dispersive tree carries the engine ordinary/extraordinary indices, so
-    /// `MaterialComplexity.anisotropy` reads Uniaxial from the CASE. The optical-activity component is
-    /// RETAINED as a representative uniaxial gyration (class 3/4/6): the engine's
-    /// dispersive gyration ρ (`rhoLa3Ga5SiO14`) is transcendental and
-    /// `RhoWithDispValue` carries only `DispersionFormula` components — it has NO
-    /// closure escape as ε's `EpsAxisEvaluated` does — so the dispersive ρ cannot be
-    /// reproduced by the value tree; a class-correct constant gyration keeps Langasite
-    /// optically active for the facets while the ε stays faithful.
+    /// Langasite (spec 0040 step 004): Uniaxial, dispersive, optically active. Its axes are
+    /// the published ordinary and extraordinary laws `langasiteOpticalProperties` evaluates
+    /// (spec 0050 step 8). The gyration is a representative constant one of class 3/4/6:
+    /// the engine's dispersive ρ (`rhoLa3Ga5SiO14`) is transcendental, and
+    /// `RhoWithDispValue` carries only `DispersionFormula` components.
     let private langasiteComplexity : MaterialComplexity =
         {
             eps =
@@ -473,8 +427,8 @@ module MaterialLibrary =
                     (UniaxialDispersive
                         [ {
                             wavelengthInterval = codedPresetInterval
-                            ordinaryDispersion = EpsAxisEvaluated (fun w -> w.langasiteOrdinaryIndex)
-                            extraordinaryDispersion = EpsAxisEvaluated (fun w -> w.langasiteExtraordinaryIndex)
+                            ordinaryDispersion = PublishedLawAxis LangasiteOrdinaryIndexLaw
+                            extraordinaryDispersion = PublishedLawAxis LangasiteExtraordinaryIndexLaw
                           } ])
             magnetic = None
             active = Some (RhoWithoutDispValue { gyration = UniaxialActive { g11 = RhoValue 1.0e-5; g33 = RhoValue 1.0e-5 }; hand = RightHanded })

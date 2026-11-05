@@ -5,6 +5,7 @@ open Berreman.Constants
 open Berreman.MaterialProperties
 open Berreman.Fields
 open Berreman.Dispersion
+open OpticalProperties.Dispersive
 open Xunit
 open BerremanTests.MatrixComparison
 
@@ -101,8 +102,9 @@ type EpsWithDispValueTests() =
     /// The electron-volt abscissa E = 1239.84 / λ[nm], as `AbscissaKind.ofUnit ElectronVolt` derives it.
     let electronVolt : AbscissaKind = ReciprocalInX { wavelengthScale = 1.0e-9<meter>; numerator = 1239.84 }
 
-    /// A law's index equals each reference exactly. The references are the start tree's
-    /// `DispersionModel.evaluate` as G17, recorded before the kernels moved into the core (spec 0050 steps 5 and 7).
+    /// A law's index equals each reference exactly. The references are G17 values recorded from the start
+    /// tree before the kernels moved into the core: `DispersionModel.evaluate` (spec 0050 steps 5 and 7) and
+    /// the coded presets' closures (step 8).
     let verifyLawReferences (complexIndex : WaveLength -> ComplexRefractionIndex) (references : (WaveLength * ComplexRefractionIndex) list) : unit =
         for (w, expected) in references do
             Assert.Equal<ComplexRefractionIndex>(expected, complexIndex w)
@@ -441,3 +443,75 @@ type EpsWithDispValueTests() =
                 WaveLength.nm 900.0<nm>, ComplexRefractionIndex (Complex (0.23066700009923077, 5.4619876195461128))
                 WaveLength.nm 2000.0<nm>, ComplexRefractionIndex (Complex (0.84433172406313572, 12.757953577132453))
             ]
+
+
+    [<Fact>]
+    member _.``The silicon published law reproduces the engine Silicon index`` () =
+        // The start tree's `Silicon` closure (`Dispersive.fs` refrIndexSi) as G17.
+        let references : (WaveLength * ComplexRefractionIndex) list =
+            [
+                WaveLength.nm 400.0<nm>, ComplexRefractionIndex (Complex (5.2653039967952271, 0.45387894548452434))
+                WaveLength.nm 500.0<nm>, ComplexRefractionIndex (Complex (4.3233409136226149, 0.066662907115870015))
+                WaveLength.nm 600.0<nm>, ComplexRefractionIndex (Complex (3.9604367091450912, 0.027907184895255208))
+                WaveLength.nm 800.0<nm>, ComplexRefractionIndex (Complex (3.6804248447301595, 0.010492991128527935))
+                WaveLength.nm 1000.0<nm>, ComplexRefractionIndex (Complex (3.5741636336796896, 0.0057091006003868183))
+            ]
+
+        verifyLawReferences SiliconIndexLaw.complexIndex references
+
+        for (w, n) in references do
+            verifyMatrixEqualityEps output (siliconOpticalProperties.epsWithDisp.getEps w) (Eps.fromComplexRefractionIndex n)
+
+
+    [<Fact>]
+    member _.``The langasite published laws reproduce the engine Langasite ordinary and extraordinary indices`` () =
+        // The start tree's `Langasite` closures (`Dispersive.fs` refrIndexLa3Ga5SiO14Ordinary / ExtraOrdinary) as G17.
+        // k is a Gaussian centred at 280 nm, so it falls from ~1e-12 at 400 nm to ~1e-275 at 1000 nm.
+        let references : (WaveLength * UniaxialComplexIndices) list =
+            [
+                WaveLength.nm 400.0<nm>,
+                {
+                    ordinaryComplex = ComplexRefractionIndex (Complex (1.9473214993637962, 1.5391419138549456E-12))
+                    extraordinaryComplex = ComplexRefractionIndex (Complex (1.9586996715999969, 3.0782838277098912E-12))
+                }
+                WaveLength.nm 500.0<nm>,
+                {
+                    ordinaryComplex = ComplexRefractionIndex (Complex (1.9179657747529273, 2.8270974610100271E-30))
+                    extraordinaryComplex = ComplexRefractionIndex (Complex (1.9293642731118967, 5.6541949220200541E-30))
+                }
+                WaveLength.nm 600.0<nm>,
+                {
+                    ordinaryComplex = ComplexRefractionIndex (Complex (1.9028236160769441, 1.9164533763768438E-58))
+                    extraordinaryComplex = ComplexRefractionIndex (Complex (1.914223501086955, 3.8329067527536875E-58))
+                }
+                WaveLength.nm 800.0<nm>,
+                {
+                    ordinaryComplex = ComplexRefractionIndex (Complex (1.8882895173381702, 4.4268957991166137E-146))
+                    extraordinaryComplex = ComplexRefractionIndex (Complex (1.8996849259809414, 8.8537915982332273E-146))
+                }
+                WaveLength.nm 1000.0<nm>,
+                {
+                    ordinaryComplex = ComplexRefractionIndex (Complex (1.8817307239279395, 1.8970631557522243E-275))
+                    extraordinaryComplex = ComplexRefractionIndex (Complex (1.893122252901275, 3.7941263115044486E-275))
+                }
+            ]
+
+        verifyLawReferences LangasiteOrdinaryIndexLaw.complexIndex (references |> List.map (fun (w, n) -> w, n.ordinaryComplex))
+        verifyLawReferences LangasiteExtraordinaryIndexLaw.complexIndex (references |> List.map (fun (w, n) -> w, n.extraordinaryComplex))
+
+        // The engine preset's eps is the (n_o, n_e, n_o) diagonal.
+        for (w, n) in references do
+            let expected = Eps.fromComplexRefractionIndex (n.ordinaryComplex, n.extraordinaryComplex, n.ordinaryComplex)
+            verifyMatrixEqualityEps output (langasiteOpticalProperties.epsWithDisp.getEps w) expected
+
+
+    [<Fact>]
+    member _.``The published index law round-trips its wire tag and refuses an unknown tag`` () =
+        let laws = [ SiliconIndexLaw; LangasiteOrdinaryIndexLaw; LangasiteExtraordinaryIndexLaw ]
+        Assert.Equal<int list>([ 1; 2; 3 ], laws |> List.map (fun law -> law.value))
+
+        for law in laws do
+            Assert.Equal<PublishedIndexLaw option>(Some law, PublishedIndexLaw.tryOfWire law.value)
+
+        for tag in [ 0; 4; -1 ] do
+            Assert.Equal<PublishedIndexLaw option>(None, PublishedIndexLaw.tryOfWire tag)

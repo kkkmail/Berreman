@@ -852,16 +852,15 @@ type EpsDispersiveValue with
 type MaterialComplexity with
 
     /// Whether the complexity can be LOSSLESSLY edited through this ladder (spec 0040
-    /// step 004). A dispersive eps segment lowered to the OPAQUE evaluated case
-    /// (`EpsAxisEvaluated` — a coded closure with no editable term coefficients, the
-    /// form the re-seeded engine presets Silicon / Langasite carry) cannot be
+    /// step 004). A dispersive eps segment without editable term coefficients cannot be
     /// re-derived into model coefficients, so an editor seeded from it would surface a
     /// misleading `SumOfTerms` segment the user cannot meaningfully change. Such an
     /// entry opens VIEW-ONLY instead: the host editability seams
     /// (`MaterialEditorView.init`, `MaterialsWindowModel.editableSelection`) gate on
-    /// this predicate rather than on `complexity` presence alone. A tabulated n,k
-    /// table (`TabulatedNK`, spec 0050 step 2) and a transcendental law (steps 5 and 7)
-    /// are data but not term data either, so they open view-only too. A constant or
+    /// this predicate rather than on `complexity` presence alone. That covers the
+    /// evaluated closure, a tabulated n,k table (`TabulatedNK`, spec 0050 step 2), a
+    /// transcendental law (steps 5 and 7) and a published law (`PublishedLawAxis`, the
+    /// form the re-seeded Silicon / Langasite carry, step 8). A constant or
     /// finite-term (`RealNK` / `ComplexEps`) dispersion is fully editable.
     member this.isEditable : bool =
         let axisHasNoTermData (axis : EpsAxisDispersion) : bool =
@@ -871,7 +870,8 @@ type MaterialComplexity with
             | TaucLorentzAxis _
             | GaussianOscillatorAxis _
             | ForouhiBloomerAxis _
-            | BrendelBormannAxis _ -> true
+            | BrendelBormannAxis _
+            | PublishedLawAxis _ -> true
             | RealNK _ | ComplexEps _ -> false
         match this.eps with
         | EpsWithoutDispValue _ -> true
