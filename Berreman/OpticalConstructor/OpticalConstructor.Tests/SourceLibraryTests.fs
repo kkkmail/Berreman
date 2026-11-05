@@ -65,6 +65,33 @@ module SourceLibraryTests =
         | Some group -> Assert.Equal<string list>(SeedSources.allSeedSources |> List.map (fun s -> s.id.value), leaves group)
         | None -> Assert.Fail "the seeded tree must carry a Sources group"
 
+    // ------------------------------ GUID identity (spec 0050 §3.3) ------------------------------
+
+    /// `entryId` as a GUID when it is that GUID's canonical string (the lowercase hyphenated form
+    /// `SampleId.toElementValueId` writes), else the reason it is not.
+    let private canonicalGuidOf (entryId : ElementValueId) : Result<System.Guid, string> =
+        match System.Guid.TryParse entryId.value with
+        | true, guid when string guid = entryId.value -> Ok guid
+        | true, guid -> Error $"'{entryId.value}' parses as a GUID but is not its canonical string '{string guid}'"
+        | false, _ -> Error $"'{entryId.value}' is not the string of a GUID"
+
+    [<Fact>]
+    let ``every seeded Library entry id is the canonical string of a GUID, and no two are equal`` () =
+        let entryIds = seedEntries |> List.map (fun e -> e.entryId)
+        let refusals = entryIds |> List.choose (fun entryId -> match canonicalGuidOf entryId with Ok _ -> None | Error reason -> Some reason)
+        let listed = String.concat "; " refusals
+        Assert.True(List.isEmpty refusals, $"{List.length refusals} of {List.length entryIds} seeded entry ids are not GUIDs: {listed}")
+        let repeated = entryIds |> List.countBy id |> List.filter (fun (_, count) -> count > 1) |> List.map fst
+        Assert.Empty(repeated)
+
+    [<Fact>]
+    let ``newSourceId mints the canonical string of a fresh GUID`` () =
+        let first = newSourceId ()
+        let second = newSourceId ()
+        match canonicalGuidOf first, canonicalGuidOf second with
+        | Ok _, Ok _ -> Assert.NotEqual<ElementValueId>(first, second)
+        | Error reason, _ | _, Error reason -> Assert.Fail reason
+
     // ------------------------------ the user-sources store ------------------------------
 
     [<Fact>]

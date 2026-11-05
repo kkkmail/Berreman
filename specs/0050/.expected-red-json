@@ -14,6 +14,15 @@
   "15": {},
   "16": {},
   "17": {},
+  "18": {
+    "constructor-unit-tests": [
+      "OpticalConstructor.Tests.SourceLibraryTests.every seeded Library entry id is the canonical string of a GUID, and no two are equal",
+      "OpticalConstructor.Tests.SourceLibraryTests.newSourceId mints the canonical string of a fresh GUID"
+    ],
+    "ui-tests": [
+      "OpticalConstructor.Ui.Tests.LightSourceEditorTests.Add source opens the editor on a freshly minted source id"
+    ]
+  },
   "2": {},
   "3": {
     "constructor-unit-tests": [

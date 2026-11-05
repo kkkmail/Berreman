@@ -146,7 +146,13 @@ module LightSourceEditorTests =
         let calls, context = libraryContext (SourceProxy.createInMemory ())
         LW.updateLibraryWindow LW.AddSource (LW.initLibraryWindow context Browse) |> ignore
         Assert.Equal(1, calls.Count)
-        Assert.StartsWith("source-add:src-", calls.[0])
+        // Spec 0050 §3.3: the minted id is the canonical string of a GUID, as a sample's is.
+        let prefix = "source-add:"
+        Assert.StartsWith(prefix, calls.[0])
+        let minted = calls.[0].Substring(prefix.Length)
+        match System.Guid.TryParse minted with
+        | true, guid -> Assert.Equal(string guid, minted)
+        | false, _ -> Assert.Fail $"the minted source id '{minted}' is not the string of a GUID"
 
     [<Fact>]
     let ``a user source joins the Library, offers Edit, and is removed through the confirm gate`` () =
