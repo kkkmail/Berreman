@@ -1,0 +1,51 @@
+{
+  "categoryOpt": null,
+  "contentHash": "d974191efbf36ae7a86f5f9355c9cfa52ee2ad11ac377e4ff058c8afec40e493",
+  "descriptionOpt": "Uniaxial crystal thin film, nₒ = 1.5, nₑ = 1.65, thickness 1 µm, between vacuum.",
+  "id": "2669348a-029b-48db-b39e-02f78e5aa1ab",
+  "name": "Uniaxial crystal film (1 µm)",
+  "payload": {
+    "Case": "SamplePayload",
+    "Fields": [
+      {
+        "structure": {
+          "films": [
+            {
+              "Case": "SingleLayer",
+              "Fields": [
+                {
+                  "materialId": {
+                    "materialId": "749465a5-fece-4d8d-9ea9-c626613614be",
+                    "version": 1
+                  },
+                  "orientation": "PrimaryAxes",
+                  "thickness": {
+                    "Case": "Thickness",
+                    "Fields": [
+                      1.0000000000000002E-06
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "lower": null,
+          "substrate": null
+        },
+        "substrate": "ThinFilm",
+        "supportedEmission": "EmitBoth"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 2,
+    "version": 1
+  },
+  "version": 1
+}

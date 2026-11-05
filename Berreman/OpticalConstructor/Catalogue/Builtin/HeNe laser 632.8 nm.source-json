@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "132e84239ab45bd8f5cd456755e8f37a0d087f6532407b34b7229b06b59fd85c",
+  "descriptionOpt": null,
+  "id": "a77786fe-f38e-4af3-8cfc-bd94be27567e",
+  "name": "HeNe laser 632.8 nm",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            632.8
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

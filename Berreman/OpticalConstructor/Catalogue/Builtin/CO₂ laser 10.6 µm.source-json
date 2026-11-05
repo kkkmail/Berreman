@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "386a80a3e32c9f4a4f397765e44998c90bd003b1af6e80f2695c7aa221fafaf6",
+  "descriptionOpt": null,
+  "id": "7644ce3a-efa2-4e62-8ff0-50622d962e4d",
+  "name": "CO₂ laser 10.6 µm",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            10600
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

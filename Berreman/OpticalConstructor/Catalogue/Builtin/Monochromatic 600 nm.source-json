@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "484fd978824c5a8ada6197ed749c0b664c097c115e6bb9041581b9b497f4d5d0",
+  "descriptionOpt": null,
+  "id": "0c4d0c67-137f-4c9f-8f31-d8837b725dc5",
+  "name": "Monochromatic 600 nm",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            600
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

@@ -1,0 +1,42 @@
+{
+  "categoryOpt": "5d7e9f1a-4b6c-7d8e-bf0a-2b3c4d5e6f70",
+  "contentHash": "58d62c461fb700e106a66be5605a854f472117236e7583f53b752ebf848dca75",
+  "descriptionOpt": "Standard uniaxial crystal preset.",
+  "id": "749465a5-fece-4d8d-9ea9-c626613614be",
+  "name": "Uniaxial crystal",
+  "payload": {
+    "Case": "MaterialPayload",
+    "Fields": [
+      {
+        "active": null,
+        "eps": {
+          "Case": "EpsWithoutDispValue",
+          "Fields": [
+            {
+              "Case": "BiaxialTransparent",
+              "Fields": [
+                {
+                  "nx": 1.5,
+                  "ny": 1.65,
+                  "nz": 1.65
+                }
+              ]
+            }
+          ]
+        },
+        "magnetic": null
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 1,
+    "version": 1
+  },
+  "version": 1
+}

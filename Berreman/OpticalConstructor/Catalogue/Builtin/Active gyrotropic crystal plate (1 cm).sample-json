@@ -1,0 +1,44 @@
+{
+  "categoryOpt": null,
+  "contentHash": "63bbbe934f672ac819929827e593a973ae1b612662875a5b9426c9b1262c6860",
+  "descriptionOpt": "Planar active (gyrotropic) crystal plate, n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6, thickness 1 cm.",
+  "id": "1c170dcc-0528-466e-98a7-cabfdaf9007a",
+  "name": "Active gyrotropic crystal plate (1 cm)",
+  "payload": {
+    "Case": "SamplePayload",
+    "Fields": [
+      {
+        "structure": {
+          "films": [],
+          "lower": null,
+          "substrate": {
+            "materialId": {
+              "materialId": "a8dfa59c-2e95-4e3a-bfa6-b7e7e12ef58f",
+              "version": 1
+            },
+            "orientation": "PrimaryAxes",
+            "thickness": {
+              "Case": "Thickness",
+              "Fields": [
+                0.01
+              ]
+            }
+          }
+        },
+        "substrate": "ThickPlate",
+        "supportedEmission": "EmitBoth"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 2,
+    "version": 1
+  },
+  "version": 1
+}

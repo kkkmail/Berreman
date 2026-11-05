@@ -1,0 +1,41 @@
+{
+  "categoryOpt": "3b5c7d9e-2f4a-5b6c-9d8e-0f1a2b3c4d5e",
+  "contentHash": "72cbec2db90d7c1adff1ed65d75d23f3824b5e9aee6820f6777dc1499fe4bcc7",
+  "descriptionOpt": "Molybdenum for EUV multilayers (engine preset, complex n around 10–13.5 nm).",
+  "id": "cff60a4d-6c57-4a99-84ae-42533351de2c",
+  "name": "Molybdenum (Mo, EUV)",
+  "payload": {
+    "Case": "MaterialPayload",
+    "Fields": [
+      {
+        "active": null,
+        "eps": {
+          "Case": "EpsWithoutDispValue",
+          "Fields": [
+            {
+              "Case": "IsotropicAbsorbing",
+              "Fields": [
+                [
+                  0.99,
+                  0.045
+                ]
+              ]
+            }
+          ]
+        },
+        "magnetic": null
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 1,
+    "version": 1
+  },
+  "version": 1
+}

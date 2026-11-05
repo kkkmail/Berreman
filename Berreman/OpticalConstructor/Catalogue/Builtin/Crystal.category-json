@@ -1,0 +1,24 @@
+{
+  "categoryOpt": null,
+  "contentHash": "3745068cc860b4cb7eb7c2fc1ebdebe895ce103f1dab814f954eb83a2f8dcc65",
+  "descriptionOpt": null,
+  "id": "5d7e9f1a-4b6c-7d8e-bf0a-2b3c4d5e6f70",
+  "name": "Crystal",
+  "payload": {
+    "Case": "CategoryPayload",
+    "Fields": [
+      "SelectableOnCreate"
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 6,
+    "version": 1
+  },
+  "version": 1
+}

@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "ed71f63d7ddc3c245678d62f67d62a415a23fc4f82c1f5f41eb23b888a62c80f",
+  "descriptionOpt": null,
+  "id": "68c23345-c207-4dd1-9c67-bd82d2de4ab8",
+  "name": "KrF excimer 248 nm (DUV)",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            248.4
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

@@ -1,0 +1,24 @@
+{
+  "categoryOpt": null,
+  "contentHash": "374f04e1409264bc32baa62960158b2f8d6d909f9e8fa71a0367344f9c62ae36",
+  "descriptionOpt": null,
+  "id": "6e8fa02b-5c7d-8e9f-c01b-3c4d5e6f7081",
+  "name": "Vacuum",
+  "payload": {
+    "Case": "CategoryPayload",
+    "Fields": [
+      "HiddenOnCreate"
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 6,
+    "version": 1
+  },
+  "version": 1
+}

@@ -1,0 +1,42 @@
+{
+  "categoryOpt": "5d7e9f1a-4b6c-7d8e-bf0a-2b3c4d5e6f70",
+  "contentHash": "3f5fb1ef64c13218dd9ece81a0c8e67e61643cc6639fe9ef8443901ad2108573",
+  "descriptionOpt": "Standard biaxial crystal preset.",
+  "id": "4381fb35-662c-4dc9-80a4-c1a88125f5e5",
+  "name": "Biaxial crystal",
+  "payload": {
+    "Case": "MaterialPayload",
+    "Fields": [
+      {
+        "active": null,
+        "eps": {
+          "Case": "EpsWithoutDispValue",
+          "Fields": [
+            {
+              "Case": "BiaxialTransparent",
+              "Fields": [
+                {
+                  "nx": 1.5,
+                  "ny": 1.65,
+                  "nz": 1.75
+                }
+              ]
+            }
+          ]
+        },
+        "magnetic": null
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 1,
+    "version": 1
+  },
+  "version": 1
+}

@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "a18a4f91ad53a9330e464ab1b42dd818bf3663407da2ca97fd4b988b9f581574",
+  "descriptionOpt": null,
+  "id": "3e8195ab-c4a1-45b1-83fb-f7a7956a020e",
+  "name": "Nd:YAG ×4 266 nm (DUV)",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            266
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

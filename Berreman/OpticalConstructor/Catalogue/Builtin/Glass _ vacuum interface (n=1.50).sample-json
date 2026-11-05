@@ -1,0 +1,44 @@
+{
+  "categoryOpt": null,
+  "contentHash": "7c14a30d09e5f5ba8f5793a7b82757d7e7706f4c683e3e1a4cd0c53a6bc8da67",
+  "descriptionOpt": "Semi-infinite transparent-glass / vacuum interface, n = 1.50 — the Fresnel / total-reflection demo.",
+  "id": "b880a749-812d-415c-b1fb-6041360e85ee",
+  "name": "Glass / vacuum interface (n=1.50)",
+  "payload": {
+    "Case": "SamplePayload",
+    "Fields": [
+      {
+        "structure": {
+          "films": [],
+          "lower": null,
+          "substrate": {
+            "materialId": {
+              "materialId": "0eedbd4b-ad1c-4bfe-8f6d-ae573b4a422d",
+              "version": 1
+            },
+            "orientation": "PrimaryAxes",
+            "thickness": {
+              "Case": "Thickness",
+              "Fields": [
+                0.001
+              ]
+            }
+          }
+        },
+        "substrate": "ThickPlate",
+        "supportedEmission": "EmitBoth"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 2,
+    "version": 1
+  },
+  "version": 1
+}

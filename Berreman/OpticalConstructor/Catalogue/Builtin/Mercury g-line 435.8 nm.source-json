@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "770f09db9bd65c8b0e62c1c4e25b38ed332740d0760255ea31172c71f902e123",
+  "descriptionOpt": null,
+  "id": "f92b95e0-9077-4d0a-b506-7eebd0671f99",
+  "name": "Mercury g-line 435.8 nm",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            435.8
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

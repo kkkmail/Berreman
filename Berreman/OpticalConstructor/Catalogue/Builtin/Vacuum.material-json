@@ -1,0 +1,38 @@
+{
+  "categoryOpt": "6e8fa02b-5c7d-8e9f-c01b-3c4d5e6f7081",
+  "contentHash": "6bca697a74ee020053aa013aba260a6f4fb87137a57dacc7cc497e374f197956",
+  "descriptionOpt": "Vacuum (n = 1) — the spacer material of the structural multilayer stacks.",
+  "id": "4355ad6d-b743-4ca9-8365-7ce9f585a7a0",
+  "name": "Vacuum",
+  "payload": {
+    "Case": "MaterialPayload",
+    "Fields": [
+      {
+        "active": null,
+        "eps": {
+          "Case": "EpsWithoutDispValue",
+          "Fields": [
+            {
+              "Case": "IsotropicTransparent",
+              "Fields": [
+                1
+              ]
+            }
+          ]
+        },
+        "magnetic": null
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 1,
+    "version": 1
+  },
+  "version": 1
+}

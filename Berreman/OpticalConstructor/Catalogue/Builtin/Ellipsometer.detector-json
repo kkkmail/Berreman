@@ -1,0 +1,24 @@
+{
+  "categoryOpt": null,
+  "contentHash": "100f4c8ac78118a52562252a047e317f435adf3f82810db1882144ee467d3b1e",
+  "descriptionOpt": null,
+  "id": "0340c670-c323-40c7-9b00-5af7a1ec41af",
+  "name": "Ellipsometer",
+  "payload": {
+    "Case": "DetectorPayload",
+    "Fields": [
+      "Ellipsometer"
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 5,
+    "version": 1
+  },
+  "version": 1
+}

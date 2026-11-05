@@ -1,0 +1,69 @@
+{
+  "categoryOpt": null,
+  "contentHash": "eb31c351dfa8a4bd233cb31a1eb34fe34d0e32d27bbc5a049d36146f61c219ca",
+  "descriptionOpt": "EUV reflective multilayer: 100 Mo/Si bilayers, each layer 2.65 nm (λ/4 at 10.6 nm), on vacuum.",
+  "id": "ea947362-10cf-46e8-ad03-c267fba9de50",
+  "name": "EUV Mo/Si multilayer (100 pairs)",
+  "payload": {
+    "Case": "SamplePayload",
+    "Fields": [
+      {
+        "structure": {
+          "films": [
+            {
+              "Case": "Repeated",
+              "Fields": [
+                {
+                  "cell": [
+                    {
+                      "materialId": {
+                        "materialId": "cff60a4d-6c57-4a99-84ae-42533351de2c",
+                        "version": 1
+                      },
+                      "orientation": "PrimaryAxes",
+                      "thickness": {
+                        "Case": "Thickness",
+                        "Fields": [
+                          2.65E-09
+                        ]
+                      }
+                    },
+                    {
+                      "materialId": {
+                        "materialId": "43075352-cb2a-41ed-b53b-76e7166ece57",
+                        "version": 1
+                      },
+                      "orientation": "PrimaryAxes",
+                      "thickness": {
+                        "Case": "Thickness",
+                        "Fields": [
+                          2.65E-09
+                        ]
+                      }
+                    }
+                  ],
+                  "count": 100
+                }
+              ]
+            }
+          ],
+          "lower": null,
+          "substrate": null
+        },
+        "substrate": "Mirror",
+        "supportedEmission": "EmitReflectedOnly"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 2,
+    "version": 1
+  },
+  "version": 1
+}

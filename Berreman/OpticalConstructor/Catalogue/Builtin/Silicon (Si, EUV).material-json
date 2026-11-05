@@ -1,0 +1,41 @@
+{
+  "categoryOpt": "4c6d8e0f-3a5b-6c7d-ae9f-1a2b3c4d5e6f",
+  "contentHash": "e3c6f72cb391800ced3ad1741a38f887757d42cd899b833731f47fdac1c253dd",
+  "descriptionOpt": "Silicon for EUV multilayers (engine preset, complex n around 10–13.5 nm).",
+  "id": "43075352-cb2a-41ed-b53b-76e7166ece57",
+  "name": "Silicon (Si, EUV)",
+  "payload": {
+    "Case": "MaterialPayload",
+    "Fields": [
+      {
+        "active": null,
+        "eps": {
+          "Case": "EpsWithoutDispValue",
+          "Fields": [
+            {
+              "Case": "IsotropicAbsorbing",
+              "Fields": [
+                [
+                  0.994,
+                  0.002
+                ]
+              ]
+            }
+          ]
+        },
+        "magnetic": null
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 1,
+    "version": 1
+  },
+  "version": 1
+}

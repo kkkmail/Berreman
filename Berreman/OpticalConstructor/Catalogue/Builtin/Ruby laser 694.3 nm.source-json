@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "d9b60fef91f482ac3a784061174eb2e28ede44279f72d08c62cd4a5f563bbaf4",
+  "descriptionOpt": null,
+  "id": "657aad0a-943e-443e-8d18-868d5655ca75",
+  "name": "Ruby laser 694.3 nm",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            694.3
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

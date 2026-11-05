@@ -1,0 +1,24 @@
+{
+  "categoryOpt": null,
+  "contentHash": "7e9eea8205724bb69bb9c17853bfaacf840b015a4ba6007247bdf1a38140dd59",
+  "descriptionOpt": null,
+  "id": "4c6d8e0f-3a5b-6c7d-ae9f-1a2b3c4d5e6f",
+  "name": "Semiconductor",
+  "payload": {
+    "Case": "CategoryPayload",
+    "Fields": [
+      "SelectableOnCreate"
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 6,
+    "version": 1
+  },
+  "version": 1
+}

@@ -1,0 +1,50 @@
+{
+  "categoryOpt": null,
+  "contentHash": "bf73e78e2a3682413cfe31710354c760d6f5a7c61fbe1d82984f8e72cf85bd87",
+  "descriptionOpt": null,
+  "id": "28ec84c4-fd9b-49e9-878e-0ef731be686f",
+  "name": "EUV beamline (synchrotron), 5–20 nm",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": {
+          "Case": "TunableBetween",
+          "Fields": [
+            {
+              "lower": {
+                "Case": "Nm",
+                "Fields": [
+                  5
+                ]
+              },
+              "upper": {
+                "Case": "Nm",
+                "Fields": [
+                  20
+                ]
+              }
+            }
+          ]
+        },
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            13.5
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

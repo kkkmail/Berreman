@@ -1,0 +1,55 @@
+{
+  "categoryOpt": "5d7e9f1a-4b6c-7d8e-bf0a-2b3c4d5e6f70",
+  "contentHash": "57c61440d5409aef7a5732eefb4d61aa50a59b6ca47012fe2120d1af28e4ea5e",
+  "descriptionOpt": "Planar active (gyrotropic) crystal: n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6 (from ActiveCrystal.fsx).",
+  "id": "a8dfa59c-2e95-4e3a-bfa6-b7e7e12ef58f",
+  "name": "Active (gyrotropic) crystal",
+  "payload": {
+    "Case": "MaterialPayload",
+    "Fields": [
+      {
+        "active": {
+          "Case": "RhoWithoutDispValue",
+          "Fields": [
+            {
+              "gyration": {
+                "Case": "PlanarActive",
+                "Fields": [
+                  1.5E-06
+                ]
+              },
+              "hand": "RightHanded"
+            }
+          ]
+        },
+        "eps": {
+          "Case": "EpsWithoutDispValue",
+          "Fields": [
+            {
+              "Case": "BiaxialTransparent",
+              "Fields": [
+                {
+                  "nx": 2.315,
+                  "ny": 2.315,
+                  "nz": 2.226
+                }
+              ]
+            }
+          ]
+        },
+        "magnetic": null
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 1,
+    "version": 1
+  },
+  "version": 1
+}

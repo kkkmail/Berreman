@@ -1,0 +1,44 @@
+{
+  "categoryOpt": null,
+  "contentHash": "b707d8cdf547e67e5b841e9713649a8e2367a53ca5bafcfa7f3882c1993a7083",
+  "descriptionOpt": "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum.",
+  "id": "a8ceb21b-0719-4553-8f07-e782cb206800",
+  "name": "Glass plate (n=1.52, 1 mm)",
+  "payload": {
+    "Case": "SamplePayload",
+    "Fields": [
+      {
+        "structure": {
+          "films": [],
+          "lower": null,
+          "substrate": {
+            "materialId": {
+              "materialId": "55750ee2-358c-40d4-ab6c-06fc144adbf8",
+              "version": 1
+            },
+            "orientation": "PrimaryAxes",
+            "thickness": {
+              "Case": "Thickness",
+              "Fields": [
+                0.001
+              ]
+            }
+          }
+        },
+        "substrate": "ThickPlate",
+        "supportedEmission": "EmitBoth"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 2,
+    "version": 1
+  },
+  "version": 1
+}

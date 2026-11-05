@@ -1,0 +1,435 @@
+{
+  "entries": [
+    {
+      "contentHash": "57c61440d5409aef7a5732eefb4d61aa50a59b6ca47012fe2120d1af28e4ea5e",
+      "fileName": "Active (gyrotropic) crystal.material-json",
+      "id": "a8dfa59c-2e95-4e3a-bfa6-b7e7e12ef58f",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "3f5fb1ef64c13218dd9ece81a0c8e67e61643cc6639fe9ef8443901ad2108573",
+      "fileName": "Biaxial crystal.material-json",
+      "id": "4381fb35-662c-4dc9-80a4-c1a88125f5e5",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "bab4c06c4d53c829ed5097c8c0785c913d53ddd7dc424df1c86a1f1e6ab49fdf",
+      "fileName": "Langasite (La3Ga5SiO14).material-json",
+      "id": "e95f01fb-0442-42c4-ba69-74d82f52e544",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "72cbec2db90d7c1adff1ed65d75d23f3824b5e9aee6820f6777dc1499fe4bcc7",
+      "fileName": "Molybdenum (Mo, EUV).material-json",
+      "id": "cff60a4d-6c57-4a99-84ae-42533351de2c",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "e3c6f72cb391800ced3ad1741a38f887757d42cd899b833731f47fdac1c253dd",
+      "fileName": "Silicon (Si, EUV).material-json",
+      "id": "43075352-cb2a-41ed-b53b-76e7166ece57",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "8036f5b736f53f86762d619b5c70526e7166a152376566a755bc21dc15943fe4",
+      "fileName": "Silicon.material-json",
+      "id": "0f698851-dca1-412a-ad46-fac413496667",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "084f54f2494fe1758d15d0ee22bd4baeef7d32b686a540e1244d0507065b6b46",
+      "fileName": "Transparent glass (n = 1.50).material-json",
+      "id": "0eedbd4b-ad1c-4bfe-8f6d-ae573b4a422d",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "459ac7017a08087645108ef664f20e453c8a5aae3a4c96f946fec7550b388dc0",
+      "fileName": "Transparent glass (n = 1.52).material-json",
+      "id": "55750ee2-358c-40d4-ab6c-06fc144adbf8",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "64317f6f2b7e69226fa5ad36c82af7088a0ed3b4d9744323c0aa33ec4db782f8",
+      "fileName": "Transparent glass (n = 1.75).material-json",
+      "id": "7bd71d63-98a6-4096-849d-b0c95e876966",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "523c3c2fd7f5261f991c42c1fa0d209fa3fca6b5838615ebb8d2cdb9aa7046f3",
+      "fileName": "Transparent glass (n = 2.00).material-json",
+      "id": "077d0db9-a2e2-45da-a76f-5ddedfcf0dc5",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "58d62c461fb700e106a66be5605a854f472117236e7583f53b752ebf848dca75",
+      "fileName": "Uniaxial crystal.material-json",
+      "id": "749465a5-fece-4d8d-9ea9-c626613614be",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "6bca697a74ee020053aa013aba260a6f4fb87137a57dacc7cc497e374f197956",
+      "fileName": "Vacuum.material-json",
+      "id": "4355ad6d-b743-4ca9-8365-7ce9f585a7a0",
+      "kind": 1,
+      "version": 1
+    },
+    {
+      "contentHash": "63bbbe934f672ac819929827e593a973ae1b612662875a5b9426c9b1262c6860",
+      "fileName": "Active gyrotropic crystal plate (1 cm).sample-json",
+      "id": "1c170dcc-0528-466e-98a7-cabfdaf9007a",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "e069e3df589ae41859f633dbcf2a81f037c1112423ccf5b46361a1ab63f1def9",
+      "fileName": "Biaxial crystal film (1 µm).sample-json",
+      "id": "53b01f16-faf9-4413-a419-14592670a03c",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "eb31c351dfa8a4bd233cb31a1eb34fe34d0e32d27bbc5a049d36146f61c219ca",
+      "fileName": "EUV Mo_Si multilayer (100 pairs).sample-json",
+      "id": "ea947362-10cf-46e8-ad03-c267fba9de50",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "7c14a30d09e5f5ba8f5793a7b82757d7e7706f4c683e3e1a4cd0c53a6bc8da67",
+      "fileName": "Glass _ vacuum interface (n=1.50).sample-json",
+      "id": "b880a749-812d-415c-b1fb-6041360e85ee",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "b707d8cdf547e67e5b841e9713649a8e2367a53ca5bafcfa7f3882c1993a7083",
+      "fileName": "Glass plate (n=1.52, 1 mm).sample-json",
+      "id": "a8ceb21b-0719-4553-8f07-e782cb206800",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "86de1b0870c9d9fbea07716cf000ceb9b3dd577c8e8f34e8295b633f9d80f4ea",
+      "fileName": "Glass plate (n=1.52, 2 mm).sample-json",
+      "id": "962a3eff-4c25-467e-9739-a5ff8922cac3",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "391cb60ca34fa03f0b7118c1af9f13d828b840227e876266c9569de7ca3009d8",
+      "fileName": "Glass thin film (n=1.52, 200 nm).sample-json",
+      "id": "9f49dcfa-dede-4858-8757-216443deeba3",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "e157a601a74c512d89715db701996ca55e0920f0af165325b5e4899f9685b305",
+      "fileName": "Glass thin film (n=1.75, 600 nm).sample-json",
+      "id": "66cc0291-7b61-42c1-933e-5c39f2c41917",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "99cc52c5a38311bfb280fcfb7a5ee72551f947f5648a9102835de176ffdf9091",
+      "fileName": "Langasite film on silicon (10 µm, dispersive).sample-json",
+      "id": "8fa9867a-b1dd-4571-a83c-46a0acf16b4f",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "d03821574d6ba1acccffa7581927a438c5c12cc4e90c425fa9188544a7e03134",
+      "fileName": "Quarter-wave glass_vacuum multilayer (41 layers).sample-json",
+      "id": "80e5b7b0-8f10-42f6-9d87-bae692454fd5",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "d974191efbf36ae7a86f5f9355c9cfa52ee2ad11ac377e4ff058c8afec40e493",
+      "fileName": "Uniaxial crystal film (1 µm).sample-json",
+      "id": "2669348a-029b-48db-b39e-02f78e5aa1ab",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "7ed7402543d60dbbf4f70305c60768cefa8547df13d0b744e77bb9c8b3e3c737",
+      "fileName": "ArF excimer 193 nm (DUV, dry _ immersion).source-json",
+      "id": "a890f53e-4727-47f7-8392-5774c58219f9",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "1b307dd7aaf55a3d03c72ff5794274f745ed5bef717ca0bd62c5538929ce194d",
+      "fileName": "Argon-ion laser 488 nm.source-json",
+      "id": "66b97a5c-5564-440c-9076-7c92c0148529",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "973c4e44d1683cdb037eed768e8888706c114d88cdf9dae63f7e1dc31dbd4a16",
+      "fileName": "Argon-ion laser 514.5 nm.source-json",
+      "id": "5820d1d3-f4d0-4c99-ba4e-2642734e82a2",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "8ffc1a00a72406d10d9a68335c6b3cd3c3180f77eb93930fe9bb84798a91d638",
+      "fileName": "BEUV 6.7 nm (beyond EUV).source-json",
+      "id": "f7a747e7-a0da-4fae-a28e-0abd36d32b08",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "386a80a3e32c9f4a4f397765e44998c90bd003b1af6e80f2695c7aa221fafaf6",
+      "fileName": "CO₂ laser 10.6 µm.source-json",
+      "id": "7644ce3a-efa2-4e62-8ff0-50622d962e4d",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "f936cdc30541fd8d780f6fba2c13e75e2ce12d83d27c0281e3d8be4fa29b0331",
+      "fileName": "EUV 13.5 nm (Sn plasma).source-json",
+      "id": "eba5ec72-b129-416f-93bd-858b92116fe3",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "bf73e78e2a3682413cfe31710354c760d6f5a7c61fbe1d82984f8e72cf85bd87",
+      "fileName": "EUV beamline (synchrotron), 5–20 nm.source-json",
+      "id": "28ec84c4-fd9b-49e9-878e-0ef731be686f",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "769bef7444aa3dbb71c174eff754660a1df7676aa073c5d3fb0ac8047eae8037",
+      "fileName": "Erbium fibre laser 1550 nm.source-json",
+      "id": "361bf54d-8a62-4ed2-ad65-2d919db4879e",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "89a2b0d022c3fe3a56bca6ea2c2889c430833c5cb29fbc1f0af716f6c27451aa",
+      "fileName": "F₂ excimer 157 nm (VUV).source-json",
+      "id": "2f7a45ee-4fa2-4dd3-b0c5-f81e44eaa1c9",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "975c4b93f72d055ab4265198f2a6305814df61556ca96fb0865f28d5c77eb383",
+      "fileName": "GaN diode laser 405 nm.source-json",
+      "id": "d4d22b59-58ee-483b-996c-ae8dc1a76705",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "8fea410a361dbea308afe365fcfba7947b855309ba3b7b0dcaf1c6493f41df9b",
+      "fileName": "HeCd laser 325 nm (UV).source-json",
+      "id": "f92c2370-a8e6-4cac-ad1f-42e6fa7a0f5e",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "597a35ac6ab88dc2ddee0b406ebeb665e2f3ab24eb1fb1cb7ff5e362564fb634",
+      "fileName": "HeCd laser 441.6 nm.source-json",
+      "id": "035b5b32-d944-4150-8fa0-5d0f93aaa871",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "89b95fddffe5a386dc42bba83fe650036805e3908c7e50fca45e730b624aa08e",
+      "fileName": "HeNe laser 543.5 nm (green).source-json",
+      "id": "ba473d8c-3eff-449c-84df-2e2e759c9306",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "132e84239ab45bd8f5cd456755e8f37a0d087f6532407b34b7229b06b59fd85c",
+      "fileName": "HeNe laser 632.8 nm.source-json",
+      "id": "a77786fe-f38e-4af3-8cfc-bd94be27567e",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "ed71f63d7ddc3c245678d62f67d62a415a23fc4f82c1f5f41eb23b888a62c80f",
+      "fileName": "KrF excimer 248 nm (DUV).source-json",
+      "id": "68c23345-c207-4dd1-9c67-bd82d2de4ab8",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "770f09db9bd65c8b0e62c1c4e25b38ed332740d0760255ea31172c71f902e123",
+      "fileName": "Mercury g-line 435.8 nm.source-json",
+      "id": "f92b95e0-9077-4d0a-b506-7eebd0671f99",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "47bbf7f834f3bd2ee1e8af9e716a7f82bdadfc5114bcdbde2efd98c1f6d54ee3",
+      "fileName": "Mercury h-line 404.7 nm.source-json",
+      "id": "08632463-ddb8-4a2b-a9e2-0b7c0e1d6f51",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "852b5317c9168487aea61421bd6fb2dddc0ecd94b2b26c20ca79909b55d67fb3",
+      "fileName": "Mercury i-line 365 nm.source-json",
+      "id": "5a71721a-c4c4-475f-ace9-18531a0e8c40",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "484fd978824c5a8ada6197ed749c0b664c097c115e6bb9041581b9b497f4d5d0",
+      "fileName": "Monochromatic 600 nm.source-json",
+      "id": "0c4d0c67-137f-4c9f-8f31-d8837b725dc5",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "d102472633fbeb446efdfa0a2bf264f0bcc5a12524d2aaac8eae2220597de0ed",
+      "fileName": "Nd_YAG laser 1064 nm.source-json",
+      "id": "6a34b9ee-3f1e-4409-9118-6eb34d5b1a93",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "765c905844e389669977712c06fe2381dc0f0cc4da4167384b0be8ad121d6a9c",
+      "fileName": "Nd_YAG ×2 532 nm.source-json",
+      "id": "9fee5fb8-2789-484f-8cde-569095cb13ef",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "58b712eb07487e1afe8b03b9f872e24815288c19635ac48ce76a37f642269edc",
+      "fileName": "Nd_YAG ×3 355 nm (UV).source-json",
+      "id": "b1838994-8787-47f4-889a-dca3a4978d3e",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "a18a4f91ad53a9330e464ab1b42dd818bf3663407da2ca97fd4b988b9f581574",
+      "fileName": "Nd_YAG ×4 266 nm (DUV).source-json",
+      "id": "3e8195ab-c4a1-45b1-83fb-f7a7956a020e",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "d9b60fef91f482ac3a784061174eb2e28ede44279f72d08c62cd4a5f563bbaf4",
+      "fileName": "Ruby laser 694.3 nm.source-json",
+      "id": "657aad0a-943e-443e-8d18-868d5655ca75",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "f7f8ebbc210de83d38a4634c47375eb457a1e400ee2e1916123757d2db06d4cc",
+      "fileName": "Supercontinuum source, 450–2400 nm.source-json",
+      "id": "090b09f6-99f4-403b-b25f-e085383215e1",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "4aa6e227fcef207f77339caf9fd3bc2e395525cfbd330afa0f8bbb538bce668f",
+      "fileName": "Ti_sapphire laser 800 nm.source-json",
+      "id": "209ac4b5-fb84-4be8-a764-32d320522c42",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "93a01fa6eae134c88ec3b611867dfa230ef94fc6482d90c390960fd9b297c5eb",
+      "fileName": "Ti_sapphire laser, tunable 700–1000 nm.source-json",
+      "id": "cb376458-dc3c-41f9-8a5f-54f0f575978b",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "c97ddfade356e5591a2cf2418bec9f53e426bd3a67e7147ca493dfd8f5eff890",
+      "fileName": "Xenon lamp + monochromator, 190–1000 nm.source-json",
+      "id": "d09c967d-18f5-437e-b119-64f645e5b431",
+      "kind": 3,
+      "version": 1
+    },
+    {
+      "contentHash": "a6a8d41f5f4f9e43e6f3bf1aa932827926f2ce2e071e7ba9443e83c1e2478c7d",
+      "fileName": "Ideal circular polarizer (left).polarizer-json",
+      "id": "7fb025f4-d117-4025-9008-d11f2132c34a",
+      "kind": 4,
+      "version": 1
+    },
+    {
+      "contentHash": "b0b65f0ad688d3e69097e3a689db9958176c4942144de9be3e21b7efaa93bde3",
+      "fileName": "Ideal circular polarizer (right).polarizer-json",
+      "id": "83c1e5a0-48da-43df-bcdd-8d0b37295811",
+      "kind": 4,
+      "version": 1
+    },
+    {
+      "contentHash": "6e1591bf4ba35c1befff9169dd54758a437a8db05237bafb3935c40b47b869e7",
+      "fileName": "Ideal linear polarizer.polarizer-json",
+      "id": "f1d38e6a-16e7-405d-9678-45c990f5a155",
+      "kind": 4,
+      "version": 1
+    },
+    {
+      "contentHash": "100f4c8ac78118a52562252a047e317f435adf3f82810db1882144ee467d3b1e",
+      "fileName": "Ellipsometer.detector-json",
+      "id": "0340c670-c323-40c7-9b00-5af7a1ec41af",
+      "kind": 5,
+      "version": 1
+    },
+    {
+      "contentHash": "45ed4a53da235aa20657675c0685967248a6c283a16e4ea21731b874996d0cf0",
+      "fileName": "Intensity detector.detector-json",
+      "id": "ffa07a4d-1fd4-4e71-83e9-d15f5dfa25b6",
+      "kind": 5,
+      "version": 1
+    },
+    {
+      "contentHash": "3745068cc860b4cb7eb7c2fc1ebdebe895ce103f1dab814f954eb83a2f8dcc65",
+      "fileName": "Crystal.category-json",
+      "id": "5d7e9f1a-4b6c-7d8e-bf0a-2b3c4d5e6f70",
+      "kind": 6,
+      "version": 1
+    },
+    {
+      "contentHash": "d36e775f47d2c0c02b25f5ba29b52239dfbebc600e47e1e989ef0a1871cf59c5",
+      "fileName": "Glass.category-json",
+      "id": "2a4b6c8d-1e3f-4a5b-8c7d-9e0f1a2b3c4d",
+      "kind": 6,
+      "version": 1
+    },
+    {
+      "contentHash": "b008992af5b3fe9be77074eb0dc1994652267873e8d5fa73a848c323d29829b4",
+      "fileName": "Metal.category-json",
+      "id": "3b5c7d9e-2f4a-5b6c-9d8e-0f1a2b3c4d5e",
+      "kind": 6,
+      "version": 1
+    },
+    {
+      "contentHash": "7e9eea8205724bb69bb9c17853bfaacf840b015a4ba6007247bdf1a38140dd59",
+      "fileName": "Semiconductor.category-json",
+      "id": "4c6d8e0f-3a5b-6c7d-ae9f-1a2b3c4d5e6f",
+      "kind": 6,
+      "version": 1
+    },
+    {
+      "contentHash": "374f04e1409264bc32baa62960158b2f8d6d909f9e8fa71a0367344f9c62ae36",
+      "fileName": "Vacuum.category-json",
+      "id": "6e8fa02b-5c7d-8e9f-c01b-3c4d5e6f7081",
+      "kind": 6,
+      "version": 1
+    }
+  ],
+  "id": "499ae2ca-4f4c-4d4f-b53e-62ef2627130a",
+  "name": "Built-in",
+  "schemaVersion": 1,
+  "version": 1
+}

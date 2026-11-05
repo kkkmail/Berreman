@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "a6a8d41f5f4f9e43e6f3bf1aa932827926f2ce2e071e7ba9443e83c1e2478c7d",
+  "descriptionOpt": null,
+  "id": "7fb025f4-d117-4025-9008-d11f2132c34a",
+  "name": "Ideal circular polarizer (left)",
+  "payload": {
+    "Case": "PolarizerPayload",
+    "Fields": [
+      {
+        "behavior": {
+          "Case": "ComputedIdeal",
+          "Fields": [
+            "IdealCircularLeft"
+          ]
+        },
+        "category": "CpCategory"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 4,
+    "version": 1
+  },
+  "version": 1
+}

@@ -1,0 +1,83 @@
+{
+  "categoryOpt": "5d7e9f1a-4b6c-7d8e-bf0a-2b3c4d5e6f70",
+  "contentHash": "bab4c06c4d53c829ed5097c8c0785c913d53ddd7dc424df1c86a1f1e6ab49fdf",
+  "descriptionOpt": "Langasite, optically active uniaxial crystal (engine preset Langasite).",
+  "id": "e95f01fb-0442-42c4-ba69-74d82f52e544",
+  "name": "Langasite (La3Ga5SiO14)",
+  "payload": {
+    "Case": "MaterialPayload",
+    "Fields": [
+      {
+        "active": {
+          "Case": "RhoWithoutDispValue",
+          "Fields": [
+            {
+              "gyration": {
+                "Case": "UniaxialActive",
+                "Fields": [
+                  {
+                    "g11": 1E-05,
+                    "g33": 1E-05
+                  }
+                ]
+              },
+              "hand": "RightHanded"
+            }
+          ]
+        },
+        "eps": {
+          "Case": "EpsWithDispValue",
+          "Fields": [
+            {
+              "Case": "UniaxialDispersive",
+              "Fields": [
+                [
+                  {
+                    "extraordinaryDispersion": {
+                      "Case": "PublishedLawAxis",
+                      "Fields": [
+                        3
+                      ]
+                    },
+                    "ordinaryDispersion": {
+                      "Case": "PublishedLawAxis",
+                      "Fields": [
+                        2
+                      ]
+                    },
+                    "wavelengthInterval": {
+                      "lower": {
+                        "Case": "Nm",
+                        "Fields": [
+                          0
+                        ]
+                      },
+                      "upper": {
+                        "Case": "Nm",
+                        "Fields": [
+                          1000000000000
+                        ]
+                      }
+                    }
+                  }
+                ]
+              ]
+            }
+          ]
+        },
+        "magnetic": null
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 1,
+    "version": 1
+  },
+  "version": 1
+}
