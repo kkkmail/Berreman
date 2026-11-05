@@ -262,13 +262,15 @@ module LibraryEntryFiles =
         /// The schema an entry holding this payload is written under: its kind at the kind's only version.
         member this.currentSchema : EntrySchema = { kind = this.kind; version = this.kind.currentSchemaVersion }
 
-    /// Why a domain value cannot be filed as entry content, or the content cannot be read back as one
-    /// (spec 0050 001 §B). Each reason names the entry.
+    /// Why a domain value cannot be filed as entry content, the content cannot be read back as one
+    /// (spec 0050 001 §B), or entries cannot share one catalogue (001 §A). Each reason names the entries.
     type LibraryEntryError =
         | EntryKindMismatchErr of reason : string
         | EntryIdNotGuidErr of reason : string
         | ProvenanceMismatchErr of reason : string
         | MissingEntryFieldErr of reason : string
+        | DuplicateEntryFileNameErr of reason : string
+        | DuplicateEntryVersionErr of reason : string
 
     type CategoryName with
 
@@ -292,6 +294,9 @@ module LibraryEntryFiles =
 
         /// The entry's file name: its name made safe plus its kind's extension (spec 0050 001 §A).
         member this.fileName : FileName = this.name.fileStem.withExtension this.schema.kind.extension
+
+        /// The entry as an error names it: its name, id and version.
+        member this.describe : string = $"'{this.name.value}' ({this.id.value} v{this.version.value})"
 
         static member private ofPayload (version : VersionNumber) (provenance : EntryProvenance) (id : LibraryEntryId) (name : EntryName) (payload : LibraryEntryPayload) : LibraryEntryContent =
             {
@@ -436,6 +441,16 @@ module LibraryEntryFiles =
                 Ok category
             | _ -> Error (this.kindMismatchErr CategoryEntryKind)
 
+    /// One entry of a `.catalogue-json`: the entry's kind, identity, file and hash (spec 0050 001 §A).
+    type CatalogueManifestRow =
+        {
+            kind : LibraryEntryKind
+            id : LibraryEntryId
+            version : VersionNumber
+            fileName : FileName
+            contentHash : ContentHash
+        }
+
     /// An entry file: its content and the hash over exactly that content (spec 0050 001 §B). The file
     /// itself is flat: step 30 writes the content's keys and `contentHash` side by side.
     type LibraryEntryEnvelope =
@@ -443,3 +458,82 @@ module LibraryEntryFiles =
             content : LibraryEntryContent
             contentHash : ContentHash
         }
+
+        /// The entry's row in its catalogue's manifest (spec 0050 001 §A).
+        member this.manifestRow : CatalogueManifestRow =
+            {
+                kind = this.content.schema.kind
+                id = this.content.id
+                version = this.content.version
+                fileName = this.content.fileName
+                contentHash = this.contentHash
+            }
+
+    /// A catalogue folder's `.catalogue-json`: its identity and one row per entry file (spec 0050 001 §A).
+    /// Its own hash is not stored in it: Storage computes it and S3's start-up import records it (001 §B).
+    type CatalogueManifest =
+        {
+            schemaVersion : FileSchemaVersion
+            id : CatalogueId
+            name : CatalogueName
+            version : VersionNumber
+            entries : CatalogueManifestRow list
+        }
+
+        /// The only manifest schema version this app reads and writes (spec 0050 001 §B).
+        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
+
+        static member extension : FileExtension = FileExtension ".catalogue-json"
+
+        /// A file that exists once per folder is named by its extension alone (spec 0050 001 §A).
+        static member fileName : FileName = (FileStem.ofText "").withExtension CatalogueManifest.extension
+
+        /// The first pair of entries that `clashOpt` refuses, earlier entries first.
+        static member private tryFindClash (clashOpt : LibraryEntryEnvelope -> LibraryEntryEnvelope -> LibraryEntryError option) (envelopes : LibraryEntryEnvelope list) : LibraryEntryError option =
+            match envelopes with
+            | [] -> None
+            | first :: rest ->
+                match rest |> List.tryPick (clashOpt first) with
+                | Some error -> Some error
+                | None -> CatalogueManifest.tryFindClash clashOpt rest
+
+        static member private versionClashOpt (a : LibraryEntryEnvelope) (b : LibraryEntryEnvelope) : LibraryEntryError option =
+            if a.content.id = b.content.id && a.content.version = b.content.version then
+                Some (DuplicateEntryVersionErr $"entries {a.content.describe} and {b.content.describe} are one entry version twice")
+            else
+                None
+
+        /// File names compare as the Windows file system compares them (spec 0050 001 §A); entries of
+        /// different kinds never clash, because their extensions differ.
+        static member private fileNameClashOpt (a : LibraryEntryEnvelope) (b : LibraryEntryEnvelope) : LibraryEntryError option =
+            if a.content.schema.kind = b.content.schema.kind
+               && String.Equals(a.content.fileName.value, b.content.fileName.value, StringComparison.OrdinalIgnoreCase) then
+                Some (DuplicateEntryFileNameErr $"entries {a.content.describe} and {b.content.describe} share the file name '{b.content.fileName.value}'")
+            else
+                None
+
+        /// The manifest of a catalogue holding `envelopes`, which export checks before writing (spec 0050
+        /// 001 §A): no entry version twice, and per kind no file name twice. Its rows are sorted by kind
+        /// tag, then ordinally by file name, so its text does not depend on the envelopes' order.
+        static member tryCreate (id : CatalogueId) (name : CatalogueName) (version : VersionNumber) (envelopes : LibraryEntryEnvelope list) : Result<CatalogueManifest, LibraryEntryError> =
+            match CatalogueManifest.tryFindClash CatalogueManifest.versionClashOpt envelopes with
+            | Some error -> Error error
+            | None ->
+                match CatalogueManifest.tryFindClash CatalogueManifest.fileNameClashOpt envelopes with
+                | Some error -> Error error
+                | None ->
+                    let manifest : CatalogueManifest =
+                        {
+                            schemaVersion = CatalogueManifest.currentSchemaVersion
+                            id = id
+                            name = name
+                            version = version
+                            entries =
+                                envelopes
+                                |> List.map (fun e -> e.manifestRow)
+                                |> List.sortWith (fun a b ->
+                                    match compare a.kind.value b.kind.value with
+                                    | 0 -> String.CompareOrdinal(a.fileName.value, b.fileName.value)
+                                    | byKind -> byKind)
+                        }
+                    Ok manifest

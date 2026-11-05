@@ -210,3 +210,94 @@ module LibraryEntryFilesTests =
 
         let materialContent = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue langasite
         Assert.Equal<FileName>(FileName "Langasite (La3Ga5SiO14).material-json", materialContent.fileName)
+
+    let private materialHash : ContentHash = ContentHash "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+
+    let private sampleHash : ContentHash = ContentHash "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+
+    let private sourceHash : ContentHash = ContentHash "5e6d7c8b9a0f1e2d3c4b5a6978695a4b3c2d1e0f5e6d7c8b9a0f1e2d3c4b5a69"
+
+    let private testCatalogueId : CatalogueId = CatalogueId (Guid.Parse "8c3e5a7b-1d9f-4e2a-b6c8-0d2f4a6b8e1c")
+
+    let private testCatalogueName : CatalogueName = CatalogueName "Test catalogue"
+
+    let private manifestOf (envelopes : LibraryEntryEnvelope list) : Result<CatalogueManifest, LibraryEntryError> =
+        CatalogueManifest.tryCreate testCatalogueId testCatalogueName VersionNumber.first envelopes
+
+    let private materialEnvelope : LibraryEntryEnvelope =
+        { content = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue langasite; contentHash = materialHash }
+
+    let private sampleEnvelope : LibraryEntryEnvelope =
+        { content = LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue SeedSamples.multilayerQw; contentHash = sampleHash }
+
+    let private sourceEnvelope : LibraryEntryEnvelope =
+        { content = LibraryEntryContent.ofSourcePreset VersionNumber.first builtInCatalogue tiSapphire800 |> okOf; contentHash = sourceHash }
+
+    /// The envelope under another entry's identity: its own GUID and name, at the same version.
+    let private renamed (id : LibraryEntryId) (name : EntryName) (envelope : LibraryEntryEnvelope) : LibraryEntryEnvelope =
+        { envelope with content = { envelope.content with id = id; name = name } }
+
+    [<Fact>]
+    let ``a manifest lists one row per envelope, sorted by kind and file name`` () =
+        let manifest = manifestOf [ sourceEnvelope; materialEnvelope; sampleEnvelope ] |> okOf
+
+        Assert.Equal<FileSchemaVersion>(FileSchemaVersion 1, manifest.schemaVersion)
+        Assert.Equal<FileSchemaVersion>(FileSchemaVersion 1, CatalogueManifest.currentSchemaVersion)
+        Assert.Equal<CatalogueId>(testCatalogueId, manifest.id)
+        Assert.Equal<CatalogueName>(testCatalogueName, manifest.name)
+        Assert.Equal<VersionNumber>(VersionNumber.first, manifest.version)
+        Assert.Equal<CatalogueManifestRow list>([ materialEnvelope.manifestRow; sampleEnvelope.manifestRow; sourceEnvelope.manifestRow ], manifest.entries)
+        Assert.Equal<LibraryEntryKind list>([ MaterialEntryKind; SampleEntryKind; SourceEntryKind ], manifest.entries |> List.map (fun r -> r.kind))
+
+        let sourceRow : CatalogueManifestRow =
+            {
+                kind = SourceEntryKind
+                id = sourceEnvelope.content.id
+                version = VersionNumber.first
+                fileName = FileName "Ti_sapphire laser 800 nm.source-json"
+                contentHash = sourceHash
+            }
+
+        Assert.Equal<CatalogueManifestRow>(sourceRow, sourceEnvelope.manifestRow)
+
+        let zinc = renamed (LibraryEntryId (Guid.Parse "2b4d6f8a-0c1e-4a3b-9d5f-7a9c1e3b5d7f")) (EntryName "Zinc") materialEnvelope
+        let alumina = renamed (LibraryEntryId (Guid.Parse "4d6f8a0c-2e1b-4c5d-8f7a-9b1d3f5a7c9e")) (EntryName "Alumina") materialEnvelope
+        let byFileName = manifestOf [ zinc; materialEnvelope; alumina ] |> okOf
+        Assert.Equal<FileName list>([ FileName "Alumina.material-json"; FileName "Langasite (La3Ga5SiO14).material-json"; FileName "Zinc.material-json" ], byFileName.entries |> List.map (fun r -> r.fileName))
+        Assert.Equal<CatalogueManifest>(byFileName, manifestOf [ alumina; zinc; materialEnvelope ] |> okOf)
+
+        Assert.Equal<FileName>(FileName ".catalogue-json", CatalogueManifest.fileName)
+        Assert.Equal<FileExtension>(FileExtension ".catalogue-json", CatalogueManifest.extension)
+
+    [<Fact>]
+    let ``a manifest refuses two entries of one kind with one file name`` () =
+        let silicon = renamed (LibraryEntryId (Guid.Parse "6f8a0c2e-4b1d-4e5f-a7c9-1d3f5b7a9c0e")) (EntryName "Silicon") materialEnvelope
+        let lowerSilicon = renamed (LibraryEntryId (Guid.Parse "8a0c2e4b-6d1f-4a7c-b9e1-3f5a7c9b0d2f")) (EntryName "silicon") materialEnvelope
+
+        match manifestOf [ silicon; lowerSilicon ] with
+        | Error (DuplicateEntryFileNameErr reason) ->
+            Assert.Contains("'Silicon'", reason)
+            Assert.Contains("'silicon'", reason)
+        | other -> Assert.Fail($"Silicon and silicon: expected DuplicateEntryFileNameErr, got %A{other}")
+
+        let colon = renamed (LibraryEntryId (Guid.Parse "0c2e4b6d-8f1a-4c9e-a1b3-5d7f9a1c3e5b")) (EntryName "Si:O") materialEnvelope
+        let underscore = renamed (LibraryEntryId (Guid.Parse "2e4b6d8f-0a1c-4e3b-b5d7-9f1a3c5e7b9d")) (EntryName "Si_O") materialEnvelope
+
+        match manifestOf [ colon; materialEnvelope; underscore ] with
+        | Error (DuplicateEntryFileNameErr _) -> ()
+        | other -> Assert.Fail($"Si:O and Si_O: expected DuplicateEntryFileNameErr, got %A{other}")
+
+        let glassMaterial = renamed (LibraryEntryId (Guid.Parse "4b6d8f0a-2c1e-4b5d-8e7f-1a3c5e7b9d0f")) (EntryName "Glass") materialEnvelope
+        let glassSample = renamed (LibraryEntryId (Guid.Parse "6d8f0a2c-4e1b-4d7f-9a1c-3e5b7d9f1a2c")) (EntryName "Glass") sampleEnvelope
+        let glasses = manifestOf [ glassSample; glassMaterial ] |> okOf
+        Assert.Equal<FileName list>([ FileName "Glass.material-json"; FileName "Glass.sample-json" ], glasses.entries |> List.map (fun r -> r.fileName))
+
+    [<Fact>]
+    let ``a manifest refuses one entry version twice`` () =
+        let sameVersionAgain = { materialEnvelope with content = { materialEnvelope.content with name = EntryName "Langasite again" } }
+
+        match manifestOf [ materialEnvelope; sourceEnvelope; sameVersionAgain ] with
+        | Error (DuplicateEntryVersionErr reason) ->
+            Assert.Contains("'Langasite (La3Ga5SiO14)'", reason)
+            Assert.Contains("'Langasite again'", reason)
+        | other -> Assert.Fail($"one id at one version twice: expected DuplicateEntryVersionErr, got %A{other}")
