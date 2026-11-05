@@ -15,7 +15,7 @@
       ".required-executability-json": "58a44815cb940646a4f4dd8f9d79420a9ddc89b2cc4b3b7c631eb2389244b61f"
     },
     "bundle": "7e9e4ff2f22a6ef4ce1dadf92b7a4d259d837f1a5195ea47efea3be8f14948ff",
-    "specrc": "080945bfd4d71d941c4f3ba6b80b99b2e1fdd56fad390ede8a1b89505e02d25f",
+    "specrc": "00a96e8c76e2d337f526da833c00660a8f440162e05ad3b344aba4769faa8355",
     "prompts": {
       "multistep\\add_component_worker.system-md": "59bbb9b0a776101085be254ce22213e5a7bcc034ecf28aeaa1bb6f88c293b4eb",
       "multistep\\add_contract_worker.system-md": "1c7c9c0c9006f1f40f4809c7d10a16644cea5a2deef2a9659acb2dc52903e2af",

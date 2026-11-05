@@ -261,8 +261,8 @@
         "model": "claude-opus-5-5[1m]"
       }
     ],
-    "phase": "implement",
-    "tree_fingerprint": "142cb33b01d2c51cad5278c5e4794385addb85fbaed126476b2ede2a07086527",
+    "phase": "review",
+    "tree_fingerprint": "4843e06670957290e32fec9c08e4b48b7c3541d1c6ecd1d92a56ad2634db1638",
     "review_epoch": 0,
     "review_cycle": 1,
     "review_attestation": null,
@@ -272,7 +272,7 @@
     "current_failed_build_gate": null,
     "verification_gate_cursor": 0,
     "verification_evidence": [],
-    "post_repair_route": null,
+    "post_repair_route": "full-review",
     "reliability_counts": {
       "gate_attempts": 1
     },
