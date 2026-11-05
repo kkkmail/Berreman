@@ -152,7 +152,7 @@ module InverseConstructorTests =
         let detector = theDetector m0
         let m1 =
             m0
-            |> updateTableAndElementRotation (BindValueIdTo (detector.id, Placement.ElementValueId "det-ellipsometer"))
+            |> updateTableAndElementRotation (BindValueIdTo (detector.id, PresetIds.detectorEllipsometer))
             |> updateTableAndElementRotation (ExpChooseElement sample.id)
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation ExpCommit

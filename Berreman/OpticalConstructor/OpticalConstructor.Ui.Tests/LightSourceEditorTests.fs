@@ -170,7 +170,7 @@ module LightSourceEditorTests =
     [<Fact>]
     let ``a seeded source is protected: no Edit, and Remove refuses with the reason`` () =
         let calls, context = libraryContext (SourceProxy.createInMemory ())
-        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntry (OpticalConstructor.Domain.Placement.ElementValueId "src-euv-13p5")) (LW.initLibraryWindow context Browse)
+        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.euv13p5) (LW.initLibraryWindow context Browse)
         Assert.Equal(None, selected.editableSource)
         LW.updateLibraryWindow LW.EditSelectedEntry selected |> ignore
         Assert.Empty(calls)
@@ -207,7 +207,7 @@ module LightSourceEditorTests =
             let boundMine = Scene.updateTableAndElementRotation (Scene.BindValueIdTo (sourceId, Placement.ElementValueId "src-mine")) m0
             Assert.Equal(Some (Placement.ElementValueId "src-mine"), (List.item 0 boundMine.elements).placement.valueId)
             Assert.Contains("bound: My 13.4 nm line", readoutOf boundMine)
-            let boundArf = Scene.updateTableAndElementRotation (Scene.BindValueIdTo (sourceId, Placement.ElementValueId "src-arf-193")) m0
+            let boundArf = Scene.updateTableAndElementRotation (Scene.BindValueIdTo (sourceId, PresetIds.arf193)) m0
             Assert.Contains("bound: ArF excimer 193 nm", readoutOf boundArf))
 
     // ------------------------------ the editor window (headless) ------------------------------

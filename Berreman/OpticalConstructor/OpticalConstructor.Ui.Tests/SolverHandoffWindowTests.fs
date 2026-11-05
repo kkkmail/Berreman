@@ -58,15 +58,15 @@ module SolverHandoffWindowTests =
     /// (an R2 intensity sweep, range 0…89°). Returns the (in-memory) Library the setup was captured
     /// against and the committed experiment. The caller decorates it (id / attached file) directly on
     /// the record — the handoff validation is a pure function of the experiment + proxies.
-    let private baseExperiment (srcBind : string option) (detBind : string option) : LibraryProxy * Experiments.Experiment =
+    let private baseExperiment (srcBind : Placement.ElementValueId option) (detBind : Placement.ElementValueId option) : LibraryProxy * Experiments.Experiment =
         let samples = SampleProxy.createInMemory VersionsInUse.empty
         let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         let m0 = initInverse (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
         let src, sample, det = endpoints m0
-        let bindOne (elementId : Library.ElementId) (entryOpt : string option) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let bindOne (elementId : Library.ElementId) (entryOpt : Placement.ElementValueId option) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
             match entryOpt with
-            | Some entryId -> updateTableAndElementRotation (BindValueIdTo (elementId, Placement.ElementValueId entryId)) m
+            | Some entryId -> updateTableAndElementRotation (BindValueIdTo (elementId, entryId)) m
             | None -> m
         let committed =
             m0
@@ -131,7 +131,7 @@ module SolverHandoffWindowTests =
 
     [<Fact>]
     let ``a fully valid experiment validates green (HandoffReady) with the raw point count`` () =
-        let library, exp0 = baseExperiment (Some "src-600") (Some "det-intensity")
+        let library, exp0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
         let exp = exp0 |> withFile "good.csv"
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.6; 89.0, 0.2 ]))
         match SolverHandoffView.validateExperiment library proxy exp with
@@ -151,7 +151,7 @@ module SolverHandoffWindowTests =
 
     [<Fact>]
     let ``a missing data file yields MissingDataFile`` () =
-        let library, exp0 = baseExperiment (Some "src-600") (Some "det-intensity")
+        let library, exp0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
         let exp = exp0 |> noFile
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0 ]))
         match SolverHandoffView.validateExperiment library proxy exp with
@@ -161,7 +161,7 @@ module SolverHandoffWindowTests =
     [<Fact>]
     let ``a range mismatch yields DataFileValidationError`` () =
         // The R2 experiment's range is 0…89°; an abscissa of 200 is a LOUD range mismatch.
-        let library, exp0 = baseExperiment (Some "src-600") (Some "det-intensity")
+        let library, exp0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
         let exp = exp0 |> withFile "oor.csv"
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]))
         match SolverHandoffView.validateExperiment library proxy exp with
@@ -170,7 +170,7 @@ module SolverHandoffWindowTests =
 
     [<Fact>]
     let ``a malformed data file yields DataFileParseError`` () =
-        let library, exp0 = baseExperiment (Some "src-600") (Some "det-intensity")
+        let library, exp0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
         let exp = exp0 |> withFile "bad.csv"
         let proxy = mockIntensity (Error (MeasuredData.MalformedDataFileErr "row 3 is not a valid X,Y pair"))
         match SolverHandoffView.validateExperiment library proxy exp with
@@ -179,7 +179,7 @@ module SolverHandoffWindowTests =
 
     [<Fact>]
     let ``the detector kind selects the ellipsometric load path`` () =
-        let library, exp0 = baseExperiment (Some "src-600") (Some "det-ellipsometer")
+        let library, exp0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorEllipsometer)
         let exp = exp0 |> withFile "ellipso.csv"
         let ellipsometric =
             match (MeasuredData.DataFileText "wavelength_nm,psi_deg,delta_deg\n500,20,120\n600,25,110").parseEllipsometricSeries with
@@ -192,7 +192,7 @@ module SolverHandoffWindowTests =
 
     [<Fact>]
     let ``validation runs the data load exactly once and reports the raw point count (no solver math, no normalization)`` () =
-        let library, exp0 = baseExperiment (Some "src-600") (Some "det-intensity")
+        let library, exp0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
         let exp = exp0 |> withFile "good.csv"
         let raw = [ 0.0, 1.0; 30.0, 0.7; 60.0, 0.4; 89.0, 0.1 ]
         let calls, proxy = recordingIntensity (Ok (intensitySeries raw))
@@ -206,9 +206,9 @@ module SolverHandoffWindowTests =
 
     [<Fact>]
     let ``init validates every received experiment and carries the collection name`` () =
-        let library, valid0 = baseExperiment (Some "src-600") (Some "det-intensity")
-        let _, missing0 = baseExperiment (Some "src-600") (Some "det-intensity")
-        let _, oor0 = baseExperiment (Some "src-600") (Some "det-intensity")
+        let library, valid0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
+        let _, missing0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
+        let _, oor0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
         let experiments =
             [ valid0 |> withId 1 |> withFile "good.csv"
               missing0 |> withId 2 |> noFile
@@ -235,8 +235,8 @@ module SolverHandoffWindowTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the window mounts carrying its id, the summary list, the solver-comes-later message, and each status row`` () =
         HeadlessSession.run (fun () ->
-            let library, valid0 = baseExperiment (Some "src-600") (Some "det-intensity")
-            let _, missing0 = baseExperiment (Some "src-600") (Some "det-intensity")
+            let library, valid0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
+            let _, missing0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
             let experiments = [ valid0 |> withId 1 |> withFile "good.csv"; missing0 |> withId 2 |> noFile ]
             let proxy = mockIntensityByPath (Map.ofList [ "good.csv", Ok (intensitySeries [ 0.0, 1.0; 89.0, 0.2 ]) ])
             let window = SolverHandoffWindow(library, proxy, snapshotOf experiments)
@@ -254,9 +254,9 @@ module SolverHandoffWindowTests =
     [<Trait("Category", "ui-smoke")>]
     let ``a valid experiment shows a ready status; a missing file and a range mismatch show their typed message`` () =
         HeadlessSession.run (fun () ->
-            let library, valid0 = baseExperiment (Some "src-600") (Some "det-intensity")
-            let _, missing0 = baseExperiment (Some "src-600") (Some "det-intensity")
-            let _, oor0 = baseExperiment (Some "src-600") (Some "det-intensity")
+            let library, valid0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
+            let _, missing0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
+            let _, oor0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
             let experiments =
                 [ valid0 |> withId 1 |> withFile "good.csv"
                   missing0 |> withId 2 |> noFile

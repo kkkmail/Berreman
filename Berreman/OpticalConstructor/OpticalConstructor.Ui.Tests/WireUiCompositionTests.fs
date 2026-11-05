@@ -194,7 +194,7 @@ module WireUiCompositionTests =
             clickOn libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
             Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode SeedSamples.glassFilm600.id.toElementValueId).value),
                         "the Library window must list the seeded glassFilm600 sample from the root-wired store")
-            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "src-600")).value),
+            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode PresetIds.source600).value),
                         "the Library window must list the seeded source preset from the root-wired proxy")
             libraryWindow.Close()
             Dispatcher.UIThread.RunJobs()
