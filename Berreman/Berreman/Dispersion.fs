@@ -280,6 +280,25 @@ module Dispersion =
             this.terms |> List.fold (fun acc t -> acc + t.evaluate x) Complex.Zero
 
 
+    /// A reciprocal abscissa: abscissa = numerator / x, with x = λ / wavelengthScale.
+    [<Softellect.Sys.NumericCarrier("the reduced-wavelength scale and the numerator of a reciprocal abscissa, folded into every coefficient a reciprocal-abscissa lowering builds (R3)")>]
+    type ReciprocalAbscissa =
+        {
+            wavelengthScale : float<meter>
+            numerator : float
+        }
+
+
+    /// How a model's abscissa relates to the formula's reduced wavelength
+    /// x = λ / wavelengthScale (`DispersionFormula.wavelengthScale`): a length unit reads its
+    /// abscissa as x itself; the energy-like units are reciprocal,
+    /// abscissa = numerator / x with x in nanometers. In the core so a law carries it as data
+    /// (spec 0050 §3.1).
+    type AbscissaKind =
+        | LinearInX of wavelengthScale : float<meter>
+        | ReciprocalInX of ReciprocalAbscissa
+
+
     // ==========================================================================
     // Serializable eps tree (spec 0033 Part B).
     // Pure data from which toEpsWithDisp BUILDS the engine's EpsWithDisp above

@@ -582,13 +582,7 @@ module DispersionModels =
     // formula together.
     // ==========================================================================
 
-    /// How a model's abscissa relates to the formula's reduced wavelength
-    /// x = λ / wavelengthScale (`Dispersion.fs:238`): a length unit reads its
-    /// abscissa as x itself; the energy-like units are reciprocal,
-    /// abscissa = numerator / x with x in nanometers.
-    type private AbscissaKind =
-        | LinearInX of wavelengthScale : float<Berreman.Constants.meter>
-        | ReciprocalInX of wavelengthScale : float<Berreman.Constants.meter> * numerator : UnitMagnitude
+    type AbscissaKind with
 
         /// Classify a tabulation unit against the formula variable. The scale and the
         /// reciprocal numerator are derived THROUGH the `Units` seam (§D.11):
@@ -602,7 +596,7 @@ module DispersionModels =
                 LinearInX (toMeters u (UnitMagnitude 1.0))
             | ElectronVolt | Wavenumber ->
                 let nanometer = toMeters Nanometer (UnitMagnitude 1.0)
-                ReciprocalInX (nanometer, fromMeters u nanometer)
+                ReciprocalInX { wavelengthScale = nanometer; numerator = (fromMeters u nanometer).value }
 
     /// The zero formula — the k of a transparent medium.
     let private zeroFormula (scale : float<Berreman.Constants.meter>) : DispersionFormula =
@@ -699,7 +693,7 @@ module DispersionModels =
                 let scale =
                     match AbscissaKind.ofUnit c.wavelengthUnit with
                     | LinearInX scale -> scale
-                    | ReciprocalInX (scale, _) -> scale
+                    | ReciprocalInX reciprocal -> reciprocal.wavelengthScale
                 RealNK
                     {
                         nFormula = { terms = [ realConstant c.n ]; wavelengthScale = scale }
@@ -714,13 +708,13 @@ module DispersionModels =
                             nFormula = { terms = [ realConstant c.a; realInversePower c.b 2; realInversePower c.c 4 ]; wavelengthScale = scale }
                             kFormula = zeroFormula scale
                         }
-                | ReciprocalInX (scale, numerator) ->
+                | ReciprocalInX reciprocal ->
                     // abscissa = k/x: n = A + (B/k²)·x² + (C/k⁴)·x⁴ — a plain polynomial.
-                    let k = numerator.value
+                    let k = reciprocal.numerator
                     RealNK
                         {
-                            nFormula = { terms = [ { lambda = 0.0; coefficients = [| c.a; 0.0; c.b / (k * k); 0.0; c.c / (k * k * k * k) |]; power = 1; multiplier = 1.0 } ]; wavelengthScale = scale }
-                            kFormula = zeroFormula scale
+                            nFormula = { terms = [ { lambda = 0.0; coefficients = [| c.a; 0.0; c.b / (k * k); 0.0; c.c / (k * k * k * k) |]; power = 1; multiplier = 1.0 } ]; wavelengthScale = reciprocal.wavelengthScale }
+                            kFormula = zeroFormula reciprocal.wavelengthScale
                         }
             | Sellmeier c ->
                 match AbscissaKind.ofUnit c.wavelengthUnit with
@@ -730,12 +724,12 @@ module DispersionModels =
                     let oscillator (b : double) (ci : double) : ComplexDispersionTerm =
                         ComplexDispersionTerm.inverse (Complex (b * ci, 0.0)) [| Complex (-ci, 0.0); Complex.Zero; Complex.One |]
                     ComplexEps { terms = constant :: List.map2 oscillator c.b c.c; wavelengthScale = scale }
-                | ReciprocalInX (scale, numerator) ->
+                | ReciprocalInX reciprocal ->
                     // abscissa = k/x: Bᵢ·a²/(a²−cᵢ) = Bᵢ·k²/(k² − cᵢ·x²) — one inverse term each.
-                    let k = numerator.value
+                    let k = reciprocal.numerator
                     let oscillator (b : double) (ci : double) : ComplexDispersionTerm =
                         ComplexDispersionTerm.inverse (Complex (b * k * k, 0.0)) [| Complex (k * k, 0.0); Complex.Zero; Complex (-ci, 0.0) |]
-                    ComplexEps { terms = ComplexDispersionTerm.constant Complex.One :: List.map2 oscillator c.b c.c; wavelengthScale = scale }
+                    ComplexEps { terms = ComplexDispersionTerm.constant Complex.One :: List.map2 oscillator c.b c.c; wavelengthScale = reciprocal.wavelengthScale }
             | Lorentz c ->
                 let constant = ComplexDispersionTerm.constant (Complex (c.epsInf, 0.0))
                 match AbscissaKind.ofUnit c.wavelengthUnit with
@@ -744,12 +738,12 @@ module DispersionModels =
                     let oscillator (s : double) (r : double) (d : double) : ComplexDispersionTerm =
                         ComplexDispersionTerm.inverse (Complex (s, 0.0)) [| Complex (r * r, 0.0); Complex (0.0, -d); Complex (-1.0, 0.0) |]
                     ComplexEps { terms = constant :: List.map3 oscillator c.strength c.resonance c.damping; wavelengthScale = scale }
-                | ReciprocalInX (scale, numerator) ->
+                | ReciprocalInX reciprocal ->
                     // abscissa = k/x: sⱼ/(rⱼ² − a² − i·dⱼ·a) = sⱼ·x²/(rⱼ²·x² − i·dⱼ·k·x − k²).
-                    let k = numerator.value
+                    let k = reciprocal.numerator
                     let oscillator (s : double) (r : double) (d : double) : ComplexDispersionTerm list =
                         rationalXSquaredTerms (Complex (s, 0.0)) (Complex (-k * k, 0.0)) (Complex (0.0, -d * k)) (Complex (r * r, 0.0))
-                    ComplexEps { terms = constant :: (List.map3 oscillator c.strength c.resonance c.damping |> List.concat); wavelengthScale = scale }
+                    ComplexEps { terms = constant :: (List.map3 oscillator c.strength c.resonance c.damping |> List.concat); wavelengthScale = reciprocal.wavelengthScale }
             | Drude c ->
                 let constant = ComplexDispersionTerm.constant (Complex (c.epsInf, 0.0))
                 let negPlasmaSq = Complex (-c.plasmaFrequency * c.plasmaFrequency, 0.0)
@@ -758,11 +752,11 @@ module DispersionModels =
                     // ε = ε∞ − ωp²/(x² + i·γ·x).
                     let free = ComplexDispersionTerm.inverse negPlasmaSq [| Complex.Zero; Complex (0.0, c.dampingFrequency); Complex.One |]
                     ComplexEps { terms = [ constant; free ]; wavelengthScale = scale }
-                | ReciprocalInX (scale, numerator) ->
+                | ReciprocalInX reciprocal ->
                     // abscissa = k/x: −ωp²/(a² + i·γ·a) = −ωp²·x²/(k² + i·γ·k·x).
-                    let k = numerator.value
+                    let k = reciprocal.numerator
                     let free = rationalXSquaredTerms negPlasmaSq (Complex (k * k, 0.0)) (Complex (0.0, c.dampingFrequency * k)) Complex.Zero
-                    ComplexEps { terms = constant :: free; wavelengthScale = scale }
+                    ComplexEps { terms = constant :: free; wavelengthScale = reciprocal.wavelengthScale }
             // The transcendental models are not finite term sums (band-gap steps, exp,
             // the Faddeeva function), so they lower to the evaluated case: the SAME
             // `evaluate` closure the engine's `EpsWithDisp` case applies.
