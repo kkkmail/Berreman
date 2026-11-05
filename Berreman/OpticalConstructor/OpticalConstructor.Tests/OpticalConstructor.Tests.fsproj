@@ -209,20 +209,8 @@
              file under the test output, and asserts the Test table exists + round-trips a
              row. No MSSQL server anywhere. -->
         <Compile Include="TestDbMigrationTests.fs" />
-        <!-- Spec 0038 step 041 (ADD_CONTRACT STORE_XDUO_0008): the seed-push seam — the
-             DECLARED [<ReferenceEquality>] SeedingProxy (saveCategory / saveMaterial /
-             saveSample / saveLibraryEntry) and the pure seedAll orchestrator. The recording
-             stub + mock-driven test prove seedAll pushes every EXISTING Domain seed value
-             exactly once, in category-material-sample-entry order, through the exact
-             signatures; plus the reference equality and the SeedRejected short-circuit. -->
-        <Compile Include="SeedingProxyTests.fs" />
-        <!-- Spec 0038 step 042 (IMPLEMENT_CONTRACT STORE_XDUO_0008): the REAL in-memory
-             SeedingProxy — SeedingProxy.createInMemory over four EMPTY createInMemoryEmpty
-             stores. seedAll fills the blank catalogue and the tests prove category / material /
-             sample / entry counts match the Domain seed lists and the fixed seed ids resolve to
-             the same seed instances, all Result-checked, with NO database and NO file IO; a third
-             test proves the stores are genuinely stateful (a second seedAll is rejected). -->
-        <Compile Include="SeedingInMemoryTests.fs" />
+        <Compile Include="CatalogueImportProxyTests.fs" />
+        <Compile Include="CatalogueImportInMemoryTests.fs" />
         <!-- Spec 0040 Part D.3 (step 012): a placed sample's default Placement.emission derives from
              the bound sample's geometry-constrained supportedEmission (not the generic
              defaultEmission), and the experiment's default MeasurementMode follows via ofEmission —
@@ -297,8 +285,6 @@
 
     <ItemGroup>
         <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
-        <!-- Spec 0038 step 041 (ADD_CONTRACT STORE_XDUO_0008): the seed-push seam under test. -->
-        <ProjectReference Include="..\OpticalConstructor.Seeding\OpticalConstructor.Seeding.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Ui\OpticalConstructor.Ui.fsproj" />

@@ -1033,13 +1033,8 @@ module Library =
             tryGetEntry = fun id -> Ok (entries |> List.tryFind (fun e -> e.entryId = id))
         }
 
-    /// The EMPTY, WRITABLE in-memory library-entry store for the seeding pipeline (spec 0038 step
-    /// 042 — IMPLEMENT_CONTRACT STORE_XDUO_0008). The read-only seeded `createInMemory` above closes
-    /// over an immutable `seedEntries` and so has NO write verb; the seeding pipeline needs one.
-    /// `createInMemoryEmpty` bundles the read-only `LibraryProxy` (over a shared mutable list) with
-    /// the `addEntry` write verb the pipeline pushes each `LibraryEntry` through — the analogue of
-    /// the catalogue stores' add verbs (`addCategory` / `saveMaterial` / `saveSample`). A future DB
-    /// cycle swaps this whole builder, leaving the `SeedingProxy` that adapts `addEntry` unchanged.
+    /// Writable library-entry store for the catalogue import through CatalogueImportProxy.
+    /// Bundles reads with addEntry; the seeded LibraryProxy has no write verb (spec 0038 step 042; spec 0050 §3.4).
     [<ReferenceEquality>]
     type LibraryEntryStore =
         {
@@ -1047,12 +1042,8 @@ module Library =
             addEntry : LibraryEntry -> Result<unit, LibraryError>
         }
 
-    /// Build the empty writable library-entry store: `addEntry` appends a new entry (preserving
-    /// insertion order, so `entriesForKind` / `tryGetEntry` read exactly as the seeded store does)
-    /// and rejects a duplicate entry id (`LibraryUnavailableErr` — the only fitting existing case;
-    /// never a throw). Mutation stays INSIDE the closure (the IO boundary), so logic holding the
-    /// proxy stays pure. `libraryTrees` is empty until a store cycle seeds grouping trees — the
-    /// seed-push pipeline fills entries, not trees.
+    /// Empty store for the catalogue import through CatalogueImportProxy; entries retain insertion order.
+    /// Duplicate ids return LibraryUnavailableErr. Grouping trees stay empty.
     let createInMemoryEmpty () : LibraryEntryStore =
         let store = ref ([] : LibraryEntry list)
         let proxy =

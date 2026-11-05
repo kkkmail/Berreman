@@ -3,16 +3,11 @@ namespace OpticalConstructor.Tests
 open Xunit
 open OpticalConstructor.Domain.MaterialLibrary   // MaterialCategory / MaterialEntry + standardCategories / builtInEntries
 open OpticalConstructor.Domain.Library           // Sample / LibraryEntry + SeedSamples / seedEntries
-open OpticalConstructor.Seeding.Seeding           // SeedingProxy / SeedingError / seedAll
+open OpticalConstructor.Domain.CatalogueImport           // CatalogueImportProxy / CatalogueImportError / seedAll
 
-/// Spec 0038 step 041 (ADD_CONTRACT STORE_XDUO_0008): the seed-push seam — the DECLARED
-/// `[<ReferenceEquality>] SeedingProxy` (`saveCategory` / `saveMaterial` / `saveSample` /
-/// `saveLibraryEntry`, each `<X> -> Result<unit, SeedingError>`) and the pure `seedAll` orchestrator.
-/// This file supplies the recording STUB and the mock-driven test that proves `seedAll` pushes every
-/// EXISTING Domain seed value EXACTLY ONCE, in category → material → sample → entry order, through the
-/// record's EXACT signatures. It also pins the reference equality and the `SeedRejectedErr` short-circuit.
-/// The real store lands in a later IMPLEMENT_CONTRACT.
-module SeedingProxyTests =
+/// Pins CatalogueImportProxy push order, reference identity and rejection short-circuiting.
+/// Spec 0038 step 041; moved to Domain by spec 0050 §3.4.
+module CatalogueImportProxyTests =
 
     /// Which channel a push arrived on, recorded on a global call-order tape so the test proves the
     /// category → material → sample → entry ordering ACROSS the four channels (not merely within each
@@ -45,11 +40,11 @@ module SeedingProxyTests =
                 entries = ResizeArray<LibraryEntry>()
             }
 
-    /// The recording `SeedingProxy`: every save appends its channel tag + the received value and
-    /// returns `Ok ()`. Annotated `: SeedingProxy` so the compiler checks each lambda against the
+    /// The recording `CatalogueImportProxy`: every save appends its channel tag + the received value and
+    /// returns `Ok ()`. Annotated `: CatalogueImportProxy` so the compiler checks each lambda against the
     /// EXACT declared field signature — the "through the exact signatures" acceptance is enforced at
     /// compile time, not merely asserted.
-    let private recordingProxy (r : Recorder) : SeedingProxy =
+    let private recordingProxy (r : Recorder) : CatalogueImportProxy =
         {
             saveCategory = fun c -> r.order.Add CategoryChannel; r.categories.Add c; Ok ()
             saveMaterial = fun m -> r.order.Add MaterialChannel; r.materials.Add m; Ok ()
@@ -75,8 +70,8 @@ module SeedingProxyTests =
     let ``seedAll pushes every seed value exactly once, in category-material-sample-entry order through the exact signatures`` () =
         let r = Recorder.create ()
         // Bind seedAll to an explicitly-typed local: the file fails to compile if seedAll drifts from
-        // its declared `SeedingProxy -> Result<unit, SeedingError>` shape.
-        let runSeed : SeedingProxy -> Result<unit, SeedingError> = fun proxy -> proxy.seedAll ()
+        // its declared `CatalogueImportProxy -> Result<unit, CatalogueImportError>` shape.
+        let runSeed : CatalogueImportProxy -> Result<unit, CatalogueImportError> = fun proxy -> proxy.seedAll ()
 
         match runSeed (recordingProxy r) with
         | Ok () -> ()
@@ -104,16 +99,16 @@ module SeedingProxyTests =
         // A stub that accepts every category but rejects the FIRST material. seedAll must return the
         // rejection and push NO samples / entries (the material group short-circuits the chain).
         let r = Recorder.create ()
-        let proxy : SeedingProxy =
+        let proxy : CatalogueImportProxy =
             {
                 saveCategory = fun c -> r.categories.Add c; Ok ()
-                saveMaterial = fun _ -> Error (SeedRejectedErr "the stub rejects every material")
+                saveMaterial = fun _ -> Error (ImportRejectedErr "the stub rejects every material")
                 saveSample = fun s -> r.samples.Add s; Ok ()
                 saveLibraryEntry = fun e -> r.entries.Add e; Ok ()
             }
 
         match proxy.seedAll () with
-        | Error (SeedRejectedErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | Error (ImportRejectedErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | Ok () -> Assert.Fail("seedAll should surface the material rejection, not Ok ()")
 
         // Categories all pushed (they precede materials); no sample / entry reached after the reject.
@@ -122,10 +117,10 @@ module SeedingProxyTests =
         Assert.Equal(0, r.entries.Count)
 
     [<Fact>]
-    let ``a SeedingProxy compares by reference (the [<ReferenceEquality>] contract)`` () =
+    let ``a CatalogueImportProxy compares by reference (the [<ReferenceEquality>] contract)`` () =
         // Function-valued fields have no structural equality; the [<ReferenceEquality>] proxy compares
         // by identity so a host holding one stays comparable.
-        let make () : SeedingProxy = recordingProxy (Recorder.create ())
+        let make () : CatalogueImportProxy = recordingProxy (Recorder.create ())
         let p = make ()
         let same = p
         Assert.True((p = same))

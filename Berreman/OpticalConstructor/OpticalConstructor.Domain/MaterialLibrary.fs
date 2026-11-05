@@ -781,9 +781,8 @@ module MaterialLibrary =
         static member createInMemory (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
             CategoryProxy.createInMemoryStore standardCategories materialsReferencingCategory
 
-        /// The EMPTY in-memory category store (spec 0038 step 042): a BLANK `ref Map` the seeding
-        /// pipeline (`SeedingProxy`) fills through `addCategory`. Same write/remove behaviour as the
-        /// seeded store — only the initial catalogue differs.
+        /// Empty category store for CatalogueImportProxy; the catalogue import supplies its entries.
+        /// Shares the seeded store's write/remove behavior (spec 0038 step 042; spec 0050 §3.4).
         static member createInMemoryEmpty (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
             CategoryProxy.createInMemoryStore [] materialsReferencingCategory
 

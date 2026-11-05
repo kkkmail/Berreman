@@ -192,9 +192,8 @@ module MaterialStore =
             : MaterialProxy =
             MaterialProxy.createInMemoryStore builtInEntries samplesReferencing versionsInUse
 
-        /// The EMPTY versioned in-memory material store (spec 0038 step 042): a BLANK store the
-        /// seeding pipeline (`SeedingProxy`) fills through `saveMaterial`. Same versioning/remove
-        /// behaviour as the seeded store — only the initial entries differ.
+        /// Empty material store for CatalogueImportProxy; the catalogue import supplies its entries.
+        /// Shares the seeded store's versioning/remove behavior (spec 0038 step 042; spec 0050 §3.4).
         static member createInMemoryEmpty
             (samplesReferencing : MaterialId -> Sample list)
             (versionsInUse : VersionsInUse)

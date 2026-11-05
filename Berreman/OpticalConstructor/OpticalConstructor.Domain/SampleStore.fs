@@ -186,8 +186,7 @@ module SampleStore =
         static member createInMemory (versionsInUse : VersionsInUse) : SampleProxy =
             SampleProxy.createInMemoryStore SeedSamples.allSeedSamples versionsInUse
 
-        /// The EMPTY versioned in-memory sample store (spec 0038 step 042): a BLANK store the seeding
-        /// pipeline (`SeedingProxy`) fills through `saveSample`. Same versioning/remove behaviour as
-        /// the seeded store — only the initial samples differ.
+        /// Empty sample store for CatalogueImportProxy; the catalogue import supplies its entries.
+        /// Shares the seeded store's versioning/remove behavior (spec 0038 step 042; spec 0050 §3.4).
         static member createInMemoryEmpty (versionsInUse : VersionsInUse) : SampleProxy =
             SampleProxy.createInMemoryStore [] versionsInUse

@@ -3,16 +3,11 @@ namespace OpticalConstructor.Tests
 open Xunit
 open OpticalConstructor.Domain.MaterialLibrary   // standardCategories / builtInEntries / IncludeInactive
 open OpticalConstructor.Domain.Library           // SeedSamples / seedEntries / Sample / LibraryEntry
-open OpticalConstructor.Seeding.Seeding           // SeedingProxy.createInMemory / SeedingError / seedAll / InMemorySeedStores
+open OpticalConstructor.Domain.CatalogueImport           // CatalogueImportProxy.createInMemory / CatalogueImportError / seedAll / InMemoryCatalogueStores
 
-/// Spec 0038 step 042 (IMPLEMENT_CONTRACT STORE_XDUO_0008): the REAL in-memory `SeedingProxy`.
-/// `SeedingProxy.createInMemory ()` builds four EMPTY in-memory stores (`createInMemoryEmpty`) and
-/// adapts each store's add verb into the four `SeedingProxy` save fields. These tests prove that
-/// `seedAll` over those blank stores reproduces the seeded catalogue — category / material / sample /
-/// entry counts match the Domain seed lists, and the fixed seed ids resolve back to the SAME seed
-/// instances — all `Result`-checked, with NO database and NO file IO. A third test proves the stores
-/// are genuinely stateful (a second `seedAll` is rejected), not a discarding mock.
-module SeedingInMemoryTests =
+/// Pins CatalogueImportProxy's in-memory catalogue counts, seed identity and duplicate refusal.
+/// Spec 0038 step 042; moved to Domain by spec 0050 §3.4.
+module CatalogueImportInMemoryTests =
 
     /// Assert a fixed seed id resolved (through `tryGetMaterial` / `tryGetSample` / `tryGetEntry`) to
     /// the SAME seed instance. Reference identity via `Object.ReferenceEquals` — the seeds are
@@ -31,7 +26,7 @@ module SeedingInMemoryTests =
 
     [<Fact>]
     let ``seedAll over empty in-memory stores reproduces the seeded catalogue counts`` () =
-        let stores = SeedingProxy.createInMemory ()
+        let stores = CatalogueImportProxy.createInMemory ()
 
         match stores.proxy.seedAll () with
         | Ok () -> ()
@@ -68,7 +63,7 @@ module SeedingInMemoryTests =
 
     [<Fact>]
     let ``the fixed seed ids resolve to the same seed instances through the seeded in-memory stores`` () =
-        let stores = SeedingProxy.createInMemory ()
+        let stores = CatalogueImportProxy.createInMemory ()
         match stores.proxy.seedAll () with
         | Ok () -> ()
         | Error e -> Assert.Fail($"seedAll should be Ok (), got %A{e}")
@@ -94,12 +89,12 @@ module SeedingInMemoryTests =
     [<Fact>]
     let ``re-seeding the already-seeded in-memory stores is rejected (the store is genuinely stateful)`` () =
         // Proves the in-memory stores actually retain state: the first seedAll fills them; the second
-        // hits the first store's duplicate-id block, surfaced as SeedRejectedErr, and no Ok () no-op.
-        let stores = SeedingProxy.createInMemory ()
+        // hits the first store's duplicate-id block, surfaced as ImportRejectedErr, and no Ok () no-op.
+        let stores = CatalogueImportProxy.createInMemory ()
         match stores.proxy.seedAll () with
         | Ok () -> ()
         | Error e -> Assert.Fail($"first seedAll should be Ok (), got %A{e}")
 
         match stores.proxy.seedAll () with
-        | Error (SeedRejectedErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | Error (ImportRejectedErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | Ok () -> Assert.Fail("re-seeding an already-seeded store should be rejected, not Ok ()")
