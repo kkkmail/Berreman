@@ -1,5 +1,6 @@
 ﻿namespace Berreman
 open System.Numerics
+open MathNetNumericsMath
 open Berreman.Geometry
 open Constants
 open MaterialProperties
@@ -355,6 +356,113 @@ module Dispersion =
             Complex.Sqrt (Complex(c.epsInf, c.amplitude * exp (-(d * d)))) |> ComplexRefractionIndex
 
 
+    /// Forouhi–Bloomer five-parameter amorphous form: `k(E) = a·(E − bandGap)²/(E² − b·E + c)`
+    /// above the band gap, zero below it, with the Kramers–Kronig closed form for `n(E)`, over the
+    /// model's abscissa. The kernel lives here once (spec 0050 §3.1).
+    [<Softellect.Sys.NumericCarrier("the five coefficients and the abscissa of one Forouhi-Bloomer law, read by its kernel at every wavelength of a sweep (R3; as DispersionTerm)")>]
+    type ForouhiBloomerLaw =
+        {
+            nInf : float
+            a : float
+            b : float
+            c : float
+            bandGap : float
+            abscissa : AbscissaKind
+        }
+
+        member c.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            let (AbscissaValue x) = c.abscissa.abscissaAt w
+            let q = 0.5 * sqrt (4.0 * c.c - c.b * c.b)
+            let b0 = c.a / q * (-0.5 * c.b * c.b + c.bandGap * c.b - c.bandGap * c.bandGap + c.c)
+            let c0 = c.a / q * (0.5 * c.b * (c.bandGap * c.bandGap + c.c) - 2.0 * c.bandGap * c.c)
+            let denominator = x * x - c.b * x + c.c
+            let n = c.nInf + (b0 * x + c0) / denominator
+            let k = if x > c.bandGap then c.a * (x - c.bandGap) * (x - c.bandGap) / denominator else 0.0
+            Complex.create n k |> ComplexRefractionIndex
+
+
+    /// Term count of the Faddeeva rational series below. Weideman shows N = 24
+    /// already reaches near-machine accuracy over the closed upper half plane.
+    [<Literal>]
+    let private faddeevaTermCount = 24
+
+    /// Weideman's rational series for the Faddeeva function (SIAM J. Numer. Anal.
+    /// 31, 1497 (1994)): the optimal scale L = √(N/√2) of its Möbius map
+    /// (L + iz)/(L − iz), and its coefficients a₁..a_N.
+    [<Softellect.Sys.NumericCarrier("the scale and the coefficients of Weideman's rational series, the numbers the Faddeeva kernel computes with for every Brendel-Bormann oscillator at every wavelength of a sweep (R3)")>]
+    type private FaddeevaSeries =
+        {
+            scale : double
+            coefficients : double array
+        }
+
+    /// The coefficients are the cosine-transform samples
+    /// aₙ = (1/2M)·Σₖ f(θₖ)·cos(n·θₖ) of the even function
+    /// f(θ) = e^(−t²)·(L² + t²) under t = L·tan(θ/2), θₖ = kπ/M,
+    /// k = −M+1 .. M−1, M = 2N — computed once from the definition, not a
+    /// hand-copied table (f vanishes at θ = ±π, so those endpoints drop out).
+    let private faddeevaSeries : FaddeevaSeries =
+        let l = sqrt (float faddeevaTermCount / sqrt 2.0)
+        let m = 2 * faddeevaTermCount
+        let samples =
+            [| for k in -m + 1 .. m - 1 ->
+                let theta = float k * System.Math.PI / float m
+                let t = l * tan (0.5 * theta)
+                theta, exp (-(t * t)) * (l * l + t * t) |]
+        {
+            scale = l
+            coefficients =
+                [| for j in 1 .. faddeevaTermCount ->
+                    (samples |> Array.sumBy (fun (theta, f) -> f * cos (float j * theta))) / float (2 * m) |]
+        }
+
+    /// The Faddeeva function w(z) = e^(−z²)·erfc(−i·z) for Im z ≥ 0 — the kernel
+    /// of the Brendel–Bormann Gaussian-broadened oscillator. Weideman's rational
+    /// series: with Z = (L + iz)/(L − iz),
+    /// w(z) = 2·(Σₙ aₙ·Zⁿ⁻¹)/(L − iz)² + (1/√π)/(L − iz). Every argument built in
+    /// `BrendelBormannLaw.complexIndex` has Im ≥ 0 (α is the principal root of
+    /// E² + i·Γ·E), so the half-plane restriction is safe by construction.
+    let private faddeeva (z : Complex) : Complex =
+        let l = Complex.create faddeevaSeries.scale 0.0
+        let iz = Complex.create 0.0 1.0 * z
+        let ratio = (l + iz) / (l - iz)
+        let p = Array.foldBack (fun a acc -> acc * ratio + Complex.create a 0.0) faddeevaSeries.coefficients Complex.Zero
+        Complex.create 2.0 0.0 * p / ((l - iz) * (l - iz)) + Complex.create (1.0 / sqrt System.Math.PI) 0.0 / (l - iz)
+
+
+    /// Brendel–Bormann Gaussian-broadened (Voigt) oscillators:
+    /// `ε(E) = 1 − f₀·ωp²/(E² + i·Γ₀·E) + Σⱼ χⱼ(E)`, each `χⱼ` a Faddeeva-function pair, over the
+    /// model's abscissa. The four per-oscillator lists run in step. The kernel lives here once
+    /// (spec 0050 §3.1).
+    [<Softellect.Sys.NumericCarrier("the intraband coefficients, the per-oscillator lists and the abscissa of one Brendel-Bormann law, read by its kernel (the Faddeeva series) at every wavelength of a sweep (R3; as DispersionTerm)")>]
+    type BrendelBormannLaw =
+        {
+            plasmaFrequency : float
+            intrabandStrength : float
+            intrabandDamping : float
+            strength : float list
+            resonance : float list
+            damping : float list
+            broadening : float list
+            abscissa : AbscissaKind
+        }
+
+        member c.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            let (AbscissaValue x) = c.abscissa.abscissaAt w
+            let wp2 = c.plasmaFrequency * c.plasmaFrequency
+            let intraband = Complex.create (c.intrabandStrength * wp2) 0.0 / Complex(x * x, c.intrabandDamping * x)
+            let oscillator (f : double) (r : double) (d : double) (s : double) : Complex =
+                let alpha = Complex.Sqrt (Complex(x * x, d * x))
+                let width = Complex.create (sqrt 2.0 * s) 0.0
+                let za = (alpha - Complex.create r 0.0) / width
+                let zb = (alpha + Complex.create r 0.0) / width
+                Complex.create 0.0 (sqrt System.Math.PI * f * wp2) / (Complex.create 2.0 0.0 * alpha * width) * (faddeeva za + faddeeva zb)
+            let interband =
+                List.map2 (fun (f, r, d) s -> oscillator f r d s) (List.zip3 c.strength c.resonance c.damping) c.broadening
+                |> List.fold (+) Complex.Zero
+            Complex.Sqrt (Complex.One - intraband + interband) |> ComplexRefractionIndex
+
+
     // ==========================================================================
     // Serializable eps tree (spec 0033 Part B).
     // Pure data from which toEpsWithDisp BUILDS the engine's EpsWithDisp above
@@ -508,14 +616,15 @@ module Dispersion =
     /// formulas (k = the zero formula for a transparent medium), one complex
     /// eps formula for inherently complex models (Lorentz / Drude), a tabulated
     /// n,k table (`TabulatedNK`, spec 0050 step 2), a Tauc–Lorentz or
-    /// Gaussian-oscillator law (spec 0050 step 5), or an evaluated-directly
-    /// closure for the transcendental models still without a law (Forouhi–Bloomer,
-    /// Brendel–Bormann) — it carries a `WaveLength -> ComplexRefractionIndex` exactly
-    /// as the engine's own `EpsWithDisp` case does, and `complexIndex` applies it. A
-    /// function-typed case removes F#'s structural equality type-wide, so the type
-    /// provides custom equality: every data case compares structurally (keeping the
-    /// `DispersionModel` / `EpsWithDispValue` / `MaterialComplexity` equality the
-    /// round-trip tests use) and the evaluated case compares by closure reference.
+    /// Gaussian-oscillator law (spec 0050 step 5), a Forouhi–Bloomer or
+    /// Brendel–Bormann law (step 7), or an evaluated-directly closure, which no
+    /// analytic model lowers to any more (the coded presets still carry one) — it carries a
+    /// `WaveLength -> ComplexRefractionIndex` exactly as the engine's own `EpsWithDisp`
+    /// case does, and `complexIndex` applies it. A function-typed case removes F#'s
+    /// structural equality type-wide, so the type provides custom equality: every data
+    /// case compares structurally (keeping the `DispersionModel` / `EpsWithDispValue` /
+    /// `MaterialComplexity` equality the round-trip tests use) and the evaluated case
+    /// compares by closure reference.
     [<CustomEquality; NoComparison>]
     type EpsAxisDispersion =
         | RealNK of RealNkFormulas
@@ -523,6 +632,8 @@ module Dispersion =
         | TabulatedNK of TabulatedNkTable
         | TaucLorentzAxis of TaucLorentzLaw
         | GaussianOscillatorAxis of GaussianOscillatorLaw
+        | ForouhiBloomerAxis of ForouhiBloomerLaw
+        | BrendelBormannAxis of BrendelBormannLaw
         | EpsAxisEvaluated of (WaveLength -> ComplexRefractionIndex)
 
         member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
@@ -535,6 +646,8 @@ module Dispersion =
             | TabulatedNK table -> table.complexIndex w
             | TaucLorentzAxis law -> law.complexIndex w
             | GaussianOscillatorAxis law -> law.complexIndex w
+            | ForouhiBloomerAxis law -> law.complexIndex w
+            | BrendelBormannAxis law -> law.complexIndex w
             | EpsAxisEvaluated f -> f w
 
         override this.Equals (o : obj) : bool =
@@ -546,6 +659,8 @@ module Dispersion =
                 | TabulatedNK t1, TabulatedNK t2 -> t1 = t2
                 | TaucLorentzAxis l1, TaucLorentzAxis l2 -> l1 = l2
                 | GaussianOscillatorAxis l1, GaussianOscillatorAxis l2 -> l1 = l2
+                | ForouhiBloomerAxis l1, ForouhiBloomerAxis l2 -> l1 = l2
+                | BrendelBormannAxis l1, BrendelBormannAxis l2 -> l1 = l2
                 | EpsAxisEvaluated f1, EpsAxisEvaluated f2 -> LanguagePrimitives.PhysicalEquality f1 f2
                 | _ -> false
             | _ -> false
@@ -557,6 +672,8 @@ module Dispersion =
             | TabulatedNK t -> hash (2, t)
             | TaucLorentzAxis l -> hash (3, l)
             | GaussianOscillatorAxis l -> hash (4, l)
+            | ForouhiBloomerAxis l -> hash (5, l)
+            | BrendelBormannAxis l -> hash (6, l)
             | EpsAxisEvaluated f -> LanguagePrimitives.PhysicalHash f
 
 

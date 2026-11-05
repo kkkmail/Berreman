@@ -307,13 +307,14 @@ module MaterialEditorWindowTests =
         for code in [ "ForouhiBloomer"; "BrendelBormann" ] do
             let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, modelOfKind code) ]
             Assert.Equal(code, st.segments.[0].model1.kindCode)
-            // The transcendental pick now DERIVES (no rejection): one isotropic
-            // dispersive segment carrying the evaluated case.
+            // The transcendental pick DERIVES (no rejection): one isotropic
+            // dispersive segment carrying the model's own law (spec 0050 step 7).
             match (derived st).eps with
             | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
-                match seg.dispersion with
-                | EpsAxisEvaluated _ -> ()
-                | other -> Assert.Fail($"expected the evaluated case for %s{code}, got %A{other}")
+                match code, seg.dispersion with
+                | "ForouhiBloomer", ForouhiBloomerAxis _
+                | "BrendelBormann", BrendelBormannAxis _ -> ()
+                | _, other -> Assert.Fail($"expected the law case for %s{code}, got %A{other}")
             | other -> Assert.Fail($"expected one isotropic dispersive segment for %s{code}, got %A{other}")
 
     [<Fact>]

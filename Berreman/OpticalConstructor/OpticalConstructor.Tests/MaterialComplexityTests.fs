@@ -321,18 +321,19 @@ module MaterialComplexityTests =
     [<Fact>]
     let ``step 015: a transcendental dispersive segment derives and evaluates without rejection`` () =
         // A dispersive segment whose model is transcendental (ForouhiBloomer, taken
-        // from the segment picker's default choices) now LOWERS to the evaluated
-        // case — toComplexity DERIVES it (no SegmentNotLowerable), and the derived
-        // eps reproduces `evaluate` across the grid.
+        // from the segment picker's default choices) LOWERS to its law (spec 0050
+        // step 7) — toComplexity DERIVES it (no SegmentNotLowerable), the derived eps
+        // reproduces `evaluate` across the grid, and the entry stays view-only.
         let model = defaultModelChoices |> List.find (fun m -> m.kindCode = "ForouhiBloomer")
         let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, model) ]
         let c = derived st
         match c.eps with
         | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
             match seg.dispersion with
-            | EpsAxisEvaluated _ -> ()
-            | other -> Assert.Fail($"the transcendental segment must lower to the evaluated case, got %A{other}")
+            | ForouhiBloomerAxis _ -> ()
+            | other -> Assert.Fail($"the transcendental segment must lower to its law, got %A{other}")
         | other -> Assert.Fail($"expected one isotropic dispersive segment, got %A{other}")
+        Assert.False(c.isEditable)
         let f = model.evaluate
         for w in visibleGrid do
             let expected = Eps.fromComplexRefractionIndex (f w)

@@ -102,7 +102,7 @@ type EpsWithDispValueTests() =
     let electronVolt : AbscissaKind = ReciprocalInX { wavelengthScale = 1.0e-9<meter>; numerator = 1239.84 }
 
     /// A law's index equals each reference exactly. The references are the start tree's
-    /// `DispersionModel.evaluate` as G17, recorded before the kernels moved into the core (spec 0050 step 5).
+    /// `DispersionModel.evaluate` as G17, recorded before the kernels moved into the core (spec 0050 steps 5 and 7).
     let verifyLawReferences (complexIndex : WaveLength -> ComplexRefractionIndex) (references : (WaveLength * ComplexRefractionIndex) list) : unit =
         for (w, expected) in references do
             Assert.Equal<ComplexRefractionIndex>(expected, complexIndex w)
@@ -392,4 +392,52 @@ type EpsWithDispValueTests() =
                 WaveLength.nm 600.0<nm>, ComplexRefractionIndex (Complex (1.4152651785687922, 0.054548379163411681))
                 WaveLength.nm 900.0<nm>, ComplexRefractionIndex (Complex (1.4142135639739488, 6.7289661413197214E-05))
                 WaveLength.nm 2000.0<nm>, ComplexRefractionIndex (Complex (1.4142135623730951, 4.4982481974802987E-11))
+            ]
+
+
+    [<Fact>]
+    member _.``The Forouhi-Bloomer law reproduces its reference index on both sides of the band gap`` () =
+        // The AC-B6 a-Si set: Eg = 0.906 eV sits at 1368.5 nm, so 300 to 900 nm absorb and 2000 nm gives k = 0.
+        let law : ForouhiBloomerLaw =
+            {
+                nInf = sqrt 3.453
+                a = 0.865
+                b = 6.703
+                c = 13.237
+                bandGap = 0.906
+                abscissa = electronVolt
+            }
+
+        verifyLawReferences law.complexIndex
+            [
+                WaveLength.nm 300.0<nm>, ComplexRefractionIndex (Complex (3.4230520145142367, 3.4443626075262639))
+                WaveLength.nm 450.0<nm>, ComplexRefractionIndex (Complex (5.0100310741344316, 1.25333719578412))
+                WaveLength.nm 600.0<nm>, ComplexRefractionIndex (Complex (4.3504991890846751, 0.31859114776865921))
+                WaveLength.nm 900.0<nm>, ComplexRefractionIndex (Complex (3.6859362676891587, 0.032603035269730463))
+                WaveLength.nm 2000.0<nm>, ComplexRefractionIndex (Complex (3.1919915065386339, 0.0))
+            ]
+
+
+    [<Fact>]
+    member _.``The Brendel-Bormann law reproduces its reference index`` () =
+        // The AC-B6 gold set (Rakić 1998): interband absorption at 300 and 450 nm, the free-carrier metal beyond.
+        let law : BrendelBormannLaw =
+            {
+                plasmaFrequency = 9.03
+                intrabandStrength = 0.770
+                intrabandDamping = 0.050
+                strength = [ 0.054; 0.050; 0.312; 0.719; 1.648 ]
+                resonance = [ 0.218; 2.885; 4.069; 6.137; 27.97 ]
+                damping = [ 0.074; 0.035; 0.083; 0.125; 0.179 ]
+                broadening = [ 0.742; 0.349; 0.830; 1.246; 1.795 ]
+                abscissa = electronVolt
+            }
+
+        verifyLawReferences law.complexIndex
+            [
+                WaveLength.nm 300.0<nm>, ComplexRefractionIndex (Complex (1.7302516384193967, 1.8741449400944645))
+                WaveLength.nm 450.0<nm>, ComplexRefractionIndex (Complex (1.374058131504631, 1.7702875111294298))
+                WaveLength.nm 600.0<nm>, ComplexRefractionIndex (Complex (0.24146838171580332, 2.9155245932327909))
+                WaveLength.nm 900.0<nm>, ComplexRefractionIndex (Complex (0.23066700009923077, 5.4619876195461128))
+                WaveLength.nm 2000.0<nm>, ComplexRefractionIndex (Complex (0.84433172406313572, 12.757953577132453))
             ]

@@ -83,13 +83,13 @@ module LibraryFacets =
         /// NOT carry the ten `DispersionModel` kinds: the editor lowers every
         /// model through `toEpsAxis` at save (spec 0033), so the segments hold
         /// `EpsAxisDispersion` term data and the analytic kind is not recoverable
-        /// (Sellmeier lowers to complex-ε terms, the transcendental four to a law or
-        /// an opaque closure); recognizing term shapes back into model kinds would
-        /// re-derive physics (§D.0 forbids it). The facet therefore classifies
-        /// the storable shapes, a tabulated n,k table (`TabulatedNK`, spec 0050
-        /// step 2) included, and the Tauc–Lorentz and Gaussian laws (step 5) share the
-        /// evaluated key; `DispersionModel.facetKey` (below) pins how each
-        /// `DispersionModel` case maps onto this vocabulary.
+        /// (Sellmeier lowers to complex-ε terms, the transcendental four to their
+        /// laws); recognizing term shapes back into model kinds would re-derive
+        /// physics (§D.0 forbids it). The facet therefore classifies the storable
+        /// shapes, a tabulated n,k table (`TabulatedNK`, spec 0050 step 2) included,
+        /// and the four transcendental laws (steps 5 and 7) share the evaluated key;
+        /// `DispersionModel.facetKey` (below) pins how each `DispersionModel` case
+        /// maps onto this vocabulary.
         member this.facetKey : DiscreteKey =
             match this with
             | RealNK _ -> DiscreteKey "Real n/k terms"
@@ -97,6 +97,8 @@ module LibraryFacets =
             | TabulatedNK _ -> DiscreteKey "Tabulated n/k"
             | TaucLorentzAxis _
             | GaussianOscillatorAxis _
+            | ForouhiBloomerAxis _
+            | BrendelBormannAxis _
             | EpsAxisEvaluated _ -> DiscreteKey "Evaluated (transcendental)"
 
     type DispersionModel with

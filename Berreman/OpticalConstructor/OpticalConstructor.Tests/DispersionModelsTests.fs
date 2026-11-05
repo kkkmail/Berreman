@@ -570,16 +570,18 @@ module DispersionModelsTests =
     [<Fact>]
     let ``AC-B6 ForouhiBloomer and BrendelBormann lower to the evaluated case and match evaluate`` () =
         // The transcendental models (band-gap step in k / Faddeeva-function Voigt
-        // broadening) are not finite term sums, so toEpsAxis lowers them to the
-        // evaluated case carrying `evaluate`; its complexIndex reproduces `evaluate`
-        // and toOpticalProperties keeps both models fully working through it.
+        // broadening) are not finite term sums, so toEpsAxis lowers each to its own
+        // core law (spec 0050 step 7), the one kernel `evaluate` answers too; its
+        // complexIndex reproduces `evaluate` and toOpticalProperties keeps both models
+        // fully working through the law segment.
         for model in [ forouhiBloomerASi; brendelBormannGold ] do
             Assert.Equal(ElectronVolt, model.wavelengthUnit)
             Assert.Equal(None, model.thermoOptic)
             let axis = model.toEpsAxis
-            match axis with
-            | EpsAxisEvaluated _ -> ()
-            | other -> Assert.Fail($"a transcendental model must lower to the evaluated case, got {other}")
+            match model, axis with
+            | ForouhiBloomer _, ForouhiBloomerAxis _
+            | BrendelBormann _, BrendelBormannAxis _ -> ()
+            | _, other -> Assert.Fail($"a transcendental model must lower to its own law case, got {other}")
             let f = model.evaluate
             let op = model.toOpticalProperties
             for w in visibleGrid do
