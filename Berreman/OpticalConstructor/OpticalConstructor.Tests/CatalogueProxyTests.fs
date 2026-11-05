@@ -15,6 +15,27 @@ open OpticalConstructor.Domain.CatalogueFiles
 /// the code seeds and may not edit this file.
 module CatalogueProxyTests =
 
+    [<Fact>]
+    let ``every catalogue error renders its condition and its reason`` () : unit =
+        let duplicateVersion : LibraryEntryError = DuplicateEntryVersionErr "entries detail"
+        let invalidEntries : CatalogueError = InvalidCatalogueEntriesErr duplicateVersion
+        let cases : (CatalogueError * string) list =
+            [
+                CatalogueIoErr "IO detail", "catalogue IO failed: IO detail"
+                CatalogueFileRejectedErr "rejected file detail", "a catalogue file was rejected: rejected file detail"
+                MissingEntryFileErr "missing file detail", "an entry file is missing: missing file detail"
+                UnlistedEntryFileErr "unlisted file detail", "an entry file is not listed: unlisted file detail"
+                ManifestMismatchErr "manifest detail", "the catalogue manifest does not match its entries: manifest detail"
+                invalidEntries, "the catalogue entries are invalid: an entry version is duplicated: entries detail"
+            ]
+
+        for error, expected in cases do
+            Assert.Equal<string>(expected, error.describe)
+
+        let descriptions = cases |> List.map (fun (error, _) -> error.describe)
+        Assert.Equal(6, descriptions |> List.distinct |> List.length)
+        Assert.Contains(duplicateVersion.describe, invalidEntries.describe)
+
     let private okOf (result : Result<'Value, 'Problem>) : 'Value =
         match result with
         | Ok value -> value

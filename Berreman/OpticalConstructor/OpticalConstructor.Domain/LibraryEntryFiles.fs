@@ -272,6 +272,15 @@ module LibraryEntryFiles =
         | DuplicateEntryFileNameErr of reason : string
         | DuplicateEntryVersionErr of reason : string
 
+        member this.describe : string =
+            match this with
+            | EntryKindMismatchErr reason -> $"the entry kind does not match: {reason}"
+            | EntryIdNotGuidErr reason -> $"the entry id is not a canonical GUID: {reason}"
+            | ProvenanceMismatchErr reason -> $"the entry provenance does not match: {reason}"
+            | MissingEntryFieldErr reason -> $"an entry field is missing: {reason}"
+            | DuplicateEntryFileNameErr reason -> $"an entry file name is duplicated: {reason}"
+            | DuplicateEntryVersionErr reason -> $"an entry version is duplicated: {reason}"
+
     type CategoryName with
 
         /// The name a category's entry file is filed under (spec 0050 001 §B).

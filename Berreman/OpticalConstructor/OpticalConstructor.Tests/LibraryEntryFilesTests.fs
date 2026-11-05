@@ -14,6 +14,24 @@ open OpticalConstructor.Domain.LibraryEntryFiles
 /// and decoders that join the content to the domain values (spec 0050 001 §A, §B; .spec-md §3.11, §5).
 module LibraryEntryFilesTests =
 
+    [<Fact>]
+    let ``every library entry error renders its condition and its reason`` () : unit =
+        let cases : (LibraryEntryError * string) list =
+            [
+                EntryKindMismatchErr "kind detail", "the entry kind does not match: kind detail"
+                EntryIdNotGuidErr "id detail", "the entry id is not a canonical GUID: id detail"
+                ProvenanceMismatchErr "provenance detail", "the entry provenance does not match: provenance detail"
+                MissingEntryFieldErr "field detail", "an entry field is missing: field detail"
+                DuplicateEntryFileNameErr "file name detail", "an entry file name is duplicated: file name detail"
+                DuplicateEntryVersionErr "version detail", "an entry version is duplicated: version detail"
+            ]
+
+        for error, expected in cases do
+            Assert.Equal<string>(expected, error.describe)
+
+        let descriptions = cases |> List.map (fun (error, _) -> error.describe)
+        Assert.Equal(6, descriptions |> List.distinct |> List.length)
+
     let private kindsInTagOrder : LibraryEntryKind list =
         [ MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind; CategoryEntryKind ]
 

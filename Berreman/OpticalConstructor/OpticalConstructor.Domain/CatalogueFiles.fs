@@ -25,6 +25,15 @@ module CatalogueFiles =
         | ManifestMismatchErr of reason : string
         | InvalidCatalogueEntriesErr of LibraryEntryError
 
+        member this.describe : string =
+            match this with
+            | CatalogueIoErr reason -> $"catalogue IO failed: {reason}"
+            | CatalogueFileRejectedErr reason -> $"a catalogue file was rejected: {reason}"
+            | MissingEntryFileErr reason -> $"an entry file is missing: {reason}"
+            | UnlistedEntryFileErr reason -> $"an entry file is not listed: {reason}"
+            | ManifestMismatchErr reason -> $"the catalogue manifest does not match its entries: {reason}"
+            | InvalidCatalogueEntriesErr error -> $"the catalogue entries are invalid: {error.describe}"
+
     /// One catalogue: its manifest and every entry, in the manifest's row order (spec 0050 001 §A).
     type CatalogueData =
         {
