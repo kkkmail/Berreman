@@ -4,6 +4,7 @@ open System.IO
 open System.Text.Json
 open Json.Schema
 open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.Errors
 
 /// JSON-Schema validate-on-load (§I.2 / R-2) via JsonSchema.Net. The published
@@ -74,3 +75,46 @@ module SchemaValidation =
     /// Validate `element` against the project schema through `validateWith`; the caller MUST NOT bind a
     /// project on `Error`.
     let validate (element : JsonElement) : Result<unit, StorageError> = validateWith schema element
+
+    let private libraryCommonSchemaFile : FileName = FileName (Path.Combine("schema", "library-common.schema.json"))
+
+    /// The definitions every entry schema references by its `$id`, loaded ONCE (spec 0050 001 §B).
+    let private libraryCommonSchema : Result<JsonSchema, StorageError> Lazy = lazy (libraryCommonSchemaFile.tryLoadSchema ())
+
+    type LibraryEntryKind with
+
+        /// The kind's build-copied entry schema (spec 0050 001 §B "JSON Schema per kind").
+        member this.schemaFile : FileName =
+            let kindFile =
+                match this with
+                | MaterialEntryKind -> "library-material.schema.json"
+                | SampleEntryKind -> "library-sample.schema.json"
+                | SourceEntryKind -> "library-source.schema.json"
+                | PolarizerEntryKind -> "library-polarizer.schema.json"
+                | DetectorEntryKind -> "library-detector.schema.json"
+                | CategoryEntryKind -> "library-category.schema.json"
+            FileName (Path.Combine("schema", kindFile))
+
+        /// The kind's schema, loaded after the common one, so its `$ref`s resolve when it is built.
+        member private this.tryLoadEntrySchema () : Result<JsonSchema, StorageError> =
+            libraryCommonSchema.Value |> Result.bind (fun _ -> this.schemaFile.tryLoadSchema ())
+
+    let private materialEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (MaterialEntryKind.tryLoadEntrySchema ())
+    let private sampleEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (SampleEntryKind.tryLoadEntrySchema ())
+    let private sourceEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (SourceEntryKind.tryLoadEntrySchema ())
+    let private polarizerEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (PolarizerEntryKind.tryLoadEntrySchema ())
+    let private detectorEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (DetectorEntryKind.tryLoadEntrySchema ())
+    let private categoryEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (CategoryEntryKind.tryLoadEntrySchema ())
+
+    /// Validate `element` against the entry schema of `kind` through `validateWith` (spec 0050 001 §B): a file
+    /// of another kind fails here, and the caller MUST NOT bind an entry on `Error`.
+    let validateEntry (kind : LibraryEntryKind) (element : JsonElement) : Result<unit, StorageError> =
+        let schema =
+            match kind with
+            | MaterialEntryKind -> materialEntrySchema
+            | SampleEntryKind -> sampleEntrySchema
+            | SourceEntryKind -> sourceEntrySchema
+            | PolarizerEntryKind -> polarizerEntrySchema
+            | DetectorEntryKind -> detectorEntrySchema
+            | CategoryEntryKind -> categoryEntrySchema
+        validateWith schema element

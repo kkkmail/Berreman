@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://berreman/schema/library-material.json",
+  "title": "LibraryMaterialEntry",
+  "description": "One material per file, <name>.material-json (spec 0050 001 §A, §B). The schema header is checked for every version, the body only for version 1, so a file of another version reaches the typed version check: there are no up-converters. The physics inside the payload is bound by the serializer.",
+  "type": "object",
+  "required": ["schema"],
+  "properties": {
+    "schema": {
+      "type": "object",
+      "required": ["kind", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": 1, "description": "The material kind's wire tag." },
+        "version": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" }
+      }
+    }
+  },
+  "if": {
+    "required": ["schema"],
+    "properties": {
+      "schema": {
+        "required": ["version"],
+        "properties": { "version": { "const": 1 } }
+      }
+    }
+  },
+  "then": {
+    "required": ["schema", "id", "version", "name", "categoryOpt", "descriptionOpt", "payload", "provenance", "contentHash"],
+    "additionalProperties": false,
+    "properties": {
+      "schema": true,
+      "id": { "$ref": "https://berreman/schema/library-common.json#/$defs/guid" },
+      "version": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" },
+      "name": { "type": "string", "minLength": 1 },
+      "categoryOpt": { "$ref": "https://berreman/schema/library-common.json#/$defs/guid" },
+      "descriptionOpt": { "type": ["string", "null"] },
+      "payload": {
+        "type": "object",
+        "required": ["Case", "Fields"],
+        "additionalProperties": false,
+        "properties": {
+          "Case": { "const": "MaterialPayload" },
+          "Fields": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "object",
+                "required": ["eps", "magnetic", "active"],
+                "additionalProperties": false,
+                "properties": {
+                  "eps": { "type": "object" },
+                  "magnetic": { "type": ["object", "null"] },
+                  "active": { "type": ["object", "null"] }
+                },
+                "description": "The material's complexity: its eps, and its optional magnetic and active aspects."
+              }
+            ],
+            "minItems": 1,
+            "items": false
+          }
+        }
+      },
+      "provenance": { "$ref": "https://berreman/schema/library-common.json#/$defs/provenance" },
+      "contentHash": { "$ref": "https://berreman/schema/library-common.json#/$defs/contentHash" }
+    }
+  }
+}

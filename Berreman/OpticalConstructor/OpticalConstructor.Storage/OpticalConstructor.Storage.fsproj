@@ -21,6 +21,7 @@
         <Compile Include="Errors.fs" />
         <Compile Include="SchemaValidation.fs" />
         <Compile Include="CanonicalJson.fs" />
+        <Compile Include="EntryFileJson.fs" />
         <Compile Include="ProjectJson.fs" />
         <Compile Include="ProjectFile.fs" />
         <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-
@@ -62,6 +63,27 @@
         <!-- Spec 0026 Part G/H (slice 007): the groups/collections schema, build-copied
              beside the assembly so GroupsLibrary.validate loads it at runtime (G.3.1). -->
         <Content Include="schema\optical-constructor-groups.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-common.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-material.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-sample.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-source.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-polarizer.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-detector.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-category.schema.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>

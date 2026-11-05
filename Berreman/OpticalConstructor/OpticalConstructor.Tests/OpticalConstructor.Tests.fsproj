@@ -231,6 +231,7 @@
         <Compile Include="PlacedSampleEmissionTests.fs" />
         <Compile Include="CanonicalJsonTests.fs" />
         <Compile Include="LibraryEntryFilesTests.fs" />
+        <Compile Include="EntryFileJsonTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
