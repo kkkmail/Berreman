@@ -81,6 +81,12 @@ module SchemaValidation =
     /// The definitions every entry schema references by its `$id`, loaded ONCE (spec 0050 001 §B).
     let private libraryCommonSchema : Result<JsonSchema, StorageError> Lazy = lazy (libraryCommonSchemaFile.tryLoadSchema ())
 
+    type FileName with
+
+        /// A library schema, loaded after the common one, so its `$ref`s resolve when it is built.
+        member private this.tryLoadLibrarySchema () : Result<JsonSchema, StorageError> =
+            libraryCommonSchema.Value |> Result.bind (fun _ -> this.tryLoadSchema ())
+
     type LibraryEntryKind with
 
         /// The kind's build-copied entry schema (spec 0050 001 §B "JSON Schema per kind").
@@ -95,16 +101,12 @@ module SchemaValidation =
                 | CategoryEntryKind -> "library-category.schema.json"
             FileName (Path.Combine("schema", kindFile))
 
-        /// The kind's schema, loaded after the common one, so its `$ref`s resolve when it is built.
-        member private this.tryLoadEntrySchema () : Result<JsonSchema, StorageError> =
-            libraryCommonSchema.Value |> Result.bind (fun _ -> this.schemaFile.tryLoadSchema ())
-
-    let private materialEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (MaterialEntryKind.tryLoadEntrySchema ())
-    let private sampleEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (SampleEntryKind.tryLoadEntrySchema ())
-    let private sourceEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (SourceEntryKind.tryLoadEntrySchema ())
-    let private polarizerEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (PolarizerEntryKind.tryLoadEntrySchema ())
-    let private detectorEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (DetectorEntryKind.tryLoadEntrySchema ())
-    let private categoryEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (CategoryEntryKind.tryLoadEntrySchema ())
+    let private materialEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (MaterialEntryKind.schemaFile.tryLoadLibrarySchema ())
+    let private sampleEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (SampleEntryKind.schemaFile.tryLoadLibrarySchema ())
+    let private sourceEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (SourceEntryKind.schemaFile.tryLoadLibrarySchema ())
+    let private polarizerEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (PolarizerEntryKind.schemaFile.tryLoadLibrarySchema ())
+    let private detectorEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (DetectorEntryKind.schemaFile.tryLoadLibrarySchema ())
+    let private categoryEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (CategoryEntryKind.schemaFile.tryLoadLibrarySchema ())
 
     /// Validate `element` against the entry schema of `kind` through `validateWith` (spec 0050 001 §B): a file
     /// of another kind fails here, and the caller MUST NOT bind an entry on `Error`.
@@ -118,3 +120,12 @@ module SchemaValidation =
             | DetectorEntryKind -> detectorEntrySchema
             | CategoryEntryKind -> categoryEntrySchema
         validateWith schema element
+
+    let private catalogueManifestSchemaFile : FileName = FileName (Path.Combine("schema", "library-catalogue.schema.json"))
+
+    /// The `.catalogue-json` schema, loaded ONCE (spec 0050 001 §A, §B).
+    let private catalogueManifestSchema : Result<JsonSchema, StorageError> Lazy = lazy (catalogueManifestSchemaFile.tryLoadLibrarySchema ())
+
+    /// Validate `element` against the catalogue manifest's schema through `validateWith` (spec 0050 001 §B);
+    /// the caller MUST NOT bind a manifest on `Error`.
+    let validateCatalogueManifest (element : JsonElement) : Result<unit, StorageError> = validateWith catalogueManifestSchema element

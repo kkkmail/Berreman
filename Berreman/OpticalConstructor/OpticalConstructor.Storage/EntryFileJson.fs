@@ -2,13 +2,26 @@ namespace OpticalConstructor.Storage
 
 open System.Text.Json
 open System.Text.Json.Nodes
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
 
-/// One library entry per file: written as indented canonical JSON with its content hash beside the content's
-/// keys, read back through the kind's schema, the schema version and the hash (spec 0050 001 §B, .spec-md §5).
+/// One library entry per file, and one manifest per catalogue folder: written as indented canonical JSON, read
+/// back through the schema and the schema version; an entry carries its content hash beside the content's keys
+/// and is read back through it too (spec 0050 001 §A, §B, .spec-md §5).
 module EntryFileJson =
+
+    /// A throwing JSON read as a value: its failure is `MalformedJsonErr` carrying the message.
+    let private tryRead (read : unit -> 'Value) : Result<'Value, StorageError> =
+        try Ok (read ())
+        with e -> Error (MalformedJsonErr e.Message)
+
+    /// There are no up-converters and no fallback readers: only the current schema version is read (spec 0050
+    /// 001 §B).
+    let private checkSchemaVersion (extension : FileExtension) (expected : FileSchemaVersion) (found : FileSchemaVersion) : Result<unit, StorageError> =
+        if found = expected then Ok ()
+        else Error (UnsupportedSchemaVersionErr { fileExtension = extension; found = found; expected = expected })
 
     /// A library file's text, UTF-8 without a BOM (spec 0050 001 §B). S2's database payload and S4's kit
     /// snapshot hold it byte for byte.
@@ -17,30 +30,22 @@ module EntryFileJson =
 
         member this.value : string = let (LibraryFileText t) = this in t
 
-        /// The entry this file holds, checked in order (spec 0050 001 §B): the text parses (`MalformedJsonErr`);
-        /// it is a `kind` file of its schema (`SchemaValidationErr`); its schema version is the kind's current
-        /// one, judged before anything binds (`UnsupportedSchemaVersionErr`); the content binds without its hash
-        /// (`MalformedJsonErr`); and the recorded hash is the content's (`ContentHashMismatchErr`). There are no
-        /// up-converters and no fallback readers.
-        member this.parseEntry (kind : LibraryEntryKind) : Result<LibraryEntryEnvelope, StorageError> =
-            let parsed =
-                try Ok (JsonDocument.Parse this.value)
-                with e -> Error (MalformedJsonErr e.Message)
-
-            match parsed with
+        /// `read` over the root of the document this text parses to (`MalformedJsonErr` when it does not).
+        /// The document ends with the call, so `read` keeps nothing of the root.
+        member private this.readRoot<'Value> (read : JsonElement -> Result<'Value, StorageError>) : Result<'Value, StorageError> =
+            match tryRead (fun () -> JsonDocument.Parse this.value) with
             | Error e -> Error e
             | Ok doc ->
                 use doc = doc
-                let root = doc.RootElement
+                read doc.RootElement
+
+        /// The entry this file holds, checked in order (spec 0050 001 §B): the text parses (`MalformedJsonErr`);
+        /// it is a `kind` file of its schema (`SchemaValidationErr`); its schema version is the kind's current
+        /// one, judged before anything binds (`UnsupportedSchemaVersionErr`); the content binds without its hash
+        /// (`MalformedJsonErr`); and the recorded hash is the content's (`ContentHashMismatchErr`).
+        member this.parseEntry (kind : LibraryEntryKind) : Result<LibraryEntryEnvelope, StorageError> =
+            this.readRoot (fun (root : JsonElement) ->
                 let hashKey = nameof Unchecked.defaultof<LibraryEntryEnvelope>.contentHash
-
-                let bind (read : unit -> 'Value) : Result<'Value, StorageError> =
-                    try Ok (read ())
-                    with e -> Error (MalformedJsonErr e.Message)
-
-                let checkVersion (found : FileSchemaVersion) : Result<unit, StorageError> =
-                    if found = kind.currentSchemaVersion then Ok ()
-                    else Error (UnsupportedSchemaVersionErr { fileExtension = kind.extension; found = found; expected = kind.currentSchemaVersion })
 
                 let bindContent () : LibraryEntryContent =
                     let body = JsonObject.Create root
@@ -54,10 +59,23 @@ module EntryFileJson =
                         else Error (ContentHashMismatchErr { entryId = content.id; recorded = recorded; computed = computed }))
 
                 SchemaValidation.validateEntry kind root
-                |> Result.bind (fun () -> bind (fun () -> root.GetProperty("schema").GetProperty("version").Deserialize<FileSchemaVersion> options))
-                |> Result.bind checkVersion
-                |> Result.bind (fun () -> bind (fun () -> root.GetProperty(hashKey).Deserialize<ContentHash> options))
-                |> Result.bind (fun recorded -> bind bindContent |> Result.bind (checkHash recorded))
+                |> Result.bind (fun () -> tryRead (fun () -> root.GetProperty("schema").GetProperty("version").Deserialize<FileSchemaVersion> options))
+                |> Result.bind (checkSchemaVersion kind.extension kind.currentSchemaVersion)
+                |> Result.bind (fun () -> tryRead (fun () -> root.GetProperty(hashKey).Deserialize<ContentHash> options))
+                |> Result.bind (fun recorded -> tryRead bindContent |> Result.bind (checkHash recorded)))
+
+        /// The catalogue manifest this file holds, checked in order (spec 0050 001 §A, §B): the text parses
+        /// (`MalformedJsonErr`); it is a manifest of its schema (`SchemaValidationErr`); its schema version is the
+        /// current one, judged before anything binds (`UnsupportedSchemaVersionErr`); and it binds
+        /// (`MalformedJsonErr`).
+        member this.parseCatalogueManifest : Result<CatalogueManifest, StorageError> =
+            this.readRoot (fun (root : JsonElement) ->
+                let versionKey = nameof Unchecked.defaultof<CatalogueManifest>.schemaVersion
+
+                SchemaValidation.validateCatalogueManifest root
+                |> Result.bind (fun () -> tryRead (fun () -> root.GetProperty(versionKey).Deserialize<FileSchemaVersion> options))
+                |> Result.bind (checkSchemaVersion CatalogueManifest.extension CatalogueManifest.currentSchemaVersion)
+                |> Result.bind (fun () -> tryRead (fun () -> root.Deserialize<CatalogueManifest> options)))
 
     type LibraryEntryContent with
 
@@ -81,3 +99,14 @@ module EntryFileJson =
                     entry[nameof this.contentHash] <- hashNode
                     Ok (LibraryFileText $"{entry.indentedCanonicalText}\n")
                 | _ -> Error (MalformedJsonErr "an entry's content is not a JSON object")
+
+    type CatalogueManifest with
+
+        /// The catalogue folder's `.catalogue-json`: the manifest's canonical node, indented and ending with one
+        /// `\n` (spec 0050 001 §A, §B).
+        member this.fileText : Result<LibraryFileText, StorageError> =
+            nodeOf this |> Result.map (fun node -> LibraryFileText $"{node.indentedCanonicalText}\n")
+
+        /// The hash S3's start-up import compares with the one it recorded (spec 0050 001 §B "Import on every
+        /// start"). It is computed, never stored in the manifest.
+        member this.manifestHash : Result<ContentHash, StorageError> = contentHashOf this

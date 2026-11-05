@@ -22,7 +22,8 @@ open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.EntryFileJson
 
 /// One library entry per file: every kind is written, read back through its schema, version and hash checks
-/// and decoded to the value it was built from; each failure is its typed error (spec 0050 001 §B).
+/// and decoded to the value it was built from; each failure is its typed error (spec 0050 001 §B). The catalogue
+/// manifest's file follows the same law, and every code seed has a file form (001 §A, §B).
 module EntryFileJsonTests =
 
     let private okOf (result : Result<'Value, StorageError>) : 'Value =
@@ -35,7 +36,9 @@ module EntryFileJsonTests =
         | Ok value -> value
         | Error error -> failwith $"expected Ok, got %A{error}"
 
-    let private builtInCatalogue : EntryProvenance = BuiltInProvenance (CatalogueId (Guid.Parse "9a3e5c71-2b84-4d6f-a0c9-6e1f3b7d5a28"))
+    let private testCatalogueId : CatalogueId = CatalogueId (Guid.Parse "9a3e5c71-2b84-4d6f-a0c9-6e1f3b7d5a28")
+
+    let private builtInCatalogue : EntryProvenance = BuiltInProvenance testCatalogueId
 
     /// The file of `content`, and the envelope its text parses back to as a `kind` entry, which equals the
     /// sealed one.
@@ -285,11 +288,15 @@ module EntryFileJsonTests =
         Assert.Equal<ContentHash>(contentHashOf tamperableContent |> okOf, readBack.contentHash)
         Assert.Equal<ContentHash>(contentHashOf readBack.content |> okOf, readBack.contentHash)
 
+    /// `file` with its JSON changed by `edit`.
+    let private editedText (file : LibraryFileText) (edit : JsonObject -> unit) : LibraryFileText =
+        let root = (JsonNode.Parse file.value).AsObject()
+        edit root
+        LibraryFileText (root.ToJsonString())
+
     /// The file of `content` with its JSON changed by `edit`.
     let private editedFileOf (content : LibraryEntryContent) (edit : JsonObject -> unit) : LibraryFileText =
-        let entry = (JsonNode.Parse (fileOf content).value).AsObject()
-        edit entry
-        LibraryFileText (entry.ToJsonString())
+        editedText (fileOf content) edit
 
     [<Fact>]
     let ``an entry file of another schema version is UnsupportedSchemaVersionErr`` () =
@@ -314,7 +321,7 @@ module EntryFileJsonTests =
         Assert.NotEqual<ContentHash>(envelope.contentHash, contentHashOf changed |> okOf)
         Assert.Equal<Result<LibraryEntryEnvelope, StorageError>>(Error expected, tampered.parseEntry MaterialEntryKind)
 
-    let private assertSchemaInvalid (place : string) (result : Result<LibraryEntryEnvelope, StorageError>) : unit =
+    let private assertSchemaInvalid (place : string) (result : Result<'Value, StorageError>) : unit =
         match result with
         | Error (SchemaValidationErr messages) -> Assert.True(not (List.isEmpty messages), $"{place}: the error carries the schema's messages")
         | other -> Assert.Fail($"{place}: expected SchemaValidationErr, got %A{other}")
@@ -330,3 +337,140 @@ module EntryFileJsonTests =
         match (LibraryFileText "{ this is not JSON").parseEntry MaterialEntryKind with
         | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason, "the error carries the parser's message")
         | other -> Assert.Fail($"a text that is not JSON: expected MalformedJsonErr, got %A{other}")
+
+    /// A catalogue holding a material, a sample and a source.
+    let private threeKindManifest : CatalogueManifest =
+        let contents =
+            [
+                LibraryEntryContent.ofSourcePreset VersionNumber.first builtInCatalogue (SeedSources.tunables |> List.find (fun s -> s.id = PresetIds.tiSapphireTunable)) |> decodedOf
+                LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue silica
+                LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue SeedSamples.langasiteSilicon
+            ]
+
+        contents
+        |> List.map (fun content -> content.``sealed`` |> okOf)
+        |> CatalogueManifest.tryCreate testCatalogueId (CatalogueName "Test catalogue") VersionNumber.first
+        |> decodedOf
+
+    let private rowWithHash (hash : ContentHash) (row : CatalogueManifestRow) : CatalogueManifestRow = { row with contentHash = hash }
+
+    [<Fact>]
+    let ``a catalogue manifest round-trips and its hash is stable`` () =
+        let manifest = threeKindManifest
+        let text = manifest.fileText |> okOf
+
+        let node = JsonNode.Parse text.value
+        Assert.Equal<string>($"{node.indentedCanonicalText}\n", text.value)
+        Assert.False(text.value.EndsWith "\n\n", "the file ends with exactly one line end")
+        Assert.Equal<string list>([ "entries"; "id"; "name"; "schemaVersion"; "version" ], [ for KeyValue (key, _) in node.AsObject() -> key ])
+
+        let readBack = text.parseCatalogueManifest |> okOf
+        Assert.Equal<CatalogueManifest>(manifest, readBack)
+        Assert.Equal<LibraryFileText>(text, readBack.fileText |> okOf)
+
+        let hash = manifest.manifestHash |> okOf
+        Assert.Equal<ContentHash>(hash, readBack.manifestHash |> okOf)
+        Assert.Equal<ContentHash>(contentHashOf manifest |> okOf, hash)
+
+        match manifest.entries with
+        | first :: rest ->
+            let changedRow = first |> rowWithHash (contentHashOf "another entry's content" |> okOf)
+            let changed = { manifest with entries = changedRow :: rest }
+            Assert.NotEqual<ContentHash>(hash, changed.manifestHash |> okOf)
+        | [] -> Assert.Fail "the three-kind manifest has no rows"
+
+    /// The manifest's file with its JSON changed by `edit`.
+    let private editedManifestFile (edit : JsonObject -> unit) : LibraryFileText =
+        editedText (threeKindManifest.fileText |> okOf) edit
+
+    [<Fact>]
+    let ``a catalogue manifest of another schema version is UnsupportedSchemaVersionErr`` () =
+        let atVersion2 (manifest : JsonObject) : unit = manifest["schemaVersion"] <- JsonValue.Create 2
+        let expected = UnsupportedSchemaVersionErr { fileExtension = CatalogueManifest.extension; found = FileSchemaVersion 2; expected = FileSchemaVersion 1 }
+
+        let intact = editedManifestFile atVersion2
+        let junkBody = editedManifestFile (fun manifest -> atVersion2 manifest; manifest["entries"] <- JsonObject())
+
+        for text in [ intact; junkBody ] do
+            Assert.Equal<Result<CatalogueManifest, StorageError>>(Error expected, text.parseCatalogueManifest)
+
+    [<Fact>]
+    let ``a schema-invalid catalogue manifest is SchemaValidationErr`` () =
+        let firstRow (manifest : JsonObject) : JsonObject = manifest.["entries"].[0].AsObject()
+
+        let invalid : (string * (JsonObject -> unit)) list =
+            [
+                "a row without its contentHash", (fun manifest -> (firstRow manifest).Remove "contentHash" |> ignore)
+                "a row of kind 0", (fun manifest -> (firstRow manifest)["kind"] <- JsonValue.Create 0)
+                "a row of kind 7", (fun manifest -> (firstRow manifest)["kind"] <- JsonValue.Create 7)
+                "a row with an empty fileName", (fun manifest -> (firstRow manifest)["fileName"] <- JsonValue.Create "")
+                "a row with another key", (fun manifest -> (firstRow manifest)["extra"] <- JsonValue.Create 1)
+                "an id that is not a GUID", (fun manifest -> manifest["id"] <- JsonValue.Create "not a GUID")
+                "an empty name", (fun manifest -> manifest["name"] <- JsonValue.Create "")
+                "version 0", (fun manifest -> manifest["version"] <- JsonValue.Create 0)
+                "entries that are not an array", (fun manifest -> manifest["entries"] <- JsonObject())
+                "another top-level key", (fun manifest -> manifest["extra"] <- JsonValue.Create 1)
+                "schemaVersion 0", (fun manifest -> manifest["schemaVersion"] <- JsonValue.Create 0)
+                "no schemaVersion", (fun manifest -> manifest.Remove "schemaVersion" |> ignore)
+            ]
+
+        for place, edit in invalid do
+            assertSchemaInvalid place (editedManifestFile edit).parseCatalogueManifest
+
+        let assertMalformed (place : string) (text : LibraryFileText) : unit =
+            match text.parseCatalogueManifest with
+            | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason, $"{place}: the error carries the reader's message")
+            | other -> Assert.Fail($"{place}: expected MalformedJsonErr, got %A{other}")
+
+        assertMalformed "a text that is not JSON" (LibraryFileText "{ this is not JSON")
+        assertMalformed "a version the schema allows but an int cannot hold" (editedManifestFile (fun manifest -> manifest["version"] <- JsonValue.Create 3000000000L))
+
+    let private categoryContent (category : MaterialCategory) : LibraryEntryContent =
+        LibraryEntryContent.ofMaterialCategory VersionNumber.first builtInCatalogue category |> decodedOf
+
+    let private seedContent (entry : LibraryEntry) : LibraryEntryContent =
+        match entry with
+        | SampleItem sample -> LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue sample
+        | SourceItem source -> LibraryEntryContent.ofSourcePreset VersionNumber.first builtInCatalogue source |> decodedOf
+        | DetectorItem detector -> LibraryEntryContent.ofDetectorPreset VersionNumber.first builtInCatalogue detector |> decodedOf
+        | PolarizerItem polarizer -> LibraryEntryContent.ofPolarizerPreset VersionNumber.first builtInCatalogue polarizer |> decodedOf
+
+    [<Fact>]
+    let ``every built-in seals, writes, reads and decodes equal to its seed`` () =
+        Assert.NotEmpty builtInEntries
+        Assert.NotEmpty standardCategories
+        Assert.NotEmpty seedEntries
+
+        for material in builtInEntries do
+            assertMaterialRoundTrips builtInCatalogue material
+
+        for category in standardCategories do
+            let readBack = categoryContent category |> roundTrip
+            Assert.Equal<MaterialCategory>(category, readBack.content.toMaterialCategory |> decodedOf)
+
+        for entry in seedEntries do
+            let readBack = seedContent entry |> roundTrip
+
+            match entry with
+            | SampleItem sample -> Assert.Equal<Sample>(sample, readBack.content.toSample |> decodedOf)
+            | SourceItem source -> Assert.Equal<SourcePreset>(source, readBack.content.toSourcePreset |> decodedOf)
+            | DetectorItem detector -> Assert.Equal<DetectorPreset>(detector, readBack.content.toDetectorPreset |> decodedOf)
+            | PolarizerItem polarizer -> Assert.Equal<PolarizerPreset>(polarizer, readBack.content.toPolarizerPreset |> decodedOf)
+
+    [<Fact>]
+    let ``the built-ins form one catalogue with unique file names per kind`` () =
+        let contents =
+            (builtInEntries |> List.map (LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue))
+            @ (standardCategories |> List.map categoryContent)
+            @ (seedEntries |> List.map seedContent)
+
+        let envelopes = contents |> List.map (fun content -> content.``sealed`` |> okOf)
+        let manifest = CatalogueManifest.tryCreate testCatalogueId (CatalogueName "Built-in") VersionNumber.first envelopes |> decodedOf
+
+        Assert.Equal(List.length builtInEntries + List.length standardCategories + List.length seedEntries, List.length manifest.entries)
+
+        let kinds = manifest.entries |> List.map (fun row -> row.kind) |> List.distinct
+        Assert.Equal<LibraryEntryKind list>(LibraryEntryKind.all, kinds)
+
+        let readBack = manifest.fileText |> Result.bind (fun text -> text.parseCatalogueManifest) |> okOf
+        Assert.Equal<CatalogueManifest>(manifest, readBack)
