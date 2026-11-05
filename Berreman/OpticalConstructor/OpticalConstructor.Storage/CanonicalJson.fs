@@ -1,9 +1,17 @@
 namespace OpticalConstructor.Storage
 
+open System
+open System.Buffers
 open System.Numerics
+open System.Security.Cryptography
+open System.Text
+open System.Text.Encodings.Web
 open System.Text.Json
+open System.Text.Json.Nodes
 open System.Text.Json.Serialization
 open MathNet.Numerics.LinearAlgebra
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Storage.Errors
 
 /// The canonical JSON stack every JSON store of the app shares (spec 0050 001 §B, `.spec-md` §5).
 module CanonicalJson =
@@ -165,3 +173,56 @@ module CanonicalJson =
                 .WithUnwrapOption()
         o.Converters.Add(JsonFSharpConverter(fsharpOptions))
         o
+
+    /// A value's JSON tree through `options` (spec 0050 001 §B): a serializer failure, such as a non-finite
+    /// double or an unsupported type, is `MalformedJsonErr` carrying its message, never a throw.
+    let nodeOf<'Value> (value : 'Value) : Result<JsonNode, StorageError> =
+        try Ok(JsonSerializer.SerializeToNode<'Value>(value, options))
+        with e -> Error(MalformedJsonErr e.Message)
+
+    /// Every object's keys in ordinal order; arrays keep theirs, and a value its serializer's text, so a number
+    /// stays the invariant shortest round-trip form (spec 0050 001 §B).
+    let rec private writeCanonical (writer : Utf8JsonWriter) (node : JsonNode) : unit =
+        match node with
+        | null -> writer.WriteNullValue()
+        | :? JsonObject as o ->
+            writer.WriteStartObject()
+            for KeyValue (name, child) in o |> Seq.sortWith (fun a b -> StringComparer.Ordinal.Compare(a.Key, b.Key)) do
+                writer.WritePropertyName name
+                writeCanonical writer child
+            writer.WriteEndObject()
+        | :? JsonArray as a ->
+            writer.WriteStartArray()
+            for item in a do
+                writeCanonical writer item
+            writer.WriteEndArray()
+        | value -> value.WriteTo(writer, options)
+
+    /// Relaxed escaping keeps a name such as `CO₂ laser 10.6 µm` readable in a committed file (spec 0050 001 §B).
+    let private indentedWriterOptions : JsonWriterOptions =
+        JsonWriterOptions(Indented = true, IndentCharacter = ' ', IndentSize = 2, NewLine = "\n", Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping)
+
+    let private compactWriterOptions : JsonWriterOptions =
+        JsonWriterOptions(Indented = false, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping)
+
+    /// The canonical renderings (spec 0050 001 §B): sorted keys, UTF-8 without a BOM.
+    type JsonNode with
+
+        member private this.canonicalTextWith (writerOptions : JsonWriterOptions) : string =
+            let buffer = ArrayBufferWriter<byte>()
+            use writer = new Utf8JsonWriter(buffer, writerOptions)
+            writeCanonical writer this
+            writer.Flush()
+            Encoding.UTF8.GetString(buffer.WrittenSpan)
+
+        /// The file form: two-space indents and `\n` line ends, with no final line end.
+        member this.indentedCanonicalText : string = this.canonicalTextWith indentedWriterOptions
+
+        /// The hashed form: no whitespace at all.
+        member this.compactCanonicalText : string = this.canonicalTextWith compactWriterOptions
+
+    /// The lowercase hex SHA-256 of the UTF-8 of a value's compact canonical text (spec 0050 001 §B), so the
+    /// hash depends on neither whitespace, key order nor the current culture.
+    let contentHashOf<'Value> (value : 'Value) : Result<ContentHash, StorageError> =
+        nodeOf value
+        |> Result.map (fun node -> Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(node.compactCanonicalText))) |> ContentHash)
