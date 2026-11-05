@@ -49,6 +49,15 @@
   "30": {},
   "31": {},
   "32": {},
+  "33": {
+    "constructor-unit-tests": [
+      "OpticalConstructor.Tests.BuiltInCatalogueParityTests.every built-in material and category in the catalogue equals its seed",
+      "OpticalConstructor.Tests.BuiltInCatalogueParityTests.every built-in sample in the catalogue equals its seed",
+      "OpticalConstructor.Tests.BuiltInCatalogueParityTests.every built-in source, detector and polarizer in the catalogue equals its seed",
+      "OpticalConstructor.Tests.BuiltInCatalogueParityTests.the built-in catalogue is exactly what the seeds seal to, and its manifest hash is stable",
+      "OpticalConstructor.Tests.BuiltInCatalogueParityTests.the built-in catalogue is the Built-in catalogue at version 1"
+    ]
+  },
   "4": {},
   "5": {
     "constructor-unit-tests": [
