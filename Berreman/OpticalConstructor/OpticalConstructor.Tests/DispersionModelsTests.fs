@@ -432,34 +432,37 @@ module DispersionModelsTests =
     /// The published Forouhi–Bloomer a-Si coefficient set (Horiba TN13, which
     /// implements the 1986 five-parameter form and tabulates ε∞ = 3.453 —
     /// hence n∞ = √ε∞ — A = 0.865 eV, B = 6.703 eV, C = 13.237 eV²,
-    /// Eg = 0.906 eV over 0.6–5 eV).
-    let private forouhiBloomerASi =
-        ForouhiBloomer
-            {
-                nInf = sqrt 3.453
-                a = 0.865
-                b = 6.703
-                c = 13.237
-                bandGap = 0.906
-                wavelengthUnit = ElectronVolt
-                thermoOptic = None
-            }
+    /// Eg = 0.906 eV over 0.6–5 eV), a fresh record on every call.
+    let private forouhiBloomerASiCoefficients () : ForouhiBloomerCoefficients =
+        {
+            nInf = sqrt 3.453
+            a = 0.865
+            b = 6.703
+            c = 13.237
+            bandGap = 0.906
+            wavelengthUnit = ElectronVolt
+            thermoOptic = None
+        }
+
+    let private forouhiBloomerASi = ForouhiBloomer (forouhiBloomerASiCoefficients ())
 
     /// Rakić et al. 1998 (Appl. Opt. 37, 5271) Brendel–Bormann parameters for
-    /// gold — the set behind the refractiveindex.info Au/Rakic-BB entry.
-    let private brendelBormannGold =
-        BrendelBormann
-            {
-                plasmaFrequency = 9.03
-                intrabandStrength = 0.770
-                intrabandDamping = 0.050
-                strength = [ 0.054; 0.050; 0.312; 0.719; 1.648 ]
-                resonance = [ 0.218; 2.885; 4.069; 6.137; 27.97 ]
-                damping = [ 0.074; 0.035; 0.083; 0.125; 0.179 ]
-                broadening = [ 0.742; 0.349; 0.830; 1.246; 1.795 ]
-                wavelengthUnit = ElectronVolt
-                thermoOptic = None
-            }
+    /// gold — the set behind the refractiveindex.info Au/Rakic-BB entry — a fresh
+    /// record on every call.
+    let private brendelBormannGoldCoefficients () : BrendelBormannCoefficients =
+        {
+            plasmaFrequency = 9.03
+            intrabandStrength = 0.770
+            intrabandDamping = 0.050
+            strength = [ 0.054; 0.050; 0.312; 0.719; 1.648 ]
+            resonance = [ 0.218; 2.885; 4.069; 6.137; 27.97 ]
+            damping = [ 0.074; 0.035; 0.083; 0.125; 0.179 ]
+            broadening = [ 0.742; 0.349; 0.830; 1.246; 1.795 ]
+            wavelengthUnit = ElectronVolt
+            thermoOptic = None
+        }
+
+    let private brendelBormannGold = BrendelBormann (brendelBormannGoldCoefficients ())
 
     [<Fact>]
     let ``AC-B6 evaluate ForouhiBloomer reproduces the published a-Si reference values`` () =
@@ -583,3 +586,16 @@ module DispersionModelsTests =
                 Assert.Equal((f w).value, (axis.complexIndex w).value)
                 let expected = Eps.fromComplexRefractionIndex (f w)
                 Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, $"λ={w}")
+
+    [<Fact>]
+    let ``equal Forouhi-Bloomer and Brendel-Bormann models lower to equal axis data`` () =
+        // An analytic model lowers to DATA, so equal models lower to equal axes (spec 0050 §3.1, 001 §B).
+        assertLowersToEqualData
+            "Forouhi-Bloomer"
+            (fun () -> ForouhiBloomer (forouhiBloomerASiCoefficients ()))
+            (ForouhiBloomer { (forouhiBloomerASiCoefficients ()) with bandGap = 1.0 })
+        let gold = brendelBormannGoldCoefficients ()
+        assertLowersToEqualData
+            "Brendel-Bormann"
+            (fun () -> BrendelBormann (brendelBormannGoldCoefficients ()))
+            (BrendelBormann { gold with broadening = List.updateAt 0 0.8 gold.broadening })
