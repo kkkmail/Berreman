@@ -229,6 +229,7 @@
              the pure Library.placementEmissionForEntry rule plus the end-to-end Ui MVU drive
              (place a Sample, bind it, choose it to vary) for both a ThinFilm and a Plate seed. -->
         <Compile Include="PlacedSampleEmissionTests.fs" />
+        <Compile Include="CanonicalJsonTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

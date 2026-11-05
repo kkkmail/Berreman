@@ -26,6 +26,13 @@
   "19": {},
   "2": {},
   "20": {},
+  "21": {
+    "constructor-unit-tests": [
+      "OpticalConstructor.Tests.CanonicalJsonTests.a complex number survives the shared options as its real and imaginary parts",
+      "OpticalConstructor.Tests.CanonicalJsonTests.a real matrix survives the shared options as its rows",
+      "OpticalConstructor.Tests.CanonicalJsonTests.an absorbing built-in material survives the shared options"
+    ]
+  },
   "3": {
     "constructor-unit-tests": [
       "OpticalConstructor.Tests.DispersionModelsTests.equal Tauc-Lorentz and Gaussian-oscillator models lower to equal axis data"
