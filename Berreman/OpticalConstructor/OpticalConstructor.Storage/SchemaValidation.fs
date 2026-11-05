@@ -35,14 +35,9 @@ module SchemaValidation =
     /// validate-on-load is idempotent across calls.
     let private schema : Result<JsonSchema, StorageError> Lazy = lazy (projectSchemaFile.tryLoadSchema ())
 
-    /// Flatten a JsonSchema.Net evaluation tree into a list of human-readable
-    /// messages (`<instance-location>: <keyword> -> <message>`), preserving the
-    /// library's own wording verbatim (§I.2 — the messages travel into
-    /// `SchemaValidationErr`). Walks `results.Details` recursively so a NESTED
-    /// violation keeps its precise instance location. Public so the groups store
-    /// reuses this exact seam (slice 007 / R-4) instead of re-implementing a
-    /// shallower, top-level-only collector that drops nested detail.
-    let collectMessages (results : EvaluationResults) : string list =
+    /// Flatten a JsonSchema.Net evaluation tree into `<instance-location>: <keyword> -> <message>` lines, in
+    /// the library's own wording (§I.2). Walks `results.Details` so a NESTED violation keeps its location.
+    let private collectMessages (results : EvaluationResults) : string list =
         let rec walk (r : EvaluationResults) =
             seq {
                 match r.Errors with
@@ -58,15 +53,16 @@ module SchemaValidation =
             }
         walk results |> Seq.toList
 
-    /// Validate `element` against the published schema. On any evaluation failure
-    /// returns `SchemaValidationErr` carrying the JsonSchema.Net messages; the
-    /// caller MUST NOT bind a project on `Error`.
-    let validate (element : JsonElement) : Result<unit, StorageError> =
+    /// Validate `element` against a build-copied schema: the schema's own load error, or on any evaluation
+    /// failure `SchemaValidationErr` carrying the JsonSchema.Net messages; the caller MUST NOT bind on
+    /// `Error`. The one evaluation body every JSON format shares (spec 0050 `.manual/001` §B "JSON Schema
+    /// per kind"); each owner passes its own schema, loaded once behind its `lazy`.
+    let validateWith (schema : Lazy<Result<JsonSchema, StorageError>>) (element : JsonElement) : Result<unit, StorageError> =
         match schema.Value with
         | Error e -> Error e
-        | Ok schema ->
+        | Ok loaded ->
             let options = EvaluationOptions(OutputFormat = OutputFormat.List)
-            let results = schema.Evaluate(element, options)
+            let results = loaded.Evaluate(element, options)
             if results.IsValid then Ok ()
             else
                 let messages = collectMessages results
@@ -74,3 +70,7 @@ module SchemaValidation =
                     if List.isEmpty messages then [ "schema validation failed" ]
                     else messages
                 Error (SchemaValidationErr messages)
+
+    /// Validate `element` against the project schema through `validateWith`; the caller MUST NOT bind a
+    /// project on `Error`.
+    let validate (element : JsonElement) : Result<unit, StorageError> = validateWith schema element

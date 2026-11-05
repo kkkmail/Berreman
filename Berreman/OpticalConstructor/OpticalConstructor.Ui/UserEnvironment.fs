@@ -325,23 +325,10 @@ let schemaFileName : FileName = FileName "optical-constructor-environment.schema
 /// `$id` in the process-global registry, so a second load would throw.
 let private envSchema : Result<JsonSchema, StorageError> Lazy = lazy (schemaFileName.tryLoadSchema ())
 
-/// Validate a parsed document against the env schema (§J.6 item 1) via
-/// `JsonSchema.Net`. On any evaluation failure returns `SchemaValidationErr`
-/// with the library's messages; the caller MUST NOT bind on `Error`.
-let validateUserEnvironment (element : JsonElement) : Result<unit, StorageError> =
-    match envSchema.Value with
-    | Error e -> Error e
-    | Ok schema ->
-        let options = EvaluationOptions(OutputFormat = OutputFormat.List)
-        let results = schema.Evaluate(element, options)
-        if results.IsValid then Ok ()
-        else
-            let messages =
-                match results.Errors with
-                | null -> []
-                | errs -> [ for kv in errs -> $"{results.InstanceLocation}: {kv.Key} -> {kv.Value}" ]
-            let messages = if List.isEmpty messages then [ "environment schema validation failed" ] else messages
-            Error (SchemaValidationErr messages)
+/// Validate a parsed document against the env schema (§J.6 item 1), REUSING
+/// `SchemaValidation.validateWith`, so a nested violation keeps its instance location
+/// (spec 0050 step 29). The caller MUST NOT bind on `Error`.
+let validateUserEnvironment (element : JsonElement) : Result<unit, StorageError> = validateWith envSchema element
 
 /// The text of an `environment.json` document.
 type EnvironmentJsonText =
