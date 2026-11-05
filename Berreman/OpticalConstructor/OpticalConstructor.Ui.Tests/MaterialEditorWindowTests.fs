@@ -1064,6 +1064,23 @@ module MaterialEditorWindowTests =
         Assert.Equal<GyrationComponent list>(NkDispersionChart.allGyrationComponents, m.previewGyrationComponents)
         Assert.Equal(GyromagneticMuKind, m.previewMuKind)
 
+    [<Fact>]
+    let ``a published gyration law opens the editor view-only`` () =
+        // Spec 0050 step 10: a published gyration law has no class the ladder can seed, so
+        // `isEditable` is false and the entry opens view-only.
+        let _, _, context = recordingContext ()
+        let complexity =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.4))
+                magnetic = None
+                active = Some (PublishedLawRho LangasiteGyrationLaw)
+            }
+        let entry = { builtIn MaterialIds.glass152 with complexity = Some complexity; properties = complexity.toProperties }
+        let m = initMaterialEditor context (EditMaterial entry)
+        match m.mode with
+        | ViewOnlyMaterial _ -> ()
+        | EditableMaterial -> Assert.Fail("a published gyration law must open view-only")
+
     // ============================ spec 0038 (033): the unsaved-edit exit confirm ============================
 
     [<Fact>]

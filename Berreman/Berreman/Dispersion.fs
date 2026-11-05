@@ -895,14 +895,57 @@ module Dispersion =
         }
 
 
+    /// The published dispersive gyration laws of the engine's coded presets (spec 0050 step 10):
+    /// Langasite's ρ is diag(i·g₁₁(λ), 0, i·g₃₃(λ)), transcendental in λ through its published
+    /// index laws. Each closed form lives here once; `value` is the wire tag.
+    type PublishedGyrationLaw =
+        | LangasiteGyrationLaw
+
+        member this.value : int =
+            match this with
+            | LangasiteGyrationLaw -> 1
+
+        static member tryOfWire (v : int) : PublishedGyrationLaw option =
+            match v with
+            | 1 -> Some LangasiteGyrationLaw
+            | _ -> None
+
+        /// The gyration tensor at `w`. The Langasite law is published for 0.4 µm < λ < 1.0 µm.
+        member this.rhoAt (w : WaveLength) : Rho =
+            match this with
+            | LangasiteGyrationLaw ->
+                // Re nₒ + Re nₑ of the published laws, the factor g11 and g33 share (spec 0050 step 8).
+                let realIndexSum (w : WaveLength) =
+                    (LangasiteOrdinaryIndexLaw.complexIndex w).value.Real + (LangasiteExtraordinaryIndexLaw.complexIndex w).value.Real
+
+                let g11La3Ga5SiO14 (w : WaveLength) =
+                    let lambda = w.value / 1.0<meter>
+                    (lambda * ((6.278e-12 * lambda**2.0) / (-2.4335999999999998e-14 + lambda**2.0)**2.0 + 6.106e-12 / (-2.4335999999999998e-14 + lambda**2.0)) * realIndexSum w) / 2.0
+
+                let g33La3Ga5SiO14 (w : WaveLength) =
+                    let lambda = w.value / 1.0<meter>
+                    (3.0359999999999996e-12 * lambda * realIndexSum w) / (-3.9204e-14 + lambda**2.0)
+
+                let rhoLa3Ga5SiO14 lambda =
+                    [| (g11La3Ga5SiO14 lambda |> Complex.ofReal) * complexI; complexZero; (g33La3Ga5SiO14 lambda |> Complex.ofReal) * complexI|]
+                    |> complexFromDiagonal
+                    |> ComplexMatrix
+                    |> ComplexMatrix3x3
+                    |> Rho
+
+                rhoLa3Ga5SiO14 w
+
+
     /// The serializable counterpart of the engine's RhoWithDisp: a symmetry-class
     /// gyration whose components are either DispersionFormula (dispersive) or
-    /// RhoValue (constant). toRhoWithDisp — the assembly onto the engine type —
-    /// is a type extension in OpticalProperties/Active.fs, next to the
-    /// crystal-class Rho builders it routes through.
+    /// RhoValue (constant), or a published gyration law (`PublishedLawRho`, spec 0050
+    /// step 10) whose closed form `PublishedGyrationLaw.rhoAt` evaluates. toRhoWithDisp —
+    /// the assembly onto the engine type — is a type extension in OpticalProperties/Active.fs,
+    /// next to the crystal-class Rho builders it routes through.
     type RhoWithDispValue =
         | RhoWithDispValue of GyrotropicValue<DispersionFormula>
         | RhoWithoutDispValue of GyrotropicValue<RhoValue>
+        | PublishedLawRho of PublishedGyrationLaw
 
 
     // ==========================================================================

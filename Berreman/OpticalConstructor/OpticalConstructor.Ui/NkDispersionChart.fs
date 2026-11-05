@@ -160,11 +160,13 @@ let allGyrationComponents : GyrationComponent list = [ G11; G22; G33; G12; G13; 
 /// The gyration components a VIEW-ONLY entry's stored optical-activity value tree admits: the ones
 /// its `active` gyration CLASS carries (`GyrationClass.components`, generic over the constant `RhoValue`
 /// vs the dispersive `DispersionFormula` payload) — data, no physics re-derived, mirroring
-/// `MaterialEntry.previewAnisotropy`. A tree with no activity falls back to every component.
+/// `MaterialEntry.previewAnisotropy`. A tree with no activity, or with a published gyration law
+/// (no stored class, spec 0050 step 10), falls back to every component.
 let gyrationComponentsOfComplexity (complexity : MaterialComplexity) : GyrationComponent list =
     match complexity.active with
     | Some (RhoWithoutDispValue g) -> g.gyration.components |> List.map fst
     | Some (RhoWithDispValue g) -> g.gyration.components |> List.map fst
+    | Some (PublishedLawRho _)
     | None -> allGyrationComponents
 
 /// The gyration chart (shown only when the entry is optically active), restricted to the components

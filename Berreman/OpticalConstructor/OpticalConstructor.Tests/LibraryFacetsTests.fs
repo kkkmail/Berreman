@@ -437,6 +437,25 @@ module LibraryFacetsTests =
         Assert.Equal<string list>([ "Right-handed" ], extractedKeys (materialDef materialHandednessKey) activeEntry)
 
     [<Fact>]
+    let ``a published gyration law offers the activity facets but extracts no class or handedness`` () =
+        // Spec 0050 step 10: a published law is active, but has no editor class and no handedness field.
+        let entry =
+            materialEntryWith
+                "a0b1c2d3-6e74-4f81-92a0-d45f60718394"
+                "Published gyration law"
+                {
+                    eps = constantIsoEps
+                    magnetic = None
+                    active = Some (PublishedLawRho LangasiteGyrationLaw)
+                }
+        let classDef = materialDef materialGyrationClassKey
+        let handDef = materialDef materialHandednessKey
+        Assert.True(applies classDef entry)
+        Assert.True(applies handDef entry)
+        Assert.Equal<string list>([], extractedKeys classDef entry)
+        Assert.Equal<string list>([], extractedKeys handDef entry)
+
+    [<Fact>]
     let ``the offered gyration-class vocabulary derives from availableGyrationClasses`` () =
         Assert.Equal(7, List.length offeredGyrationClassKeys)
         Assert.Equal(7, offeredGyrationClassKeys |> List.distinct |> List.length)

@@ -286,3 +286,14 @@ module NkDispersionChartTests =
         | Some (MuWithDispValue _) -> ()
         | other -> Assert.Fail($"expected a stored dispersive Polder μ tree, got %A{other}")
         Assert.Equal(GyromagneticMuKind, dispersive.muKind)
+
+    [<Fact>]
+    let ``a published gyration law draws every gyration component`` () =
+        // Spec 0050 step 10: a published gyration law stores no class to restrict the components to.
+        let complexity =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.4))
+                magnetic = None
+                active = Some (PublishedLawRho LangasiteGyrationLaw)
+            }
+        Assert.Equal<GyrationComponent list>(allGyrationComponents, gyrationComponentsOfComplexity complexity)

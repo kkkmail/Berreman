@@ -417,9 +417,9 @@ module MaterialLibrary =
 
     /// Langasite (spec 0040 step 004): Uniaxial, dispersive, optically active. Its axes are
     /// the published ordinary and extraordinary laws `langasiteOpticalProperties` evaluates
-    /// (spec 0050 step 8). The gyration is a representative constant one of class 3/4/6:
-    /// the engine's dispersive ρ (`rhoLa3Ga5SiO14`) is transcendental, and
-    /// `RhoWithDispValue` carries only `DispersionFormula` components.
+    /// (spec 0050 step 8). The gyration stays the representative constant one of class
+    /// 3/4/6 its seed carries, so no library number moves; the engine preset's ρ is the
+    /// published law `PublishedLawRho LangasiteGyrationLaw` (spec 0050 step 10).
     let private langasiteComplexity : MaterialComplexity =
         {
             eps =

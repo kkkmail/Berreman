@@ -152,8 +152,9 @@ module MaterialComplexityTests =
         // Spec 0040 step 004: silicon / langasite dispersion is re-stated through the
         // ladder's evaluated rung. Guard the copied indices against the engine closures
         // (`OpticalProperties/Dispersive.fs`) so a transcription slip fails here, not
-        // silently. Langasite's dispersive gyration ρ has no value-tree closure escape,
-        // so only its ε is reproduced; the ε compare uses the two engine closures.
+        // silently. The library Langasite keeps its representative constant ρ (the engine
+        // preset's ρ is the published law `PublishedLawRho LangasiteGyrationLaw`, spec 0050
+        // step 10), so only its ε is reproduced; the ε compare uses the two engine closures.
         for w in visibleGrid do
             let siliconEps = (entryOf MaterialIds.silicon).properties.epsWithDisp.getEps w
             Assert.True(epsClose 1e-12 siliconEps (siliconOpticalProperties.epsWithDisp.getEps w), $"silicon eps at λ={w}")
@@ -338,3 +339,17 @@ module MaterialComplexityTests =
         for w in visibleGrid do
             let expected = Eps.fromComplexRefractionIndex (f w)
             Assert.True(epsClose 1e-12 (c.toProperties.epsWithDisp.getEps w) expected, $"derived eps at λ={w}")
+
+    [<Fact>]
+    let ``a published gyration law keeps a complexity view-only and refuses to seed the editor`` () =
+        // Spec 0050 step 10: a published gyration law has no class or components the ladder can seed.
+        let c =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.4))
+                magnetic = None
+                active = Some (PublishedLawRho LangasiteGyrationLaw)
+            }
+        Assert.False(c.isEditable)
+        match ofComplexity c with
+        | Error (PublishedGyrationNotEditableErr _) -> ()
+        | other -> Assert.Fail($"a published gyration law must refuse to seed the editor, got %A{other}")

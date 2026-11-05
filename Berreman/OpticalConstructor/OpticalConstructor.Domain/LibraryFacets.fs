@@ -305,7 +305,8 @@ module LibraryFacets =
     /// vocabulary is `offeredGyrationClassKeys` (via
     /// `availableGyrationClasses` — never re-derived). `GyrationClass.facetKey` is
     /// generic over the component, so the constant and dispersive gyration
-    /// facets classify identically.
+    /// facets classify identically. A published gyration law (spec 0050 step 10)
+    /// is active but has no editor class, so it extracts no value.
     let private materialGyrationClassDef : AttributeDef<MaterialEntry> =
         {
             key = materialGyrationClassKey
@@ -317,11 +318,13 @@ module LibraryFacets =
                     match entry.activeOpt with
                     | Some (RhoWithoutDispValue gyrotropic) -> [ DiscreteValue gyrotropic.gyration.facetKey ]
                     | Some (RhoWithDispValue gyrotropic) -> [ DiscreteValue gyrotropic.gyration.facetKey ]
+                    | Some (PublishedLawRho _)
                     | None -> []
         }
 
     /// Handedness — offered only when active (the enantiomorph sign of the
-    /// gyration tensor).
+    /// gyration tensor). A published gyration law (spec 0050 step 10) carries no
+    /// handedness field, so it extracts no value.
     let private materialHandednessDef : AttributeDef<MaterialEntry> =
         {
             key = materialHandednessKey
@@ -333,6 +336,7 @@ module LibraryFacets =
                     match entry.activeOpt with
                     | Some (RhoWithoutDispValue gyrotropic) -> [ DiscreteValue gyrotropic.hand.facetKey ]
                     | Some (RhoWithDispValue gyrotropic) -> [ DiscreteValue gyrotropic.hand.facetKey ]
+                    | Some (PublishedLawRho _)
                     | None -> []
         }
 

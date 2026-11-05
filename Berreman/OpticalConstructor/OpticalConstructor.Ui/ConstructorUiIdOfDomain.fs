@@ -372,7 +372,8 @@ module ConstructorUiIdOfDomain =
         member this.caption : ControlCaption =
             match this with
             | NoSuchSegmentErr reason
-            | LastSegmentNotRemovableErr reason -> ControlCaption reason
+            | LastSegmentNotRemovableErr reason
+            | PublishedGyrationNotEditableErr reason -> ControlCaption reason
 
     type SegmentIndex with
 

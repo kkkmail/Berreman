@@ -148,9 +148,11 @@ module Active =
 
         /// Builds the engine's RhoWithDisp: the constant case short-circuits to
         /// RhoWithoutDisp; the dispersive case evaluates each component's
-        /// DispersionFormula at the wavelength and assembles per call.
+        /// DispersionFormula at the wavelength and assembles per call; a published
+        /// gyration law is its own closed form, `RhoWithDisp law.rhoAt`.
         member this.toRhoWithDisp : RhoWithDisp =
             match this with
             | RhoWithoutDispValue g -> assembleRho g.hand g.gyration |> RhoWithoutDisp
             | RhoWithDispValue g ->
                 RhoWithDisp (fun w -> g.gyration.map (fun (f : DispersionFormula) -> (f.evaluate w).toRhoValue) |> assembleRho g.hand)
+            | PublishedLawRho law -> RhoWithDisp law.rhoAt

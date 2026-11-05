@@ -175,8 +175,8 @@ type MaterialComplexityEditState =
         polderDispersion : PolderValue<DispersionFormula>
     }
 
-/// The typed rejections of the edit arms (errors as values, each case carrying a
-/// diagnostic `reason` — never a throw). Derivation (`toComplexity`) no longer
+/// The typed rejections of the edit arms and of `ofComplexity` (errors as values, each
+/// case carrying a diagnostic `reason` — never a throw). Derivation (`toComplexity`) no longer
 /// rejects: every `DispersionModel` lowers (the transcendental cases to their law
 /// segment, spec 0050 steps 5 and 7), so there is no `SegmentNotLowerable`.
 type MaterialComplexityEditError =
@@ -185,6 +185,9 @@ type MaterialComplexityEditError =
     /// The dispersive eps needs at least one segment (the engine's segment
     /// selection extrapolates from the topmost segment and cannot run on none).
     | LastSegmentNotRemovableErr of reason : string
+    /// A published gyration law (`PublishedLawRho`, spec 0050 step 10) has no class or
+    /// components the ladder could seed, so `ofComplexity` refuses it.
+    | PublishedGyrationNotEditableErr of reason : string
 
 /// The editor's message DU: one arm per ladder operation, applied by
 /// `applyMaterialComplexityMsg`.
@@ -862,7 +865,8 @@ type MaterialComplexity with
     /// editable, and a dispersive one exactly when every axis is `RealNK` or
     /// `ComplexEps` term data (spec 0050 step 9). A tabulated n,k table (step 2), a
     /// transcendental law (steps 5 and 7) and a published law (the form the re-seeded
-    /// Silicon / Langasite carry, step 8) open view-only.
+    /// Silicon / Langasite carry, step 8) open view-only, and so does a published
+    /// gyration law in the active aspect (step 10).
     member this.isEditable : bool =
         let axisIsEditable (axis : EpsAxisDispersion) : bool =
             match axis with
@@ -874,17 +878,26 @@ type MaterialComplexity with
             | ForouhiBloomerAxis _
             | BrendelBormannAxis _
             | PublishedLawAxis _ -> false
-        match this.eps with
-        | EpsWithoutDispValue _ -> true
-        | EpsWithDispValue dispersive -> dispersive.axisDispersions |> List.forall axisIsEditable
+        let epsIsEditable =
+            match this.eps with
+            | EpsWithoutDispValue _ -> true
+            | EpsWithDispValue dispersive -> dispersive.axisDispersions |> List.forall axisIsEditable
+        let activeIsEditable =
+            match this.active with
+            | None
+            | Some (RhoWithoutDispValue _)
+            | Some (RhoWithDispValue _) -> true
+            | Some (PublishedLawRho _) -> false
+        epsIsEditable && activeIsEditable
 
 /// Seed the editor from an existing `MaterialComplexity` (the entry's editable
 /// source of truth). Verbatim — no snapping, no clamping — so
 /// `toComplexity (ofComplexity c) = Ok c` value-identically. A dispersive
 /// gyration (`RhoWithDispValue`) or Polder μ (`MuWithDispValue`) seeds its
 /// per-component `DispersionFormula` facet directly (spec Part C — the
-/// `UnsupportedComplexity` view-only fallback is gone, §0.2). Seeding never
-/// fails; the `Result` return is kept for the consumer contract.
+/// `UnsupportedComplexity` view-only fallback is gone, §0.2). Seeding fails only
+/// on a published gyration law (`PublishedGyrationNotEditableErr`, spec 0050 step
+/// 10), which has no class or components to seed.
 let ofComplexity (complexity : MaterialComplexity) : Result<MaterialComplexityEditState, MaterialComplexityEditError> =
     let epsSeed =
         match complexity.eps with
@@ -913,20 +926,26 @@ let ofComplexity (complexity : MaterialComplexity) : Result<MaterialComplexityEd
                 | BiaxialDispersive segs ->
                     Biaxial, segs |> List.map (fun s -> seedSegment s.wavelengthInterval s.xDispersion s.yDispersion s.zDispersion)
             Ok (anisotropy, defaultState.transparency, DispersiveSegments, defaultState.index1, defaultState.index2, defaultState.index3, segments)
+    // Active: a constant gyration seeds the CONSTANT facet verbatim (the dispersive
+    // facet re-shapes to its class with default formulas); a dispersive gyration
+    // seeds the DISPERSIVE facet verbatim (the constant facet takes the class's
+    // default magnitudes) — either way the two facets stay class-synced.
+    let activeSeed =
+        match complexity.active with
+        | None ->
+            Ok (ActivityOff, defaultState.activityDispersion, defaultState.gyration, defaultState.gyrationDispersion, defaultState.hand)
+        | Some (RhoWithoutDispValue g) ->
+            Ok (ActivityOn, ConstantComponents, g.gyration, syncGyrationDispersion g.gyration defaultState.gyrationDispersion, g.hand)
+        | Some (RhoWithDispValue g) ->
+            Ok (ActivityOn, DispersiveComponents, g.gyration.map (fun _ -> defaultGyrationComponent), g.gyration, g.hand)
+        | Some (PublishedLawRho law) ->
+            let lawName =
+                match law with
+                | LangasiteGyrationLaw -> "Langasite"
+            Error (PublishedGyrationNotEditableErr $"the {lawName} gyration is a published law with no class or components the editor can seed — view-only")
     epsSeed
-    |> Result.map (fun (anisotropy, transparency, dispersion, index1, index2, index3, segments) ->
-        // Active: a constant gyration seeds the CONSTANT facet verbatim (the dispersive
-        // facet re-shapes to its class with default formulas); a dispersive gyration
-        // seeds the DISPERSIVE facet verbatim (the constant facet takes the class's
-        // default magnitudes) — either way the two facets stay class-synced.
-        let activity, activityDispersion, gyration, gyrationDispersion, hand =
-            match complexity.active with
-            | None ->
-                ActivityOff, defaultState.activityDispersion, defaultState.gyration, defaultState.gyrationDispersion, defaultState.hand
-            | Some (RhoWithoutDispValue g) ->
-                ActivityOn, ConstantComponents, g.gyration, syncGyrationDispersion g.gyration defaultState.gyrationDispersion, g.hand
-            | Some (RhoWithDispValue g) ->
-                ActivityOn, DispersiveComponents, g.gyration.map (fun _ -> defaultGyrationComponent), g.gyration, g.hand
+    |> Result.bind (fun eps -> activeSeed |> Result.map (fun active -> eps, active))
+    |> Result.map (fun ((anisotropy, transparency, dispersion, index1, index2, index3, segments), (activity, activityDispersion, gyration, gyrationDispersion, hand)) ->
         // Magnetic: a constant μ seeds the CONSTANT Polder facet verbatim; a dispersive
         // μ seeds the DISPERSIVE facet verbatim (the constant facet takes the default,
         // its axis matched to the dispersive tensor's).

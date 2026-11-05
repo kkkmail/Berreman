@@ -463,10 +463,11 @@ module PropagationTests =
         elif s.id = SeedSamples.langasiteSilicon.id then
             // Spec 0040 step 004 re-seeds silicon/langasite through the value-tree ladder.
             // Silicon's ε is reproduced bit-for-bit, so the lower half-space is still pinned
-            // to the engine preset. Langasite's dispersive gyration ρ has NO value-tree closure
-            // escape, so its ρ is a representative constant; the langasite film is therefore
-            // pinned to the re-seeded material entry's own properties (a consistency check that
-            // `sampleToSystem` resolves the material tensors correctly), not the engine preset.
+            // to the engine preset. The library Langasite keeps its representative constant ρ
+            // (the engine preset's ρ is the published law `PublishedLawRho LangasiteGyrationLaw`,
+            // spec 0050 step 10), so the langasite film is pinned to the re-seeded material
+            // entry's own properties (a consistency check that `sampleToSystem` resolves the
+            // material tensors correctly), not the engine preset.
             let langasiteProps =
                 (MaterialLibrary.builtInEntries |> List.find (fun e -> e.id = MaterialLibrary.MaterialIds.langasite)).properties.getProperties w
             {
