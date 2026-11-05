@@ -142,7 +142,7 @@ module DispersionModelsTests =
         // Spec 0033 step 002 acceptance: create an entry with a MINTED id, store it in a library,
         // and the by-id lookup resolves THAT entry's physics; the id also round-trips its Guid
         // string form through the `tryCreate` IO-boundary parse. The physics is compared by value,
-        // not by reference, because step 13 derives `properties` on every read (spec 0050 step 11).
+        // not by reference, because `properties` is derived on every read (spec 0050 steps 11, 13).
         let id = MaterialId.create ()
         let complexity : MaterialComplexity =
             {
@@ -156,8 +156,7 @@ module DispersionModelsTests =
                 name = EntryName "Round-trip entry"
                 category = CategoryIds.glass
                 description = None
-                properties = complexity.toProperties
-                complexity = Some complexity
+                complexity = complexity
             }
         let lib : MaterialLibrary = { entries = entry :: standard.entries }
         match resolveMaterialWithDisp lib id with

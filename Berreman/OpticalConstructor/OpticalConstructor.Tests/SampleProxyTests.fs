@@ -484,7 +484,7 @@ module SampleProxyTests =
         let materials = MaterialProxy.createInMemory (fun _ -> []) { versionsInUse = fun () -> Set.ofList [ usedRef ] }
         let glass = builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass152)
         let other = builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass200)
-        let glassPhysicsChanged = { glass with complexity = other.complexity; properties = other.properties }
+        let glassPhysicsChanged = { glass with complexity = other.complexity }
         match materials.saveMaterial glassPhysicsChanged with
         | Ok () -> ()
         | Error err -> Assert.Fail($"the mint failed: %A{err}")

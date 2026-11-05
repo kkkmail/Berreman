@@ -84,10 +84,7 @@ module OutOfBandDiagnostic =
         static member ofEntry (entry : MaterialEntry) : ReachableMaterial =
             {
                 materialName = entry.name
-                definedSegments =
-                    entry.complexity
-                    |> Option.map ReachableMaterial.definedSegmentsOf
-                    |> Option.defaultValue []
+                definedSegments = ReachableMaterial.definedSegmentsOf entry.complexity
             }
 
     /// One material flagged out-of-band (spec 0038 step 031): its name and both

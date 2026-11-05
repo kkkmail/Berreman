@@ -14,7 +14,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 /// `MaterialProxy` on the intent's freshness (spec 0038 step 008) — `addMaterial` for a NEW
 /// entry (whose `MaterialId` the `MaterialEditorIntent` minted AT WINDOW OPEN),
 /// `updateMaterial` for an existing one — closing the window on success; Cancel closes
-/// without writing. An entry with `complexity = None` (engine-coded physics) opens
+/// without writing. An entry whose complexity is not editable term data opens
 /// VIEW-ONLY: no ladder, no Save affordance. Opened by the workbench verbs through the
 /// SVC_XDUO_0001 window launcher, keyed by the intent's id.
 type MaterialEditorWindow(materials : MaterialProxy, intent : MaterialEditorView.MaterialEditorIntent, ?categories : CategoryProxy) as this =

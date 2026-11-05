@@ -99,8 +99,7 @@ module MaterialLibrary =
                     name = EntryName dto.name
                     category = category.id
                     description = dto.description |> Option.map EntryDescription
-                    properties = vacuumPlaceholderComplexity.toProperties
-                    complexity = Some vacuumPlaceholderComplexity
+                    complexity = vacuumPlaceholderComplexity
                 }
         | None, _ -> Error (MalformedJsonErr $"materialEntry id '%s{dto.id}' is not a Guid")
         | _, None -> Error (MalformedJsonErr $"materialEntry category '%s{dto.category}' is not a known category")

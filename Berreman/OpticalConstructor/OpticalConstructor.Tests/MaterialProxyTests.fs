@@ -37,19 +37,18 @@ module MaterialProxyTests =
         let samples = SampleProxy.createInMemory VersionsInUse.empty
         samples, MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
 
-    /// A built-in EDITABLE template entry (fixed id, non-dispersive glass, `complexity = Some`) the
-    /// write tests reuse, and a distinct built-in whose physics (complexity) differs.
+    /// A built-in EDITABLE template entry (fixed id, non-dispersive glass) the write tests reuse,
+    /// and a distinct built-in whose physics (complexity) differs.
     let private glass : MaterialEntry =
         builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass152)
 
     let private otherPhysics : MaterialEntry =
         builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass200)
 
-    /// A physics change of `glass`: SAME id / name / category / description, a DIFFERENT complexity
-    /// (and its derived properties). `decideVersioning` sees the physics as changed, the metadata as
-    /// unchanged.
+    /// A physics change of `glass`: SAME id / name / category / description, a DIFFERENT complexity.
+    /// `decideVersioning` sees the physics as changed, the metadata as unchanged.
     let private glassPhysicsChanged : MaterialEntry =
-        { glass with complexity = otherPhysics.complexity; properties = otherPhysics.properties }
+        { glass with complexity = otherPhysics.complexity }
 
     /// A metadata-only change of `glass`: SAME complexity, a different display name. Physics
     /// unchanged, metadata changed.

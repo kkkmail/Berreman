@@ -182,33 +182,21 @@ module LibraryFacets =
 
         /// The constant eps value tree of the entry, when it carries one.
         member private entry.constantEpsOpt : ConstantEpsValue option =
-            match entry.complexity with
-            | Some complexity ->
-                match complexity.eps with
-                | EpsWithoutDispValue constant -> Some constant
-                | EpsWithDispValue _ -> None
-            | None -> None
+            match entry.complexity.eps with
+            | EpsWithoutDispValue constant -> Some constant
+            | EpsWithDispValue _ -> None
 
         /// The dispersive eps segment tree of the entry, when it carries one.
         member private entry.dispersiveEpsOpt : EpsDispersiveValue option =
-            match entry.complexity with
-            | Some complexity ->
-                match complexity.eps with
-                | EpsWithDispValue dispersive -> Some dispersive
-                | EpsWithoutDispValue _ -> None
-            | None -> None
+            match entry.complexity.eps with
+            | EpsWithDispValue dispersive -> Some dispersive
+            | EpsWithoutDispValue _ -> None
 
         /// The optical-activity value tree of the entry, when it carries one.
-        member private entry.activeOpt : RhoWithDispValue option =
-            match entry.complexity with
-            | Some complexity -> complexity.active
-            | None -> None
+        member private entry.activeOpt : RhoWithDispValue option = entry.complexity.active
 
         /// The magnetic (Polder μ) value tree of the entry, when it carries one.
-        member private entry.magneticOpt : MuWithDispValue option =
-            match entry.complexity with
-            | Some complexity -> complexity.magnetic
-            | None -> None
+        member private entry.magneticOpt : MuWithDispValue option = entry.complexity.magnetic
 
     // =======================================================================
     // The MATERIAL facet catalogue (over MaterialEntry).
@@ -228,20 +216,15 @@ module LibraryFacets =
 
     /// Anisotropy — Isotropic/Uniaxial/Biaxial from the eps value tree. TOTAL
     /// (spec 0040 Part B / operator 010/Q2): every entry carries a `complexity`
-    /// value tree after step 004, so the facet applies to ALL of them and
-    /// `extract` reads `complexity.anisotropy` for each; the defensive `None`
-    /// (no value tree) yields `[]` but never fires over the seed corpus.
+    /// value tree, so the facet applies to ALL of them and `extract` reads
+    /// `complexity.anisotropy` for each.
     let private materialAnisotropyDef : AttributeDef<MaterialEntry> =
         {
             key = materialAnisotropyKey
             name = (FacetCaption "Anisotropy")
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
-            extract =
-                fun entry ->
-                    match entry.complexity with
-                    | Some complexity -> [ DiscreteValue complexity.anisotropy.facetKey ]
-                    | None -> []
+            extract = fun entry -> [ DiscreteValue entry.complexity.anisotropy.facetKey ]
         }
 
     /// Constant vs dispersive — from the engine `properties`

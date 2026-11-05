@@ -13,7 +13,7 @@ open Xunit
 /// Spec 0038 Part I (step 031) — the pure OUT-OF-BAND dispersion diagnostic. A fixed 600 nm request
 /// inside a 300–700 nm segment MUST NOT flag; a 200–800 nm sweep against the same segment MUST flag,
 /// naming the material and both ranges; multi-segment unions cover a request spanning them (a gap does
-/// not); a CONSTANT material (and a coded-preset `complexity = None`) NEVER flags. The requested-
+/// not); a CONSTANT material (and a coded preset's unbounded band) NEVER flags. The requested-
 /// wavelengths derivation and the tooltip/Details text are proven here too — all without a window.
 module OutOfBandDiagnosticTests =
 
@@ -46,15 +46,14 @@ module OutOfBandDiagnosticTests =
             active = None
         }
 
-    /// A library material entry wrapping a complexity (its `properties` derived from it, as the seeds do).
+    /// A library material entry wrapping a complexity.
     let private entryOf (name : string) (c : MaterialComplexity) : MaterialEntry =
         {
             id = newMaterialId ()
             name = EntryName name
             category = CategoryIds.glass
             description = None
-            properties = c.toProperties
-            complexity = Some c
+            complexity = c
         }
 
     // ============================ the acceptance cases ============================
@@ -109,12 +108,8 @@ module OutOfBandDiagnosticTests =
         // Silicon is dispersive but its dispersion is a CODED closure valid at every
         // wavelength (spec 0040 step 004 re-seeds it with a single spectrum-spanning
         // segment — an UNBOUNDED band), so no request can leave its defined range and
-        // the diagnostic never flags it — exactly as the former `complexity = None`
-        // coded preset never flagged.
+        // the diagnostic never flags it.
         let silicon = builtInEntries |> List.find (fun e -> e.id = MaterialIds.silicon)
-        match silicon.complexity with
-        | Some _ -> ()
-        | None -> Assert.Fail "silicon must carry a complexity value tree after the step-004 re-seed"
         Assert.Equal(InBand, checkMaterialsOutOfBand [ silicon ] (SweptWavelengths (band 200.0 800.0)))
         // Even an extreme sweep is covered by the unbounded band.
         Assert.Equal(InBand, checkMaterialsOutOfBand [ silicon ] (SweptWavelengths (band 1.0 100000.0)))

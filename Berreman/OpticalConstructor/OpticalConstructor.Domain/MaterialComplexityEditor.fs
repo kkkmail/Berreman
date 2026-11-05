@@ -861,12 +861,11 @@ type MaterialComplexity with
     /// misleading `SumOfTerms` segment the user cannot meaningfully change. Such an
     /// entry opens VIEW-ONLY instead: the host editability seams
     /// (`MaterialEditorView.init`, `MaterialsWindowModel.editableSelection`) gate on
-    /// this predicate rather than on `complexity` presence alone. A constant eps is
-    /// editable, and a dispersive one exactly when every axis is `RealNK` or
-    /// `ComplexEps` term data (spec 0050 step 9). A tabulated n,k table (step 2), a
-    /// transcendental law (steps 5 and 7) and a published law (the form the re-seeded
-    /// Silicon / Langasite carry, step 8) open view-only, and so does a published
-    /// gyration law in the active aspect (step 10).
+    /// this predicate. A constant eps is editable, and a dispersive one exactly when
+    /// every axis is `RealNK` or `ComplexEps` term data (spec 0050 step 9). A tabulated
+    /// n,k table (step 2), a transcendental law (steps 5 and 7) and a published law (the
+    /// form the re-seeded Silicon / Langasite carry, step 8) open view-only, and so does
+    /// a published gyration law in the active aspect (step 10).
     member this.isEditable : bool =
         let axisIsEditable (axis : EpsAxisDispersion) : bool =
             match axis with

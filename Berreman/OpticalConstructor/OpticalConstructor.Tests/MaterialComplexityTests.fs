@@ -18,9 +18,7 @@ open Xunit
 /// `toProperties` MUST default absent magnetic/active options to the vacuum μ/ρ and
 /// assemble present options through `toMuWithDisp` / `toRhoWithDisp`; every
 /// re-expressed built-in's `complexity.toProperties` MUST reproduce the original
-/// engine preset's tensors at reference wavelengths; silicon / langasite (dispersion
-/// coded in `OpticalProperties/Dispersive.fs:98-99`) and the vacuum spacer stay
-/// `None` (engine-preset, view-only).
+/// engine preset's tensors at reference wavelengths.
 module MaterialComplexityTests =
 
     let private closeC (tol : float) (a : Complex) (b : Complex) =
@@ -118,34 +116,12 @@ module MaterialComplexityTests =
             ]
         for (label, id, original, grid) in cases do
             let entry = entryOf id
-            match entry.complexity with
-            | None -> Assert.Fail($"{label}: a re-expressed built-in must carry Some complexity")
-            | Some c ->
-                let rebuilt = c.toProperties
-                for w in grid do
-                    let expected = original.getProperties w
-                    Assert.True(propertiesClose 1e-12 (rebuilt.getProperties w) expected, $"{label}: toProperties must reproduce the preset at λ={w}")
-                    // The seeded entry's properties ARE the complexity's composition
-                    // (source-of-truth invariant, held by construction at seed time).
-                    Assert.True(propertiesClose 1e-12 (entry.properties.getProperties w) expected, $"{label}: seeded properties must equal the preset at λ={w}")
-
-    [<Fact>]
-    let ``every built-in carries Some complexity after the step-004 re-seed`` () =
-        // Spec 0040 step 004: the three former coded presets (silicon, langasite, the
-        // vacuum spacer) are re-seeded so every built-in carries its single-valued
-        // class as DATA — no entry is left with `complexity = None`.
-        for e in builtInEntries do
-            match e.complexity with
-            | Some _ -> ()
-            | None -> Assert.Fail($"{e.name}: every built-in must carry Some complexity after the re-seed")
-        let someCount =
-            builtInEntries
-            |> List.filter (fun e ->
-                match e.complexity with
-                | Some _ -> true
-                | None -> false)
-            |> List.length
-        Assert.Equal(builtInEntries |> List.length, someCount)
+            let rebuilt = entry.complexity.toProperties
+            for w in grid do
+                let expected = original.getProperties w
+                Assert.True(propertiesClose 1e-12 (rebuilt.getProperties w) expected, $"{label}: toProperties must reproduce the preset at λ={w}")
+                // The seeded entry's properties ARE the complexity's composition.
+                Assert.True(propertiesClose 1e-12 (entry.properties.getProperties w) expected, $"{label}: seeded properties must equal the preset at λ={w}")
 
     [<Fact>]
     let ``the re-seeded silicon and langasite eps reproduce the engine presets`` () =

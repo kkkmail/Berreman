@@ -14,10 +14,10 @@
 /// through `MaterialProxy`, routing on the target's `EntryFreshness` (spec 0038 step 008):
 /// `addMaterial` for a `NewUnsaved` entry — whose `MaterialId` was minted AT WINDOW OPEN
 /// (`MaterialEditorIntent.NewMaterial`), off the save path — and `updateMaterial` for a
-/// `Persisted` one; both store `complexity = Some model` with
-/// `properties = model.toProperties`. Entries with `complexity = None` (silicon, langasite)
-/// open VIEW-ONLY and offer no Edit affordance (no ladder, no Save). Pure: `update` only
-/// reaches IO through the context's proxy fields.
+/// `Persisted` one; both store the derived model as the entry's complexity. An entry whose
+/// complexity is not editable term data (silicon, langasite) opens VIEW-ONLY and offers no
+/// Edit affordance (no ladder, no Save). Pure: `update` only reaches IO through the
+/// context's proxy fields.
 module OpticalConstructor.Ui.MaterialEditorView
 
 open System
@@ -61,12 +61,12 @@ type MaterialEditorTarget =
         freshness : WindowLauncher.EntryFreshness
     }
 
-/// Whether the window edits or only shows. `ViewOnlyMaterial` carries the WHY (an entry whose
-/// physics is engine-coded — `complexity = None` — or a complexity this editor cannot seed):
+/// Whether the window edits or only shows. `ViewOnlyMaterial` carries the WHY (a complexity
+/// that is not editable term data, or one this editor cannot seed) and the complexity it shows:
 /// such an entry offers NO Edit affordance — the ladder and Save are REMOVED, not greyed.
 type EditorMode =
     | EditableMaterial
-    | ViewOnlyMaterial of reason : ControlCaption
+    | ViewOnlyMaterial of reason : ControlCaption * shown : MaterialComplexity
 
 /// The window's IO seam (the functional-proxy Context convention): the materials write-seam
 /// Save persists through, plus the host's close request (the window passes `this.Close`;
@@ -92,7 +92,7 @@ type MaterialEditorExitPrompt =
 
 /// The structurally-comparable slice of the model Save persists — the identity facets and the
 /// ladder edit state (spec 0038 step 033's dirtiness snapshot). Every component is a plain
-/// record/DU with structural equality; the reference-compared context / preset preview and the
+/// record/DU with structural equality; the reference-compared context, the mode and the
 /// pure-UI state (hidden series, status) are excluded.
 type MaterialEditSnapshot = EntryName * EntryDescription * CategoryId * MaterialComplexityEditState
 
@@ -130,10 +130,9 @@ type MaterialPreviewTab =
         | MuPreviewTab -> ConstructorUiId.materialMuChart
 
 /// The editor's model: the entry identity facets (name / category / description), the pure
-/// Domain ladder state, and — for a view-only entry — the preset engine properties the preview
-/// still charts. Reference-compared: `OpticalPropertiesWithDisp` carries dispersion FUNCTION
-/// cases (no structural equality), and `update` returns a fresh record anyway — so the Elmish
-/// equality gate sees every dispatch as a change and re-renders.
+/// Domain ladder state and the mode (a view-only entry's complexity rides `ViewOnlyMaterial`).
+/// Reference-compared, so the Elmish equality gate sees every fresh record `update` returns as a
+/// change and re-renders.
 [<ReferenceEquality>]
 type MaterialEditorModel =
     {
@@ -144,12 +143,6 @@ type MaterialEditorModel =
         description : EntryDescription
         category : CategoryId
         editor : MaterialComplexityEditState
-        /// A view-only entry's own engine properties (the preview's source there).
-        presetProperties : OpticalPropertiesWithDisp option
-        /// Spec 0040 (006): a view-only entry's stored `complexity` value tree, used to restrict the
-        /// gyration / μ preview to the components its symmetry class / μ kind admits. `None` for a
-        /// coded preset with no stored tree — which keeps the all-components rendering.
-        viewOnlyComplexity : MaterialComplexity option
         /// Spec 0038 (032): the preview curves the user hid, by their `ConstructorUiId.previewSeriesToggle` id
         /// (tab + series name, so a toggle in one tab never hides a same-named curve in another).
         hiddenSeries : Set<ConstructorUiId>
@@ -254,45 +247,38 @@ type MaterialEditorModel with
         | Error _ -> []
 
     /// What the preview charts: the derived complexity's engine properties in edit mode, the
-    /// entry's own preset properties in view-only mode, nothing while the ladder is underivable.
+    /// shown complexity's in view-only mode, nothing while the ladder is underivable.
     member internal this.previewProperties : OpticalPropertiesWithDisp option =
         match this.mode with
-        | ViewOnlyMaterial _ -> this.presetProperties
+        | ViewOnlyMaterial (_, shown) -> Some shown.toProperties
         | EditableMaterial ->
             match this.editor.toComplexity with
             | Ok c -> Some c.toProperties
             | Error _ -> None
 
     /// The gyration components the preview draws (spec 0040 step 006): in edit mode the editor's own
-    /// gyration class decides them; a view-only entry reads the class off its stored `complexity`
-    /// activity tree (mirroring `MaterialEntry.previewAnisotropy`); a coded preset with no stored
-    /// tree keeps every component (the pre-restriction rendering). Public so the window tests verify the
-    /// threading without a rendered frame.
+    /// gyration class decides them; a view-only entry reads the class off the complexity it shows,
+    /// and every component is drawn when that complexity names no gyration class. Public so the
+    /// window tests verify the threading without a rendered frame.
     member this.previewGyrationComponents : GyrationComponent list =
         match this.mode with
         | EditableMaterial -> this.editor.gyration.components |> List.map fst
-        | ViewOnlyMaterial _ ->
-            match this.viewOnlyComplexity with
-            | Some complexity -> NkDispersionChart.gyrationComponentsOfComplexity complexity
-            | None -> NkDispersionChart.allGyrationComponents
+        | ViewOnlyMaterial (_, shown) -> NkDispersionChart.gyrationComponentsOfComplexity shown
 
     /// The Polder-μ kind the preview draws (spec 0040 step 006): in edit mode the editor's `MuKind`; a
-    /// view-only entry reads it off its stored `complexity` magnetic tree; a coded preset with no stored
-    /// tree keeps the full gyromagnetic rendering. Public so the window tests verify the threading.
+    /// view-only entry reads it off the magnetic tree of the complexity it shows. Public so the window
+    /// tests verify the threading.
     member this.previewMuKind : MuKind =
         match this.mode with
         | EditableMaterial -> this.editor.muKind
-        | ViewOnlyMaterial _ ->
-            match this.viewOnlyComplexity with
-            | Some complexity -> complexity.muKind
-            | None -> GyromagneticMuKind
+        | ViewOnlyMaterial (_, shown) -> shown.muKind
 
     /// The derived-model readout: the eps case, the optional aspects, and a structural digest —
     /// two states with the SAME summary denote the SAME derived complexity (the lossless-uncheck
     /// acceptance observes this text); an underivable ladder shows the typed reason instead.
     member this.complexitySummary : ControlCaption =
         match this.mode with
-        | ViewOnlyMaterial _ -> ControlCaption "view-only engine preset"
+        | ViewOnlyMaterial _ -> ControlCaption "view-only"
         | EditableMaterial ->
             match this.editor.toComplexity with
             | Error e -> ControlCaption $"not derivable — %s{e.caption.value}"
@@ -333,8 +319,6 @@ let initMaterialEditor (context : MaterialEditorContext) (intent : MaterialEdito
                 description = EntryDescription ""
                 category = CategoryIds.glass
                 editor = defaultState
-                presetProperties = None
-                viewOnlyComplexity = None
                 hiddenSeries = Set.empty
                 initialEdit = (EntryName "", EntryDescription "", CategoryIds.glass, defaultState)
                 exit = MaterialEditing
@@ -350,39 +334,22 @@ let initMaterialEditor (context : MaterialEditorContext) (intent : MaterialEdito
                     description = entry.description |> Option.defaultValue (EntryDescription "")
                     category = entry.category
                     editor = defaultState
-                    presetProperties = None
-                    viewOnlyComplexity = None
                     hiddenSeries = Set.empty
                     initialEdit = (EntryName "", EntryDescription "", CategoryIds.glass, defaultState)
                     exit = MaterialEditing
                     status = None
                 }
-            // Since spec 0040 step 004 every entry carries `complexity = Some`, so
-            // editability is gated on `MaterialComplexity.isEditable`, not on complexity
-            // presence: a coded preset whose eps is an opaque evaluated closure
-            // (Silicon / Langasite — no editable coefficients to seed) stays VIEW-ONLY.
-            match entry.complexity with
-            | Some complexity when complexity.isEditable ->
-                match ofComplexity complexity with
+            // Editability is `MaterialComplexity.isEditable`: a complexity that is not editable
+            // term data (Silicon / Langasite carry published laws) opens VIEW-ONLY.
+            if entry.complexity.isEditable then
+                match ofComplexity entry.complexity with
                 | Ok editor -> { seeded with editor = editor }
-                | Error e ->
-                    { seeded with
-                        mode = ViewOnlyMaterial e.caption
-                        presetProperties = Some entry.properties
-                        viewOnlyComplexity = Some complexity }
-            // A view-only entry keeps its stored `complexity` value tree so the preview can restrict
-            // the gyration / μ curves to the components its class / kind admits (spec 0040 step 006);
-            // a coded preset carrying no tree (`None`) keeps `viewOnlyComplexity = None`.
-            | Some complexity ->
+                | Error e -> { seeded with mode = ViewOnlyMaterial (e.caption, entry.complexity) }
+            // The view-only mode keeps the complexity so the preview can restrict the gyration / μ
+            // curves to the components its class / kind admits (spec 0040 step 006).
+            else
                 { seeded with
-                    mode = ViewOnlyMaterial (ControlCaption "this entry's physics is a coded engine closure — view-only")
-                    presetProperties = Some entry.properties
-                    viewOnlyComplexity = Some complexity }
-            | None ->
-                { seeded with
-                    mode = ViewOnlyMaterial (ControlCaption "this entry's physics is a coded engine closure — view-only")
-                    presetProperties = Some entry.properties
-                    viewOnlyComplexity = None }
+                    mode = ViewOnlyMaterial (ControlCaption "this entry's physics is not editable term data — view-only", entry.complexity) }
     // Capture the edit snapshot from the fully-seeded model, so a freshly opened editor is
     // pristine and closes silently (spec 0038 step 033).
     { built with initialEdit = built.currentEdit }
@@ -408,7 +375,7 @@ let updateMaterialEditor (msg : MaterialEditorMsg) (m : MaterialEditorModel) : M
         { m with hiddenSeries = hidden }
     | MaterialSaveClicked ->
         match m.mode with
-        | ViewOnlyMaterial reason -> { m with status = Some reason }
+        | ViewOnlyMaterial (reason, _) -> { m with status = Some reason }
         | EditableMaterial ->
             match m.editor.toComplexity with
             | Error e -> { m with status = Some e.caption }
@@ -419,8 +386,7 @@ let updateMaterialEditor (msg : MaterialEditorMsg) (m : MaterialEditorModel) : M
                         name = m.name
                         category = m.category
                         description = (if String.IsNullOrWhiteSpace m.description.value then None else Some m.description)
-                        properties = complexity.toProperties
-                        complexity = Some complexity
+                        complexity = complexity
                     }
                 // Spec 0038 step 021: Save routes through the versioned write-seam — the store
                 // itself decides insert-v1 / mutate-in-place / mint-next-version from the id's
@@ -1114,7 +1080,7 @@ let private chartTab (tab : MaterialPreviewTab) (m : MaterialEditorModel) (dispa
 /// The tabbed preview pane (the right pane): the n/k tab ALWAYS, then the Gyration tab exactly when
 /// the entry is optically active and the μ tab exactly when magnetic — so the visible tabs plus the
 /// per-tab legend always answer what is being drawn. In edit mode the optional tabs track the ladder
-/// toggles; a view-only preset (no ladder) is classified from its assembled tensors instead. Returns
+/// toggles; a view-only entry (no ladder) is classified from its assembled tensors instead. Returns
 /// the pane view and the gain-warning text over the n/k tab's sampled k curves.
 let private previewPane (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView * ControlCaption =
     match m.previewProperties with
@@ -1286,7 +1252,7 @@ let materialEditorView (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -
             Border.child (ScrollViewer.create [ ScrollViewer.content content ])
         ] :> IView
     match m.mode with
-    | ViewOnlyMaterial reason ->
+    | ViewOnlyMaterial (reason, _) ->
         let leftPane =
             DockPanel.create [
                 DockPanel.children [

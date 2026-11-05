@@ -87,7 +87,7 @@ module FsxAcceptanceTests =
     /// keeps its own properties, so a match proves the data states the script's physics (spec 0050 step 11).
     let private material (b : Bench) (name : string) (complexity : MaterialComplexity) : MaterialId =
         let id = newMaterialId ()
-        ok (b.materials.saveMaterial { id = id; name = EntryName name; category = CategoryIds.glass; description = None; properties = complexity.toProperties; complexity = Some complexity })
+        ok (b.materials.saveMaterial { id = id; name = EntryName name; category = CategoryIds.glass; description = None; complexity = complexity })
         id
 
     /// A constant material with no magnetic or active aspect.

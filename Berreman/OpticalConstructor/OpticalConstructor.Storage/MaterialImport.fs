@@ -154,10 +154,10 @@ module MaterialImport =
 
     /// A tabulated import is axis data (spec 0050 step 2, 001 §B): its rows, sorted by λ, become
     /// one `TabulatedNK` table carried as a single isotropic dispersive segment over the sample
-    /// range, view-only because a table is not editable term data; `properties` IS
-    /// `complexity.toProperties` (the seed invariant). A refused table is `NoDataErr` with its
-    /// reason. An imported entry MINTS a fresh `MaterialId` (spec 0033 step 002) — imports carry
-    /// no persisted identity of their own; the stable Guid ids live with the library seeds.
+    /// range, view-only because a table is not editable term data. A refused table is
+    /// `NoDataErr` with its reason. An imported entry MINTS a fresh `MaterialId` (spec 0033
+    /// step 002) — imports carry no persisted identity of their own; the stable Guid ids live
+    /// with the library seeds.
     let private entryFromTabulated (name : EntryName) (category : CategoryId) (points : NkTableRow[]) : Result<MaterialEntry, ImportError> =
         let sorted = points |> Array.sortBy (fun r -> r.wavelength)
         let wavelengths = sorted |> Array.map (fun r -> r.wavelength)
@@ -180,8 +180,7 @@ module MaterialImport =
                     name = name
                     category = category
                     description = Some (EntryDescription "Imported tabulated n,k (refractiveindex.info).")
-                    properties = complexity.toProperties
-                    complexity = Some complexity
+                    complexity = complexity
                 }
 
     // ==========================================================================
@@ -440,8 +439,7 @@ module MaterialImport =
     /// Assemble the imported entry for a lowered formula (spec 0033 step 025):
     /// the single-segment isotropic tree over the page's wavelength range
     /// carried in an `EpsWithDispValue`-backed `MaterialComplexity`, so the
-    /// import is EDITABLE; `properties` IS `complexity.toProperties` (the seed
-    /// invariant). A fresh `MaterialId` is minted — imports carry no persisted
+    /// import is EDITABLE. A fresh `MaterialId` is minted — imports carry no persisted
     /// identity of their own (step 002).
     let private entryOfAxis (formula : RiiFormulaNumber) (interval : WaveLengthInterval) (axis : EpsAxisDispersion) : MaterialEntry =
         let complexity =
@@ -455,8 +453,7 @@ module MaterialImport =
             name = EntryName $"Imported (refractiveindex.info formula %d{formula.value})"
             category = CategoryIds.glass
             description = Some (EntryDescription $"Imported %s{formula.family} (refractiveindex.info formula %d{formula.value}).")
-            properties = complexity.toProperties
-            complexity = Some complexity
+            complexity = complexity
         }
 
     type RefractiveIndexInfoText with

@@ -250,22 +250,21 @@ module MaterialLibrary =
 
     /// A library entry: a stable id (the `materialEntry` id, §A.7), a display name,
     /// a category, an optional description (mirroring the engine's `description`
-    /// fields, e.g. `OpticalSystemWithDisp.description`, `Dispersion.fs:141`), the
-    /// engine's `OpticalPropertiesWithDisp` (`Dispersion.fs:53`), and the optional
-    /// edit model (spec 0033 step 013): `Some complexity` is the EDITABLE source of
-    /// truth — `properties` IS `complexity.toProperties` (the seeds construct it so;
-    /// the Part F editor re-derives it at save) — while `None` marks an
-    /// engine-preset entry whose physics is coded rather than data (silicon /
-    /// langasite / the vacuum spacer), shown view-only.
+    /// fields, e.g. `OpticalSystemWithDisp.description`, `Dispersion.fs:141`), and its
+    /// physics, the `complexity` value tree (spec 0050 step 13, 001 §B). Every field is
+    /// data, so entries compare structurally.
     type MaterialEntry =
         {
             id : MaterialId
             name : EntryName
             category : CategoryId
             description : EntryDescription option
-            properties : OpticalPropertiesWithDisp
-            complexity : MaterialComplexity option
+            complexity : MaterialComplexity
         }
+
+        /// The entry's engine composition (`OpticalPropertiesWithDisp`, `Dispersion.fs:53`),
+        /// derived from its complexity on every read.
+        member this.properties : OpticalPropertiesWithDisp = this.complexity.toProperties
 
     /// Net-new error channel for material resolution (errors as values, §0). Returned
     /// — never thrown — by `resolveMaterial` on an unknown id; the case carries a
@@ -334,10 +333,8 @@ module MaterialLibrary =
             }
 
     // ==========================================================================
-    // Complexities of the re-expressed built-ins (spec 0033 step 013). Each is the
-    // editable source of truth of its entry: the entry sets
-    // properties = complexity.toProperties, so the sync invariant holds by
-    // construction at seed time, and each construction reuses the preset constants
+    // Complexities of the re-expressed built-ins (spec 0033 step 013). Each is its
+    // entry's physics, and each construction reuses the preset constants
     // and the preset arithmetic path so the seeded tensors stay VALUE-IDENTICAL to
     // the original engine presets (PropagationTests pins the seeded systems with
     // exact equality). The uniaxial and active crystals are encoded as
@@ -389,9 +386,8 @@ module MaterialLibrary =
     // The three coded-preset complexities (spec 0040 step 004, Part B). Silicon,
     // Langasite and the Vacuum spacer carry a value tree that ENCODES their class as
     // data — Silicon Isotropic, Langasite Uniaxial (retaining its optical activity),
-    // Vacuum Isotropic + Transparent — with `properties = complexity.toProperties`, the
-    // seed convention of every other built-in, so the facets sum to the population
-    // (spec 0040 Part B.0).
+    // Vacuum Isotropic + Transparent — as every other built-in does, so the facets sum
+    // to the population (spec 0040 Part B.0).
     //
     // Silicon's and Langasite's dispersion is the published law their engine preset
     // evaluates (`PublishedLawAxis`, spec 0050 step 8): one closed form, in the core.
@@ -441,10 +437,9 @@ module MaterialLibrary =
     let private vacuumComplexity : MaterialComplexity =
         (IsotropicTransparent RefractionIndex.vacuum).constantComplexity
 
-    /// Built-in entries (§D.8). Every entry now carries `complexity = Some` with
-    /// `properties = complexity.toProperties` (spec 0040 step 004 re-seeds the three
-    /// former coded presets — Silicon / Langasite / the Vacuum spacer — so their
-    /// single-valued class is DATA the facets read; the nine already-expressible
+    /// Built-in entries (§D.8). Each entry's physics is its complexity (spec 0040 step
+    /// 004 re-seeds Silicon / Langasite / the Vacuum spacer, so their single-valued
+    /// class is DATA the facets read; the nine already-expressible
     /// entries were re-expressed under spec 0033 step 013). The AC-B7 tests pin the
     /// re-expressed seeds against the original `Standard.fs`/`Active.fs` presets at
     /// reference wavelengths; the Silicon reproduction is pinned to the engine preset.
@@ -455,96 +450,84 @@ module MaterialLibrary =
                 name = EntryName "Silicon"
                 category = CategoryIds.semiconductor
                 description = Some (EntryDescription "Crystalline silicon (engine preset Silicon).")
-                properties = siliconComplexity.toProperties
-                complexity = Some siliconComplexity
+                complexity = siliconComplexity
             }
             {
                 id = MaterialIds.langasite
                 name = EntryName "Langasite (La3Ga5SiO14)"
                 category = CategoryIds.crystal
                 description = Some (EntryDescription "Langasite, optically active uniaxial crystal (engine preset Langasite).")
-                properties = langasiteComplexity.toProperties
-                complexity = Some langasiteComplexity
+                complexity = langasiteComplexity
             }
             {
                 id = MaterialIds.glass152
                 name = EntryName "Transparent glass (n = 1.52)"
                 category = CategoryIds.glass
                 description = Some (EntryDescription "Standard transparent glass preset.")
-                properties = glass152Complexity.toProperties
-                complexity = Some glass152Complexity
+                complexity = glass152Complexity
             }
             {
                 id = MaterialIds.glass150
                 name = EntryName "Transparent glass (n = 1.50)"
                 category = CategoryIds.glass
                 description = None
-                properties = glass150Complexity.toProperties
-                complexity = Some glass150Complexity
+                complexity = glass150Complexity
             }
             {
                 id = MaterialIds.glass175
                 name = EntryName "Transparent glass (n = 1.75)"
                 category = CategoryIds.glass
                 description = None
-                properties = glass175Complexity.toProperties
-                complexity = Some glass175Complexity
+                complexity = glass175Complexity
             }
             {
                 id = MaterialIds.glass200
                 name = EntryName "Transparent glass (n = 2.00)"
                 category = CategoryIds.glass
                 description = None
-                properties = glass200Complexity.toProperties
-                complexity = Some glass200Complexity
+                complexity = glass200Complexity
             }
             {
                 id = MaterialIds.uniaxialCrystal
                 name = EntryName "Uniaxial crystal"
                 category = CategoryIds.crystal
                 description = Some (EntryDescription "Standard uniaxial crystal preset.")
-                properties = uniaxialCrystalComplexity.toProperties
-                complexity = Some uniaxialCrystalComplexity
+                complexity = uniaxialCrystalComplexity
             }
             {
                 id = MaterialIds.biaxialCrystal
                 name = EntryName "Biaxial crystal"
                 category = CategoryIds.crystal
                 description = Some (EntryDescription "Standard biaxial crystal preset.")
-                properties = biaxialCrystalComplexity.toProperties
-                complexity = Some biaxialCrystalComplexity
+                complexity = biaxialCrystalComplexity
             }
             {
                 id = MaterialIds.vacuumMaterial
                 name = EntryName "Vacuum"
                 category = CategoryIds.vacuumCategory
                 description = Some (EntryDescription "Vacuum (n = 1) — the spacer material of the structural multilayer stacks.")
-                properties = vacuumComplexity.toProperties
-                complexity = Some vacuumComplexity
+                complexity = vacuumComplexity
             }
             {
                 id = MaterialIds.euvMolybdenum
                 name = EntryName "Molybdenum (Mo, EUV)"
                 category = CategoryIds.metal
                 description = Some (EntryDescription "Molybdenum for EUV multilayers (engine preset, complex n around 10–13.5 nm).")
-                properties = euvMolybdenumComplexity.toProperties
-                complexity = Some euvMolybdenumComplexity
+                complexity = euvMolybdenumComplexity
             }
             {
                 id = MaterialIds.euvSilicon
                 name = EntryName "Silicon (Si, EUV)"
                 category = CategoryIds.semiconductor
                 description = Some (EntryDescription "Silicon for EUV multilayers (engine preset, complex n around 10–13.5 nm).")
-                properties = euvSiliconComplexity.toProperties
-                complexity = Some euvSiliconComplexity
+                complexity = euvSiliconComplexity
             }
             {
                 id = MaterialIds.activeCrystal
                 name = EntryName "Active (gyrotropic) crystal"
                 category = CategoryIds.crystal
                 description = Some (EntryDescription "Planar active (gyrotropic) crystal: n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6 (from ActiveCrystal.fsx).")
-                properties = activeCrystalComplexity.toProperties
-                complexity = Some activeCrystalComplexity
+                complexity = activeCrystalComplexity
             }
         ]
 
@@ -677,8 +660,7 @@ module MaterialLibrary =
     /// component still carrying a function case (`EpsWithDisp` / `MuWithDisp` /
     /// `RhoWithDisp`; every dispersive built-in carries the eps func case). This is the
     /// classification `DispersionFilter` matches against AND the constant-vs-dispersive
-    /// facet extractor (`LibraryFacets`) keys — it reads `properties`, so it classifies
-    /// the coded presets (`complexity = None`) too.
+    /// facet extractor (`LibraryFacets`) keys.
     type MaterialDispersion =
         | ConstantMaterial
         | DispersiveMaterial
@@ -688,7 +670,8 @@ module MaterialLibrary =
         /// The entry's wavelength dependence, classified from its engine `properties` (see
         /// `MaterialDispersion`; the step-011 facet catalogue keys it).
         member this.dispersion : MaterialDispersion =
-            match this.properties.epsWithDisp, this.properties.muWithDisp, this.properties.rhoWithDisp with
+            let properties = this.properties
+            match properties.epsWithDisp, properties.muWithDisp, properties.rhoWithDisp with
             | EpsWithoutDisp _, MuWithoutDisp _, RhoWithoutDisp _ -> ConstantMaterial
             | _ -> DispersiveMaterial
 

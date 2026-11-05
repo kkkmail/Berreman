@@ -250,18 +250,14 @@ type MaterialsWindowModel =
             | Ok None | Error _ -> None
         | None -> None
 
-    /// The selected entry when it carries a LOSSLESSLY EDITABLE edit model — the Edit verb's
-    /// target. A view-only engine preset offers NO Edit affordance (removed, not greyed — the
-    /// `MaterialsControls` discipline). Since spec 0040 step 004 every entry carries
-    /// `complexity = Some`, so the gate is `MaterialComplexity.isEditable` (MaterialComplexityEditor): a
-    /// coded preset whose eps is an opaque evaluated closure (Silicon / Langasite) stays view-only.
+    /// The selected entry when its complexity is LOSSLESSLY EDITABLE — the Edit verb's target. A
+    /// view-only entry offers NO Edit affordance (removed, not greyed). The gate is
+    /// `MaterialComplexity.isEditable` (MaterialComplexityEditor): a complexity that is not editable
+    /// term data (Silicon / Langasite carry published laws) stays view-only.
     member this.editableSelection : MaterialEntry option =
         match this.selectedEntry with
-        | Some entry ->
-            match entry.complexity with
-            | Some complexity when complexity.isEditable -> Some entry
-            | Some _ | None -> None
-        | None -> None
+        | Some entry when entry.complexity.isEditable -> Some entry
+        | Some _ | None -> None
 
     /// The ids whose LATEST version is active (the `ActiveOnly` listing — read live every pass). A
     /// material present in `IncludeInactive` but NOT here has a retired latest version; that is how the
@@ -965,7 +961,7 @@ let private lifecycleButton (dispatch : MaterialsWindowMsg -> unit) (action : Li
     | SupersedeAction -> verbButton ConstructorUiId.materialsSupersedeButton (ControlCaption "Supersede…") (fun () -> dispatch RequestSupersede)
 
 /// The verbs row: Add and Categories… always; Edit only for an EDITABLE selection (a view-only
-/// engine preset loses the verb — removed, not greyed); Remove only while an entry is selected; the
+/// entry loses the verb — removed, not greyed); Remove only while an entry is selected; the
 /// lifecycle verbs from `offeredLifecycleActions` (Mark inactive + Supersede… for an active
 /// selection, Mark active for a retired one — spec 0038 step 023).
 let private verbsRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView =
@@ -1111,13 +1107,12 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
             |> List.tryPick (fun (vn, e) -> if vn = shownVersion then Some e else None)
             |> Option.defaultValue latestEntry
         let viewingOlder = shownVersion <> latestVersion
-        let chart = NkDispersionChart.nkDispersionChart shownEntry.previewAnisotropy shownEntry.properties Nanometer MaterialEditorView.previewRange
+        let anisotropy = shownEntry.complexity.anisotropy
+        let chart = NkDispersionChart.nkDispersionChart anisotropy shownEntry.properties Nanometer MaterialEditorView.previewRange
         let editability =
             if viewingOlder then $" (version {shownVersion.value} — view-only)"
-            else
-                match shownEntry.complexity with
-                | Some complexity when complexity.isEditable -> ""
-                | Some _ | None -> " (view-only engine preset)"
+            elif shownEntry.complexity.isEditable then ""
+            else " (view-only)"
         let viewOnlyNote : IView list =
             if viewingOlder then
                 [ TextBlock.create [
@@ -1148,7 +1143,7 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
                             ] :> IView ]
                           @ viewOnlyNote
                           @ versionsRow m versions latestVersion shownVersion dispatch
-                          @ [ EmbeddedChart.embeddedChartView ConstructorUiId.materialsViewPanelNkChart chart (NkDispersionChart.nkDispersionStyle shownEntry.previewAnisotropy chart) ])
+                          @ [ EmbeddedChart.embeddedChartView ConstructorUiId.materialsViewPanelNkChart chart (NkDispersionChart.nkDispersionStyle anisotropy chart) ])
                   ])
           ] :> IView ]
 

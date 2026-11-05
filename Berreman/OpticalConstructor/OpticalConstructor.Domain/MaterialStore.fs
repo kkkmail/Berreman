@@ -27,11 +27,9 @@ module MaterialStore =
 
     /// The metadata half of a material payload (spec 0038 Part H): the display fields the rule
     /// treats as never-versioning (a name / category / description edit mutates in place, never
-    /// mints). The physics half is `MaterialComplexity option` — the ONLY `(=)`-comparable view of
-    /// a material's optics (the engine `properties` carries function cases and cannot be compared),
-    /// and for an editable entry `properties` is `complexity.toProperties`, so equal complexity ⇒
-    /// equal physics. A coded preset (`complexity = None`) has physics that editing cannot change,
-    /// so its `None = None` never mints.
+    /// mints). The physics half is the `MaterialComplexity` — the `(=)`-comparable view of a
+    /// material's optics (the engine `properties` carries function cases and cannot be compared),
+    /// and `properties` is `complexity.toProperties`, so equal complexity ⇒ equal physics.
     type private MaterialMetadata =
         {
             name : EntryName
@@ -73,7 +71,7 @@ module MaterialStore =
 
             /// The payload the shared rule sees: physics = the complexity tree, metadata = the
             /// display fields.
-            let payloadOf (e : MaterialEntry) : VersionPayload<MaterialComplexity option, MaterialMetadata> =
+            let payloadOf (e : MaterialEntry) : VersionPayload<MaterialComplexity, MaterialMetadata> =
                 {
                     physics = e.complexity
                     metadata = { name = e.name; category = e.category; description = e.description }

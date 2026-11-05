@@ -114,23 +114,21 @@ module MaterialImportTests =
         match imported with
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
-            match entry.complexity with
-            | None -> Assert.Fail "expected the tabulated import to carry a dispersive complexity, got a None complexity"
-            | Some c ->
-                match c.eps with
-                | EpsWithDispValue (IsotropicDispersive [ segment ]) ->
-                    let lower = segment.wavelengthInterval.lower.value
-                    let upper = segment.wavelengthInterval.upper.value
-                    Assert.True(abs (lower - fixture.first.value) <= 1e-15<meter>, $"segment lower {lower}, want {fixture.first.value}")
-                    Assert.True(abs (upper - fixture.last.value) <= 1e-15<meter>, $"segment upper {upper}, want {fixture.last.value}")
-                | other -> Assert.Fail($"expected a single isotropic dispersive segment, got {other}")
-                match c.magnetic, c.active with
-                | None, None -> ()
-                | magnetic, active -> Assert.Fail($"expected no magnetic and no active aspect, got {magnetic} and {active}")
-                Assert.False(c.isEditable, "a tabulated table is not editable term data")
-                for sample in fixture.samples do
-                    let w = fixture.waveLengthAt sample.magnitude
-                    Assert.True(entry.properties.epsWithDisp.getEps w = c.toProperties.epsWithDisp.getEps w, $"properties = complexity.toProperties at {w.value}")
+            let c = entry.complexity
+            match c.eps with
+            | EpsWithDispValue (IsotropicDispersive [ segment ]) ->
+                let lower = segment.wavelengthInterval.lower.value
+                let upper = segment.wavelengthInterval.upper.value
+                Assert.True(abs (lower - fixture.first.value) <= 1e-15<meter>, $"segment lower {lower}, want {fixture.first.value}")
+                Assert.True(abs (upper - fixture.last.value) <= 1e-15<meter>, $"segment upper {upper}, want {fixture.last.value}")
+            | other -> Assert.Fail($"expected a single isotropic dispersive segment, got {other}")
+            match c.magnetic, c.active with
+            | None, None -> ()
+            | magnetic, active -> Assert.Fail($"expected no magnetic and no active aspect, got {magnetic} and {active}")
+            Assert.False(c.isEditable, "a tabulated table is not editable term data")
+            for sample in fixture.samples do
+                let w = fixture.waveLengthAt sample.magnitude
+                Assert.True(entry.properties.epsWithDisp.getEps w = c.toProperties.epsWithDisp.getEps w, $"properties = complexity.toProperties at {w.value}")
 
     [<Fact>]
     let ``a tabulated refractiveindex.info page imports as one view-only dispersive segment over its sample range`` () =
@@ -168,7 +166,7 @@ module MaterialImportTests =
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
             match entry.complexity with
-            | Some { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]) } ->
+            | { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]) } ->
                 Assert.Equal<TabulatedInterpolation>(LinearInWaveLengthClamped, table.interpolation)
                 Assert.Equal(List.length fixture.samples, table.wavelengths.Length)
                 Assert.Equal(List.length fixture.samples, table.n.Length)
@@ -188,15 +186,12 @@ module MaterialImportTests =
         let shuffled = NkCsvText "wavelength_nm,n,k\n600,1.460,0.002\n400,1.500,0.010\n700,1.450,0.001\n500,1.480,0.005\n"
         assertTableColumns sampleNkCsvRows shuffled.importMaterial
 
-    /// The imported entry MUST be editable (spec 0033 step 025): a `Some`
-    /// complexity whose eps is the dispersive segment tree (`EpsWithDispValue`).
+    /// The imported entry MUST be editable (spec 0033 step 025): a complexity whose
+    /// eps is the dispersive segment tree (`EpsWithDispValue`).
     let private assertEditableDispersive (entry : MaterialEntry) =
-        match entry.complexity with
-        | Some c ->
-            match c.eps with
-            | EpsWithDispValue _ -> ()
-            | EpsWithoutDispValue _ -> Assert.Fail "expected a dispersive EpsWithDispValue-backed complexity"
-        | None -> Assert.Fail "expected an editable complexity on the imported formula entry"
+        match entry.complexity.eps with
+        | EpsWithDispValue _ -> ()
+        | EpsWithoutDispValue _ -> Assert.Fail "expected a dispersive EpsWithDispValue-backed complexity"
 
     /// Import a formula fixture and pin the evaluated index (via the entry's
     /// engine `getEps` path) against the published-formula reference `expectedN`
@@ -234,7 +229,7 @@ module MaterialImportTests =
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
             match entry.complexity with
-            | Some { eps = EpsWithDispValue (IsotropicDispersive [ segment ]) } ->
+            | { eps = EpsWithDispValue (IsotropicDispersive [ segment ]) } ->
                 Assert.Equal(toWaveLength Micrometer (UnitMagnitude 0.3), segment.wavelengthInterval.lower)
                 Assert.Equal(toWaveLength Micrometer (UnitMagnitude 2.5), segment.wavelengthInterval.upper)
             | other -> Assert.Fail($"expected a single isotropic dispersive segment, got {other}")

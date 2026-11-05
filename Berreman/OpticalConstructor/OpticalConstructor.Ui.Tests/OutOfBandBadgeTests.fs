@@ -67,8 +67,7 @@ module OutOfBandBadgeTests =
             name = EntryName "Dispersive glass"
             category = CategoryIds.glass
             description = None
-            properties = dispersiveComplexity.toProperties
-            complexity = Some dispersiveComplexity
+            complexity = dispersiveComplexity
         }
 
     /// A single-film sample referencing the dispersive material at its pinned version one.
