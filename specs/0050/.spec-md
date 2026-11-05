@@ -49,7 +49,7 @@ What the change touches, in code, without the UI. The steps are the supporting e
 | Storage: canonical JSON, entry files, catalogue folders (`CatalogueProxy`), the library database proxies, the folder `KitProxy`, `KitHistoryProxy`, `KitArchiveProxy`, `MaterialSourceProxy` | `AppContext.create`, the start screen, the Kit menu, and the Library and Materials windows. |
 | Domain / Optimization: setups, naming template, grid generator, import profiles, studies, the study engine, fit runs, and the Planner | The constructor window's flow strip and the tests' semantic messages. |
 | `Berreman/BerremanTestSupport/` | Referenced by `BerremanTests` and `OpticalConstructor.Ui.Tests`. |
-| Future `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs` (AT-1, AT-2) | First produced by `.spec-jsonl` step 421 and bound to `kit-acceptance` by `.execution-contract-json:S121-AT1-ITEMS-SETUPS`; this is no evidence for an earlier consumer. The premature gate scheduling remains the handoff blocker in §4. |
+| Future `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs` (AT-1, AT-2) | First produced by `.spec-jsonl` step 421 and bound to `kit-acceptance` by `.execution-contract-json:S121-AT1-ITEMS-SETUPS`; this is no evidence for an earlier consumer. Neither `.spec-jsonl` nor `.execution-contract-json` schedules `kit-acceptance` before step 421; §4 records the separate effective-plan coverage gap. |
 | `data/optics-mueller/`, `data/absorbing-biaxial-noisy/` | AT-1 and AT-2, and the start screen's "Open kit…". |
 
 ---
@@ -129,7 +129,7 @@ The work is implemented in 001's §S order, sections 1–14, each green on its o
 
 ## 4. Binding constraints for every section
 
-- **Order and greenness.** Sections MUST land in plan order; each step MUST leave every effective gate green except its declared, captured ADD_RED failures. Before handoff, every effective gate and prerequisite MUST have an obligation/check binding, and every filtered gate MUST have a post-effect `gate_selection`. The candidate does not yet satisfy that requirement: `.spec-jsonl` step 2 and steps 335–343 lack both a `kit-acceptance` selection and a corresponding `.execution-contract-json` check, although `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/plan_view.py:effective_plan` selects that gate. Under 001 §U, `kit-acceptance` MUST run only from its first test-producing step (421) onward; §9 names the verification before that producer. **Handoff is blocked:** ASG's `executability.plan_view.effective_plan` schedules that gate before its producer, including steps 2 and 335–343, because `.spec-bundle` does not enable `gates_required_only` and `.gates/OpticalConstructor/kit-acceptance.gates:applies_to` admits those consumers. The bundle/gate owner MUST make the authored `required_gates` authoritative with `gates_required_only: true` in `.spec-bundle`, then revalidate the effective plan, selections and bindings. That file is outside this author cycle's write scope; this narrative does not enact the repair. Earlier selections MUST NOT name the future tests or treat an empty suite as proof. Superseded code MUST be deleted in the change that replaces it. A reuse MUST be a move or a call: the new home and deletion of the old body MUST land together.
+- **Order and greenness.** Sections MUST land in plan order; each step MUST leave every effective gate green except its declared, captured ADD_RED failures. **Handoff requirement:** every effective gate and prerequisite MUST have an obligation/check binding, and every filtered gate MUST have a post-effect `gate_selection`. **Measured coverage gap:** `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/plan_view.py:effective_plan` includes `kit-acceptance` at steps 2, 3, 5, 7–10, 205, 335–346, 348–349, 351–353, 356, 376, 380–381, 386–391, 393 and 397–404, but those steps have neither a `.spec-jsonl` selection nor a corresponding `.execution-contract-json` obligation/check binding; `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/checker.py:explicit_selections` reports the missing selections. The authored requirements, selections and bindings first name that gate at `.spec-jsonl` step 421 and `.execution-contract-json:S121-AT1-ITEMS-SETUPS`. Under 001 §U, `kit-acceptance` MUST run only from that first test-producing step onward; §9 names the verification before that producer. **Handoff is blocked by the effective-plan coverage gap:** `.spec-bundle` does not enable `gates_required_only`, so `effective_plan` also selects gates through `.gates/OpticalConstructor/kit-acceptance.gates:applies_to`. The bundle/gate owner MUST make the authored `required_gates` authoritative with `gates_required_only: true` in `.spec-bundle`, then revalidate the effective plan, selections and bindings. That file is outside this author cycle's write scope; this narrative does not enact the repair. Earlier selections MUST NOT name the future tests or treat an empty suite as proof. Superseded code MUST be deleted in the change that replaces it. A reuse MUST be a move or a call: the new home and deletion of the old body MUST land together.
 - **AGENTS.md walls.**
   - Release / x64 only, `dotnet` only, zero warnings from our code, LF line endings.
   - Central package versions in the root `Directory.Build.targets`; Microsoft.Testing.Platform with xUnit v3; never a VSTest package.
@@ -156,7 +156,7 @@ The work is implemented in 001's §S order, sections 1–14, each green on its o
   - Every new window calls `WindowFit.keepOnScreen` (`OpticalConstructor.Controls/WindowLayout.fs`) and joins `ScrollExtentTests`.
   - New surfaces live in their own files. `TableAndElementRotationView.fs` hosts them through messages and does not absorb their views.
 - **Comments.** Comments follow `AGENTS.md`: why rather than what, cite this spec, and add no new comments in project files.
-- **Section invariants.** A section's invariants run after every one of its steps, so every step keeps them.
+- **Section invariants.** `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/step_compiler/compile.py:section_invariant_gates` constructs the section gates, and `C:/GitHub/AI-Strategy-Generator/src/ai_strategy_generator/executability/plan_view.py:effective_plan` appends them to every matching step's gate list. Every step MUST keep its section's invariants.
 
 ## 5. Shared shapes (pinned, so the sections agree)
 
@@ -198,11 +198,11 @@ The kit root is flat. Subfolders hold only additional data: `library/`, `data/` 
 | Cut plates | `MuellerInverse.orientForCut`, `internalAngle`, `gyrationProjection` | — |
 | Table samples | `Propagation.sampleMuellerSpun` | — |
 | Fit quality | `FitQuality.residualJacobian`, `ResidualJacobian` (`columnNorms`, `conditionNumber`, `correlation`), `FitReport.standardErrors` | — |
-| Noise / fit harness | `BerremanTests/InverseFitHarness.fs` → Optimization | Its product half |
-| Ground truth | `BiaxialSample.fs`, `AbsorbingBiaxialSample.fs` → `BerremanTestSupport` | Their BerremanTests copies |
+| Noise / fit harness | `Berreman/BerremanTests/InverseFitHarness.fs:InverseFitHarness` → Optimization | Its product half |
+| Ground truth | `Berreman/BerremanTests/BiaxialSample.fs:BiaxialSample`, `Berreman/BerremanTests/AbsorbingBiaxialSample.fs:AbsorbingBiaxialSample` → `BerremanTestSupport` | Their BerremanTests copies |
 | §7.2 pipeline | `MuellerReconstructionTests` §7.2 → product staged path | The hand-composed body |
 | Pre-fit checks | `SolverHandoffView` three checks, `ExperimentDataLoad.loadAndValidate` | `SolverHandoffView` / `Window` |
-| Long work | `OpticalConstructor.Ui/JobRunner.fs` | — |
+| Long work | `Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs:OpticalConstructor.Ui.JobRunner` | — |
 | Windows | `WindowFit.keepOnScreen`, `ScrollExtentTests` | — |
 
 ## 7. Migration intent
