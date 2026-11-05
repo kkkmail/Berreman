@@ -1,0 +1,221 @@
+name: build
+description: dotnet build Berreman.slnx Release (F# numerical optics solver)
+kind: command
+phase: build
+command: "dotnet build Berreman.slnx -c Release -nologo -v:m"
+cwd: Berreman
+pass_when:
+  exit_code: 0
+  stdout_match: (?s)^(?!.*error).*$
+runtime_estimate_seconds: 600
+runtime_actual_seconds: 65
+tags: [build]
+applies_to:
+  - paths: ["Berreman/**/*.fs", "Berreman/**/*.fsproj", "Berreman/**/*.slnx", "Directory.Build.props", "Directory.Build.targets", "Berreman/Berreman/BuildInfo.ps1", "Berreman/PreBuild/**"]
+qualifier: build
+builds: [Berreman/Berreman.slnx]
+---
+name: elevation
+description: "Elevation analyzers (ELEV004 excluded) over the Berreman projects a step ACTUALLY touches. Elevation/Run-ElevationGate.ps1 runs STL's Softellect.Analyzers package, at the version the root Directory.Build.targets pins, through fsharp-analyzers over each F# product project of Berreman.slnx that compiles a changed .fs, plus the projects that reference it, because the duplicate-name rules (ELEV014/015/016/019) see a collision only from downstream; a change to .elevation-analyzers.json, a solution or the root Directory.Build.props / .targets widens the run to all 13. A finding recorded in Elevation/elevation-known-findings.json (the 3,757 the tree had when the gates were set up, which the ledger specs/0048/.manual/002-elevation-ledger.jsonl closes row by row) does not fail; a new one does, and so does a recorded one that is no longer found, so a fix deletes its entry in the same step. ELEV004 is excluded HERE, in the command and not in the rules, as in STL's gates, so a full analyzer run still measures it (spec 0048 .manual/002 R7). Requires build: the analyzers read each project's references as built. Measured 240 s for all 13 projects at throttle 4 (specs/0048/.manual/001)."
+kind: command
+phase: verify
+command: powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^ELEV-GATE: OK\\b"
+  failure_capture: "(?m)^FAILED:\\s+(.+?)\\r?$"
+runtime_estimate_seconds: 600
+priority: 10
+silent_for_seconds: 600
+tags: [lint, elevation]
+applies_to:
+  - paths: ["Berreman/**/*.fs", "Berreman/**/*.fsproj", "Berreman/Berreman.slnx", ".elevation-analyzers.json", "Elevation/elevation-known-findings.json", "Directory.Build.props", "Directory.Build.targets"]
+qualifier: source
+requires_path: [Elevation/Run-ElevationGate.ps1]
+requires_gates: [build]
+scope: working_tree
+---
+name: constructor-unit-tests
+description: dotnet test over the OpticalConstructor UI-less projects (Domain beam-tree orchestration, Storage JSON round-trip + schema validation, Optimization interface, units spine) — spec 0022 §A.6/P3 testability mandate — on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
+kind: command
+phase: verify
+command: "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename constructor-unit-tests.trx {selector}"
+cwd: Berreman/OpticalConstructor/OpticalConstructor.Tests
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^Test run summary: Passed!"
+  count_at_least:
+    capture: "succeeded:\\s*(\\d+)"
+    baseline_key: constructor_unit_tests
+  failure_capture: "(?m)^failed (.+) \\((?:\\d+(?:ms|s|m|h) ?)+\\)\\r?$"
+result_capture: {"format": "trx", "path": "TestResults/constructor-unit-tests.trx", "skip_policy": "fail"}
+runtime_estimate_seconds: 180
+tags: [test]
+applies_to:
+  - paths: ["Berreman/OpticalConstructor/**"]
+selector:
+  unit: class
+  template: --filter-method "{value}.*" --filter-method "{value}"
+  joiner: " "
+  arg: "{rendered}"
+  required: false
+qualifier: unit
+requires_gates: [build]
+whole_suite: light
+runtime_actual_whole_seconds: 13
+---
+name: ui-smoke
+description: Headless launch/render smoke gate for the Optical Constructor FuncUI app — runs the Avalonia.Headless smoke test (trait Category=ui-smoke) that opens the host, asserts OnFrameworkInitializationCompleted ran, and renders one frame for every panel/page view without throwing (spec 0024 §U1.6 / §U1.7 / AC-U1.3) — on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
+kind: command
+phase: verify
+command: "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename ui-smoke.trx --filter-trait \"Category=ui-smoke\" {selector}"
+cwd: Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^Test run summary: Passed!"
+  count_at_least:
+    capture: "succeeded:\\s*(\\d+)"
+    baseline_key: ui_smoke_tests
+  failure_capture: "(?m)^failed (.+) \\((?:\\d+(?:ms|s|m|h) ?)+\\)\\r?$"
+result_capture: {"format": "trx", "path": "TestResults/ui-smoke.trx", "skip_policy": "fail"}
+runtime_estimate_seconds: 180
+tags: [test, smoke]
+applies_to:
+  - paths: ["Berreman/OpticalConstructor/OpticalConstructor.Ui/**", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/**", "Berreman/OpticalConstructor/OpticalConstructor.App/**"]
+selector:
+  unit: class
+  template: --filter-method "{value}.*" --filter-method "{value}"
+  joiner: " "
+  arg: "{rendered}"
+  required: false
+qualifier: smoke
+requires_gates: [build]
+whole_suite: light
+runtime_actual_whole_seconds: 27
+---
+name: ui-tests
+description: Headless per-panel view-test gate for the Optical Constructor FuncUI app — runs the Avalonia.Headless per-panel/page view tests (mount each view over a known RootModel, assert key controls exist and a simulated interaction dispatches the expected RootMsg) in OpticalConstructor.Ui.Tests, every test without the ui-smoke trait (spec 0024 §0.7 / Test artifacts) — on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
+kind: command
+phase: verify
+command: "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename ui-tests.trx --filter-not-trait \"Category=ui-smoke\" --filter-not-trait \"Category=kit-acceptance\" {selector}"
+cwd: Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^Test run summary: Passed!"
+  count_at_least:
+    capture: "succeeded:\\s*(\\d+)"
+    baseline_key: ui_tests
+  failure_capture: "(?m)^failed (.+) \\((?:\\d+(?:ms|s|m|h) ?)+\\)\\r?$"
+result_capture: {"format": "trx", "path": "TestResults/ui-tests.trx", "skip_policy": "fail"}
+runtime_estimate_seconds: 360
+tags: [test, ui]
+applies_to:
+  - paths: ["Berreman/OpticalConstructor/OpticalConstructor.Ui/**", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/**", "Berreman/OpticalConstructor/OpticalConstructor.App/**"]
+selector:
+  unit: class
+  template: --filter-method "{value}.*" --filter-method "{value}"
+  joiner: " "
+  arg: "{rendered}"
+  required: false
+qualifier: unit
+requires_gates: [build]
+runtime_actual_whole_seconds: 98
+step_select: [OpticalConstructor.Ui.Tests.KitStartWindowTests]
+---
+name: invariant-s22-elev-list-empty
+description: "ASSERT_INVARIANT s22-elev-list-empty (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -F \"ELEV0\" -- Elevation/elevation-known-findings.json"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkVMRVYwIiAtLSBFbGV2YXRpb24vZWxldmF0aW9uLWtub3duLWZpbmRpbmdzLmpzb24="
+tags: [section-invariant]
+---
+name: invariant-s22-no-vstest
+description: "ASSERT_INVARIANT s22-no-vstest (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -E \"Microsoft.NET.Test.Sdk|xunit.runner.visualstudio|Xunit.SkippableFact|IsTestingPlatformApplication\" -- \"*.fsproj\" \"*.props\" \"*.targets\""
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIk1pY3Jvc29mdC5ORVQuVGVzdC5TZGt8eHVuaXQucnVubmVyLnZpc3VhbHN0dWRpb3xYdW5pdC5Ta2lwcGFibGVGYWN0fElzVGVzdGluZ1BsYXRmb3JtQXBwbGljYXRpb24iIC0tICIqLmZzcHJvaiIgIioucHJvcHMiICIqLnRhcmdldHMi"
+tags: [section-invariant]
+---
+name: invariant-s22-no-kit-kit-json
+description: "ASSERT_INVARIANT s22-no-kit-kit-json (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -F \"kit.kit-json\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgImtpdC5raXQtanNvbiIgLS0gQmVycmVtYW4v"
+tags: [section-invariant]
+---
+name: invariant-s22-no-eps-axis-evaluated
+description: "ASSERT_INVARIANT s22-no-eps-axis-evaluated (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -F \"EpsAxisEvaluated\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkVwc0F4aXNFdmFsdWF0ZWQiIC0tIEJlcnJlbWFuLw=="
+tags: [section-invariant]
+---
+name: invariant-s22-complexity-mandatory
+description: "ASSERT_INVARIANT s22-complexity-mandatory (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -E \"complexity = (None|Some)\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgImNvbXBsZXhpdHkgPSAoTm9uZXxTb21lKSIgLS0gQmVycmVtYW4v"
+tags: [section-invariant]
+---
+name: invariant-s22-no-seeded-string-preset-ids
+description: "ASSERT_INVARIANT s22-no-seeded-string-preset-ids (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -E \"(src-(600|hene-|ar-4|ar-5|hecd-|diode-|ruby-|tisa-|ndyag-|er-1550|co2-|hg-|krf-|arf-|f2-1|euv-|beuv-|xe-mono|supercontinuum)|det-(intensity|ellipsometer)|pol-(lp|cp-left|cp-right))\" -- \"Berreman/*.fs\""
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIihzcmMtKDYwMHxoZW5lLXxhci00fGFyLTV8aGVjZC18ZGlvZGUtfHJ1YnktfHRpc2EtfG5keWFnLXxlci0xNTUwfGNvMi18aGctfGtyZi18YXJmLXxmMi0xfGV1di18YmV1di18eGUtbW9ub3xzdXBlcmNvbnRpbnV1bSl8ZGV0LShpbnRlbnNpdHl8ZWxsaXBzb21ldGVyKXxwb2wtKGxwfGNwLWxlZnR8Y3AtcmlnaHQpKSIgLS0gIkJlcnJlbWFuLyouZnMi"
+tags: [section-invariant]
+---
+name: invariant-s22-no-seeding-seam
+description: "ASSERT_INVARIANT s22-no-seeding-seam (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -E \"SeedingProxy|seedAll|OpticalConstructor.Seeding\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlNlZWRpbmdQcm94eXxzZWVkQWxsfE9wdGljYWxDb25zdHJ1Y3Rvci5TZWVkaW5nIiAtLSBCZXJyZW1hbi8="
+tags: [section-invariant]
+---
+name: invariant-s22-t1-no-code-seeds
+description: "ASSERT_INVARIANT s22-t1-no-code-seeds (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -E \"let (builtInEntries|seedEntries|standardCategories) \" -- Berreman/OpticalConstructor/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgImxldCAoYnVpbHRJbkVudHJpZXN8c2VlZEVudHJpZXN8c3RhbmRhcmRDYXRlZ29yaWVzKSAiIC0tIEJlcnJlbWFuL09wdGljYWxDb25zdHJ1Y3Rvci8="
+tags: [section-invariant]
+---
+name: invariant-s22-no-seed-modules
+description: "ASSERT_INVARIANT s22-no-seed-modules (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -E \"SeedSamples|SeedSources|SeedEntryIds\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlNlZWRTYW1wbGVzfFNlZWRTb3VyY2VzfFNlZWRFbnRyeUlkcyIgLS0gQmVycmVtYW4v"
+tags: [section-invariant]
+---
+name: invariant-s22-no-test-db
+description: "ASSERT_INVARIANT s22-no-test-db (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -w -E \"TestDbContext|DatabaseProvider|databaseProvider|OpticalConstructorMssql\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLXcgLUUgIlRlc3REYkNvbnRleHR8RGF0YWJhc2VQcm92aWRlcnxkYXRhYmFzZVByb3ZpZGVyfE9wdGljYWxDb25zdHJ1Y3Rvck1zc3FsIiAtLSBCZXJyZW1hbi8="
+tags: [section-invariant]
+---
+name: invariant-s22-no-versions-in-use
+description: "ASSERT_INVARIANT s22-no-versions-in-use (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -E \"VersionsInUse|versionsInUseSeam\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlZlcnNpb25zSW5Vc2V8dmVyc2lvbnNJblVzZVNlYW0iIC0tIEJlcnJlbWFuLw=="
+tags: [section-invariant]
+---
+name: invariant-s22-no-scene-collection-seams
+description: "ASSERT_INVARIANT s22-no-scene-collection-seams (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -E \"SceneProxy|ExperimentCollectionProxy\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlNjZW5lUHJveHl8RXhwZXJpbWVudENvbGxlY3Rpb25Qcm94eSIgLS0gQmVycmVtYW4v"
+tags: [section-invariant]
+---
+name: invariant-s22-t4-no-ocproj
+description: "ASSERT_INVARIANT s22-t4-no-ocproj (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -i -F \"ocproj\" -- Berreman/OpticalConstructor/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLWkgLUYgIm9jcHJvaiIgLS0gQmVycmVtYW4vT3B0aWNhbENvbnN0cnVjdG9yLw=="
+tags: [section-invariant]
+---
+name: invariant-s22-no-recent-json
+description: "ASSERT_INVARIANT s22-no-recent-json (must-find-nothing) of section 'S6 -- Send and receive kits; copy experiments between kits': git grep -n -F \"recent.json\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgInJlY2VudC5qc29uIiAtLSBCZXJyZW1hbi8="
+tags: [section-invariant]

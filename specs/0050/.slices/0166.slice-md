@@ -1,0 +1,21 @@
+# Step 0166 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Storage, OpticalConstructor.Tests]
+depends_on: [165]
+required_gates: [build, elevation, constructor-unit-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Storage/CanonicalJson.fs", "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs"], "tests": [{"op": "change_expectation", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.CanonicalJsonTests.every closed set with an int tag is written as its tag and read back", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs", "obligations": ["S51-STAR-TAG"]}, {"op": "change_expectation", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.CanonicalJsonTests.an unknown disk tag is refused", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs", "obligations": ["S51-STAR-TAG"]}], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Storage/CanonicalJson.fs", "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs"], "tests": [{"op": "change_expectation", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.CanonicalJsonTests.every closed set with an int tag is written as its tag and read back", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs", "obligations": ["S51-STAR-TAG"]}, {"op": "change_expectation", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.CanonicalJsonTests.an unknown disk tag is refused", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs", "obligations": ["S51-STAR-TAG"]}], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+
+**How to implement.** The history file stores a star as its int tag (AGENTS.md: 'A closed set's wire/disk tag is an integer'; .spec-md §4 'Shapes'; step 28's rule for the options). `OpticalConstructor.Storage/CanonicalJson.fs`: `CanonicalJson.options` gains one converter for `KitStar` (step 164), written as step 28's four are and registered with them before the `JsonFSharpConverter`: it writes the case's `value` and reads through `KitStar.tryOfWire`, an unknown tag throwing `JsonException`, which the callers report as `MalformedJsonErr`. No other union changes its form and nothing else in the options changes. Tests, in `OpticalConstructor.Tests/CanonicalJsonTests.fs` (step 28): `every closed set with an int tag is written as its tag and read back` also covers `KitStar`: `StarredKit` serializes as `1` and `UnstarredKit` as `2`, and each reads back equal; `an unknown disk tag is refused` also reads `3` as a `KitStar` and expects `JsonException`.
+
+**Acceptance.** After the converter lands, a `KitStar` MUST be written as its int tag and an unknown tag MUST be refused; constructor-unit-tests MUST pass, including `every closed set with an int tag is written as its tag and read back` and `an unknown disk tag is refused` over `KitStar`, the count unchanged; and build, elevation and the thirteen s19 invariants MUST pass.

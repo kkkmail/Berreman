@@ -1,0 +1,21 @@
+# Step 0070 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain]
+depends_on: [69]
+required_gates: [build, elevation, constructor-unit-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+
+**How to implement.** Before a second category store exists, the in-memory category store's refusal texts become members both stores call (AGENTS.md 'Reuse, never copy'; .spec-md §6). A move: every text stays as it is. In `OpticalConstructor.Domain/MaterialLibrary.fs`, directly above the in-memory category store (`MaterialLibrary.fs:CategoryProxy.createInMemoryStore`'s augmentation), `type CategoryError with` gains `static member unknownCategory (id : CategoryId) : CategoryError` (the store's local `unknown`), `static member duplicateCategory (existing : MaterialCategory) : CategoryError` (the id already names `existing`), `static member builtInNotRemovable (category : MaterialCategory) : CategoryError` and `static member stillReferenced (category : MaterialCategory) (materials : EntryName list) : CategoryError` (quoting and sorting the names as `removeCategory` does). The store calls them and builds no refusal text itself. Each doc is one line citing spec 0050 S2.2. No behaviour, message or fact changes.
+
+**Acceptance.** After the move, `MaterialLibrary.fs` MUST declare `unknownCategory`, `duplicateCategory`, `builtInNotRemovable` and `stillReferenced` on `CategoryError`, and the in-memory category store MUST build no refusal text of its own; constructor-unit-tests MUST pass with its count unchanged; and build, elevation and the ten s09 invariants MUST pass.

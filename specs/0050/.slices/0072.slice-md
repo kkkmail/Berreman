@@ -1,0 +1,21 @@
+# Step 0072 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain]
+depends_on: [65]
+required_gates: [build, elevation, constructor-unit-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs", "Berreman/OpticalConstructor/OpticalConstructor.Domain/SampleStore.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs", "Berreman/OpticalConstructor/OpticalConstructor.Domain/SampleStore.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+
+**How to implement.** Before a second samples store exists, the in-memory samples store's version payload, search filter and refusal texts become members that both stores call (AGENTS.md 'Reuse, never copy'; .spec-md §6; the S2.2 rule of steps 68 and 70). A move: every text, filter and payload stays exactly as it is. (1) `OpticalConstructor.Domain/SampleStore.fs`, above the store: `SampleMetadata` (`SampleStore.fs:SampleMetadata`) becomes public, with a one-line doc, and `type Sample with member this.versionPayload : VersionPayload<SampleStructure, SampleMetadata>` replaces the store's local `payloadOf`: the structure is the physics, and the name, the description and the `SubstrateKind` facet are the metadata. (2) `OpticalConstructor.Domain/ElementId.fs`: `SampleQuery` (`ElementId.fs:SampleQuery`) gains `member this.selectFrom (samples : Sample list) : Sample list`, the store's `searchSamples` filter moved whole: the samples whose name contains `text` case-insensitively (`StringComparison.OrdinalIgnoreCase`), then, when `substrate` is `Some`, those of that `SubstrateKind`, in the order given. Directly after `SampleError` (`ElementId.fs:SampleError`), `type SampleError with` gains `static member unknownSample (id : SampleId) : SampleError` (the store's local `unknown`, `unknown sample id '<id>'`), `static member unknownSampleVersion (version : SampleVersionId) : SampleError` (step 65's pin refusal, an `UnknownSampleIdErr` naming the id and the version as `v<n>`) and `static member versionsPinned (sample : Sample) (versions : VersionNumber list) : SampleError` (step 65's `SampleVersionPinnedErr`, naming the sample, its id, the count and the versions as `v1, v2`). (3) The in-memory store's `searchSamples` is `q.selectFrom` over its latest active samples, and the store builds no refusal text, filter or payload of its own. Each new doc is one line citing spec 0050 S2.3. No behaviour, message or fact changes.
+
+**Acceptance.** After the move, `SampleStore.fs` MUST declare `Sample.versionPayload` over a public `SampleMetadata`, `ElementId.fs` MUST declare `SampleQuery.selectFrom` and `unknownSample`, `unknownSampleVersion` and `versionsPinned` on `SampleError`, and the in-memory samples store MUST build no refusal text, search filter or payload of its own; constructor-unit-tests MUST pass with its count unchanged; and build, elevation and the eleven s10 invariants MUST pass.

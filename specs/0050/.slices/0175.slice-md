@@ -1,0 +1,23 @@
+# Step 0175 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [174]
+required_gates: [build, elevation, constructor-unit-tests, ui-smoke, ui-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs"], "tests": [{"op": "create", "suite": "ui-tests", "id": "OpticalConstructor.Ui.Tests.AppContextTests.create composes the kit history over the configured preferences folder", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs", "class": "OpticalConstructor.Ui.Tests.AppContextTests", "discovery_gate": "ui-tests", "obligations": ["S52-APP-HISTORY"]}], "contracts": [{"symbol": "OpticalConstructor.Ui.AppContext.kitHistory", "op": "create", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "obligations": ["S52-APP-HISTORY"]}], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}, "ui-smoke": {"mode": "all_discovered", "suite": "ui-smoke"}, "ui-tests": {"mode": "selected", "suite": "ui-tests", "values": ["OpticalConstructor.Ui.Tests.AppContextTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs"], "tests": [{"op": "create", "suite": "ui-tests", "id": "OpticalConstructor.Ui.Tests.AppContextTests.create composes the kit history over the configured preferences folder", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs", "class": "OpticalConstructor.Ui.Tests.AppContextTests", "discovery_gate": "ui-tests", "obligations": ["S52-APP-HISTORY"]}], "contracts": [{"symbol": "OpticalConstructor.Ui.AppContext.kitHistory", "op": "create", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "obligations": ["S52-APP-HISTORY"]}], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+- `ui-smoke`: 
+- `ui-tests`: `OpticalConstructor.Ui.Tests.AppContextTests`
+
+**How to implement.** The app scope composes the kit history once, over the configured preferences folder (the S5.1 mapper's request, its interpretation 12: compose `KitHistoryProxy.create` over `locations.preferencesFolder` where the start screen's proxies are built; .spec-md §0.2: `KitHistoryProxy` is invoked from `AppContext.create` and the start screen; §3.9: every location comes from settings). In `OpticalConstructor.Ui/AppContext.fs`: the record gains `kitHistory : KitHistoryProxy` as its last field, its doc one line: the kit history the start screen lists and bumps, in the per-user preferences (001 §F, spec 0050 S5.2). The private `compose` (steps 89, 100) sets it to `KitHistoryProxy.create locations.preferencesFolder` (step 168), so `create` and `recreateLibrary` both carry it, and building it touches nothing. No other field, option or cache is added, and the history's cap stays `settings.kitHistoryLimit` (step 163). Every test composition gets it through `TestAppScope` unchanged, over `testLocations`' `Preferences` folder under the test output (step 83). Tests: `OpticalConstructor.Ui.Tests/AppContextTests.fs` gains `create composes the kit history over the configured preferences folder`: over `TestAppScope.fileLocations` of the module (step 88), `ctx.kitHistory.readHistory ()` answers `KitHistory.empty`; a one-entry history written through `ctx.kitHistory.writeHistory` answers `Ok ()`, the locations' `preferencesFolder` then holds `kit-history.json`, and a new `KitHistoryProxy.create` over that folder reads the history back equal.
+
+**Acceptance.** After the app scope carries the history, `AppContext.kitHistory` MUST be `KitHistoryProxy.create` over the configured preferences folder; constructor-unit-tests MUST pass; ui-smoke MUST pass; ui-tests MUST pass over the selected classes, including `create composes the kit history over the configured preferences folder`, the count rising by 1; and build, elevation and the fourteen s20 invariants MUST pass.

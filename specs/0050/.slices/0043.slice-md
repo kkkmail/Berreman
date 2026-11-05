@@ -1,0 +1,22 @@
+# Step 0043 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui.Tests]
+depends_on: [42]
+required_gates: [build, elevation, ui-smoke, ui-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/MainWorkbenchTests.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"ui-smoke": {"mode": "all_discovered", "suite": "ui-smoke"}, "ui-tests": {"mode": "selected", "suite": "ui-tests", "values": ["OpticalConstructor.Ui.Tests.MainWorkbenchTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/MainWorkbenchTests.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `ui-smoke`: 
+- `ui-tests`: `OpticalConstructor.Ui.Tests.MainWorkbenchTests`
+
+**How to implement.** `MainWorkbenchTests` composes its fresh stores the way the App does (`MainWorkbenchTests.fs:68-85`), so they come from the shipped catalogue too (.spec-md §3.4, §3.5). `freshStores ()` answers `BuiltinCatalogue.freshStores ()` (step 41) in place of the two self-seeding stores. `mainWith` takes that bundle and calls `initMainWith (liveLibrary stores.libraryEntries stores.samples (SourceProxy.createInMemory ())) (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories`, the composition `DefaultStores.create` performs (step 42). The create-picker fact (`:143-146`) reads the bundle's `materials` and `categories` in place of building a category store. The two helpers' docs say they compose from the Built-in catalogue as the App does, and the `Lifecycle`, `MaterialStore` and `SampleStore` opens go if nothing else needs them. Every fact keeps its name and its assertions, and `sampleBandsState collapses a period group to x-N bands (the Details-bay shape)` keeps reading `SeedSamples.multilayerQw`.
+
+**Acceptance.** After the re-point, `MainWorkbenchTests.fs` MUST NOT call `MaterialProxy.createInMemory`, `SampleProxy.createInMemory`, `CategoryProxy.createInMemory` or `Library.createInMemory`; ui-tests (MainWorkbenchTests) and ui-smoke MUST pass with their counts unchanged; and build, elevation and the six s06 invariants MUST pass.

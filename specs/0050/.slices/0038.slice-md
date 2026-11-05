@@ -1,0 +1,21 @@
+# Step 0038 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Storage, OpticalConstructor.Tests]
+depends_on: [33, 34]
+required_gates: [build, elevation, constructor-unit-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Storage/CatalogueFolderStore.fs", "Berreman/OpticalConstructor/OpticalConstructor.Tests/CatalogueFolderTests.fs", "Berreman/OpticalConstructor/OpticalConstructor.Tests/BuiltInCatalogueParityTests.fs"], "tests": [{"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.CatalogueFolderTests.the Built-in catalogue proxy reads the catalogue the build copies beside the assembly", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/CatalogueFolderTests.fs", "class": "OpticalConstructor.Tests.CatalogueFolderTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S16-BUILTIN-FOLDER"]}], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Storage/CatalogueFolderStore.fs", "Berreman/OpticalConstructor/OpticalConstructor.Tests/CatalogueFolderTests.fs", "Berreman/OpticalConstructor/OpticalConstructor.Tests/BuiltInCatalogueParityTests.fs"], "tests": [{"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.CatalogueFolderTests.the Built-in catalogue proxy reads the catalogue the build copies beside the assembly", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/CatalogueFolderTests.fs", "class": "OpticalConstructor.Tests.CatalogueFolderTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S16-BUILTIN-FOLDER"]}], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+
+**How to implement.** One name for the shipped catalogue's folder, so the composition roots and the tests read the same files (001 §B 'Shipped catalogue': `<install>\Catalogue\Builtin\`, 'tests load the same files'; .spec-md §3.5). (1) `OpticalConstructor.Storage/CatalogueFolderStore.fs` (step 33) gains, beside `create` on the same `type CatalogueProxy with` extension, `static member createBuiltIn () : CatalogueProxy`. It answers `CatalogueProxy.create` over `Path.Combine(System.AppContext.BaseDirectory, "Catalogue", "Builtin")`, the folder that Storage's Content item (step 35) copies into every output referencing Storage. `System.AppContext` is written in full because the Ui's `AppContext` type shares the name. Its doc is one line citing spec 0050 §3.5. This is the one place that path is written: `BuiltInCatalogueParityTests`' private `readBuiltIn` (step 34) reads `(CatalogueProxy.createBuiltIn ()).readCatalogue ()`, and its own `Path.Combine` is deleted. No parameter, cache or fallback folder is added. (2) `CatalogueFolderTests` gains `the Built-in catalogue proxy reads the catalogue the build copies beside the assembly`: `(CatalogueProxy.createBuiltIn ()).readCatalogue ()` is `Ok`, its manifest's id is `CatalogueIds.builtInCatalogue` and its name `CatalogueName "Built-in"`, and it equals the read of `CatalogueProxy.create` over `Catalogue/Builtin` under `AppContext.BaseDirectory`, spelled out in the fact, so the fact states the location independently.
+
+**Acceptance.** After the member lands, constructor-unit-tests MUST pass, including `the Built-in catalogue proxy reads the catalogue the build copies beside the assembly` and the five BuiltInCatalogueParityTests facts, now reading through `createBuiltIn`; `BuiltInCatalogueParityTests.fs` MUST NOT contain `Path.Combine`; and build, elevation and the six s06 invariants MUST pass.

@@ -1,0 +1,23 @@
+# Step 0029 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Storage, OpticalConstructor.Ui]
+depends_on: [21]
+required_gates: [build, elevation, constructor-unit-tests, ui-smoke, ui-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs", "Berreman/OpticalConstructor/OpticalConstructor.Storage/GroupsLibrary.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}, "ui-smoke": {"mode": "all_discovered", "suite": "ui-smoke"}, "ui-tests": {"mode": "selected", "suite": "ui-tests", "values": ["OpticalConstructor.Ui.Tests.AppShellSeamTests", "OpticalConstructor.Ui.Tests.DataFilePickerFolderTests", "OpticalConstructor.Ui.Tests.LocalizationTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs", "Berreman/OpticalConstructor/OpticalConstructor.Storage/GroupsLibrary.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+- `ui-smoke`: 
+- `ui-tests`: `OpticalConstructor.Ui.Tests.AppShellSeamTests`, `OpticalConstructor.Ui.Tests.DataFilePickerFolderTests`, `OpticalConstructor.Ui.Tests.LocalizationTests`
+
+**How to implement.** `SchemaValidation` is generalised from the one project schema to any build-copied schema (001 §B: 'JSON Schema per kind … REUSED'; .spec-md §6 'JSON + schema'), so one evaluation body serves every format. In `SchemaValidation.fs`, `validateWith (schema : Lazy<Result<JsonSchema, StorageError>>) (element : JsonElement) : Result<unit, StorageError>` holds the evaluation body of today's `validate` (`:64-76`): `EvaluationOptions(OutputFormat = OutputFormat.List)`, `collectMessages` (`:45-59`) and the fallback message `schema validation failed`. `validate` answers `validateWith` over the project schema (`:31-36`), so `ProjectJson` is unchanged. The two copies of that body are deleted and call it: `GroupsLibrary.validateGroupsLibrary` (`GroupsLibrary.fs:49-59`) over its groups schema, and `UserEnvironment.validateUserEnvironment` (`OpticalConstructor.Ui/UserEnvironment.fs:331-344`) over its environment schema. Both keep their names, their lazies and their `$id`s, and their docs say they reuse `validateWith`. The environment validator's messages now keep their nested instance locations, as the groups validator's already do. `EnvironmentRoundTripTests` asserts only that messages are present, and `GroupsRoundTripTests` that the groups-specific fallback text is absent, so both stay green unchanged. The per-kind schemas arrive with their files in step 30.
+
+**Acceptance.** After the generalisation, the project, groups and environment validators MUST share `validateWith`, and `RoundTripTests`, `GroupsRoundTripTests` and `EnvironmentRoundTripTests` MUST pass unchanged; and build, elevation, constructor-unit-tests, ui-smoke, the selected ui-tests classes and the six s04 invariants MUST pass.

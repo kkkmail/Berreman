@@ -1,0 +1,205 @@
+name: build
+description: dotnet build Berreman.slnx Release (F# numerical optics solver)
+kind: command
+phase: build
+command: "dotnet build Berreman.slnx -c Release -nologo -v:m"
+cwd: Berreman
+pass_when:
+  exit_code: 0
+  stdout_match: (?s)^(?!.*error).*$
+runtime_estimate_seconds: 600
+runtime_actual_seconds: 65
+tags: [build]
+applies_to:
+  - paths: ["Berreman/**/*.fs", "Berreman/**/*.fsproj", "Berreman/**/*.slnx", "Directory.Build.props", "Directory.Build.targets", "Berreman/Berreman/BuildInfo.ps1", "Berreman/PreBuild/**"]
+qualifier: build
+builds: [Berreman/Berreman.slnx]
+---
+name: elevation
+description: "Elevation analyzers (ELEV004 excluded) over the Berreman projects a step ACTUALLY touches. Elevation/Run-ElevationGate.ps1 runs STL's Softellect.Analyzers package, at the version the root Directory.Build.targets pins, through fsharp-analyzers over each F# product project of Berreman.slnx that compiles a changed .fs, plus the projects that reference it, because the duplicate-name rules (ELEV014/015/016/019) see a collision only from downstream; a change to .elevation-analyzers.json, a solution or the root Directory.Build.props / .targets widens the run to all 13. A finding recorded in Elevation/elevation-known-findings.json (the 3,757 the tree had when the gates were set up, which the ledger specs/0048/.manual/002-elevation-ledger.jsonl closes row by row) does not fail; a new one does, and so does a recorded one that is no longer found, so a fix deletes its entry in the same step. ELEV004 is excluded HERE, in the command and not in the rules, as in STL's gates, so a full analyzer run still measures it (spec 0048 .manual/002 R7). Requires build: the analyzers read each project's references as built. Measured 240 s for all 13 projects at throttle 4 (specs/0048/.manual/001)."
+kind: command
+phase: verify
+command: powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^ELEV-GATE: OK\\b"
+  failure_capture: "(?m)^FAILED:\\s+(.+?)\\r?$"
+runtime_estimate_seconds: 600
+priority: 10
+silent_for_seconds: 600
+tags: [lint, elevation]
+applies_to:
+  - paths: ["Berreman/**/*.fs", "Berreman/**/*.fsproj", "Berreman/Berreman.slnx", ".elevation-analyzers.json", "Elevation/elevation-known-findings.json", "Directory.Build.props", "Directory.Build.targets"]
+qualifier: source
+requires_path: [Elevation/Run-ElevationGate.ps1]
+requires_gates: [build]
+scope: working_tree
+---
+name: constructor-unit-tests
+description: dotnet test over the OpticalConstructor UI-less projects (Domain beam-tree orchestration, Storage JSON round-trip + schema validation, Optimization interface, units spine) — spec 0022 §A.6/P3 testability mandate — on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
+kind: command
+phase: verify
+command: "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename constructor-unit-tests.trx {selector}"
+cwd: Berreman/OpticalConstructor/OpticalConstructor.Tests
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^Test run summary: Passed!"
+  count_at_least:
+    capture: "succeeded:\\s*(\\d+)"
+    baseline_key: constructor_unit_tests
+  failure_capture: "(?m)^failed (.+) \\((?:\\d+(?:ms|s|m|h) ?)+\\)\\r?$"
+result_capture: {"format": "trx", "path": "TestResults/constructor-unit-tests.trx", "skip_policy": "fail"}
+runtime_estimate_seconds: 180
+tags: [test]
+applies_to:
+  - paths: ["Berreman/OpticalConstructor/**"]
+selector:
+  unit: class
+  template: --filter-method "{value}.*" --filter-method "{value}"
+  joiner: " "
+  arg: "{rendered}"
+  required: false
+qualifier: unit
+requires_gates: [build]
+whole_suite: light
+runtime_actual_whole_seconds: 13
+---
+name: unit-tests
+description: BerremanTests (F# unit tests for the optics solver) on Microsoft.Testing.Platform, over the Release x64 output the build gate produced. About 52 min whole (51 min 44 s measured 2026-11-03); single inverse classes run up to 997 s, and MTP prints nothing until its summary, so the silence window equals the deadline.
+kind: command
+phase: verify
+command: "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename unit-tests.trx {selector}"
+cwd: Berreman/BerremanTests
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^Test run summary: Passed!"
+  count_at_least:
+    capture: "succeeded:\\s*(\\d+)"
+    baseline_key: berreman_unit_tests
+  failure_capture: "(?m)^failed (.+) \\((?:\\d+(?:ms|s|m|h) ?)+\\)\\r?$"
+result_capture: {"format": "trx", "path": "TestResults/unit-tests.trx", "skip_policy": "allow"}
+runtime_estimate_seconds: 3104
+silent_for_seconds: 7200
+tags: [test, slow]
+applies_to:
+  - paths: ["Berreman/BerremanTests/**", "Berreman/BerremanTestSupport/**", "Berreman/Berreman/**", "Berreman/OpticalProperties/**", "Berreman/OpticalModel/**", "Berreman/Analytics/**", "Berreman/OpticalConstructor/OpticalConstructor.Optimization/**", "Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs", "Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs", "data/optics-mueller/data/**"]
+selector:
+  unit: class
+  template: --filter-method "{value}.*" --filter-method "{value}"
+  joiner: " "
+  arg: "{rendered}"
+  required: true
+qualifier: unit
+requires_path: [Berreman/BerremanTests/BerremanTests.fsproj]
+requires_gates: [build]
+runtime_actual_whole_seconds: 3104
+attempt_timeout_seconds: 7200
+---
+name: ui-smoke
+description: Headless launch/render smoke gate for the Optical Constructor FuncUI app — runs the Avalonia.Headless smoke test (trait Category=ui-smoke) that opens the host, asserts OnFrameworkInitializationCompleted ran, and renders one frame for every panel/page view without throwing (spec 0024 §U1.6 / §U1.7 / AC-U1.3) — on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
+kind: command
+phase: verify
+command: "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename ui-smoke.trx --filter-trait \"Category=ui-smoke\" {selector}"
+cwd: Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^Test run summary: Passed!"
+  count_at_least:
+    capture: "succeeded:\\s*(\\d+)"
+    baseline_key: ui_smoke_tests
+  failure_capture: "(?m)^failed (.+) \\((?:\\d+(?:ms|s|m|h) ?)+\\)\\r?$"
+result_capture: {"format": "trx", "path": "TestResults/ui-smoke.trx", "skip_policy": "fail"}
+runtime_estimate_seconds: 180
+tags: [test, smoke]
+applies_to:
+  - paths: ["Berreman/OpticalConstructor/OpticalConstructor.Ui/**", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/**", "Berreman/OpticalConstructor/OpticalConstructor.App/**"]
+selector:
+  unit: class
+  template: --filter-method "{value}.*" --filter-method "{value}"
+  joiner: " "
+  arg: "{rendered}"
+  required: false
+qualifier: smoke
+requires_gates: [build]
+whole_suite: light
+runtime_actual_whole_seconds: 27
+---
+name: ui-tests
+description: Headless per-panel view-test gate for the Optical Constructor FuncUI app — runs the Avalonia.Headless per-panel/page view tests (mount each view over a known RootModel, assert key controls exist and a simulated interaction dispatches the expected RootMsg) in OpticalConstructor.Ui.Tests, every test without the ui-smoke trait (spec 0024 §0.7 / Test artifacts) — on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
+kind: command
+phase: verify
+command: "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename ui-tests.trx --filter-not-trait \"Category=ui-smoke\" --filter-not-trait \"Category=kit-acceptance\" {selector}"
+cwd: Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^Test run summary: Passed!"
+  count_at_least:
+    capture: "succeeded:\\s*(\\d+)"
+    baseline_key: ui_tests
+  failure_capture: "(?m)^failed (.+) \\((?:\\d+(?:ms|s|m|h) ?)+\\)\\r?$"
+result_capture: {"format": "trx", "path": "TestResults/ui-tests.trx", "skip_policy": "fail"}
+runtime_estimate_seconds: 360
+tags: [test, ui]
+applies_to:
+  - paths: ["Berreman/OpticalConstructor/OpticalConstructor.Ui/**", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/**", "Berreman/OpticalConstructor/OpticalConstructor.App/**"]
+selector:
+  unit: class
+  template: --filter-method "{value}.*" --filter-method "{value}"
+  joiner: " "
+  arg: "{rendered}"
+  required: false
+qualifier: unit
+requires_gates: [build]
+runtime_actual_whole_seconds: 98
+---
+name: kit-acceptance
+description: The experiment-kit acceptance tests AT-1 (optics-mueller) and AT-2 (AbsorbingBiaxialNoisyTests through the kit model) in OpticalConstructor.Ui.Tests, trait Category=kit-acceptance (spec 0050 .manual/001 §Q, §U), on Microsoft.Testing.Platform, over the Release x64 output the build gate produced. AT-2 replicates a 946 s fit and MTP prints nothing until its summary, so the silence window equals the deadline. AT-2's five-seed ensemble is xUnit v3 Explicit, so skips are allowed.
+kind: command
+phase: verify
+command: "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename kit-acceptance.trx --filter-trait \"Category=kit-acceptance\" {selector}"
+cwd: Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^Test run summary: Passed!"
+  count_at_least:
+    capture: "succeeded:\\s*(\\d+)"
+    baseline_key: kit_acceptance_tests
+  failure_capture: "(?m)^failed (.+) \\((?:\\d+(?:ms|s|m|h) ?)+\\)\\r?$"
+result_capture: {"format": "trx", "path": "TestResults/kit-acceptance.trx", "skip_policy": "allow"}
+runtime_estimate_seconds: 1800
+silent_for_seconds: 3600
+tags: [test, slow]
+applies_to:
+  - paths: ["Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs", "Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentRun.fs", "Berreman/OpticalConstructor/OpticalConstructor.Optimization/**", "Berreman/BerremanTestSupport/**", "data/optics-mueller/**", "data/absorbing-biaxial-noisy/**"]
+selector:
+  unit: class
+  template: --filter-method "{value}.*" --filter-method "{value}"
+  joiner: " "
+  arg: "{rendered}"
+  required: false
+qualifier: integration
+forward_pointing: true
+requires_path: [Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs]
+requires_gates: [build]
+expected_by: "0050"
+attempt_timeout_seconds: 3600
+---
+name: elevation-full
+description: "The same elevation analyzers over EVERY in-scope project (Run-ElevationGate.ps1 -All): the 13 F# product projects of Berreman.slnx, with every entry of Elevation/elevation-known-findings.json judged, so a fixed finding still recorded there fails even when no scoped run reached its file. ELEV004 stays excluded, as in elevation. Select it instead of the scoped gate when a step edits .elevation-analyzers.json, the Softellect.Analyzers pin or the known-findings list, renames across projects, or as the proof that the ledger (specs/0048/.manual/002-elevation-ledger.jsonl) closed what it claims: its first row confirms the list, and its PART A closing row runs it over an empty list, where it must report 0. Measured 240 s at throttle 4 (specs/0048/.manual/001)."
+kind: command
+phase: verify
+command: powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -All -ExcludeRules ELEV004
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^ELEV-GATE: OK\\b"
+  failure_capture: "(?m)^FAILED:\\s+(.+?)\\r?$"
+runtime_estimate_seconds: 600
+priority: 10
+silent_for_seconds: 600
+tags: [lint, elevation, slow]
+applies_to:
+  - paths: [".elevation-analyzers.json", "Elevation/elevation-known-findings.json", "Directory.Build.targets"]
+qualifier: source
+requires_path: [Elevation/Run-ElevationGate.ps1]
+requires_gates: [build]
+stage: final

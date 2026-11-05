@@ -1,0 +1,16 @@
+# Default -- start the loop / continue normally.
+Required ASG capability: pass --executability-profile 1 in every launch below. An unknown-option error requires ASG 1.8.90.1 or later; do not remove the switch.
+Launch the loop on C:/GitHub/Berreman/specs/0050/.manifest using
+C:/GitHub/AI-Strategy-Generator/arc-runner.launcher-md
+
+# Variant -- accept-current-slice
+# Use to clear escalated state and advance.
+Launch the loop on C:/GitHub/Berreman/specs/0050/.manifest using
+C:/GitHub/AI-Strategy-Generator/arc-runner.launcher-md
+accept-current-slice
+
+# Variant -- operator-reply
+# Replace <reply-file-path>.
+Launch the loop on C:/GitHub/Berreman/specs/0050/.manifest using
+C:/GitHub/AI-Strategy-Generator/arc-runner.launcher-md
+with operator-reply <reply-file-path>

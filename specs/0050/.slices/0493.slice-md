@@ -1,0 +1,23 @@
+# Step 0493 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui.Tests]
+depends_on: [439, 492]
+required_gates: [build, elevation, kit-acceptance, ui-smoke, ui-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/TestAppScope.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"ui-smoke": {"mode": "all_discovered", "suite": "ui-smoke"}, "kit-acceptance": {"mode": "selected", "suite": "kit-acceptance", "values": ["OpticalConstructor.Ui.Tests.KitAcceptanceTests"]}, "ui-tests": {"mode": "selected", "suite": "ui-tests", "values": ["OpticalConstructor.Ui.Tests.KitStartWindowTests", "OpticalConstructor.Ui.Tests.KitWindowTests", "OpticalConstructor.Ui.Tests.StudyViewTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/TestAppScope.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `ui-smoke`: 
+- `ui-tests`: `OpticalConstructor.Ui.Tests.KitStartWindowTests`, `OpticalConstructor.Ui.Tests.KitWindowTests`, `OpticalConstructor.Ui.Tests.StudyViewTests`
+- `kit-acceptance`: `OpticalConstructor.Ui.Tests.KitAcceptanceTests`
+
+**How to implement.** The committed kits open read-only through one shared fixture, so the closing composition test (step 494) opens them through the code AT-1 and AT-2 already use (AGENTS.md 'Reuse, never copy': a reuse is a move, the old body deleted in the same step; .spec-md §3.12 'A read-only open writes nothing', §3.21; 001 §V 'open in the app from the start screen'). `KitAcceptanceTests.fs` (appended by step 421) compiles after `WireUiFinalCompositionTests.fs` (`OpticalConstructor.Ui.Tests.fsproj:233`), so the composition test cannot call a function of it. (1) `openCommittedReadOnly` and `assertCommittedUnchanged` (step 439) MOVE from `OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs` into `OpticalConstructor.Ui.Tests/TestAppScope.fs` (steps 83, 152, 154, 421, 429), after `inverseModelOver`, public, together with the recording's type and every private helper that only they call. Their bodies are unchanged but for one parameter: `openCommittedReadOnly (owner : FolderName) (kit : CommittedKit)` composes over `emptyLibraryAppContext owner` in place of the literal `FolderName "KitAcceptanceTests"`, because every `TestAppScope` helper takes the calling class's folder (step 83). A private helper that the AT-1 or AT-2 build also calls moves with them, and the builds call it from `TestAppScope`, so the start screen is composed in one place. `TestAppScope` opens `BerremanTestSupport` for `CommittedKit` (`BerremanTestSupport/CommittedKits.fs`, steps 330, 344, 431). Each moved declaration's doc is one line citing spec 0050 Close. (2) `KitAcceptanceTests`: the facts of steps 429 and 439 call `TestAppScope.openCommittedReadOnly (FolderName "KitAcceptanceTests")` and `TestAppScope.assertCommittedUnchanged`, every assertion kept, and the module declares neither function any more. No product file, other test class or fact changes, and no fact, retry or cache is added.
+
+**Acceptance.** After the read-only open moves, `TestAppScope` MUST declare the one `openCommittedReadOnly` (taking the calling class's folder) and `assertCommittedUnchanged`, and `KitAcceptanceTests` MUST call them and declare neither; kit-acceptance MUST pass over `OpticalConstructor.Ui.Tests.KitAcceptanceTests`, including `the committed optics-mueller kit opens read-only against an empty library, writes nothing, and its study reproduces the reference reconstruction` and `the committed absorbing-biaxial-noisy kit opens read-only against an empty library, writes nothing, and reproduces AT-2's data, model and fit`, the count unchanged; ui-smoke MUST pass, the count unchanged; and build, elevation and the twenty-one s47 invariants MUST pass.

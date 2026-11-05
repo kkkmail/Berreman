@@ -1,0 +1,24 @@
+# Step 0003 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [Berreman, OpticalConstructor.Domain]
+depends_on: []
+required_gates: [build, elevation, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+effects: {"edits": ["Berreman/Berreman/Dispersion.fs", "Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"unit-tests": {"mode": "selected", "suite": "unit-tests", "values": ["BerremanTests.EpsWithDispValueTests", "BerremanTests.DispersionFormulaTests"]}, "constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}, "ui-smoke": {"mode": "all_discovered", "suite": "ui-smoke"}, "ui-tests": {"mode": "selected", "suite": "ui-tests", "values": ["OpticalConstructor.Ui.Tests.MaterialEditorWindowTests", "OpticalConstructor.Ui.Tests.NkDispersionChartTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/Berreman/Dispersion.fs", "Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+- `ui-smoke`: 
+- `ui-tests`: `OpticalConstructor.Ui.Tests.MaterialEditorWindowTests`, `OpticalConstructor.Ui.Tests.NkDispersionChartTests`
+- `unit-tests`: `BerremanTests.EpsWithDispValueTests`, `BerremanTests.DispersionFormulaTests`
+
+**How to implement.** `AbscissaKind` MOVES from the Domain into the core, so the transcendental laws of steps 5 and 7 can carry their abscissa as data (.spec-md §3.1). No number moves and no behaviour changes. (1) `Berreman/Berreman/Dispersion.fs`, after `ComplexDispersionFormula` (`:272-280`): the public union `AbscissaKind` with `LinearInX of wavelengthScale : float<meter>` and `ReciprocalInX of ReciprocalAbscissa`, and the record `ReciprocalAbscissa`, marked `[<Softellect.Sys.NumericCarrier("...")>]`, with `wavelengthScale : float<meter>` and `numerator : float`. The doc comment of `OpticalConstructor.Domain/DispersionModels.fs:582-585` moves with it. (2) `DispersionModels.fs`: the private `AbscissaKind` (`:586-602`) is deleted. Its `ofUnit` becomes a static extension member of the core type, `static member ofUnit (u : UnitOfMeasure) : AbscissaKind`, declared in `DispersionModels.fs` before its first use, because it reads the `Units` seam and the core cannot reference it. Its body is unchanged, except that it builds the reciprocal case as `ReciprocalInX { wavelengthScale = nanometer; numerator = (fromMeters u nanometer).value }`. The five lowering sites that match it (`:697`, `:706`, `:723`, `:738`, `:753`) read `r.wavelengthScale` and `r.numerator` where they read `(scale, numerator)` and `numerator.value`. The `AC-B5` grid facts of `OpticalConstructor.Tests/DispersionModelsTests.fs` (`:181-298`), over micrometre and electron-volt abscissas, are the proof and stay unchanged.
+
+**Acceptance.** After the move, constructor-unit-tests MUST pass with DispersionModelsTests' AC-B5 lowering facts unchanged; unit-tests (EpsWithDispValueTests, DispersionFormulaTests) MUST pass; and build, elevation and the three s01 invariants MUST pass.

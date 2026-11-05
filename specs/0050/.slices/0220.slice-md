@@ -1,0 +1,22 @@
+# Step 0220 — WIRE
+
+```step
+anchor: WIRE
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [219]
+required_gates: [build, elevation, ui-smoke, ui-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs"], "tests": [{"op": "create", "suite": "ui-tests", "id": "OpticalConstructor.Ui.Tests.AppContextTests.the app scope serves the Built-in item models from its library database", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs", "class": "OpticalConstructor.Ui.Tests.AppContextTests", "discovery_gate": "ui-tests", "obligations": ["S71-APP-ITEM-MODELS"]}], "contracts": [{"symbol": "OpticalConstructor.Ui.AppContext.itemModels", "op": "create", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "obligations": ["S71-APP-ITEM-MODELS"]}], "packages": [], "checks": []}
+gate_selection: {"ui-smoke": {"mode": "all_discovered", "suite": "ui-smoke"}, "ui-tests": {"mode": "selected", "suite": "ui-tests", "values": ["OpticalConstructor.Ui.Tests.AppContextTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs"], "tests": [{"op": "create", "suite": "ui-tests", "id": "OpticalConstructor.Ui.Tests.AppContextTests.the app scope serves the Built-in item models from its library database", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs", "class": "OpticalConstructor.Ui.Tests.AppContextTests", "discovery_gate": "ui-tests", "obligations": ["S71-APP-ITEM-MODELS"]}], "contracts": [{"symbol": "OpticalConstructor.Ui.AppContext.itemModels", "op": "create", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "obligations": ["S71-APP-ITEM-MODELS"]}], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `ui-smoke`: 
+- `ui-tests`: `OpticalConstructor.Ui.Tests.AppContextTests`
+
+**How to implement.** S6 prerequisite/closure for 001 §H and §S6: the shared item contracts MUST land here so experiment copying includes item mapping before S7. The app scope composes the item-model store over its library database for S6 item-copy resolution and the S7 Items panel (.spec-md §0.1 `AppContext.create`: it composes the SQLite library proxies over the configured locations; 001 §O 'Add item from library model…'). (1) `OpticalConstructor.Ui/AppContext.fs`: `AppContext` gains `itemModels : ItemModelProxy`, documented in one line (the item-model store over the app's library database, spec 0050 S7.1), set by `compose` (step 89) to `ItemModelProxy.createInDatabase database` (step 211) beside the other database stores, so `create` and `recreateLibrary` carry it. No window reads it in this section, and no other field changes. (2) Tests: `AppContextTests` gains `the app scope serves the Built-in item models from its library database`: `TestAppScope.freshAppContext (FolderName "AppContextTests")`'s `itemModels.listItemModels ()` answers exactly `BuiltinCatalogue.itemModels ()` ordered by name, because the start-up import (steps 95, 100) brought the shipped item models into its database.
+
+**Acceptance.** After the composition, `AppContext.itemModels` MUST be the database item-model store of the app scope's library and serve the Built-in item models; ui-smoke MUST pass with its count unchanged; ui-tests MUST pass over the selected classes, including `the app scope serves the Built-in item models from its library database`, the count rising by 1; and build, elevation and the fourteen s22 invariants MUST pass.
