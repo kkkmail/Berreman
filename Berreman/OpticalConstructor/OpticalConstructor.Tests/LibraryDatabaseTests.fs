@@ -9,15 +9,22 @@ open Microsoft.EntityFrameworkCore
 open Softellect.Sys.Primitives
 open OpticalConstructor.Database
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.CategoryDatabaseStore
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.MaterialDatabaseStore
+open OpticalConstructor.Storage.PresetDatabaseStore
+open OpticalConstructor.Storage.SampleDatabaseStore
 open Xunit
 
 /// Pins the library's SQLite model, lifetime and schema rejection contract (spec 0050 S2.1).
@@ -753,6 +760,56 @@ module LibraryDatabaseTests =
             Assert.Equal<FileSchemaVersion>(MaterialEntryKind.currentSchemaVersion, info.expected)
         | Error error -> Assert.Fail($"expected an unsupported schema version, got {error.describe}")
         | Ok _ -> Assert.Fail("an incompatible payload schema was accepted")
+
+    [<Fact>]
+    let ``importFrom fills an empty library database through the database stores`` () : unit =
+        let connectionString = ConnectionString "Data Source=:memory:"
+        use database = LibraryDatabase.openOrCreate connectionString |> expectDatabaseOk
+        let categories = CategoryProxy.createInDatabase database
+        let materials = MaterialProxy.createInDatabase database
+        let samples = SampleProxy.createInDatabase database
+        let presets = LibraryEntryStore.createInDatabase database
+        let proxy = CatalogueImportProxy.ofStores categories materials samples presets
+        let catalogue = BuiltinCatalogue.catalogueData ()
+
+        database.run (fun context ->
+            Assert.Empty(context.EntryVersions)
+            Assert.Empty(context.LatestVersions))
+        |> expectDatabaseOk
+
+        Assert.Equal<Result<unit, CatalogueImportError>>(Ok (), proxy.importFrom (CatalogueProxy.createBuiltIn ()))
+
+        for expected in BuiltinCatalogue.categories () do
+            let actual = categories.listCategories () |> Result.map (List.tryFind (fun category -> category.id = expected.id))
+            Assert.True((Ok (Some expected) = actual), "A category id must resolve to its decoded value.")
+        for expected in BuiltinCatalogue.materials () do
+            Assert.True((Ok (Some expected) = materials.tryGetMaterial expected.id), "A material id must resolve to its decoded value.")
+        for expected in BuiltinCatalogue.samples () do
+            Assert.True((Ok (Some expected) = samples.tryGetSample expected.id), "A sample id must resolve to its decoded value.")
+        for expected in BuiltinCatalogue.presets () do
+            Assert.True((Ok (Some expected) = presets.proxy.tryGetEntry expected.entryId), "A preset id must resolve to its decoded value.")
+
+        database.run (fun context ->
+            Assert.Equal(catalogue.envelopes.Length, context.EntryVersions |> Seq.length)
+            Assert.Equal(catalogue.envelopes.Length, context.LatestVersions |> Seq.length)
+            for kind in LibraryEntryKind.all do
+                let expected =
+                    catalogue.envelopes
+                    |> List.filter (fun envelope -> envelope.content.schema.kind = kind)
+                    |> List.map (fun envelope -> envelope.content.id, VersionNumber.first)
+                    |> List.sort
+                let actual =
+                    context.latestStoredOfKind kind
+                    |> expectDatabaseOk
+                    |> List.map (fun stored -> stored.envelope.content.id, stored.envelope.content.version)
+                    |> List.sort
+                Assert.Equal<(LibraryEntryId * VersionNumber) list>(expected, actual))
+        |> expectDatabaseOk
+
+        match proxy.importFrom (CatalogueProxy.createBuiltIn ()) with
+        | Error (ImportRejectedErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | Error error -> Assert.Fail($"Expected a store refusal, got {error.describe}")
+        | Ok () -> Assert.Fail("A second import of the same catalogue must be refused.")
 
     [<Fact>]
     let ``the fixture library database holds every Built-in entry as its version 1 and latest`` () : unit =

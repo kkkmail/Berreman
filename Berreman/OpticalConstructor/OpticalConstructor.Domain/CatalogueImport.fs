@@ -74,14 +74,9 @@ module CatalogueImport =
 
     type CatalogueImportProxy with
 
-        /// Builds a CatalogueImportProxy over empty in-memory stores, mapping refusals to ImportRejectedErr (spec 0050 §3.4).
-        /// Returns InMemoryCatalogueStores with live reference lookups and no database or file IO.
-        static member createInMemory () : InMemoryCatalogueStores =
-            let samples = SampleProxy.createInMemory ()
-            let materials = MaterialProxy.createInMemory (samplesReferencing samples)
-            let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-            let libraryEntries = Library.createInMemory ()
-
+        /// Builds an import proxy over any four stores, in-memory doubles or database stores (spec 0050 S2.3).
+        /// Maps each store's refusal to ImportRejectedErr with its diagnostic reason.
+        static member ofStores (categories : CategoryProxy) (materials : MaterialProxy) (samples : SampleProxy) (presets : LibraryEntryStore) : CatalogueImportProxy =
             let categoryReason (e : CategoryError) : string =
                 match e with
                 | UnknownCategoryIdErr r | DuplicateCategoryIdErr r | CategoryStillReferencedErr r | BuiltInNotRemovableErr r | InvalidCategoryErr r | CategoryStoreUnavailableErr r -> r
@@ -95,15 +90,23 @@ module CatalogueImport =
                 match e with
                 | UnknownEntryIdErr r | NoEntriesForKindErr r | LibraryUnavailableErr r | PresetRefusedErr r -> r
 
-            let proxy =
-                {
-                    saveCategory = fun c -> categories.addCategory c |> Result.mapError (categoryReason >> ImportRejectedErr)
-                    saveMaterial = fun m -> materials.saveMaterial m |> Result.mapError (materialReason >> ImportRejectedErr)
-                    saveSample = fun s -> samples.saveSample s |> Result.mapError (sampleReason >> ImportRejectedErr)
-                    saveLibraryEntry = fun e -> libraryEntries.addEntry e |> Result.mapError (libraryReason >> ImportRejectedErr)
-                }
             {
-                proxy = proxy
+                saveCategory = fun c -> categories.addCategory c |> Result.mapError (categoryReason >> ImportRejectedErr)
+                saveMaterial = fun m -> materials.saveMaterial m |> Result.mapError (materialReason >> ImportRejectedErr)
+                saveSample = fun s -> samples.saveSample s |> Result.mapError (sampleReason >> ImportRejectedErr)
+                saveLibraryEntry = fun e -> presets.addEntry e |> Result.mapError (libraryReason >> ImportRejectedErr)
+            }
+
+        /// Builds a CatalogueImportProxy over empty in-memory stores, mapping refusals to ImportRejectedErr (spec 0050 §3.4).
+        /// Returns InMemoryCatalogueStores with live reference lookups and no database or file IO.
+        static member createInMemory () : InMemoryCatalogueStores =
+            let samples = SampleProxy.createInMemory ()
+            let materials = MaterialProxy.createInMemory (samplesReferencing samples)
+            let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+            let libraryEntries = Library.createInMemory ()
+
+            {
+                proxy = CatalogueImportProxy.ofStores categories materials samples libraryEntries
                 categories = categories
                 materials = materials
                 samples = samples
