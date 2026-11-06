@@ -9,6 +9,21 @@ open OpticalConstructor.Domain.LibraryEntryFiles
 /// `Softellect.Sys.Errors`.
 module Errors =
 
+    /// Names LibraryDbContext's model (spec 0050 S2.1, step 60). Raise this version together with
+    /// the table listing in `the library model creates exactly its seven tables and their columns`
+    /// whenever that model changes.
+    type LibrarySchemaVersion =
+        | LibrarySchemaVersion of int
+
+        member this.value : int = let (LibrarySchemaVersion version) = this in version
+        static member current : LibrarySchemaVersion = LibrarySchemaVersion 1
+
+    type LibrarySchemaMismatchInfo =
+        {
+            foundOpt : LibrarySchemaVersion option
+            expected : LibrarySchemaVersion
+        }
+
     /// A stored file whose schema version this app does not read (spec 0050 001 §B "No up-converters"). The
     /// extension names the file's kind, so S4's kit files reuse the case.
     type SchemaVersionMismatchInfo =
@@ -40,6 +55,8 @@ module Errors =
     ///                             this app does not read (spec 0050 001 §B).
     ///   * `ContentHashMismatchErr` — an entry file's recorded hash is not its
     ///                             content's (spec 0050 001 §B).
+    ///   * `LibrarySchemaMismatchErr` — the library model's schema stamp is missing or incompatible.
+    ///   * `LibraryDatabaseExn` — an exception caught at the SQLite / EF Core boundary.
     type StorageError =
         | MalformedJsonErr of string
         | SchemaValidationErr of string list
@@ -49,6 +66,8 @@ module Errors =
         | SidecarMissingErr of FileName
         | UnsupportedSchemaVersionErr of SchemaVersionMismatchInfo
         | ContentHashMismatchErr of ContentHashMismatchInfo
+        | LibrarySchemaMismatchErr of LibrarySchemaMismatchInfo
+        | LibraryDatabaseExn of exn
 
         /// The one-line render a Domain error's reason carries, so no caller formats this union with `%A` (ELEV002;
         /// spec 0050 .spec-md §4).
@@ -58,7 +77,15 @@ module Errors =
             | SchemaValidationErr messages -> String.concat "; " messages
             | SchemaMissingErr -> "a build-copied schema file is missing beside the assembly"
             | FileIoExn e
-            | BinzExn e -> e.Message
+            | BinzExn e
+            | LibraryDatabaseExn e -> e.Message
             | SidecarMissingErr file -> $"the sidecar file '{file.value}' is missing"
             | UnsupportedSchemaVersionErr info -> $"a {info.fileExtension.value} file declares schema version {info.found.value}, and this app reads version {info.expected.value}"
             | ContentHashMismatchErr info -> $"entry {info.entryId.value}: recorded hash {info.recorded.value}, computed hash {info.computed.value}"
+            | LibrarySchemaMismatchErr info ->
+                let found =
+                    match info.foundOpt with
+                    | Some version -> $"schema version {version.value}"
+                    | None -> "no stamp"
+
+                $"the library database has {found}; expected schema version {info.expected.value}"
