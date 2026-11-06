@@ -1,9 +1,13 @@
 namespace OpticalConstructor.Tests
 
 open System
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialStore
+open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
@@ -59,6 +63,72 @@ module BuiltinCatalogue =
             | PolarizerEntryKind -> content.toPolarizerPreset |> decode |> PolarizerItem |> Some
             | DetectorEntryKind -> content.toDetectorPreset |> decode |> DetectorItem |> Some
             | MaterialEntryKind | CategoryEntryKind | SampleEntryKind -> None)
+
+    /// Returns a fresh material store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
+    let materialStore (samplesReferencing : MaterialId -> Sample list) (versionsInUse : VersionsInUse) : MaterialProxy =
+        let store = MaterialProxy.createInMemoryEmpty samplesReferencing versionsInUse
+        for entry in materials () do
+            match store.saveMaterial entry with
+            | Ok () -> ()
+            | Error (UnknownMaterialIdErr reason)
+            | Error (DuplicateMaterialIdErr reason)
+            | Error (MaterialStillReferencedErr reason)
+            | Error (InvalidMaterialErr reason)
+            | Error (MaterialVersionInUseErr reason) ->
+                failwith $"The Built-in material '{entry.name.value}' ('{entry.id.value}') was refused: {reason}"
+        store
+
+    /// Returns a fresh sample store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
+    let sampleStore (versionsInUse : VersionsInUse) : SampleProxy =
+        let store = SampleProxy.createInMemoryEmpty versionsInUse
+        for entry in samples () do
+            match store.saveSample entry with
+            | Ok () -> ()
+            | Error (UnknownSampleIdErr reason)
+            | Error (DuplicateSampleIdErr reason)
+            | Error (InvalidSampleErr reason)
+            | Error (SampleVersionInUseErr reason) ->
+                failwith $"The Built-in sample '{entry.name.value}' ('{entry.id.value}') was refused: {reason}"
+        store
+
+    /// Returns a fresh category store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
+    let categoryStore (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
+        let store = CategoryProxy.createInMemoryEmpty materialsReferencingCategory
+        for entry in categories () do
+            match store.addCategory entry with
+            | Ok () -> ()
+            | Error (UnknownCategoryIdErr reason)
+            | Error (DuplicateCategoryIdErr reason)
+            | Error (CategoryStillReferencedErr reason)
+            | Error (BuiltInNotRemovableErr reason)
+            | Error (InvalidCategoryErr reason) ->
+                failwith $"The Built-in category '{entry.name.value}' ('{entry.id.value}') was refused: {reason}"
+        store
+
+    /// Returns a fresh library holding samples then presets in row order, failing with any refused entry and reason (spec 0050 S1.7).
+    let library () : LibraryProxy =
+        let store = Library.createInMemoryEmpty ()
+        let entries = (samples () |> List.map SampleItem) @ presets ()
+        for entry in entries do
+            match store.addEntry entry with
+            | Ok () -> ()
+            | Error (UnknownEntryIdErr reason | NoEntriesForKindErr reason | LibraryUnavailableErr reason) ->
+                failwith $"The Built-in library entry '{entry.entryName.value}' ('{entry.entryId.value}') was refused: {reason}"
+        store.proxy
+
+    /// Returns only source presets in catalogue row order (spec 0050 S1.7).
+    let sources () : SourcePreset list =
+        presets ()
+        |> List.choose (fun entry ->
+            match entry with
+            | SourceItem source -> Some source
+            | SampleItem _ | DetectorItem _ | PolarizerItem _ -> None)
+
+    /// Returns the source with the given id, failing with that id when it is absent (spec 0050 S1.7).
+    let source (id : ElementValueId) : SourcePreset =
+        match sources () |> List.tryFind (fun entry -> entry.id = id) with
+        | Some entry -> entry
+        | None -> failwith $"The Built-in catalogue has no source with id '{id.value}'."
 
     /// Returns the material with the given id, failing with the id when it is absent.
     let material (id : MaterialId) : MaterialEntry =
