@@ -589,7 +589,15 @@ module Library =
     type LibraryError =
         | UnknownEntryIdErr of reason : string
         | NoEntriesForKindErr of reason : string
+        /// The store beneath the proxy failed (spec 0050 S2.3).
         | LibraryUnavailableErr of reason : string
+        /// The preset store refused an entry (spec 0050 S2.3).
+        | PresetRefusedErr of reason : string
+
+    type LibraryError with
+        /// Refuses an entry whose id the preset store already holds (spec 0050 S2.3).
+        static member entryAlreadyHeld (entry : LibraryEntry) : LibraryError =
+            PresetRefusedErr $"library entry '%s{entry.entryId.value}' is already present"
 
     /// Library reads by kind, grouping tree and identity, with typed failures.
     /// Function-valued fields make proxy equality reference-based.
@@ -762,7 +770,7 @@ module Library =
         }
 
     /// Bundles library reads with the write seam used by CatalogueImportProxy
-    /// (spec 0038 step 042; spec 0050 §3.4).
+    /// (spec 0038 step 042; spec 0050 §3.4); duplicate ids return PresetRefusedErr (spec 0050 S2.3).
     [<ReferenceEquality>]
     type LibraryEntryStore =
         {
@@ -771,7 +779,7 @@ module Library =
         }
 
     /// Empty store for the catalogue import through CatalogueImportProxy; entries retain insertion order.
-    /// Duplicate ids return LibraryUnavailableErr; By kind is derived from held entries (spec 0050 S1.7).
+    /// Duplicate ids return PresetRefusedErr; By kind is derived from held entries (spec 0050 S1.7, S2.3).
     let createInMemory () : LibraryEntryStore =
         let store = ref ([] : LibraryEntry list)
         let proxy =
@@ -782,7 +790,7 @@ module Library =
             }
         let addEntry (entry : LibraryEntry) : Result<unit, LibraryError> =
             match store.Value |> List.tryFind (fun e -> e.entryId = entry.entryId) with
-            | Some _ -> Error (LibraryUnavailableErr $"library entry '%s{entry.entryId.value}' is already present")
+            | Some _ -> Error (LibraryError.entryAlreadyHeld entry)
             | None ->
                 store.Value <- store.Value @ [ entry ]
                 Ok ()

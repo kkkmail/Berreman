@@ -147,6 +147,30 @@ module LibraryProxyTests =
         Assert.Equal<LibraryTree>(sourceOrder, LibraryTree.byKind [ secondFixedSource; fixedSource ])
 
     [<Fact>]
+    let ``the preset store serves an added preset by kind and by id, and refuses an id it already holds`` () : unit =
+        let store = Library.createInMemory ()
+        let detector = BuiltinCatalogue.preset PresetIds.detectorIntensity
+        let polarizer = BuiltinCatalogue.preset PresetIds.polarizerLp
+        let source = BuiltinCatalogue.preset PresetIds.source600
+
+        for entry in [ detector; polarizer; source ] do
+            Assert.Equal<Result<unit, LibraryError>>(Ok (), store.addEntry entry)
+
+        for kind, entry in [ Detector, detector; LinearPolarizer, polarizer; LightSource, source ] do
+            Assert.Equal<Result<LibraryEntry list, LibraryError>>(Ok [ entry ], store.proxy.entriesForKind kind)
+            Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok (Some entry), store.proxy.tryGetEntry entry.entryId)
+
+        let missingId = newSourceId ()
+        Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok None, store.proxy.tryGetEntry missingId)
+
+        match store.addEntry detector with
+        | Error (PresetRefusedErr reason) ->
+            Assert.Equal($"library entry '{detector.entryId.value}' is already present", reason)
+        | Ok () | Error _ -> Assert.Fail("expected PresetRefusedErr for the held detector id")
+
+        Assert.Equal<Result<LibraryEntry list, LibraryError>>(Ok [ detector ], store.proxy.entriesForKind Detector)
+
+    [<Fact>]
     let ``the library-entry store derives its By kind tree from what it holds`` () : unit =
         let store = Library.createInMemory ()
         let empty : LibraryTree =

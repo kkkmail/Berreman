@@ -148,7 +148,7 @@ module BuiltinCatalogue =
         for entry in entries do
             match store.addEntry entry with
             | Ok () -> ()
-            | Error (UnknownEntryIdErr reason | NoEntriesForKindErr reason | LibraryUnavailableErr reason) ->
+            | Error (UnknownEntryIdErr reason | NoEntriesForKindErr reason | LibraryUnavailableErr reason | PresetRefusedErr reason) ->
                 failwith $"The Built-in library entry '{entry.entryName.value}' ('{entry.entryId.value}') was refused: {reason}"
         store.proxy
 
