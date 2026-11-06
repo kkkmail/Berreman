@@ -12,7 +12,8 @@
       ".execution-contract-json": "bb1d375e76ea2b117d956032739a38ee991cb6e1b39e0f8b6a4df220a2e7d6a5",
       ".acceptance-oracle-json": "bb0f3c61662997ad62de1d15f5d47fa164658fd5f572aab252e4be2011a788aa",
       ".repository-inventory-json": "c7bea9c9334c13144d5d11c26efebea366ed04253e9a1250baa45f98fcb05914",
-      ".required-executability-json": "58a44815cb940646a4f4dd8f9d79420a9ddc89b2cc4b3b7c631eb2389244b61f"
+      ".required-executability-json": "58a44815cb940646a4f4dd8f9d79420a9ddc89b2cc4b3b7c631eb2389244b61f",
+      ".operator-test-effects-jsonl": "09d59131490c9b74bec9315220015083ad857572b939fe970ccc5301f9ca4788"
     },
     "bundle": "7e9e4ff2f22a6ef4ce1dadf92b7a4d259d837f1a5195ea47efea3be8f14948ff",
     "specrc": "00a96e8c76e2d337f526da833c00660a8f440162e05ad3b344aba4769faa8355",

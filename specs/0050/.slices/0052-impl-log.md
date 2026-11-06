@@ -1,6 +1,34 @@
 # Implementation log — 0052
 
-## Progress
+## Operator-authorized repair and verification — 2026-11-06
+
+- Operator ruling: `.manual/004-step-0052-catalogue-test-rename.md` authorizes
+  the single PropagationTests declaration rename, preserving its body and count.
+- Renamed the fact to `the curated Library contains exactly the catalogue samples`.
+  A byte comparison against HEAD proves this is the only source change.
+- Added the step-52 rename to `.operator-test-effects-jsonl`. Temporal replay
+  retains the old identity through step 51 and the new identity from 52 through
+  494, with no suite-count change or replay findings.
+- The production compiler validated the plan and refreshed `.executability-json`,
+  preserving all 494 existing descriptors and gate snapshots. The only receipt
+  change binds the operator test-effects file. Receipt validation is green.
+- Both unchanged step-52 acceptance searches returned no matches.
+- All ten resolved gates passed through ASG's evaluator at 10:34:38–10:35:55 UTC:
+  build, elevation, constructor-unit-tests and all seven s07 invariants.
+- Constructor tests: 805 passed, zero failed/skipped. Exact identity reconciliation
+  passed; the renamed fact passed and the old identity is absent.
+- Build: zero errors and no warnings from our code. Two existing SYSLIB0051
+  warnings originate in vendored MathNetNumerics/Numerics/Exceptions.cs:24,77.
+  Elevation correctly reported no in-scope product project touched by test edits.
+- Evidence is in `.artifacts/0052-operator-repair/`: complete verification log,
+  per-gate stdout/stderr, gate-results.json, test-inventory.json, saved TRX,
+  acceptance-searches.json and contract-validation.json.
+- Ready for the operator's commit. No git mutation, arc restart, acceptance,
+  state/checkpoint update, published-spec edit or gate change was performed.
+
+The sections below retain the original pre-ruling worker attempt as history.
+
+## Initial progress
 
 - Read the task, worker protocols, project prompt, repository instructions,
   naming conventions, slice, resolved gate roster, and existing catalogue fixture.
@@ -32,7 +60,7 @@
 - Worker plan and this log at the task's canonical paths.
 - All nine test files named by the slice; no product or fixture file.
 
-## Testing state
+## Initial testing state (historical)
 
 No checks run. IMPLEMENT Invariant 6 reserves gate execution for the supervisor.
 The resolved roster is build, elevation, constructor-unit-tests, and seven s07
@@ -50,7 +78,7 @@ No captured run artifacts; no gates executed.
 The implementation plan, this log and the state-of-the-world are written only
 at the three paths supplied in the task.
 
-## Gotchas
+## Initial gotchas (name conflict resolved by the ruling above)
 
 - `specs/0050/.manifest.state.json` was already modified on entry; leave it alone.
 - Preserve fact names even when they use historical seed terminology.

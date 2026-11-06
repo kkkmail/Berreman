@@ -197,7 +197,7 @@ module PropagationTests =
         if s.id = SampleIds.euvMoSiId then WaveLength.nm 10.0<nm> else WaveLength.nm 600.0<nm>
 
     [<Fact>]
-    let ``the curated Library seeds exactly the named SeedSamples`` () =
+    let ``the curated Library contains exactly the catalogue samples`` () =
         // BuiltinCatalogue.samples supplies Library samples in catalogue order
         // (spec 0033 step 002; spec 0050 S1.7).
         Assert.Equal<SampleId list>(
