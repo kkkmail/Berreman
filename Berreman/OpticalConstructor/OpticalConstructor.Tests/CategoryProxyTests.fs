@@ -3,18 +3,10 @@ namespace OpticalConstructor.Tests
 open System
 open Xunit
 open OpticalConstructor.Domain.MaterialLibrary
-open OpticalConstructor.Domain.Library   // samplesReferencing (the composed referencing store)
 open OpticalConstructor.Domain.Lifecycle // VersionsInUse.empty (the injected in-use seam)
-open OpticalConstructor.Domain.MaterialStore   // MaterialProxy.createInMemory (versioned, spec 0038 step 021)
 
-/// Spec 0035 steps 002/003 (contract STORE_XDUO_0003) — the mutating category write-seam. The
-/// first two tests keep the step-002 DECLARED-lifecycle stubs verbatim (a STUB `CategoryProxy` of
-/// the exact declared shape over a fixed category list, plus the reference equality the Elmish host
-/// relies on). The remaining tests exercise the step-003 IMPLEMENTED store —
-/// `CategoryProxy.createInMemory (materialsReferencingCategory …)`, the real `ref Map` seeded from
-/// `standardCategories` — through the SAME four signatures against live state: add/rename/remove
-/// round-trips with fixed Guids, the built-in-not-removable block, the referenced-category hard
-/// block via the composed `MaterialProxy`, and the live referencing lookup.
+/// Category writes preserve proxy identity and enforce duplicate, built-in and reference guards.
+/// BuiltinCatalogue.categoryStore exercises the live material-reference lookup alongside the stubs.
 module CategoryProxyTests =
 
     [<Fact>]
@@ -37,17 +29,15 @@ module CategoryProxyTests =
         Assert.Equal<MaterialCategory option>(None, tryFindCategory [] CategoryIds.glass)
         Assert.Equal(string CategoryIds.glass.value, (CategoryIds.glass.categoryName []).value)
 
-    /// A built-in `SelectableOnCreate` category from the step-1 seeded catalogue (the stub reuses
-    /// the real records rather than fabricating a category).
+    /// A BuiltinCatalogue.category with SelectableOnCreate visibility for the stub's reference guard.
     let private glass : MaterialCategory =
-        standardCategories |> List.find (fun c -> c.id = CategoryIds.glass)
+        BuiltinCatalogue.category CategoryIds.glass
 
     /// A `HiddenOnCreate` built-in — the removal test proves a `BuiltInCategory` is refused.
     let private vacuum : MaterialCategory =
-        standardCategories |> List.find (fun c -> c.id = CategoryIds.vacuumCategory)
+        BuiltinCatalogue.category CategoryIds.vacuumCategory
 
-    /// A fresh USER category under a MINTED id (not in the seeded catalogue): the add/update/remove
-    /// happy paths and the referenced-block scenario hang off this.
+    /// A fresh user category absent from BuiltinCatalogue.categories for write and reference scenarios.
     let private minted () : MaterialCategory =
         { id = CategoryId.create (); name = CategoryName "Test category (minted)"; visibility = SelectableOnCreate; origin = UserCategory }
 
@@ -57,7 +47,7 @@ module CategoryProxyTests =
         // compares by identity so a host model holding one stays comparable.
         let make () : CategoryProxy =
             {
-                listCategories = fun () -> Ok standardCategories
+                listCategories = fun () -> Ok (BuiltinCatalogue.categories ())
                 addCategory = fun _ -> Ok ()
                 updateCategory = fun _ -> Ok ()
                 removeCategory = fun _ -> Ok ()
@@ -156,7 +146,7 @@ module CategoryProxyTests =
     let ``a STUB CategoryProxy surfaces CategoryStillReferenced when a user category is in use`` () =
         // A dedicated stub whose fixed user category IS referenced — proves the
         // `CategoryStillReferencedErr` case is reachable through `removeCategory`'s exact signature
-        // (the previous stub's built-in guard shadowed it for the built-in seeds).
+        // (the previous stub's built-in guard shadowed it for BuiltinCatalogue.category values).
         let inUse = minted ()
         let stub : CategoryProxy =
             {
@@ -180,28 +170,26 @@ module CategoryProxyTests =
     let private userCategoryId : CategoryId = Guid.Parse "7f1e2d3c-4b5a-6978-8091-a2b3c4d5e6f7" |> CategoryId
 
     /// A second FIXED literal id — the unknown-id / never-added scenarios use it so they never
-    /// collide with `userCategoryId` or a seeded built-in.
+    /// collide with `userCategoryId` or BuiltinCatalogue.categories.
     let private otherCategoryId : CategoryId = Guid.Parse "8a2b3c4d-5e6f-7081-9192-b3c4d5e6f708" |> CategoryId
 
     /// A FIXED literal id for the material entry the referenced-block tests categorise under the
-    /// user category (not a seeded `MaterialIds` value).
+    /// user category (absent from BuiltinCatalogue.materials).
     let private referencingMaterialId : MaterialId = Guid.Parse "9b3c4d5e-6f70-8192-a2b3-c4d5e6f70819" |> MaterialId
 
-    /// A fresh `UserCategory` under a fixed id (the real store seeds only `BuiltInCategory` records,
+    /// A fresh `UserCategory` under a fixed id (BuiltinCatalogue.categoryStore holds `BuiltInCategory` records,
     /// so a `UserCategory` is the only origin that can reach the remove / referenced paths).
     let private userCategory (id : CategoryId) (name : string) : MaterialCategory =
         { id = id; name = CategoryName name; visibility = SelectableOnCreate; origin = UserCategory }
 
-    /// A material entry (a copy of the seeded glass, re-identified and re-categorised) that
-    /// references the given category id — the referenced-block scenarios add it to the materials
-    /// store the category store's referencing lookup reads.
+    /// A re-identified BuiltinCatalogue.material referencing the given category for the removal guard.
     let private referencingMaterial (categoryId : CategoryId) : MaterialEntry =
-        let glass = builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass152)
+        let glass = BuiltinCatalogue.material MaterialIds.glass152
         { glass with id = referencingMaterialId; name = EntryName "Referencing material"; category = categoryId }
 
     [<Fact>]
     let ``the real store add/rename/remove of an unreferenced user category round-trips with fixed Guids`` () =
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
+        let categories = BuiltinCatalogue.categoryStore (fun _ -> [])
         let cat = userCategory userCategoryId "My category"
         // add
         match categories.addCategory cat with
@@ -209,7 +197,7 @@ module CategoryProxyTests =
         | other -> Assert.Fail($"expected Ok () from add, got %A{other}")
         match categories.listCategories () with
         | Ok l ->
-            Assert.Equal(List.length standardCategories + 1, List.length l)
+            Assert.Equal(List.length (BuiltinCatalogue.categories ()) + 1, List.length l)
             Assert.Contains(userCategoryId, l |> List.map (fun c -> c.id))
         | Error err -> Assert.Fail($"%A{err}")
         // rename
@@ -228,14 +216,14 @@ module CategoryProxyTests =
         | other -> Assert.Fail($"expected Ok () from remove, got %A{other}")
         match categories.listCategories () with
         | Ok l ->
-            Assert.Equal(List.length standardCategories, List.length l)
+            Assert.Equal(List.length (BuiltinCatalogue.categories ()), List.length l)
             Assert.DoesNotContain(userCategoryId, l |> List.map (fun c -> c.id))
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
     let ``the real store rejects a duplicate add — a seeded built-in id and a re-added user id`` () =
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
-        // an id the seeded catalogue already holds
+        let categories = BuiltinCatalogue.categoryStore (fun _ -> [])
+        // BuiltinCatalogue.categories holds this id.
         match categories.addCategory (userCategory CategoryIds.glass "Clashing glass") with
         | Error (DuplicateCategoryIdErr reason) -> Assert.Contains(string CategoryIds.glass.value, reason)
         | other -> Assert.Fail($"expected Error (DuplicateCategoryIdErr _), got %A{other}")
@@ -250,7 +238,7 @@ module CategoryProxyTests =
 
     [<Fact>]
     let ``the real store rejects a blank-name add and update as InvalidCategory and persists nothing`` () =
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
+        let categories = BuiltinCatalogue.categoryStore (fun _ -> [])
         let blank = userCategory userCategoryId "   "
         match categories.addCategory blank with
         | Error (InvalidCategoryErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
@@ -258,8 +246,8 @@ module CategoryProxyTests =
         match categories.listCategories () with
         | Ok l -> Assert.DoesNotContain(userCategoryId, l |> List.map (fun c -> c.id))
         | Error err -> Assert.Fail($"%A{err}")
-        // a blank rename of a seeded built-in is rejected and keeps the stored name
-        let glass = standardCategories |> List.find (fun c -> c.id = CategoryIds.glass)
+        // BuiltinCatalogue.categoryStore must retain the name after a rejected blank rename.
+        let glass = BuiltinCatalogue.category CategoryIds.glass
         match categories.updateCategory { glass with name = CategoryName "" } with
         | Error (InvalidCategoryErr _) -> ()
         | other -> Assert.Fail($"expected Error (InvalidCategoryErr _), got %A{other}")
@@ -272,8 +260,8 @@ module CategoryProxyTests =
 
     [<Fact>]
     let ``the real store renames a built-in category — built-ins ARE renamable`` () =
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
-        let glass = standardCategories |> List.find (fun c -> c.id = CategoryIds.glass)
+        let categories = BuiltinCatalogue.categoryStore (fun _ -> [])
+        let glass = BuiltinCatalogue.category CategoryIds.glass
         match categories.updateCategory { glass with name = CategoryName "Glass (renamed)" } with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () renaming a built-in, got %A{other}")
@@ -286,7 +274,7 @@ module CategoryProxyTests =
 
     [<Fact>]
     let ``the real store rejects updateCategory and removeCategory on an unknown id`` () =
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
+        let categories = BuiltinCatalogue.categoryStore (fun _ -> [])
         match categories.updateCategory (userCategory otherCategoryId "Never added") with
         | Error (UnknownCategoryIdErr reason) -> Assert.Contains(string otherCategoryId.value, reason)
         | other -> Assert.Fail($"expected Error (UnknownCategoryIdErr _), got %A{other}")
@@ -296,15 +284,14 @@ module CategoryProxyTests =
 
     [<Fact>]
     let ``the real store refuses to remove a built-in category and leaves the store unchanged`` () =
-        // Every seeded category is a `BuiltInCategory`, so the built-in guard fires before the
-        // referenced check could — the acceptance's built-in block.
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
+        // BuiltinCatalogue.categories contains BuiltInCategory rows, so the built-in guard fires first.
+        let categories = BuiltinCatalogue.categoryStore (fun _ -> [])
         match categories.removeCategory CategoryIds.glass with
         | Error (BuiltInNotRemovableErr reason) -> Assert.Contains("Glass", reason)
         | other -> Assert.Fail($"expected Error (BuiltInNotRemovableErr _), got %A{other}")
         match categories.listCategories () with
         | Ok l ->
-            Assert.Equal(List.length standardCategories, List.length l)
+            Assert.Equal(List.length (BuiltinCatalogue.categories ()), List.length l)
             Assert.Contains(CategoryIds.glass, l |> List.map (fun c -> c.id))
         | Error err -> Assert.Fail($"%A{err}")
 
@@ -312,8 +299,8 @@ module CategoryProxyTests =
     let ``the real store blocks removeCategory on a user category a material references and leaves both stores unchanged`` () =
         // The composition-root wiring: a materials store, and a category store whose referencing
         // lookup is backed by it (`materialsReferencingCategory` — the acceptance's referenced block).
-        let materials = MaterialProxy.createInMemory (fun _ -> []) VersionsInUse.empty
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let materials = BuiltinCatalogue.materialStore (fun _ -> []) VersionsInUse.empty
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         match categories.addCategory (userCategory userCategoryId "Referenced category") with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () adding the user category, got %A{other}")
@@ -337,8 +324,8 @@ module CategoryProxyTests =
     [<Fact>]
     let ``the referencing lookup is live — removing the referencing material unblocks the category`` () =
         // The lookup consults the CURRENT materials store, not a snapshot taken at construction.
-        let materials = MaterialProxy.createInMemory (fun _ -> []) VersionsInUse.empty
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let materials = BuiltinCatalogue.materialStore (fun _ -> []) VersionsInUse.empty
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         match categories.addCategory (userCategory userCategoryId "Referenced then freed") with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () adding the user category, got %A{other}")

@@ -13,7 +13,7 @@ open Xunit
 /// Spec 0038 Part I (step 031) — the pure OUT-OF-BAND dispersion diagnostic. A fixed 600 nm request
 /// inside a 300–700 nm segment MUST NOT flag; a 200–800 nm sweep against the same segment MUST flag,
 /// naming the material and both ranges; multi-segment unions cover a request spanning them (a gap does
-/// not); a CONSTANT material (and a coded preset's unbounded band) NEVER flags. The requested-
+/// not); a CONSTANT material (and BuiltinCatalogue.material's unbounded band) NEVER flags. The requested-
 /// wavelengths derivation and the tooltip/Details text are proven here too — all without a window.
 module OutOfBandDiagnosticTests =
 
@@ -105,11 +105,9 @@ module OutOfBandDiagnosticTests =
 
     [<Fact>]
     let ``a coded-preset material (spectrum-spanning band) never flags`` () =
-        // Silicon is dispersive but its dispersion is a CODED closure valid at every
-        // wavelength (spec 0040 step 004 re-seeds it with a single spectrum-spanning
-        // segment — an UNBOUNDED band), so no request can leave its defined range and
-        // the diagnostic never flags it.
-        let silicon = builtInEntries |> List.find (fun e -> e.id = MaterialIds.silicon)
+        // BuiltinCatalogue.material retains Silicon's spectrum-spanning segment, so no request
+        // leaves its defined range (spec 0040 step 004; spec 0050 S1.7).
+        let silicon = BuiltinCatalogue.material MaterialIds.silicon
         Assert.Equal(InBand, checkMaterialsOutOfBand [ silicon ] (SweptWavelengths (band 200.0 800.0)))
         // Even an extreme sweep is covered by the unbounded band.
         Assert.Equal(InBand, checkMaterialsOutOfBand [ silicon ] (SweptWavelengths (band 1.0 100000.0)))

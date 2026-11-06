@@ -45,7 +45,7 @@ module MaterialComplexityTests =
         [ 10.0<nm>; 13.5<nm> ] |> List.map WaveLength.nm
 
     let private entryOf (id : MaterialId) : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = id)
+        BuiltinCatalogue.material id
 
     [<Fact>]
     let ``AC-B7 toProperties defaults absent magnetic and active options to vacuum mu and rho`` () =
@@ -120,17 +120,14 @@ module MaterialComplexityTests =
             for w in grid do
                 let expected = original.getProperties w
                 Assert.True(propertiesClose 1e-12 (rebuilt.getProperties w) expected, $"{label}: toProperties must reproduce the preset at λ={w}")
-                // The seeded entry's properties ARE the complexity's composition.
+                // BuiltinCatalogue.material properties must match the independent preset.
                 Assert.True(propertiesClose 1e-12 (entry.properties.getProperties w) expected, $"{label}: seeded properties must equal the preset at λ={w}")
 
     [<Fact>]
     let ``the re-seeded silicon and langasite eps reproduce the engine presets`` () =
-        // Spec 0040 step 004: silicon / langasite dispersion is re-stated through the
-        // ladder's evaluated rung. Guard the copied indices against the engine closures
-        // (`OpticalProperties/Dispersive.fs`) so a transcription slip fails here, not
-        // silently. The library Langasite keeps its representative constant ρ (the engine
-        // preset's ρ is the published law `PublishedLawRho LangasiteGyrationLaw`, spec 0050
-        // step 10), so only its ε is reproduced; the ε compare uses the two engine closures.
+        // BuiltinCatalogue.material preserves the silicon / langasite ε laws (spec 0040 step 004;
+        // spec 0050 steps 10, 51). Langasite keeps constant ρ unlike the engine's published law,
+        // so only ε is compared with the engine presets.
         for w in visibleGrid do
             let siliconEps = (entryOf MaterialIds.silicon).properties.epsWithDisp.getEps w
             Assert.True(epsClose 1e-12 siliconEps (siliconOpticalProperties.epsWithDisp.getEps w), $"silicon eps at λ={w}")

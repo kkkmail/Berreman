@@ -46,8 +46,8 @@ module DispersionModelsTests =
 
     [<Fact>]
     let ``the silicon library entry reproduces the engine Silicon preset bit-for-bit`` () =
-        // Built-in entries reuse the engine presets directly — no dispersion re-derived.
-        let entry = builtInEntries |> List.find (fun e -> e.id = MaterialIds.silicon)
+        // BuiltinCatalogue.material must reproduce the engine's Silicon preset (spec 0050 S1.7).
+        let entry = BuiltinCatalogue.material MaterialIds.silicon
         for nm in [ 400.0<nm>; 500.0<nm>; 600.0<nm> ] do
             let w = WaveLength.nm nm
             let got = entry.properties.epsWithDisp.getEps w
@@ -124,16 +124,24 @@ module DispersionModelsTests =
 
     [<Fact>]
     let ``resolveMaterial returns the concrete tensor for a known id at the supplied wavelength`` () =
+        let library : MaterialLibrary =
+            {
+                entries = BuiltinCatalogue.materials ()
+            }
         let w = WaveLength.nm 500.0<nm>
-        match resolveMaterial standard MaterialIds.silicon w with
+        match resolveMaterial library MaterialIds.silicon w with
         | Ok op -> Assert.True(epsClose 1e-12 op.eps (siliconOpticalProperties.getProperties w).eps)
         | Error e -> Assert.Fail($"expected Ok, got {e}")
 
     [<Fact>]
     let ``resolveMaterial returns Error UnknownMaterialId for an unknown id and never throws`` () =
+        let library : MaterialLibrary =
+            {
+                entries = BuiltinCatalogue.materials ()
+            }
         // The error's reason (spec 0033 step 002) names the offending id's Guid string form.
         let unknown = MaterialId.create ()
-        match resolveMaterial standard unknown (WaveLength.nm 500.0<nm>) with
+        match resolveMaterial library unknown (WaveLength.nm 500.0<nm>) with
         | Error (UnknownMaterialIdErr reason) -> Assert.Contains(string unknown.value, reason)
         | other -> Assert.Fail($"expected Error (UnknownMaterialIdErr _), got {other}")
 
@@ -158,7 +166,10 @@ module DispersionModelsTests =
                 description = None
                 complexity = complexity
             }
-        let lib : MaterialLibrary = { entries = entry :: standard.entries }
+        let lib : MaterialLibrary =
+            {
+                entries = entry :: BuiltinCatalogue.materials ()
+            }
         match resolveMaterialWithDisp lib id with
         | Ok p ->
             for nm in [ 400.0<nm>; 600.0<nm>; 800.0<nm> ] do

@@ -60,8 +60,8 @@ module ExportImportTests =
 
     [<Fact>]
     let ``AC-I10 exportMaterials writes JSON that validates against the materialEntry $def`` () =
-        // Built-in entries span categories and include None descriptions (the omit-null path).
-        let entries = builtInEntries
+        // BuiltinCatalogue.materials spans categories and includes None descriptions (the omit-null path).
+        let entries = BuiltinCatalogue.materials ()
         let path = FileName (Path.Combine(Path.GetTempPath(), $"""oc-mat-%s{(Guid.NewGuid().ToString("N"))}.json"""))
         try
             match path.exportMaterials (BuiltinCatalogue.categories ()) entries with
@@ -110,7 +110,7 @@ module ExportImportTests =
             if File.Exists path.value then File.Delete path.value
 
     // --- spec 0035 step 001: category survives the persistence seam by CategoryId ----
-    // Category became DATA (a seeded catalogue keyed by `CategoryId`); the library file carries the
+    // BuiltinCatalogue.categories is keyed by CategoryId; the library file carries the
     // display NAME, so `dtoToEntry` must resolve that name back to the matching id on import and reject
     // an unknown name as a typed error. These two facts pin the genuinely-new `tryFindCategoryByName`
     // seam at the `exportMaterials`/`importMaterials` (Report.fs) boundary — the round-trip and its
@@ -118,13 +118,13 @@ module ExportImportTests =
 
     [<Fact>]
     let ``0035 category round-trips through export then import back to the matching CategoryId`` () =
-        // Export the built-ins and re-import so `dtoToEntry` runs `tryFindCategoryByName`: a persisted
+        // Export BuiltinCatalogue.materials so `dtoToEntry` runs `tryFindCategoryByName`: a persisted
         // category NAME must resolve back to the SAME `CategoryId` the entry carried — no silent default,
         // no drift across the id<->name hop. Restrict to entries carrying a description (the pre-existing
         // DTO requires the `description` field present on read — see Gotchas); the described built-ins
-        // still span every seeded category (Glass/Metal/Semiconductor/Crystal/Vacuum).
+        // still span BuiltinCatalogue.categories (Glass/Metal/Semiconductor/Crystal/Vacuum).
         let entries =
-            builtInEntries
+            BuiltinCatalogue.materials ()
             |> List.filter (fun e -> match e.description with | Some _ -> true | None -> false)
         let path = FileName (Path.Combine(Path.GetTempPath(), $"""oc-cat-%s{(Guid.NewGuid().ToString("N"))}.json"""))
         try
@@ -191,7 +191,7 @@ module ExportImportTests =
 
     [<Fact>]
     let ``0035 importMaterials fails with a typed MalformedJsonErr on an unknown category name`` () =
-        // A library JSON whose category name is absent from the seeded catalogue is a typed
+        // A JSON category name absent from BuiltinCatalogue.categories is a typed
         // `MalformedJsonErr` at `dtoToEntry` (`tryFindCategoryByName` -> None), never a throw or a silent
         // default to some fallback category. The id is a valid Guid and the `description` field is present,
         // so deserialization reaches `dtoToEntry` and the CATEGORY branch is the one that fails.
@@ -223,7 +223,7 @@ module ExportImportTests =
         // (`vacuumPlaceholderComplexity`), and `properties` is derived from it. Filtered as the 0035
         // round-trip filters, because the DTO requires the `description` field on read.
         let entries =
-            builtInEntries
+            BuiltinCatalogue.materials ()
             |> List.filter (fun e -> match e.description with | Some _ -> true | None -> false)
         let path = FileName (Path.Combine(AppContext.BaseDirectory, $"""oc-vacuum-%s{(Guid.NewGuid().ToString("N"))}.json"""))
         try

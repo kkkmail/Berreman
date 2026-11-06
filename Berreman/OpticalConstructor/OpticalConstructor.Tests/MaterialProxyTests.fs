@@ -8,42 +8,39 @@ open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.SampleStore
 
-/// Spec 0038 Part H step 021 (contract STORE_XDUO_0001) — the mutating materials write-seam
-/// re-typed IN PLACE into the VERSIONED store. `MaterialProxy.createInMemory samplesReferencing
-/// versionsInUse` keeps a per-`MaterialId` history (`ref Map<MaterialId, version list>`, seeded
-/// from `builtInEntries` as version 1 active); the LATEST version is what the offers surface and
-/// the library edits, older versions are view-only resolution targets. These facts enumerate the
-/// version-growth decision table over a STUBBED `VersionsInUse`, latest-active default listing,
-/// inactive hidden from offers yet resolvable by version, supersede behaving as inactive, and BOTH
-/// removal hard-blocks (a sample reference and a used version). Every test builds a FRESH proxy (a
-/// shared stateful proxy would be order-dependent under xUnit).
+/// Versioned material writes preserve history, lifecycle visibility and sample/version removal guards.
+/// Each fact uses a fresh BuiltinCatalogue.materialStore with injected references and VersionsInUse.
 module MaterialProxyTests =
 
     /// A fresh store with NO referencing samples and NO versions in use — the default over which the
     /// unused-side of the decision table and the read surface are exercised.
     let private freshProxy () : MaterialProxy =
-        MaterialProxy.createInMemory (fun _ -> []) VersionsInUse.empty
+        BuiltinCatalogue.materialStore (fun _ -> []) VersionsInUse.empty
 
     /// A fresh store over which the given versioned references are reported as in-use by a live
     /// experiment (the step-20 seam, stubbed) — the used-side of the decision table and the
     /// used-version removal block.
     let private proxyWithUsed (refs : VersionRef list) : MaterialProxy =
-        MaterialProxy.createInMemory (fun _ -> []) { versionsInUse = fun () -> Set.ofList refs }
+        BuiltinCatalogue.materialStore
+            (fun _ -> [])
+            {
+                versionsInUse = fun () -> Set.ofList refs
+            }
 
-    /// The composed pair the slice pins: a fresh step-005 samples store and a materials store whose
+    /// The composed pair: a fresh BuiltinCatalogue.sampleStore and a materials store whose
     /// referencing lookup is backed by it (`samplesReferencing` — the composition-root wiring; the
     /// `MaterialStillReferencedErr` block).
     let private composedProxies () : SampleProxy * MaterialProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        samples, MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        samples, BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
 
     /// A built-in EDITABLE template entry (fixed id, non-dispersive glass) the write tests reuse,
     /// and a distinct built-in whose physics (complexity) differs.
     let private glass : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass152)
+        BuiltinCatalogue.material MaterialIds.glass152
 
     let private otherPhysics : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass200)
+        BuiltinCatalogue.material MaterialIds.glass200
 
     /// A physics change of `glass`: SAME id / name / category / description, a DIFFERENT complexity.
     /// `decideVersioning` sees the physics as changed, the metadata as unchanged.
@@ -62,18 +59,18 @@ module MaterialProxyTests =
     let private v1Id (id : MaterialId) : MaterialVersionId = { materialId = id; version = VersionNumber.first }
     let private v2Id (id : MaterialId) : MaterialVersionId = { materialId = id; version = VersionNumber.first.next }
 
-    /// A fresh entry under a MINTED id (not in the seeded map) over the glass properties.
+    /// A fresh entry absent from BuiltinCatalogue.materials over the glass properties.
     let private minted () : MaterialEntry =
         { glass with id = newMaterialId (); name = EntryName "Test glass (minted)" }
 
-    // ============================ the read surface over the seeded store ============================
+    // ============================ BuiltinCatalogue.materialStore read surface ============================
 
     [<Fact>]
     let ``listMaterials ActiveOnly returns the seeded built-in entries with distinct ids`` () =
         match (freshProxy ()).listMaterials ActiveOnly with
         | Ok entries ->
             Assert.NotEmpty entries
-            Assert.Equal(List.length builtInEntries, List.length entries)
+            Assert.Equal(List.length (BuiltinCatalogue.materials ()), List.length entries)
             let ids = entries |> List.map (fun e -> e.id)
             Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
         | Error err -> Assert.Fail($"%A{err}")
@@ -81,7 +78,7 @@ module MaterialProxyTests =
     [<Fact>]
     let ``searchMaterials with the empty query matches every seeded entry`` () =
         match (freshProxy ()).searchMaterials MaterialQuery.empty with
-        | Ok entries -> Assert.Equal(List.length builtInEntries, List.length entries)
+        | Ok entries -> Assert.Equal(List.length (BuiltinCatalogue.materials ()), List.length entries)
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
@@ -102,7 +99,7 @@ module MaterialProxyTests =
             Assert.Equal<Set<MaterialId>>(Set.ofList [ MaterialIds.silicon; MaterialIds.langasite ], ids)
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.searchMaterials { MaterialQuery.empty with dispersion = OnlyNonDispersive } with
-        | Ok nonDispersive -> Assert.Equal(List.length builtInEntries - 2, List.length nonDispersive)
+        | Ok nonDispersive -> Assert.Equal(List.length (BuiltinCatalogue.materials ()) - 2, List.length nonDispersive)
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
@@ -139,7 +136,7 @@ module MaterialProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.listMaterials ActiveOnly with
         | Ok entries ->
-            Assert.Equal(List.length builtInEntries + 1, List.length entries)
+            Assert.Equal(List.length (BuiltinCatalogue.materials ()) + 1, List.length entries)
             Assert.Contains(entry.id, entries |> List.map (fun e -> e.id))
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.resolveVersion (v1Id entry.id) with
@@ -225,7 +222,7 @@ module MaterialProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.listMaterials ActiveOnly with
         | Ok entries ->
-            Assert.Equal(List.length builtInEntries, List.length entries)
+            Assert.Equal(List.length (BuiltinCatalogue.materials ()), List.length entries)
             let glassEntries = entries |> List.filter (fun e -> e.id = MaterialIds.glass152)
             Assert.Equal(1, List.length glassEntries)
             Assert.Equal(otherPhysics.complexity, glassEntries.Head.complexity)
@@ -294,8 +291,8 @@ module MaterialProxyTests =
         let samples, proxy = composedProxies ()
         match proxy.removeMaterial MaterialIds.glass152 with
         | Error (MaterialStillReferencedErr reason) ->
-            Assert.Contains(SeedSamples.glassPlate1mm.name.value, reason)
-            Assert.Contains(SeedSamples.multilayerQw.name.value, reason)
+            Assert.Contains((BuiltinCatalogue.sample SampleIds.glassPlate1mmId).name.value, reason)
+            Assert.Contains((BuiltinCatalogue.sample SampleIds.multilayerQwId).name.value, reason)
         | other -> Assert.Fail($"expected Error (MaterialStillReferencedErr _), got %A{other}")
         match proxy.tryGetMaterial MaterialIds.glass152 with
         | Ok (Some _) -> ()
@@ -320,7 +317,7 @@ module MaterialProxyTests =
 
     [<Fact>]
     let ``removeMaterial succeeds when the material is neither sample-referenced nor version-used`` () =
-        // No seeded sample references the n = 2.00 glass, and no version is in use.
+        // BuiltinCatalogue.samples never references the n = 2.00 glass; no version is in use.
         let _, proxy = composedProxies ()
         match proxy.removeMaterial MaterialIds.glass200 with
         | Ok () -> ()
@@ -334,13 +331,13 @@ module MaterialProxyTests =
 
     [<Fact>]
     let ``the referencing lookup is live — removing the referencing sample unblocks the material`` () =
-        // glass175 is referenced only by the 600 nm film seed; the lookup consults the CURRENT
-        // samples store, not a snapshot taken at construction.
+        // BuiltinCatalogue.sample SampleIds.glassFilm600Id alone references glass175;
+        // the lookup must observe its removal from the live store.
         let samples, proxy = composedProxies ()
         match proxy.removeMaterial MaterialIds.glass175 with
-        | Error (MaterialStillReferencedErr reason) -> Assert.Contains(SeedSamples.glassFilm600.name.value, reason)
+        | Error (MaterialStillReferencedErr reason) -> Assert.Contains((BuiltinCatalogue.sample SampleIds.glassFilm600Id).name.value, reason)
         | other -> Assert.Fail($"expected Error (MaterialStillReferencedErr _), got %A{other}")
-        match samples.removeSample SeedSamples.glassFilm600.id with
+        match samples.removeSample SampleIds.glassFilm600Id with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.removeMaterial MaterialIds.glass175 with
@@ -421,13 +418,13 @@ module MaterialProxyTests =
     let ``referencedMaterials covers films, repeated cells, the substrate plate, and the lower half-space`` () =
         Assert.Equal<Set<MaterialId>>(
             Set.ofList [ MaterialIds.glass152 ],
-            SeedSamples.glassFilm200.structure.referencedMaterials)
+            (BuiltinCatalogue.sample SampleIds.glassFilm200Id).structure.referencedMaterials)
         Assert.Equal<Set<MaterialId>>(
             Set.ofList [ MaterialIds.euvMolybdenum; MaterialIds.euvSilicon ],
-            SeedSamples.euvMoSi.structure.referencedMaterials)
+            (BuiltinCatalogue.sample SampleIds.euvMoSiId).structure.referencedMaterials)
         Assert.Equal<Set<MaterialId>>(
             Set.ofList [ MaterialIds.glass152 ],
-            SeedSamples.glassPlate1mm.structure.referencedMaterials)
+            (BuiltinCatalogue.sample SampleIds.glassPlate1mmId).structure.referencedMaterials)
         Assert.Equal<Set<MaterialId>>(
             Set.ofList [ MaterialIds.langasite; MaterialIds.silicon ],
-            SeedSamples.langasiteSilicon.structure.referencedMaterials)
+            (BuiltinCatalogue.sample SampleIds.langasiteSiliconId).structure.referencedMaterials)
