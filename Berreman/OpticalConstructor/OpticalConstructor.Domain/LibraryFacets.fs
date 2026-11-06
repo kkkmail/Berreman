@@ -155,11 +155,8 @@ module LibraryFacets =
 
     type MaterialComplexity with
 
-        /// The anisotropy the eps VALUE TREE denotes — the shape is data
-        /// (`ConstantEpsValue` / `EpsDispersiveValue` cases), no physics is
-        /// re-derived. Note the classification is of the ENCODING: the seeded
-        /// "Uniaxial crystal" built-in is stored as per-axis `BiaxialTransparent`
-        /// values (`MaterialLibrary.fs` seed comment) and so classifies Biaxial.
+        /// Classifies the eps encoding: the Built-in catalogue's "Uniaxial crystal" uses
+        /// per-axis BiaxialTransparent values and therefore classifies Biaxial (spec 0050 §3.3).
         member this.anisotropy : Anisotropy =
             match this.eps with
             | EpsWithoutDispValue constant ->

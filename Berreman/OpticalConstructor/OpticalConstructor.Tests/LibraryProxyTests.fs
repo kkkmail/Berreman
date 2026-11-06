@@ -148,7 +148,7 @@ module LibraryProxyTests =
 
     [<Fact>]
     let ``the library-entry store derives its By kind tree from what it holds`` () : unit =
-        let store = Library.createInMemoryEmpty ()
+        let store = Library.createInMemory ()
         let empty : LibraryTree =
             {
                 name = TreeName "By kind"

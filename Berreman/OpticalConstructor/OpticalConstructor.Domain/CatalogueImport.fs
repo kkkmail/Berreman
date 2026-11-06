@@ -78,10 +78,10 @@ module CatalogueImport =
         /// Builds a CatalogueImportProxy over empty in-memory stores, mapping refusals to ImportRejectedErr (spec 0050 §3.4).
         /// Returns InMemoryCatalogueStores with live reference lookups and no database or file IO.
         static member createInMemory () : InMemoryCatalogueStores =
-            let samples = SampleProxy.createInMemoryEmpty VersionsInUse.empty
-            let materials = MaterialProxy.createInMemoryEmpty (samplesReferencing samples) VersionsInUse.empty
-            let categories = CategoryProxy.createInMemoryEmpty (materialsReferencingCategory materials)
-            let libraryEntries = Library.createInMemoryEmpty ()
+            let samples = SampleProxy.createInMemory VersionsInUse.empty
+            let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+            let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+            let libraryEntries = Library.createInMemory ()
 
             let categoryReason (e : CategoryError) : string =
                 match e with

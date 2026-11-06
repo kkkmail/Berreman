@@ -66,7 +66,7 @@ module BuiltinCatalogue =
 
     /// Returns a fresh material store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
     let materialStore (samplesReferencing : MaterialId -> Sample list) (versionsInUse : VersionsInUse) : MaterialProxy =
-        let store = MaterialProxy.createInMemoryEmpty samplesReferencing versionsInUse
+        let store = MaterialProxy.createInMemory samplesReferencing versionsInUse
         for entry in materials () do
             match store.saveMaterial entry with
             | Ok () -> ()
@@ -80,7 +80,7 @@ module BuiltinCatalogue =
 
     /// Returns a fresh sample store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
     let sampleStore (versionsInUse : VersionsInUse) : SampleProxy =
-        let store = SampleProxy.createInMemoryEmpty versionsInUse
+        let store = SampleProxy.createInMemory versionsInUse
         for entry in samples () do
             match store.saveSample entry with
             | Ok () -> ()
@@ -93,7 +93,7 @@ module BuiltinCatalogue =
 
     /// Returns a fresh category store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
     let categoryStore (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
-        let store = CategoryProxy.createInMemoryEmpty materialsReferencingCategory
+        let store = CategoryProxy.createInMemory materialsReferencingCategory
         for entry in categories () do
             match store.addCategory entry with
             | Ok () -> ()
@@ -107,7 +107,7 @@ module BuiltinCatalogue =
 
     /// Returns a fresh library holding samples then presets in row order, failing with any refused entry and reason (spec 0050 S1.7).
     let library () : LibraryProxy =
-        let store = Library.createInMemoryEmpty ()
+        let store = Library.createInMemory ()
         let entries = (samples () |> List.map SampleItem) @ presets ()
         for entry in entries do
             match store.addEntry entry with

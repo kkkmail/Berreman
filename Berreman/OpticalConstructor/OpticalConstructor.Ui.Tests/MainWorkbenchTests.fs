@@ -197,7 +197,7 @@ module MainWorkbenchTests =
         Assert.StartsWith("Vacuum", bands.[1].label.value)
         Assert.StartsWith("Transparent glass (n = 1.52)", bands.[2].label.value)
 
-        let emptyMaterials = MaterialProxy.createInMemoryEmpty (fun _ -> []) VersionsInUse.empty
+        let emptyMaterials = MaterialProxy.createInMemory (fun _ -> []) VersionsInUse.empty
         let unnamedBands = (sample.bandsState emptyMaterials).bands
         Assert.Equal(3, List.length unnamedBands)
         Assert.StartsWith(string MaterialIds.glass152.value, unnamedBands.[0].label.value)

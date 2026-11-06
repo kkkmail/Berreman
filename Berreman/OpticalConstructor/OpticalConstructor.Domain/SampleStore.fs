@@ -5,14 +5,8 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 
-/// Spec 0038 Part H (step 022, AC-H2) — the real, stateful in-memory SAMPLE store behind the
-/// registered `SampleProxy` write-seam (STORE_XDUO_0002), now VERSIONED. This is the type
-/// augmentation `SampleProxy.createInMemory`, moved here from `ElementId.fs` because the store
-/// applies the step-20 shared `decideVersioning` rule (in `Lifecycle.fs`, which compiles AFTER
-/// `ElementId.fs`); the `SampleProxy` record itself stays re-typed IN PLACE in `ElementId.fs`. The
-/// exact mirror of step 021's `MaterialStore.fs`. Mutation stays INSIDE the closure (the IO
-/// boundary), so logic holding the proxy stays pure. A test substitutes a stub of the SAME
-/// `SampleProxy` shape or a fresh `createInMemory` over a stubbed `VersionsInUse`.
+/// Versioned in-memory sample storage with an injected experiment usage lookup
+/// (spec 0038 step 022; spec 0050 §3.4). Stores start empty and catalogue import supplies built-ins.
 module SampleStore =
 
     /// One stored version of a sample: its version number, its live/retired lifecycle, and the
@@ -41,24 +35,13 @@ module SampleStore =
 
     type SampleProxy with
 
-        /// Build the versioned in-memory samples store. `versionsInUse` is the step-20 seam answering
-        /// whether a specific version is currently bound by a live experiment — injected empty until
-        /// step 25 wires the real one. The store seeds every sample in `seedEntries` as version 1
-        /// active. Unlike the material store there is NO `samplesReferencing`-analogue: nothing
-        /// structural references a sample; a sample is "used" only when a live experiment binds one of
-        /// its versions (the `VersionsInUse` seam), which the used-version removal block guards.
-        /// The shared versioned in-memory sample-store body (spec 0038 step 042 —
-        /// IMPLEMENT_CONTRACT STORE_XDUO_0008), parameterised by the INITIAL samples so the
-        /// SELF-SEEDING `createInMemory` and the EMPTY-store `createInMemoryEmpty` (which the
-        /// seeding pipeline fills) never drift — everything below the seed line is identical. Each
-        /// initial sample seeds as version 1 active.
         static member private createInMemoryStore (initialSamples : Sample list) (versionsInUse : VersionsInUse) : SampleProxy =
 
-            let seeded =
+            let initialVersions =
                 initialSamples
                 |> List.map (fun s -> s.id, [ { versionNo = VersionNumber.first; lifecycle = ActiveEntry; sample = s } ])
                 |> Map.ofList
-            let store = ref seeded
+            let store = ref initialVersions
 
             let unknown (id : SampleId) : SampleError =
                 UnknownSampleIdErr $"unknown sample id '%s{string id.value}'"
@@ -180,11 +163,7 @@ module SampleStore =
                         | None -> Error (unknown id)
             }
 
-        /// In-memory sample store initially filled with `SeedSamples.allSeedSamples` as version 1 active (spec 0038 step 022).
+        /// Empty sample store using the shared versioning rule (spec 0038 step 042; spec 0050 §3.4).
+        /// The injected usage lookup blocks removal of samples with versions bound by experiments.
         static member createInMemory (versionsInUse : VersionsInUse) : SampleProxy =
-            SampleProxy.createInMemoryStore SeedSamples.allSeedSamples versionsInUse
-
-        /// Empty sample store for CatalogueImportProxy; the catalogue import supplies its entries.
-        /// Shares the seeded store's versioning/remove behavior (spec 0038 step 042; spec 0050 §3.4).
-        static member createInMemoryEmpty (versionsInUse : VersionsInUse) : SampleProxy =
             SampleProxy.createInMemoryStore [] versionsInUse

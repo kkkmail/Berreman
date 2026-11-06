@@ -4,14 +4,8 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 
-/// Spec 0038 Part H (step 021, AC-H2) — the real, stateful in-memory MATERIAL store behind the
-/// registered `MaterialProxy` write-seam (STORE_XDUO_0001), now VERSIONED. This is the type
-/// augmentation `MaterialProxy.createInMemory`, moved here from `ElementId.fs` because the store
-/// applies the step-20 shared `decideVersioning` rule (in `Lifecycle.fs`, which compiles AFTER
-/// `ElementId.fs`); the `MaterialProxy` record itself stays re-typed IN PLACE in `MaterialLibrary.fs`.
-/// Mutation stays INSIDE the closure (the IO boundary), so logic holding the proxy stays pure. A
-/// test substitutes a stub of the SAME `MaterialProxy` shape or a fresh `createInMemory` over a
-/// stubbed `VersionsInUse`.
+/// Versioned in-memory material storage with injected sample and experiment usage lookups
+/// (spec 0038 step 021; spec 0050 §3.4). Stores start empty and catalogue import supplies built-ins.
 module MaterialStore =
 
     /// One stored version of a material: its version number, its live/retired lifecycle, and the
@@ -39,28 +33,18 @@ module MaterialStore =
 
     type MaterialProxy with
 
-        /// Build the versioned in-memory materials store. `samplesReferencing` is the
-        /// composition-root lookup naming the samples that bind a material (the existing
-        /// `MaterialStillReferenced` hard-block); `versionsInUse` is the step-20 seam answering
-        /// whether a specific version is currently bound by a live experiment — injected empty
-        /// until step 25 wires the real one. The store seeds `builtInEntries` as version 1 active.
-        /// The shared versioned in-memory material-store body (spec 0038 step 042 —
-        /// IMPLEMENT_CONTRACT STORE_XDUO_0008), parameterised by the INITIAL entries so the
-        /// SELF-SEEDING `createInMemory` and the EMPTY-store `createInMemoryEmpty` (which the
-        /// seeding pipeline fills) never drift — everything below the seed line is identical. Each
-        /// initial entry seeds as version 1 active.
         static member private createInMemoryStore
             (initialEntries : MaterialEntry list)
             (samplesReferencing : MaterialId -> Sample list)
             (versionsInUse : VersionsInUse)
             : MaterialProxy =
 
-            let seeded =
+            let initialVersions =
                 initialEntries
                 |> List.map (fun e ->
                     e.id, [ { versionNo = VersionNumber.first; lifecycle = ActiveEntry; entry = e } ])
                 |> Map.ofList
-            let store = ref seeded
+            let store = ref initialVersions
 
             let unknown (id : MaterialId) : MaterialError =
                 UnknownMaterialIdErr $"unknown material id '%s{string id.value}'"
@@ -184,16 +168,9 @@ module MaterialStore =
                         | None -> Error (unknown id)
             }
 
-        /// In-memory material store initially filled with `builtInEntries` as version 1 active (spec 0038 step 021).
+        /// Empty material store using the shared versioning rule (spec 0038 step 042; spec 0050 §3.4).
+        /// Injected lookups block removal of materials referenced by samples or bound experiments.
         static member createInMemory
-            (samplesReferencing : MaterialId -> Sample list)
-            (versionsInUse : VersionsInUse)
-            : MaterialProxy =
-            MaterialProxy.createInMemoryStore builtInEntries samplesReferencing versionsInUse
-
-        /// Empty material store for CatalogueImportProxy; the catalogue import supplies its entries.
-        /// Shares the seeded store's versioning/remove behavior (spec 0038 step 042; spec 0050 §3.4).
-        static member createInMemoryEmpty
             (samplesReferencing : MaterialId -> Sample list)
             (versionsInUse : VersionsInUse)
             : MaterialProxy =

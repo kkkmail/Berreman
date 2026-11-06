@@ -1,21 +1,15 @@
 namespace OpticalConstructor.Domain
 
-open System                     // Guid (the SampleId backing + the fixed seed literals)
-open Berreman.Constants         // the nm / mm units of measure
-open Berreman.Geometry          // RotationConvention / Angle / Rotation (CrystalOrientation, spec 0033 step 020)
-open Berreman.Fields            // WaveLength
-open Berreman.Media             // Thickness
-open OpticalConstructor.Domain.Placement   // CatalogueKind
-open OpticalConstructor.Domain.MaterialLibrary   // MaterialId / MaterialIds (spec 0033 step 002); the materials store seam (step 006)
+open System
+open Berreman.Constants
+open Berreman.Geometry
+open Berreman.Fields
+open Berreman.Media
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.MaterialLibrary
 
-/// Spec 0027 (024) — the Library domain: an elevated, serializable `ElementId` (the stable
-/// table-element identity, distinct from `valueId`), the kind-constrained Library presets
-/// (Sample / Source / Detector / Polarizer), the one-or-more grouping-tree representations, and
-/// the mock `LibraryProxy` (the functional-proxy seam — a record of `Result`-returning camelCase
-/// functions, built by `createInMemory` closing over the seeded collection; a real, disk-backed
-/// `create` would later live in `OpticalConstructor.Storage`, leaving the bay/logic unchanged).
-/// Every primitive is elevated: ids/quantities are single-case DUs, the kinds are DUs (no enums),
-/// and the error channel carries a `reason`.
+/// Table-element and library-entry identities, sample structures, presets, grouping trees and store seams
+/// (spec 0027; spec 0050 §3.3). Built-in entries come from Catalogue/Builtin through CatalogueImportProxy.
 module Library =
 
     /// Elevated, serializable table-element identity (spec §1 / §5). Distinct from `valueId` (which
@@ -28,11 +22,8 @@ module Library =
         member this.value = let (ElementId s) = this in s
         static member create (s : string) : ElementId = ElementId s
 
-    /// Elevated sample identity (spec 0033 step 002): a Guid-backed single-case DU — no raw string
-    /// sample id appears in a domain record. `create` MINTS a fresh id; the seeded samples parse FIXED
-    /// literal Guids (`SampleIds`) so the grouping trees and the tests stay deterministic across
-    /// runs. The Selector `valueId` binding seam stays a string: `LibraryEntry.entryId` carries the
-    /// Guid STRING form.
+    /// Stable sample identity; create mints a new id and toElementValueId supplies its library binding.
+    /// SampleIds names the Built-in catalogue's identities (spec 0033 step 002; spec 0050 §3.3).
     type SampleId =
         | SampleId of Guid
 
@@ -46,8 +37,7 @@ module Library =
     /// `Library.SampleId.create` resolves to the case rather than the static member).
     let newSampleId () : SampleId = SampleId.create ()
 
-    /// The frozen identity of every seeded sample: the one place a built-in sample's fixed Guid
-    /// literal is written (spec 0050 §3.3).
+    /// Well-known identities of the Built-in catalogue's samples (spec 0050 §3.3).
     module SampleIds =
         let glassPlate1mmId : SampleId = Guid.Parse "a8ceb21b-0719-4553-8f07-e782cb206800" |> SampleId
         let glassPlate2mmId : SampleId = Guid.Parse "962a3eff-4c25-467e-9739-a5ff8922cac3" |> SampleId
@@ -61,8 +51,7 @@ module Library =
         let activeCrystalPlateId : SampleId = Guid.Parse "1c170dcc-0528-466e-98a7-cabfdaf9007a" |> SampleId
         let langasiteSiliconId : SampleId = Guid.Parse "8fa9867a-b1dd-4571-a83c-46a0acf16b4f" |> SampleId
 
-    /// The frozen identity of every seeded light-source, detector and polarizer preset: the one place
-    /// a built-in preset's entry id is written, each a GUID string minted once (spec 0050 §3.3).
+    /// Well-known identities of the Built-in catalogue's source, detector and polarizer presets (spec 0050 §3.3).
     module PresetIds =
         let source600 : ElementValueId = ElementValueId "0c4d0c67-137f-4c9f-8f31-d8837b725dc5"
 
@@ -116,12 +105,8 @@ module Library =
             version : VersionNumber
         }
 
-        /// The version-ONE reference of a sample (spec 0038 step 025) — the pin a freshly-bound
-        /// experiment descriptor carries. At this in-memory step every sample lives at version 1
-        /// (`SampleStore` seeds v1 active; a mint needs a USED version, and until an experiment binds
-        /// one the `VersionsInUse` set is empty), so `firstOf` IS the sample's current latest version.
-        /// Mirrors `MaterialVersionId.firstOf` so the sample layer / experiment binding pin through ONE
-        /// helper — step 25 (real `VersionsInUse`) has a single place to revisit pin-latest.
+        /// Pins version one of a sample, regardless of its latest stored version
+        /// (spec 0038 step 025; spec 0050 §3.3).
         static member firstOf (sampleId : SampleId) : SampleVersionId =
             { sampleId = sampleId; version = VersionNumber.first }
 
@@ -180,12 +165,8 @@ module Library =
     /// (spec 0033 step 002) — the same key `resolveMaterialWithDisp` looks up.
     type SampleLayer =
         {
-            /// The pinned material VERSION this layer is built against (spec 0038 Part H, step 022 —
-            /// references point at a version, not merely a material): re-typed IN PLACE from
-            /// `MaterialId` to `MaterialVersionId`, resolved through the versioned material store's
-            /// by-version `resolveVersion` (`Propagation.resolveMaterialVersion`), so a later mint of
-            /// the material's `.next` version never rewrites this layer's physics. The seeds and
-            /// freshly-authored layers pin version one (`MaterialVersionId.firstOf`).
+            /// Pins the material version so later material edits preserve this layer's physics
+            /// (spec 0038 step 022; spec 0050 §3.3).
             materialId : MaterialVersionId
             thickness : Thickness
             orientation : CrystalOrientation
@@ -217,10 +198,8 @@ module Library =
         {
             films : StackItem list
             substrate : SampleLayer option
-            /// The lower half-space material VERSION (`None` = vacuum). Re-typed IN PLACE from
-            /// `MaterialId option` to `MaterialVersionId option` at step 022 — every material
-            /// reference a sample carries points at a version (spec 0038 Part H), resolved through
-            /// the by-version resolve; the seeds pin version one (`MaterialVersionId.firstOf`).
+            /// Pins the lower half-space's material version; None denotes vacuum
+            /// (spec 0038 step 022; spec 0050 §3.3).
             lower : MaterialVersionId option
         }
 
@@ -296,12 +275,8 @@ module Library =
     let withSupportedEmission (candidate : Emission) (s : Sample) : Sample =
         { s with supportedEmission = constrainEmission s.substrate candidate }
 
-    /// Whether a library entry is a seeded built-in the user must not delete, inactivate, or
-    /// supersede, or an ordinary user-managed entry (spec 0038 Part F — the notion "ideal element"
-    /// disappears; the seeded presets become ordinary PROTECTED entries). A two-case DU, not a bool:
-    /// protection is DATA on each preset record so a future user-created preset is `UserManaged`
-    /// without a type change. Samples carry no field — every sample (seeded or user-created) is
-    /// `UserManaged` (they are editable examples — recorded interpretation, spec F.0).
+    /// Protected presets cannot be deleted, inactivated or superseded by the user.
+    /// Samples remain user-managed, including the Built-in catalogue's examples (spec 0038 Part F; spec 0050 §3.3).
     type EntryProtection =
         | ProtectedBuiltIn
         | UserManaged
@@ -428,9 +403,8 @@ module Library =
 
         member this.displayName : string = this.entryName.value
 
-        /// Whether this entry is a protected built-in or user-managed (spec 0038 Part F). The
-        /// presets carry protection as data; a sample is ALWAYS `UserManaged` — seeded samples are
-        /// editable examples (recorded interpretation, spec F.0).
+        /// Presets carry protection as data; all samples remain editable, including Built-in examples
+        /// (spec 0038 Part F; spec 0050 §3.3).
         member this.protection : EntryProtection =
             match this with
             | SampleItem _ -> UserManaged
@@ -480,14 +454,8 @@ module Library =
                 | CpCategory -> [ CircularPolarizer ]
                 | LpCpCategory | CpLpCategory | CustomMueller -> [ LinearPolarizer; CircularPolarizer ]
 
-    /// Spec 0040 Part D.3: the placement emission a table element takes when bound to a library ENTRY.
-    /// A bound SAMPLE bounds the placed element by its geometry-constrained `supportedEmission` (a
-    /// `Mirror` reflects only, a `ThinFilm` / `ThickPlate` emits both by default, or the R/T-only it was constrained
-    /// to) rather than the generic per-kind `Placement.defaultEmission` (which hands every non-mirror
-    /// element `EmitBoth`). A source / detector / polarizer carries no such geometry constraint, so a
-    /// placement bound to one keeps the `fallback` emission its catalogue kind already gave it. Pure —
-    /// the host seeds a placed sample's emission through this, and the experiment's default
-    /// `MeasurementMode` then follows via `Experiments.MeasurementMode.ofEmission`.
+    /// A bound sample supplies its geometry-constrained emission; other entries keep the placement's fallback
+    /// (spec 0040 Part D.3). Experiment measurement mode follows the resulting emission.
     let placementEmissionForEntry (fallback : Emission) (entry : LibraryEntry) : Emission =
         match entry with
         | SampleItem s -> s.supportedEmission
@@ -613,10 +581,8 @@ module Library =
         | NoEntriesForKindErr of reason : string
         | LibraryUnavailableErr of reason : string
 
-    /// The mock Library IO seam (the functional-proxy convention): a record of camelCase
-    /// `Result`-returning functions. A test substitutes a stub of the SAME shape. Function-valued
-    /// fields have no structural equality, so the proxy compares by reference — this lets a host model
-    /// that holds a proxy keep its (Elmish-required) equality, comparing the proxy by identity.
+    /// Library reads by kind, grouping tree and identity, with typed failures.
+    /// Function-valued fields make proxy equality reference-based.
     [<ReferenceEquality>]
     type LibraryProxy =
         {
@@ -695,9 +661,8 @@ module Library =
             removeSample : SampleId -> Result<unit, SampleError>
         }
 
-    /// The user-sources write-seam error channel (spec 0046; errors as values, each case carrying a
-    /// diagnostic `reason`): an unknown id on remove, a malformed source, and an attempt to store a
-    /// protected built-in (the seeded presets live in the read-only `LibraryProxy`, never here).
+    /// User-source write failures; protected Built-in sources belong in the catalogue preset store
+    /// (spec 0046; spec 0050 §3.4).
     type SourceError =
         | UnknownSourceIdErr of reason : string
         | InvalidSourceErr of reason : string
@@ -709,16 +674,8 @@ module Library =
             | InvalidSourceErr reason
             | ProtectedSourceRefusedErr reason -> reason
 
-    /// The mutating USER-SOURCES write-seam (spec 0046 — the Library's source editor): the
-    /// functional-proxy convention, a record of camelCase `Result`-returning functions a test
-    /// substitutes with stubs of the SAME shape (reference-compared, so a model holding one keeps
-    /// its equality). It holds only `UserManaged` sources; the seeded protected presets stay in the
-    /// read-only `LibraryProxy`. Unversioned: an experiment binds a source by its entry id.
-    ///
-    /// - `listSources` — every user source, in creation order;
-    /// - `tryGetSource id` — the user source with this entry id, if any;
-    /// - `saveSource source` — insert a new source or replace the one with the same id (validated);
-    /// - `removeSource id` — delete a user source; an unknown id is `UnknownSourceIdErr`.
+    /// Lists user sources in creation order and validates writes; protected presets live in the catalogue store.
+    /// Sources are unversioned and bound by entry id (spec 0046; spec 0050 §3.4).
     [<ReferenceEquality>]
     type SourceProxy =
         {
@@ -733,38 +690,12 @@ module Library =
     /// plain GUID string, as a sample's is (`SampleId.toElementValueId`; spec 0050 §3.3).
     let newSourceId () : ElementValueId = ElementValueId (string (Guid.NewGuid ()))
 
-    /// A single-layer thin-film structure between vacuum (the common seed shape). The layer pins
-    /// version one of the material (spec 0038 step 022 — the seeds carry version-pinned references).
-    let private filmStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
-        {
-            films = [ SingleLayer { materialId = MaterialVersionId.firstOf materialId; thickness = thickness; orientation = PrimaryAxes } ]
-            substrate = None
-            lower = None
-        }
-
-    /// A thick-plate structure in vacuum (films empty; the plate is the substrate layer). The plate
-    /// pins version one of the material (spec 0038 step 022).
-    let private plateStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
-        {
-            films = []
-            substrate = Some { materialId = MaterialVersionId.firstOf materialId; thickness = thickness; orientation = PrimaryAxes }
-            lower = None
-        }
-
     /// λ/4 film thicknesses of the 600 nm quarter-wave stack (glass n = 1.52; vacuum n = 1).
     let private qwGlassThickness : Thickness = Thickness.nm ((600.0 / 1.52 / 4.0) * oneNanometer)
     let private qwVacuumThickness : Thickness = Thickness.nm ((600.0 / 1.00 / 4.0) * oneNanometer)
 
-    /// λ/4 at 10.6 nm — each EUV Mo/Si layer (2.65 nm, from MultilayerThinFilm_EUV.fsx).
-    let private euvLayerThickness : Thickness = Thickness.nm (10.6 / 4.0 * oneNanometer)
-
-    /// A foldable STARTER multilayer structure (spec 0035 step 014): ONE `Repeated` period of a
-    /// two-layer glass (n=1.52) / vacuum cell at the 600 nm λ/4 thicknesses (the `multilayerQw`
-    /// seed's unit cell), `count = 1` — the minimal seed the Sample editor's Make-multilayer path
-    /// opens onto, ready for the `SampleStackEditor` K-stepper (`SetRepeatCount`) to build up into a
-    /// full stack. This is bare structure DATA, NOT a seeded `Sample`: the editor opens a brand-new
-    /// sample over it, so Save mints a fresh `SampleId` (`SampleId.create`) rather than reusing a
-    /// seeded id.
+    /// Starts the Sample editor with one glass/vacuum period at 600 nm quarter-wave thicknesses.
+    /// The editor gives the new sample its own identity (spec 0035 step 014; spec 0050 S1.7).
     let starterMultilayerStructure : SampleStructure =
         {
             films =
@@ -783,340 +714,8 @@ module Library =
             lower = None
         }
 
-    /// The seeded samples (spec §2a), let-bound so `seedEntries`, the grouping tree, and the tests
-    /// all reference the SAME values programmatically (spec 0033 step 002). Each id is its FIXED
-    /// literal Guid in `SampleIds` (spec 0050 §3.3), deterministic across runs; seed construction
-    /// never calls `SampleId.create`.
-    module SeedSamples =
-
-        let glassPlate1mm : Sample =
-            {
-                id = SampleIds.glassPlate1mmId
-                name = EntryName "Glass plate (n=1.52, 1 mm)"
-                structure = plateStructure MaterialIds.glass152 (Thickness.mm 1.0<mm>)
-                substrate = ThickPlate
-                description = EntryDescription "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
-                supportedEmission = ThickPlate.defaultSupportedEmission
-            }
-
-        let glassPlate2mm : Sample =
-            {
-                id = SampleIds.glassPlate2mmId
-                name = EntryName "Glass plate (n=1.52, 2 mm)"
-                structure = plateStructure MaterialIds.glass152 (Thickness.mm 2.0<mm>)
-                substrate = ThickPlate
-                description = EntryDescription "Single transparent-glass plate, n = 1.52, thickness 2 mm, in vacuum."
-                supportedEmission = ThickPlate.defaultSupportedEmission
-            }
-
-        let glassFilm600 : Sample =
-            {
-                id = SampleIds.glassFilm600Id
-                name = EntryName "Glass thin film (n=1.75, 600 nm)"
-                structure = filmStructure MaterialIds.glass175 (Thickness.nm 600.0<nm>)
-                substrate = ThinFilm
-                description = EntryDescription "Single transparent-glass thin film, n = 1.75, thickness 600 nm, between vacuum."
-                supportedEmission = ThinFilm.defaultSupportedEmission
-            }
-
-        let glassVacuum : Sample =
-            {
-                id = SampleIds.glassVacuumId
-                name = EntryName "Glass / vacuum interface (n=1.50)"
-                structure = plateStructure MaterialIds.glass150 (Thickness.mm 1.0<mm>)
-                substrate = ThickPlate
-                description = EntryDescription "Semi-infinite transparent-glass / vacuum interface, n = 1.50 — the Fresnel / total-reflection demo."
-                supportedEmission = ThickPlate.defaultSupportedEmission
-            }
-
-        let glassFilm200 : Sample =
-            {
-                id = SampleIds.glassFilm200Id
-                name = EntryName "Glass thin film (n=1.52, 200 nm)"
-                structure = filmStructure MaterialIds.glass152 (Thickness.nm 200.0<nm>)
-                substrate = ThinFilm
-                description = EntryDescription "Single transparent-glass thin film, n = 1.52, 200 nm, between vacuum."
-                supportedEmission = ThinFilm.defaultSupportedEmission
-            }
-
-        let multilayerQw : Sample =
-            {
-                id = SampleIds.multilayerQwId
-                name = EntryName "Quarter-wave glass/vacuum multilayer (41 layers)"
-                structure =
-                    {
-                        films =
-                            [
-                                Repeated
-                                    {
-                                        cell =
-                                            [
-                                                { materialId = MaterialVersionId.firstOf MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
-                                                { materialId = MaterialVersionId.firstOf MaterialIds.vacuumMaterial; thickness = qwVacuumThickness; orientation = PrimaryAxes }
-                                            ]
-                                        count = PeriodCount 20
-                                    }
-                                SingleLayer { materialId = MaterialVersionId.firstOf MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
-                            ]
-                        substrate = None
-                        lower = None
-                    }
-                substrate = ThinFilm
-                description = EntryDescription "41-layer quarter-wave stack: alternating glass (n=1.52) and vacuum λ/4 films for 600 nm, 21 glass + 20 vacuum layers."
-                supportedEmission = ThinFilm.defaultSupportedEmission
-            }
-
-        let euvMoSi : Sample =
-            {
-                id = SampleIds.euvMoSiId
-                name = EntryName "EUV Mo/Si multilayer (100 pairs)"
-                structure =
-                    {
-                        films =
-                            [
-                                Repeated
-                                    {
-                                        cell =
-                                            [
-                                                { materialId = MaterialVersionId.firstOf MaterialIds.euvMolybdenum; thickness = euvLayerThickness; orientation = PrimaryAxes }
-                                                { materialId = MaterialVersionId.firstOf MaterialIds.euvSilicon; thickness = euvLayerThickness; orientation = PrimaryAxes }
-                                            ]
-                                        count = PeriodCount 100
-                                    }
-                            ]
-                        substrate = None
-                        lower = None
-                    }
-                substrate = Mirror
-                description = EntryDescription "EUV reflective multilayer: 100 Mo/Si bilayers, each layer 2.65 nm (λ/4 at 10.6 nm), on vacuum."
-                supportedEmission = Mirror.defaultSupportedEmission
-            }
-
-        let uniaxial : Sample =
-            {
-                id = SampleIds.uniaxialId
-                name = EntryName "Uniaxial crystal film (1 µm)"
-                structure = filmStructure MaterialIds.uniaxialCrystal (Thickness.nm 1000.0<nm>)
-                substrate = ThinFilm
-                description = EntryDescription "Uniaxial crystal thin film, nₒ = 1.5, nₑ = 1.65, thickness 1 µm, between vacuum."
-                supportedEmission = ThinFilm.defaultSupportedEmission
-            }
-
-        let biaxial : Sample =
-            {
-                id = SampleIds.biaxialId
-                name = EntryName "Biaxial crystal film (1 µm)"
-                structure = filmStructure MaterialIds.biaxialCrystal (Thickness.nm 1000.0<nm>)
-                substrate = ThinFilm
-                description = EntryDescription "Biaxial crystal thin film, n = (1.5, 1.65, 1.75), thickness 1 µm, between vacuum."
-                supportedEmission = ThinFilm.defaultSupportedEmission
-            }
-
-        let activeCrystalPlate : Sample =
-            {
-                id = SampleIds.activeCrystalPlateId
-                name = EntryName "Active gyrotropic crystal plate (1 cm)"
-                structure = plateStructure MaterialIds.activeCrystal Thickness.oneCentiMeter
-                substrate = ThickPlate
-                description = EntryDescription "Planar active (gyrotropic) crystal plate, n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6, thickness 1 cm."
-                supportedEmission = ThickPlate.defaultSupportedEmission
-            }
-
-        let langasiteSilicon : Sample =
-            {
-                id = SampleIds.langasiteSiliconId
-                name = EntryName "Langasite film on silicon (10 µm, dispersive)"
-                structure =
-                    {
-                        films = [ SingleLayer { materialId = MaterialVersionId.firstOf MaterialIds.langasite; thickness = Thickness.mm 0.01<mm>; orientation = PrimaryAxes } ]
-                        substrate = None
-                        lower = Some (MaterialVersionId.firstOf MaterialIds.silicon)
-                    }
-                substrate = ThinFilm
-                description = EntryDescription "Dispersive langasite thin film (10 µm) on a silicon substrate — wavelength-dependent n, k."
-                supportedEmission = ThinFilm.defaultSupportedEmission
-            }
-
-        /// All seeded samples in Library display order (the order `seedEntries` lists them).
-        let allSeedSamples : Sample list =
-            [
-                glassPlate1mm; glassPlate2mm; glassFilm600; glassVacuum; glassFilm200
-                multilayerQw; euvMoSi; uniaxial; biaxial; activeCrystalPlate; langasiteSilicon
-            ]
-
-    /// The seeded light sources (spec 0046): the 600 nm reference source, well-known lasers, and the
-    /// UV / EUV lithography sources — every one a PROTECTED monochromatic preset (a source is its
-    /// wavelength, spec Q3). Commonly quoted line wavelengths; the excimer and mercury lines are the
-    /// ones the lithography steppers are named after.
-    module SeedSources =
-
-        let private source (id : ElementValueId) (name : EntryName) (waveLength : WaveLength) : SourcePreset =
-            { id = id; name = name; waveLength = waveLength; tuning = FixedLine; protection = ProtectedBuiltIn }
-
-        let private tunable (id : ElementValueId) (name : EntryName) (minimum : WaveLength) (maximum : WaveLength) (setting : WaveLength) : SourcePreset =
-            {
-                id = id
-                name = name
-                waveLength = setting
-                tuning = TunableBetween { Berreman.Dispersion.WaveLengthInterval.lower = minimum; upper = maximum }
-                protection = ProtectedBuiltIn
-            }
-
-        /// The reference source every scene defaulted to before spec 0046.
-        let reference600 : SourcePreset = source PresetIds.source600 (EntryName "Monochromatic 600 nm") (WaveLength.nm 600.0<nm>)
-
-        /// Well-known lasers, by gain medium (the harmonics of Nd:YAG included).
-        let lasers : SourcePreset list =
-            [
-                source PresetIds.heNe633 (EntryName "HeNe laser 632.8 nm") (WaveLength.nm 632.8<nm>)
-                source PresetIds.heNe543 (EntryName "HeNe laser 543.5 nm (green)") (WaveLength.nm 543.5<nm>)
-                source PresetIds.argon488 (EntryName "Argon-ion laser 488 nm") (WaveLength.nm 488.0<nm>)
-                source PresetIds.argon515 (EntryName "Argon-ion laser 514.5 nm") (WaveLength.nm 514.5<nm>)
-                source PresetIds.heCd442 (EntryName "HeCd laser 441.6 nm") (WaveLength.nm 441.6<nm>)
-                source PresetIds.heCd325 (EntryName "HeCd laser 325 nm (UV)") (WaveLength.nm 325.0<nm>)
-                source PresetIds.diode405 (EntryName "GaN diode laser 405 nm") (WaveLength.nm 405.0<nm>)
-                source PresetIds.ruby694 (EntryName "Ruby laser 694.3 nm") (WaveLength.nm 694.3<nm>)
-                source PresetIds.tiSapphire800 (EntryName "Ti:sapphire laser 800 nm") (WaveLength.nm 800.0<nm>)
-                source PresetIds.ndYag1064 (EntryName "Nd:YAG laser 1064 nm") (WaveLength.nm 1064.0<nm>)
-                source PresetIds.ndYag532 (EntryName "Nd:YAG ×2 532 nm") (WaveLength.nm 532.0<nm>)
-                source PresetIds.ndYag355 (EntryName "Nd:YAG ×3 355 nm (UV)") (WaveLength.nm 355.0<nm>)
-                source PresetIds.ndYag266 (EntryName "Nd:YAG ×4 266 nm (DUV)") (WaveLength.nm 266.0<nm>)
-                source PresetIds.erbium1550 (EntryName "Erbium fibre laser 1550 nm") (WaveLength.nm 1550.0<nm>)
-                source PresetIds.co2Laser10600 (EntryName "CO₂ laser 10.6 µm") (WaveLength.nm 10600.0<nm>)
-            ]
-
-        /// The UV / EUV lithography sources: the mercury-lamp lines, the DUV excimer lasers, and the
-        /// tin-plasma EUV source with its beyond-EUV successor.
-        let lithography : SourcePreset list =
-            [
-                source PresetIds.mercuryG436 (EntryName "Mercury g-line 435.8 nm") (WaveLength.nm 435.8<nm>)
-                source PresetIds.mercuryH405 (EntryName "Mercury h-line 404.7 nm") (WaveLength.nm 404.7<nm>)
-                source PresetIds.mercuryI365 (EntryName "Mercury i-line 365 nm") (WaveLength.nm 365.0<nm>)
-                source PresetIds.krf248 (EntryName "KrF excimer 248 nm (DUV)") (WaveLength.nm 248.4<nm>)
-                source PresetIds.arf193 (EntryName "ArF excimer 193 nm (DUV, dry / immersion)") (WaveLength.nm 193.4<nm>)
-                source PresetIds.f2Excimer157 (EntryName "F₂ excimer 157 nm (VUV)") (WaveLength.nm 157.6<nm>)
-                source PresetIds.euv13p5 (EntryName "EUV 13.5 nm (Sn plasma)") (WaveLength.nm 13.5<nm>)
-                source PresetIds.beuv6p7 (EntryName "BEUV 6.7 nm (beyond EUV)") (WaveLength.nm 6.7<nm>)
-            ]
-
-        /// Tunable sources (spec 0046): an experiment varies their wavelength within their limits, or sets
-        /// it there when it varies something else.
-        let tunables : SourcePreset list =
-            [
-                tunable PresetIds.xenonMonochromator (EntryName "Xenon lamp + monochromator, 190–1000 nm") (WaveLength.nm 190.0<nm>) (WaveLength.nm 1000.0<nm>) (WaveLength.nm 600.0<nm>)
-                tunable PresetIds.tiSapphireTunable (EntryName "Ti:sapphire laser, tunable 700–1000 nm") (WaveLength.nm 700.0<nm>) (WaveLength.nm 1000.0<nm>) (WaveLength.nm 800.0<nm>)
-                tunable PresetIds.supercontinuum (EntryName "Supercontinuum source, 450–2400 nm") (WaveLength.nm 450.0<nm>) (WaveLength.nm 2400.0<nm>) (WaveLength.nm 600.0<nm>)
-                tunable PresetIds.euvBeamline (EntryName "EUV beamline (synchrotron), 5–20 nm") (WaveLength.nm 5.0<nm>) (WaveLength.nm 20.0<nm>) (WaveLength.nm 13.5<nm>)
-            ]
-
-        /// Every seeded source, in Library display order.
-        let allSeedSources : SourcePreset list = reference600 :: lasers @ lithography @ tunables
-
-    /// The seeded Library entries (spec §2a "Seeded entries"): samples (glass plate → second
-    /// thickness → thin film → a quarter-wave multilayer placeholder), the two detectors, one ideal
-    /// LP + two ideal CP, and the seeded sources (`SeedSources`). Every sample's stack is DATA (spec 0033
-    /// step 001) — the multilayers are `Repeated` period groups, never a per-id special case — and
-    /// the samples are the named `SeedSamples` values (spec 0033 step 002). The six presets are
-    /// ordinary PROTECTED entries (spec 0038 Part F — `ProtectedBuiltIn`); the seeded samples stay
-    /// `UserManaged` (editable examples). The three ideals are `ComputedIdeal` behaviour data that
-    /// still synthesizes through `Propagation.inputStokes` / `analyzerMueller` exactly as before.
-    let seedEntries : LibraryEntry list =
-        (SeedSamples.allSeedSamples |> List.map SampleItem)
-        @ [
-            DetectorItem { id = PresetIds.detectorIntensity; name = EntryName "Intensity detector"; kind = Intensity; protection = ProtectedBuiltIn }
-            DetectorItem { id = PresetIds.detectorEllipsometer; name = EntryName "Ellipsometer"; kind = Ellipsometer; protection = ProtectedBuiltIn }
-            PolarizerItem { id = PresetIds.polarizerLp; name = EntryName "Ideal linear polarizer"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = ProtectedBuiltIn }
-            PolarizerItem { id = PresetIds.polarizerCpLeft; name = EntryName "Ideal circular polarizer (left)"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = ProtectedBuiltIn }
-            PolarizerItem { id = PresetIds.polarizerCpRight; name = EntryName "Ideal circular polarizer (right)"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = ProtectedBuiltIn }
-        ]
-        // Spec 0046: the seeded sources — the 600 nm reference, the lasers, the lithography sources.
-        @ (SeedSources.allSeedSources |> List.map SourceItem)
-
-    /// A grouping-tree leaf for a seeded sample: references the sample VALUE programmatically
-    /// (spec 0033 step 002 — the id literal lives only in `SampleIds`), carrying its Guid-string
-    /// entry id exactly as `tryGetEntry` resolves it.
-    let private sampleLeaf (label : TreeLabel) (s : Sample) : LibraryTreeNode =
-        Leaf (label, (SampleItem s).entryId)
-
-    /// One canonical grouping tree (R3): the entries organised by kind, with the two glass plates
-    /// nested under their shared material (the "same glass, different thickness" grouping §2a).
-    let private seedTrees : LibraryTree list =
-        [
-            {
-                name = TreeName "By kind"
-                root =
-                    Group
-                        (TreeLabel "Library",
-                         [
-                             Group
-                                 (TreeLabel "Samples",
-                                  [
-                                      Group
-                                          (TreeLabel "Glass (n=1.52)",
-                                           [
-                                               sampleLeaf (TreeLabel "1 mm plate") SeedSamples.glassPlate1mm
-                                               sampleLeaf (TreeLabel "2 mm plate") SeedSamples.glassPlate2mm
-                                               sampleLeaf (TreeLabel "200 nm film") SeedSamples.glassFilm200
-                                           ])
-                                      sampleLeaf (TreeLabel "Glass film (n=1.75)") SeedSamples.glassFilm600
-                                      sampleLeaf (TreeLabel "Glass / vacuum interface (n=1.50)") SeedSamples.glassVacuum
-                                      Group
-                                          (TreeLabel "Multilayers",
-                                           [
-                                               sampleLeaf (TreeLabel "Quarter-wave glass/vacuum (41)") SeedSamples.multilayerQw
-                                               sampleLeaf (TreeLabel "EUV Mo/Si (100 pairs)") SeedSamples.euvMoSi
-                                           ])
-                                      Group
-                                          (TreeLabel "Crystals",
-                                           [
-                                               sampleLeaf (TreeLabel "Uniaxial film") SeedSamples.uniaxial
-                                               sampleLeaf (TreeLabel "Biaxial film") SeedSamples.biaxial
-                                               sampleLeaf (TreeLabel "Active gyrotropic plate") SeedSamples.activeCrystalPlate
-                                           ])
-                                      Group
-                                          (TreeLabel "Dispersive",
-                                           [
-                                               sampleLeaf (TreeLabel "Langasite on silicon") SeedSamples.langasiteSilicon
-                                           ])
-                                  ])
-                             Group
-                                 (TreeLabel "Sources",
-                                  [
-                                      Leaf (TreeLabel "600 nm", SeedSources.reference600.id)
-                                      Group (TreeLabel "Lasers", SeedSources.lasers |> List.map (fun src -> Leaf (src.name.toTreeLabel, src.id)))
-                                      Group (TreeLabel "Lithography (UV / EUV)", SeedSources.lithography |> List.map (fun src -> Leaf (src.name.toTreeLabel, src.id)))
-                                      Group (TreeLabel "Tunable", SeedSources.tunables |> List.map (fun src -> Leaf (src.name.toTreeLabel, src.id)))
-                                  ])
-                             Group
-                                 (TreeLabel "Detectors",
-                                  [
-                                      Leaf (TreeLabel "Intensity", PresetIds.detectorIntensity)
-                                      Leaf (TreeLabel "Ellipsometer", PresetIds.detectorEllipsometer)
-                                  ])
-                             Group
-                                 (TreeLabel "Polarizers",
-                                  [
-                                      Leaf (TreeLabel "Linear", PresetIds.polarizerLp)
-                                      Leaf (TreeLabel "Circular (L)", PresetIds.polarizerCpLeft)
-                                      Leaf (TreeLabel "Circular (R)", PresetIds.polarizerCpRight)
-                                  ])
-                         ])
-            }
-        ]
-
-    /// The in-memory mock proxy (spec §3 / Q7): closes over the seeded collection and tree, no IO,
-    /// deterministic for tests. A real disk-backed `create` would live in `OpticalConstructor.Storage`.
-    let createInMemory () : LibraryProxy =
-        let entries = seedEntries
-        let trees = seedTrees
-        {
-            entriesForKind = fun kind -> Ok (entries |> List.filter (fun e -> e.forKinds |> List.contains kind))
-            libraryTrees = fun () -> Ok trees
-            tryGetEntry = fun id -> Ok (entries |> List.tryFind (fun e -> e.entryId = id))
-        }
-
-    /// Writable library-entry store for the catalogue import through CatalogueImportProxy.
-    /// Bundles reads with addEntry; the seeded LibraryProxy has no write verb (spec 0038 step 042; spec 0050 §3.4).
+    /// Bundles library reads with the write seam used by CatalogueImportProxy
+    /// (spec 0038 step 042; spec 0050 §3.4).
     [<ReferenceEquality>]
     type LibraryEntryStore =
         {
@@ -1126,7 +725,7 @@ module Library =
 
     /// Empty store for the catalogue import through CatalogueImportProxy; entries retain insertion order.
     /// Duplicate ids return LibraryUnavailableErr; By kind is derived from held entries (spec 0050 S1.7).
-    let createInMemoryEmpty () : LibraryEntryStore =
+    let createInMemory () : LibraryEntryStore =
         let store = ref ([] : LibraryEntry list)
         let proxy =
             {
@@ -1170,14 +769,6 @@ module Library =
             elif plateMissingSubstrate
             then Error (InvalidSampleErr $"plate sample '%s{string s.id.value}' has no substrate plate specified")
             else Ok ()
-
-    // The real, stateful in-memory samples store behind the write-seam (STORE_XDUO_0002) moved to
-    // `SampleStore.fs` at spec 0038 Part H step 022 (mirroring the material store's step-021 move):
-    // the VERSIONED store needs the shared `decideVersioning` rule and the `VersionsInUse` seam
-    // (`Lifecycle.fs`, which compiles AFTER this file because it needs `SampleId` from `Library`
-    // above), so its `createInMemory` augmentation can no longer live here. The `SampleProxy` record
-    // itself stays re-typed IN PLACE above; `Sample.validate` (just above) is shared by the
-    // store; `samplesReferencing` (its composition lookup) stays below (it is `SampleProxy`-typed).
 
     /// The composition-root referencing lookup for `MaterialProxy.createInMemory` (spec 0033
     /// step 006): every sample the samples store currently holds whose structure references
@@ -1249,9 +840,9 @@ module Library =
                         | false -> Error (UnknownSourceIdErr $"unknown source id '%s{id.value}'")
             }
 
-    /// Composes `presets`, filled by composition roots from the Built-in catalogue, with live samples and user sources
-    /// (spec 0046; spec 0050 §3.4). Offers active samples, resolves retired samples, appends user sources after presets,
-    /// and derives By kind from the entries it offers, preserving the first listing error (spec 0050 S1.7).
+    /// Composes the catalogue preset store with live samples and user sources (spec 0046; spec 0050 §3.4).
+    /// Offers active samples, resolves retired samples, appends user sources after presets, and derives By kind
+    /// from offered entries, preserving the first preset listing error (spec 0050 S1.7).
     let liveLibrary (presets : LibraryProxy) (samples : SampleProxy) (sources : SourceProxy) : LibraryProxy =
         let liveSamples () : LibraryEntry list =
             match samples.listSamples ActiveOnly with
@@ -1267,9 +858,9 @@ module Library =
             | SourceItem _ | DetectorItem _ | PolarizerItem _ -> false
         let entriesForKind (kind : CatalogueKind) : Result<LibraryEntry list, LibraryError> =
             presets.entriesForKind kind
-            |> Result.map (fun seeded ->
+            |> Result.map (fun presetEntries ->
                 let ofKind (entries : LibraryEntry list) = entries |> List.filter (fun e -> e.forKinds |> List.contains kind)
-                ofKind (liveSamples ()) @ (seeded |> List.filter (isSample >> not)) @ ofKind (userSources ())
+                ofKind (liveSamples ()) @ (presetEntries |> List.filter (isSample >> not)) @ ofKind (userSources ())
                 |> List.distinctBy (fun e -> e.entryId))
         {
             entriesForKind = entriesForKind
