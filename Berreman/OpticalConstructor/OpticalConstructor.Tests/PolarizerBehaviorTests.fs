@@ -164,7 +164,7 @@ module PolarizerBehaviorTests =
     [<Fact>]
     let ``the polarizer-category facet applies only to polarizers and classifies the seeded ideals`` () =
         let def =
-            libraryFacets builtInEntries
+            libraryFacets (BuiltinCatalogue.categories ()) builtInEntries
             |> List.find (fun d -> d.key = polarizerCategoryFacetKey)
         for entry in seedEntries do
             let expected =

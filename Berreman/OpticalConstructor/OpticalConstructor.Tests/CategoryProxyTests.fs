@@ -17,6 +17,26 @@ open OpticalConstructor.Domain.MaterialStore   // MaterialProxy.createInMemory (
 /// block via the composed `MaterialProxy`, and the live referencing lookup.
 module CategoryProxyTests =
 
+    [<Fact>]
+    let ``a category resolves by id and by name through the list it is given`` () : unit =
+        let renamedName = CategoryName "Glass from the caller"
+        let originalName = CategoryName "Glass"
+        let originalGlass = BuiltinCatalogue.categories () |> List.find (fun category -> category.id = CategoryIds.glass)
+        let renamedGlass : MaterialCategory =
+            {
+                originalGlass with name = renamedName
+            }
+        let categories =
+            BuiltinCatalogue.categories ()
+            |> List.map (fun category -> if category.id = CategoryIds.glass then renamedGlass else category)
+
+        Assert.Equal<MaterialCategory option>(Some renamedGlass, tryFindCategory categories CategoryIds.glass)
+        Assert.Equal<MaterialCategory option>(Some renamedGlass, tryFindCategoryByName categories renamedName)
+        Assert.Equal<MaterialCategory option>(None, tryFindCategoryByName categories originalName)
+        Assert.Equal(renamedName.value, (CategoryIds.glass.categoryName categories).value)
+        Assert.Equal<MaterialCategory option>(None, tryFindCategory [] CategoryIds.glass)
+        Assert.Equal(string CategoryIds.glass.value, (CategoryIds.glass.categoryName []).value)
+
     /// A built-in `SelectableOnCreate` category from the step-1 seeded catalogue (the stub reuses
     /// the real records rather than fabricating a category).
     let private glass : MaterialCategory =

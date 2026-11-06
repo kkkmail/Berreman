@@ -3,6 +3,7 @@ namespace OpticalConstructor.Storage
 open System
 open System.IO
 open System.Text.Json
+open System.Text.Json.Nodes
 open Json.Schema
 open Giraffe.ViewEngine
 open Softellect.Sys.Primitives
@@ -25,16 +26,8 @@ open OpticalConstructor.Storage.ProjectJson
 /// this module owns only the file read and the `MaterialEntry list` boundary.
 module MaterialLibrary =
 
-    /// Persisted-form DTO mirroring the `materialEntry` `$def`'s display fields. The
-    /// engine's `OpticalPropertiesWithDisp` holds closures and cannot serialize, so
-    /// the library file carries the schema's display metadata only (the analytic
-    /// dispersion model lives behind the §D.9 mapping, out of scope here). Since the
-    /// closed `MaterialCategory` union became a seeded catalogue keyed by `CategoryId`
-    /// (spec 0035 step 001), the `category` field carries the category's DISPLAY NAME
-    /// (`"Glass"`/`"Metal"`/… — exactly the schema's `category` enum): export resolves
-    /// the id to its name through `CategoryId.categoryName`, import resolves the name back through
-    /// `tryFindCategoryByName`. A plain string here needs no custom converter — the one
-    /// JSON stack round-trips it as-is (§I.5/§I.8 "one stack only").
+    /// Metadata-only materialEntry DTO: category display names resolve through the caller's categories
+    /// on import and export (spec 0035 step 001; spec 0050 S1.7).
     [<Softellect.Sys.ElevationBoundary(nameof Softellect.Sys.StorageBoundary, "the library file's materialEntry shape: System.Text.Json binds these fields by name from the file, and dtoToEntry elevates each one at the read")>]
     type private MaterialEntryDto =
         {
@@ -53,12 +46,9 @@ module MaterialLibrary =
             active = None
         }
 
-    /// A standalone JSON-Schema that validates a single `materialEntry` document.
-    /// Built from the published project schema (the slice-003 build-copied content
-    /// item) by pointing `$ref` at `#/$defs/materialEntry` and embedding the original
-    /// `$defs` so every internal `#/$defs/...` reference resolves in the one document.
-    /// Carries no `$id`, so loading it does not collide with the project schema's
-    /// global registration. Loaded once behind `lazy` (I.2 reuse).
+    /// Standalone material-entry structure from the project schema, with internal references preserved.
+    /// Category membership is checked against the caller's list at conversion (spec 0050 S1.7).
+    /// Loaded once without a `$id` to avoid colliding with the project schema's registration (§I.2).
     let private materialEntrySchema : Lazy<Result<JsonSchema, StorageError>> =
         lazy
             let schemaPath =
@@ -67,15 +57,19 @@ module MaterialLibrary =
             else
                 try
                     let text = File.ReadAllText schemaPath
-                    use doc = JsonDocument.Parse text
-                    let defsText = doc.RootElement.GetProperty("$defs").GetRawText()
+                    let document = JsonNode.Parse text
+                    let defs = document.["$defs"]
+                    // The project enum predates caller-owned categories; keep every structural constraint
+                    // while resolving category membership through the supplied list (spec 0050 S1.7).
+                    defs.["materialEntry"].["properties"].["category"].AsObject().Remove("enum") |> ignore
+                    let defsText = defs.ToJsonString()
                     let wrapper =
                         $"""{{"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/materialEntry","$defs":%s{defsText}}}"""
                     Ok (JsonSchema.FromText wrapper)
                 with e -> Error (FileIoExn e)
 
-    /// Validate a single material-entry JSON element against the `materialEntry`
-    /// `$def` (§I.8 / AC-I10), reusing the slice-003 schema document.
+    /// Validate material-entry structure through the reused `$def` (§I.8 / AC-I10; spec 0050 S1.7).
+    /// The import/export boundary resolves category membership through the caller's list.
     let validateEntryElement (element : JsonElement) : Result<unit, StorageError> =
         match materialEntrySchema.Value with
         | Error e -> Error e
@@ -88,11 +82,11 @@ module MaterialLibrary =
     /// Parse a persisted DTO back to a domain entry. The persisted `id` is the `MaterialId`'s Guid
     /// STRING form (spec 0033 step 002); a non-Guid id is a typed error — no legacy string-id path,
     /// no fallback, no migration.
-    let private dtoToEntry (dto : MaterialEntryDto) : Result<MaterialEntry, StorageError> =
-        // Both the elevated id and the category name are IO-boundary parses: an id that is
-        // not a Guid and a category name absent from the seeded catalogue are typed errors
-        // (spec 0033 step 002 / 0035 step 001), never a throw or a silent default.
-        match MaterialId.tryCreate dto.id, tryFindCategoryByName (CategoryName dto.category) with
+    let private dtoToEntry (categories : MaterialCategory list) (dto : MaterialEntryDto) : Result<MaterialEntry, StorageError> =
+        // Invalid GUIDs and names absent from the caller's categories remain typed errors
+        // (spec 0033 step 002 / 0035 step 001; spec 0050 S1.7).
+        let categoryName = CategoryName dto.category
+        match MaterialId.tryCreate dto.id, tryFindCategoryByName categories categoryName with
         | Some id, Some category ->
             Ok
                 {
@@ -113,7 +107,7 @@ module MaterialLibrary =
         /// as refractiveindex.info-style tabulated CSV and parsed by `MaterialImport`
         /// (FSharp.Data). Returns `MaterialEntry list`; file/parse failures are values,
         /// never thrown.
-        member this.importMaterials () : Result<MaterialEntry list, StorageError> =
+        member this.importMaterials (categories : MaterialCategory list) : Result<MaterialEntry list, StorageError> =
             let read =
                 try Ok(File.ReadAllText this.value)
                 with e -> Error(FileIoExn e)
@@ -128,7 +122,7 @@ module MaterialLibrary =
                             match pending with
                             | [] -> Ok(List.rev acc)
                             | dto :: rest ->
-                                match dtoToEntry dto with
+                                match dtoToEntry categories dto with
                                 | Ok entry -> toEntries rest (entry :: acc)
                                 | Error e -> Error e
                         toEntries dtos []
@@ -138,42 +132,38 @@ module MaterialLibrary =
                     | Ok entry -> Ok [ entry ]
                     | Error e -> Error(MalformedJsonErr(string e))
 
-        /// Export a material library to canonical JSON in this file (§I.8 / AC-I10). Each entry is
-        /// projected to its `materialEntry` display fields (a `description = None` field
-        /// is omitted, never written as `null`, so the `$def`'s string-typed `description`
-        /// is satisfied), validated against the `$def`, and the array is written through
-        /// the shared `CanonicalJson.options` formatting. A validation failure short-circuits
-        /// to `SchemaValidationErr` so an `Ok` guarantees a schema-checked file.
-        member this.exportMaterials (entries : MaterialEntry list) : Result<unit, StorageError> =
+        /// Export schema-checked material metadata using the caller's category names (§I.8 / AC-I10;
+        /// spec 0050 S1.7). Missing category ids or invalid structure return SchemaValidationErr
+        /// before writing; absent descriptions are omitted and IO failures remain typed errors.
+        member this.exportMaterials (categories : MaterialCategory list) (entries : MaterialEntry list) : Result<unit, StorageError> =
             try
-                let nodes =
-                    entries
-                    |> List.map (fun e ->
-                        let dict = System.Collections.Generic.Dictionary<string, obj>()
-                        // The elevated MaterialId crosses the JSON boundary as its Guid string form.
-                        dict.["id"] <- box (string e.id.value)
-                        dict.["name"] <- box e.name.value
-                        // The category id resolves to its display name through the seeded
-                        // catalogue (spec 0035 step 001), writing "Glass"/"Metal"/… — exactly
-                        // the schema's `category` enum (§I.5/§I.8 one-stack rule).
-                        dict.["category"] <- box e.category.categoryName
-                        match e.description with
-                        | Some d -> dict.["description"] <- box d.value
-                        | None -> ()
-                        dict)
-                // Validate each entry against the materialEntry $def before writing.
-                let rec validateAll (ds : System.Collections.Generic.Dictionary<string, obj> list) : Result<unit, StorageError> =
-                    match ds with
-                    | [] -> Ok()
-                    | d :: rest ->
-                        let json = JsonSerializer.Serialize(d, CanonicalJson.options)
-                        use doc = JsonDocument.Parse json
-                        match validateEntryElement doc.RootElement with
-                        | Ok() -> validateAll rest
-                        | Error e -> Error e
-                match validateAll nodes with
+                let rec toValidatedNodes
+                    (pending : MaterialEntry list)
+                    (acc : System.Collections.Generic.Dictionary<string, obj> list)
+                    : Result<System.Collections.Generic.Dictionary<string, obj> list, StorageError> =
+                    match pending with
+                    | [] -> Ok (List.rev acc)
+                    | entry :: rest ->
+                        // Only names in the caller's list can round-trip through import (spec 0035 step 001; spec 0050 S1.7).
+                        match tryFindCategory categories entry.category with
+                        | None ->
+                            Error (SchemaValidationErr [ $"materialEntry category '{entry.category.value}' is absent from the supplied categories" ])
+                        | Some category ->
+                            let dict = System.Collections.Generic.Dictionary<string, obj>()
+                            dict.["id"] <- box (string entry.id.value)
+                            dict.["name"] <- box entry.name.value
+                            dict.["category"] <- box category.name.value
+                            match entry.description with
+                            | Some description -> dict.["description"] <- box description.value
+                            | None -> ()
+                            let json = JsonSerializer.Serialize(dict, CanonicalJson.options)
+                            use doc = JsonDocument.Parse json
+                            match validateEntryElement doc.RootElement with
+                            | Ok () -> toValidatedNodes rest (dict :: acc)
+                            | Error e -> Error e
+                match toValidatedNodes entries [] with
                 | Error e -> Error e
-                | Ok() ->
+                | Ok nodes ->
                     let json = JsonSerializer.Serialize(nodes, CanonicalJson.options)
                     File.WriteAllText(this.value, json, System.Text.UTF8Encoding false)
                     Ok()

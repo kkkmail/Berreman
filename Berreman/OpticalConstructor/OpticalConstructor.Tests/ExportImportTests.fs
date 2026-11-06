@@ -54,7 +54,7 @@ module ExportImportTests =
     [<Fact>]
     let ``AC-I10 importMaterials reads a refractiveindex.info-style CSV and returns MaterialEntry list`` () =
         let csvPath = FileName (Path.Combine(fixtures, "sample-nk.csv"))
-        match csvPath.importMaterials () with
+        match csvPath.importMaterials (BuiltinCatalogue.categories ()) with
         | Ok entries -> Assert.False(List.isEmpty entries, "imported at least one entry")
         | Error e -> Assert.Fail($"%A{e}")
 
@@ -64,7 +64,7 @@ module ExportImportTests =
         let entries = builtInEntries
         let path = FileName (Path.Combine(Path.GetTempPath(), $"""oc-mat-%s{(Guid.NewGuid().ToString("N"))}.json"""))
         try
-            match path.exportMaterials entries with
+            match path.exportMaterials (BuiltinCatalogue.categories ()) entries with
             | Error e -> Assert.Fail($"%A{e}")
             | Ok () ->
                 use doc = JsonDocument.Parse(File.ReadAllText path.value)
@@ -76,6 +76,36 @@ module ExportImportTests =
                     | Ok () -> ()
                     | Error e -> Assert.Fail($"entry failed materialEntry validation: %A{e}")
                 Assert.Equal(List.length entries, count)
+        finally
+            if File.Exists path.value then File.Delete path.value
+
+        let malformedEntries =
+            [
+                """{"name":"Glass","category":"Glass from the caller"}"""
+                $"""{{"id":"{MaterialIds.glass152.value}","category":"Glass from the caller"}}"""
+                $"""{{"id":"{MaterialIds.glass152.value}","name":"Glass"}}"""
+                """{"id":12,"name":"Glass","category":"Glass from the caller"}"""
+                $"""{{"id":"{MaterialIds.glass152.value}","name":12,"category":"Glass from the caller"}}"""
+                $"""{{"id":"{MaterialIds.glass152.value}","name":"Glass","category":12}}"""
+                $"""{{"id":"{MaterialIds.glass152.value}","name":"Glass","category":"Glass from the caller","description":null}}"""
+                $"""{{"id":"{MaterialIds.glass152.value}","name":"Glass","category":"Glass from the caller","dispersion":{{"kind":"invalid","wavelengthUnit":"Nanometer"}}}}"""
+            ]
+        for json in malformedEntries do
+            use doc = JsonDocument.Parse json
+            match validateEntryElement doc.RootElement with
+            | Error (SchemaValidationErr _) -> ()
+            | Error error -> Assert.Fail($"expected structural validation error, got %A{error}")
+            | Ok () -> Assert.Fail($"accepted malformed material entry: {json}")
+
+        let glass = BuiltinCatalogue.materials () |> List.find (fun entry -> entry.id = MaterialIds.glass152)
+        let path = FileName (Path.Combine(AppContext.BaseDirectory, $"""oc-missing-category-{Guid.NewGuid():N}.json"""))
+        let original = "existing destination"
+        File.WriteAllText(path.value, original)
+        try
+            match path.exportMaterials [] [ glass ] with
+            | Error (SchemaValidationErr _) -> Assert.Equal(original, File.ReadAllText path.value)
+            | Error error -> Assert.Fail($"expected category validation error, got %A{error}")
+            | Ok () -> Assert.Fail("export accepted a category missing from the supplied list")
         finally
             if File.Exists path.value then File.Delete path.value
 
@@ -98,10 +128,10 @@ module ExportImportTests =
             |> List.filter (fun e -> match e.description with | Some _ -> true | None -> false)
         let path = FileName (Path.Combine(Path.GetTempPath(), $"""oc-cat-%s{(Guid.NewGuid().ToString("N"))}.json"""))
         try
-            match path.exportMaterials entries with
+            match path.exportMaterials (BuiltinCatalogue.categories ()) entries with
             | Error e -> Assert.Fail($"export failed: %A{e}")
             | Ok () ->
-                match path.importMaterials () with
+                match path.importMaterials (BuiltinCatalogue.categories ()) with
                 | Error e -> Assert.Fail($"import failed: %A{e}")
                 | Ok imported ->
                     Assert.Equal(List.length entries, List.length imported)
@@ -121,6 +151,44 @@ module ExportImportTests =
         finally
             if File.Exists path.value then File.Delete path.value
 
+        let renamed = CategoryName "Glass from the caller"
+        let categories =
+            BuiltinCatalogue.categories ()
+            |> List.map (fun category ->
+                if category.id = CategoryIds.glass then
+                    {
+                        category with
+                            name = renamed
+                    }
+                else category)
+        let glass = BuiltinCatalogue.materials () |> List.find (fun entry -> entry.id = MaterialIds.glass152)
+        let describedGlass =
+            {
+                glass with
+                    description = Some (EntryDescription "Renamed category round-trip")
+            }
+        let path = FileName (Path.Combine(AppContext.BaseDirectory, $"""oc-live-category-{Guid.NewGuid():N}.json"""))
+        try
+            match path.exportMaterials categories [ describedGlass ] with
+            | Error error -> Assert.Fail($"export failed: %A{error}")
+            | Ok () ->
+                use doc = JsonDocument.Parse(File.ReadAllText path.value)
+                Assert.Equal(1, doc.RootElement.GetArrayLength())
+                let exported = doc.RootElement.[0]
+                Assert.Equal(renamed.value, exported.GetProperty("category").GetString())
+                match validateEntryElement exported with
+                | Error error -> Assert.Fail($"entry failed structural validation: %A{error}")
+                | Ok () -> ()
+                match path.importMaterials categories with
+                | Error error -> Assert.Fail($"import failed: %A{error}")
+                | Ok [ imported ] ->
+                    Assert.Equal(describedGlass.id, imported.id)
+                    Assert.Equal(CategoryIds.glass, imported.category)
+                    Assert.Equal(describedGlass.description, imported.description)
+                | Ok imported -> Assert.Fail($"expected one entry, got {List.length imported}")
+        finally
+            if File.Exists path.value then File.Delete path.value
+
     [<Fact>]
     let ``0035 importMaterials fails with a typed MalformedJsonErr on an unknown category name`` () =
         // A library JSON whose category name is absent from the seeded catalogue is a typed
@@ -131,10 +199,21 @@ module ExportImportTests =
         let json = $"""[{{"id":"%s{Guid.NewGuid().ToString()}","name":"Test material","category":"NotAKnownCategory","description":"probe"}}]"""
         File.WriteAllText(path.value, json, System.Text.UTF8Encoding false)
         try
-            match path.importMaterials () with
+            match path.importMaterials (BuiltinCatalogue.categories ()) with
             | Error (MalformedJsonErr msg) -> Assert.Contains("NotAKnownCategory", msg)
             | Error e -> Assert.Fail($"expected MalformedJsonErr on an unknown category, got %A{e}")
             | Ok imported -> Assert.Fail($"expected a typed error, but import silently produced %d{List.length imported} entr(y/ies)")
+        finally
+            if File.Exists path.value then File.Delete path.value
+
+        let path = FileName (Path.Combine(AppContext.BaseDirectory, $"""oc-no-category-fallback-{Guid.NewGuid():N}.json"""))
+        let json = $"""[{{"id":"{MaterialIds.glass152.value}","name":"Glass","category":"Glass","description":"probe"}}]"""
+        File.WriteAllText(path.value, json)
+        try
+            match path.importMaterials [] with
+            | Error (MalformedJsonErr reason) -> Assert.Contains("Glass", reason)
+            | Error error -> Assert.Fail($"expected unknown-category error, got %A{error}")
+            | Ok _ -> Assert.Fail("import fell back to a category absent from the supplied list")
         finally
             if File.Exists path.value then File.Delete path.value
 
@@ -148,10 +227,10 @@ module ExportImportTests =
             |> List.filter (fun e -> match e.description with | Some _ -> true | None -> false)
         let path = FileName (Path.Combine(AppContext.BaseDirectory, $"""oc-vacuum-%s{(Guid.NewGuid().ToString("N"))}.json"""))
         try
-            match path.exportMaterials entries with
+            match path.exportMaterials (BuiltinCatalogue.categories ()) entries with
             | Error e -> Assert.Fail($"export failed: %A{e}")
             | Ok () ->
-                match path.importMaterials () with
+                match path.importMaterials (BuiltinCatalogue.categories ()) with
                 | Error e -> Assert.Fail($"import failed: %A{e}")
                 | Ok imported ->
                     Assert.Equal(List.length entries, List.length imported)

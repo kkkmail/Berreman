@@ -152,26 +152,24 @@ module MaterialLibrary =
             { id = CategoryIds.vacuumCategory; name = CategoryName "Vacuum"; visibility = HiddenOnCreate; origin = BuiltInCategory }
         ]
 
-    /// Resolve a category record by its id through the seeded catalogue (spec 0035 step 001): the
-    /// single name-resolution seam consumers read instead of matching a closed union. An id absent
-    /// from the catalogue is `None`, never a throw.
-    let tryFindCategory (id : CategoryId) : MaterialCategory option =
-        standardCategories |> List.tryFind (fun c -> c.id = id)
+    /// Resolve an id through the caller's live category store's listCategories; absent ids return None
+    /// (spec 0035 step 001; spec 0050 S1.7).
+    let tryFindCategory (categories : MaterialCategory list) (id : CategoryId) : MaterialCategory option =
+        categories |> List.tryFind (fun c -> c.id = id)
 
     type CategoryId with
 
-        /// The display name of a category id, resolved through the catalogue (spec 0035 step 001); an
-        /// id absent from the catalogue falls back to its Guid string form (a diagnostic, never a throw).
-        member this.categoryName : string =
-            match tryFindCategory this with
-            | Some c -> c.name.value
-            | None -> string this.value
+        /// Resolve through the caller's live category store's listCategories, or return the id's GUID
+        /// label when absent (spec 0035 step 001; spec 0050 S1.7).
+        member this.categoryName (categories : MaterialCategory list) : CategoryName =
+            match tryFindCategory categories this with
+            | Some c -> c.name
+            | None -> CategoryName (string this.value)
 
-    /// Resolve a category record by its display name through the catalogue (spec 0035 step 001):
-    /// the inverse of `CategoryId.categoryName`, used at the persisted/wire boundary (library JSON). An
-    /// unknown name is `None`, never a throw.
-    let tryFindCategoryByName (name : CategoryName) : MaterialCategory option =
-        standardCategories |> List.tryFind (fun c -> c.name = name)
+    /// Resolve a name through the caller's live category store's listCategories; unknown names return None
+    /// (spec 0035 step 001; spec 0050 S1.7).
+    let tryFindCategoryByName (categories : MaterialCategory list) (name : CategoryName) : MaterialCategory option =
+        categories |> List.tryFind (fun c -> c.name = name)
 
     /// The category write-seam error channel (spec 0035 step 002, contract STORE_XDUO_0003 —
     /// DECLARED lifecycle): errors as values, each case carrying a diagnostic `reason` — a bare

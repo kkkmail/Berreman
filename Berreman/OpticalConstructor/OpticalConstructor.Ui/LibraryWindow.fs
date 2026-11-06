@@ -63,6 +63,7 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
                 library = library
                 samples = samples
                 materials = materials
+                categories = categories
                 // The Domain defaults unless a caller threads the app-configured values in (the
                 // step-008 defaults precedent — step 47 owns the composition acceptance).
                 treeAutoBuildThreshold = defaultArg treeAutoBuildThreshold TreeAutoBuildThreshold.defaultValue

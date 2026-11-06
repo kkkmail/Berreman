@@ -155,6 +155,8 @@ type LibraryWindowContext =
         library : LibraryProxy
         samples : SampleProxy
         materials : MaterialProxy
+        /// Live category store for facet names (spec 0050 S1.7).
+        categories : CategoryProxy
         treeAutoBuildThreshold : TreeAutoBuildThreshold
         thicknessBucketCap : ThicknessBucketCap
         /// Open the Sample editor by intent: `NewBlankSample` / `NewSeededMultilayer` (the Add /
@@ -494,12 +496,16 @@ type private LibraryProjectionInputs =
     }
 
 let private projectionInputs (m : LibraryWindowModel) : LibraryProjectionInputs =
+    let categories =
+        match m.context.categories.listCategories () with
+        | Ok entries -> entries
+        | Error _ -> []
     let materialCorpus =
         match m.context.materials.listMaterials ActiveOnly with
         | Ok entries -> entries
         | Error _ -> []
     let textDef = textFilterDef libraryTextFilterKey (FacetCaption "Text") (fun (e : LibraryEntry) -> e.entryName) m.textFilter
-    let defs = textDef :: libraryFacets materialCorpus
+    let defs = textDef :: libraryFacets categories materialCorpus
     let textApplied =
         match m.textFilter.value with
         | "" -> []

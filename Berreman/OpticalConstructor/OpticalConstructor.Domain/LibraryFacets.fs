@@ -52,6 +52,10 @@ module LibraryFacets =
     // Discrete-value vocabularies (each key doubles as the branch label).
     // =======================================================================
 
+    type CategoryName with
+
+        member this.facetKey : DiscreteKey = DiscreteKey this.value
+
     type Anisotropy with
 
         /// The branch key of an anisotropy (the editor's `Anisotropy` DU).
@@ -202,16 +206,14 @@ module LibraryFacets =
     // The MATERIAL facet catalogue (over MaterialEntry).
     // =======================================================================
 
-    /// Category — applies to every entry; the value set is corpus-derived
-    /// (branches come from the filtered population), names resolved through
-    /// the seeded catalogue (`standardCategories` via `CategoryId.categoryName`).
-    let private materialCategoryDef : AttributeDef<MaterialEntry> =
+    /// Category applies to every entry; names resolve through the categories given (spec 0050 S1.7).
+    let private materialCategoryDef (categories : MaterialCategory list) : AttributeDef<MaterialEntry> =
         {
             key = materialCategoryKey
             name = (FacetCaption "Category")
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
-            extract = fun entry -> [ DiscreteValue (DiscreteKey entry.category.categoryName) ]
+            extract = fun entry -> [ DiscreteValue (entry.category.categoryName categories).facetKey ]
         }
 
     /// Anisotropy — Isotropic/Uniaxial/Biaxial from the eps value tree. TOTAL
@@ -342,10 +344,10 @@ module LibraryFacets =
                     | None -> []
         }
 
-    /// The MATERIAL facet catalogue, in default representation order.
-    let materialFacets : AttributeDef<MaterialEntry> list =
+    /// The material facets in default order, with category names resolved through the categories given.
+    let materialFacets (categories : MaterialCategory list) : AttributeDef<MaterialEntry> list =
         [
-            materialCategoryDef
+            materialCategoryDef categories
             materialAnisotropyDef
             materialDispersionDef
             materialTransparencyDef
@@ -593,15 +595,12 @@ module LibraryFacets =
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
         }
 
-    /// The LIBRARY-ENTRY facet catalogue over a material corpus (the corpus
-    /// resolves constituent ids to entries and display names), in default
-    /// representation order: the kind facet, the polarizer-category facet
-    /// (spec 0038 Part F — the non-sample facet, right after kind), every
-    /// material facet lifted to samples as the distinct union over
-    /// constituent materials, then the sample-structural facets.
-    let libraryFacets (materials : MaterialEntry list) : AttributeDef<LibraryEntry> list =
+    /// Library facets in default order: kind, polarizer category, lifted material facets, then sample structure
+    /// (spec 0038 Part F). Constituent entries resolve through materials; category names through categories
+    /// (spec 0050 S1.7).
+    let libraryFacets (categories : MaterialCategory list) (materials : MaterialEntry list) : AttributeDef<LibraryEntry> list =
         [ entryKindDef; polarizerCategoryDef ]
-        @ (materialFacets |> List.map (liftToSamples materials))
+        @ (materialFacets categories |> List.map (liftToSamples materials))
         @ [
             substrateMaterialDef materials
             hasThinFilmsDef

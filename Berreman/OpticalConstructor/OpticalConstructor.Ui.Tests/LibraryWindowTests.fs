@@ -24,6 +24,7 @@ open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
+open OpticalConstructor.Tests
 
 /// Spec 0038 Part F (step 015) — the Library window (UICOMP_XDUO_0010): the single-instance
 /// window instantiating the step-012 `FacetedTreeControls` over the step-011 library facet
@@ -169,6 +170,7 @@ module LibraryWindowTests =
                 library = library
                 samples = samples
                 materials = materials
+                categories = BuiltinCatalogue.categoryStore (fun _ -> [])
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
                 thicknessBucketCap = ThicknessBucketCap.defaultValue
                 openSampleEditor =

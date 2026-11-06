@@ -24,6 +24,7 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Ui
+open OpticalConstructor.Tests
 
 /// Spec 0046 — the Library's light-source editor: its pure MVU (name, wavelength in a chosen unit, Save
 /// through the user-sources store, the dirty exit gate), the Library window's Add source / Edit / Remove
@@ -128,6 +129,7 @@ module LightSourceEditorTests =
             library = Library.createInMemory ()
             samples = samples
             materials = materials
+            categories = BuiltinCatalogue.categoryStore (fun _ -> [])
             treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
             thicknessBucketCap = ThicknessBucketCap.defaultValue
             openSampleEditor = fun _ -> calls.Add "sample-editor"

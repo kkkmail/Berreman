@@ -394,40 +394,23 @@ type MaterialsWindowMsg =
 // Live projections (each pass re-queries the proxies).
 // ---------------------------------------------------------------------------
 
-/// Resolve a category's display NAME through the LIVE catalogue: the store's `listCategories`
-/// is the source of truth, so a renamed category reads its new name here (the retired bay's
-/// `liveCategoryName` discipline). An id the store no longer holds falls back to the seeded
-/// `CategoryId.categoryName` (a diagnostic, never a throw).
+/// Resolve through the live category list, or an empty list when listing fails (spec 0050 S1.7).
 let liveCategoryName (categories : CategoryProxy) (id : CategoryId) : ControlCaption =
-    match categories.listCategories () with
-    | Ok cats ->
-        match cats |> List.tryFind (fun c -> c.id = id) with
-        | Some c -> c.name.caption
-        | None -> ControlCaption id.categoryName
-    | Error _ -> ControlCaption id.categoryName
+    let liveCategories =
+        match categories.listCategories () with
+        | Ok cats -> cats
+        | Error _ -> []
+    (id.categoryName liveCategories).caption
 
 type CategoryProxy with
 
-    /// The step-011 material facet catalogue with the category def's extractor re-pointed at the
-    /// LIVE category store: `materialFacets`' own category def resolves names through the STATIC
-    /// seeded catalogue (`CategoryId.categoryName`), so a category renamed through `CategoryProxy` would keep
-    /// its stale branch label there. The facet KEY is unchanged — only name resolution goes live —
-    /// and the catalogue is read ONCE per projection (the discrete value key doubles as the branch
-    /// label, step 009, so a rename re-labels branch, offer, and chip alike).
+    /// Shared material facets over the live category list, or an empty list when listing fails (spec 0050 S1.7).
     member this.liveMaterialFacets : AttributeDef<MaterialEntry> list =
-        let liveNames : Map<CategoryId, string> =
+        let liveCategories =
             match this.listCategories () with
-            | Ok cats -> cats |> List.map (fun c -> c.id, c.name.value) |> Map.ofList
-            | Error _ -> Map.empty
-        let liveName (id : CategoryId) : string =
-            match Map.tryFind id liveNames with
-            | Some name -> name
-            | None -> id.categoryName
-        materialFacets
-        |> List.map (fun def ->
-            if def.key = materialCategoryKey
-            then { def with extract = fun entry -> [ DiscreteValue (DiscreteKey (liveName entry.category)) ] }
-            else def)
+            | Ok cats -> cats
+            | Error _ -> []
+        materialFacets liveCategories
 
 /// The text filter's facet key (the filter is an ORDINARY engine constraint — spec 0038 §D.0 —
 /// over the entry's display name; its UI surface stays the filter box, not a chip).

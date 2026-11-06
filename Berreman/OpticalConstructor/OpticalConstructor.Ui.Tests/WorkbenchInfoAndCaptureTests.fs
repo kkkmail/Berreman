@@ -24,6 +24,7 @@ open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Ui
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0046 — what an element is (the hover tooltip and the element menu's header, the menu sized to its
@@ -102,6 +103,7 @@ module WorkbenchInfoAndCaptureTests =
             library = Library.createInMemory ()
             samples = samples
             materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+            categories = BuiltinCatalogue.categoryStore (fun _ -> [])
             treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
             thicknessBucketCap = ThicknessBucketCap.defaultValue
             openSampleEditor = ignore

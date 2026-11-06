@@ -28,9 +28,9 @@ module LibraryFacetsTests =
     // ---- shared accessors ----
 
     let private materialDef (key : AttributeKey) : AttributeDef<MaterialEntry> =
-        materialFacets |> List.find (fun d -> d.key = key)
+        materialFacets (BuiltinCatalogue.categories ()) |> List.find (fun d -> d.key = key)
 
-    let private libraryDefs : AttributeDef<LibraryEntry> list = libraryFacets builtInEntries
+    let private libraryDefs : AttributeDef<LibraryEntry> list = libraryFacets (BuiltinCatalogue.categories ()) builtInEntries
 
     let private libraryDef (key : AttributeKey) : AttributeDef<LibraryEntry> =
         libraryDefs |> List.find (fun d -> d.key = key)
@@ -68,6 +68,25 @@ module LibraryFacetsTests =
             | NumericValue v -> Some v.value
             | DiscreteValue _ -> None)
 
+    [<Fact>]
+    let ``the category facet names each material's category through the categories it is given`` () : unit =
+        let silicon = BuiltinCatalogue.materials () |> List.find (fun entry -> entry.id = MaterialIds.silicon)
+        let categories = BuiltinCatalogue.categories ()
+        let categoryDef = materialFacets categories |> List.find (fun def -> def.key = materialCategoryKey)
+        Assert.Equal<string list>([ "Semiconductor" ], extractedKeys categoryDef silicon)
+
+        let renamedName = CategoryName "Semiconductor from the caller"
+        let renamedCategories =
+            categories
+            |> List.map (fun category ->
+                if category.id = CategoryIds.semiconductor then
+                    {
+                        category with name = renamedName
+                    }
+                else category)
+        let renamedDef = materialFacets renamedCategories |> List.find (fun def -> def.key = materialCategoryKey)
+        Assert.Equal<string list>([ renamedName.value ], extractedKeys renamedDef silicon)
+
     let private discrete (key : AttributeKey) (values : string list) : AppliedConstraint =
         { key = key; selection = DiscreteSelection (values |> List.map DiscreteKey |> Set.ofList) }
 
@@ -75,7 +94,7 @@ module LibraryFacetsTests =
         node.branches |> List.map (fun b -> b.label.value, b.count.value)
 
     let private materialRepresentation : Representation =
-        Representation (materialFacets |> List.map (fun d -> d.key))
+        Representation (materialFacets (BuiltinCatalogue.categories ()) |> List.map (fun d -> d.key))
 
     let private libraryRepresentation : Representation =
         Representation (libraryDefs |> List.map (fun d -> d.key))
@@ -249,7 +268,7 @@ module LibraryFacetsTests =
 
     [<Fact>]
     let ``the category branches are corpus-derived from the seeded catalogue`` () =
-        let tree = buildTree (Representation [ materialCategoryKey ]) materialFacets [] builtInEntries
+        let tree = buildTree (Representation [ materialCategoryKey ]) (materialFacets (BuiltinCatalogue.categories ())) [] builtInEntries
         let node = List.exactlyOne tree.facets
         Assert.Equal<(string * int) list>(
             [ "Crystal", 4; "Glass", 4; "Metal", 1; "Semiconductor", 2; "Vacuum", 1 ],
@@ -330,7 +349,7 @@ module LibraryFacetsTests =
         // is deliberately excluded (its per-axis/segment counts need not sum to the total).
         let materialCount = List.length builtInEntries
         let branchCountSum (key : AttributeKey) : int =
-            let tree = buildTree (Representation [ key ]) materialFacets [] builtInEntries
+            let tree = buildTree (Representation [ key ]) (materialFacets (BuiltinCatalogue.categories ())) [] builtInEntries
             let node = List.exactlyOne tree.facets
             node.branches |> List.sumBy (fun b -> b.count.value)
         for key in [ materialCategoryKey; materialAnisotropyKey; materialDispersionKey; materialTransparencyKey ] do
@@ -349,7 +368,7 @@ module LibraryFacetsTests =
         for entry in dispersiveEntries do
             Assert.Equal<string list>([ "Absorbing" ], extractedKeys def entry)
         // ... and the Absorbing branch of the built tree counts every one of them.
-        let tree = buildTree (Representation [ materialTransparencyKey ]) materialFacets [] builtInEntries
+        let tree = buildTree (Representation [ materialTransparencyKey ]) (materialFacets (BuiltinCatalogue.categories ())) [] builtInEntries
         let node = List.exactlyOne tree.facets
         let absorbingCount =
             node.branches
@@ -368,7 +387,7 @@ module LibraryFacetsTests =
         // facets are TOTAL, both apply (both land under Absorbing for transparency); and both
         // carry dispersive value trees, so the dispersion-model facet and (langasite) the
         // activity facets also apply.
-        let tree = buildTree materialRepresentation materialFacets [] [ siliconEntry; langasiteEntry ]
+        let tree = buildTree materialRepresentation (materialFacets (BuiltinCatalogue.categories ())) [] [ siliconEntry; langasiteEntry ]
         Assert.Equal<AttributeKey list>(
             [
                 materialCategoryKey
@@ -388,7 +407,7 @@ module LibraryFacetsTests =
         // carry dispersive value trees, so the dispersion-model facet now appears; and
         // langasite retains its optical activity, so it joins the active crystal under
         // the gyration/handedness facets. No built-in is magnetic.
-        let tree = buildTree materialRepresentation materialFacets [] builtInEntries
+        let tree = buildTree materialRepresentation (materialFacets (BuiltinCatalogue.categories ())) [] builtInEntries
         Assert.Equal<AttributeKey list>(
             [
                 materialCategoryKey
@@ -521,7 +540,7 @@ module LibraryFacetsTests =
 
     [<Fact>]
     let ``one multi-model entry counts once in each dispersion-model branch`` () =
-        let tree = buildTree (Representation [ materialDispersionModelKey ]) materialFacets [] [ syntheticDispersive ]
+        let tree = buildTree (Representation [ materialDispersionModelKey ]) (materialFacets (BuiltinCatalogue.categories ())) [] [ syntheticDispersive ]
         let node = List.exactlyOne tree.facets
         // Three branches, each counting the single item once: branch counts
         // sum to 3 while the result total is 1 — multi-valued by design.

@@ -1253,6 +1253,10 @@ let materialEditorView (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -
         ] :> IView
     match m.mode with
     | ViewOnlyMaterial (reason, _) ->
+        let categories =
+            match m.context.categories.listCategories () with
+            | Ok entries -> entries
+            | Error _ -> []
         let leftPane =
             DockPanel.create [
                 DockPanel.children [
@@ -1262,7 +1266,7 @@ let materialEditorView (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -
                             StackPanel.orientation Orientation.Vertical
                             StackPanel.spacing 6.0
                             StackPanel.children [
-                                (ControlCaption $"{m.name.value} — {m.category.categoryName}").materialEditorLabel
+                                (ControlCaption $"{m.name.value} — {(m.category.categoryName categories).value}").materialEditorLabel
                                 TextBlock.create [ TextBlock.text m.description.value; TextBlock.foreground (brush hintColor) ] :> IView
                                 TextBlock.create [
                                     TextBlock.name ConstructorUiId.materialViewOnlyNote.value
