@@ -525,6 +525,88 @@ module Library =
             root : LibraryTreeNode
         }
 
+        /// Derives By kind from the supplied entries, ordered by kind then facet (spec 0050 S1.7).
+        /// Omits empty groups and preserves input order within each group's leaves.
+        static member byKind (entries : LibraryEntry list) : LibraryTree =
+            let group (label : TreeLabel) (children : LibraryTreeNode list) : LibraryTreeNode option =
+                match children with
+                | [] -> None
+                | _ -> Some (Group (label, children))
+
+            let leaves =
+                entries
+                |> List.map (fun entry -> entry, Leaf (entry.entryName.toTreeLabel, entry.entryId))
+
+            let sampleGroups =
+                leaves
+                |> List.choose (fun (entry, leaf) ->
+                    match entry with
+                    | SampleItem sample -> Some (sample.substrate, leaf)
+                    | _ -> None)
+                |> List.groupBy fst
+                |> List.sortBy fst
+                |> List.choose (fun (kind, samples) ->
+                    let label =
+                        match kind with
+                        | ThinFilm -> TreeLabel "Thin films"
+                        | ThickPlate -> TreeLabel "Thick plates"
+                        | Mirror -> TreeLabel "Mirrors"
+                    group label (samples |> List.map snd))
+
+            let fixedSources =
+                leaves
+                |> List.choose (fun (entry, leaf) ->
+                    match entry with
+                    | SourceItem source ->
+                        match source.tuning with
+                        | FixedLine -> Some leaf
+                        | TunableBetween _ -> None
+                    | _ -> None)
+            let tunableSources =
+                leaves
+                |> List.choose (fun (entry, leaf) ->
+                    match entry with
+                    | SourceItem source ->
+                        match source.tuning with
+                        | FixedLine -> None
+                        | TunableBetween _ -> Some leaf
+                    | _ -> None)
+            let sourceGroups =
+                [ group (TreeLabel "Fixed lines") fixedSources; group (TreeLabel "Tunable") tunableSources ]
+                |> List.choose id
+
+            let detectorLeaves =
+                leaves
+                |> List.choose (fun (entry, leaf) ->
+                    match entry with
+                    | DetectorItem _ -> Some leaf
+                    | _ -> None)
+
+            let polarizerGroups =
+                leaves
+                |> List.choose (fun (entry, leaf) ->
+                    match entry with
+                    | PolarizerItem polarizer -> Some (polarizer.category, leaf)
+                    | _ -> None)
+                |> List.groupBy fst
+                |> List.sortBy fst
+                |> List.choose (fun (category, polarizers) ->
+                    let label = TreeLabel category.label
+                    group label (polarizers |> List.map snd))
+
+            let groups =
+                [
+                    group (TreeLabel "Samples") sampleGroups
+                    group (TreeLabel "Sources") sourceGroups
+                    group (TreeLabel "Detectors") detectorLeaves
+                    group (TreeLabel "Polarizers") polarizerGroups
+                ]
+                |> List.choose id
+            {
+                name = TreeName "By kind"
+                root = Group (TreeLabel "Library", groups)
+            }
+
     /// The Library error channel (errors as values; each case carries a `reason`).
     type LibraryError =
         | UnknownEntryIdErr of reason : string
@@ -1043,13 +1125,13 @@ module Library =
         }
 
     /// Empty store for the catalogue import through CatalogueImportProxy; entries retain insertion order.
-    /// Duplicate ids return LibraryUnavailableErr. Grouping trees stay empty.
+    /// Duplicate ids return LibraryUnavailableErr; By kind is derived from held entries (spec 0050 S1.7).
     let createInMemoryEmpty () : LibraryEntryStore =
         let store = ref ([] : LibraryEntry list)
         let proxy =
             {
                 entriesForKind = fun kind -> Ok (store.Value |> List.filter (fun e -> e.forKinds |> List.contains kind))
-                libraryTrees = fun () -> Ok []
+                libraryTrees = fun () -> Ok [ LibraryTree.byKind store.Value ]
                 tryGetEntry = fun id -> Ok (store.Value |> List.tryFind (fun e -> e.entryId = id))
             }
         let addEntry (entry : LibraryEntry) : Result<unit, LibraryError> =
@@ -1169,7 +1251,7 @@ module Library =
 
     /// Composes `presets`, filled by composition roots from the Built-in catalogue, with live samples and user sources
     /// (spec 0046; spec 0050 §3.4). Offers active samples, resolves retired samples, appends user sources after presets,
-    /// preserves preset grouping, and maps proxy listing failures to `LibraryUnavailableErr`.
+    /// and derives By kind from the entries it offers, preserving the first listing error (spec 0050 S1.7).
     let liveLibrary (presets : LibraryProxy) (samples : SampleProxy) (sources : SourceProxy) : LibraryProxy =
         let liveSamples () : LibraryEntry list =
             match samples.listSamples ActiveOnly with
@@ -1183,15 +1265,24 @@ module Library =
             match e with
             | SampleItem _ -> true
             | SourceItem _ | DetectorItem _ | PolarizerItem _ -> false
+        let entriesForKind (kind : CatalogueKind) : Result<LibraryEntry list, LibraryError> =
+            presets.entriesForKind kind
+            |> Result.map (fun seeded ->
+                let ofKind (entries : LibraryEntry list) = entries |> List.filter (fun e -> e.forKinds |> List.contains kind)
+                ofKind (liveSamples ()) @ (seeded |> List.filter (isSample >> not)) @ ofKind (userSources ())
+                |> List.distinctBy (fun e -> e.entryId))
         {
-            entriesForKind =
-                fun kind ->
-                    presets.entriesForKind kind
-                    |> Result.map (fun seeded ->
-                        let ofKind (entries : LibraryEntry list) = entries |> List.filter (fun e -> e.forKinds |> List.contains kind)
-                        ofKind (liveSamples ()) @ (seeded |> List.filter (isSample >> not)) @ ofKind (userSources ())
-                        |> List.distinctBy (fun e -> e.entryId))
-            libraryTrees = presets.libraryTrees
+            entriesForKind = entriesForKind
+            libraryTrees =
+                fun () ->
+                    [ CatalogueKind.Sample; LightSource; Detector; LinearPolarizer; CircularPolarizer ]
+                    |> List.fold (fun collected kind ->
+                        collected
+                        |> Result.bind (fun entries ->
+                            entriesForKind kind |> Result.map (fun offered -> entries @ offered))) (Ok [])
+                    |> Result.map (fun entries ->
+                        let distinctEntries = entries |> List.distinctBy (fun entry -> entry.entryId)
+                        [ LibraryTree.byKind distinctEntries ])
             tryGetEntry =
                 fun id ->
                     let userSource =

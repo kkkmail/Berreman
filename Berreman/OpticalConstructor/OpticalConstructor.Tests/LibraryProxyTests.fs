@@ -86,6 +86,141 @@ module LibraryProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
+    let ``the By kind tree groups entries by kind, then facet, then leaf`` () : unit =
+        let film = BuiltinCatalogue.sample SampleIds.glassFilm200Id |> SampleItem
+        let mirror = BuiltinCatalogue.sample SampleIds.euvMoSiId |> SampleItem
+        let fixedSource = BuiltinCatalogue.preset PresetIds.heNe633
+        let tunableSource = BuiltinCatalogue.preset PresetIds.xenonMonochromator
+        let detector = BuiltinCatalogue.preset PresetIds.detectorEllipsometer
+        let linear = BuiltinCatalogue.preset PresetIds.polarizerLp
+        let circular = BuiltinCatalogue.preset PresetIds.polarizerCpLeft
+        let entries = [ circular; mirror; tunableSource; detector; film; linear; fixedSource ]
+        let expected : LibraryTree =
+            {
+                name = TreeName "By kind"
+                root =
+                    Group (TreeLabel "Library",
+                        [
+                            Group (TreeLabel "Samples",
+                                [
+                                    Group (TreeLabel "Thin films", [ Leaf (film.entryName.toTreeLabel, film.entryId) ])
+                                    Group (TreeLabel "Mirrors", [ Leaf (mirror.entryName.toTreeLabel, mirror.entryId) ])
+                                ])
+                            Group (TreeLabel "Sources",
+                                [
+                                    Group (TreeLabel "Fixed lines", [ Leaf (fixedSource.entryName.toTreeLabel, fixedSource.entryId) ])
+                                    Group (TreeLabel "Tunable", [ Leaf (tunableSource.entryName.toTreeLabel, tunableSource.entryId) ])
+                                ])
+                            Group (TreeLabel "Detectors", [ Leaf (detector.entryName.toTreeLabel, detector.entryId) ])
+                            Group (TreeLabel "Polarizers",
+                                [
+                                    Group (TreeLabel "Linear", [ Leaf (linear.entryName.toTreeLabel, linear.entryId) ])
+                                    Group (TreeLabel "Circular", [ Leaf (circular.entryName.toTreeLabel, circular.entryId) ])
+                                ])
+                        ])
+            }
+        Assert.Equal<LibraryTree>(expected, LibraryTree.byKind entries)
+        let empty : LibraryTree =
+            {
+                name = TreeName "By kind"
+                root = Group (TreeLabel "Library", [])
+            }
+        Assert.Equal<LibraryTree>(empty, LibraryTree.byKind [])
+
+        let secondFixedSource = BuiltinCatalogue.preset PresetIds.heNe543
+        let sourceOrder : LibraryTree =
+            {
+                name = TreeName "By kind"
+                root =
+                    Group (TreeLabel "Library",
+                        [
+                            Group (TreeLabel "Sources",
+                                [
+                                    Group (TreeLabel "Fixed lines",
+                                        [
+                                            Leaf (secondFixedSource.entryName.toTreeLabel, secondFixedSource.entryId)
+                                            Leaf (fixedSource.entryName.toTreeLabel, fixedSource.entryId)
+                                        ])
+                                ])
+                        ])
+            }
+        Assert.Equal<LibraryTree>(sourceOrder, LibraryTree.byKind [ secondFixedSource; fixedSource ])
+
+    [<Fact>]
+    let ``the library-entry store derives its By kind tree from what it holds`` () : unit =
+        let store = Library.createInMemoryEmpty ()
+        let empty : LibraryTree =
+            {
+                name = TreeName "By kind"
+                root = Group (TreeLabel "Library", [])
+            }
+        Assert.Equal<Result<LibraryTree list, LibraryError>>(Ok [ empty ], store.proxy.libraryTrees ())
+        let detector = BuiltinCatalogue.preset PresetIds.detectorIntensity
+        Assert.Equal<Result<unit, LibraryError>>(Ok (), store.addEntry detector)
+        let populated : LibraryTree =
+            {
+                name = TreeName "By kind"
+                root =
+                    Group (TreeLabel "Library",
+                        [ Group (TreeLabel "Detectors", [ Leaf (detector.entryName.toTreeLabel, detector.entryId) ]) ])
+            }
+        Assert.Equal<Result<LibraryTree list, LibraryError>>(Ok [ populated ], store.proxy.libraryTrees ())
+
+    [<Fact>]
+    let ``the live Library's By kind tree holds every live entry exactly once`` () : unit =
+        let stores = BuiltinCatalogue.freshStores ()
+        let sources = SourceProxy.createInMemory ()
+        let library = liveLibrary stores.libraryEntries stores.samples sources
+        let source : SourcePreset =
+            {
+                BuiltinCatalogue.source PresetIds.heNe633 with
+                    id = newSourceId ()
+                    name = MaterialLibrary.EntryName "By kind user source"
+                    protection = UserManaged
+            }
+        let sample : Sample =
+            {
+                BuiltinCatalogue.sample SampleIds.euvMoSiId with
+                    id = newSampleId ()
+                    name = MaterialLibrary.EntryName "By kind user mirror"
+            }
+        Assert.Equal<Result<unit, SourceError>>(Ok (), sources.saveSource source)
+        Assert.Equal<Result<unit, SampleError>>(Ok (), stores.samples.saveSample sample)
+        let kinds = [ CatalogueKind.Sample; LightSource; Detector; LinearPolarizer; CircularPolarizer ]
+        let offeredIds =
+            kinds
+            |> List.collect (fun kind ->
+                match library.entriesForKind kind with
+                | Ok entries -> entries |> List.map (fun entry -> entry.entryId)
+                | Error _ ->
+                    Assert.Fail("the live library could not list its entries")
+                    [])
+            |> List.distinct
+        let rec leafIds (node : LibraryTreeNode) : ElementValueId list =
+            match node with
+            | Leaf (_, id) -> [ id ]
+            | Group (_, children) -> children |> List.collect leafIds
+        match library.libraryTrees () with
+        | Ok [ tree ] ->
+            Assert.Equal<TreeName>(TreeName "By kind", tree.name)
+            let ids = leafIds tree.root
+            Assert.Equal<ElementValueId list>(List.sort offeredIds, List.sort ids)
+            Assert.Equal(ids.Length, ids |> List.distinct |> List.length)
+            Assert.Contains(source.id, ids)
+            Assert.Contains(sample.id.toElementValueId, ids)
+        | Ok _ | Error _ -> Assert.Fail("expected one derived By kind tree from the live library")
+
+        let firstError = LibraryUnavailableErr "sample listing unavailable"
+        let laterError = LibraryUnavailableErr "source listing unavailable"
+        let unavailablePresets : LibraryProxy =
+            {
+                stores.libraryEntries with
+                    entriesForKind = fun kind -> Error (if kind = CatalogueKind.Sample then firstError else laterError)
+            }
+        let unavailableLibrary = liveLibrary unavailablePresets stores.samples sources
+        Assert.Equal<Result<LibraryTree list, LibraryError>>(Error firstError, unavailableLibrary.libraryTrees ())
+
+    [<Fact>]
     let ``forKinds maps each entry case to its valid catalogue kinds`` () =
         let lp = PolarizerItem { id = ElementValueId "x"; name = MaterialLibrary.EntryName "lp"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = UserManaged }
         let cpL = PolarizerItem { id = ElementValueId "y"; name = MaterialLibrary.EntryName "cpL"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = UserManaged }

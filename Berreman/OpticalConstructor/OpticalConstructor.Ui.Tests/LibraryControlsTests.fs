@@ -10,6 +10,8 @@ open Xunit
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Tests
+open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0027 (024) Phase 1 — the Select bay (labelled "Library" until spec 0033 step 014): the pure
@@ -76,6 +78,62 @@ module LibraryControlsTests =
             match m.library.tryGetEntry id with
             | Ok (Some (Library.SampleItem _)) -> ()
             | other -> Assert.Fail($"%s{id.value} is not a Sample: %A{other}"))
+
+    [<Fact>]
+    let ``the Select bay lists a sample created in the samples store under its geometry`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model =
+                withSampleSelected ()
+                |> withWideQuickPick
+                |> updateTableAndElementRotation (SelectBay BayNames.selector)
+            let sample : Library.Sample =
+                {
+                    BuiltinCatalogue.sample Library.SampleIds.euvMoSiId with
+                        id = Library.newSampleId ()
+                        name = MaterialLibrary.EntryName "Select bay user mirror"
+                }
+            Assert.Equal<Library.SubstrateKind>(Library.Mirror, sample.substrate)
+            Assert.Equal<Result<unit, Library.SampleError>>(Ok (), model.samples.saveSample sample)
+            let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 320.0)
+            try
+                window.Content <- Component(fun _ -> mainView model ignore)
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                // Spec 0050 S1.7: exercise the internal libraryState through its public rendered consumer.
+                let tree =
+                    window.GetVisualDescendants()
+                    |> Seq.choose (function
+                        | :? StackPanel as panel when panel.Name = ConstructorUiId.libraryTree.value -> Some panel
+                        | _ -> None)
+                    |> Assert.Single<StackPanel>
+                let rows = tree.Children |> Seq.toList
+                let mirrorHeader =
+                    rows
+                    |> List.choose (function
+                        | :? TextBlock as label when label.Text = "Mirrors" -> Some label
+                        | _ -> None)
+                    |> Assert.Single<TextBlock>
+                let groupDepth = LibraryControls.LibraryRowDepth 2
+                Assert.Equal(groupDepth.indent, mirrorHeader.Margin.Left)
+                let mirrorRows =
+                    rows
+                    |> List.skipWhile (fun row -> not (System.Object.ReferenceEquals(row, mirrorHeader)))
+                    |> List.tail
+                    |> List.takeWhile (fun row -> row.Margin.Left > mirrorHeader.Margin.Left)
+                let leafId = ConstructorUiId.libraryEntry sample.id.toElementValueId.uiKey
+                let leaf =
+                    mirrorRows
+                    |> List.choose (function
+                        | :? Border as border when Avalonia.Automation.AutomationProperties.GetAutomationId(border) = leafId.value -> Some border
+                        | _ -> None)
+                    |> Assert.Single<Border>
+                let leafDepth = LibraryControls.LibraryRowDepth 3
+                Assert.Equal(leafDepth.indent, leaf.Margin.Left)
+                Assert.Equal(sample.name.value, Assert.IsType<TextBlock>(leaf.Child).Text)
+                Assert.Equal(None, (elem 2 model).placement.valueId)
+                Assert.True(leaf.IsEnabled)
+            finally
+                window.Close())
 
     [<Fact>]
     let ``BindValueId (ElementValueId sets) the selected element's valueId; inert for table or nothing`` () =
@@ -233,6 +291,8 @@ module LibraryControlsTests =
     let private clickIn (window : Window) (id : string) : unit =
         match borderWithId window id with
         | Some b ->
+            b.BringIntoView() |> ignore
+            Dispatcher.UIThread.RunJobs()
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
                 window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
