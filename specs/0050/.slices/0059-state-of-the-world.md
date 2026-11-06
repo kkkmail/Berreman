@@ -2,93 +2,79 @@
 
 ## Where we are
 
-Step 0059 retires STORE_XDUO_0007, the EF Core wiring proof, at the start of
-S2.1. The requested deletions and reference cleanup are implemented. The
-Database project remains in the solution with its existing properties and
-SQLite dependency. Attempt 02 preserves the reviewed implementation and is
-blocked by a measured gate-credit authority conflict: the required removal of
-seven executed cases yields 794, but four method-level deletion credits produce
-a gate floor of 797. Resolving that accounting is outside this slice's effects.
+The EF wiring proof retirement is implemented and committed in `a6fb67f`.
+The operator-authorized ASG repair resolves the accounting failure: four
+retired methods comprise seven executed cases, so 801 becomes 794.
+All 13 unchanged slice gates now pass. Repair steps 1–4 are complete;
+the ASG changes and Berreman recovery records await the operator's commits.
+The arc remains stopped at slice 0059, with 58 completed slices.
 
-## What's working
+Read `.manual/006-step-0059-case-count-accounting.md` before resuming. For
+this recovery, resume normally with an operator note and
+`--executability-profile 1`, without `--accept-current-slice`. The normal
+cycle must record the measured 794 at checkpoint index 58. The committed
+retirement already exists; do not restore or repeat it.
 
-- Removed the Test entity, TestDbContext and all initial-migration files.
-- Deleted the proof's seven test cases and database settings fixture.
-- Pruned proof-only test references and obsolete project documentation.
-- Retired unused provider and MSSQL keys; retained and documented the SQLite key.
-- Diagnosed the method-versus-case count conflict without changing tests or gates.
+## Implementation
 
-## Tests
+- Removed Test.cs, TestDbContext.cs, all initial migrations, the proof's test
+  class and its database settings fixture.
+- Pruned proof-only project/package references and obsolete documentation.
+- Retired the unused provider and MSSQL keys; retained the SQLite key.
+- Preserved the Database project, its properties and SQLite dependency.
 
-No build, tests, analyzers, acceptance searches or invariant gates were run by
-this worker, per RETIRE_CONTRACT Invariant 6. Existing supervisor evidence in
-`.manifest-arc-runner.log` reports build and elevation passing, followed by a
-constructor-unit-tests gate failure on 2026-11-06 at 13:55:47Z. The test process
-itself exited zero: 794 succeeded, zero failed and zero skipped; the existing
-TRX agrees. The gate rejected `794 < baseline 797`.
+The existing implementation was unchanged by this repair. No replacement
+facts, compatibility shims, migration path or new product behavior were added.
 
-The selected AppContextTests/LauncherTests UI gate and nine s08 invariant gates
-were not reached after the failure. Their results remain unestablished; no new
-gate result or commit readiness is asserted by this worker.
+## Verification
 
-The retired class has four theory rows and three facts. Checkpoint 57 records
-801, and immutable S21-RETIRE-EF-PROOF explicitly requires seven fewer, or 794.
-The repository inventory has method granularity: four deleted method identities
-earn four credits in ASG's `authorized_count_credits`, yielding 797 instead.
-The measured 794 agrees with the required retirement. The YAML below preserves
-the inherited checkpoint, not a replacement floor or a successful measurement
-for this slice. No ui_tests checkpoint is stored; zero remains the previous
-handoff's absence marker. The supervisor owns any future measured checkpoint.
+At 2026-11-06 14:42:38–14:44:03 UTC, ASG evaluated the unchanged 0059 roster:
+build, elevation, constructor-unit-tests, selected ui-tests and all nine s08
+invariants passed. Constructor: 794 passed; selected AppContextTests and
+LauncherTests: 10 passed. Zero failures or skips; both exact censuses match.
+The fresh constructor report differs from the archived 801-case report by
+exactly the seven authorized rows, with no other removals or additions.
+
+The default elevation invocation saw only the current recovery edits because
+the product retirement is already committed. A supplemental run against the
+last accepted commit `a402443` analyzed the changed App project: zero new
+findings, with only the mandated ELEV004 exclusion. Build had no warnings from
+our code; two existing SYSLIB0051 warnings came from vendored MathNet.
+
+The retirement absence search found nothing; all retired files and the
+Migrations directory are absent. Profile-1 compiler validation covers all 494
+steps. Every compiled slice/gate snapshot, published contract and test-effect
+declaration remains unchanged. The receipt binds the corrected validator and
+the project prompt's ruling pointer.
+
+Checkpoint 57 remains 801. Its recovered, validated archived case evidence is
+in `.test-case-counts-json`. No checkpoint 58 has been written; supervisor
+state, expected-red records, Git HEAD and index remain unchanged. The values
+below are fresh verification measurements, not a replacement checkpoint; the
+UI count is the selected subset and must never become a whole-suite baseline.
 
 ```yaml
 gates:
-  constructor_unit_tests: 801
-  ui_tests: 0
+  constructor_unit_tests: 794
+  ui_tests: 10
 ```
 
-## Architecture
+## Handoff
 
-The obsolete proof and its only consumer are removed together, with no
-compatibility shim, migration replacement or new behavior. The C# Database
-project intentionally has no handwritten source in this step. Its SQLite
-provider dependency is preserved. The constructor tests retain their existing
-Domain, Storage, Optimization and Ui references; their direct App and Database
-references and direct SQLite package were specific to the removed proof.
+Wait for the operator to commit the ASG repair and these recovery records,
+then await the explicit relaunch instruction. Nothing is deferred to a later
+product slice. The next normal 0059 cycle must review the existing committed
+retirement against accepted 0058 and pass its gates before advancing.
 
-ConfigKey.sqliteConnectionString retains the OpticalConstructorSqlite wire key
-for the library database. Other keys, defaults and appsettings.json are
-unchanged. Durable proof storage is retired under the unreleased-product
-compatibility break specified by spec 0050 §7; no migration path is added.
+The same ruling corrects future arithmetic at 0152 (six cases removed from
+five methods), preserves theory rows during 0151's migrations, and resolves
+0260's four removed cases plus three new facts (net minus one). Existing
+assertions, test effects and gates remain binding.
 
-## Deferred
+## Evidence
 
-No slice implementation work is deferred. Verification is the supervisor's
-responsibility and is blocked by the gate-credit authority conflict. A
-supervisor/operator resolution is required before this slice can be completed;
-this is not a waiver or work assigned to a later product slice.
-
-## Gotchas
-
-- No target-repository Roslyn retirement command was available; the protocol's
-  manual fallback applied exact deletions and narrow text edits.
-- S21-RETIRE-EF-PROOF requires exactly seven fewer cases and says nothing
-  replaces the deleted facts. Raising the suite from 794 to 797 would violate
-  that acceptance, so no product/test repair is authorized for this failure.
-- ASG's `executability/runtime_tests.py:80` credits one per deleted method and
-  explicitly documents that this is short for a theory. Correcting the credit
-  machinery or its accepted inputs is outside the ten allowed edit paths; ASG
-  is read-only under the project prompt. See the impl-log's Authority conflict
-  section for the measured evidence and missing authority.
-- No replacement facts, gate changes, checkpoint adjustments, spec/oracle edits
-  or ASG/STL modifications were made. Attempt 02 only updates the three supplied
-  worker Markdown outputs.
-- The Database project's properties, NU1903 comment and SQLite reference stay.
-- The supervisor's dirty `.manifest.state.json` and
-  `.expected-red-observed-json` were left untouched during attempt 02.
-- Commit readiness is false until the authority conflict is resolved and all
-  required supervisor gates complete successfully.
-
-## Changelog
-
-- 2026-11-06, step 0059 attempt 01: retired the EF wiring proof, its seven test cases and fixture, pruned references and unused settings, and wrote the supervisor handoff.
-- 2026-11-06, step 0059 attempt 02: preserved the retirement, traced the 794/797 failure to four method credits for seven cases, and documented the blocking authority conflict.
+`.artifacts/0059-operator-repair/` contains the verification summary, gate
+results/log, copied TRX reports, exact census, recovered arithmetic/provenance,
+acceptance searches, receipt/compiler checks, supplemental elevation report
+and ASG regression/type-check logs. See `.manual/006` and the implementation
+log's operator-resolution section for the historical failure and repair.

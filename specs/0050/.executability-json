@@ -43,9 +43,10 @@
       "schemas\\spec_writer\\handoff_verifier\\handoff-verifier.system-md": "db615d534822dcc35c08761dc4a1f08c394580b984c64bc77ffb76ed2e502bef",
       "schemas\\spec_writer\\section_planner\\section-planner.system-md": "25da2620de97c5a8d94033cddc7f08a45ddf92b4abe2494b465f4879eceb8bda",
       "schemas\\spec_writer\\spec_author\\spec-author.system-md": "fcf8b84c6754eebd60508cd15914e4a146dbdce292fb4099b4fa79d39a58c2ac",
-      "project:arc-runner": "85e7ca0b940974f03a899603ffc0f5d64744b2608e47023325c06b0e6693e1af"
+      "project:arc-runner": "eed9f3740aba93facfd181e608e0888a9100549cb04bac103b684bf168ce94cc"
     },
     "validator": {
+      "case_counts.py": "cbaa2ba63a43a0d46d8b7b474a5956397afafc4e96f3a4bbfb89226aec88f397",
       "checker.py": "63f092348ac302bf2f9881bd034fae2a82a5c3ee7ddb3b15935a5ee0fcac19cc",
       "contracts.py": "fb2a578d714cb0b11f1ea8f2d5ebb6474c3b146da9c3ce781ef00c61afe42420",
       "coverage.py": "b3c9c29829648c1ada7abd9fafec55c181b77d33af8d70430af88127aac0fb67",
@@ -62,7 +63,7 @@
       "profile.py": "eba1c97238ce397afd7274c983b7c3127133c1aa624f03b1ca4c8cd3d9d28eb5",
       "progress.py": "b902a86aa7761b595a3db0e126cf2c80113b2ea72b785791d4828b544bdf9395",
       "receipt.py": "b96bafc2171742842231852f5d99570cecc230aa67403eec7da79c426d77e919",
-      "runtime_tests.py": "6510e6abc354587f0bfe8ca1c561fad09bfd617cfcc4f9583976ead44345d748",
+      "runtime_tests.py": "97df78cee6de114a5a14b2c7063a30593e9d385b0e0de772386e7fe98fd92fa9",
       "seam_plan.py": "96db9a5e9d208ea17af32819ffc9ae23dcc8b3cde95ec4f0037ba74734e7e9d1",
       "temporal.py": "fe19c647f3b308f3710877bb9cabdc7ed17ea6502165e546596dbd1f044a2d10",
       "trx_inventory.py": "a1fc03410f418555dbfd8627cbe937f29e170d5f3d6704344dc43df00cc13255",
@@ -84,8 +85,8 @@
       "multistep/_arc_runner/gates/capabilities.py": "f9a91d27fc8460f0aea2ca40150d0c787dc033904ce28250092b53da01f93025",
       "multistep/_arc_runner/gates/deadlines.py": "7bb3b6eb3dde45a06bfc21c7e03f2fc1931502d9350dcc1370961d2d5f42837d",
       "multistep/_arc_runner/gates/evaluate_all_gates.py": "3e0bc010d842754c73b2c4c6de103673ae83c800e8f6081baf79810ed3644993",
-      "multistep/_arc_runner/gates/evaluate_gate.py": "6c7b2406064d6662a6f4abf3c2fdf2426edc4ce585d257380199ac909174ac8b",
-      "multistep/_arc_runner/gates/gate_result.py": "17ec2d66102005b487c6b3bcd5886b114a1524d293d3a79a3ee980a4f6be06c7",
+      "multistep/_arc_runner/gates/evaluate_gate.py": "096c92eeebcd6bf9d810926a01f771cf52f20f21c9db512b0e3ea88acd393825",
+      "multistep/_arc_runner/gates/gate_result.py": "271782caccde50daca3c1003bba035a9b68a233e56a2a03c2a1484813f320e10",
       "multistep/_arc_runner/gates/load_slice_gates.py": "397a1486a41b364d342d3c0951d7210643e2aff96276739a96d3ca6c91824871",
       "multistep/_arc_runner/gates/observation.py": "c75ba24f8f2b27ae7b5363b3f4c121c1ab3922bed1a8e4ba733bb2e3a065fb36",
       "multistep/_arc_runner/gates/silence.py": "644ead7de37190532348524cb470fb3e1de6b449427b31584457da120fc46e87",

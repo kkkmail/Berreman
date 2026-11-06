@@ -1,5 +1,43 @@
 # Step 0059 implementation log
 
+## Operator resolution, 2026-11-06
+
+The historical attempts below are superseded by the authorized recovery in
+`.manual/006-step-0059-case-count-accounting.md`. Product retirement was already
+committed in `a6fb67f`; this repair changes no product or test implementation.
+
+ASG now credits the executed cases of each authorized retired method from
+validated checkpoint evidence. The archived successful 0057 report supplies
+801 cases for accepted checkpoint 57; the retired source is identical at
+`1294d50` and `a402443`. Four deleted methods account for exactly seven rows.
+The numeric checkpoint remains 801; recovery writes only its case evidence.
+
+All 13 unchanged 0059 gates passed at 14:42:38–14:44:03 UTC: build, elevation,
+794 constructor cases, 10 selected UI cases and all nine invariants. No tests
+failed or skipped; exact censuses match, and the only row losses are the seven
+authorized retirements. Absence searches passed. Supplemental elevation with
+base `a402443` checked the committed App changes: zero new findings. The build
+reported only two existing vendored MathNet SYSLIB0051 warnings.
+
+The final ASG focused/pipeline/runtime run passed 46 tests; strict mypy passed
+all eight changed modules. The broader run passed 311 tests and reproduced one
+unrelated existing slice-format assertion failure against committed ASG code.
+The checkpoint regression test separately confirms that 793 is refused by
+both gate evaluation and checkpoint writing.
+
+Compiler validation preserved all 494 slice/gate snapshots and all published
+contracts. The profile-1 receipt was refreshed for the validator and the
+project prompt's ruling pointer. Supervisor state, expected-red records,
+numeric checkpoints, Git HEAD/index and committed product sources are unchanged.
+Evidence: `.artifacts/0059-operator-repair/verification-summary.json`,
+`gate-results.json`, `test-inventory.json`, `case-arithmetic.json`,
+`final-verification.log`, and `0059-elevation-accepted-base.log`.
+
+Repair steps 1–4 are ready for the operator's commits. No commit, acceptance
+or relaunch was performed. After the operator requests relaunch, resume 0059
+normally with an operator note and `--executability-profile 1`, without
+`--accept-current-slice`, so its verified 794 is recorded at checkpoint 58.
+
 ## Progress
 
 ### Attempt 01

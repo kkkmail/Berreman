@@ -213,6 +213,12 @@ For spec 0050, every role reads
 0210 and 0354. It authorizes early parity retirement while preserving step
 0057's test effects, normal verification and measured-count checkpoint.
 
+At steps 0059, 0151, 0152 and 0260, every role also reads
+`specs/0050/.manual/006-step-0059-case-count-accounting.md`. It corrects
+method-versus-case retirement arithmetic without changing test effects or
+gates. Its explicit 0059 recovery exception requires a normal profile-1 resume
+to record the measured checkpoint, without `--accept-current-slice`.
+
 The repository's own walls, from AGENTS.md:
 
 - **Never bump a version ring**, Berreman's or STL's.
