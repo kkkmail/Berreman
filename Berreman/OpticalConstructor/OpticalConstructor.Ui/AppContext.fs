@@ -10,11 +10,12 @@
 namespace OpticalConstructor.Ui
 
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle           // VersionsInUse.empty (the injected in-use seam)
-open OpticalConstructor.Domain.MaterialStore       // MaterialProxy.createInMemory (versioned, spec 0038 step 021)
-open OpticalConstructor.Domain.SampleStore         // SampleProxy.createInMemory (versioned, spec 0038 step 022)
 open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Storage.CatalogueFolderStore
+open Softellect.Sys.Logging
 
 /// The app-scope composition context (the `*Context` convention: the IO-boundary
 /// proxies plus the app-configuration data, constructed once at the composition
@@ -24,8 +25,8 @@ open OpticalConstructor.Domain.WorkbenchSettings
 [<ReferenceEquality>]
 type AppContext =
     {
-        /// The catalogue seam behind the Select bay (spec 0027) — spec 0046: the LIVE Library
-        /// (`Library.liveLibrary` — the seeded presets over the samples and user-sources stores), so
+        /// The Select bay's live library (spec 0027; spec 0046; spec 0050 §3.4) composes
+        /// imported presets with the samples and user-sources stores, so
         /// an entry created in the Library window binds and resolves on the table.
         library : Library.LibraryProxy
         /// The read-only experiment-template seam behind the Experiments bay.
@@ -66,36 +67,21 @@ type AppContext =
         settings : WorkbenchSettings
     }
 
-    /// Build the ONE app scope over the in-memory stores (§0.2: no library state is
-    /// persisted — every app start re-seeds). The composition ORDER is the
-    /// load-bearing part (the `DefaultStores` / former in-window precedent): the
-    /// samples store first, then the materials store whose remove-block consults the
-    /// LIVE samples through `samplesReferencing`, then the category store whose
-    /// remove-block consults the LIVE materials through
-    /// `materialsReferencingCategory`. Real, disk-backed proxies would later be built
-    /// here instead (in `OpticalConstructor.Storage`), leaving every consumer
-    /// unchanged.
+    /// Build one app scope over empty in-memory stores filled from the Built-in catalogue
+    /// (spec 0038 §0.2; spec 0050 §3.4). Import failures are logged; entries already imported remain available.
     static member create (settings : WorkbenchSettings) : AppContext =
-        // Both stores are versioned (spec 0038 steps 021/022) and take the step-20 `VersionsInUse`
-        // seam. Step 25 implements the real builder — `Experiments.versionsInUseSeam` over the
-        // `boundVersions` of a live experiment collection (fully unit-verified: injected into a store,
-        // a bound sample version blocks removal and mints on physics change). Wiring it HERE needs a
-        // mutable experiment source shared with the once-built stores, but the live experiment
-        // collection lives in the immutable Elmish model (`TableAndElementRotationView`), not a store
-        // this composition root can read; that shared source lands with the `ExperimentCollectionProxy`
-        // (spec 0038 Part I, a later step). Until then `VersionsInUse.empty` is truthful — no experiment
-        // is persisted, so no version is in use across app scope yet (§0.2).
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
+        let stores = CatalogueImportProxy.createInMemory ()
+        match stores.proxy.importFrom (CatalogueProxy.createBuiltIn ()) with
+        | Ok () -> ()
+        | Error e -> Logger.logError $"AppContext.create: could not import the Built-in catalogue: {e.describe}"
         let sources = Library.SourceProxy.createInMemory ()
         {
-            library = Library.liveLibrary (Library.createInMemory ()) samples sources
+            library = Library.liveLibrary stores.libraryEntries stores.samples sources
             experiments = Experiments.createInMemoryExperiments ()
-            materials = materials
-            samples = samples
+            materials = stores.materials
+            samples = stores.samples
             sources = sources
-            categories = categories
+            categories = stores.categories
             // Spec 0038 Part L (037): the measured-data load seam is the real file-backed adapter
             // (step 036 — read a picked file's text and hand it to the step-34 parsers, the one
             // file-read seam §0.3c permits); the experiment-collection store is the step-029

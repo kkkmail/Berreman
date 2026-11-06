@@ -10,6 +10,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -92,6 +93,22 @@ module AppContextTests =
         Assert.Equal(WorkbenchSettings.defaults, context.settings)
 
     [<Fact>]
+    let ``create imports the Built-in catalogue into empty stores`` () : unit =
+        let context = freshContext ()
+        Assert.Equal<Result<Sample list, SampleError>>(
+            Ok (BuiltinCatalogue.samples () |> List.sortBy _.id),
+            context.samples.listSamples IncludeInactive |> Result.map (List.sortBy _.id))
+        Assert.Equal<Result<MaterialEntry list, MaterialError>>(
+            Ok (BuiltinCatalogue.materials () |> List.sortBy _.id),
+            context.materials.listMaterials IncludeInactive |> Result.map (List.sortBy _.id))
+        Assert.Equal<Result<MaterialCategory list, CategoryError>>(
+            Ok (BuiltinCatalogue.categories () |> List.sortBy _.id),
+            context.categories.listCategories () |> Result.map (List.sortBy _.id))
+        for preset in BuiltinCatalogue.presets () do
+            Assert.Equal<Result<LibraryEntry option, LibraryError>>(
+                Ok (Some preset), context.library.tryGetEntry preset.entryId)
+
+    [<Fact>]
     let ``create couples the materials store to the LIVE samples store: a referenced material is not removable`` () =
         let context = freshContext ()
         // glass152 is referenced by seeded samples — the remove-block must consult the SAME
@@ -115,7 +132,7 @@ module AppContextTests =
         | Error e -> Assert.Fail($"listSamples failed: %A{e}")
 
     [<Fact>]
-    let ``two separate app scopes do NOT share stores — each create re-seeds its own`` () =
+    let ``two separate app scopes do NOT share stores — each create imports its own`` () =
         let scopeA = freshContext ()
         let scopeB = freshContext ()
         match scopeA.samples.removeSample SeedSamples.glassFilm600.id with

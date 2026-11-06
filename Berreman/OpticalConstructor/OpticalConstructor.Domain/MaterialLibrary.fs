@@ -776,8 +776,7 @@ module MaterialLibrary =
                         | None -> Error (unknown id)
             }
 
-        /// The SELF-SEEDING in-memory category store (spec 0035 step 003; the app composition root
-        /// keeps calling this unchanged): a `ref Map` seeded from `standardCategories`.
+        /// In-memory category store initially filled with `standardCategories` (spec 0035 step 003).
         static member createInMemory (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
             CategoryProxy.createInMemoryStore standardCategories materialsReferencingCategory
 

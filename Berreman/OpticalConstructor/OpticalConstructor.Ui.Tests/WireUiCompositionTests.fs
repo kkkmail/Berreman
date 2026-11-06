@@ -13,23 +13,9 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
-/// Spec 0033 (026) / 0035 (019) / 0038 (013) — the WIRE_UI composition acceptance. Every proof
-/// here drives the REAL `OpticalConstructor.App.MainConstructorWindow` over the app-scope
-/// `AppContext` (spec 0038 step 006 hoisted the five-proxy composition out of the window's
-/// constructor: `AppContext.create` builds the samples store first, then the materials store
-/// whose remove-block consults the LIVE samples through `samplesReferencing`, then the category
-/// store whose remove-block consults the LIVE materials through `materialsReferencingCategory`,
-/// beside the library / experiments proxies) — all five injected through `initMainWith`, NOT a
-/// test-side model with injected stores (that layer is `MainWorkbenchTests`). Windows are opened
-/// by the REAL `EditorLaunchers.defaults` and observed through the public global
-/// `Window.WindowOpenedEvent` (the seam the desktop lifetime itself uses for window tracking),
-/// so the proof is end-to-end. Spec 0038 (013): the Materials bay left the ribbon — the
-/// materials surface is now the single-instance Materials WINDOW behind the ribbon strip's
-/// right-aligned `Materials…` button, so the material-side proofs go strip button → real
-/// Materials window over the root-wired stores → verb click → the real Material / Category
-/// editors mount headless. Spec 0038 (015): the Library (samples) workbench bay left the same
-/// way — the sample-side proofs go `Library…` strip button → real Library window → verb click →
-/// the real Sample editor.
+/// WIRE_UI acceptance drives real Main, Materials, Library and editor windows over `AppContext.create`,
+/// which fills empty stores from the Built-in catalogue (spec 0033 (026); 0035 (019); 0038 (006, 013, 015); 0050 §3.4).
+/// Real `EditorLaunchers.defaults` launches are observed through `Window.WindowOpenedEvent`.
 module WireUiCompositionTests =
 
     module MW = OpticalConstructor.Ui.MaterialsWindowView

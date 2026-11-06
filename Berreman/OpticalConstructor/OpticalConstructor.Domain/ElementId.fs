@@ -1167,14 +1167,9 @@ module Library =
                         | false -> Error (UnknownSourceIdErr $"unknown source id '%s{id.value}'")
             }
 
-    /// The LIVE Library (spec 0046): the read-only seeded `presets` composed with the app-scope
-    /// SAMPLES and USER-SOURCES stores, so an entry created in the Library window (a sample through
-    /// the Sample editor, a source through the source editor) is offered for its kind AND resolves
-    /// once a table element is bound to it. Samples come from the live store (the latest ACTIVE
-    /// versions are offered; `tryGetEntry` resolves any latest version, so a bound retired sample
-    /// still resolves), user sources follow the seeded ones, the other presets are the seeds'.
-    /// `libraryTrees` stays the seeded grouping. A proxy listing error passes through as
-    /// `LibraryUnavailableErr`.
+    /// Composes `presets`, filled by composition roots from the Built-in catalogue, with live samples and user sources
+    /// (spec 0046; spec 0050 §3.4). Offers active samples, resolves retired samples, appends user sources after presets,
+    /// preserves preset grouping, and maps proxy listing failures to `LibraryUnavailableErr`.
     let liveLibrary (presets : LibraryProxy) (samples : SampleProxy) (sources : SourceProxy) : LibraryProxy =
         let liveSamples () : LibraryEntry list =
             match samples.listSamples ActiveOnly with

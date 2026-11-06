@@ -180,9 +180,7 @@ module SampleStore =
                         | None -> Error (unknown id)
             }
 
-        /// The SELF-SEEDING versioned in-memory sample store (spec 0038 step 022; the app
-        /// composition root keeps calling this unchanged): seeds `SeedSamples.all` (the SampleItem
-        /// entries of `seedEntries`) as version 1 active.
+        /// In-memory sample store initially filled with `SeedSamples.allSeedSamples` as version 1 active (spec 0038 step 022).
         static member createInMemory (versionsInUse : VersionsInUse) : SampleProxy =
             SampleProxy.createInMemoryStore SeedSamples.allSeedSamples versionsInUse
 

@@ -184,8 +184,7 @@ module MaterialStore =
                         | None -> Error (unknown id)
             }
 
-        /// The SELF-SEEDING versioned in-memory material store (spec 0038 step 021; the app
-        /// composition root keeps calling this unchanged): seeds `builtInEntries` as version 1 active.
+        /// In-memory material store initially filled with `builtInEntries` as version 1 active (spec 0038 step 021).
         static member createInMemory
             (samplesReferencing : MaterialId -> Sample list)
             (versionsInUse : VersionsInUse)
