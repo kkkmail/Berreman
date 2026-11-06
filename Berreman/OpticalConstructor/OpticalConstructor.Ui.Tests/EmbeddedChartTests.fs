@@ -17,6 +17,7 @@ open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 
 /// Spec 0035 (016) — the shared dual-axis ScottPlot chart (`OpticalConstructor.Controls.EmbeddedChart`)
@@ -204,7 +205,7 @@ module EmbeddedChartTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Material editor preview embeds the shared AvaPlot for a non-dispersive default and a transcendental model`` () =
         HeadlessSession.run (fun () ->
-            let window = MaterialEditorWindow(freshMaterialProxy (), MaterialEditorView.NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(freshMaterialProxy (), MaterialEditorView.NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The default (isotropic, non-dispersive) editor derives a preview: the embedded AvaPlot renders.

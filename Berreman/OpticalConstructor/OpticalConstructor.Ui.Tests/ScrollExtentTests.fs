@@ -18,6 +18,7 @@ open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -143,7 +144,7 @@ module ScrollExtentTests =
     [<Fact>]
     let ``Material, Sample, Category and Source editors leave everything reachable`` () =
         let materials, samples, categories, _ = stores ()
-        assertReachable "MaterialEditor" (fun () -> MaterialEditorWindow(materials, MaterialEditorView.NewMaterial (newMaterialId ())))
+        assertReachable "MaterialEditor" (fun () -> MaterialEditorWindow(materials, MaterialEditorView.NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> [])))
         assertReachable "SampleEditor" (fun () -> SampleEditorWindow(materials, samples, categories, SampleEditorView.NewSeededMultilayer (newSampleId ())))
         assertReachable "CategoryEditor" (fun () -> CategoryEditorWindow(categories))
         assertReachable "SourceEditor" (fun () -> LightSourceEditorWindow(SourceProxy.createInMemory (), LightSourceEditorView.NewSource (Placement.ElementValueId "src-x")))

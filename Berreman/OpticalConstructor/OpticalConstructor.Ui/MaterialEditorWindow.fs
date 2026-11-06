@@ -8,16 +8,10 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 open OpticalConstructor.Domain.MaterialLibrary
 
-/// Spec 0033 (023) — the Material editor window (UICOMP_XDUO_0004): a FuncUI `HostWindow`
-/// mounting the pure `MaterialEditorView` MVU loop over the Domain `MaterialComplexityEditor`
-/// ladder. The composition root: the injected `MaterialEditorContext` routes Save through
-/// `MaterialProxy` on the intent's freshness (spec 0038 step 008) — `addMaterial` for a NEW
-/// entry (whose `MaterialId` the `MaterialEditorIntent` minted AT WINDOW OPEN),
-/// `updateMaterial` for an existing one — closing the window on success; Cancel closes
-/// without writing. An entry whose complexity is not editable term data opens
-/// VIEW-ONLY: no ladder, no Save affordance. Opened by the workbench verbs through the
-/// SVC_XDUO_0001 window launcher, keyed by the intent's id.
-type MaterialEditorWindow(materials : MaterialProxy, intent : MaterialEditorView.MaterialEditorIntent, ?categories : CategoryProxy) as this =
+/// Material editor over caller-supplied `materials` and `categories` stores.
+/// Save adds or updates the intent's entry and closes on success; Cancel closes without writing.
+/// Entries without editable complexity open view-only, with no ladder or Save affordance.
+type MaterialEditorWindow(materials : MaterialProxy, intent : MaterialEditorView.MaterialEditorIntent, categories : CategoryProxy) as this =
     inherit HostWindow()
 
     // The Elmish dispatch, captured by the init Cmd the moment the loop starts, and the latest
@@ -40,14 +34,10 @@ type MaterialEditorWindow(materials : MaterialProxy, intent : MaterialEditorView
         this.Height <- 1000.0
         // Spec 0046: never larger than the screen it opens on (its content scrolls).
         WindowFit.keepOnScreen this
-        // Spec 0035 (009): the create picker's live catalogue seam. The Main-screen launcher passes
-        // the SHARED store (so a rename in the Category editor re-labels this picker); a standalone
-        // open (no `categories` argument) defaults to a fresh in-memory catalogue of the built-ins.
-        let categoryProxy = defaultArg categories (CategoryProxy.createInMemory (fun _ -> []))
         let context : MaterialEditorView.MaterialEditorContext =
             {
                 materials = materials
-                categories = categoryProxy
+                categories = categories
                 requestClose = fun () -> this.Close()
             }
         let initModel = MaterialEditorView.initMaterialEditor context intent

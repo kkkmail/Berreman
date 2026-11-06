@@ -22,6 +22,7 @@ open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.MaterialComplexityEditor
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.MaterialEditorView
 open OpticalConstructor.Ui.NkDispersionChart
@@ -612,7 +613,7 @@ module MaterialEditorWindowTests =
     let ``the window mounts with every slice-mandated UiId present`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(matchesId ConstructorUiId.materialEditorWindow.value window, "the window itself carries the MaterialEditorWindow id")
@@ -647,7 +648,7 @@ module MaterialEditorWindowTests =
         // wrapping property is enabled (and AcceptsReturn, so a long description grows downward).
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             match tryFindControl window ConstructorUiId.materialDescriptionBox.value with
@@ -663,7 +664,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: choosing biaxial exposes three principal-index fields`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Isotropic (the default): one index field.
@@ -686,7 +687,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: enabling activity on a uniaxial medium offers only the uniaxial gyration classes`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             clickOn window (ConstructorUiId.anisotropyOption Uniaxial.uiKey).value
@@ -703,7 +704,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: unchecking a toggle restores the default model losslessly`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let initial = textOf window ConstructorUiId.materialComplexitySummary.value
@@ -726,7 +727,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: the eps branch offers Constant and Dispersive as two mutually-exclusive options`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Both options are present from the start — not a sticky single toggle (spec 0035 step 017).
@@ -756,7 +757,7 @@ module MaterialEditorWindowTests =
                 match materials.listMaterials ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window ConstructorUiId.materialNameBox.value "Headless material"
@@ -796,7 +797,7 @@ module MaterialEditorWindowTests =
                 match materials.listMaterials ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = MaterialEditorWindow(materials, EditMaterial existing)
+            let window = MaterialEditorWindow(materials, EditMaterial existing, BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window ConstructorUiId.materialNameBox.value "Renamed glass"
@@ -817,7 +818,7 @@ module MaterialEditorWindowTests =
     let ``a negative k surfaces the advisory gain warning and a non-negative k clears it`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.Equal("", textOf window ConstructorUiId.materialGainWarning.value)
@@ -833,7 +834,7 @@ module MaterialEditorWindowTests =
     let ``a non-editable entry opens view-only with no Save affordance and no ladder`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, EditMaterial (builtIn MaterialIds.silicon))
+            let window = MaterialEditorWindow(materials, EditMaterial (builtIn MaterialIds.silicon), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(isPresent window ConstructorUiId.materialViewOnlyNote.value, "a view-only entry must say why it cannot be edited")
@@ -848,7 +849,7 @@ module MaterialEditorWindowTests =
     let ``the segment editor adds segments and a transcendental pick derives a dispersive eps`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             clickOn window ConstructorUiId.dispersiveToggle.value
@@ -870,7 +871,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: the activity Dispersive sub-toggle swaps each gyration component for a formula editor and back`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // A uniaxial active medium's class carries exactly g11 and g33.
@@ -899,7 +900,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: the magnetic Dispersive sub-toggle swaps the Polder components for formula editors and back`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             clickOn window ConstructorUiId.magneticToggle.value
@@ -927,7 +928,7 @@ module MaterialEditorWindowTests =
     let ``the editor is a two-pane split whose full-height n/k chart renders one frame`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The two panes are split by a vertical GridSplitter; the right pane is a tabbed preview.
@@ -946,7 +947,7 @@ module MaterialEditorWindowTests =
     let ``the Gyration tab appears exactly when optically active`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.False(isPresent window ConstructorUiId.materialPreviewGyrationTab.value, "no Gyration tab before activity is enabled")
@@ -961,7 +962,7 @@ module MaterialEditorWindowTests =
     let ``the mu tab appears exactly when magnetic`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.False(isPresent window ConstructorUiId.materialPreviewMuTab.value, "no μ tab before magnetic is enabled")
@@ -1102,7 +1103,7 @@ module MaterialEditorWindowTests =
     let ``spec 0038 (033): a pristine editor's Cancel closes immediately`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.False(isPresent window ConstructorUiId.materialEditorExitConfirm.value, "no confirm surface before any edit")
@@ -1118,7 +1119,7 @@ module MaterialEditorWindowTests =
                 match materials.listMaterials ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // A name edit makes it dirty; Cancel shows the confirm instead of closing.
@@ -1148,7 +1149,7 @@ module MaterialEditorWindowTests =
     let ``spec 0038 (033): the window chrome (OnClosing) is equally gated`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The OS title-bar X routes through ChromeCloseIntercepted — the OnClosing override
