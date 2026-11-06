@@ -11,6 +11,7 @@ open Xunit
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -35,16 +36,14 @@ module ExperimentControlsTests =
     /// 190–1000 nm) — only a tunable source's wavelength can be varied.
     let private withTunableSource () : TableAndElementRotationModel = bind 0 Library.PresetIds.xenonMonochromator (initMain ())
 
-    /// The Guid-string entry id of the seeded 200 nm glass film these tests bind (referenced
-    /// programmatically — the id literal lives only in `Library.SampleIds`, spec 0050 §3.3).
-    let private glassFilm200Id : ElementValueId = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId
+    /// Bind the 200 nm glass film from BuiltinCatalogue.sample by Library.SampleIds (spec 0050 §3.3).
+    let private glassFilm200Id : ElementValueId = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.glassFilm200Id)).entryId
 
-    /// A seeded ThinFilm and a seeded Plate sample — both supporting BOTH branches (spec 0046) — and the
-    /// seeded MIRROR (the EUV multilayer, `EmitReflectedOnly`): the geometries spec 0040 D.3 bounds a
-    /// placed sample's emission by.
-    let private glassFilm600Id : ElementValueId = (Library.SampleItem Library.SeedSamples.glassFilm600).entryId
-    let private glassPlate1mmId : ElementValueId = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
-    let private euvMirrorId : ElementValueId = (Library.SampleItem Library.SeedSamples.euvMoSi).entryId
+    /// BuiltinCatalogue.sample supplies ThinFilm and Plate samples supporting BOTH branches (spec 0046),
+    /// and the EUV MIRROR (`EmitReflectedOnly`): the geometries bounding placed emission (spec 0040 D.3).
+    let private glassFilm600Id : ElementValueId = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.glassFilm600Id)).entryId
+    let private glassPlate1mmId : ElementValueId = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId)).entryId
+    let private euvMirrorId : ElementValueId = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.euvMoSiId)).entryId
 
     /// The live id of the element at index `i`.
     let private idOf (i : int) (m : TableAndElementRotationModel) : string = (elem i m).id.value

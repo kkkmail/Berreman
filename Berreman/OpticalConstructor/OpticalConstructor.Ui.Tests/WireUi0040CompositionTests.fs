@@ -31,6 +31,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -328,8 +329,8 @@ module WireUi0040CompositionTests =
             Assert.True(matchesId ConstructorUiId.materialsWindow.value materialsWindow, "the substrate Set… verb must open the Materials window")
             Assert.True(isPresent materialsWindow ConstructorUiId.materialsSelectButton.value, "the Materials window must be in Select state")
             Assert.Contains("substrate", textOf materialsWindow ConstructorUiId.materialsSelectConstraint.value)
-            // Pick the seeded 1.75 glass: filter → expand → select. The targeted return sets the
-            // substrate plate and closes the window.
+            // Pick BuiltinCatalogue.material's 1.75 glass: filter → expand → select.
+            // The targeted return sets the substrate plate and closes the window.
             commitFilter materialsWindow "1.75"
             expandNode materialsWindow "entries"
             clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass175).value)
@@ -346,11 +347,11 @@ module WireUi0040CompositionTests =
     let ``composition acceptance (013): a Mirror Sample editor over the app scope pins R on and shows no T control`` () =
         HeadlessSession.run (fun () ->
             let ctx = AppContext.create WorkbenchSettings.defaults
-            // The seeded MIRROR sample (the EUV Mo/Si multilayer) opened over the app scope — R fixed on, no
-            // T (spec 0046: a mirror is the only geometry observed in reflection alone).
+            // BuiltinCatalogue.sample's EUV Mo/Si MIRROR opens over the app scope — R fixed on, no T
+            // (spec 0046: only mirrors are observed in reflection alone).
             let window =
                 OpticalConstructor.Ui.SampleEditorWindow(
-                    ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample SeedSamples.euvMoSi)
+                    ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample (BuiltinCatalogue.sample SampleIds.euvMoSiId))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(isPresent window ConstructorUiId.sampleEmitReflectedCheck.value, "the R checkbox must render for a Mirror")

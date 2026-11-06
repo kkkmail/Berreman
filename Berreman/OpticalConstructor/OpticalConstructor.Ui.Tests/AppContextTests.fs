@@ -111,8 +111,8 @@ module AppContextTests =
     [<Fact>]
     let ``create couples the materials store to the LIVE samples store: a referenced material is not removable`` () =
         let context = freshContext ()
-        // glass152 is referenced by seeded samples — the remove-block must consult the SAME
-        // samples store `create` built (the composition order is the load-bearing part).
+        // BuiltinCatalogue.samples () reference glass152; removal must consult the SAME
+        // samples store `create` built (the composition order matters).
         match context.materials.removeMaterial MaterialIds.glass152 with
         | Error (MaterialStillReferencedErr reason) -> Assert.Contains("is still referenced by", reason)
         | other -> Assert.Fail($"expected MaterialStillReferencedErr from the coupled store, got %A{other}")
@@ -123,23 +123,23 @@ module AppContextTests =
         let first = surfaceOf context
         let second = surfaceOf context
         // Mutate through the FIRST surface's injected seam…
-        match first.samples.removeSample SeedSamples.glassFilm600.id with
+        match first.samples.removeSample SampleIds.glassFilm600Id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"removing the seeded sample must succeed, got %A{e}")
         // …and the SECOND surface no longer lists it — one store, not a copy per window.
         match second.samples.listSamples ActiveOnly with
-        | Ok all -> Assert.DoesNotContain(SeedSamples.glassFilm600.id, all |> List.map (fun s -> s.id))
+        | Ok all -> Assert.DoesNotContain(SampleIds.glassFilm600Id, all |> List.map (fun s -> s.id))
         | Error e -> Assert.Fail($"listSamples failed: %A{e}")
 
     [<Fact>]
     let ``two separate app scopes do NOT share stores — each create imports its own`` () =
         let scopeA = freshContext ()
         let scopeB = freshContext ()
-        match scopeA.samples.removeSample SeedSamples.glassFilm600.id with
+        match scopeA.samples.removeSample SampleIds.glassFilm600Id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"removing the seeded sample must succeed, got %A{e}")
         match scopeB.samples.listSamples ActiveOnly with
-        | Ok all -> Assert.Contains(SeedSamples.glassFilm600.id, all |> List.map (fun s -> s.id))
+        | Ok all -> Assert.Contains(SampleIds.glassFilm600Id, all |> List.map (fun s -> s.id))
         | Error e -> Assert.Fail($"listSamples failed: %A{e}")
 
     // ======================== headless acceptance (gate `ui-smoke`) ========================

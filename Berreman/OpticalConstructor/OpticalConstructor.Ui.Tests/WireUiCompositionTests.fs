@@ -160,9 +160,8 @@ module WireUiCompositionTests =
             clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.selector.value)).value
             for id in [ ConstructorUiId.libraryKindLabel.value; ConstructorUiId.libraryBoundReadout.value; ConstructorUiId.libraryTree.value ] do
                 Assert.True(isPresent window id, $"the Select bay must mount %s{id}")
-            // Materials: the strip button opens the REAL single-instance Materials window,
-            // whose faceted tree lists the SEEDED store — the root wired a live MaterialProxy,
-            // not an empty stand-in.
+            // Materials: the strip button opens the REAL single-instance window, whose tree
+            // lists BuiltinCatalogue.materials () through the root-wired live MaterialProxy.
             let materialsWindow = openMaterialsWindow window
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaves.
             clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
@@ -172,13 +171,12 @@ module WireUiCompositionTests =
                         "the Materials window must list the seeded silicon entry from the root-wired store")
             materialsWindow.Close()
             Dispatcher.UIThread.RunJobs()
-            // Library: the strip button opens the REAL single-instance Library window, whose
-            // by-kind faceted tree lists BOTH the seeded live samples store and the read-only
-            // preset entries — the root wired live proxies, not empty stand-ins.
+            // Library: the REAL single-instance window's by-kind tree lists BuiltinCatalogue.samples ()
+            // from the live store and BuiltinCatalogue.presets () through root-wired proxies.
             let libraryWindow = openLibraryWindow window
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaves.
             clickOn libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode SeedSamples.glassFilm600.id.toElementValueId).value),
+            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode SampleIds.glassFilm600Id.toElementValueId).value),
                         "the Library window must list the seeded glassFilm600 sample from the root-wired store")
             Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode PresetIds.source600).value),
                         "the Library window must list the seeded source preset from the root-wired proxy")
@@ -214,7 +212,7 @@ module WireUiCompositionTests =
             Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryWindow, "the strip button must open the Library window")
             commitFilter libraryWindow "n=1.75"
             clickOn libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            clickOn libraryWindow ((ConstructorUiId.libraryEntryNode SeedSamples.glassFilm600.id.toElementValueId).value)
+            clickOn libraryWindow ((ConstructorUiId.libraryEntryNode SampleIds.glassFilm600Id.toElementValueId).value)
             clickOn libraryWindow ConstructorUiId.libraryEditButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(3, opened.Count)

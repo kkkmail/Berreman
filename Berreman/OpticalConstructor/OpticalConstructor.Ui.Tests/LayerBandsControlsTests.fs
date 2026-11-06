@@ -10,6 +10,7 @@ open Xunit
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0027 (026) Part 4 — the Details bay: the reusable `LayerBandsControls` band component (pure
@@ -23,9 +24,9 @@ module LayerBandsControlsTests =
     let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
         { m with selection = ElementSelected (SceneElementIndex i) } |> updateTableAndElementRotation (BindValueId (ElementValueId entryId))
 
-    /// The Guid-string entry id of the seeded 41-layer multilayer these tests bind (referenced
-    /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
-    let private multilayerQwId : string = (Library.SampleItem Library.SeedSamples.multilayerQw).entryId.value
+    /// Bind the 41-layer multilayer from BuiltinCatalogue.sample by Library.SampleIds
+    /// (spec 0033 step 002; 0050 §3.3).
+    let private multilayerQwId : string = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.multilayerQwId)).entryId.value
 
     // ============================ pure control contract ============================
 

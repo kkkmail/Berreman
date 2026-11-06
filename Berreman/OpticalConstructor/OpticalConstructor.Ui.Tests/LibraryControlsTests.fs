@@ -22,12 +22,11 @@ module LibraryControlsTests =
 
     let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
 
-    /// The Guid-string entry ids of the seeded samples these tests bind (the Selector valueId seam
-    /// carries the Guid string form since spec 0033 step 002 — referenced programmatically, never as
-    /// a repeated literal).
-    let private glass1mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId.value
-    let private glass2mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate2mm).entryId.value
-    let private multilayerQwId : string = (Library.SampleItem Library.SeedSamples.multilayerQw).entryId.value
+    /// Bind BuiltinCatalogue.sample entries through their Guid strings at the Selector valueId seam
+    /// (spec 0033 step 002; 0050 §3.3), using Library.SampleIds rather than repeated literals.
+    let private glass1mmId : string = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId)).entryId.value
+    let private glass2mmId : string = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.glassPlate2mmId)).entryId.value
+    let private multilayerQwId : string = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.multilayerQwId)).entryId.value
 
     // ============================ pure control contract ============================
 
@@ -40,8 +39,8 @@ module LibraryControlsTests =
 
     [<Fact>]
     let ``the Library UiIds prefix leaf ids and are stable`` () =
-        // `entry` is a pure prefix over ANY entry id string (a seeded sample's id is its Guid
-        // string form since spec 0033 step 002).
+        // `entry` prefixes ANY id string; BuiltinCatalogue.sample uses its Guid string
+        // (spec 0033 step 002).
         Assert.Equal("LibraryEntry_abc", (ConstructorUiId.libraryEntry (ConstructorUiKey "abc")).value)
         Assert.Equal("LibraryEntry_" + glass1mmId, (ConstructorUiId.libraryEntry (ConstructorUiKey glass1mmId)).value)
         Assert.Equal("LibraryTree", ConstructorUiId.libraryTree.value)
@@ -53,9 +52,8 @@ module LibraryControlsTests =
     let private withSampleSelected () : TableAndElementRotationModel =
         initMain () |> updateTableAndElementRotation (AddElement Sample)   // appends a Sample at index 2, selects it
 
-    /// Spec 0038 (017): the quick-pick strip is threshold-gated now, and the 11 seeded sample
-    /// entries sit AT/ABOVE the default threshold 5 (Choose… alone). These tests pin the STRIP
-    /// mechanics — unchanged below the threshold — so their fixtures open the gate wide.
+    /// Spec 0038 (017): the 11 BuiltinCatalogue.samples () entries exceed the default quick-pick
+    /// threshold 5 (Choose… alone). These tests raise it to exercise the STRIP mechanics.
     let private withWideQuickPick (m : TableAndElementRotationModel) : TableAndElementRotationModel =
         { m with quickPickThreshold = WorkbenchSettings.QuickPickThreshold 100 }
 

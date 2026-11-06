@@ -11,6 +11,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0046 — the light source is the one element placed freely: it is selected like any element, moves
@@ -100,7 +101,7 @@ module SourceAndDetectorMoveTests =
     [<Fact>]
     let ``moving the light source on x carries the ray and every element with it, like y and z`` () =
         // source (-1) → sample (-0.3) → detector (+1), plus a detector on the sample's reflected ray.
-        let plateId = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
+        let plateId = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId)).entryId
         let scene =
             initMain ()
             |> updateTableAndElementRotation (AddElement Sample)
@@ -200,7 +201,7 @@ module SourceAndDetectorMoveTests =
         Assert.Equal(boundedRange -1.0 (open'.openRayEndX), alongBeamRange open' (SceneElementIndex 1))
         // A sample bound to a glass plate (emits R and T) opens a reflected ray; a lens moved onto it is
         // held between the plate and 1 m.
-        let plateId = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
+        let plateId = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId)).entryId
         let scene =
             initMain ()
             |> updateTableAndElementRotation (AddElement Sample)

@@ -16,6 +16,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0046 — the Main workbench's reflected rays: the right-click element menu (switch an element's
@@ -32,7 +33,7 @@ module ElementMenuTests =
     /// Bind element `i` through the ONE targeted bind arm.
     let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, ElementValueId entryId)) m
 
-    let private plateId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId.value
+    let private plateId : string = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId)).entryId.value
 
     /// The canvas point an element is drawn at (its snapped centre through the live view).
     let private canvasPointOf (i : int) (m : TableAndElementRotationModel) : ScreenPoint =
