@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Tests
 
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.WorkbenchSettings
 
 /// Spec 0038 Part C (step 005) — the pure `WorkbenchSettings` Domain record. The
@@ -9,6 +10,27 @@ open OpticalConstructor.Domain.WorkbenchSettings
 /// `AppSettingsProvider` read seam lives only in the App composition root, and the
 /// defaults path is proven here purely by construction.
 module WorkbenchSettingsTests =
+
+    [<Fact>]
+    let ``DataLocations.defaultsUnder holds the 001 §G locations as configured text`` () : unit =
+        let documents = FolderName "D:/Docs"
+        let libraryConnection = ConnectionString "Data Source=%LOCALAPPDATA%/Softellect/Berreman/OpticalConstructor/library.db"
+        let backupsFolder = FolderName "%LOCALAPPDATA%/Softellect/Berreman/OpticalConstructor/Backups"
+        let preferencesFolder = FolderName "%APPDATA%/Softellect/Berreman/OpticalConstructor"
+        let kitsFolder = FolderName "Optical Constructor/Kits"
+        let exportsFolder = FolderName "Optical Constructor/Exports"
+        let cataloguesFolder = FolderName "Optical Constructor/Catalogues"
+        let shippedCatalogueFolder = FolderName "Catalogue"
+        let locations = DataLocations.defaultsUnder documents
+
+        Assert.Equal<ConnectionString>(libraryConnection, locations.libraryConnection)
+        Assert.Equal<FolderName>(backupsFolder, locations.backupsFolder)
+        Assert.Equal<FolderName>(preferencesFolder, locations.preferencesFolder)
+        Assert.Equal<FolderName>(documents.combine kitsFolder, locations.kitsFolder)
+        Assert.Equal<FolderName>(documents.combine exportsFolder, locations.exportsFolder)
+        Assert.Equal<FolderName>(documents.combine cataloguesFolder, locations.cataloguesFolder)
+        Assert.Equal<FolderName>(shippedCatalogueFolder, DataLocations.shippedCatalogueDefault)
+        Assert.Equal<FolderName>(DataLocations.shippedCatalogueDefault, locations.shippedCatalogueFolder)
 
     [<Fact>]
     let ``defaults carry modeless select windows and the 5 / 100 / 8 thresholds`` () =

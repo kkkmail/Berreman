@@ -6,6 +6,7 @@ open System.Text
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.EntryFileJson
 
@@ -149,7 +150,12 @@ module CatalogueFolderStore =
                 writeCatalogue = fun (catalogue : CatalogueData) -> folder.writeCatalogueFolder catalogue
             }
 
-        /// The shipped catalogue proxy over Catalogue/Builtin beside the assembly (spec 0050 §3.5).
+        /// The proxy over the given shipped-catalogue folder's Builtin subfolder (spec 0050 S2.4).
+        static member createBuiltInUnder (shipped : FolderName) : CatalogueProxy =
+            let builtIn = FolderName "Builtin"
+            CatalogueProxy.create (shipped.combine builtIn)
+
+        /// The shipped catalogue proxy at the default location beside the assembly (spec 0050 §3.5; S2.4).
         static member createBuiltIn () : CatalogueProxy =
-            let folder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "Catalogue", "Builtin"))
-            CatalogueProxy.create folder
+            let installFolder = FolderName System.AppContext.BaseDirectory
+            CatalogueProxy.createBuiltInUnder (installFolder.combine DataLocations.shippedCatalogueDefault)

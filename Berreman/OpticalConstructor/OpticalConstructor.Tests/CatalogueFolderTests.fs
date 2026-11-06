@@ -104,6 +104,22 @@ module CatalogueFolderTests =
         Assert.Equal<CatalogueData>(expected, catalogue)
 
     [<Fact>]
+    let ``createBuiltInUnder reads the Builtin catalogue of the shipped-catalogue folder it is given`` () : unit =
+        let shipped = FolderName (Path.Combine(System.AppContext.BaseDirectory, "Catalogue"))
+        let builtInFolder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "Catalogue", "Builtin"))
+        let expected = (CatalogueProxy.create builtInFolder).readCatalogue () |> okOf
+        let actual = (CatalogueProxy.createBuiltInUnder shipped).readCatalogue () |> okOf
+
+        Assert.Equal<CatalogueData>(expected, actual)
+
+        let emptyFolder = freshFolder "empty-shipped-catalogue"
+        Directory.CreateDirectory emptyFolder.value |> ignore
+
+        match (CatalogueProxy.createBuiltInUnder emptyFolder).readCatalogue () with
+        | Error (CatalogueIoErr reason) -> Assert.Contains(emptyFolder.value, reason)
+        | other -> Assert.Fail($"expected CatalogueIoErr for an empty shipped-catalogue folder, got %A{other}")
+
+    [<Fact>]
     let ``a catalogue folder written and read back is equal`` () =
         let first = catalogueOf (tunableSource ())
         let folder, proxy = writtenFolder "written-and-read" first

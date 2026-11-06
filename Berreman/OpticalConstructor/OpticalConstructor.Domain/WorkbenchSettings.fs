@@ -1,5 +1,7 @@
 namespace OpticalConstructor.Domain
 
+open Softellect.Sys.Primitives
+
 /// Spec 0038 Part C (step 005): the pure, elevated workbench-settings record — the
 /// Domain shape of the app-level `appsettings.json` values (§6). The composition root
 /// (`OpticalConstructor.App/AppConfig.fs`) is the ONLY reader of
@@ -98,4 +100,40 @@ module WorkbenchSettings =
                 quickPickThreshold = QuickPickThreshold.defaultValue
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
                 thicknessBucketCap = ThicknessBucketCap.defaultValue
+            }
+
+    /// Every location of 001 §G, each an appsettings.json key read once at the composition root (spec 0050 S2.4).
+    type DataLocations =
+        {
+            /// The library database's SQLite connection string.
+            libraryConnection : ConnectionString
+            /// The library database's Backups folder.
+            backupsFolder : FolderName
+            /// The per-user preferences folder.
+            preferencesFolder : FolderName
+            /// The suggested parent of kit folders.
+            kitsFolder : FolderName
+            /// The exports folder.
+            exportsFolder : FolderName
+            /// The catalogue-export folder.
+            cataloguesFolder : FolderName
+            /// The shipped catalogue folder.
+            shippedCatalogueFolder : FolderName
+        }
+
+        static member shippedCatalogueDefault : FolderName = FolderName "Catalogue"
+
+        static member defaultsUnder (documents : FolderName) : DataLocations =
+            let kits = FolderName "Optical Constructor/Kits"
+            let exports = FolderName "Optical Constructor/Exports"
+            let catalogues = FolderName "Optical Constructor/Catalogues"
+
+            {
+                libraryConnection = ConnectionString "Data Source=%LOCALAPPDATA%/Softellect/Berreman/OpticalConstructor/library.db"
+                backupsFolder = FolderName "%LOCALAPPDATA%/Softellect/Berreman/OpticalConstructor/Backups"
+                preferencesFolder = FolderName "%APPDATA%/Softellect/Berreman/OpticalConstructor"
+                kitsFolder = documents.combine kits
+                exportsFolder = documents.combine exports
+                cataloguesFolder = documents.combine catalogues
+                shippedCatalogueFolder = DataLocations.shippedCatalogueDefault
             }
