@@ -20,11 +20,10 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Tests
 
 /// Spec 0038 Part I (step 031) — the OUT-OF-BAND dispersion warning badge on a scene element. A bound
 /// sample whose (only) material carries dispersion DEFINED over 300–700 nm, run against a 200–800 nm
@@ -94,13 +93,13 @@ module OutOfBandBadgeTests =
         let entry = dispersiveMaterial matId
         let sample = dispersiveSample matId
         let entryId = (SampleItem sample).entryId
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
         // Insert the dispersive material at version one so the sample layer's pinned reference resolves.
         match materials.saveMaterial entry with
         | Ok () -> ()
         | Error e -> failwith $"seeding the dispersive material failed: %A{e}"
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         let libStub : LibraryProxy =
             {
                 entriesForKind = fun _ -> Ok []

@@ -8,12 +8,11 @@ open Xunit
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Tests
 
 /// Spec 0038 Part L (step 037) — the inverse constructor state and the experiment-collection builder,
 /// driven over MOCK proxies (the file picker is off the tested path; the tests dispatch
@@ -22,21 +21,21 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// per-experiment parse/validation status; a named collection round-trips through save / list / load.
 module InverseConstructorTests =
 
-    // ---- fresh, isolated in-memory stores (the App composition order) -------------------------------
+    // ---- BuiltinCatalogue store doubles (the App composition order) --------------------------------
 
     let private freshStores () : MaterialProxy * SampleProxy * CategoryProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, samples, categories
 
     /// A fresh inverse Main model over isolated stores (default experiment proxies).
     let private inverse () : TableAndElementRotationModel =
         let materials, samples, categories = freshStores ()
-        initInverse (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
+        initInverse (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) materials samples categories
 
-    /// The seeded 200 nm glass-film sample entry id (bound as the inverse HINT).
-    let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId.value
+    /// BuiltinCatalogue.sample's 200 nm glass-film entry id, bound as the inverse HINT.
+    let private glassFilm200Id : string = (Library.SampleItem (BuiltinCatalogue.sample SampleIds.glassFilm200Id)).entryId.value
 
     let private theSample (m : TableAndElementRotationModel) : TestElement =
         m.elements |> List.find (fun e -> e.placement.catalogueKind = Placement.Sample)

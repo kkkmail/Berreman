@@ -17,8 +17,6 @@ open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -28,7 +26,7 @@ open OpticalConstructor.Tests
 
 /// Spec 0038 Part F (step 015) — the Library window (UICOMP_XDUO_0010): the single-instance
 /// window instantiating the step-012 `FacetedTreeControls` over the step-011 library facet
-/// catalogue (seeded default representation "By kind"), beside the view panel and the
+/// catalogue (default representation "By kind"), beside the view panel and the
 /// Add sample / Make multilayer / Edit / Remove verbs rewired from the retired Library
 /// (samples workbench) bay. Two layers, the repo precedent: pure tests for the MVU model, the
 /// engine projection (incl. the FIRST numeric-facet host — film-thickness buckets + the manual
@@ -74,7 +72,7 @@ module LibraryWindowTests =
         match found with
         | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
-            // Scroll the box into view first — a long tree (spec 0046 seeded two dozen sources) puts
+            // Scroll the box into view first — BuiltinCatalogue.sources () (spec 0046) puts
             // later rows below the window's visible area, where a click at their centre lands nowhere.
             b.BringIntoView() |> ignore
             Dispatcher.UIThread.RunJobs()
@@ -149,17 +147,17 @@ module LibraryWindowTests =
 
     // The FacetedTreeControls idle / chosen row fills (kept private there; mirrored for the proof).
     let private idleFill = Color.FromRgb(232uy, 232uy, 232uy)
-    /// The seeded corpus size — every seeded entry (spec 0046 added the laser and lithography sources),
-    /// derived rather than restated so a new seed never silently breaks the counts.
-    let private seededCorpus : int = List.length seedEntries
+    /// Count BuiltinCatalogue.samples () and BuiltinCatalogue.presets () so catalogue additions
+    /// retain the whole-corpus expectation (spec 0046; spec 0050 S1.7).
+    let private seededCorpus : int = List.length (BuiltinCatalogue.samples ()) + List.length (BuiltinCatalogue.presets ())
     let private chosenFill = Color.FromRgb(150uy, 185uy, 235uy)
 
-    /// Fresh, isolated in-memory stores per test — the SAME composition the App performs (the
-    /// samples store first, then materials whose remove-block consults the LIVE samples).
+    /// BuiltinCatalogue.sampleStore precedes materialStore so removal consults LIVE samples
+    /// (spec 0050 S1.7).
     let private freshStores () : LibraryProxy * SampleProxy * MaterialProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        Library.createInMemory (), samples, materials
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        BuiltinCatalogue.library (), samples, materials
 
     /// A recording stub context (the functional-proxy seam): the launcher and the close
     /// request append tags, so a verb's request is observable without opening a window.
@@ -229,7 +227,7 @@ module LibraryWindowTests =
     let private filteredEntryIds (m : LW.LibraryWindowModel) : string list =
         m.filteredEntries |> List.map (fun e -> e.entryId.value)
 
-    let private glassFilm600EntryId : ElementValueId = SeedSamples.glassFilm600.id.toElementValueId
+    let private glassFilm600EntryId : ElementValueId = SampleIds.glassFilm600Id.toElementValueId
 
     /// The kind-facet constraint helper (a single discrete key).
     let private kindConstraint (kind : string) : LW.LibraryWindowMsg =
@@ -260,7 +258,6 @@ module LibraryWindowTests =
     let ``the initial projection lists the WHOLE corpus — every sample and every preset — as selectable entry leaves`` () =
         let _, m = freshModel ()
         let state = LW.libraryFacetedState m
-        // 11 seeded samples + 2 detectors + 3 polarizers + 1 source.
         Assert.Equal(seededCorpus, state.resultCount.value)
         Assert.Equal(FacetedTreeControls.TreeMaterialized, state.materialization)
         Assert.Empty(state.breadcrumbs)
@@ -274,7 +271,7 @@ module LibraryWindowTests =
         // Samples AND presets both lead as leaves.
         Assert.Contains(entries.children, fun (n : FacetedTreeControls.TreeNode) -> n.code.value = glassFilm600EntryId.libraryEntryCode.value)
         Assert.Contains(entries.children, fun (n : FacetedTreeControls.TreeNode) -> n.code.value = PresetIds.source600.libraryEntryCode.value)
-        // The ONE seeded representation is "By kind", active by default.
+        // The ONE default representation is "By kind", active by default.
         Assert.Equal<string list>([ "by-kind" ], state.representations |> List.map (fun r -> r.code.value))
         Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey "by-kind"), state.activeRepresentationOpt)
 
@@ -288,13 +285,13 @@ module LibraryWindowTests =
             kindNode.children |> List.map (fun b -> b.label.value, b.countOpt |> Option.map (fun c -> c.value))
         // Every kind, with its count, in the engine's structural branch order.
         Assert.Equal<(string * int option) list>(
-            [ "Detector", Some 2; "Polarizer", Some 3; "Sample", Some 11; "Source", Some (List.length SeedSources.allSeedSources) ],
+            [ "Detector", Some 2; "Polarizer", Some 3; "Sample", Some 11; "Source", Some (List.length (BuiltinCatalogue.sources ())) ],
             branches)
         // The kind facet is offered FIRST (the by-kind representation's head) with count-previews.
         let kindOffer = state.offers |> List.head
         Assert.Equal(entryKindFacetKey.value, kindOffer.code.value)
         Assert.Equal<(string * int) list>(
-            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length SeedSources.allSeedSources ],
+            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length (BuiltinCatalogue.sources ()) ],
             kindOffer.values |> List.map (fun v -> v.code.value, v.previewCount.value))
 
     [<Fact>]
@@ -308,7 +305,7 @@ module LibraryWindowTests =
         let caseInsensitive (a : string) (b : string) : int =
             System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
         let isSorted (labels : string list) : bool = labels = List.sortWith caseInsensitive labels
-        // Level 1a — the entry leaves (every seeded entry, NOT in alphabetical corpus order).
+        // Level 1a — all BuiltinCatalogue.library () leaves, before alphabetical projection.
         let entries = List.head state.tree
         let leafLabels = entries.children |> List.map (fun n -> n.label.value)
         Assert.Equal(seededCorpus, List.length leafLabels)
@@ -473,7 +470,7 @@ module LibraryWindowTests =
         let sources = LW.updateLibraryWindow (kindConstraint "Source") m
         Assert.DoesNotContain(polarizerCategoryFacetKey.value, offerCodes sources)
         Assert.DoesNotContain(sampleFilmMaterialKey.value, offerCodes sources)
-        // The polarizer facet offers the seeded categories with previews (1 LP, 2 CP).
+        // The facet offers BuiltinCatalogue.presets () categories with previews (1 LP, 2 CP).
         let polarizerOffer =
             (LW.libraryFacetedState polarizers).offers |> List.find (fun g -> g.code.value = polarizerCategoryFacetKey.value)
         Assert.Equal<(string * int) list>(
@@ -485,11 +482,11 @@ module LibraryWindowTests =
         let _, m = freshModel ()
         let constrained =
             LW.updateLibraryWindow (LW.ApplyFacetConstraint (sampleFilmMaterialKey, DiscreteSelection (Set.singleton (DiscreteKey "Transparent glass (n = 1.52)")))) m
-        // glassFilm200 (single film) and multilayerQw (period cell + closing layer) carry
+        // BuiltinCatalogue.sample's glassFilm200 (single film) and multilayerQw (period + closing layer) carry
         // glass152 films; every other entry — incl. the plates whose SUBSTRATE is glass152 and
         // every preset — leaves the result set.
         Assert.Equal<string list>(
-            ([ SeedSamples.glassFilm200; SeedSamples.multilayerQw ] |> List.map (fun s -> string s.id.value) |> List.sort),
+            ([ BuiltinCatalogue.sample SampleIds.glassFilm200Id; BuiltinCatalogue.sample SampleIds.multilayerQwId ] |> List.map (fun s -> string s.id.value) |> List.sort),
             filteredEntryIds constrained |> List.sort)
 
     // ============================ pure: the numeric facet (buckets + manual range) ==========
@@ -540,7 +537,7 @@ module LibraryWindowTests =
         // "160-260" nm: only the 200 nm glass film's layer lands inside the half-open range.
         handlers.applyManualRange sampleFilmThicknessKey.uiKey (ControlCaption "160-260")
         Assert.Equal<string list>(
-            [ string SeedSamples.glassFilm200.id.value ],
+            [ string SampleIds.glassFilm200Id.value ],
             filteredEntryIds current)
         Assert.Equal(1, List.length (LW.libraryFacetedState current).breadcrumbs)
         // An unparseable commit dispatches nothing — the constraint (and the model) survive.
@@ -569,11 +566,11 @@ module LibraryWindowTests =
         Assert.Equal(seededCorpus, (LW.libraryFacetedState m).resultCount.value)
         // Remove a sample directly through the SHARED store (another window's write): the very
         // next projection of the UNCHANGED model no longer lists it.
-        match samples.removeSample SeedSamples.glassFilm200.id with
+        match samples.removeSample SampleIds.glassFilm200Id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"removing the seeded sample must succeed, got %A{e}")
         Assert.Equal(seededCorpus - 1, (LW.libraryFacetedState m).resultCount.value)
-        Assert.DoesNotContain(string SeedSamples.glassFilm200.id.value, filteredEntryIds m)
+        Assert.DoesNotContain(string SampleIds.glassFilm200Id.value, filteredEntryIds m)
 
     // ============================ pure: verbs + confirm gate ============================
 
@@ -637,7 +634,7 @@ module LibraryWindowTests =
             m
             |> LW.updateLibraryWindow (LW.SelectLibraryEntry glassFilm600EntryId)
             |> LW.updateLibraryWindow LW.RequestRemoveSelectedEntry
-        Assert.Equal(LW.PendingSampleRemove SeedSamples.glassFilm600.id, armed.removeGate)
+        Assert.Equal(LW.PendingSampleRemove SampleIds.glassFilm600Id, armed.removeGate)
         let cancelled = LW.updateLibraryWindow LW.CancelEntryRemove armed
         Assert.Equal(LW.NoPendingLibraryRemove, cancelled.removeGate)
         Assert.Equal(seededCorpus, List.length (cancelled.filteredEntries))
@@ -667,7 +664,7 @@ module LibraryWindowTests =
             |> LW.updateLibraryWindow (LW.SelectLibraryEntry glassFilm600EntryId)
             |> LW.updateLibraryWindow LW.RequestRemoveSelectedEntry
         // The sample disappears through the SHARED store (another window's remove)…
-        match samples.removeSample SeedSamples.glassFilm600.id with
+        match samples.removeSample SampleIds.glassFilm600Id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"the out-of-band remove must succeed, got %A{e}")
         // …so the armed confirm meets the typed UnknownSampleIdErr block, surfaced inline.
@@ -730,10 +727,10 @@ module LibraryWindowTests =
         // A sample selection: shown AND editable.
         let sample = LW.updateLibraryWindow (LW.SelectLibraryEntry glassFilm600EntryId) m
         match sample.editableSample with
-        | Some s -> Assert.Equal(SeedSamples.glassFilm600.id, s.id)
+        | Some s -> Assert.Equal(SampleIds.glassFilm600Id, s.id)
         | None -> Assert.Fail "the selected sample must offer Edit"
         // A vanished sample's selection resolves to nothing (its panel vanishes with its row).
-        match samples.removeSample SeedSamples.glassFilm600.id with
+        match samples.removeSample SampleIds.glassFilm600Id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"remove failed: %A{e}")
         Assert.Equal<LibraryEntry option>(None, sample.selectedEntry)
@@ -757,7 +754,7 @@ module LibraryWindowTests =
     /// Mount the REAL Main workbench MVU loop headless (the MainConstructorWindow shape with
     /// injectable stores), for the strip-button acceptance.
     let private mountMain (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) : HostWindow =
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         let model0 = Scene.initMainWith library (Experiments.createInMemoryExperiments ()) materials samples categories
         let window = HostWindow(Width = 980.0, Height = 1050.0)
         Program.mkSimple (fun () -> model0) Scene.updateTableAndElementRotation Scene.mainView
@@ -768,7 +765,7 @@ module LibraryWindowTests =
         window
 
     let private mountLibraryWindow (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) : LibraryWindow =
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories)
         window.Show()
         Dispatcher.UIThread.RunJobs()
@@ -832,7 +829,7 @@ module LibraryWindowTests =
             // facet to reveal its branches.
             expandEntries window
             expandNode window ("facet:" + entryKindFacetKey.value)
-            for kind, count in [ "Sample", 11; "Source", List.length SeedSources.allSeedSources; "Detector", 2; "Polarizer", 3 ] do
+            for kind, count in [ "Sample", 11; "Source", List.length (BuiltinCatalogue.sources ()); "Detector", 2; "Polarizer", 3 ] do
                 let branchId = (ConstructorUiId.facetTreeNode (ConstructorUiKey ("branch:" + entryKindFacetKey.value + ":" + kind))).value
                 Assert.True(isPresent window branchId, $"the by-kind tree must list the %s{kind} branch")
                 Assert.Equal($"%s{kind} (%d{count})", textOf window branchId)
@@ -1155,7 +1152,7 @@ module LibraryWindowTests =
     // ============================ step 016 — Select mode (headless) ============================
 
     let private mountSelectLibraryWindow (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) (selectCtx : SelectionContext<LibraryEntry>) : LibraryWindow =
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, mode = Select selectCtx)
         window.Show()
         Dispatcher.UIThread.RunJobs()
@@ -1182,7 +1179,7 @@ module LibraryWindowTests =
 
     let private freshMainModel () : Scene.TableAndElementRotationModel =
         let library, samples, materials = freshStores ()
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         Scene.initMainWith library (Experiments.createInMemoryExperiments ()) materials samples categories
 
     /// Click the shared table canvas at canvas-local coordinates (the pointer gestures live on
@@ -1352,7 +1349,7 @@ module LibraryWindowTests =
     [<Trait("Category", "ui-smoke")>]
     let ``acceptance (017): an over-threshold kind offers Choose… alone — no quick-pick strip`` () =
         HeadlessSession.run (fun () ->
-            // A Sample element is selected: the 11 seeded sample entries sit at/above the
+            // A Sample is selected: the 11 BuiltinCatalogue.samples () entries sit at/above the
             // default QuickPickThreshold 5, so the bay offers the Choose… verb ALONE.
             let model0 = Scene.updateTableAndElementRotation (Scene.AddElement Sample) (freshMainModel ())
             let window, _, getModel = mountMainExposed { model0 with ribbon = Scene.BayNames.selector }
@@ -1515,11 +1512,11 @@ module LibraryWindowTests =
 
     // ============================ step 023 — lifecycle (pure) ============================
 
-    /// A sample a seeded template (glassFilm600) supplies two DISTINCT versions of, under ONE id —
+    /// BuiltinCatalogue.sample supplies glassFilm600 for two DISTINCT versions under ONE id —
     /// the multi-version history the live store never grows until step 25, proven here through a
     /// stub proxy: `resolveVersion` serves v1 and v2, `tryGetSample` / `listSamples` the latest.
     let private twoVersionSamples () : SampleId * Sample * Sample * SampleProxy =
-        let template = SeedSamples.glassFilm600
+        let template = BuiltinCatalogue.sample SampleIds.glassFilm600Id
         let id = newSampleId ()
         let v1 = { template with id = id; name = EntryName "Versioned sample v1" }
         let v2 = { template with id = id; name = EntryName "Versioned sample v2" }
@@ -1580,8 +1577,14 @@ module LibraryWindowTests =
         Assert.Equal(seededCorpus - 1, (LW.libraryFacetedState retired).resultCount.value)
         Assert.Equal(ItemCount 1, retired.inactiveCount)
         // The reference still resolves IGNORING lifecycle (the table keeps drawing it).
-        match samples.resolveVersion { sampleId = SeedSamples.glassFilm600.id; version = VersionNumber.first } with
-        | Ok (Some sample) -> Assert.Equal(SeedSamples.glassFilm600.id, sample.id)
+        match
+            samples.resolveVersion
+                {
+                    sampleId = SampleIds.glassFilm600Id
+                    version = VersionNumber.first
+                }
+        with
+        | Ok (Some sample) -> Assert.Equal(SampleIds.glassFilm600Id, sample.id)
         | other -> Assert.Fail($"the retired sample's version must still resolve, got %A{other}")
         // The toggle reveals it, badged, in the tree.
         let shown = LW.updateLibraryWindow LW.ToggleShowInactiveEntries retired
@@ -1607,11 +1610,11 @@ module LibraryWindowTests =
             m
             |> LW.updateLibraryWindow (LW.SelectLibraryEntry glassFilm600EntryId)
             |> LW.updateLibraryWindow LW.RequestSupersedeSample
-        Assert.Equal(LW.PendingSampleLifecycle (SeedSamples.glassFilm600.id, MaterialsWindowView.SupersedeAction), armed.lifecycleGate)
+        Assert.Equal(LW.PendingSampleLifecycle (SampleIds.glassFilm600Id, MaterialsWindowView.SupersedeAction), armed.lifecycleGate)
         // A query change disarms.
         Assert.Equal(LW.NoPendingSampleLifecycle, (LW.updateLibraryWindow (LW.CommitLibraryTextFilter (TextQuery "x")) armed).lifecycleGate)
         // The sample vanishes behind the window's back, then Confirm meets the typed store block.
-        match samples.removeSample SeedSamples.glassFilm600.id with
+        match samples.removeSample SampleIds.glassFilm600Id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"the out-of-band remove must succeed, got %A{e}")
         let refused = LW.updateLibraryWindow LW.ConfirmSampleLifecycle armed
@@ -1622,8 +1625,8 @@ module LibraryWindowTests =
     [<Fact>]
     let ``the view panel enumerates sample versions and an older version is view-only while Edit targets the latest`` () =
         let id, _, v2, samples = twoVersionSamples ()
-        let library = Library.createInMemory ()
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+        let library = BuiltinCatalogue.library ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
         let _, context = stubContext library samples materials
         let entryId = id.toElementValueId
         let selected = LW.initLibraryWindow context Browse |> LW.updateLibraryWindow (LW.SelectLibraryEntry entryId)
@@ -1674,7 +1677,13 @@ module LibraryWindowTests =
             Assert.False(isPresent window ((ConstructorUiId.libraryEntryNode glassFilm600EntryId).value),
                          "the retired sample must leave the default tree")
             // …but its version still resolves IGNORING lifecycle (the table keeps drawing it).
-            match samples.resolveVersion { sampleId = SeedSamples.glassFilm600.id; version = VersionNumber.first } with
+            match
+                samples.resolveVersion
+                    {
+                        sampleId = SampleIds.glassFilm600Id
+                        version = VersionNumber.first
+                    }
+            with
             | Ok (Some _) -> ()
             | other -> Assert.Fail($"the retired sample's version must still resolve, got %A{other}")
             // The show-inactive toggle carries the count badge and reveals the sample, badged.
@@ -1690,8 +1699,8 @@ module LibraryWindowTests =
     let ``acceptance (023): an older sample version opens VIEW-ONLY inline while the latest stays editable`` () =
         HeadlessSession.run (fun () ->
             let id, _, _, samples = twoVersionSamples ()
-            let library = Library.createInMemory ()
-            let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+            let library = BuiltinCatalogue.library ()
+            let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
             let _, context = stubContext library samples materials
             let entryId = id.toElementValueId
             // Mount the REAL MVU loop (the window minus its launcher composition — the gated-tree

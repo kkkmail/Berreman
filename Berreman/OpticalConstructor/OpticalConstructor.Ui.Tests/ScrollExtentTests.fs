@@ -14,8 +14,6 @@ open Xunit
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
@@ -100,10 +98,10 @@ module ScrollExtentTests =
                 Assert.True(List.isEmpty found, $"%s{name} at %g{w}×%g{h}: %d{List.length found} unreachable — %s{firstFew}"))
 
     let private stores () : MaterialProxy * SampleProxy * CategoryProxy * LibraryProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        materials, samples, categories, Library.liveLibrary (Library.createInMemory ()) samples (SourceProxy.createInMemory ())
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
+        materials, samples, categories, Library.liveLibrary (BuiltinCatalogue.library ()) samples (SourceProxy.createInMemory ())
 
     let private constructorWindow (model0 : TableAndElementRotationModel) : Window =
         let window = HostWindow()

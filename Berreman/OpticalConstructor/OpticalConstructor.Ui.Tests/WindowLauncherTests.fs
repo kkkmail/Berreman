@@ -31,6 +31,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.WindowLauncher
+open OpticalConstructor.Tests
 
 module WindowLauncherTests =
 
@@ -192,18 +193,15 @@ module WindowLauncherTests =
     let private realWith (created : ResizeArray<WindowKey>) (modality : SelectWindowModality) : WindowLauncher =
         WindowLauncher.create (recordingFactory created) modality BrowseOpen
 
-    /// In-memory app-shaped stores for the end-to-end defaults proofs (the canonical coupling
-    /// order; the `Library` open is scoped here for the `createInMemory` type extensions).
+    /// BuiltinCatalogue store doubles preserve app coupling for end-to-end defaults proofs.
     module private Stores =
         open OpticalConstructor.Domain.Library
         open OpticalConstructor.Domain.Lifecycle
-        open OpticalConstructor.Domain.MaterialStore
-        open OpticalConstructor.Domain.SampleStore
 
         let create () : MaterialLibrary.MaterialProxy * SampleProxy * MaterialLibrary.CategoryProxy =
-            let samples = SampleProxy.createInMemory VersionsInUse.empty
-            let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-            let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
+            let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+            let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+            let categories = BuiltinCatalogue.categoryStore (MaterialLibrary.materialsReferencingCategory materials)
             materials, samples, categories
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId`
@@ -510,7 +508,7 @@ module WindowLauncherTests =
             clickOn opened.[1] ConstructorUiId.materialEditorSaveButton.value
             Assert.False(opened.[0].IsVisible)
             Assert.False(opened.[1].IsVisible)
-            // Both persisted, under two DISTINCT non-seeded ids.
+            // Persisted with DISTINCT ids outside BuiltinCatalogue.materials ().
             match materials.listMaterials MaterialLibrary.ActiveOnly with
             | Ok entries ->
                 let added = entries |> List.filter (fun e -> not (Set.contains e.id seededIds))

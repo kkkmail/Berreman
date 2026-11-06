@@ -17,8 +17,6 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Domain.WindowMode
@@ -39,8 +37,8 @@ module WorkbenchInfoAndCaptureTests =
 
     let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
     let private bind (i : int) (entryId : ElementValueId) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, entryId)) m
-    let private glassFilm200Id : ElementValueId = (SampleItem SeedSamples.glassFilm200).entryId
-    let private glassPlate1mmId : ElementValueId = (SampleItem SeedSamples.glassPlate1mm).entryId
+    let private glassFilm200Id : ElementValueId = (SampleItem (BuiltinCatalogue.sample SampleIds.glassFilm200Id)).entryId
+    let private glassPlate1mmId : ElementValueId = (SampleItem (BuiltinCatalogue.sample SampleIds.glassPlate1mmId)).entryId
 
     let private canvasPointOf (i : int) (m : TableAndElementRotationModel) : ScreenPoint =
         TableScene.projectOnScene m.view (m.snappedCentres.[SceneElementIndex i])
@@ -98,11 +96,11 @@ module WorkbenchInfoAndCaptureTests =
     // ------------------------------ 4: the Library shows the current binding as chosen ------------------------------
 
     let private libraryContext () : LW.LibraryWindowContext =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
         {
-            library = Library.createInMemory ()
+            library = BuiltinCatalogue.library ()
             samples = samples
-            materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+            materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
             categories = BuiltinCatalogue.categoryStore (fun _ -> [])
             treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
             thicknessBucketCap = ThicknessBucketCap.defaultValue

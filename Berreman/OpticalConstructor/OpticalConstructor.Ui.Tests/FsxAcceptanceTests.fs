@@ -28,10 +28,9 @@ open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Tests
 
 /// Spec 0046 — the constructor's numbers checked against the Analytics example scripts
 /// (`Berreman/Analytics/Examples/*.fsx`, the operator's trusted reference). Each test builds the script's
@@ -52,7 +51,7 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// so the suite stays quick; the grids still coincide exactly (a script's N intervals are N + 1 points).
 module FsxAcceptanceTests =
 
-    // ------------------------------ the bench: the app's stores, fresh per test ------------------------------
+    // ------------------------------ the bench: BuiltinCatalogue stores, fresh per test ----------------------
 
     type private Bench =
         {
@@ -65,16 +64,16 @@ module FsxAcceptanceTests =
         }
 
     let private bench () : Bench =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         let sources = SourceProxy.createInMemory ()
         {
             materials = materials
             samples = samples
             categories = categories
             sources = sources
-            library = liveLibrary (Library.createInMemory ()) samples sources
+            library = liveLibrary (BuiltinCatalogue.library ()) samples sources
             export = ExperimentExport.createInMemoryExperimentExport ()
         }
 
@@ -342,7 +341,7 @@ module FsxAcceptanceTests =
                 lower = lower |> Option.map MaterialVersionId.firstOf
             }
 
-    /// The seeded tunable xenon lamp + monochromator (190–1000 nm) — every visible-range wavelength sweep.
+    /// BuiltinCatalogue.source supplies xenon + monochromator (190–1000 nm) for visible-range wavelength sweeps.
     let private xenon : ElementValueId = PresetIds.xenonMonochromator
 
     // ------------------------------ Glass_Dispersive.fsx ------------------------------
@@ -547,7 +546,7 @@ module FsxAcceptanceTests =
         let range, sweep = incidenceSweep 30 60.0
         compare b (infoOf light10nmNormalLPs system) range (tableRun source entry 0.0 sweep)
 
-    /// The wavelength sweep runs on the seeded tunable EUV beamline (5–20 nm).
+    /// Wavelength sweeps use BuiltinCatalogue.source's tunable EUV beamline (5–20 nm).
     let private euvAgainstWaveLength (high : ComplexRefractionIndex) (low : ComplexRefractionIndex) : unit =
         let b = bench ()
         let entry, system = euvStack b high low

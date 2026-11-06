@@ -18,8 +18,6 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -28,8 +26,8 @@ open OpticalConstructor.Tests
 
 /// Spec 0046 — the Library's light-source editor: its pure MVU (name, wavelength in a chosen unit, Save
 /// through the user-sources store, the dirty exit gate), the Library window's Add source / Edit / Remove
-/// verbs for user sources (a protected seeded source keeps no Edit and refuses Remove), a user or seeded
-/// source bound on the Main table resolving through the live Library, and the editor window driven
+/// verbs for user sources (BuiltinCatalogue.sources () refuse Edit/Remove), user or catalogue
+/// sources bound on the Main table resolving through the live Library, and the editor window driven
 /// headless.
 module LightSourceEditorTests =
 
@@ -122,11 +120,11 @@ module LightSourceEditorTests =
 
     let private libraryContext (sources : SourceProxy) : ResizeArray<string> * LW.LibraryWindowContext =
         let calls = ResizeArray<string>()
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
         calls,
         {
-            library = Library.createInMemory ()
+            library = BuiltinCatalogue.library ()
             samples = samples
             materials = materials
             categories = BuiltinCatalogue.categoryStore (fun _ -> [])
