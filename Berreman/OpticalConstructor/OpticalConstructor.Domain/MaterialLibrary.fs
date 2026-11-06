@@ -224,6 +224,21 @@ module MaterialLibrary =
         /// Removal is refused while any version is pinned (spec 0038 Part H; spec 0050 S2.2).
         | MaterialVersionPinnedErr of reason : string
 
+    type MaterialError with
+
+        /// Reports an unresolved material identity (spec 0050 S2.2).
+        static member unknownMaterial (id : MaterialId) : MaterialError =
+            UnknownMaterialIdErr $"unknown material id '%s{string id.value}'"
+
+        /// Reports removal blocked by sample references, with quoted, sorted names (spec 0050 S2.2).
+        static member stillReferenced (entry : MaterialEntry) (samples : EntryName list) : MaterialError =
+            let names =
+                samples
+                |> List.map (fun name -> $"'%s{name.value}'")
+                |> List.sort
+                |> String.concat ", "
+            MaterialStillReferencedErr $"material '%s{entry.name.value}' ('%s{string entry.id.value}') is still referenced by %d{List.length samples} sample(s): %s{names}"
+
     /// The in-memory, additive material library (§D.8). Persistence of an entry is the
     /// JSON `materialEntry` `$def` (§A.7); a shareable library FILE format is Part I §I.8.
     type MaterialLibrary =
@@ -256,7 +271,7 @@ module MaterialLibrary =
     let resolveMaterialWithDisp (lib : MaterialLibrary) (id : MaterialId) : Result<OpticalPropertiesWithDisp, MaterialError> =
         match lib.entries |> List.tryFind (fun e -> e.id = id) with
         | Some e -> Ok e.properties
-        | None -> Error (UnknownMaterialIdErr $"unknown material id '%s{string id.value}'")
+        | None -> Error (MaterialError.unknownMaterial id)
 
     let resolveMaterial (lib : MaterialLibrary) (id : MaterialId) (w : WaveLength) : Result<OpticalProperties, MaterialError> =
         resolveMaterialWithDisp lib id |> Result.map (fun p -> p.getProperties w)
@@ -327,6 +342,16 @@ module MaterialLibrary =
         /// Reports an unresolved material version (spec 0050 S2.2).
         static member unknownMaterialVersion (version : MaterialVersionId) : MaterialError =
             UnknownMaterialIdErr $"unknown material version '%s{string version.materialId.value}' v%d{version.version.value}"
+
+        /// Reports removal blocked by pins, with ascending version numbers (spec 0050 S2.2).
+        static member versionsPinned (entry : MaterialEntry) (versions : VersionNumber list) : MaterialError =
+            let versionList =
+                versions
+                |> List.map (fun version -> version.value)
+                |> List.sort
+                |> List.map (fun n -> $"v%d{n}")
+                |> String.concat ", "
+            MaterialVersionPinnedErr $"material '%s{entry.name.value}' ('%s{string entry.id.value}') has %d{List.length versions} version(s) pinned: %s{versionList}"
 
     /// Whether a store listing shows only the LIVE (latest-active) entries or also the retired
     /// ones (spec 0038 Part H, step 021): a named two-case DU, never a naked bool. `ActiveOnly` —

@@ -17,17 +17,27 @@ module MaterialStore =
             entry : MaterialEntry
         }
 
-    /// The metadata half of a material payload (spec 0038 Part H): the display fields the rule
-    /// treats as never-versioning (a name / category / description edit mutates in place, never
-    /// mints). The physics half is the `MaterialComplexity` — the `(=)`-comparable view of a
-    /// material's optics (the engine `properties` carries function cases and cannot be compared),
-    /// and `properties` is `complexity.toProperties`, so equal complexity ⇒ equal physics.
-    type private MaterialMetadata =
+    /// Material display fields whose edits never mint a version (spec 0038 Part H; spec 0050 S2.2).
+    type MaterialMetadata =
         {
             name : EntryName
             category : CategoryId
             description : EntryDescription option
         }
+
+    type MaterialEntry with
+
+        /// Comparable physics and display metadata for the shared versioning rule (spec 0050 S2.2).
+        member this.versionPayload : VersionPayload<MaterialComplexity, MaterialMetadata> =
+            {
+                physics = this.complexity
+                metadata =
+                    {
+                        name = this.name
+                        category = this.category
+                        description = this.description
+                    }
+            }
 
     type MaterialProxy with
 
@@ -50,20 +60,9 @@ module MaterialStore =
                 |> Map.ofList
             let store = ref initialVersions
 
-            let unknown (id : MaterialId) : MaterialError =
-                UnknownMaterialIdErr $"unknown material id '%s{string id.value}'"
-
             /// The latest (highest-numbered) version of a non-empty history.
             let latestOf (versions : VersionRecord list) : VersionRecord =
                 versions |> List.maxBy (fun v -> v.versionNo.value)
-
-            /// The payload the shared rule sees: physics = the complexity tree, metadata = the
-            /// display fields.
-            let payloadOf (e : MaterialEntry) : VersionPayload<MaterialComplexity, MaterialMetadata> =
-                {
-                    physics = e.complexity
-                    metadata = { name = e.name; category = e.category; description = e.description }
-                }
 
             /// The LATEST version of each material, filtered by the show-inactive scope.
             let currentEntries (scope : InactiveVisibility) : MaterialEntry list =
@@ -87,7 +86,7 @@ module MaterialStore =
                         |> List.map (fun v -> if v.versionNo = latest.versionNo then { v with lifecycle = lifecycle } else v)
                     store.Value <- store.Value |> Map.add id updated
                     Ok ()
-                | None -> Error (unknown id)
+                | None -> Error (MaterialError.unknownMaterial id)
 
             {
                 listMaterials = fun scope -> Ok (currentEntries scope)
@@ -122,7 +121,7 @@ module MaterialStore =
                                 Ok ()
                             | Some versions ->
                                 let latest = latestOf versions
-                                match decideVersioning (payloadOf latest.entry) (payloadOf entry) latest.pin with
+                                match decideVersioning latest.entry.versionPayload entry.versionPayload latest.pin with
                                 | KeepCurrent -> Ok ()
                                 | MutateInPlace ->
                                     let updated =
@@ -171,26 +170,20 @@ module MaterialStore =
                         | Some versions ->
                             match samplesReferencing id with
                             | referencing when not (List.isEmpty referencing) ->
-                                let names =
-                                    referencing
-                                    |> List.map (fun s -> $"'%s{s.name.value}'")
-                                    |> List.sort
-                                    |> String.concat ", "
-                                Error (MaterialStillReferencedErr $"material '%s{(latestOf versions).entry.name.value}' ('%s{string id.value}') is still referenced by %d{List.length referencing} sample(s): %s{names}")
+                                let names = referencing |> List.map (fun s -> s.name)
+                                Error (MaterialError.stillReferenced (latestOf versions).entry names)
                             | _ ->
                                 let pinnedVersions =
                                     versions
                                     |> List.filter (fun v -> v.pin = VersionPinned)
-                                    |> List.map (fun v -> v.versionNo.value)
-                                    |> List.sort
+                                    |> List.map (fun v -> v.versionNo)
                                 match pinnedVersions with
                                 | [] ->
                                     store.Value <- store.Value |> Map.remove id
                                     Ok ()
                                 | _ ->
-                                    let versionList = pinnedVersions |> List.map (fun n -> $"v%d{n}") |> String.concat ", "
-                                    Error (MaterialVersionPinnedErr $"material '%s{(latestOf versions).entry.name.value}' ('%s{string id.value}') has %d{List.length pinnedVersions} version(s) pinned: %s{versionList}")
-                        | None -> Error (unknown id)
+                                    Error (MaterialError.versionsPinned (latestOf versions).entry pinnedVersions)
+                        | None -> Error (MaterialError.unknownMaterial id)
             }
 
         /// Empty material store using the shared versioning rule (spec 0038 step 042; spec 0050 §3.4).
