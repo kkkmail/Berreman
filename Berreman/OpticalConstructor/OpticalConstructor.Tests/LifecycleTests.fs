@@ -5,15 +5,8 @@ open OpticalConstructor.Domain.MaterialLibrary   // MaterialId / MaterialIds
 open OpticalConstructor.Domain.Library           // SampleId
 open OpticalConstructor.Domain.Lifecycle
 
-/// Spec 0038 Part H (step 020, AC-H1) — the pure entry-lifecycle foundation. The
-/// centrepiece is the shared version-creation rule `decideVersioning`; these tests
-/// ENUMERATE the used/unused × physics-changed/identical × metadata-only decision table
-/// and prove the four acceptance statements (unused edits mutate in place, used physics
-/// changes mint the next version, identical saves keep the version, metadata-only edits
-/// never version). The rule takes injected structural-equality comparators, so lightweight
-/// stand-in payloads — physics as `int`, metadata as `string`, `(=)` for both — fully
-/// exercise it with no window and no store. The supporting surface (VersionNumber, the
-/// version ids, EntryLifecycle, VersionRef, the VersionsInUse seam) is covered alongside.
+/// Pin-based version decisions and their supporting lifecycle types
+/// (spec 0038 Part H; spec 0050 S2.2).
 module LifecycleTests =
 
     /// Run the shared rule over stand-in payloads (int physics, string metadata). Structural
@@ -23,47 +16,47 @@ module LifecycleTests =
         (incomingPhysics : int)
         (storedMeta : string)
         (incomingMeta : string)
-        (usage : VersionUsage)
+        (pin : PinState)
         : VersionDecision =
         let stored : VersionPayload<int, string> = { physics = storedPhysics; metadata = storedMeta }
         let incoming : VersionPayload<int, string> = { physics = incomingPhysics; metadata = incomingMeta }
-        decideVersioning stored incoming usage
+        decideVersioning stored incoming pin
 
-    // ----- the decision table (used/unused × physics-changed/identical × metadata-only) -----
-
-    [<Fact>]
-    let ``identical save keeps the current version — unused`` () =
-        Assert.Equal(KeepCurrent, decide 1 1 "name" "name" VersionUnused)
+    // ----- the decision table (pinned/unpinned × physics-changed/identical × metadata-only) -----
 
     [<Fact>]
-    let ``identical save keeps the current version — used`` () =
-        Assert.Equal(KeepCurrent, decide 1 1 "name" "name" VersionUsed)
+    let ``identical save keeps the current version — unpinned`` () =
+        Assert.Equal(KeepCurrent, decide 1 1 "name" "name" VersionUnpinned)
 
     [<Fact>]
-    let ``metadata-only edit never versions — unused mutates in place`` () =
-        Assert.Equal(MutateInPlace, decide 1 1 "name" "renamed" VersionUnused)
+    let ``identical save keeps the current version — pinned`` () =
+        Assert.Equal(KeepCurrent, decide 1 1 "name" "name" VersionPinned)
 
     [<Fact>]
-    let ``metadata-only edit never versions — used mutates in place, does NOT mint`` () =
-        // The load-bearing rule: a USED version whose physics is unchanged and only its
+    let ``metadata-only edit never versions — unpinned mutates in place`` () =
+        Assert.Equal(MutateInPlace, decide 1 1 "name" "renamed" VersionUnpinned)
+
+    [<Fact>]
+    let ``metadata-only edit never versions — pinned mutates in place, does NOT mint`` () =
+        // The load-bearing rule: a PINNED version whose physics is unchanged and only its
         // metadata (name / description / category) changed must NOT mint a new version.
-        Assert.Equal(MutateInPlace, decide 1 1 "name" "renamed" VersionUsed)
+        Assert.Equal(MutateInPlace, decide 1 1 "name" "renamed" VersionPinned)
 
     [<Fact>]
-    let ``unused physics change mutates in place`` () =
-        Assert.Equal(MutateInPlace, decide 1 2 "name" "name" VersionUnused)
+    let ``unpinned physics change mutates in place`` () =
+        Assert.Equal(MutateInPlace, decide 1 2 "name" "name" VersionUnpinned)
 
     [<Fact>]
-    let ``used physics change mints the next version`` () =
-        Assert.Equal(MintNextVersion, decide 1 2 "name" "name" VersionUsed)
+    let ``pinned physics change mints the next version`` () =
+        Assert.Equal(MintNextVersion, decide 1 2 "name" "name" VersionPinned)
 
     [<Fact>]
-    let ``unused physics-and-metadata change mutates in place`` () =
-        Assert.Equal(MutateInPlace, decide 1 2 "name" "renamed" VersionUnused)
+    let ``unpinned physics-and-metadata change mutates in place`` () =
+        Assert.Equal(MutateInPlace, decide 1 2 "name" "renamed" VersionUnpinned)
 
     [<Fact>]
-    let ``used physics-and-metadata change mints the next version (new metadata rides along)`` () =
-        Assert.Equal(MintNextVersion, decide 1 2 "name" "renamed" VersionUsed)
+    let ``pinned physics-and-metadata change mints the next version (new metadata rides along)`` () =
+        Assert.Equal(MintNextVersion, decide 1 2 "name" "renamed" VersionPinned)
 
     // ----- VersionNumber -----
 
@@ -121,7 +114,7 @@ module LifecycleTests =
             Assert.Equal<EntryProtection option>(None, EntryProtection.tryOfDb tag)
             Assert.Equal<PinState option>(None, PinState.tryOfDb tag)
 
-    // ----- cross-store version reference + the in-use seam -----
+    // ----- cross-store version reference -----
 
     [<Fact>]
     let ``version ref distinguishes a material version from a sample version`` () =
@@ -131,29 +124,3 @@ module LifecycleTests =
         match m with
         | MaterialVersionRef mv -> Assert.Equal(MaterialIds.silicon, mv.materialId)
         | SampleVersionRef _ -> Assert.Fail("expected a material version ref")
-
-    [<Fact>]
-    let ``usageOf reports VersionUsed for a ref the seam contains and VersionUnused otherwise`` () =
-        let usedRef = MaterialVersionRef { materialId = MaterialIds.silicon; version = VersionNumber.first }
-        let otherRef = SampleVersionRef { sampleId = SampleId.create (); version = VersionNumber.first }
-        let inUse : VersionsInUse = { versionsInUse = fun () -> Set.ofList [ usedRef ] }
-        Assert.Equal(VersionUsed, usageOf inUse usedRef)
-        Assert.Equal(VersionUnused, usageOf inUse otherRef)
-
-    [<Fact>]
-    let ``a bound version unlocks the used-version rule through the seam`` () =
-        // The seam + rule composed the way the stores (steps 21/22/25) will call them:
-        // resolve usage from the in-use set, then decide. The bound version mints on a
-        // physics change; an unbound one mutates in place.
-        let boundRef = MaterialVersionRef { materialId = MaterialIds.langasite; version = VersionNumber.first }
-        let inUse : VersionsInUse = { versionsInUse = fun () -> Set.ofList [ boundRef ] }
-
-        let stored : VersionPayload<int, string> = { physics = 10; metadata = "langasite" }
-        let incoming : VersionPayload<int, string> = { physics = 20; metadata = "langasite" }
-
-        let boundDecision = decideVersioning stored incoming (usageOf inUse boundRef)
-        Assert.Equal(MintNextVersion, boundDecision)
-
-        let unboundRef = MaterialVersionRef { materialId = MaterialIds.silicon; version = VersionNumber.first }
-        let unboundDecision = decideVersioning stored incoming (usageOf inUse unboundRef)
-        Assert.Equal(MutateInPlace, unboundDecision)

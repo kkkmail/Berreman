@@ -15,7 +15,6 @@ open Berreman.Fields
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
@@ -96,11 +95,11 @@ module WorkbenchInfoAndCaptureTests =
     // ------------------------------ 4: the Library shows the current binding as chosen ------------------------------
 
     let private libraryContext () : LW.LibraryWindowContext =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
         {
             library = BuiltinCatalogue.library ()
             samples = samples
-            materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+            materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
             categories = BuiltinCatalogue.categoryStore (fun _ -> [])
             treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
             thicknessBucketCap = ThicknessBucketCap.defaultValue

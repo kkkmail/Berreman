@@ -5,7 +5,6 @@ open Berreman.Constants
 open Berreman.Fields
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
 
 /// Spec 0046; spec 0050 S1.7 — `BuiltinCatalogue.sources` and `BuiltinCatalogue.library`
@@ -127,7 +126,7 @@ module SourceLibraryTests =
 
     [<Fact>]
     let ``the live Library offers and resolves a user source after the seeded ones`` () =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
         let sources = SourceProxy.createInMemory ()
         let live = liveLibrary (BuiltinCatalogue.library ()) samples sources
         let mine = userSource "src-user-krf" "My KrF line" 248.0
@@ -143,7 +142,7 @@ module SourceLibraryTests =
 
     [<Fact>]
     let ``the live Library resolves a sample created in the samples store`` () =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
         let live = liveLibrary (BuiltinCatalogue.library ()) samples (SourceProxy.createInMemory ())
         let created =
             {
@@ -166,7 +165,7 @@ module SourceLibraryTests =
     /// it finds no sample there and falls through to the presets.
     [<Fact>]
     let ``the live Library resolves a seeded preset, a user source and a sample by their GUID ids`` () =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
         let sources = SourceProxy.createInMemory ()
         let live = liveLibrary (BuiltinCatalogue.library ()) samples sources
         let mine : SourcePreset = { id = newSourceId (); name = MaterialLibrary.EntryName "My GUID line"; waveLength = WaveLength.nm 532.0<nm>; tuning = FixedLine; protection = UserManaged }

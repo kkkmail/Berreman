@@ -9,9 +9,7 @@ namespace OpticalConstructor.Domain
 /// (`Scene.fs`): a record of camelCase `Result`-returning functions a test substitutes with an
 /// in-memory stub. This is ONLY the seam: NO disk format and NO `.ocproj` wiring. A future storage
 /// cycle (`IMPLEMENT_CONTRACT STORE_XDUO_0005`) swaps in a real, file-backed `create` in
-/// `OpticalConstructor.Storage`, and wires the live `ExperimentCollection` (the editable in-progress
-/// collection, `Experiments.fs`) as the app-scope `VersionsInUse` source (`AppContext.fs`, §0.2),
-/// leaving the bay / host logic that holds the proxy unchanged. Every primitive is elevated: the key
+/// `OpticalConstructor.Storage`, leaving the bay / host logic that holds the proxy unchanged. Every primitive is elevated: the key
 /// is a single-case DU with a blank-rejecting `tryCreate`, and the error carries a diagnostic reason.
 ///
 /// The module is `ExperimentCollectionStore` (NOT `ExperimentCollection`) so it never collides with

@@ -16,7 +16,6 @@ open Berreman.Fields
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.WindowMode
@@ -120,8 +119,8 @@ module LightSourceEditorTests =
 
     let private libraryContext (sources : SourceProxy) : ResizeArray<string> * LW.LibraryWindowContext =
         let calls = ResizeArray<string>()
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         calls,
         {
             library = BuiltinCatalogue.library ()

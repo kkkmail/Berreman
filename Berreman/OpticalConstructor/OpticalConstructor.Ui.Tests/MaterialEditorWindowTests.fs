@@ -18,7 +18,6 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
@@ -93,8 +92,8 @@ module MaterialEditorWindowTests =
 
     /// Isolated BuiltinCatalogue.materialStore and BuiltinCatalogue.sampleStore preserve live reference checks per test.
     let private freshProxies () : MaterialProxy * SampleProxy =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         materials, samples
 
     let private builtIn (id : MaterialId) : MaterialEntry =
@@ -116,6 +115,7 @@ module MaterialEditorWindowTests =
                 markMaterialInactive = fun _ -> Ok ()
                 markMaterialActive = fun _ -> Ok ()
                 supersedeMaterial = fun _ -> Ok ()
+                pinMaterialVersion = fun _ -> Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
         calls, saved,
@@ -570,6 +570,7 @@ module MaterialEditorWindowTests =
                 markMaterialInactive = fun _ -> Ok ()
                 markMaterialActive = fun _ -> Ok ()
                 supersedeMaterial = fun _ -> Ok ()
+                pinMaterialVersion = fun _ -> Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
         let context : MaterialEditorContext =

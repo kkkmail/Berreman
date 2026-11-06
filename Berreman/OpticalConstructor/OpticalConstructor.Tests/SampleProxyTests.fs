@@ -7,26 +7,20 @@ open Berreman.Media
 open OpticalConstructor.Domain              // the Propagation module (the version-pin round-trip)
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 
 /// Versioned sample-store behavior over fresh `BuiltinCatalogue.sampleStore` instances:
-/// version growth, lifecycle visibility, used-version removal, and material-version pins.
+/// version growth, lifecycle visibility, pinned-version removal, and material-version pins.
 /// Spec 0038 Part H step 022 (STORE_XDUO_0002); spec 0050 S1.7 supplies catalogue values.
 module SampleProxyTests =
 
-    /// A fresh store with NO versions in use — the default over which the unused-side of the decision
-    /// table and the read surface are exercised.
     let private freshProxy () : SampleProxy =
-        BuiltinCatalogue.sampleStore VersionsInUse.empty
+        BuiltinCatalogue.sampleStore ()
 
-    /// A fresh store over which the given versioned references are reported as in-use by a live
-    /// experiment (the step-20 seam, stubbed) — the used-side of the decision table and the
-    /// used-version removal block.
-    let private proxyWithUsed (refs : VersionRef list) : SampleProxy =
-        BuiltinCatalogue.sampleStore
-            {
-                versionsInUse = fun () -> Set.ofList refs
-            }
+    let private proxyWithPinned (versions : SampleVersionId list) : SampleProxy =
+        let proxy = freshProxy ()
+        for version in versions do
+            Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.pinSampleVersion version)
+        proxy
 
     let private plate : Sample = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
 
@@ -43,10 +37,6 @@ module SampleProxyTests =
     /// metadata changed.
     let private plateRenamed : Sample =
         { plate with name = EntryName "Renamed plate (metadata only)" }
-
-    /// The version-1 reference of a sample — the key a live experiment binds.
-    let private v1Ref (id : SampleId) : VersionRef =
-        SampleVersionRef { sampleId = id; version = VersionNumber.first }
 
     let private v1Id (id : SampleId) : SampleVersionId = { sampleId = id; version = VersionNumber.first }
     let private v2Id (id : SampleId) : SampleVersionId = { sampleId = id; version = VersionNumber.first.next }
@@ -248,8 +238,8 @@ module SampleProxyTests =
     // ============================ the version-creation decision table ============================
 
     [<Fact>]
-    let ``KeepCurrent — an identical save on a used version leaves exactly version 1 unchanged`` () =
-        let proxy = proxyWithUsed [ v1Ref plate.id ]
+    let ``KeepCurrent — an identical save on a pinned version leaves exactly version 1 unchanged`` () =
+        let proxy = proxyWithPinned [ v1Id plate.id ]
         match proxy.saveSample plate with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
@@ -261,9 +251,9 @@ module SampleProxyTests =
         | other -> Assert.Fail($"expected version 1 intact, got %A{other}")
 
     [<Fact>]
-    let ``MutateInPlace — a metadata-only edit of a USED version updates version 1 and does NOT mint`` () =
-        // The load-bearing rule: metadata (name / description / substrate kind) NEVER versions, even used.
-        let proxy = proxyWithUsed [ v1Ref plate.id ]
+    let ``MutateInPlace — a metadata-only edit of a PINNED version updates version 1 and does NOT mint`` () =
+        // The load-bearing rule: metadata (name / description / substrate kind) NEVER versions, even pinned.
+        let proxy = proxyWithPinned [ v1Id plate.id ]
         match proxy.saveSample plateRenamed with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
@@ -275,7 +265,7 @@ module SampleProxyTests =
         | other -> Assert.Fail($"expected version 1 renamed in place, got %A{other}")
 
     [<Fact>]
-    let ``MutateInPlace — a structure change of an UNUSED version updates version 1 in place`` () =
+    let ``MutateInPlace — a structure change of an UNPINNED version updates version 1 in place`` () =
         let proxy = freshProxy ()
         match proxy.saveSample platePhysicsChanged with
         | Ok () -> ()
@@ -286,8 +276,8 @@ module SampleProxyTests =
         | other -> Assert.Fail($"expected version 1 structure mutated in place, got %A{other}")
 
     [<Fact>]
-    let ``MintNextVersion — a structure change of a USED version freezes version 1 and mints version 2`` () =
-        let proxy = proxyWithUsed [ v1Ref plate.id ]
+    let ``MintNextVersion — a structure change of a PINNED version freezes version 1 and mints version 2`` () =
+        let proxy = proxyWithPinned [ v1Id plate.id ]
         match proxy.saveSample platePhysicsChanged with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
@@ -306,7 +296,7 @@ module SampleProxyTests =
 
     [<Fact>]
     let ``latest-active default listing shows one entry per sample after a mint, not the frozen history`` () =
-        let proxy = proxyWithUsed [ v1Ref plate.id ]
+        let proxy = proxyWithPinned [ v1Id plate.id ]
         match proxy.saveSample platePhysicsChanged with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
@@ -374,23 +364,23 @@ module SampleProxyTests =
             | Error (UnknownSampleIdErr reason) -> Assert.Contains(string missing.value, reason)
             | other -> Assert.Fail($"expected Error (UnknownSampleIdErr _), got %A{other}")
 
-    // ============================ removal: the used-version hard-block ============================
+    // ============================ removal: the pinned-version hard-block ============================
 
     [<Fact>]
-    let ``removeSample on a sample with a used version is blocked with a typed refusal naming the version`` () =
-        let proxy = proxyWithUsed [ v1Ref plate.id ]
+    let ``removeSample on a sample with a pinned version is blocked with a typed refusal naming the version`` () =
+        let proxy = proxyWithPinned [ v1Id plate.id ]
         match proxy.removeSample plate.id with
-        | Error (SampleVersionInUseErr reason) ->
+        | Error (SampleVersionPinnedErr reason) ->
             Assert.Contains(string plate.id.value, reason)
             Assert.Contains("v1", reason)
-        | other -> Assert.Fail($"expected Error (SampleVersionInUseErr _), got %A{other}")
+        | other -> Assert.Fail($"expected Error (SampleVersionPinnedErr _), got %A{other}")
         // never silently deletes: the sample survives.
         match proxy.tryGetSample plate.id with
         | Ok (Some _) -> ()
-        | other -> Assert.Fail($"expected the sample to survive the used-version block, got %A{other}")
+        | other -> Assert.Fail($"expected the sample to survive the pinned-version block, got %A{other}")
 
     [<Fact>]
-    let ``removeSample succeeds when no version is in use, then the id is unknown`` () =
+    let ``removeSample succeeds when no version is pinned, then the id is unknown`` () =
         let proxy = freshProxy ()
         match proxy.removeSample SampleIds.langasiteSiliconId with
         | Ok () -> ()
@@ -435,10 +425,11 @@ module SampleProxyTests =
                 markSampleInactive = fun (_ : SampleId) -> Ok ()
                 markSampleActive = fun (_ : SampleId) -> Ok ()
                 supersedeSample = fun (_ : SampleId) -> Ok ()
+                pinSampleVersion = fun _ -> Ok ()
                 removeSample =
                     fun (id : SampleId) ->
                         if id = kept.id
-                        then Error (SampleVersionInUseErr ($"sample '%s{(string id.value)}' has a version bound by a live experiment"))
+                        then Error (SampleVersionPinnedErr ($"sample '%s{(string id.value)}' has a version pinned"))
                         else Ok ()
             }
         match stub.listSamples ActiveOnly with
@@ -463,9 +454,10 @@ module SampleProxyTests =
             match verb free.id with
             | Ok () -> ()
             | other -> Assert.Fail($"expected Ok (), got %A{other}")
+        Assert.Equal<Result<unit, SampleError>>(Ok (), stub.pinSampleVersion (v1Id free.id))
         match stub.removeSample kept.id with
-        | Error (SampleVersionInUseErr reason) -> Assert.Contains(string kept.id.value, reason)
-        | other -> Assert.Fail($"expected Error (SampleVersionInUseErr _), got %A{other}")
+        | Error (SampleVersionPinnedErr reason) -> Assert.Contains(string kept.id.value, reason)
+        | other -> Assert.Fail($"expected Error (SampleVersionPinnedErr _), got %A{other}")
         match stub.removeSample free.id with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok (), got %A{other}")
@@ -474,14 +466,9 @@ module SampleProxyTests =
 
     [<Fact>]
     let ``a sample layer keeps resolving its pinned material version after the material mints a newer one`` () =
-        // The MATERIAL store: glass152 version 1 is USED by a live experiment, so a physics change
-        // mints version 2 rather than mutating the bound version.
-        let usedRef = MaterialVersionRef { materialId = MaterialIds.glass152; version = VersionNumber.first }
-        let materials =
-            BuiltinCatalogue.materialStore (fun _ -> [])
-                {
-                    versionsInUse = fun () -> Set.ofList [ usedRef ]
-                }
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
+        let firstVersion = MaterialVersionId.firstOf MaterialIds.glass152
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), materials.pinMaterialVersion firstVersion)
         let glass = BuiltinCatalogue.materials () |> List.find (fun e -> e.id = MaterialIds.glass152)
         let other = BuiltinCatalogue.materials () |> List.find (fun e -> e.id = MaterialIds.glass200)
         let glassPhysicsChanged = { glass with complexity = other.complexity }
@@ -513,3 +500,58 @@ module SampleProxyTests =
         match materials.tryGetMaterial MaterialIds.glass152 with
         | Ok (Some e) -> Assert.Equal(other.complexity, e.complexity)
         | other -> Assert.Fail($"expected the latest (v2) to carry the new physics, got %A{other}")
+
+    [<Fact>]
+    let ``pinSampleVersion pins one version, a minted version starts unpinned, and an unknown version is refused`` () : unit =
+        let proxy = freshProxy ()
+        let first = SampleVersionId.firstOf SampleIds.glassPlate1mmId
+        let second : SampleVersionId =
+            {
+                first with version = first.version.next
+            }
+        let third : SampleVersionId =
+            {
+                first with version = second.version.next
+            }
+        let missingId = newSampleId ()
+        let missing = SampleVersionId.firstOf missingId
+
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.pinSampleVersion first)
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.pinSampleVersion first)
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.saveSample plate)
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.saveSample plateRenamed)
+        for verb in [ proxy.markSampleInactive; proxy.markSampleActive; proxy.supersedeSample ] do
+            Assert.Equal<Result<unit, SampleError>>(Ok (), verb plate.id)
+            match proxy.removeSample plate.id with
+            | Error (SampleVersionPinnedErr reason) -> Assert.Contains("v1", reason)
+            | other -> Assert.Fail($"expected the pin to survive metadata and lifecycle edits, got %A{other}")
+
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.saveSample platePhysicsChanged)
+        match proxy.resolveVersion second with
+        | Ok (Some entry) -> Assert.Equal(platePhysicsChanged.structure, entry.structure)
+        | other -> Assert.Fail($"expected a minted version 2, got %A{other}")
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.saveSample plate)
+        match proxy.resolveVersion second with
+        | Ok (Some entry) -> Assert.Equal(plate.structure, entry.structure)
+        | other -> Assert.Fail($"expected version 2 to mutate in place, got %A{other}")
+        match proxy.resolveVersion third with
+        | Ok None -> ()
+        | other -> Assert.Fail($"expected no version 3, got %A{other}")
+        match proxy.resolveVersion first with
+        | Ok (Some entry) -> Assert.Equal(plate.structure, entry.structure)
+        | other -> Assert.Fail($"expected version 1 to keep its original physics, got %A{other}")
+
+        for version in [ missing; third ] do
+            match proxy.pinSampleVersion version with
+            | Error (UnknownSampleIdErr reason) ->
+                Assert.Contains(string version.sampleId.value, reason)
+                Assert.Contains($"v{version.version.value}", reason)
+            | other -> Assert.Fail($"expected an unknown-version refusal, got %A{other}")
+
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.pinSampleVersion second)
+        match proxy.removeSample plate.id with
+        | Error (SampleVersionPinnedErr reason) ->
+            Assert.Contains(plate.name.value, reason)
+            Assert.Contains(string plate.id.value, reason)
+            Assert.Contains("2 version(s) pinned: v1, v2", reason)
+        | other -> Assert.Fail($"expected both pinned versions to block removal, got %A{other}")

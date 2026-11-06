@@ -8,7 +8,6 @@ open Avalonia.VisualTree
 open Xunit
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
@@ -58,8 +57,8 @@ module SolverHandoffWindowTests =
     /// against and the committed experiment. The caller decorates it (id / attached file) directly on
     /// the record — the handoff validation is a pure function of the experiment + proxies.
     let private baseExperiment (srcBind : Placement.ElementValueId option) (detBind : Placement.ElementValueId option) : LibraryProxy * Experiments.Experiment =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         let m0 = initInverse (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) materials samples categories
         let src, sample, det = endpoints m0

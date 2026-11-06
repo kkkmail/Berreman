@@ -1510,11 +1510,8 @@ let private experimentElementLabel (model : TableAndElementRotationModel) (id : 
     |> Option.map (fun (i, e) -> Experiments.ElementLabel $"{e.placement.catalogueKind.kindName} #{i.value + 1}")
     |> Option.defaultValue (Experiments.ElementLabel "(element)")
 
-/// Spec 0038 Part I (step 025): resolve one present element's binding into an experiment descriptor's
-/// `ElementBinding`. A bound Sample resolves through the Library to its `SampleId` and pins version one
-/// (`SampleVersionId.firstOf` — every sample lives at v1 at this in-memory step), so the captured setup
-/// references the sample BY VERSION (the `VersionsInUse` seam collects it); a bound protected preset
-/// (source / detector / polarizer) binds by its entry id; an unbound element is `Unbound`.
+/// Captures a sample's version-one reference or a preset's entry id; an unbound element
+/// remains Unbound (spec 0038 Part I; spec 0050 S2.2).
 let private descriptorBinding (model : TableAndElementRotationModel) (kind : CatalogueKind) (valueIdOpt : ElementValueId option) : Experiments.ElementBinding =
     match valueIdOpt with
     | None -> Experiments.Unbound
@@ -2619,7 +2616,7 @@ type MaterialLibrary.MaterialError with
             ControlCaption $"Cannot run: the sample references an unknown material ({reason})."
         | MaterialLibrary.DuplicateMaterialIdErr reason
         | MaterialLibrary.MaterialStillReferencedErr reason
-        | MaterialLibrary.MaterialVersionInUseErr reason
+        | MaterialLibrary.MaterialVersionPinnedErr reason
         | MaterialLibrary.InvalidMaterialErr reason ->
             ControlCaption $"Cannot run: material library error ({reason})."
 

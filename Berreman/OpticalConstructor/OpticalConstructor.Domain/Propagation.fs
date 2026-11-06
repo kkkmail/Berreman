@@ -245,7 +245,7 @@ module Propagation =
         |> Result.bind (fun entryOpt ->
             match entryOpt with
             | Some e -> Ok e.properties
-            | None -> Error (UnknownMaterialIdErr $"unknown material version '%s{string mvid.materialId.value}' v%d{mvid.version.value}"))
+            | None -> Error (MaterialError.unknownMaterialVersion mvid))
 
     /// Resolve every material a sample's structure references to its `OpticalPropertiesWithDisp`
     /// through the VERSIONED material store's by-version resolve (spec 0033 step 001; re-based on

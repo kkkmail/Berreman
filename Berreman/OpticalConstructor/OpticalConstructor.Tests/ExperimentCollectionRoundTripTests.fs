@@ -137,8 +137,8 @@ module ExperimentCollectionRoundTripTests =
         // E2 binds none (sample-less), E3 varies nothing (dark).
         Assert.Contains(
             SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId),
-            boundVersions [ List.item 0 loaded.experiments ])
-        Assert.Empty(boundVersions [ List.item 1 loaded.experiments ])
+            (List.item 0 loaded.experiments).versionRefs)
+        Assert.Empty((List.item 1 loaded.experiments).versionRefs)
         Assert.Equal(None, (List.item 2 loaded.experiments).varied)
 
         // DataFilePath attachments (with AND without) ride along per experiment.

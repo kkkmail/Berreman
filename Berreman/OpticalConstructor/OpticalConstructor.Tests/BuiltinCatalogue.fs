@@ -5,7 +5,6 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -65,8 +64,8 @@ module BuiltinCatalogue =
             | MaterialEntryKind | CategoryEntryKind | SampleEntryKind -> None)
 
     /// Returns a fresh material store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
-    let materialStore (samplesReferencing : MaterialId -> Sample list) (versionsInUse : VersionsInUse) : MaterialProxy =
-        let store = MaterialProxy.createInMemory samplesReferencing versionsInUse
+    let materialStore (samplesReferencing : MaterialId -> Sample list) : MaterialProxy =
+        let store = MaterialProxy.createInMemory samplesReferencing
         for entry in materials () do
             match store.saveMaterial entry with
             | Ok () -> ()
@@ -74,20 +73,20 @@ module BuiltinCatalogue =
             | Error (DuplicateMaterialIdErr reason)
             | Error (MaterialStillReferencedErr reason)
             | Error (InvalidMaterialErr reason)
-            | Error (MaterialVersionInUseErr reason) ->
+            | Error (MaterialVersionPinnedErr reason) ->
                 failwith $"The Built-in material '{entry.name.value}' ('{entry.id.value}') was refused: {reason}"
         store
 
     /// Returns a fresh sample store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
-    let sampleStore (versionsInUse : VersionsInUse) : SampleProxy =
-        let store = SampleProxy.createInMemory versionsInUse
+    let sampleStore () : SampleProxy =
+        let store = SampleProxy.createInMemory ()
         for entry in samples () do
             match store.saveSample entry with
             | Ok () -> ()
             | Error (UnknownSampleIdErr reason)
             | Error (DuplicateSampleIdErr reason)
             | Error (InvalidSampleErr reason)
-            | Error (SampleVersionInUseErr reason) ->
+            | Error (SampleVersionPinnedErr reason) ->
                 failwith $"The Built-in sample '{entry.name.value}' ('{entry.id.value}') was refused: {reason}"
         store
 

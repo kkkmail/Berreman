@@ -142,9 +142,9 @@
         <!-- Spec 0046: what a detector reads along its light path; the export CSV layout; tunable sources. -->
         <Compile Include="ExperimentRunTests.fs" />
         <!-- Spec 0038 Part H (step 020): the pure entry-lifecycle foundation — the shared
-             version-creation rule (decideVersioning) enumerated over the used/unused ×
+             version-creation rule (decideVersioning) enumerated over the pinned/unpinned ×
              physics-changed/identical × metadata-only decision table, plus the VersionNumber /
-             version-id / EntryLifecycle / VersionRef / VersionsInUse surface. Avalonia-free. -->
+             version-id / EntryLifecycle / VersionRef surface. Avalonia-free. -->
         <Compile Include="LifecycleTests.fs" />
         <!-- Spec 0038 step 026 (ADD_CONTRACT STORE_XDUO_0004): the scene persistence seam —
              SceneName's blank-rejecting tryCreate, the SnapMode two-case DU, and the mock/stub

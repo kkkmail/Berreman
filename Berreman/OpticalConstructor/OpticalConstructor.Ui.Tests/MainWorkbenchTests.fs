@@ -13,7 +13,6 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.CatalogueImport
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
@@ -197,7 +196,7 @@ module MainWorkbenchTests =
         Assert.StartsWith("Vacuum", bands.[1].label.value)
         Assert.StartsWith("Transparent glass (n = 1.52)", bands.[2].label.value)
 
-        let emptyMaterials = MaterialProxy.createInMemory (fun _ -> []) VersionsInUse.empty
+        let emptyMaterials = MaterialProxy.createInMemory (fun _ -> [])
         let unnamedBands = (sample.bandsState emptyMaterials).bands
         Assert.Equal(3, List.length unnamedBands)
         Assert.StartsWith(string MaterialIds.glass152.value, unnamedBands.[0].label.value)

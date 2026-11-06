@@ -4,7 +4,7 @@ open Berreman.Geometry                              // Angle (the placement/orie
 open Berreman.Fields                                // WaveLength (a tunable source's set wavelength, spec 0046)
 open OpticalConstructor.Domain.Placement           // CatalogueKind / Emission / ElementPlacement / TablePoint
 open OpticalConstructor.Domain.Library              // ElementId / DetectorKind / SampleVersionId / SampleId
-open OpticalConstructor.Domain.Lifecycle           // VersionRef / VersionsInUse (step 020)
+open OpticalConstructor.Domain.Lifecycle           // VersionRef (step 020)
 open OpticalConstructor.Domain.Propagation         // SweptValue / CurvePointCount (a range's ends and points)
 
 /// Spec 0027 (028) / spec 0038 Part I (step 025) — the Experiments domain, redesigned around a
@@ -149,20 +149,14 @@ module Experiments =
         member this.value = let (DataFilePath p) = this in p
         static member create (path : string) : DataFilePath = DataFilePath path
 
-    /// How an experiment descriptor references its bound Library entry (spec 0038 Part I / §13.1). A
-    /// versioned entry pins the EXACT version it was built against (a sample by `SampleVersionRef`, a
-    /// material-backed binding by `MaterialVersionRef`) so a later mint of the entry's `.next` version
-    /// never rewrites the experiment's physics; a protected preset (source / detector / polarizer — never
-    /// versioned) binds by its stable entry id; an element the user has not bound yet is `Unbound`. Reuses
-    /// the step-020 `VersionRef` (`Lifecycle.fs`) rather than a parallel version-ref DU — the same
-    /// reference the `VersionsInUse` seam collects.
+    /// Binds a versioned entry by its exact VersionRef, a preset by its stable id, or leaves it
+    /// unbound (spec 0038 Part I; spec 0050 S2.2). Store pinning is a separate explicit operation.
     type ElementBinding =
         | BoundByVersion of VersionRef
         | BoundByEntryId of entryId : ElementValueId
         | Unbound
 
-        /// The versioned reference this binding pins, if any — the projection `boundVersions` folds over
-        /// the whole setup (preset / unbound descriptors contribute none).
+        /// The versioned reference this binding holds, if any (preset / unbound descriptors contribute none).
         member this.versionRefOpt : VersionRef option =
             match this with
             | BoundByVersion versionRef -> Some versionRef
@@ -267,19 +261,6 @@ module Experiments =
         /// binding projected to its `VersionRef` (preset / unbound descriptors contribute none).
         member this.versionRefs : VersionRef list =
             this.setup |> List.choose (fun d -> d.binding.versionRefOpt)
-
-    /// The set of versioned references currently bound across a live experiment collection (spec 0038
-    /// Part I / §13.1). This is the step-020 "versions in use" set — a version in it is IMMUTABLE (its
-    /// physics change mints the next version) and un-deletable. Pure and unit-testable.
-    let boundVersions (experiments : Experiment list) : Set<VersionRef> =
-        experiments |> List.collect (fun e -> e.versionRefs) |> Set.ofList
-
-    /// Build the step-020 `VersionsInUse` seam over a live source of experiments (spec 0038 Part I): the
-    /// composition root injects `fun () -> currentExperiments` so the material / sample stores' saves
-    /// (steps 21/22) see the live collection each time they consult it. Replaces the `VersionsInUse.empty`
-    /// the stores took while nothing bound a version.
-    let versionsInUseSeam (currentExperiments : unit -> Experiment list) : VersionsInUse =
-        { versionsInUse = fun () -> boundVersions (currentExperiments ()) }
 
     /// The in-progress experiment being built or edited (spec 028, the multi-step editor). `elementId` /
     /// `variable` are `None` until chosen; the interactive add needs both. When `editingId` is `Some` the

@@ -105,7 +105,7 @@ module Library =
             version : VersionNumber
         }
 
-        /// Pins version one of a sample, regardless of its latest stored version
+        /// References version one of a sample, regardless of its latest stored version or pin
         /// (spec 0038 step 025; spec 0050 §3.3).
         static member firstOf (sampleId : SampleId) : SampleVersionId =
             { sampleId = sampleId; version = VersionNumber.first }
@@ -626,11 +626,8 @@ module Library =
         | UnknownSampleIdErr of reason : string
         | DuplicateSampleIdErr of reason : string
         | InvalidSampleErr of reason : string
-        /// Spec 0038 Part H (step 022): removal is additionally hard-blocked when ANY version of the
-        /// sample is currently bound by a live experiment (the injected `VersionsInUse` seam — the
-        /// mirror of the material store's `MaterialVersionInUseErr`). A used version can never be
-        /// deleted; the case names the offending versions so the refusal is actionable in a log.
-        | SampleVersionInUseErr of reason : string
+        /// Removal is refused while any version is pinned (spec 0038 Part H; spec 0050 S2.2).
+        | SampleVersionPinnedErr of reason : string
 
     /// The mutating samples write-seam (spec 0033 steps 004/005, contract STORE_XDUO_0002 —
     /// IMPLEMENTED lifecycle; re-typed IN PLACE at spec 0038 Part H step 022 into the VERSIONED
@@ -647,16 +644,17 @@ module Library =
     /// - `resolveVersion svid` — the EXACT version's sample, IGNORING lifecycle (reference
     ///   resolution: an experiment binding a superseded/inactive version still resolves it);
     /// - `saveSample sample` — applies the step-20 shared `decideVersioning` rule against the
-    ///   injected `VersionsInUse` (a new sample inserts version 1; an existing one mutates in
+    ///   latest version's pin (a new sample inserts version 1; an existing one mutates in
     ///   place, mints the next version, or is a no-op) — it replaces the old `addSample`/`updateSample`;
     /// - `markSampleInactive` / `markSampleActive` — retire / revive the latest version;
     /// - `supersedeSample` — retire the latest version (a superseded version behaves as inactive);
-    /// - `removeSample id` — deletes an unused sample and refuses any sample carrying a used
-    ///   version (`SampleVersionInUseErr`); an unknown id is `UnknownSampleIdErr`.
+    /// - `pinSampleVersion` — pins one version permanently (spec 0050 S2.2);
+    /// - `removeSample id` — deletes an unpinned sample and refuses any sample carrying a pinned
+    ///   version (`SampleVersionPinnedErr`); an unknown id is `UnknownSampleIdErr`.
     ///
     /// The real, stateful in-memory store behind this surface is `SampleProxy.createInMemory` (a
     /// type augmentation in `SampleStore.fs`, after `Lifecycle.fs`: it needs the shared
-    /// `decideVersioning` rule and the `VersionsInUse` seam).
+    /// `decideVersioning` rule).
     [<ReferenceEquality>]
     type SampleProxy =
         {
@@ -668,6 +666,7 @@ module Library =
             markSampleInactive : SampleId -> Result<unit, SampleError>
             markSampleActive : SampleId -> Result<unit, SampleError>
             supersedeSample : SampleId -> Result<unit, SampleError>
+            pinSampleVersion : SampleVersionId -> Result<unit, SampleError>
             removeSample : SampleId -> Result<unit, SampleError>
         }
 
@@ -780,15 +779,9 @@ module Library =
             then Error (InvalidSampleErr $"plate sample '%s{string s.id.value}' has no substrate plate specified")
             else Ok ()
 
-    /// The composition-root referencing lookup for `MaterialProxy.createInMemory` (spec 0033
-    /// step 006): every sample the samples store currently holds whose structure references
-    /// the material. Backed by the LIVE `SampleProxy` store — once the referencing samples are
-    /// removed the material becomes removable; there is no snapshot to refresh. Lists the
-    /// latest-ACTIVE versions (`ActiveOnly`): a retired sample no longer offers new use, so it no
-    /// longer holds a material from removal (the material's own used-version block still guards any
-    /// version a live experiment binds). The in-memory `listSamples` is total (always `Ok`); the
-    /// signature carries no error channel, so a future store whose listing can fail must supply its
-    /// own conservative lookup instead of this one.
+    /// Finds active samples referencing a material; pinned material versions block removal separately
+    /// (spec 0033; spec 0038 Part H; spec 0050 S2.2). Requires a total in-memory listing;
+    /// a fallible store must supply its own conservative lookup.
     let samplesReferencing (samples : SampleProxy) (id : MaterialId) : Sample list =
         match samples.listSamples ActiveOnly with
         | Ok all -> all |> List.filter (fun s -> s.structure.referencedMaterials |> Set.contains id)

@@ -26,7 +26,6 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -64,8 +63,8 @@ module FsxAcceptanceTests =
         }
 
     let private bench () : Bench =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         let sources = SourceProxy.createInMemory ()
         {

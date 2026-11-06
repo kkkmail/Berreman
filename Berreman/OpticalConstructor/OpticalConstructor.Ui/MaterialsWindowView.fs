@@ -167,11 +167,8 @@ type MaterialsWindowContext =
         requestClose : unit -> unit
     }
 
-/// The stored versions of a material, ascending (latest last), enumerated by probing the proxy's
-/// by-version `resolveVersion` from version 1 upward until it resolves nothing (spec 0038 step 023
-/// — the store exposes no list-versions field). In the live in-memory store this is a single
-/// version until step 25 (mints need a used version, and `VersionsInUse` is empty); a stub proxy
-/// returns a longer history. The `1000` cap is an unreachable runaway guard, never hit in practice.
+/// Enumerates stored versions in ascending order by resolving each version until absent;
+/// stops at 1000 to bound a malformed proxy (spec 0038 step 023; spec 0050 S2.2).
 let private selectedVersionsOf (materials : MaterialProxy) (id : MaterialId) : (VersionNumber * MaterialEntry) list =
     let rec loop (version : VersionNumber) (acc : (VersionNumber * MaterialEntry) list) : (VersionNumber * MaterialEntry) list =
         if version.value > 1000 then List.rev acc

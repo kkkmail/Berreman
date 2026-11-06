@@ -14,7 +14,6 @@ open Berreman.Constants
 open Berreman.Media
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.SampleStackEditor
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Controls
@@ -142,8 +141,8 @@ module SampleEditorWindowTests =
     /// BuiltinCatalogue.sampleStore, BuiltinCatalogue.materialStore and BuiltinCatalogue.categoryStore
     /// stay isolated per test; removal consults the live sample and material references.
     let private freshProxies () : MaterialProxy * SampleProxy * CategoryProxy =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, samples, categories
 
@@ -161,6 +160,7 @@ module SampleEditorWindowTests =
             markMaterialInactive = fun _ -> Ok ()
             markMaterialActive = fun _ -> Ok ()
             supersedeMaterial = fun _ -> Ok ()
+            pinMaterialVersion = fun _ -> Ok ()
             removeMaterial = fun _ -> Ok ()
         }
 
@@ -181,6 +181,7 @@ module SampleEditorWindowTests =
                 markSampleInactive = fun _ -> Ok ()
                 markSampleActive = fun _ -> Ok ()
                 supersedeSample = fun _ -> Ok ()
+                pinSampleVersion = fun _ -> Ok ()
                 removeSample = fun _ -> Ok ()
             }
         calls,
@@ -492,6 +493,7 @@ module SampleEditorWindowTests =
                 markSampleInactive = fun _ -> Ok ()
                 markSampleActive = fun _ -> Ok ()
                 supersedeSample = fun _ -> Ok ()
+                pinSampleVersion = fun _ -> Ok ()
                 removeSample = fun _ -> Ok ()
             }
         let context : SampleEditorContext =

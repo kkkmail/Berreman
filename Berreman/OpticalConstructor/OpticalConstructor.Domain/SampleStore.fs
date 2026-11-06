@@ -5,18 +5,16 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 
-/// Versioned in-memory sample storage with an injected experiment usage lookup
-/// (spec 0038 step 022; spec 0050 §3.4). Stores start empty and catalogue import supplies built-ins.
+/// Versioned in-memory sample storage with one-way per-version pins
+/// (spec 0038 step 022; spec 0050 §3.4, S2.2). Stores start empty and catalogue import supplies built-ins.
 module SampleStore =
 
-    /// One stored version of a sample: its version number, its live/retired lifecycle, and the
-    /// sample frozen at that version. The store keeps a per-`SampleId` history of these, ascending
-    /// by version number and non-empty; the LATEST (highest-numbered) version is the one the library
-    /// edits and the offers surface, older versions are view-only resolution targets.
+    /// A stored sample version; only the latest is editable, while older versions remain resolvable.
     type private SampleVersionRecord =
         {
             versionNo : VersionNumber
             lifecycle : EntryLifecycle
+            pin : PinState
             sample : Sample
         }
 
@@ -35,11 +33,19 @@ module SampleStore =
 
     type SampleProxy with
 
-        static member private createInMemoryStore (initialSamples : Sample list) (versionsInUse : VersionsInUse) : SampleProxy =
+        static member private createInMemoryStore (initialSamples : Sample list) : SampleProxy =
 
             let initialVersions =
                 initialSamples
-                |> List.map (fun s -> s.id, [ { versionNo = VersionNumber.first; lifecycle = ActiveEntry; sample = s } ])
+                |> List.map (fun s ->
+                    let version =
+                        {
+                            versionNo = VersionNumber.first
+                            lifecycle = ActiveEntry
+                            pin = VersionUnpinned
+                            sample = s
+                        }
+                    s.id, [ version ])
                 |> Map.ofList
             let store = ref initialVersions
 
@@ -57,10 +63,6 @@ module SampleStore =
                     physics = s.structure
                     metadata = { name = s.name; description = s.description; substrate = s.substrate }
                 }
-
-            /// Whether the versioned reference is bound by a live experiment, through the seam.
-            let usageAt (id : SampleId) (versionNo : VersionNumber) : VersionUsage =
-                usageOf versionsInUse (SampleVersionRef { sampleId = id; version = versionNo })
 
             /// The LATEST version of each sample, filtered by the show-inactive scope.
             let currentSamples (scope : InactiveVisibility) : Sample list =
@@ -115,15 +117,18 @@ module SampleStore =
                         |> Result.bind (fun () ->
                             match store.Value |> Map.tryFind sample.id with
                             | None ->
-                                // A brand-new sample starts at version 1, active.
-                                store.Value <-
-                                    store.Value
-                                    |> Map.add sample.id [ { versionNo = VersionNumber.first; lifecycle = ActiveEntry; sample = sample } ]
+                                let first =
+                                    {
+                                        versionNo = VersionNumber.first
+                                        lifecycle = ActiveEntry
+                                        pin = VersionUnpinned
+                                        sample = sample
+                                    }
+                                store.Value <- store.Value |> Map.add sample.id [ first ]
                                 Ok ()
                             | Some versions ->
                                 let latest = latestOf versions
-                                let usage = usageAt sample.id latest.versionNo
-                                match decideVersioning (payloadOf latest.sample) (payloadOf sample) usage with
+                                match decideVersioning (payloadOf latest.sample) (payloadOf sample) latest.pin with
                                 | KeepCurrent -> Ok ()
                                 | MutateInPlace ->
                                     let updated =
@@ -132,7 +137,13 @@ module SampleStore =
                                     store.Value <- store.Value |> Map.add sample.id updated
                                     Ok ()
                                 | MintNextVersion ->
-                                    let minted = { versionNo = latest.versionNo.next; lifecycle = ActiveEntry; sample = sample }
+                                    let minted =
+                                        {
+                                            versionNo = latest.versionNo.next
+                                            lifecycle = ActiveEntry
+                                            pin = VersionUnpinned
+                                            sample = sample
+                                        }
                                     store.Value <- store.Value |> Map.add sample.id (versions @ [ minted ])
                                     Ok ())
 
@@ -144,26 +155,42 @@ module SampleStore =
                 // the UI's "Supersede" intent binds separately from the reversible "Mark inactive".
                 supersedeSample = fun id -> setLatestLifecycle id InactiveEntry
 
+                pinSampleVersion =
+                    fun version ->
+                        match store.Value |> Map.tryFind version.sampleId with
+                        | Some versions when versions |> List.exists (fun v -> v.versionNo = version.version) ->
+                            let updated =
+                                versions
+                                |> List.map (fun v ->
+                                    if v.versionNo = version.version then
+                                        {
+                                            v with pin = VersionPinned
+                                        }
+                                    else v)
+                            store.Value <- store.Value |> Map.add version.sampleId updated
+                            Ok ()
+                        | _ -> Error (UnknownSampleIdErr $"unknown sample version '%s{string version.sampleId.value}' v%d{version.version.value}")
+
                 removeSample =
                     fun id ->
                         match store.Value |> Map.tryFind id with
                         | Some versions ->
-                            let usedVersions =
+                            let pinnedVersions =
                                 versions
-                                |> List.filter (fun v -> usageAt id v.versionNo = VersionUsed)
+                                |> List.filter (fun v -> v.pin = VersionPinned)
                                 |> List.map (fun v -> v.versionNo.value)
                                 |> List.sort
-                            match usedVersions with
+                            match pinnedVersions with
                             | [] ->
                                 store.Value <- store.Value |> Map.remove id
                                 Ok ()
                             | _ ->
-                                let versionList = usedVersions |> List.map (fun n -> $"v%d{n}") |> String.concat ", "
-                                Error (SampleVersionInUseErr $"sample '%s{(latestOf versions).sample.name.value}' ('%s{string id.value}') has %d{List.length usedVersions} version(s) bound by a live experiment: %s{versionList}")
+                                let versionList = pinnedVersions |> List.map (fun n -> $"v%d{n}") |> String.concat ", "
+                                Error (SampleVersionPinnedErr $"sample '%s{(latestOf versions).sample.name.value}' ('%s{string id.value}') has %d{List.length pinnedVersions} version(s) pinned: %s{versionList}")
                         | None -> Error (unknown id)
             }
 
         /// Empty sample store using the shared versioning rule (spec 0038 step 042; spec 0050 §3.4).
-        /// The injected usage lookup blocks removal of samples with versions bound by experiments.
-        static member createInMemory (versionsInUse : VersionsInUse) : SampleProxy =
-            SampleProxy.createInMemoryStore [] versionsInUse
+        /// Pinned versions block removal (spec 0050 S2.2).
+        static member createInMemory () : SampleProxy =
+            SampleProxy.createInMemoryStore []

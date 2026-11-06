@@ -221,11 +221,8 @@ module MaterialLibrary =
         | DuplicateMaterialIdErr of reason : string
         | MaterialStillReferencedErr of reason : string
         | InvalidMaterialErr of reason : string
-        /// Spec 0038 Part H (step 021): removal is additionally hard-blocked when ANY version of
-        /// the material is currently bound by a live experiment (the injected `VersionsInUse`
-        /// seam). A used version can never be deleted; the case names the offending versions so
-        /// the refusal is actionable in a log / status line.
-        | MaterialVersionInUseErr of reason : string
+        /// Removal is refused while any version is pinned (spec 0038 Part H; spec 0050 S2.2).
+        | MaterialVersionPinnedErr of reason : string
 
     /// The in-memory, additive material library (§D.8). Persistence of an entry is the
     /// JSON `materialEntry` `$def` (§A.7); a shareable library FILE format is Part I §I.8.
@@ -294,14 +291,8 @@ module MaterialLibrary =
                 dispersion = AnyDispersion
             }
 
-    /// A monotonically increasing version number of a library entry (spec 0038 Part H, step 020).
-    /// A single-case `int` DU — no naked int stands in for a version. `first` is the version every
-    /// entry starts at; `.next` mints the successor the store freezes onto when a USED version's
-    /// physics changes; `.value` is the wire/disk integer, reached only at the IO boundary. Moved
-    /// here from `Lifecycle.fs` at step 021 because the versioned `MaterialProxy` surface below
-    /// references it (through `MaterialVersionId`), and the record is re-typed IN PLACE in this
-    /// file, which compiles before `Lifecycle.fs`; `Lifecycle.fs` reuses it through its existing
-    /// `open …MaterialLibrary`.
+    /// Monotonically increasing library version: entries start at first and pinned physics edits
+    /// mint next (spec 0038 Part H; spec 0050 S2.2). The wire/disk integer is value.
     type VersionNumber =
         | VersionNumber of int
 
@@ -326,10 +317,16 @@ module MaterialLibrary =
             version : VersionNumber
         }
 
-        /// Pins version one of a material, regardless of its latest stored version
+        /// References version one of a material, regardless of its latest stored version or pin
         /// (spec 0038 step 022; spec 0050 §3.3).
         static member firstOf (materialId : MaterialId) : MaterialVersionId =
             { materialId = materialId; version = VersionNumber.first }
+
+    type MaterialError with
+
+        /// Reports an unresolved material version (spec 0050 S2.2).
+        static member unknownMaterialVersion (version : MaterialVersionId) : MaterialError =
+            UnknownMaterialIdErr $"unknown material version '%s{string version.materialId.value}' v%d{version.version.value}"
 
     /// Whether a store listing shows only the LIVE (latest-active) entries or also the retired
     /// ones (spec 0038 Part H, step 021): a named two-case DU, never a naked bool. `ActiveOnly` —
@@ -356,12 +353,13 @@ module MaterialLibrary =
     /// - `resolveVersion mvid` — the EXACT version's entry, IGNORING lifecycle (reference
     ///   resolution: an experiment binding a superseded/inactive version still resolves it);
     /// - `saveMaterial entry` — applies the step-20 shared `decideVersioning` rule against the
-    ///   injected `VersionsInUse` (a new material inserts version 1; an existing one mutates in
+    ///   latest version's pin (a new material inserts version 1; an existing one mutates in
     ///   place, mints the next version, or is a no-op);
     /// - `markMaterialInactive` / `markMaterialActive` — retire / revive the latest version;
     /// - `supersedeMaterial` — retire the latest version (a superseded version behaves as inactive);
+    /// - `pinMaterialVersion` — pins one version permanently (spec 0050 S2.2);
     /// - `removeMaterial id` — keeps the `MaterialStillReferencedErr` hard-block AND additionally
-    ///   refuses any material carrying a used version (`MaterialVersionInUseErr`).
+    ///   refuses any material carrying a pinned version (`MaterialVersionPinnedErr`).
     ///
     /// The real, stateful in-memory store behind this surface is `MaterialProxy.createInMemory`
     /// (a type augmentation in `MaterialStore.fs`, after `Lifecycle.fs`: it needs both the shared
@@ -377,6 +375,7 @@ module MaterialLibrary =
             markMaterialInactive : MaterialId -> Result<unit, MaterialError>
             markMaterialActive : MaterialId -> Result<unit, MaterialError>
             supersedeMaterial : MaterialId -> Result<unit, MaterialError>
+            pinMaterialVersion : MaterialVersionId -> Result<unit, MaterialError>
             removeMaterial : MaterialId -> Result<unit, MaterialError>
         }
 

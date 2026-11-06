@@ -7,7 +7,6 @@ open Avalonia.FuncUI
 open Xunit
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
@@ -24,8 +23,8 @@ module InverseConstructorTests =
     // ---- BuiltinCatalogue store doubles (the App composition order) --------------------------------
 
     let private freshStores () : MaterialProxy * SampleProxy * CategoryProxy =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, samples, categories
 

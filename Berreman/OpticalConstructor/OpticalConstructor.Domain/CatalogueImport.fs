@@ -2,7 +2,6 @@ namespace OpticalConstructor.Domain
 
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -78,8 +77,8 @@ module CatalogueImport =
         /// Builds a CatalogueImportProxy over empty in-memory stores, mapping refusals to ImportRejectedErr (spec 0050 §3.4).
         /// Returns InMemoryCatalogueStores with live reference lookups and no database or file IO.
         static member createInMemory () : InMemoryCatalogueStores =
-            let samples = SampleProxy.createInMemory VersionsInUse.empty
-            let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+            let samples = SampleProxy.createInMemory ()
+            let materials = MaterialProxy.createInMemory (samplesReferencing samples)
             let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
             let libraryEntries = Library.createInMemory ()
 
@@ -88,10 +87,10 @@ module CatalogueImport =
                 | UnknownCategoryIdErr r | DuplicateCategoryIdErr r | CategoryStillReferencedErr r | BuiltInNotRemovableErr r | InvalidCategoryErr r -> r
             let materialReason (e : MaterialError) : string =
                 match e with
-                | UnknownMaterialIdErr r | DuplicateMaterialIdErr r | MaterialStillReferencedErr r | InvalidMaterialErr r | MaterialVersionInUseErr r -> r
+                | UnknownMaterialIdErr r | DuplicateMaterialIdErr r | MaterialStillReferencedErr r | InvalidMaterialErr r | MaterialVersionPinnedErr r -> r
             let sampleReason (e : SampleError) : string =
                 match e with
-                | UnknownSampleIdErr r | DuplicateSampleIdErr r | InvalidSampleErr r | SampleVersionInUseErr r -> r
+                | UnknownSampleIdErr r | DuplicateSampleIdErr r | InvalidSampleErr r | SampleVersionPinnedErr r -> r
             let libraryReason (e : LibraryError) : string =
                 match e with
                 | UnknownEntryIdErr r | NoEntriesForKindErr r | LibraryUnavailableErr r -> r

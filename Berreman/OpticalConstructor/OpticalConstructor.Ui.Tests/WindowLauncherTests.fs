@@ -196,11 +196,10 @@ module WindowLauncherTests =
     /// BuiltinCatalogue store doubles preserve app coupling for end-to-end defaults proofs.
     module private Stores =
         open OpticalConstructor.Domain.Library
-        open OpticalConstructor.Domain.Lifecycle
 
         let create () : MaterialLibrary.MaterialProxy * SampleProxy * MaterialLibrary.CategoryProxy =
-            let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-            let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+            let samples = BuiltinCatalogue.sampleStore ()
+            let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
             let categories = BuiltinCatalogue.categoryStore (MaterialLibrary.materialsReferencingCategory materials)
             materials, samples, categories
 

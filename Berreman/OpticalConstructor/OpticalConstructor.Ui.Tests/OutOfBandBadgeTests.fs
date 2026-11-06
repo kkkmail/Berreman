@@ -19,7 +19,6 @@ open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Experiments
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -93,8 +92,8 @@ module OutOfBandBadgeTests =
         let entry = dispersiveMaterial matId
         let sample = dispersiveSample matId
         let entryId = (SampleItem sample).entryId
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         // Insert the dispersive material at version one so the sample layer's pinned reference resolves.
         match materials.saveMaterial entry with
         | Ok () -> ()

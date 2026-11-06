@@ -211,11 +211,8 @@ let liveEntries (context : LibraryWindowContext) (scope : InactiveVisibility) : 
         | Error _ -> []
     samples @ (presets @ userSources |> List.distinctBy (fun entry -> entry.entryId))
 
-/// The stored versions of a SAMPLE, ascending (latest last), enumerated by probing the proxy's
-/// by-version `resolveVersion` from version 1 upward until it resolves nothing (spec 0038 step 023
-/// — the store exposes no list-versions field). In the live in-memory store this is a single
-/// version until step 25 (mints need a used version, and `VersionsInUse` is empty); a stub proxy
-/// returns a longer history. The `1000` cap is an unreachable runaway guard.
+/// Enumerates stored versions in ascending order by resolving each version until absent;
+/// stops at 1000 to bound a malformed proxy (spec 0038 step 023; spec 0050 S2.2).
 let selectedVersionsOf (samples : SampleProxy) (id : SampleId) : (VersionNumber * Sample) list =
     let rec loop (version : VersionNumber) (acc : (VersionNumber * Sample) list) : (VersionNumber * Sample) list =
         if version.value > 1000 then List.rev acc

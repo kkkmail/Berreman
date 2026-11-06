@@ -10,7 +10,6 @@ open Berreman.Dispersion
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.Units
@@ -132,14 +131,14 @@ module EmbeddedChartTests =
 
     /// BuiltinCatalogue.materialStore over an isolated BuiltinCatalogue.sampleStore preserves live reference checks.
     let private freshMaterialProxy () : MaterialProxy =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-        BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        BuiltinCatalogue.materialStore (samplesReferencing samples)
 
     // -- the Materials window (the step-013 view-panel host site) ----------------------------------
 
     let private freshStores () : MaterialProxy * CategoryProxy =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, categories
 

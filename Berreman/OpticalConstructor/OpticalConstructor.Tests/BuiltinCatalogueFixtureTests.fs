@@ -4,14 +4,13 @@ open Xunit
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 
 module BuiltinCatalogueFixtureTests =
 
     [<Fact>]
     let ``the fixture's store doubles hold the Built-in catalogue and are isolated per call`` () : unit =
-        let materials = BuiltinCatalogue.materialStore (fun _ -> []) VersionsInUse.empty
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
+        let samples = BuiltinCatalogue.sampleStore ()
         let categories = BuiltinCatalogue.categoryStore (fun _ -> [])
         let library = BuiltinCatalogue.library ()
 
@@ -53,7 +52,7 @@ module BuiltinCatalogueFixtureTests =
             Assert.Throws<System.Exception>(fun () -> BuiltinCatalogue.source nonSourceId |> ignore)
         Assert.Contains(nonSourceId.value, missingSource.Message)
 
-        let secondSamples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let secondSamples = BuiltinCatalogue.sampleStore ()
         let sampleId = SampleIds.glassFilm600Id
         let expectedSample = BuiltinCatalogue.sample sampleId
         Assert.Equal<Result<unit, SampleError>>(Ok (), samples.removeSample sampleId)

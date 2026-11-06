@@ -110,7 +110,7 @@
         <Compile Include="LibraryFacets.fs" />
         <!-- Spec 0038 Part H (step 020): the entry-lifecycle foundation — VersionNumber,
              the Material/Sample version ids, EntryLifecycle, the cross-store VersionRef,
-             the VersionsInUse seam, and the ONE pure version-creation decision rule
+             and the ONE pure version-creation decision rule
              (decideVersioning) the material/sample stores (steps 21/22) share. Pure and
              Avalonia-free; depends only on MaterialLibrary (MaterialId) and ElementId's
              Library (SampleId) above. -->
@@ -118,8 +118,7 @@
         <!-- Spec 0038 Part I (step 025): the Experiments domain — grown so an `Experiment` carries an
              ordered `ElementDescriptor` setup (kind + placement/orientation summary + versioned
              `VersionRef` binding, sample/source optional, detector included), a `DataFilePath` +
-             optional per-experiment attachment, and the `boundVersions` / `versionsInUseSeam` builders
-             the stores' `VersionsInUse` is wired over. Moved out of `ElementId.fs` to here because the
+             optional per-experiment attachment. Moved out of `ElementId.fs` to here because the
              descriptor binding reuses the step-020 `VersionRef` (`Lifecycle.fs`, above); nothing between
              `ElementId.fs` and here references `Experiments`, so the module name is unchanged. -->
         <Compile Include="Experiments.fs" />
@@ -137,7 +136,7 @@
         <!-- Spec 0038 Part H (step 022): the versioned in-memory SAMPLE store behind the registered
              SampleProxy write-seam (STORE_XDUO_0002). The SampleProxy record stays re-typed in place
              in ElementId.fs; its createInMemory augmentation lives HERE because it applies the shared
-             decideVersioning rule from Lifecycle.fs above and takes the VersionsInUse seam. Mirrors
+             decideVersioning rule from Lifecycle.fs above. Mirrors
              MaterialStore.fs. -->
         <Compile Include="SampleStore.fs" />
         <Compile Include="CatalogueImport.fs" />

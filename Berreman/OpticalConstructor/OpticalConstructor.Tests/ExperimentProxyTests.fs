@@ -5,17 +5,11 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary       // VersionNumber (spec 0038 Part H)
-open OpticalConstructor.Domain.Lifecycle             // VersionRef / VersionsInUse / SampleVersionRef
+open OpticalConstructor.Domain.Lifecycle             // VersionRef / SampleVersionRef
 open OpticalConstructor.Domain.Experiments
 
-/// Spec 0027 (028) / spec 0038 Part I (step 025) — pure domain tests for the Experiments module. The
-/// element-constrained variable set (`variablesFor`, DATA per kind), the T/R/both capture
-/// (`MeasurementMode`, defaulted from emission), the ranges, and the editable `ExperimentCollection`
-/// (choose → commit adds; re-commit updates in place; edit loads; remove deletes) are unchanged. Step 025
-/// adds: the grown `Experiment` carrying an ordered `ElementDescriptor` setup (kind + placement/orientation
-/// summary + versioned binding) with the varied element identified within the list — sample and source
-/// optional (E1/E2/E3), the detector part of the chain; the `DataFilePath` attachment; and the
-/// `boundVersions` / `versionsInUseSeam` builders wired into the versioned sample store's used-version rule.
+/// Experiment capture, collection editing and explicit pins on bound sample versions
+/// (spec 0027; spec 0038 Part I; spec 0050 S2.2).
 module ExperimentProxyTests =
 
     let private proxy = Experiments.createInMemoryExperiments ()
@@ -271,36 +265,38 @@ module ExperimentProxyTests =
         let exp = c2.experiments |> List.find (fun e -> e.id = id)
         Assert.Equal(Some path, exp.dataFileOpt)
 
-    // ============================ step 025: versionsInUse over the descriptors ============================
+    // ============================ spec 0050 S2.2: version bindings and explicit pins ============================
 
     [<Fact>]
-    let ``boundVersions collects the versioned bindings of the setup (samples yes, presets no)`` () =
-        let bound = boundVersions [ e1 ]
+    let ``versionRefs collects the versioned bindings of the setup (samples yes, presets no)`` () =
+        let bound = e1.versionRefs
         Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId), bound)
         // E2 has no sample, so it binds no version; a dark line binds nothing.
-        Assert.Empty(boundVersions [ e2 ])
-        Assert.Empty(boundVersions [ e3 ])
+        Assert.Empty(e2.versionRefs)
+        Assert.Empty(e3.versionRefs)
 
     [<Fact>]
-    let ``a bound version appears in versionsInUse and BLOCKS removal of that sample`` () =
-        let seam = versionsInUseSeam (fun () -> [ e1 ])
-        // The seam reports the bound version.
-        Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId), seam.versionsInUse ())
-        // A store over the real seam refuses to remove the sample whose version an experiment binds …
-        let bound = BuiltinCatalogue.sampleStore seam
+    let ``pinning an experiment's bound sample version BLOCKS removal of that sample`` () =
+        let bound = BuiltinCatalogue.sampleStore ()
+        for reference in e1.versionRefs do
+            match reference with
+            | SampleVersionRef version -> Assert.Equal<Result<unit, SampleError>>(Ok (), bound.pinSampleVersion version)
+            | MaterialVersionRef _ -> ()
         match bound.removeSample SampleIds.glassPlate1mmId with
-        | Error (SampleVersionInUseErr _) -> ()
-        | other -> Assert.Fail($"expected SampleVersionInUseErr, got %A{other}")
-        // … while a store over the empty seam removes it freely (the rule is UNLOCKED only by the binding).
-        let free = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        | Error (SampleVersionPinnedErr _) -> ()
+        | other -> Assert.Fail($"expected SampleVersionPinnedErr, got %A{other}")
+        let free = BuiltinCatalogue.sampleStore ()
         match free.removeSample SampleIds.glassPlate1mmId with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok, got %A{other}")
 
     [<Fact>]
-    let ``editing a USED sample version mints the next version instead of rewriting it`` () =
-        let seam = versionsInUseSeam (fun () -> [ e1 ])
-        let store = BuiltinCatalogue.sampleStore seam
+    let ``editing a PINNED sample version mints the next version instead of rewriting it`` () =
+        let store = BuiltinCatalogue.sampleStore ()
+        for reference in e1.versionRefs do
+            match reference with
+            | SampleVersionRef version -> Assert.Equal<Result<unit, SampleError>>(Ok (), store.pinSampleVersion version)
+            | MaterialVersionRef _ -> ()
         // Change the bound sample's physics (1 mm plate → the 2 mm plate's structure) under the SAME id.
         let edited =
             {
@@ -340,8 +336,7 @@ module ExperimentProxyTests =
         match exp.detectorDescriptorOpt with
         | Some d -> Assert.Equal(BoundByEntryId PresetIds.detectorIntensity, d.binding)
         | None -> Assert.Fail "the committed chain lost its detector"
-        // the sample binding rides along BY VERSION, so it counts as in-use
-        Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId), boundVersions c.experiments)
+        Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId), exp.versionRefs)
 
     // ============================ the mock proxy seam ============================
 

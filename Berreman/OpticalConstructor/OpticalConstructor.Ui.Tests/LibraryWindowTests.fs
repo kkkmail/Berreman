@@ -16,7 +16,6 @@ open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -155,8 +154,8 @@ module LibraryWindowTests =
     /// BuiltinCatalogue.sampleStore precedes materialStore so removal consults LIVE samples
     /// (spec 0050 S1.7).
     let private freshStores () : LibraryProxy * SampleProxy * MaterialProxy =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         BuiltinCatalogue.library (), samples, materials
 
     /// A recording stub context (the functional-proxy seam): the launcher and the close
@@ -1537,6 +1536,7 @@ module LibraryWindowTests =
                 markSampleInactive = fun _ -> Ok ()
                 markSampleActive = fun _ -> Ok ()
                 supersedeSample = fun _ -> Ok ()
+                pinSampleVersion = fun _ -> Ok ()
                 removeSample = fun _ -> Ok ()
             }
         id, v1, v2, proxy
@@ -1626,7 +1626,7 @@ module LibraryWindowTests =
     let ``the view panel enumerates sample versions and an older version is view-only while Edit targets the latest`` () =
         let id, _, v2, samples = twoVersionSamples ()
         let library = BuiltinCatalogue.library ()
-        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         let _, context = stubContext library samples materials
         let entryId = id.toElementValueId
         let selected = LW.initLibraryWindow context Browse |> LW.updateLibraryWindow (LW.SelectLibraryEntry entryId)
@@ -1700,7 +1700,7 @@ module LibraryWindowTests =
         HeadlessSession.run (fun () ->
             let id, _, _, samples = twoVersionSamples ()
             let library = BuiltinCatalogue.library ()
-            let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+            let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
             let _, context = stubContext library samples materials
             let entryId = id.toElementValueId
             // Mount the REAL MVU loop (the window minus its launcher composition — the gated-tree

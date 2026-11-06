@@ -294,7 +294,7 @@ module ConstructorUiIdOfDomain =
             | UnknownMaterialIdErr reason
             | DuplicateMaterialIdErr reason
             | MaterialStillReferencedErr reason
-            | MaterialVersionInUseErr reason
+            | MaterialVersionPinnedErr reason
             | InvalidMaterialErr reason -> ControlCaption reason
 
     type CategoryError with
@@ -354,7 +354,7 @@ module ConstructorUiIdOfDomain =
             match this with
             | UnknownSampleIdErr reason
             | DuplicateSampleIdErr reason
-            | SampleVersionInUseErr reason
+            | SampleVersionPinnedErr reason
             | InvalidSampleErr reason -> ControlCaption reason
 
     type OpticalConstructor.Domain.SampleStackEditor.SampleStackEditError with

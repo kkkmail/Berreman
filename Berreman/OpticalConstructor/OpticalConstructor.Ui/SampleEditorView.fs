@@ -495,8 +495,6 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
             | None -> m.materials |> List.tryHead |> Option.map (fun e -> e.id)
         match materialIdOpt with
         | Some id ->
-            // Pin the chosen material's current version (spec 0038 step 022 — `firstOf`: every
-            // material lives at v1 until step 25's real `VersionsInUse` can drive a mint).
             applyStack (AddLayer { materialId = MaterialVersionId.firstOf id; thickness = defaultLayerThickness; orientation = PrimaryAxes }) m
         | None -> { m with status = Some (ControlCaption "no materials are available to add a layer from") }
     | SelectByMaterialClicked ->
@@ -585,11 +583,8 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
         | None -> { m with status = Some (ControlCaption "choose a material to set as the lower half-space") }
     | ClearLowerClicked -> applyStack (SampleStackMsg.SetLower None) m
     | SaveClicked ->
-        // Spec 0038 step 022: Save routes through the ONE versioned `saveSample` (the mirror of
-        // the material editor's collapse — `addSample`/`updateSample` are gone): a NewUnsaved id
-        // inserts version 1, a Persisted id runs the shared `decideVersioning` rule (mutate in
-        // place while unused, mint the next version when a bound version's structure changes). The
-        // upfront-minted id (`SampleEditorIntent`) still drives which case the store takes.
+        // The store mints on pinned structure edits and mutates unpinned versions
+        // (spec 0038 step 022; spec 0050 S2.2).
         let saved = m.context.samples.saveSample (toSample m.target.sampleId m)
         match saved with
         | Ok () ->

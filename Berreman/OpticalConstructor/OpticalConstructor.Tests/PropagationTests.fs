@@ -12,7 +12,6 @@ open OpticalProperties.Active
 open OpticalProperties.Dispersive
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle       // VersionsInUse.empty (spec 0038 step 022)
 open OpticalConstructor.Domain.Propagation
 
 /// Spec 0027 (024) Phase 3/4 — the pure MM/SV propagation pipeline. The headline proof is Malus' law:
@@ -131,7 +130,7 @@ module PropagationTests =
     /// `BuiltinCatalogue.materialStore` resolves each layer's pinned material version
     /// (spec 0038 steps 021–022; spec 0050 S1.7).
     let private standardProxy : MaterialLibrary.MaterialProxy =
-        BuiltinCatalogue.materialStore (fun _ -> []) VersionsInUse.empty
+        BuiltinCatalogue.materialStore (fun _ -> [])
 
     /// Resolve a sample against the standard material store, failing the test on a typed error (every
     /// sample used by these tests references known built-in ids).

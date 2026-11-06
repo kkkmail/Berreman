@@ -3,7 +3,6 @@ namespace OpticalConstructor.Tests
 open System
 open Xunit
 open OpticalConstructor.Domain.MaterialLibrary
-open OpticalConstructor.Domain.Lifecycle // VersionsInUse.empty (the injected in-use seam)
 
 /// Category writes preserve proxy identity and enforce duplicate, built-in and reference guards.
 /// BuiltinCatalogue.categoryStore exercises the live material-reference lookup alongside the stubs.
@@ -299,7 +298,7 @@ module CategoryProxyTests =
     let ``the real store blocks removeCategory on a user category a material references and leaves both stores unchanged`` () =
         // The composition-root wiring: a materials store, and a category store whose referencing
         // lookup is backed by it (`materialsReferencingCategory` — the acceptance's referenced block).
-        let materials = BuiltinCatalogue.materialStore (fun _ -> []) VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         match categories.addCategory (userCategory userCategoryId "Referenced category") with
         | Ok () -> ()
@@ -324,7 +323,7 @@ module CategoryProxyTests =
     [<Fact>]
     let ``the referencing lookup is live — removing the referencing material unblocks the category`` () =
         // The lookup consults the CURRENT materials store, not a snapshot taken at construction.
-        let materials = BuiltinCatalogue.materialStore (fun _ -> []) VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         match categories.addCategory (userCategory userCategoryId "Referenced then freed") with
         | Ok () -> ()

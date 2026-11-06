@@ -16,7 +16,6 @@ open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.SampleStackEditor
 open OpticalConstructor.Domain.WindowMode
@@ -168,8 +167,8 @@ module MaterialsWindowTests =
     /// BuiltinCatalogue.sampleStore, BuiltinCatalogue.materialStore and BuiltinCatalogue.categoryStore
     /// stay isolated per test; removal consults the live sample and material references.
     let private freshStores () : MaterialProxy * SampleProxy * CategoryProxy =
-        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, samples, categories
 
@@ -1144,8 +1143,8 @@ module MaterialsWindowTests =
             let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
             // The workbench staleness machinery is window-agnostic: the session handle closes
             // whichever Select-state window it points at.
-            let sceneSamples = BuiltinCatalogue.sampleStore VersionsInUse.empty
-            let sceneMaterials = BuiltinCatalogue.materialStore (samplesReferencing sceneSamples) VersionsInUse.empty
+            let sceneSamples = BuiltinCatalogue.sampleStore ()
+            let sceneMaterials = BuiltinCatalogue.materialStore (samplesReferencing sceneSamples)
             let sceneCategories = BuiltinCatalogue.categoryStore (materialsReferencingCategory sceneMaterials)
             let model0 =
                 Scene.initMainWith (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) sceneMaterials sceneSamples sceneCategories
@@ -1235,6 +1234,7 @@ module MaterialsWindowTests =
                 markMaterialInactive = fun _ -> Ok ()
                 markMaterialActive = fun _ -> Ok ()
                 supersedeMaterial = fun _ -> Ok ()
+                pinMaterialVersion = fun _ -> Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
         id, v1, v2, proxy
