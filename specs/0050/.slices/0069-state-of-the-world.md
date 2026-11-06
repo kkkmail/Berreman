@@ -4,10 +4,12 @@
 
 Slice 0069 implements STORE_XDUO_0001's SQLite MaterialProxy in spec 0050 S2.2.
 The adapter, typed storage failures, consumer matches and SQLite contract suite
-are complete and were committed by the operator in `308fead`. Operator recovery
-verification passed all 15 unchanged gates; normal supervisor review, acceptance
-and checkpoint 68 remain outstanding. Follow `.manual/007-inherited-registry-recovery.md`.
-Product composition remains unchanged as required by this slice.
+are complete and were committed by the operator in `308fead`. The operator then
+committed the recovery records in `a3e6c47` and explicitly authorized this normal
+profile-1 resume. This worker reviewed the implementation against accepted 0068
+(`38c6d3c5d5c86cef040f069108b06062756ba96b`) and preserved it. Normal supervisor
+review, acceptance and checkpoint 68 remain outstanding under
+`.manual/007-inherited-registry-recovery.md`. Product composition is unchanged.
 
 ## What's working
 
@@ -16,6 +18,8 @@ Product composition remains unchanged as required by this slice.
 - Mapped database and decoder failures to MaterialStoreUnavailableErr.
 - Added all 24 SQLite material cases while preserving existing contract assertions.
 - Recorded the inherited MaterialProxy contract's implementation at step 69.
+- Reviewed the committed implementation against accepted 0068 and preserved the
+  repaired registries and existing recovery evidence on the authorized resume.
 
 ## Tests
 
@@ -34,10 +38,19 @@ from checkpoint 67's 811. Evidence is in `.artifacts/0069-operator-repair/`.
 Supplemental elevation against accepted 0068 (`38c6d3c`) checked all seven
 affected/dependent projects and reported zero new findings.
 
-These are fresh recovery measurements, not supervisor acceptance or a new
-checkpoint. Checkpoint 67 remains 811 and checkpoint 68 is absent. The selected
-35 UI cases must not become a whole-suite baseline. The supervisor still runs
-its normal review, gate and measured checkpoint cycle before advancing.
+These are the prior operator-recovery measurements, not new measurements from
+this worker resume, supervisor acceptance or a new checkpoint. This resume
+changes only the three worker handoff documents; no product or test change
+requires a development rerun. The IMPLEMENT_CONTRACT worker protocol assigns
+acceptance-gate execution to the supervisor after worker exit.
+
+Read-only inspection confirmed checkpoint 67 remains 811, with its full-suite
+constructor case evidence, and checkpoint 68 and its evidence are absent. The
+selected 35 UI cases must not become a whole-suite baseline. The supervisor must
+run normal review, all 15 unchanged gates and the measured checkpoint cycle
+before advancing, persisting full-suite case evidence for checkpoint 68. The
+YAML below retains the previously measured recovery counts; it is not a new
+checkpoint or permission to bypass that cycle.
 
 ```yaml
 gates:
@@ -79,12 +92,18 @@ The existing implemented MaterialProxy row and every earlier registry entry
 are preserved; the remaining inherited rows for 0071/0074/0095 are initialized.
 The ASG escalation event/watcher mismatch is repaired as well.
 
-Wait for the operator to commit the repair and explicitly authorize relaunch.
-Then resume 0069 normally with an operator note and `--executability-profile 1`,
-without `--accept-current-slice`, as `.manual/007` requires even though the
-implementation is already committed. Preserve it and review it against
-accepted 0068 (`38c6d3c`). Do not restore or repeat the implementation, alter
+The operator's commit and explicit restart authorization have arrived in this
+task. This worker resume uses the existing profile-1 receipt and has completed
+its implementation review without changing the committed product. Continue the
+supervisor's normal review/gate/checkpoint cycle, without
+`--accept-current-slice`. Do not restore or repeat the implementation, alter
 published contracts, waive gates or manufacture checkpoint 68.
+
+The current arc still records STORE_XDUO_0001 as implemented at step 69, with a
+null declaringStep; STORE_XDUO_0002, STORE_XDUO_0003 and STORE_XDUO_0008 remain
+inherited with no implementing step. All registry metadata and origin
+registries are preserved. This worker made no receipt, supervisor-state,
+compiled-artifact, expected-red, checkpoint or case-evidence edits.
 
 ## Gotchas
 
@@ -97,7 +116,8 @@ published contracts, waive gates or manufacture checkpoint 68.
 - The first local build encountered two pre-existing SYSLIB0051 warnings in
   vendored MathNetNumerics/Numerics/Exceptions.cs. The final build had zero
   warnings. No vendored source was changed.
-- The supervisor's pre-existing .manifest.state.json edit was left untouched.
+- The supervisor's pre-existing .executability-json, .manifest.state.json and
+  .supervisor-lock.diag edits were left untouched.
 - No gate configuration, analyzer baseline, version ring or manual note changed.
 - Source files and handoff documents use LF; all run artifacts are in the
   authoritative per-arc .artifacts folder.
@@ -107,3 +127,6 @@ published contracts, waive gates or manufacture checkpoint 68.
 - 2026-11-06: Implemented the SQLite material proxy and typed failure handling;
   added its 24 contract cases; the affected project built and 49 material cases
   passed locally.
+- 2026-11-06: Resumed after operator recovery commits and explicit authorization;
+  reviewed the existing implementation against accepted 0068, preserved product
+  and registries, and refreshed the handoff for normal supervisor acceptance.

@@ -1,5 +1,46 @@
 # Step 0069 implementation log
 
+## Authorized recovery resume — 2026-11-06
+
+- Read the fresh task, both worker prompts, the project prompt, slice 0069,
+  its gate snapshot, manual rulings 006/007 and the existing handoff.
+- Confirmed HEAD is the operator's recovery commit `a3e6c47`, following product
+  commit `308fead` and accepted 0068 `38c6d3c`. The implementation already exists.
+- At entry, `.executability-json`, `.manifest.state.json` and
+  `.supervisor-lock.diag` have supervisor-owned edits. Preserve them.
+- Before substantive recovery review: compare the committed adapter, test
+  fixture and consumer matches with accepted 0068 and the slice obligation;
+  inspect the recovery evidence and inherited lifecycle records without
+  rewriting them. No implementation replacement or repeat is planned.
+- The IMPLEMENT_CONTRACT role delegates acceptance execution to the supervisor.
+  Normal review, all 15 unchanged gates and measured checkpoint 68 remain
+  mandatory in that cycle. Do not author acceptance or checkpoint evidence here.
+- After review: all ten proxy fields are implemented; search reuses byQuery,
+  every operation uses one LibraryDatabase.run, successful writes use one
+  SaveChanges, and database/decoder failures retain their diagnostic description
+  in MaterialStoreUnavailableErr. Latest-kind identity, lifecycle filtering,
+  provenance preservation, shared versioning and sample-reference-before-pin
+  removal ordering agree with S22-SQLITE-MATERIALS and the slice.
+- Compared all eight changed product/test files against accepted 0068. The
+  shared contract facts are unchanged; the SQLite class inherits the 22 facts,
+  adds the two specified facts, and owns/disposes every opened database. The
+  existing BuiltinCatalogue complete-match repair is still necessary. No new
+  implementation defect or scope deviation was found.
+- Inspected the prior recovery summary, contract-validation record and accepted-
+  base elevation log: they record 15 passing gates, 835 constructor cases, 208
+  smoke cases, 35 selected UI cases, exact censuses and no failures/skips;
+  supplemental elevation covered seven projects with zero new findings. These
+  are prior recovery results, not new acceptance claims from this resume.
+- Read-only inspection confirms profile 1, the implemented MaterialProxy row,
+  the three remaining inherited rows, checkpoint 67 at 811 and its constructor
+  case evidence, with checkpoint 68 and its case evidence absent. All remain
+  untouched; the current product also has no diff from HEAD.
+- Updated only the plan, this log and the state-of-the-world to replace the stale
+  wait-for-authorization handoff with the authorized normal-resume handoff.
+  No tests or acceptance gates were run in this documentation-only worker round.
+  No implementation work remains; normal supervisor review, gate execution and
+  measured checkpoint publication are the next assigned protocol stages.
+
 ## Progress
 
 - Read repository instructions, worker protocols, project prompt, slice and gate
