@@ -2,6 +2,7 @@ namespace OpticalConstructor.Storage
 
 open System
 open System.Data
+open System.Linq
 open Microsoft.Data.Sqlite
 open Microsoft.EntityFrameworkCore
 open OpticalConstructor.Database
@@ -14,6 +15,7 @@ open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.Errors
 open Softellect.Sys
 open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.MaterialLibrary
 
 module LibraryDatabaseStore =
 
@@ -273,3 +275,141 @@ module LibraryDatabaseStore =
         interface IDisposable with
             member _.Dispose () : unit =
                 lock syncRoot (fun () -> connection.Dispose())
+
+    type LibraryDbContext with
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
+        member this.tryStoredVersion (id : LibraryEntryId) (version : VersionNumber) : Result<StoredEntryVersion option, StorageError> =
+            match this.EntryVersions.Find(id.value, version.value) with
+            | null -> Ok None
+            | row -> row.toStoredVersion |> Result.map Some
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
+        member this.tryLatestStored (id : LibraryEntryId) : Result<StoredEntryVersion option, StorageError> =
+            match this.LatestVersions.Find(id.value) with
+            | null -> Ok None
+            | latest ->
+                let version = VersionNumber latest.Version
+                this.tryStoredVersion id version
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
+        member this.storedVersionsOf (id : LibraryEntryId) : Result<StoredEntryVersion list, StorageError> =
+            query
+                {
+                    for row in this.EntryVersions do
+                    where (row.EntryId = id.value)
+                    sortBy row.Version
+                    select row
+                }
+            |> Seq.fold (fun versions row ->
+                versions |> Result.bind (fun versions -> row.toStoredVersion |> Result.map (fun stored -> stored :: versions))) (Ok [])
+            |> Result.map List.rev
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
+        member this.latestStoredOfKind (kind : LibraryEntryKind) : Result<StoredEntryVersion list, StorageError> =
+            query
+                {
+                    for latest in this.LatestVersions do
+                    join row in this.EntryVersions on (latest.EntryId = row.EntryId)
+                    where (row.Version = latest.Version && row.Kind = kind.value)
+                    select row
+                }
+            |> Seq.fold (fun versions row ->
+                versions |> Result.bind (fun versions -> row.toStoredVersion |> Result.map (fun stored -> stored :: versions))) (Ok [])
+            |> Result.map List.rev
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
+        member this.stageVersion (stored : StoredEntryVersion) : Result<unit, StorageError> =
+            match stored.versionRow, stored.envelope.facetRows, stored.envelope.sampleMaterialRows with
+            | Error error, _, _
+            | _, Error error, _
+            | _, _, Error error -> Error error
+            | Ok row, Ok facets, Ok materials ->
+                match this.EntryVersions.Find(row.EntryId, row.Version) with
+                | null -> this.EntryVersions.Add(row) |> ignore
+                | tracked -> this.Entry(tracked).CurrentValues.SetValues(row)
+
+                // Spec 0050 S2.2: retain shared keys so repeated staging never tracks two entities for one key.
+                this.EntryFacets.Where(fun facet -> facet.EntryId = row.EntryId && facet.Version = row.Version).Load()
+                let previousFacets =
+                    this.EntryFacets.Local
+                    |> Seq.filter (fun facet -> facet.EntryId = row.EntryId && facet.Version = row.Version)
+                    |> Seq.toList
+                for previous in previousFacets do
+                    if not (facets |> List.exists (fun facet -> facet.FacetKey = previous.FacetKey && facet.FacetValue = previous.FacetValue)) then
+                        this.EntryFacets.Remove(previous) |> ignore
+                for facet in facets do
+                    match this.EntryFacets.Find(facet.EntryId, facet.Version, facet.FacetKey, facet.FacetValue) with
+                    | null -> this.EntryFacets.Add(facet) |> ignore
+                    | tracked when this.Entry(tracked).State = EntityState.Deleted -> this.Entry(tracked).State <- EntityState.Unchanged
+                    | _ -> ()
+
+                this.SampleMaterials.Where(fun material -> material.SampleId = row.EntryId && material.SampleVersion = row.Version).Load()
+                let previousMaterials =
+                    this.SampleMaterials.Local
+                    |> Seq.filter (fun material -> material.SampleId = row.EntryId && material.SampleVersion = row.Version)
+                    |> Seq.toList
+                for previous in previousMaterials do
+                    if not (materials |> List.exists (fun material -> material.MaterialId = previous.MaterialId && material.MaterialVersion = previous.MaterialVersion)) then
+                        this.SampleMaterials.Remove(previous) |> ignore
+                for material in materials do
+                    match this.SampleMaterials.Find(material.SampleId, material.SampleVersion, material.MaterialId, material.MaterialVersion) with
+                    | null -> this.SampleMaterials.Add(material) |> ignore
+                    | tracked when this.Entry(tracked).State = EntityState.Deleted -> this.Entry(tracked).State <- EntityState.Unchanged
+                    | _ -> ()
+                Ok ()
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
+        member this.stageLatest (id : LibraryEntryId) (version : VersionNumber) : unit =
+            match this.LatestVersions.Find(id.value) with
+            | null -> this.LatestVersions.Add(LibraryLatestVersionRow(EntryId = id.value, Version = version.value)) |> ignore
+            | row -> row.Version <- version.value
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
+        member this.stageRemoval (id : LibraryEntryId) : unit =
+            match this.LatestVersions.Find(id.value) with
+            | null -> ()
+            | row -> this.LatestVersions.Remove(row) |> ignore
+            this.EntryVersions.Where(fun row -> row.EntryId = id.value).Load()
+            let versions = this.EntryVersions.Local |> Seq.filter (fun row -> row.EntryId = id.value) |> Seq.toList
+            this.EntryVersions.RemoveRange(versions)
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
+        member this.stageNewEntry (content : LibraryEntryContent) : Result<unit, StorageError> =
+            content.``sealed``
+            |> Result.bind (fun envelope ->
+                let stored : StoredEntryVersion =
+                    {
+                        envelope = envelope
+                        state =
+                            {
+                                lifecycle = ActiveEntry
+                                pin = VersionUnpinned
+                            }
+                    }
+                this.stageVersion stored
+                |> Result.map (fun () -> this.stageLatest content.id content.version))
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
+        member this.stageEdit (latest : StoredEntryVersion) (decision : VersionDecision) (content : LibraryEntryContent) : Result<unit, StorageError> =
+            match decision with
+            | KeepCurrent -> Ok ()
+            | MutateInPlace ->
+                let edited =
+                    {
+                        content with version = latest.envelope.content.version
+                    }
+                edited.``sealed``
+                |> Result.bind (fun envelope ->
+                    let stored =
+                        {
+                            envelope = envelope
+                            state = latest.state
+                        }
+                    this.stageVersion stored)
+            | MintNextVersion ->
+                let edited =
+                    {
+                        content with version = latest.envelope.content.version.next
+                    }
+                this.stageNewEntry edited

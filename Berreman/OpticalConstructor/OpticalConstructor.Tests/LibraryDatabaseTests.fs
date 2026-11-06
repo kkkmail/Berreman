@@ -8,6 +8,7 @@ open Microsoft.Data.Sqlite
 open Microsoft.EntityFrameworkCore
 open Softellect.Sys.Primitives
 open OpticalConstructor.Database
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -15,6 +16,7 @@ open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open Xunit
 
@@ -38,6 +40,31 @@ module LibraryDatabaseTests =
     let private builtinEnvelope (entryId : LibraryEntryId) : LibraryEntryEnvelope =
         (BuiltinCatalogue.catalogueData ()).envelopes
         |> List.find (fun envelope -> envelope.content.id = entryId)
+
+    let private expectStoredVersion (result : Result<StoredEntryVersion option, StorageError>) : StoredEntryVersion =
+        match expectDatabaseOk result with
+        | Some stored -> stored
+        | None -> failwith "the expected library version is missing"
+
+    let private activeStoredVersion (envelope : LibraryEntryEnvelope) : StoredEntryVersion =
+        {
+            envelope = envelope
+            state =
+                {
+                    lifecycle = ActiveEntry
+                    pin = VersionUnpinned
+                }
+        }
+
+    let private renamedSiliconVersion () : StoredEntryVersion =
+        let original = builtinEnvelope MaterialIds.silicon.toLibraryEntryId
+        let content =
+            {
+                original.content with
+                    version = original.content.version.next
+                    name = EntryName "Silicon version two"
+            }
+        content.``sealed`` |> expectDatabaseOk |> activeStoredVersion
 
     let private facetRowIdentity (row : LibraryEntryFacetRow) : (LibraryEntryId * VersionNumber) * AttributeKey * DiscreteKey =
         let entryId = LibraryEntryId row.EntryId
@@ -726,3 +753,267 @@ module LibraryDatabaseTests =
             Assert.Equal<FileSchemaVersion>(MaterialEntryKind.currentSchemaVersion, info.expected)
         | Error error -> Assert.Fail($"expected an unsupported schema version, got {error.describe}")
         | Ok _ -> Assert.Fail("an incompatible payload schema was accepted")
+
+    [<Fact>]
+    let ``the fixture library database holds every Built-in entry as its version 1 and latest`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let envelopes = (BuiltinCatalogue.catalogueData ()).envelopes
+        let missingId = LibraryEntryId (Guid.Parse "863ac71b-76f7-4192-9647-e9dbebd563e4")
+
+        database.run (fun context ->
+            Assert.Equal(envelopes.Length, context.EntryVersions |> Seq.length)
+            Assert.Equal(envelopes.Length, context.LatestVersions |> Seq.length)
+            for kind in LibraryEntryKind.all do
+                let expected = envelopes |> List.filter (fun envelope -> envelope.content.schema.kind = kind)
+                let actual = context.latestStoredOfKind kind |> expectDatabaseOk
+                Assert.Equal(expected.Length, actual.Length)
+                Assert.Equal<Set<LibraryEntryId>>(
+                    expected |> List.map (fun envelope -> envelope.content.id) |> Set.ofList,
+                    actual |> List.map (fun stored -> stored.envelope.content.id) |> Set.ofList)
+                for stored in actual do
+                    Assert.Equal<VersionNumber>(VersionNumber.first, stored.envelope.content.version)
+                    let envelope = expected |> List.find (fun envelope -> envelope.content.id = stored.envelope.content.id)
+                    Assert.Equal<StoredEntryVersion>(activeStoredVersion envelope, stored)
+                    Assert.Equal<StoredEntryVersion>(stored, context.tryLatestStored envelope.content.id |> expectStoredVersion)
+            Assert.Equal<StoredEntryVersion option>(None, context.tryLatestStored missingId |> expectDatabaseOk)
+            Assert.Equal<StoredEntryVersion option>(None, context.tryStoredVersion missingId VersionNumber.first |> expectDatabaseOk)
+            Assert.Empty(context.storedVersionsOf missingId |> expectDatabaseOk))
+        |> expectDatabaseOk
+
+        let siliconId = MaterialIds.silicon.toLibraryEntryId
+        database.run (fun context ->
+            let row = context.EntryVersions |> Seq.find (fun row -> row.EntryId = siliconId.value)
+            row.Name <- "Unsupported row name"
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        let assertReadRefused (result : Result<'Outcome, StorageError>) : unit =
+            match result with
+            | Error (LibraryRowInvalidErr reason) -> Assert.Contains("column Name", reason)
+            | Error error -> Assert.Fail(error.describe)
+            | Ok _ -> Assert.Fail("a read accepted an entry row that disagrees with its payload")
+
+        database.run (fun context ->
+            context.tryStoredVersion siliconId VersionNumber.first |> assertReadRefused
+            context.tryLatestStored siliconId |> assertReadRefused
+            context.storedVersionsOf siliconId |> assertReadRefused
+            context.latestStoredOfKind MaterialEntryKind |> assertReadRefused)
+        |> expectDatabaseOk
+
+    [<Fact>]
+    let ``staging a version overwrites its row and its relational rows, and the latest names the staged version`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let multilayer = builtinEnvelope SampleIds.multilayerQwId.toLibraryEntryId
+        let replacement = builtinEnvelope SampleIds.langasiteSiliconId.toLibraryEntryId
+        let content =
+            match multilayer.content.payload, replacement.content.payload with
+            | SamplePayload original, SamplePayload replacement ->
+                let payload =
+                    {
+                        original with structure = replacement.structure
+                    }
+                {
+                    multilayer.content with payload = SamplePayload payload
+                }
+            | _ -> failwith "the sample fixtures must have sample payloads"
+        let staged =
+            {
+                envelope = content.``sealed`` |> expectDatabaseOk
+                state =
+                    {
+                        lifecycle = InactiveEntry
+                        pin = VersionPinned
+                    }
+            }
+        let silicon = builtinEnvelope MaterialIds.silicon.toLibraryEntryId
+        let next = renamedSiliconVersion ()
+
+        database.run (fun context ->
+            context.stageVersion staged |> expectDatabaseOk
+            context.stageVersion (activeStoredVersion multilayer) |> expectDatabaseOk
+            context.stageVersion staged |> expectDatabaseOk
+            context.stageVersion next |> expectDatabaseOk
+            context.stageLatest silicon.content.id next.envelope.content.version)
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            Assert.Equal<StoredEntryVersion>(activeStoredVersion multilayer, context.tryStoredVersion content.id content.version |> expectStoredVersion)
+            Assert.Equal<StoredEntryVersion>(activeStoredVersion silicon, context.tryLatestStored silicon.content.id |> expectStoredVersion)
+            Assert.Equal<StoredEntryVersion option>(None, context.tryStoredVersion silicon.content.id next.envelope.content.version |> expectDatabaseOk))
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            context.stageVersion staged |> expectDatabaseOk
+            context.stageVersion (activeStoredVersion multilayer) |> expectDatabaseOk
+            context.stageVersion staged |> expectDatabaseOk
+            context.stageVersion next |> expectDatabaseOk
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            Assert.Equal<StoredEntryVersion>(staged, context.tryStoredVersion content.id content.version |> expectStoredVersion)
+            let actualMaterials =
+                context.SampleMaterials
+                |> Seq.filter (fun row -> row.SampleId = content.id.value && row.SampleVersion = content.version.value)
+                |> Seq.map sampleMaterialRowIdentity
+                |> Set.ofSeq
+            let expectedMaterials =
+                [ MaterialIds.langasite; MaterialIds.silicon ]
+                |> List.map (fun id -> (content.id, content.version), MaterialVersionId.firstOf id)
+                |> Set.ofList
+            Assert.Equal<Set<_>>(expectedMaterials, actualMaterials)
+            let actualFacets =
+                context.EntryFacets
+                |> Seq.filter (fun row -> row.EntryId = content.id.value && row.Version = content.version.value)
+                |> Seq.map facetRowIdentity
+                |> Set.ofSeq
+            let expectedFacets =
+                staged.envelope.facetRows |> expectDatabaseOk |> List.map facetRowIdentity |> Set.ofList
+            Assert.Equal<Set<_>>(expectedFacets, actualFacets)
+            Assert.Equal<StoredEntryVersion>(activeStoredVersion silicon, context.tryLatestStored silicon.content.id |> expectStoredVersion)
+            context.stageLatest silicon.content.id next.envelope.content.version
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            Assert.Equal<StoredEntryVersion>(next, context.tryLatestStored silicon.content.id |> expectStoredVersion)
+            Assert.Equal<StoredEntryVersion>(activeStoredVersion silicon, context.tryStoredVersion silicon.content.id VersionNumber.first |> expectStoredVersion)
+            let versions = context.storedVersionsOf silicon.content.id |> expectDatabaseOk
+            Assert.Equal<StoredEntryVersion list>([ activeStoredVersion silicon; next ], versions))
+        |> expectDatabaseOk
+
+    [<Fact>]
+    let ``stageEdit keeps, mutates or mints exactly as its decision says`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let silicon = builtinEnvelope MaterialIds.silicon.toLibraryEntryId
+        let latest =
+            {
+                envelope = silicon
+                state =
+                    {
+                        lifecycle = InactiveEntry
+                        pin = VersionPinned
+                    }
+            }
+        database.run (fun context ->
+            context.stageVersion latest |> expectDatabaseOk
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        let edited =
+            {
+                silicon.content with
+                    name = EntryName "Silicon metadata edit"
+                    version = VersionNumber 19
+            }
+        database.run (fun context ->
+            context.stageEdit latest KeepCurrent edited |> expectDatabaseOk
+            Assert.False(context.ChangeTracker.HasChanges())
+            Assert.Equal(0, context.SaveChanges()))
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            Assert.Equal<StoredEntryVersion>(latest, context.tryLatestStored silicon.content.id |> expectStoredVersion)
+            context.stageEdit latest MutateInPlace edited |> expectDatabaseOk
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        let mutated =
+            database.run (fun context -> context.tryLatestStored silicon.content.id)
+            |> expectDatabaseOk
+            |> expectStoredVersion
+        let expectedContent =
+            {
+                edited with version = silicon.content.version
+            }
+        Assert.Equal<LibraryEntryEnvelope>(expectedContent.``sealed`` |> expectDatabaseOk, mutated.envelope)
+        Assert.Equal<EntryVersionState>(latest.state, mutated.state)
+        Assert.Equal<EntryProvenance>(silicon.content.provenance, mutated.envelope.content.provenance)
+
+        let mintedContent =
+            {
+                edited with name = EntryName "Silicon minted edit"
+            }
+        let newId = LibraryEntryId (Guid.Parse "f1b1c516-77be-4d21-8d95-34d94569e1ce")
+        let newContent =
+            {
+                silicon.content with
+                    id = newId
+                    name = EntryName "Test-local material"
+                    provenance = UserProvenance
+            }
+        database.run (fun context ->
+            context.stageEdit mutated MintNextVersion mintedContent |> expectDatabaseOk
+            context.stageNewEntry newContent |> expectDatabaseOk
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            let minted = context.tryLatestStored silicon.content.id |> expectStoredVersion
+            let expectedMinted =
+                {
+                    mintedContent with version = silicon.content.version.next
+                }
+            Assert.Equal<StoredEntryVersion>(expectedMinted.``sealed`` |> expectDatabaseOk |> activeStoredVersion, minted)
+            Assert.Equal<StoredEntryVersion>(mutated, context.tryStoredVersion silicon.content.id VersionNumber.first |> expectStoredVersion)
+            Assert.Equal<StoredEntryVersion list>([ mutated; minted ], context.storedVersionsOf silicon.content.id |> expectDatabaseOk)
+            let created = context.tryLatestStored newId |> expectStoredVersion
+            Assert.Equal<VersionNumber>(VersionNumber.first, created.envelope.content.version)
+            Assert.Equal<StoredEntryVersion>(newContent.``sealed`` |> expectDatabaseOk |> activeStoredVersion, created))
+        |> expectDatabaseOk
+
+    [<Fact>]
+    let ``staging a removal deletes every version of the entry and its relational rows`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let siliconId = MaterialIds.silicon.toLibraryEntryId
+        let next = renamedSiliconVersion ()
+        database.run (fun context ->
+            context.stageVersion next |> expectDatabaseOk
+            context.stageLatest siliconId next.envelope.content.version
+            context.PulledSources.Add(
+                LibraryPulledSourceRow(
+                    EntryId = siliconId.value,
+                    Version = next.envelope.content.version.value,
+                    Source = "fixture",
+                    RecordPath = "silicon",
+                    SourceVersion = "1",
+                    Licence = "test",
+                    Citation = "test record")) |> ignore
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        database.run (fun context -> context.stageRemoval siliconId) |> expectDatabaseOk
+        database.run (fun context ->
+            Assert.Equal<StoredEntryVersion>(next, context.tryLatestStored siliconId |> expectStoredVersion)
+            Assert.NotEmpty(context.EntryFacets |> Seq.filter (fun row -> row.EntryId = siliconId.value))
+            Assert.Single<LibraryPulledSourceRow>(context.PulledSources) |> ignore
+            context.stageRemoval siliconId
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            Assert.Equal<StoredEntryVersion option>(None, context.tryLatestStored siliconId |> expectDatabaseOk)
+            Assert.Empty(context.storedVersionsOf siliconId |> expectDatabaseOk)
+            Assert.Empty(context.EntryVersions |> Seq.filter (fun row -> row.EntryId = siliconId.value))
+            Assert.Empty(context.LatestVersions |> Seq.filter (fun row -> row.EntryId = siliconId.value))
+            Assert.Empty(context.EntryFacets |> Seq.filter (fun row -> row.EntryId = siliconId.value))
+            Assert.Empty(context.PulledSources |> Seq.filter (fun row -> row.EntryId = siliconId.value))
+            for envelope in (BuiltinCatalogue.catalogueData ()).envelopes do
+                if envelope.content.id <> siliconId then
+                    Assert.Equal<StoredEntryVersion>(activeStoredVersion envelope, context.tryLatestStored envelope.content.id |> expectStoredVersion)
+            context.stageRemoval siliconId
+            Assert.Equal(0, context.SaveChanges()))
+        |> expectDatabaseOk
+
+        let sampleId = SampleIds.multilayerQwId.toLibraryEntryId
+        database.run (fun context ->
+            Assert.NotEmpty(context.SampleMaterials |> Seq.filter (fun row -> row.SampleId = sampleId.value))
+            context.stageRemoval sampleId
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            Assert.Empty(context.SampleMaterials |> Seq.filter (fun row -> row.SampleId = sampleId.value))
+            Assert.Empty(context.EntryFacets |> Seq.filter (fun row -> row.EntryId = sampleId.value))
+            Assert.Equal<StoredEntryVersion option>(None, context.tryLatestStored sampleId |> expectDatabaseOk))
+        |> expectDatabaseOk

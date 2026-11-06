@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Tests
 
 open System
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
@@ -10,7 +11,9 @@ open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.LibraryDatabaseStore
 
 module BuiltinCatalogue =
 
@@ -21,6 +24,37 @@ module BuiltinCatalogue =
 
     /// Returns the shipped catalogue, loading once on first use and failing with the read error's description.
     let catalogueData () : CatalogueData = loadedCatalogue.Force()
+
+    /// Returns a disposable in-memory database holding every Built-in version and latest (spec 0050 S2.2).
+    let freshLibraryDatabase () : LibraryDatabase =
+        let catalogue = catalogueData ()
+        let connectionString = ConnectionString "Data Source=:memory:"
+        let database =
+            LibraryDatabase.openOrCreate connectionString
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let staged =
+            database.run (fun context ->
+                catalogue.envelopes
+                |> List.fold (fun result envelope ->
+                    result |> Result.bind (fun () ->
+                        let stored : StoredEntryVersion =
+                            {
+                                envelope = envelope
+                                state =
+                                    {
+                                        lifecycle = ActiveEntry
+                                        pin = VersionUnpinned
+                                    }
+                            }
+                        context.stageVersion stored
+                        |> Result.map (fun () -> context.stageLatest envelope.content.id envelope.content.version))) (Ok ())
+                |> Result.map (fun () -> context.SaveChanges() |> ignore))
+            |> Result.bind id
+        match staged with
+        | Ok () -> database
+        | Error error ->
+            (database :> IDisposable).Dispose()
+            failwith error.describe
 
     /// Returns independent stores filled with the shipped catalogue, failing with the import error's description.
     let freshStores () : InMemoryCatalogueStores =
