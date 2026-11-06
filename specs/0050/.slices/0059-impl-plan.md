@@ -1,50 +1,39 @@
 # Step 0059 implementation plan
 
-Retire STORE_XDUO_0007 exactly as specified by slice 0059 and immutable oracle
-S21-RETIRE-EF-PROOF. Remove the five C# proof files and the empty Migrations
-directory, its sole F# test consumer and JSON fixture. Prune only the associated
-test compile/content/package/project references and their comments. Remove the
-obsolete Database project introduction while preserving its properties, NU1903
-comment and SQLite package reference.
+## Authorized relaunch, 2026-11-06
 
-In AppConfig.fs, remove ConfigKey.databaseProvider and
-ConfigKey.mssqlConnectionString with their documentation, remove the storage
-proof clause from the module documentation, and document the retained SQLite
-connection key as the library database setting. Leave other keys, defaults,
-comments and appsettings.json unchanged. No replacement model or tests belong
-to this retirement slice.
+Preserve the retirement committed in `a6fb67f`. The operator committed the
+recovery in `035dc0b` and explicitly authorized this normal profile-1 relaunch.
+Read `.manual/006-step-0059-case-count-accounting.md` and review the existing
+product change against accepted slice 0058,
+`a402443293089bb84b224b3028285cd2bdfa70d0`, and immutable obligation
+S21-RETIRE-EF-PROOF. Do not repeat the removal transform or restore its inputs.
 
-No target-repository Roslyn removal command was found in the available script,
-configuration or documentation inventory. Use the worker protocol's manual
-fallback: exact file deletions and narrow text patches, preserving LF endings.
-The initially modified supervisor manifest is outside the edit scope.
+Review the seven deleted files, the three narrowly edited files, the retained
+SQLite dependency and configuration key, and the four retired test methods.
+The original test source and recovered evidence account for one four-row
+theory and three facts. Checkpoint 57 remains 801; the authorized decrease is
+seven executed cases, producing the expected 794. Preserve the existing
+`.test-case-counts-json` evidence and every published contract and gate.
 
-The removed class declares four theory rows and three facts. Relative to the
-inherited 801 constructor tests, the intended result is 794, not a newly measured
-count. Under RETIRE_CONTRACT Invariant 6, the supervisor alone runs build,
-elevation, constructor-unit-tests, selected AppContextTests/LauncherTests and the
-nine s08 invariants, including the retirement acceptance search. Do not change
-gate definitions, test baselines or checkpoints. Write the implementation log
-and state-of-the-world at the exact supplied paths and report verification as
-pending.
+Update only the supplied `0059-impl-plan.md`, `0059-impl-log.md` and
+`0059-state-of-the-world.md` worker outputs. Preserve the historical recovery
+record, replace its stale wait-for-commit handoff with the authorized relaunch
+status, and include all mandatory state-of-the-world headings. No product or
+test edits are indicated by the review. No new implementation belongs to 0059.
 
-## Attempt 02: measured count conflict
+The normal review, gate and checkpoint cycle remains mandatory. Under the
+RETIRE_CONTRACT worker's Invariant 6, the supervisor performs that cycle after
+this worker exits; the worker neither runs gates nor writes checkpoints. The
+existing recovery measurements (794 constructor cases, 10 selected UI cases,
+all 13 unchanged gates passed) are historical evidence, not fresh results of
+this relaunch. Return the structured handoff with no worker-run gates and no
+claim of acceptance. The supervisor must record its measured 794 and complete
+full-suite case evidence at checkpoint index 58 before entering 0060, retaining
+checkpoint 57 unchanged and never using `--accept-current-slice`.
 
-Preserve the reviewed retirement and diagnose the supplied gate failure using
-the immutable S21-RETIRE-EF-PROOF obligation, checkpoint 57, the deleted test
-source, the repository inventory and the supervisor's existing results. Read
-ASG's count-credit implementation only to identify the discrepancy; ASG and STL
-remain read-only, and no gates are run by this worker.
-
-The constructor suite inventory has method granularity. Four deleted method
-identities represent seven executed cases: four theory rows and three facts.
-ASG credits one per method, so the 801 checkpoint becomes a floor of 797 while
-the required seven-case retirement produces 794. No product or test repair can
-satisfy both the exact-seven-fewer acceptance and that floor. Do not add tests,
-restore the proof, or alter the spec, oracle, inventory, gates or checkpoints.
-
-Update only this plan, the supplied impl-log and state-of-the-world with the
-evidence and the missing authority: the supervisor/operator must resolve the
-method-versus-case credit conflict in the gate infrastructure or its accepted
-inputs outside this slice. Report commit_ready false. Preserve the inherited
-baseline in the handoff YAML; it does not authorize a checkpoint change.
+Risks: a review based on HEAD alone would miss the already-committed product
+retirement; counting methods instead of rows recreates the old 797 floor; the
+10 selected UI cases must not become a whole-suite baseline. Leave the
+supervisor's initially dirty `.executability-json`, `.manifest.state.json`
+and `.supervisor-lock.diag` untouched. ASG and STL remain read-only.

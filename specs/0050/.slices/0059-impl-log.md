@@ -1,5 +1,76 @@
 # Step 0059 implementation log
 
+## Current round: authorized relaunch, 2026-11-06
+
+The operator committed the recovery in `035dc0b` and authorized the normal
+profile-1 relaunch. The prior wait-for-commit instruction and count-credit
+blocker are resolved by `.manual/006-step-0059-case-count-accounting.md`.
+The historical sections below preserve the earlier attempts and repair; their
+blocked/stopped status is not the status of this relaunch.
+
+### Progress
+
+- Read the task, both worker protocols, project prompt, AGENTS.md, naming
+  conventions, slice 0059, its 13-gate snapshot, recovery ruling and handoff.
+- Read the accepted-to-current product diff against
+  `a402443293089bb84b224b3028285cd2bdfa70d0` and S21-RETIRE-EF-PROOF. The diff
+  comprises exactly the ten authorized paths: seven deletions and three narrow
+  edits. It preserves the implemented retirement; no product repair is needed.
+- Read the accepted test source: the four declared retired identities comprise
+  four InlineData rows and three facts. The recovery's case-arithmetic record
+  agrees. Read checkpoint 57 (801) and its recovered full-suite case evidence;
+  do not recalculate or overwrite that checkpoint from the current suite.
+- Read the recovery verification summary: 13 gates passed at
+  2026-11-06 14:42:38-14:44:03 UTC, with 794 constructor and 10 selected UI
+  cases, zero failures/skips and exact censuses. These are supplied historical
+  results, not checks run by this worker.
+- Before handoff: refresh the plan and current-round log, then rewrite the
+  state-of-the-world with all required headings and the normal-cycle handoff.
+- After handoff update: all three supplied worker outputs now describe the
+  authorized relaunch. The state-of-the-world includes every required section,
+  retains the supplied recovery measurements with their provenance, and makes
+  the supervisor's fresh review/gates/checkpoint obligation explicit. Product
+  code, tests, contracts and checkpoint evidence were not changed.
+
+### Files modified
+
+Only the supplied plan, this log and state-of-the-world are worker-owned
+outputs for this relaunch. The product retirement remains in `a6fb67f`.
+
+### Testing state
+
+No gates or acceptance checks are run by this RETIRE_CONTRACT worker, per
+Invariant 6. The supervisor's normal review, all 13 unchanged gates and
+checkpoint cycle are pending after worker exit. No acceptance is claimed.
+The expected constructor result is 794; the supervisor must persist its fresh
+full-suite case evidence and measured checkpoint index 58 before 0060.
+Checkpoint 57 remains 801. The selected UI count is not a whole-suite baseline.
+
+### Artifacts
+
+Existing recovery evidence is under `.artifacts/0059-operator-repair/`, notably
+`verification-summary.json`, `case-arithmetic.json`, `gate-results.json` and
+`0059-elevation-accepted-base.log`. No new run artifacts are needed for this
+worker's read-only source review and handoff updates.
+
+### Gotchas
+
+- The normal cycle is already supervisor-owned; its lock records the authorized
+  `--executability-profile 1 --operator-reply` launch. Do not start a nested
+  runner, mutate its state or accept the slice from inside the worker.
+- Use accepted 0058 as the review base so committed retirement is visible.
+- Leave `.executability-json`, `.manifest.state.json` and
+  `.supervisor-lock.diag`, already dirty on entry, to the supervisor.
+- No repeated retirement, restored facts, padded tests, rewritten checkpoint,
+  edited contracts or gate waiver. No implementation deviation is needed.
+- Carry `.manual/006` forward to 0151 (preserve theory rows), 0152 (six deleted
+  cases) and 0260 (four deleted cases plus three facts); do not implement those
+  later slices here.
+
+## Historical recovery and attempts
+
+The following record predates the current authorized relaunch.
+
 ## Operator resolution, 2026-11-06
 
 The historical attempts below are superseded by the authorized recovery in
