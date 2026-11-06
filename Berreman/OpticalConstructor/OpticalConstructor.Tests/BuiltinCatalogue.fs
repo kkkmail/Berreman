@@ -121,6 +121,7 @@ module BuiltinCatalogue =
             | Error (UnknownSampleIdErr reason)
             | Error (DuplicateSampleIdErr reason)
             | Error (InvalidSampleErr reason)
+            | Error (SampleStoreUnavailableErr reason)
             | Error (SampleVersionPinnedErr reason) ->
                 failwith $"The Built-in sample '{entry.name.value}' ('{entry.id.value}') was refused: {reason}"
         store

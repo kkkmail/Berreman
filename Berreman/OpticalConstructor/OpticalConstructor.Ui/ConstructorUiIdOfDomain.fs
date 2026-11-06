@@ -357,6 +357,7 @@ module ConstructorUiIdOfDomain =
             | UnknownSampleIdErr reason
             | DuplicateSampleIdErr reason
             | SampleVersionPinnedErr reason
+            | SampleStoreUnavailableErr reason
             | InvalidSampleErr reason -> ControlCaption reason
 
     type OpticalConstructor.Domain.SampleStackEditor.SampleStackEditError with

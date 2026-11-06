@@ -7,6 +7,12 @@ open Berreman.Media
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.MaterialDatabaseStore
+open OpticalConstructor.Storage.SampleDatabaseStore
 
 module private SampleProxyTestData =
 
@@ -512,3 +518,174 @@ type SampleProxyTests () =
         match materials.tryGetMaterial MaterialIds.glass152 with
         | Ok (Some e) -> Assert.Equal(other.complexity, e.complexity)
         | other -> Assert.Fail($"expected the latest (v2) to carry the new physics, got %A{other}")
+
+type SampleProxySqliteTests () =
+    inherit SampleProxyContract ()
+
+    let databases = ResizeArray<LibraryDatabase>()
+
+    member private _.freshDatabase () : LibraryDatabase =
+        let database = BuiltinCatalogue.freshLibraryDatabase ()
+        databases.Add database
+        database
+
+    override this.freshProxy () : SampleProxy =
+        SampleProxy.createInDatabase (this.freshDatabase ())
+
+    [<Fact>]
+    member this.``a sample first saved through the database store is a user entry, and an edit keeps the stored provenance and keys the material versions of its own structure`` () : unit =
+        let database = this.freshDatabase ()
+        let proxy = SampleProxy.createInDatabase database
+        let latestOf (sampleId : SampleId) : StoredEntryVersion =
+            database.run (fun context -> context.tryLatestStored sampleId.toLibraryEntryId)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+            |> Option.defaultWith (fun () -> failwith $"Missing sample {sampleId.value}")
+
+        let storedVersion (version : SampleVersionId) : StoredEntryVersion =
+            database.run (fun context -> context.tryStoredVersion version.sampleId.toLibraryEntryId version.version)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+            |> Option.defaultWith (fun () -> failwith $"Missing sample {version.sampleId.value} v{version.version.value}")
+
+        let materialVersions (version : SampleVersionId) : Set<MaterialVersionId> =
+            database.run (fun context ->
+                query
+                    {
+                        for row in context.SampleMaterials do
+                        where (row.SampleId = version.sampleId.value && row.SampleVersion = version.version.value)
+                        select row
+                    }
+                |> Seq.map (fun row ->
+                    {
+                        materialId = MaterialId row.MaterialId
+                        version = VersionNumber row.MaterialVersion
+                    })
+                |> Set.ofSeq)
+            |> Result.defaultWith (fun error -> failwith error.describe)
+
+        let entry = minted ()
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.saveSample entry)
+        let firstUser = latestOf entry.id
+        Assert.Equal(VersionNumber.first, firstUser.envelope.content.version)
+        Assert.Equal(UserProvenance, firstUser.envelope.content.provenance)
+        Assert.Equal(VersionUnpinned, firstUser.state.pin)
+        Assert.Equal(ActiveEntry, firstUser.state.lifecycle)
+        Assert.Equal<Result<Sample, LibraryEntryError>>(Ok entry, firstUser.envelope.content.toSample)
+        let userVersion = SampleVersionId.firstOf entry.id
+        Assert.Equal<Set<MaterialVersionId>>(entry.structure.referencedMaterialVersions, materialVersions userVersion)
+
+        let multilayer = BuiltinCatalogue.sample SampleIds.multilayerQwId
+        let renamed =
+            {
+                multilayer with name = EntryName "Renamed multilayer"
+            }
+        let builtInProvenance = BuiltInProvenance CatalogueIds.builtInCatalogue
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.saveSample renamed)
+        let edited = latestOf multilayer.id
+        Assert.Equal(VersionNumber.first, edited.envelope.content.version)
+        Assert.Equal(renamed.name, edited.envelope.content.name)
+        Assert.Equal(builtInProvenance, edited.envelope.content.provenance)
+
+        let first = SampleVersionId.firstOf multilayer.id
+        let second : SampleVersionId =
+            {
+                first with version = first.version.next
+            }
+        let changed =
+            {
+                renamed with structure = (BuiltinCatalogue.sample SampleIds.langasiteSiliconId).structure
+            }
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.pinSampleVersion first)
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.saveSample changed)
+        let next = latestOf multilayer.id
+        Assert.Equal(second.version, next.envelope.content.version)
+        Assert.Equal(builtInProvenance, next.envelope.content.provenance)
+        Assert.Equal(VersionUnpinned, next.state.pin)
+        Assert.Equal(ActiveEntry, next.state.lifecycle)
+        Assert.Equal<Result<Sample, LibraryEntryError>>(Ok changed, next.envelope.content.toSample)
+        let frozen = storedVersion first
+        Assert.Equal(VersionPinned, frozen.state.pin)
+        Assert.Equal(builtInProvenance, frozen.envelope.content.provenance)
+        Assert.Equal<Result<Sample, LibraryEntryError>>(Ok renamed, frozen.envelope.content.toSample)
+        let originalMaterials =
+            [ MaterialVersionId.firstOf MaterialIds.glass152; MaterialVersionId.firstOf MaterialIds.vacuumMaterial ]
+            |> Set.ofList
+        let changedMaterials =
+            [ MaterialVersionId.firstOf MaterialIds.langasite; MaterialVersionId.firstOf MaterialIds.silicon ]
+            |> Set.ofList
+        Assert.Equal<Set<MaterialVersionId>>(originalMaterials, materialVersions first)
+        Assert.Equal<Set<MaterialVersionId>>(changedMaterials, materialVersions second)
+
+        let mutatedUser =
+            {
+                entry with
+                    structure = changed.structure
+                    substrate = changed.substrate
+            }
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.saveSample mutatedUser)
+        let mutated = latestOf entry.id
+        Assert.Equal(VersionNumber.first, mutated.envelope.content.version)
+        Assert.Equal(UserProvenance, mutated.envelope.content.provenance)
+        Assert.Equal<Set<MaterialVersionId>>(changedMaterials, materialVersions userVersion)
+        Assert.Equal<Result<unit, SampleError>>(Ok (), proxy.removeSample entry.id)
+        Assert.Empty(materialVersions userVersion)
+        Assert.Equal<Result<Sample option, SampleError>>(Ok None, proxy.resolveVersion userVersion)
+
+        let collisionGuid = Guid.NewGuid()
+        let materialId = MaterialId collisionGuid
+        let sampleId = SampleId collisionGuid
+        let material =
+            {
+                BuiltinCatalogue.material MaterialIds.glass152 with id = materialId
+            }
+        let collision =
+            {
+                plate with id = sampleId
+            }
+        let materials = MaterialProxy.createInDatabase database
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), materials.saveMaterial material)
+        match proxy.saveSample collision with
+        | Error (DuplicateSampleIdErr reason) ->
+            Assert.Contains(string sampleId.value, reason)
+            Assert.Contains(".material-json", reason)
+        | other -> Assert.Fail($"Expected a cross-kind duplicate refusal, got %A{other}")
+        let collisionVersion = SampleVersionId.firstOf sampleId
+        Assert.Equal<Result<Sample option, SampleError>>(Ok None, proxy.tryGetSample sampleId)
+        Assert.Equal<Result<Sample option, SampleError>>(Ok None, proxy.resolveVersion collisionVersion)
+        for verb in [ proxy.markSampleInactive; proxy.markSampleActive; proxy.supersedeSample; proxy.removeSample ] do
+            match verb sampleId with
+            | Error (UnknownSampleIdErr reason) -> Assert.Contains(string sampleId.value, reason)
+            | other -> Assert.Fail($"Expected a material id to be no sample, got %A{other}")
+        match proxy.pinSampleVersion collisionVersion with
+        | Error (UnknownSampleIdErr reason) -> Assert.Contains(string sampleId.value, reason)
+        | other -> Assert.Fail($"Expected a material version to be no sample version, got %A{other}")
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some material), materials.tryGetMaterial materialId)
+
+    [<Fact>]
+    member this.``a database failure below the samples store is SampleStoreUnavailableErr, never a throw`` () : unit =
+        let database = this.freshDatabase ()
+        let proxy = SampleProxy.createInDatabase database
+        (database :> IDisposable).Dispose()
+
+        let unavailable (result : Result<'Outcome, SampleError>) : unit =
+            match result with
+            | Error (SampleStoreUnavailableErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | other -> Assert.Fail($"Expected a typed database failure, got %A{other}")
+
+        let version = SampleVersionId.firstOf plate.id
+        proxy.listSamples ActiveOnly |> unavailable
+        proxy.searchSamples SampleQuery.empty |> unavailable
+        proxy.tryGetSample plate.id |> unavailable
+        proxy.resolveVersion version |> unavailable
+        proxy.saveSample plate |> unavailable
+        proxy.markSampleInactive plate.id |> unavailable
+        proxy.markSampleActive plate.id |> unavailable
+        proxy.supersedeSample plate.id |> unavailable
+        proxy.pinSampleVersion version |> unavailable
+        proxy.removeSample plate.id |> unavailable
+
+    interface IDisposable with
+        member _.Dispose () : unit =
+            for database in databases do
+                (database :> IDisposable).Dispose()

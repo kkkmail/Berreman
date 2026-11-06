@@ -627,16 +627,15 @@ module Library =
             | Some kind -> byText |> List.filter (fun s -> s.substrate = kind)
             | None -> byText
 
-    /// The samples write-seam error channel (errors as values; each case carries a diagnostic
-    /// `reason` — a bare error case is useless in a log): an unknown id on lookup / update /
-    /// remove, adding a sample under an id the library already holds, and rejecting a
-    /// malformed sample.
+    /// Sample-store failures carry diagnostic reasons for invalid samples, unknown or duplicate
+    /// identities, pinned-version removal refusals and unavailable storage.
     type SampleError =
         | UnknownSampleIdErr of reason : string
         | DuplicateSampleIdErr of reason : string
         | InvalidSampleErr of reason : string
         /// Removal is refused while any version is pinned (spec 0038 Part H; spec 0050 S2.2).
         | SampleVersionPinnedErr of reason : string
+        | SampleStoreUnavailableErr of reason : string
 
     type SampleError with
 
@@ -681,9 +680,8 @@ module Library =
     /// - `removeSample id` — deletes an unpinned sample and refuses any sample carrying a pinned
     ///   version (`SampleVersionPinnedErr`); an unknown id is `UnknownSampleIdErr`.
     ///
-    /// The real, stateful in-memory store behind this surface is `SampleProxy.createInMemory` (a
-    /// type augmentation in `SampleStore.fs`, after `Lifecycle.fs`: it needs the shared
-    /// `decideVersioning` rule).
+    /// Implementations are `SampleProxy.createInMemory` in Domain's `SampleStore.fs` and
+    /// `SampleProxy.createInDatabase` in Storage's `SampleDatabaseStore.fs` (spec 0050 S2.3).
     [<ReferenceEquality>]
     type SampleProxy =
         {

@@ -90,7 +90,7 @@ module CatalogueImport =
                 | UnknownMaterialIdErr r | DuplicateMaterialIdErr r | MaterialStillReferencedErr r | InvalidMaterialErr r | MaterialVersionPinnedErr r | MaterialStoreUnavailableErr r -> r
             let sampleReason (e : SampleError) : string =
                 match e with
-                | UnknownSampleIdErr r | DuplicateSampleIdErr r | InvalidSampleErr r | SampleVersionPinnedErr r -> r
+                | UnknownSampleIdErr r | DuplicateSampleIdErr r | InvalidSampleErr r | SampleVersionPinnedErr r | SampleStoreUnavailableErr r -> r
             let libraryReason (e : LibraryError) : string =
                 match e with
                 | UnknownEntryIdErr r | NoEntriesForKindErr r | LibraryUnavailableErr r -> r
