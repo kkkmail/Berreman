@@ -70,6 +70,7 @@
   "42": {},
   "43": {},
   "44": {},
+  "45": {},
   "5": {
     "constructor-unit-tests": [
       "OpticalConstructor.Tests.DispersionModelsTests.equal Forouhi-Bloomer and Brendel-Bormann models lower to equal axis data"
