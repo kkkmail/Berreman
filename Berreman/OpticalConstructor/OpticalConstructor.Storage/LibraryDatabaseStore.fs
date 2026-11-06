@@ -5,6 +5,9 @@ open System.Data
 open Microsoft.Data.Sqlite
 open Microsoft.EntityFrameworkCore
 open OpticalConstructor.Database
+open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Facets
+open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Storage.EntryFileJson
@@ -68,6 +71,68 @@ module LibraryDatabaseStore =
                     CatalogueId = catalogueId,
                     PayloadText = text.value,
                     ContentHash = this.envelope.contentHash.value))
+
+    type LibraryEntryEnvelope with
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (spec 0050 001 §C): an entry version's own discrete facet keys become relational rows")>]
+        member this.facetRows : Result<LibraryEntryFacetRow list, StorageError> =
+            let content = this.content
+
+            let discretePairs (attributes : AttributeDef<'Item> list) (entry : 'Item) : (AttributeKey * DiscreteKey) list =
+                attributes
+                |> List.collect (fun attribute ->
+                    match attribute.appliesTo entry with
+                    | InapplicableAttribute -> []
+                    | ApplicableAttribute ->
+                        attribute.extract entry
+                        |> List.choose (fun value ->
+                            match value with
+                            | DiscreteValue key -> Some (attribute.key, key)
+                            | NumericValue _ -> None))
+                |> List.distinct
+
+            let entryPairs (entry : LibraryEntry) : (AttributeKey * DiscreteKey) list =
+                discretePairs (LibraryFacets.libraryFacets [] []) entry
+
+            let pairs : Result<(AttributeKey * DiscreteKey) list, LibraryEntryError> =
+                match content.schema.kind with
+                | MaterialEntryKind -> content.toMaterialEntry |> Result.map (discretePairs (LibraryFacets.materialFacets []))
+                | SampleEntryKind -> content.toSample |> Result.map (SampleItem >> entryPairs)
+                | SourceEntryKind -> content.toSourcePreset |> Result.map (SourceItem >> entryPairs)
+                | PolarizerEntryKind -> content.toPolarizerPreset |> Result.map (PolarizerItem >> entryPairs)
+                | DetectorEntryKind -> content.toDetectorPreset |> Result.map (DetectorItem >> entryPairs)
+                | CategoryEntryKind -> Ok []
+
+            pairs
+            |> Result.mapError (fun error -> LibraryRowInvalidErr error.describe)
+            |> Result.map (List.map (fun (key, value) ->
+                LibraryEntryFacetRow(
+                    EntryId = content.id.value,
+                    Version = content.version.value,
+                    FacetKey = key.value,
+                    FacetValue = value.value)))
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (spec 0050 001 §C): a sample version's referenced material versions become relational keys")>]
+        member this.sampleMaterialRows : Result<LibrarySampleMaterialRow list, StorageError> =
+            let content = this.content
+            match content.schema.kind with
+            | SampleEntryKind ->
+                content.toSample
+                |> Result.mapError (fun error -> LibraryRowInvalidErr error.describe)
+                |> Result.map (fun sample ->
+                    sample.structure.referencedMaterialVersions
+                    |> Set.toList
+                    |> List.map (fun materialVersion ->
+                        LibrarySampleMaterialRow(
+                            SampleId = content.id.value,
+                            SampleVersion = content.version.value,
+                            MaterialId = materialVersion.materialId.value,
+                            MaterialVersion = materialVersion.version.value)))
+            | MaterialEntryKind
+            | SourceEntryKind
+            | PolarizerEntryKind
+            | DetectorEntryKind
+            | CategoryEntryKind -> Ok []
 
     type LibraryEntryVersionRow with
 

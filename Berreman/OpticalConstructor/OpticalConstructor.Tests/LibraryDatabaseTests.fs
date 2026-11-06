@@ -6,13 +6,16 @@ open System.Text
 open System.Text.Json.Nodes
 open Microsoft.Data.Sqlite
 open Microsoft.EntityFrameworkCore
+open Softellect.Sys.Primitives
 open OpticalConstructor.Database
+open OpticalConstructor.Domain.Facets
+open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.LibraryDatabaseStore
-open Softellect.Sys.Primitives
 open Xunit
 
 /// Pins the library's SQLite model, lifetime and schema rejection contract (spec 0050 S2.1).
@@ -31,6 +34,57 @@ module LibraryDatabaseTests =
         match result with
         | Ok outcome -> outcome
         | Error error -> failwith error.describe
+
+    let private builtinEnvelope (entryId : LibraryEntryId) : LibraryEntryEnvelope =
+        (BuiltinCatalogue.catalogueData ()).envelopes
+        |> List.find (fun envelope -> envelope.content.id = entryId)
+
+    let private facetRowIdentity (row : LibraryEntryFacetRow) : (LibraryEntryId * VersionNumber) * AttributeKey * DiscreteKey =
+        let entryId = LibraryEntryId row.EntryId
+        let version = VersionNumber row.Version
+        let key = AttributeKey row.FacetKey
+        let value = DiscreteKey row.FacetValue
+        (entryId, version), key, value
+
+    let private sampleMaterialRowIdentity (row : LibrarySampleMaterialRow) : (LibraryEntryId * VersionNumber) * MaterialVersionId =
+        let sampleId = LibraryEntryId row.SampleId
+        let sampleVersion = VersionNumber row.SampleVersion
+        let materialVersion : MaterialVersionId =
+            {
+                materialId = MaterialId row.MaterialId
+                version = VersionNumber row.MaterialVersion
+            }
+        (sampleId, sampleVersion), materialVersion
+
+    let private envelopeFacetPairs (envelope : LibraryEntryEnvelope) : Set<AttributeKey * DiscreteKey> =
+        let rows = envelope.facetRows |> expectDatabaseOk
+        let pairs =
+            rows
+            |> List.map (fun row ->
+                let entryVersion, key, value = facetRowIdentity row
+                Assert.Equal<LibraryEntryId * VersionNumber>((envelope.content.id, envelope.content.version), entryVersion)
+                key, value)
+            |> Set.ofList
+        Assert.Equal(rows.Length, pairs.Count)
+        pairs
+
+    let private envelopeMaterialVersions (envelope : LibraryEntryEnvelope) : Set<MaterialVersionId> =
+        let rows = envelope.sampleMaterialRows |> expectDatabaseOk
+        let versions =
+            rows
+            |> List.map (fun row ->
+                let sampleVersion, materialVersion = sampleMaterialRowIdentity row
+                Assert.Equal<LibraryEntryId * VersionNumber>((envelope.content.id, envelope.content.version), sampleVersion)
+                materialVersion)
+            |> Set.ofList
+        Assert.Equal(rows.Length, versions.Count)
+        versions
+
+    let private assertRowDecodeRefusal (decoded : Result<'Entry, LibraryEntryError>) (rows : Result<'Rows, StorageError>) : unit =
+        match decoded, rows with
+        | Error decodeError, Error (LibraryRowInvalidErr reason) -> Assert.Equal(decodeError.describe, reason)
+        | _, Error error -> Assert.Fail($"expected the decoder's row error, got {error.describe}")
+        | _, Ok _ -> Assert.Fail("invalid entry content produced database rows")
 
     type private LibraryDatabaseFixture () =
         let folder = FolderName (Path.Combine(AppContext.BaseDirectory, "LibraryDatabaseTests", Guid.NewGuid().ToString("N")))
@@ -358,10 +412,231 @@ module LibraryDatabaseTests =
         Assert.Equal<Set<LibraryEntryKind>>(Set.ofList LibraryEntryKind.all, kinds)
 
     [<Fact>]
+    let ``a material's facet rows hold its own discrete facets and key its category by id`` () : unit =
+        let silicon = builtinEnvelope MaterialIds.silicon.toLibraryEntryId
+        let siliconPairs = envelopeFacetPairs silicon
+        let expectedSiliconPairs =
+            [
+                materialCategoryKey, DiscreteKey (string CategoryIds.semiconductor.value)
+                materialAnisotropyKey, DiscreteKey "Isotropic"
+                materialDispersionKey, DiscreteKey "Dispersive"
+                materialTransparencyKey, DiscreteKey "Absorbing"
+            ]
+
+        for pair in expectedSiliconPairs do
+            Assert.Contains<AttributeKey * DiscreteKey>(pair, siliconPairs)
+
+        let siliconKeys = siliconPairs |> Set.map fst
+        for key in [ materialGyrationClassKey; materialHandednessKey; materialMagneticKey ] do
+            Assert.DoesNotContain<AttributeKey>(key, siliconKeys)
+
+        let langasitePairs = builtinEnvelope MaterialIds.langasite.toLibraryEntryId |> envelopeFacetPairs
+        let expectedLangasitePairs =
+            [
+                materialAnisotropyKey, DiscreteKey "Uniaxial"
+                materialGyrationClassKey, DiscreteKey "Uniaxial 3 / 4 / 6 (g₁₁, g₃₃)"
+                materialHandednessKey, DiscreteKey "Right-handed"
+            ]
+
+        for pair in expectedLangasitePairs do
+            Assert.Contains<AttributeKey * DiscreteKey>(pair, langasitePairs)
+
+        let category = builtinEnvelope CategoryIds.glass.toLibraryEntryId
+        Assert.Empty(envelopeFacetPairs category)
+
+        let invalid =
+            {
+                silicon with
+                    content =
+                        {
+                            silicon.content with categoryOpt = None
+                        }
+            }
+        assertRowDecodeRefusal invalid.content.toMaterialEntry invalid.facetRows
+
+    [<Fact>]
+    let ``an entry's facet rows are its kind and its own discrete facets`` () : unit =
+        let assertEntryFacets (envelope : LibraryEntryEnvelope) (expected : (AttributeKey * DiscreteKey) list) : unit =
+            Assert.Equal<Set<AttributeKey * DiscreteKey>>(Set.ofList expected, envelopeFacetPairs envelope)
+
+        let sample = builtinEnvelope SampleIds.multilayerQwId.toLibraryEntryId
+        assertEntryFacets sample
+            [ entryKindFacetKey, DiscreteKey "Sample"; sampleHasThinFilmsKey, DiscreteKey "Has thin films" ]
+
+        let presetEnvelopes =
+            [ PresetIds.polarizerLp; PresetIds.source600; PresetIds.detectorIntensity ]
+            |> List.map (fun presetId ->
+                match presetId.tryToLibraryEntryId with
+                | Some entryId -> builtinEnvelope entryId
+                | None -> failwith $"preset '{presetId.value}' has no GUID identity")
+
+        for envelope in presetEnvelopes do
+            let expected =
+                match envelope.content.schema.kind with
+                | PolarizerEntryKind ->
+                    [ entryKindFacetKey, DiscreteKey "Polarizer"; polarizerCategoryFacetKey, DiscreteKey "Linear" ]
+                | SourceEntryKind -> [ entryKindFacetKey, DiscreteKey "Source" ]
+                | DetectorEntryKind -> [ entryKindFacetKey, DiscreteKey "Detector" ]
+                | _ -> failwith "the fixture is not a preset"
+            assertEntryFacets envelope expected
+
+            let invalid =
+                {
+                    envelope with
+                        content =
+                            {
+                                envelope.content with payload = sample.content.payload
+                            }
+                }
+            match envelope.content.schema.kind with
+            | PolarizerEntryKind -> assertRowDecodeRefusal invalid.content.toPolarizerPreset invalid.facetRows
+            | SourceEntryKind -> assertRowDecodeRefusal invalid.content.toSourcePreset invalid.facetRows
+            | DetectorEntryKind -> assertRowDecodeRefusal invalid.content.toDetectorPreset invalid.facetRows
+            | _ -> failwith "the fixture is not a preset"
+
+        let invalidSample =
+            {
+                sample with
+                    content =
+                        {
+                            sample.content with descriptionOpt = None
+                        }
+            }
+        assertRowDecodeRefusal invalidSample.content.toSample invalidSample.facetRows
+
+    [<Fact>]
+    let ``a sample's material rows are every material version its structure references`` () : unit =
+        let langasiteSilicon = builtinEnvelope SampleIds.langasiteSiliconId.toLibraryEntryId
+        let expectedLangasiteSilicon =
+            [ MaterialIds.langasite; MaterialIds.silicon ] |> List.map MaterialVersionId.firstOf |> Set.ofList
+        Assert.Equal<Set<MaterialVersionId>>(expectedLangasiteSilicon, envelopeMaterialVersions langasiteSilicon)
+
+        let multilayer = builtinEnvelope SampleIds.multilayerQwId.toLibraryEntryId
+        let expectedMultilayer =
+            [ MaterialIds.glass152; MaterialIds.vacuumMaterial ] |> List.map MaterialVersionId.firstOf |> Set.ofList
+        Assert.Equal<Set<MaterialVersionId>>(expectedMultilayer, envelopeMaterialVersions multilayer)
+
+        for envelope in (BuiltinCatalogue.catalogueData ()).envelopes do
+            match envelope.content.schema.kind with
+            | SampleEntryKind -> ()
+            | _ -> Assert.Empty(envelopeMaterialVersions envelope)
+
+        let nextMaterialVersion : MaterialVersionId =
+            {
+                materialId = MaterialIds.glass152
+                version = VersionNumber.first.next
+            }
+        let nextPayload =
+            match multilayer.content.payload with
+            | SamplePayload payload ->
+                let structure =
+                    {
+                        payload.structure with lower = Some nextMaterialVersion
+                    }
+                let nextPayloadData =
+                    {
+                        payload with structure = structure
+                    }
+                SamplePayload nextPayloadData
+            | _ -> failwith "the multilayer fixture is not a sample"
+        let nextMultilayer =
+            {
+                multilayer with
+                    content =
+                        {
+                            multilayer.content with
+                                version = VersionNumber.first.next
+                                payload = nextPayload
+                        }
+            }
+        Assert.Equal<Set<MaterialVersionId>>(
+            Set.add nextMaterialVersion expectedMultilayer,
+            envelopeMaterialVersions nextMultilayer)
+
+        let invalid =
+            {
+                multilayer with
+                    content =
+                        {
+                            multilayer.content with descriptionOpt = None
+                        }
+            }
+        assertRowDecodeRefusal invalid.content.toSample invalid.sampleMaterialRows
+
+    [<Fact>]
+    let ``every built-in's facet and material rows are stored beside its version row`` () : unit =
+        let connectionString = ConnectionString "Data Source=:memory:"
+        use database = LibraryDatabase.openOrCreate connectionString |> expectDatabaseOk
+        let envelopes = (BuiltinCatalogue.catalogueData ()).envelopes
+        let versionsAndRows =
+            envelopes
+            |> List.map (fun envelope ->
+                let stored : StoredEntryVersion =
+                    {
+                        envelope = envelope
+                        state =
+                            {
+                                lifecycle = ActiveEntry
+                                pin = VersionUnpinned
+                            }
+                    }
+                stored.versionRow |> expectDatabaseOk,
+                envelope.facetRows |> expectDatabaseOk,
+                envelope.sampleMaterialRows |> expectDatabaseOk)
+
+        let expectedFacets =
+            versionsAndRows |> List.collect (fun (_, facets, _) -> facets) |> List.map facetRowIdentity |> Set.ofList
+        let expectedMaterials =
+            versionsAndRows |> List.collect (fun (_, _, materials) -> materials) |> List.map sampleMaterialRowIdentity |> Set.ofList
+        Assert.NotEmpty(expectedFacets)
+        Assert.NotEmpty(expectedMaterials)
+
+        database.run (fun context ->
+            for version, facets, materials in versionsAndRows do
+                context.EntryVersions.Add(version) |> ignore
+                context.EntryFacets.AddRange(facets)
+                context.SampleMaterials.AddRange(materials)
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        let assertStoredRows (expectedFacetRows : Set<(LibraryEntryId * VersionNumber) * AttributeKey * DiscreteKey>)
+                             (expectedMaterialRows : Set<(LibraryEntryId * VersionNumber) * MaterialVersionId>)
+                             (context : LibraryDbContext) : unit =
+            let facets = context.EntryFacets.AsNoTracking() |> Seq.toList
+            let materials = context.SampleMaterials.AsNoTracking() |> Seq.toList
+            Assert.Equal(expectedFacetRows.Count, facets.Length)
+            Assert.Equal(expectedMaterialRows.Count, materials.Length)
+            Assert.Equal<Set<_>>(expectedFacetRows, facets |> List.map facetRowIdentity |> Set.ofList)
+            Assert.Equal<Set<_>>(expectedMaterialRows, materials |> List.map sampleMaterialRowIdentity |> Set.ofList)
+
+        database.run (fun context ->
+            Assert.Equal(envelopes.Length, context.EntryVersions |> Seq.length)
+            assertStoredRows expectedFacets expectedMaterials context)
+        |> expectDatabaseOk
+
+        let multilayer = builtinEnvelope SampleIds.multilayerQwId.toLibraryEntryId
+        let removedVersion = multilayer.content.id, multilayer.content.version
+        Assert.NotEmpty(expectedFacets |> Set.filter (fun (version, _, _) -> version = removedVersion))
+        Assert.NotEmpty(expectedMaterials |> Set.filter (fun (version, _) -> version = removedVersion))
+
+        database.run (fun context ->
+            let version =
+                context.EntryVersions
+                |> Seq.find (fun row -> row.EntryId = multilayer.content.id.value && row.Version = multilayer.content.version.value)
+            context.EntryVersions.Remove(version) |> ignore
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            Assert.Equal(envelopes.Length - 1, context.EntryVersions |> Seq.length)
+            let remainingFacets = expectedFacets |> Set.filter (fun (version, _, _) -> version <> removedVersion)
+            let remainingMaterials = expectedMaterials |> Set.filter (fun (version, _) -> version <> removedVersion)
+            assertStoredRows remainingFacets remainingMaterials context)
+        |> expectDatabaseOk
+
+    [<Fact>]
     let ``a row its payload does not support is refused`` () : unit =
-        let envelope =
-            (BuiltinCatalogue.catalogueData ()).envelopes
-            |> List.find (fun entry -> entry.content.id = MaterialIds.silicon.toLibraryEntryId)
+        let envelope = builtinEnvelope MaterialIds.silicon.toLibraryEntryId
 
         let stored : StoredEntryVersion =
             {
