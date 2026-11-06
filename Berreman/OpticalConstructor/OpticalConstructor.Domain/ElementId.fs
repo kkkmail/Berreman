@@ -212,25 +212,22 @@ module Library =
                 | SingleLayer l -> [ l ]
                 | Repeated g -> List.replicate g.count.value g.cell |> List.concat)
 
-        /// Every material id the structure references (spec 0033 step 006): each film layer's
-        /// material (a `Repeated` group's cell counted once — repetition adds no new
-        /// reference), the substrate plate's material, and the lower half-space material.
-        /// Pure — the referencing lookup `MaterialProxy.removeMaterial` consults is built
-        /// over this (`samplesReferencing`).
-        /// Every material IDENTITY the structure references (spec 0033 step 006; re-based on the
-        /// versioned layers at step 022 — the removal hard-block is per material identity, so this
-        /// projects each pinned `MaterialVersionId` down to its `MaterialId`, dropping the version).
-        member this.referencedMaterials : Set<MaterialId> =
-            let filmMaterialIds =
+        /// Every referenced material version, counting each repeated cell once (spec 0050).
+        member this.referencedMaterialVersions : Set<MaterialVersionId> =
+            let filmMaterialVersions =
                 this.films
                 |> List.collect (fun item ->
                     match item with
-                    | SingleLayer l -> [ l.materialId.materialId ]
-                    | Repeated g -> g.cell |> List.map (fun l -> l.materialId.materialId))
-            let substrateMaterialIds =
-                this.substrate |> Option.toList |> List.map (fun l -> l.materialId.materialId)
-            let lowerMaterialIds = this.lower |> Option.toList |> List.map (fun mvid -> mvid.materialId)
-            filmMaterialIds @ substrateMaterialIds @ lowerMaterialIds |> Set.ofList
+                    | SingleLayer l -> [ l.materialId ]
+                    | Repeated g -> g.cell |> List.map (fun l -> l.materialId))
+            let substrateMaterialVersions =
+                this.substrate |> Option.toList |> List.map (fun l -> l.materialId)
+            let lowerMaterialVersions = this.lower |> Option.toList
+            filmMaterialVersions @ substrateMaterialVersions @ lowerMaterialVersions |> Set.ofList
+
+        /// Projects referencedMaterialVersions to material identities (spec 0033 step 006; spec 0050).
+        member this.referencedMaterials : Set<MaterialId> =
+            this.referencedMaterialVersions |> Set.map (fun materialVersion -> materialVersion.materialId)
 
     /// A cut-out plate (spec §2a): a material structure cut to a plate / thin-film geometry → Layer(s)/an
     /// `OpticalSystem` (the mapping to the engine is Phase 3). The `structure` is the material facet
@@ -280,6 +277,19 @@ module Library =
     type EntryProtection =
         | ProtectedBuiltIn
         | UserManaged
+
+        /// The 1-based database tag (spec 0050).
+        member this.value : int =
+            match this with
+            | ProtectedBuiltIn -> 1
+            | UserManaged -> 2
+
+        /// Reads a database tag, rejecting unknown values (spec 0050).
+        static member tryOfDb (v : int) : EntryProtection option =
+            match v with
+            | 1 -> Some ProtectedBuiltIn
+            | 2 -> Some UserManaged
+            | _ -> None
 
     /// How a light source's wavelength may be set (spec 0046): a FIXED line, or TUNABLE anywhere between
     /// two limits (a monochromator, a tunable laser, a synchrotron beamline). An experiment may vary only a

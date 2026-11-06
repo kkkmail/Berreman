@@ -99,6 +99,28 @@ module LifecycleTests =
         // assignment (FS0505), not an equality test — so wrap it as an expression.
         Assert.False((ActiveEntry = InactiveEntry))
 
+    [<Fact>]
+    let ``lifecycle, protection and pin states round-trip their database tags`` () : unit =
+        Assert.Equal(1, ActiveEntry.value)
+        Assert.Equal(2, InactiveEntry.value)
+        Assert.Equal<EntryLifecycle option>(Some ActiveEntry, EntryLifecycle.tryOfDb 1)
+        Assert.Equal<EntryLifecycle option>(Some InactiveEntry, EntryLifecycle.tryOfDb 2)
+
+        Assert.Equal(1, ProtectedBuiltIn.value)
+        Assert.Equal(2, UserManaged.value)
+        Assert.Equal<EntryProtection option>(Some ProtectedBuiltIn, EntryProtection.tryOfDb 1)
+        Assert.Equal<EntryProtection option>(Some UserManaged, EntryProtection.tryOfDb 2)
+
+        Assert.Equal(1, VersionPinned.value)
+        Assert.Equal(2, VersionUnpinned.value)
+        Assert.Equal<PinState option>(Some VersionPinned, PinState.tryOfDb 1)
+        Assert.Equal<PinState option>(Some VersionUnpinned, PinState.tryOfDb 2)
+
+        for tag in [ 0; 3 ] do
+            Assert.Equal<EntryLifecycle option>(None, EntryLifecycle.tryOfDb tag)
+            Assert.Equal<EntryProtection option>(None, EntryProtection.tryOfDb tag)
+            Assert.Equal<PinState option>(None, PinState.tryOfDb tag)
+
     // ----- cross-store version reference + the in-use seam -----
 
     [<Fact>]

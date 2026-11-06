@@ -2,6 +2,8 @@ namespace OpticalConstructor.Tests
 
 open System
 open Xunit
+open Berreman.Constants
+open Berreman.Media
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
@@ -411,6 +413,42 @@ module MaterialProxyTests =
         match stub.removeMaterial free.id with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok (), got %A{other}")
+
+    [<Fact>]
+    let ``referencedMaterialVersions keeps every referenced material version, a repeated cell once`` () : unit =
+        Assert.Equal<Set<MaterialVersionId>>(
+            Set.ofList
+                [ MaterialVersionId.firstOf MaterialIds.glass152
+                  MaterialVersionId.firstOf MaterialIds.vacuumMaterial ],
+            (BuiltinCatalogue.sample SampleIds.multilayerQwId).structure.referencedMaterialVersions)
+        Assert.Equal<Set<MaterialVersionId>>(
+            Set.ofList
+                [ MaterialVersionId.firstOf MaterialIds.langasite
+                  MaterialVersionId.firstOf MaterialIds.silicon ],
+            (BuiltinCatalogue.sample SampleIds.langasiteSiliconId).structure.referencedMaterialVersions)
+
+        let glassFirst = MaterialVersionId.firstOf MaterialIds.glass152
+        let glassNext : MaterialVersionId =
+            {
+                materialId = MaterialIds.glass152
+                version = VersionNumber.first.next
+            }
+        let film : SampleLayer =
+            {
+                materialId = glassNext
+                thickness = Thickness.nm 100.0<nm>
+                orientation = PrimaryAxes
+            }
+        let structure : SampleStructure =
+            {
+                films = [ SingleLayer film ]
+                substrate = None
+                lower = Some glassFirst
+            }
+        Assert.Equal<Set<MaterialVersionId>>(
+            Set.ofList [ glassFirst; glassNext ],
+            structure.referencedMaterialVersions)
+        Assert.Equal<Set<MaterialId>>(Set.singleton MaterialIds.glass152, structure.referencedMaterials)
 
     // ============================ referencedMaterials (structure coverage, unchanged) ============================
 

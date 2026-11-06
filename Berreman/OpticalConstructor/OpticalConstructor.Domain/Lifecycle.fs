@@ -32,6 +32,38 @@ module Lifecycle =
         | ActiveEntry
         | InactiveEntry
 
+        /// The 1-based database tag (spec 0050).
+        member this.value : int =
+            match this with
+            | ActiveEntry -> 1
+            | InactiveEntry -> 2
+
+        /// Reads a database tag, rejecting unknown values (spec 0050).
+        static member tryOfDb (v : int) : EntryLifecycle option =
+            match v with
+            | 1 -> Some ActiveEntry
+            | 2 -> Some InactiveEntry
+            | _ -> None
+
+    /// Whether a library version is pinned (spec 0050, 001 §C): a one-way pin is set
+    /// when a kit first references the version or it is exported; a pinned version never mutates.
+    type PinState =
+        | VersionPinned
+        | VersionUnpinned
+
+        /// The 1-based database tag (spec 0050).
+        member this.value : int =
+            match this with
+            | VersionPinned -> 1
+            | VersionUnpinned -> 2
+
+        /// Reads a database tag, rejecting unknown values (spec 0050).
+        static member tryOfDb (v : int) : PinState option =
+            match v with
+            | 1 -> Some VersionPinned
+            | 2 -> Some VersionUnpinned
+            | _ -> None
+
     /// A reference to a specific versioned entry across BOTH stores (§H): a material version
     /// or a sample version. The set of these that the live experiments currently bind is
     /// what makes a version "in use" (see `VersionsInUse`) and therefore immutable — a used
