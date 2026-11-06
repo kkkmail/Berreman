@@ -13,6 +13,8 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
@@ -178,13 +180,29 @@ module MainWorkbenchTests =
 
     [<Fact>]
     let ``sampleBandsState collapses a period group to x-N bands (the Details-bay shape)`` () =
-        let st = SeedSamples.multilayerQw.bandsState
+        let st = (BuiltinCatalogue.sample SampleIds.multilayerQwId).bandsState (BuiltinCatalogue.freshStores ()).materials
         Assert.Contains("Quarter-wave", st.title.value)
         // One band per unit-cell layer (kept collapsed, ×20) plus the closing single layer.
         Assert.Equal(3, List.length st.bands)
         Assert.Contains("×20", st.bands.[0].label.value)
         Assert.Contains("×20", st.bands.[1].label.value)
         Assert.DoesNotContain("×", st.bands.[2].label.value)
+
+    [<Fact>]
+    let ``the band view names each band's material through the materials store it is given`` () : unit =
+        let sample = BuiltinCatalogue.sample SampleIds.multilayerQwId
+        let bands = (sample.bandsState (freshStores ()).materials).bands
+        Assert.Equal(3, List.length bands)
+        Assert.StartsWith("Transparent glass (n = 1.52)", bands.[0].label.value)
+        Assert.StartsWith("Vacuum", bands.[1].label.value)
+        Assert.StartsWith("Transparent glass (n = 1.52)", bands.[2].label.value)
+
+        let emptyMaterials = MaterialProxy.createInMemoryEmpty (fun _ -> []) VersionsInUse.empty
+        let unnamedBands = (sample.bandsState emptyMaterials).bands
+        Assert.Equal(3, List.length unnamedBands)
+        Assert.StartsWith(string MaterialIds.glass152.value, unnamedBands.[0].label.value)
+        Assert.StartsWith(string MaterialIds.vacuumMaterial.value, unnamedBands.[1].label.value)
+        Assert.StartsWith(string MaterialIds.glass152.value, unnamedBands.[2].label.value)
 
     // ============================ headless proofs (ui-smoke) ============================
 

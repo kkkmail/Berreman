@@ -2608,10 +2608,6 @@ let runAnalyzerKind (model : TableAndElementRotationModel) (varied : Library.Ele
     | None, Some k -> ResolvedAnalyzer k
     | None, None -> NoAnalyzerPresent
 
-/// The material library the host resolves sample structures against (the composition root's single
-/// library instance, spec 0033 step 001).
-let private materialLibrary : MaterialLibrary.MaterialLibrary = MaterialLibrary.standard
-
 type MaterialLibrary.MaterialError with
 
     /// The human-readable message a failed sample-material resolution surfaces on the chart. Every error
@@ -3080,14 +3076,12 @@ type MaterialLibrary.MaterialId with
             let hash = (string materialId.value |> Seq.fold (fun acc ch -> (acc ^^^ int ch) * 16777619) (int 2166136261u)) &&& 0x7fffffff
             bandPalette.[hash % bandPalette.Length]
 
-    /// The display name of a material id: the library entry's name, or the id's Guid string form when
-    /// unknown (an unknown id still LABELS its band — running the sample is what surfaces the typed
-    /// resolution error).
-    member private materialId.bandDisplayName : string =
-        materialLibrary.entries
-        |> List.tryFind (fun e -> e.id = materialId)
-        |> Option.map (fun e -> e.name.value)
-        |> Option.defaultValue (string materialId.value)
+    /// The materials store's name, or the id's GUID when missing or lookup fails (spec 0050 S1.7).
+    member private materialId.bandDisplayName (materials : MaterialLibrary.MaterialProxy) : MaterialLibrary.EntryName =
+        match materials.tryGetMaterial materialId with
+        | Ok (Some entry) -> entry.name
+        | Ok None
+        | Error _ -> MaterialLibrary.EntryName (string materialId.value)
 
 type Berreman.Media.Thickness with
 
@@ -3142,18 +3136,16 @@ type Library.Sample with
             |> List.map (fun mvid -> { material = mvid.materialId; thickness = Berreman.Media.Infinity; repeats = Library.PeriodCount 1 })
         filmBands @ substrateBands @ lowerBands
 
-    /// The band-view state of ONE sample — its "×N"-collapsed stack (one band per unit-cell layer of a
-    /// `Repeated` group, then the substrate / lower half-space), titled with the sample's name +
-    /// description. Shared by the Details bay (the selected element's bound sample) and the Library
-    /// bay's View panel (spec 0033 step 024). Public so the hosts' band projection is unit-testable
-    /// without mounting a window.
-    member s.bandsState : LayerBandsControls.LayerBandsControlsState =
+    /// The sample's "×N"-collapsed stack, then its substrate / lower half-space, titled with
+    /// its name and description. Band names come from the materials store.
+    member s.bandsState (materials : MaterialLibrary.MaterialProxy) : LayerBandsControls.LayerBandsControlsState =
         let bands =
             s.bandSpecs
             |> List.map (fun spec ->
+                let materialName = spec.material.bandDisplayName materials
                 let countText = if spec.repeats.value > 1 then $" ×{spec.repeats.value}" else ""
                 ({
-                    label = ControlCaption $"{spec.material.bandDisplayName} — {spec.thickness.bandCaption}{countText}"
+                    label = ControlCaption $"{materialName.value} — {spec.thickness.bandCaption}{countText}"
                     heightWeight = spec.thickness.bandWeight
                     colorHex = spec.material.bandColorHex
                  } : LayerBandsControls.Band))
@@ -3172,7 +3164,7 @@ type TableAndElementRotationModel with
             | Some e ->
                 let baseState =
                     match boundEntry model e with
-                    | Some (Library.SampleItem s) -> s.bandsState
+                    | Some (Library.SampleItem s) -> s.bandsState model.materials
                     | Some entry ->
                         ({ title = ControlCaption $"{entry.displayName} — {entry.fullDescription}"; bands = [] } : LayerBandsControls.LayerBandsControlsState)
                     | None ->

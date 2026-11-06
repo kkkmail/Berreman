@@ -42,8 +42,7 @@ let private palette : BandColorHex [] =
         BandColorHex "#9467BD"; BandColorHex "#8C564B"; BandColorHex "#E377C2"; BandColorHex "#BCBD22"
     |]
 
-/// Curated colours for the built-in material ids (`MaterialLibrary.builtInEntries`), keyed by the
-/// elevated `MaterialId` (spec 0033 step 002).
+/// Curated colours keyed by the well-known `MaterialIds` (spec 0033 step 002; spec 0050 S1.7).
 let private curated : Map<MaterialId, BandColorHex> =
     Map
         [
