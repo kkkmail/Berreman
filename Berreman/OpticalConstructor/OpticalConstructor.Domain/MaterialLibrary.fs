@@ -444,6 +444,29 @@ module MaterialLibrary =
         | OnlyDispersive -> byCat |> List.filter (fun e -> e.dispersion = DispersiveMaterial)
         | OnlyNonDispersive -> byCat |> List.filter (fun e -> e.dispersion = ConstantMaterial)
 
+    type CategoryError with
+
+        /// Reports an unresolved category identity (spec 0050 S2.2).
+        static member unknownCategory (id : CategoryId) : CategoryError =
+            UnknownCategoryIdErr $"unknown category id '%s{string id.value}'"
+
+        /// Reports a category identity already assigned to an existing category (spec 0050 S2.2).
+        static member duplicateCategory (existing : MaterialCategory) : CategoryError =
+            DuplicateCategoryIdErr $"category id '%s{string existing.id.value}' already names '%s{existing.name.value}'"
+
+        /// Reports removal blocked by a category's built-in origin (spec 0050 S2.2).
+        static member builtInNotRemovable (category : MaterialCategory) : CategoryError =
+            BuiltInNotRemovableErr $"category '%s{category.name.value}' ('%s{string category.id.value}') ships with the app and cannot be removed"
+
+        /// Reports removal blocked by material references, with quoted, sorted names (spec 0050 S2.2).
+        static member stillReferenced (category : MaterialCategory) (materials : EntryName list) : CategoryError =
+            let names =
+                materials
+                |> List.map (fun name -> $"'%s{name.value}'")
+                |> List.sort
+                |> String.concat ", "
+            CategoryStillReferencedErr $"category '%s{category.name.value}' ('%s{string category.id.value}') is still referenced by %d{List.length materials} material(s): %s{names}"
+
     type CategoryProxy with
 
         static member private createInMemoryStore
@@ -453,8 +476,6 @@ module MaterialLibrary =
             let store = ref (initialCategories |> List.map (fun c -> c.id, c) |> Map.ofList)
             let currentCategories () : MaterialCategory list =
                 store.Value |> Map.toList |> List.map snd
-            let unknown (id : CategoryId) : CategoryError =
-                UnknownCategoryIdErr $"unknown category id '%s{string id.value}'"
             {
                 listCategories = fun () -> Ok (currentCategories ())
                 addCategory =
@@ -463,7 +484,7 @@ module MaterialLibrary =
                         |> Result.bind (fun () ->
                             match store.Value |> Map.tryFind category.id with
                             | Some existing ->
-                                Error (DuplicateCategoryIdErr $"category id '%s{string category.id.value}' already names '%s{existing.name.value}'")
+                                Error (CategoryError.duplicateCategory existing)
                             | None ->
                                 store.Value <- store.Value |> Map.add category.id category
                                 Ok ())
@@ -475,27 +496,23 @@ module MaterialLibrary =
                             | Some _ ->
                                 store.Value <- store.Value |> Map.add category.id category
                                 Ok ()
-                            | None -> Error (unknown category.id))
+                            | None -> Error (CategoryError.unknownCategory category.id))
                 removeCategory =
                     fun id ->
                         match store.Value |> Map.tryFind id with
                         | Some category ->
                             match category.origin with
                             | BuiltInCategory ->
-                                Error (BuiltInNotRemovableErr $"category '%s{category.name.value}' ('%s{string id.value}') ships with the app and cannot be removed")
+                                Error (CategoryError.builtInNotRemovable category)
                             | UserCategory ->
                                 match materialsReferencingCategory id with
                                 | [] ->
                                     store.Value <- store.Value |> Map.remove id
                                     Ok ()
                                 | referencing ->
-                                    let names =
-                                        referencing
-                                        |> List.map (fun e -> $"'%s{e.name.value}'")
-                                        |> List.sort
-                                        |> String.concat ", "
-                                    Error (CategoryStillReferencedErr $"category '%s{category.name.value}' ('%s{string id.value}') is still referenced by %d{List.length referencing} material(s): %s{names}")
-                        | None -> Error (unknown id)
+                                    let materials = referencing |> List.map (fun e -> e.name)
+                                    Error (CategoryError.stillReferenced category materials)
+                        | None -> Error (CategoryError.unknownCategory id)
             }
 
         /// Empty category store filled through validated writes (spec 0038 step 042; spec 0050 §3.4).
