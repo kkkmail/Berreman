@@ -78,5 +78,29 @@
     "openTemporary": false,
     "consumers": [],
     "temporaries": []
+  },
+  "STORE_XDUO_0008": {
+    "lifecycle": "inherited",
+    "declaringStep": null,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "STORE_XDUO_0003": {
+    "lifecycle": "inherited",
+    "declaringStep": null,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "STORE_XDUO_0002": {
+    "lifecycle": "inherited",
+    "declaringStep": null,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
   }
 }

@@ -89,3 +89,28 @@ outstanding.
 - Product roots still compose their existing stores, as explicitly required by
   this slice. No schema, migration, version ring, analyzer configuration or
   known-findings change was made.
+
+## Operator recovery — 2026-11-06
+
+The postmortem and secondary review identified an ASG inherited-lifecycle
+publication defect. The operator committed the existing implementation in
+`308fead`, then authorized repair steps 1–4. See `.manual/007-inherited-registry-recovery.md`
+and ASG 0090 `.manual/030` for the ruling and implementation.
+
+The corrected compiler preserved the implemented MaterialProxy row, prepared
+the three remaining inherited rows, and published a valid profile-1 receipt.
+All 988 compiled slice/gate artifacts remain byte-identical; origin registries,
+published requirements, supervisor state, expected-red records, case evidence
+and numeric checkpoints are unchanged. No product source was changed during
+this recovery.
+
+All 15 unchanged 0069 gates passed: 835 constructor cases, 208 UI-smoke cases,
+35 selected UI cases, and ten invariants; zero failures/skips and exact censuses.
+Full evidence is in `.artifacts/0069-operator-repair/`. Normal supervisor review
+and the measured checkpoint at index 68 remain required. No acceptance,
+commit or relaunch was performed; wait for the operator's commit and relaunch
+instruction, then use profile 1 and an operator note without accepting the slice.
+
+Supplemental elevation against accepted 0068 (`-Base 38c6d3c`) passed across
+seven projects with zero new findings, covering the already-committed changes.
+Only the mandated ELEV004 exclusion applied; the analyzer baseline is unchanged.

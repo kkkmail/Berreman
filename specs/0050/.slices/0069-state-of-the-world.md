@@ -4,8 +4,10 @@
 
 Slice 0069 implements STORE_XDUO_0001's SQLite MaterialProxy in spec 0050 S2.2.
 The adapter, typed storage failures, consumer matches and SQLite contract suite
-are complete. Acceptance execution and measured checkpoints remain with the
-arc-runner. Product composition remains unchanged as required by this slice.
+are complete and were committed by the operator in `308fead`. Operator recovery
+verification passed all 15 unchanged gates; normal supervisor review, acceptance
+and checkpoint 68 remain outstanding. Follow `.manual/007-inherited-registry-recovery.md`.
+Product composition remains unchanged as required by this slice.
 
 ## What's working
 
@@ -25,19 +27,21 @@ contract facts plus provenance preservation and typed failure from every proxy
 field over a disposed database. Logs and the TRX are under
 specs/0050/.artifacts/0069-local-*.
 
-Local development verification follows the higher-priority coding instructions
-and is separate from acceptance. The supervisor must execute build, elevation,
-constructor-unit-tests, ui-smoke, the selected MaterialsWindowTests and the ten
-s09 invariants from 0069.gates. No acceptance result or commit readiness is claimed.
+2026-11-06 operator recovery: all 15 unchanged gates passed. Constructor:
+835 cases; UI smoke: 208; selected MaterialsWindowTests: 35. Zero failures or
+skips, with exact census checks. This verifies the required 24-case increase
+from checkpoint 67's 811. Evidence is in `.artifacts/0069-operator-repair/`.
+Supplemental elevation against accepted 0068 (`38c6d3c`) checked all seven
+affected/dependent projects and reported zero new findings.
 
-The following are inherited supervisor baselines from checkpoints 67 and 64,
-respectively, not new measurements. The full constructor suite is expected to
-gain 24 cases; this worker has not changed the checkpoints or invented a ui-tests
-baseline.
+These are fresh recovery measurements, not supervisor acceptance or a new
+checkpoint. Checkpoint 67 remains 811 and checkpoint 68 is absent. The selected
+35 UI cases must not become a whole-suite baseline. The supervisor still runs
+its normal review, gate and measured checkpoint cycle before advancing.
 
 ```yaml
 gates:
-  constructor_unit_tests: 811
+  constructor_unit_tests: 835
   ui_smoke_tests: 208
 ```
 
@@ -66,6 +70,21 @@ contract registry entry records implementStep 69 with no local declaration.
 
 No implementation work is deferred. Acceptance execution is assigned to the
 supervisor by the worker protocol.
+
+## Recovery handoff
+
+The ASG compiler now prepares planned inherited lifecycle rows before publishing
+the receipt; the receipt validates and all 988 compiled artifacts are unchanged.
+The existing implemented MaterialProxy row and every earlier registry entry
+are preserved; the remaining inherited rows for 0071/0074/0095 are initialized.
+The ASG escalation event/watcher mismatch is repaired as well.
+
+Wait for the operator to commit the repair and explicitly authorize relaunch.
+Then resume 0069 normally with an operator note and `--executability-profile 1`,
+without `--accept-current-slice`, as `.manual/007` requires even though the
+implementation is already committed. Preserve it and review it against
+accepted 0068 (`38c6d3c`). Do not restore or repeat the implementation, alter
+published contracts, waive gates or manufacture checkpoint 68.
 
 ## Gotchas
 
