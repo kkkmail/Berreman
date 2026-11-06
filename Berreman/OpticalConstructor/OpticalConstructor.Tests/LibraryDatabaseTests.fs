@@ -2,9 +2,14 @@ namespace OpticalConstructor.Tests
 
 open System
 open System.IO
+open System.Text
+open System.Text.Json.Nodes
 open Microsoft.Data.Sqlite
 open Microsoft.EntityFrameworkCore
 open OpticalConstructor.Database
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open Softellect.Sys.Primitives
@@ -294,3 +299,155 @@ module LibraryDatabaseTests =
         | Ok unexpected ->
             use unexpected = unexpected
             Assert.Fail("an invalid connection string was accepted")
+
+    [<Fact>]
+    let ``every kind's entry round-trips through its database row byte for byte`` () : unit =
+        let connectionString = ConnectionString "Data Source=:memory:"
+        use database = LibraryDatabase.openOrCreate connectionString |> expectDatabaseOk
+
+        let versions : StoredEntryVersion list =
+            (BuiltinCatalogue.catalogueData ()).envelopes
+            |> List.mapi (fun index envelope ->
+                let state : EntryVersionState =
+                    if index % 2 = 0 then
+                        {
+                            lifecycle = ActiveEntry
+                            pin = VersionUnpinned
+                        }
+                    else
+                        {
+                            lifecycle = InactiveEntry
+                            pin = VersionPinned
+                        }
+
+                {
+                    envelope = envelope
+                    state = state
+                })
+
+        database.run (fun context ->
+            for version in versions do
+                let row = version.versionRow |> expectDatabaseOk
+                context.EntryVersions.Add(row) |> ignore
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        let rows =
+            database.run (fun context -> context.EntryVersions.AsNoTracking() |> Seq.toList)
+            |> expectDatabaseOk
+
+        let expectedVersions =
+            versions
+            |> List.map (fun version -> (version.envelope.content.id, version.envelope.content.version), version)
+            |> Map.ofList
+
+        Assert.Equal(versions.Length, rows.Length)
+
+        let restored =
+            rows
+            |> List.map (fun row ->
+                let version = row.toStoredVersion |> expectDatabaseOk
+                let content = version.envelope.content
+                let expected = expectedVersions |> Map.find (content.id, content.version)
+                Assert.Equal<StoredEntryVersion>(expected, version)
+                let file = FileName (Path.Combine(AppContext.BaseDirectory, "Catalogue", "Builtin", content.fileName.value))
+                Assert.Equal<byte[]>(File.ReadAllBytes(file.value), Encoding.UTF8.GetBytes(row.PayloadText))
+                version)
+
+        let kinds = restored |> List.map (fun version -> version.envelope.content.schema.kind) |> Set.ofList
+        Assert.Equal<Set<LibraryEntryKind>>(Set.ofList LibraryEntryKind.all, kinds)
+
+    [<Fact>]
+    let ``a row its payload does not support is refused`` () : unit =
+        let envelope =
+            (BuiltinCatalogue.catalogueData ()).envelopes
+            |> List.find (fun entry -> entry.content.id = MaterialIds.silicon.toLibraryEntryId)
+
+        let stored : StoredEntryVersion =
+            {
+                envelope = envelope
+                state =
+                    {
+                        lifecycle = ActiveEntry
+                        pin = VersionUnpinned
+                    }
+            }
+
+        let freshRow () : LibraryEntryVersionRow = stored.versionRow |> expectDatabaseOk
+
+        let assertInvalidColumn (column : string) (row : LibraryEntryVersionRow) : unit =
+            match row.toStoredVersion with
+            | Error (LibraryRowInvalidErr reason as error) ->
+                Assert.Contains(string row.EntryId, reason)
+                Assert.Contains($"v{row.Version}", reason)
+                Assert.Contains($"column {column}", reason)
+                Assert.Equal(reason, error.describe)
+            | Error error -> Assert.Fail($"expected an invalid {column} column, got {error.describe}")
+            | Ok _ -> Assert.Fail($"an invalid {column} column was accepted")
+
+        let unsupportedColumns : (string * (LibraryEntryVersionRow -> unit)) list =
+            [
+                "EntryId", (fun row -> row.EntryId <- Guid.Empty)
+                "Version", (fun row -> row.Version <- row.Version + 1)
+                "Name", (fun row -> row.Name <- "Renamed silicon")
+                "Protection", (fun row -> row.Protection <- 2)
+                "ProvenanceKind", (fun row -> row.ProvenanceKind <- 2)
+                "CatalogueId", (fun row -> row.CatalogueId <- Nullable<Guid>())
+                "PayloadText", (fun row -> row.PayloadText <- row.PayloadText + " ")
+                "ContentHash", (fun row -> row.ContentHash <- String.replicate 64 "0")
+            ]
+
+        for column, change in unsupportedColumns do
+            let row = freshRow ()
+            change row
+            assertInvalidColumn column row
+
+        let unknownTags : (string * (LibraryEntryVersionRow -> unit)) list =
+            [
+                "Kind", (fun row -> row.Kind <- 0)
+                "Lifecycle", (fun row -> row.Lifecycle <- 0)
+                "PinState", (fun row -> row.PinState <- 0)
+            ]
+
+        for column, change in unknownTags do
+            let row = freshRow ()
+            change row
+            assertInvalidColumn column row
+            row.PayloadText <- "not JSON"
+            assertInvalidColumn column row
+
+            match row.toStoredVersion with
+            | Error (LibraryRowInvalidErr reason) -> Assert.Contains("tag 0", reason)
+            | Error error -> Assert.Fail(error.describe)
+            | Ok _ -> Assert.Fail("an unknown tag was accepted")
+
+        let twoMismatches = freshRow ()
+        twoMismatches.Name <- "Renamed silicon"
+        twoMismatches.ContentHash <- String.replicate 64 "0"
+        assertInvalidColumn "Name" twoMismatches
+
+        let tampered = freshRow ()
+        let entry = JsonNode.Parse(tampered.PayloadText)
+        entry["name"] <- JsonValue.Create "Tampered silicon"
+        tampered.PayloadText <- entry.ToJsonString()
+
+        match tampered.toStoredVersion with
+        | Error (ContentHashMismatchErr info) ->
+            Assert.Equal<LibraryEntryId>(envelope.content.id, info.entryId)
+            Assert.Equal<ContentHash>(envelope.contentHash, info.recorded)
+            Assert.NotEqual<ContentHash>(info.recorded, info.computed)
+        | Error error -> Assert.Fail($"expected a payload hash mismatch, got {error.describe}")
+        | Ok _ -> Assert.Fail("a tampered payload was accepted")
+
+        let incompatible = freshRow ()
+        let entry = JsonNode.Parse(incompatible.PayloadText)
+        entry["schema"]["version"] <- JsonValue.Create 2
+        incompatible.PayloadText <- entry.ToJsonString()
+
+        match incompatible.toStoredVersion with
+        | Error (UnsupportedSchemaVersionErr info) ->
+            Assert.Equal<FileExtension>(MaterialEntryKind.extension, info.fileExtension)
+            Assert.Equal<FileSchemaVersion>(FileSchemaVersion 2, info.found)
+            Assert.Equal<FileSchemaVersion>(MaterialEntryKind.currentSchemaVersion, info.expected)
+        | Error error -> Assert.Fail($"expected an unsupported schema version, got {error.describe}")
+        | Ok _ -> Assert.Fail("an incompatible payload schema was accepted")

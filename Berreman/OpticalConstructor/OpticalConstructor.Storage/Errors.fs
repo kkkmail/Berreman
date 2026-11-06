@@ -57,6 +57,7 @@ module Errors =
     ///                             content's (spec 0050 001 §B).
     ///   * `LibrarySchemaMismatchErr` — the library model's schema stamp is missing or incompatible.
     ///   * `LibraryDatabaseExn` — an exception caught at the SQLite / EF Core boundary.
+    ///   * `LibraryRowInvalidErr` — row tags or columns unsupported by its payload (spec 0050 001 §C).
     type StorageError =
         | MalformedJsonErr of string
         | SchemaValidationErr of string list
@@ -68,12 +69,14 @@ module Errors =
         | ContentHashMismatchErr of ContentHashMismatchInfo
         | LibrarySchemaMismatchErr of LibrarySchemaMismatchInfo
         | LibraryDatabaseExn of exn
+        | LibraryRowInvalidErr of reason : string
 
         /// The one-line render a Domain error's reason carries, so no caller formats this union with `%A` (ELEV002;
         /// spec 0050 .spec-md §4).
         member this.describe : string =
             match this with
             | MalformedJsonErr text -> text
+            | LibraryRowInvalidErr reason -> reason
             | SchemaValidationErr messages -> String.concat "; " messages
             | SchemaMissingErr -> "a build-copied schema file is missing beside the assembly"
             | FileIoExn e
