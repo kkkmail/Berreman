@@ -36,10 +36,10 @@ module ExperimentCollectionRoundTripTests =
     let private desc (idStr : string) (label : string) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
         { ElementDescriptor.elementId = el idStr; label = ElementLabel label; kind = kind; placement = placementOf kind; binding = binding }
 
-    /// The version-one binding of the seeded 1 mm glass plate — a sample bound BY VERSION (the only
+    /// The version-one binding of `BuiltinCatalogue.sample`'s 1 mm glass plate, bound BY VERSION (the only
     /// setup facet that pins a versioned reference; the round-trip proves it rides along unchanged).
     let private glassPlateBinding : ElementBinding =
-        BoundByVersion (SampleVersionRef (SampleVersionId.firstOf SeedSamples.glassPlate1mm.id))
+        BoundByVersion (SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId))
 
     // Deterministic experiments spanning the three shapes the acceptance enumerates (E1/E2/E3), each
     // fixing its optional `DataFilePath` so the round-trip proves the attachment survives with AND
@@ -136,7 +136,7 @@ module ExperimentCollectionRoundTripTests =
         // optional sample/source shapes incl. the dark experiment: E1 binds a sample BY VERSION,
         // E2 binds none (sample-less), E3 varies nothing (dark).
         Assert.Contains(
-            SampleVersionRef (SampleVersionId.firstOf SeedSamples.glassPlate1mm.id),
+            SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId),
             boundVersions [ List.item 0 loaded.experiments ])
         Assert.Empty(boundVersions [ List.item 1 loaded.experiments ])
         Assert.Equal(None, (List.item 2 loaded.experiments).varied)

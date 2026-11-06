@@ -13,7 +13,6 @@ open OpticalProperties.Dispersive
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle       // VersionsInUse.empty (spec 0038 step 022)
-open OpticalConstructor.Domain.MaterialStore   // MaterialProxy.createInMemory (versioned, spec 0038 step 021)
 open OpticalConstructor.Domain.Propagation
 
 /// Spec 0027 (024) Phase 3/4 — the pure MM/SV propagation pipeline. The headline proof is Malus' law:
@@ -129,12 +128,10 @@ module PropagationTests =
             supportedEmission = Library.ThickPlate.defaultSupportedEmission
         }
 
-    /// The versioned material store over the standard built-ins (spec 0038 step 022): the sample
-    /// resolver now takes a `MaterialProxy` and resolves each layer's pinned `MaterialVersionId`
-    /// through the store's by-version `resolveVersion`. The seeds pin version one, which this store
-    /// seeds active, so every known built-in resolves.
+    /// `BuiltinCatalogue.materialStore` resolves each layer's pinned material version
+    /// (spec 0038 steps 021–022; spec 0050 S1.7).
     let private standardProxy : MaterialLibrary.MaterialProxy =
-        MaterialLibrary.MaterialProxy.createInMemory (fun _ -> []) VersionsInUse.empty
+        BuiltinCatalogue.materialStore (fun _ -> []) VersionsInUse.empty
 
     /// Resolve a sample against the standard material store, failing the test on a typed error (every
     /// sample used by these tests references known built-in ids).
@@ -185,26 +182,26 @@ module PropagationTests =
 
     [<Fact>]
     let ``the multilayer sample maps to a real 41-film stack`` () =
-        let system = sampleToSystem (resolveOrFail SeedSamples.multilayerQw) (WaveLength.nm 600.0<nm>)
+        let system = sampleToSystem (resolveOrFail (BuiltinCatalogue.sample SampleIds.multilayerQwId)) (WaveLength.nm 600.0<nm>)
         Assert.Equal(41, List.length system.films)
 
     // ============================ Spec 0027 (026) Part 1 — curated samples ============================
 
-    /// Every seeded `SampleItem` (so the test auto-covers new samples added to the Library).
+    /// `BuiltinCatalogue.samples` includes new catalogue samples automatically.
     let private seededSamples : Sample list =
-        Library.seedEntries
+        ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ())
         |> List.choose (function SampleItem s -> Some s | _ -> None)
 
     /// The wavelength a given sample is exercised at (EUV samples live at ~10 nm; everything else 600 nm).
     let private runWaveLengthFor (s : Sample) : WaveLength =
-        if s.id = SeedSamples.euvMoSi.id then WaveLength.nm 10.0<nm> else WaveLength.nm 600.0<nm>
+        if s.id = SampleIds.euvMoSiId then WaveLength.nm 10.0<nm> else WaveLength.nm 600.0<nm>
 
     [<Fact>]
     let ``the curated Library seeds exactly the named SeedSamples`` () =
-        // The samples in `seedEntries` ARE the named `SeedSamples` values, in order (spec 0033
-        // step 002 — the id literals live only in `SeedSamples`).
+        // BuiltinCatalogue.samples supplies Library samples in catalogue order
+        // (spec 0033 step 002; spec 0050 S1.7).
         Assert.Equal<SampleId list>(
-            SeedSamples.allSeedSamples |> List.map (fun s -> s.id),
+            BuiltinCatalogue.samples () |> List.map (fun s -> s.id),
             seededSamples |> List.map (fun s -> s.id))
 
     [<Fact>]
@@ -221,17 +218,17 @@ module PropagationTests =
     [<Fact>]
     let ``sampleToSystem is total for every seeded sample with the expected layer count`` () =
         let plateIds =
-            [ SeedSamples.activeCrystalPlate.id; SeedSamples.glassVacuum.id; SeedSamples.glassPlate1mm.id; SeedSamples.glassPlate2mm.id ]
+            [ SampleIds.activeCrystalPlateId; SampleIds.glassVacuumId; SampleIds.glassPlate1mmId; SampleIds.glassPlate2mmId ]
         for s in seededSamples do
             let w = runWaveLengthFor s
             let system = sampleToSystem (resolveOrFail s) w
-            if s.id = SeedSamples.multilayerQw.id then Assert.Equal(41, List.length system.films)
-            elif s.id = SeedSamples.euvMoSi.id then Assert.Equal(200, List.length system.films)
+            if s.id = SampleIds.multilayerQwId then Assert.Equal(41, List.length system.films)
+            elif s.id = SampleIds.euvMoSiId then Assert.Equal(200, List.length system.films)
             elif plateIds |> List.contains s.id then
                 Assert.Empty system.films
                 Assert.True(Option.isSome system.substrate, $"%s{s.name.value} should be a substrate plate")
             else
-                // The remaining seeded samples are single-film systems.
+                // Remaining BuiltinCatalogue.samples entries are single-film systems.
                 Assert.Equal(1, List.length system.films)
 
     [<Fact>]
@@ -241,7 +238,7 @@ module PropagationTests =
 
     [<Fact>]
     let ``the dispersive langasite sample evaluates differently at different wavelengths`` () =
-        let langasite = resolveOrFail SeedSamples.langasiteSilicon
+        let langasite = resolveOrFail (BuiltinCatalogue.sample SampleIds.langasiteSiliconId)
         // Silicon's dispersion makes the transmitted intensity wavelength-dependent; the dispersive seam
         // (getProperties w) is therefore actually being evaluated at the run wavelength.
         let i400 = (sampleMuellerT langasite (WaveLength.nm 400.0<nm>) IncidenceAngle.normal * unpolarizedStokes).s0
@@ -427,12 +424,12 @@ module PropagationTests =
                 substrate = Some (Substrate.Plate { properties = properties; thickness = thickness })
                 lower = OpticalProperties.vacuum
             }
-        if s.id = SeedSamples.glassPlate1mm.id then plate OpticalProperties.transparentGlass (Thickness.mm 1.0<mm>)
-        elif s.id = SeedSamples.glassPlate2mm.id then plate OpticalProperties.transparentGlass (Thickness.mm 2.0<mm>)
-        elif s.id = SeedSamples.glassFilm600.id then film OpticalProperties.transparentGlass175 (Thickness.nm 600.0<nm>)
-        elif s.id = SeedSamples.glassVacuum.id then plate OpticalProperties.transparentGlass150 (Thickness.mm 1.0<mm>)
-        elif s.id = SeedSamples.glassFilm200.id then film OpticalProperties.transparentGlass (Thickness.nm 200.0<nm>)
-        elif s.id = SeedSamples.multilayerQw.id then
+        if s.id = SampleIds.glassPlate1mmId then plate OpticalProperties.transparentGlass (Thickness.mm 1.0<mm>)
+        elif s.id = SampleIds.glassPlate2mmId then plate OpticalProperties.transparentGlass (Thickness.mm 2.0<mm>)
+        elif s.id = SampleIds.glassFilm600Id then film OpticalProperties.transparentGlass175 (Thickness.nm 600.0<nm>)
+        elif s.id = SampleIds.glassVacuumId then plate OpticalProperties.transparentGlass150 (Thickness.mm 1.0<mm>)
+        elif s.id = SampleIds.glassFilm200Id then film OpticalProperties.transparentGlass (Thickness.nm 200.0<nm>)
+        elif s.id = SampleIds.multilayerQwId then
             {
                 description = None
                 upper = OpticalProperties.vacuum
@@ -440,7 +437,7 @@ module PropagationTests =
                 substrate = None
                 lower = OpticalProperties.vacuum
             }
-        elif s.id = SeedSamples.euvMoSi.id then
+        elif s.id = SampleIds.euvMoSiId then
             let thickness = Thickness.nm (10.6 / 4.0 * oneNanometer)
             let films =
                 [ { properties = OpticalProperties.euvMolybdenum; thickness = thickness }
@@ -454,22 +451,18 @@ module PropagationTests =
                 substrate = None
                 lower = OpticalProperties.vacuum
             }
-        elif s.id = SeedSamples.uniaxial.id then film OpticalProperties.uniaxialCrystal (Thickness.nm 1000.0<nm>)
-        elif s.id = SeedSamples.biaxial.id then film OpticalProperties.biaxialCrystal (Thickness.nm 1000.0<nm>)
-        elif s.id = SeedSamples.activeCrystalPlate.id then
+        elif s.id = SampleIds.uniaxialId then film OpticalProperties.uniaxialCrystal (Thickness.nm 1000.0<nm>)
+        elif s.id = SampleIds.biaxialId then film OpticalProperties.biaxialCrystal (Thickness.nm 1000.0<nm>)
+        elif s.id = SampleIds.activeCrystalPlateId then
             let e11 = RefractionIndex 2.315 |> EpsValue.fromRefractionIndex
             let e33 = RefractionIndex 2.226 |> EpsValue.fromRefractionIndex
             plate (OpticalProperties.planarCrystal e11 e33 (RhoValue 1.5e-6)) Thickness.oneCentiMeter
-        elif s.id = SeedSamples.langasiteSilicon.id then
-            // Spec 0040 step 004 re-seeds silicon/langasite through the value-tree ladder.
-            // Silicon's ε is reproduced bit-for-bit, so the lower half-space is still pinned
-            // to the engine preset. The library Langasite keeps its representative constant ρ
-            // (the engine preset's ρ is the published law `PublishedLawRho LangasiteGyrationLaw`,
-            // spec 0050 step 10), so the langasite film is pinned to the re-seeded material
-            // entry's own properties (a consistency check that `sampleToSystem` resolves the
-            // material tensors correctly), not the engine preset.
+        elif s.id = SampleIds.langasiteSiliconId then
+            // Spec 0040 step 004; spec 0050 steps 10/52: BuiltinCatalogue.materials keeps
+            // Langasite's constant ρ; the engine uses PublishedLawRho LangasiteGyrationLaw.
+            // Silicon's ε remains identical to the engine preset.
             let langasiteProps =
-                (MaterialLibrary.builtInEntries |> List.find (fun e -> e.id = MaterialLibrary.MaterialIds.langasite)).properties.getProperties w
+                (BuiltinCatalogue.materials () |> List.find (fun e -> e.id = MaterialLibrary.MaterialIds.langasite)).properties.getProperties w
             {
                 description = None
                 upper = OpticalProperties.vacuum

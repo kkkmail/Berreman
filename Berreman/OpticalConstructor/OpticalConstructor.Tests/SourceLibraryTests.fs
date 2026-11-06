@@ -7,12 +7,9 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.Domain.SampleStore
 
-/// Spec 0046 — the Library's light sources: the seeded lasers and UV / EUV lithography sources, the
-/// user-sources store behind the source editor, and the LIVE Library that composes the seeded presets
-/// with the samples and user-sources stores so an entry created in the Library window is offered for
-/// its kind and resolves once a table element is bound to it.
+/// Spec 0046; spec 0050 S1.7 — `BuiltinCatalogue.sources` and `BuiltinCatalogue.library`
+/// cover shipped sources and live composition with samples and user sources.
 module SourceLibraryTests =
 
     let private nm (w : WaveLength) : float = w.value / nmToMeter / 1.0<nm>
@@ -27,11 +24,11 @@ module SourceLibraryTests =
             | SourceItem s -> Some s.id.value
             | SampleItem _ | DetectorItem _ | PolarizerItem _ -> None)
 
-    // ------------------------------ the seeded sources ------------------------------
+    // ------------------------------ BuiltinCatalogue.sources ------------------------------
 
     [<Fact>]
     let ``the seeded sources are protected, uniquely identified, and cover the lasers and the lithography lines`` () =
-        let all = SeedSources.allSeedSources
+        let all = BuiltinCatalogue.sources ()
         Assert.Equal(List.length all, all |> List.map (fun s -> s.id) |> List.distinct |> List.length)
         Assert.All(all, fun s -> Assert.Equal<EntryProtection>(ProtectedBuiltIn, s.protection))
         Assert.All(all, fun s -> Assert.True(nm s.waveLength > 0.0, $"%s{s.name.value} has a positive wavelength"))
@@ -43,8 +40,7 @@ module SourceLibraryTests =
         Assert.True(abs (wavelengthOf PresetIds.krf248 - 248.4) < 1.0e-9)
         Assert.True(abs (wavelengthOf PresetIds.arf193 - 193.4) < 1.0e-9)
         Assert.True(abs (wavelengthOf PresetIds.euv13p5 - 13.5) < 1.0e-9)
-        // Every seeded source is a Library entry for the light-source kind.
-        match (createInMemory ()).entriesForKind LightSource with
+        match (BuiltinCatalogue.library ()).entriesForKind LightSource with
         | Ok entries -> Assert.Equal<string list>(all |> List.map (fun s -> s.id.value), sourceIds entries)
         | Error e -> Assert.Fail($"%A{e}")
 
@@ -55,14 +51,17 @@ module SourceLibraryTests =
             | Leaf (_, id) -> [ id.value ]
             | Group (_, children) -> children |> List.collect leaves
         let sourcesGroup =
-            match (createInMemory ()).libraryTrees () with
+            match (BuiltinCatalogue.library ()).libraryTrees () with
             | Ok (tree :: _) ->
                 match tree.root with
                 | Group (_, groups) -> groups |> List.tryPick (fun g -> match g with Group (TreeLabel "Sources", _) -> Some g | _ -> None)
                 | Leaf _ -> None
             | Ok [] | Error _ -> None
         match sourcesGroup with
-        | Some group -> Assert.Equal<string list>(SeedSources.allSeedSources |> List.map (fun s -> s.id.value), leaves group)
+        | Some group ->
+            Assert.Equal<string list>(
+                BuiltinCatalogue.sources () |> List.map (fun s -> s.id.value) |> List.sort,
+                leaves group |> List.sort)
         | None -> Assert.Fail "the seeded tree must carry a Sources group"
 
     // ------------------------------ GUID identity (spec 0050 §3.3) ------------------------------
@@ -77,7 +76,7 @@ module SourceLibraryTests =
 
     [<Fact>]
     let ``every seeded Library entry id is the canonical string of a GUID, and no two are equal`` () =
-        let entryIds = seedEntries |> List.map (fun e -> e.entryId)
+        let entryIds = ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ()) |> List.map (fun e -> e.entryId)
         let refusals = entryIds |> List.choose (fun entryId -> match canonicalGuidOf entryId with Ok _ -> None | Error reason -> Some reason)
         let listed = String.concat "; " refusals
         Assert.True(List.isEmpty refusals, $"{List.length refusals} of {List.length entryIds} seeded entry ids are not GUIDs: {listed}")
@@ -128,25 +127,30 @@ module SourceLibraryTests =
 
     [<Fact>]
     let ``the live Library offers and resolves a user source after the seeded ones`` () =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
         let sources = SourceProxy.createInMemory ()
-        let live = liveLibrary (createInMemory ()) samples sources
+        let live = liveLibrary (BuiltinCatalogue.library ()) samples sources
         let mine = userSource "src-user-krf" "My KrF line" 248.0
         Assert.Equal(Ok (), sources.saveSource mine)
         match live.entriesForKind LightSource with
-        | Ok entries -> Assert.Equal<string list>((SeedSources.allSeedSources |> List.map (fun s -> s.id.value)) @ [ mine.id.value ], sourceIds entries)
+        | Ok entries -> Assert.Equal<string list>((BuiltinCatalogue.sources () |> List.map (fun s -> s.id.value)) @ [ mine.id.value ], sourceIds entries)
         | Error e -> Assert.Fail($"%A{e}")
         Assert.Equal(Ok (Some (SourceItem mine)), live.tryGetEntry mine.id)
-        // The seeded presets still resolve; a removed user source no longer does.
+        // BuiltinCatalogue.presets still resolve after user sources are removed.
         Assert.Equal(Ok (Some (DetectorItem { id = PresetIds.detectorIntensity; name = MaterialLibrary.EntryName "Intensity detector"; kind = Intensity; protection = ProtectedBuiltIn })), live.tryGetEntry PresetIds.detectorIntensity)
         Assert.Equal(Ok (), sources.removeSource mine.id)
         Assert.Equal(Ok None, live.tryGetEntry mine.id)
 
     [<Fact>]
     let ``the live Library resolves a sample created in the samples store`` () =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let live = liveLibrary (createInMemory ()) samples (SourceProxy.createInMemory ())
-        let created = { SeedSamples.glassFilm200 with id = newSampleId (); name = MaterialLibrary.EntryName "My film" }
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let live = liveLibrary (BuiltinCatalogue.library ()) samples (SourceProxy.createInMemory ())
+        let created =
+            {
+                BuiltinCatalogue.sample SampleIds.glassFilm200Id with
+                    id = newSampleId ()
+                    name = MaterialLibrary.EntryName "My film"
+            }
         Assert.Equal(Ok (), samples.saveSample created)
         let entryId = (SampleItem created).entryId
         match live.tryGetEntry entryId with
@@ -155,19 +159,24 @@ module SourceLibraryTests =
         match live.entriesForKind Sample with
         | Ok entries -> Assert.Contains(entryId, entries |> List.map (fun e -> e.entryId))
         | Error e -> Assert.Fail($"%A{e}")
-        // The read-only seeded Library alone never sees it (the gap the live Library closes).
-        Assert.Equal(Ok None, (createInMemory ()).tryGetEntry entryId)
+        // BuiltinCatalogue.library alone never sees user-created samples.
+        Assert.Equal(Ok None, (BuiltinCatalogue.library ()).tryGetEntry entryId)
 
     /// Spec 0050 §3.3: every id is now a GUID, so `liveLibrary`'s sample probe parses a preset's id too;
     /// it finds no sample there and falls through to the presets.
     [<Fact>]
     let ``the live Library resolves a seeded preset, a user source and a sample by their GUID ids`` () =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
         let sources = SourceProxy.createInMemory ()
-        let live = liveLibrary (createInMemory ()) samples sources
+        let live = liveLibrary (BuiltinCatalogue.library ()) samples sources
         let mine : SourcePreset = { id = newSourceId (); name = MaterialLibrary.EntryName "My GUID line"; waveLength = WaveLength.nm 532.0<nm>; tuning = FixedLine; protection = UserManaged }
         Assert.Equal(Ok (), sources.saveSource mine)
-        let created = { SeedSamples.glassFilm200 with id = newSampleId (); name = MaterialLibrary.EntryName "My GUID film" }
+        let created =
+            {
+                BuiltinCatalogue.sample SampleIds.glassFilm200Id with
+                    id = newSampleId ()
+                    name = MaterialLibrary.EntryName "My GUID film"
+            }
         Assert.Equal(Ok (), samples.saveSample created)
         match live.tryGetEntry PresetIds.detectorEllipsometer with
         | Ok (Some (DetectorItem d)) -> Assert.Equal<DetectorKind>(Ellipsometer, d.kind)

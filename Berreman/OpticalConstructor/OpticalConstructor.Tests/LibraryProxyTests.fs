@@ -10,10 +10,10 @@ open OpticalConstructor.Domain.Placement
 
 /// Spec 0027 (024) Phase 1 — pure domain tests for the Library: the elevated `ElementId`, the
 /// kind-constrained `entriesForKind`, `tryGetEntry`, the grouping trees, and `LibraryEntry.forKinds`.
-/// The proxy is the in-memory mock (`createInMemory`); a stub of the SAME record shape proves the seam.
+/// The proxy is `BuiltinCatalogue.library`; a stub of the SAME record shape proves the seam.
 module LibraryProxyTests =
 
-    let private proxy = Library.createInMemory ()
+    let private proxy = BuiltinCatalogue.library ()
 
     [<Fact>]
     let ``ElementId round-trips through its value accessor`` () =
@@ -251,14 +251,14 @@ module LibraryProxyTests =
 
     [<Fact>]
     let ``every seeded entry has a non-empty fullDescription`` () =
-        Assert.NotEmpty seedEntries
-        Assert.All(seedEntries, fun e ->
+        Assert.NotEmpty ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ())
+        Assert.All(((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ()), fun e ->
             Assert.False(System.String.IsNullOrWhiteSpace e.fullDescription, e.displayName))
 
     [<Fact>]
     let ``a Sample entry's fullDescription is exactly its curated description`` () =
         let sampleDescriptions =
-            seedEntries
+            ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ())
             |> List.choose (function SampleItem s -> Some (s, (SampleItem s).fullDescription) | _ -> None)
         Assert.NotEmpty sampleDescriptions
         Assert.All(sampleDescriptions, fun (s, full) -> Assert.Equal(s.description.value, full))
@@ -296,8 +296,8 @@ module LibraryProxyTests =
         // Spec 0033 step 002 acceptance: `Sample.id` is a Guid-backed `SampleId`; it crosses the
         // Selector valueId seam as its Guid STRING form (`entryId`) and `tryGetEntry` resolves that
         // string back to the SAME sample.
-        Assert.NotEmpty SeedSamples.allSeedSamples
-        for s in SeedSamples.allSeedSamples do
+        Assert.NotEmpty (BuiltinCatalogue.samples ())
+        for s in BuiltinCatalogue.samples () do
             let entryId = (SampleItem s).entryId
             Assert.Equal(string s.id.value, entryId.value)
             match proxy.tryGetEntry entryId with
@@ -334,11 +334,10 @@ module LibraryProxyTests =
 
     [<Fact>]
     let ``the seeded sample ids are distinct, non-empty Guids`` () =
-        // The seeds parse fixed literal Guids (never Guid.NewGuid), so every id is distinct and no
-        // seed carries the empty Guid (a Guid.Parse typo would surface here).
-        let ids = SeedSamples.allSeedSamples |> List.map (fun s -> s.id)
+        // BuiltinCatalogue.samples must retain its frozen, non-empty Guids (spec 0050 §3.3).
+        let ids = BuiltinCatalogue.samples () |> List.map (fun s -> s.id)
         Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
-        Assert.All(SeedSamples.allSeedSamples, fun s -> Assert.NotEqual(System.Guid.Empty, s.id.value))
+        Assert.All((BuiltinCatalogue.samples ()), fun s -> Assert.NotEqual(System.Guid.Empty, s.id.value))
 
     [<Fact>]
     let ``a STUB proxy of the same shape drives the same kind-constraint logic`` () =

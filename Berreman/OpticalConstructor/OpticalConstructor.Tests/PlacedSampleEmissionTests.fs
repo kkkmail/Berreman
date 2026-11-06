@@ -17,23 +17,23 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// a ThinFilm or a Plate to both.
 module PlacedSampleEmissionTests =
 
-    // ---- the seeded library the Main scene binds against (a Mirror, a ThinFilm and a Plate seed) ----
+    // ---- BuiltinCatalogue.library bindings: Mirror, ThinFilm and Plate ----
 
-    let private lib : LibraryProxy = Library.createInMemory ()
+    let private lib : LibraryProxy = BuiltinCatalogue.library ()
 
-    /// Resolve a seeded entry by its id (the entry id is the `valueId` written onto a bound element).
+    /// Resolve a `BuiltinCatalogue.library` entry by its bound element's `valueId`.
     let private entry (id : ElementValueId) : LibraryEntry =
         match lib.tryGetEntry id with
         | Ok (Some e) -> e
         | other -> failwith $"seed entry '%s{id.value}' unexpectedly not resolvable: %A{other}"
 
-    /// The seeded MIRROR sample (`supportedEmission = EmitReflectedOnly`; spec 0046 — the EUV multilayer).
-    let private mirrorId : ElementValueId = (SampleItem SeedSamples.euvMoSi).entryId
-    /// A seeded ThinFilm sample — spec 0046: a thin film reflects AND transmits (`EmitBoth`).
-    let private thinFilmId : ElementValueId = (SampleItem SeedSamples.glassFilm600).entryId
-    /// A seeded Plate sample supporting BOTH branches (`supportedEmission = EmitBoth`).
-    let private plateId : ElementValueId = (SampleItem SeedSamples.glassPlate1mm).entryId
-    /// A non-sample seeded entry (the 600 nm source) — carries no geometry emission constraint.
+    /// `BuiltinCatalogue.sample`'s EUV mirror reflects only (spec 0046).
+    let private mirrorId : ElementValueId = SampleIds.euvMoSiId.toElementValueId
+    /// `BuiltinCatalogue.sample`'s thin film reflects AND transmits (spec 0046).
+    let private thinFilmId : ElementValueId = SampleIds.glassFilm600Id.toElementValueId
+    /// `BuiltinCatalogue.sample`'s plate supports BOTH branches.
+    let private plateId : ElementValueId = SampleIds.glassPlate1mmId.toElementValueId
+    /// `BuiltinCatalogue.source`'s 600 nm line carries no geometry emission constraint.
     let private sourceId : ElementValueId = PresetIds.source600
 
     // ============================ pure Domain: placementEmissionForEntry ============================

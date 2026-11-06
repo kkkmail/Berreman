@@ -6,7 +6,6 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary       // VersionNumber (spec 0038 Part H)
 open OpticalConstructor.Domain.Lifecycle             // VersionRef / VersionsInUse / SampleVersionRef
-open OpticalConstructor.Domain.SampleStore           // SampleProxy.createInMemory (versioned store)
 open OpticalConstructor.Domain.Experiments
 
 /// Spec 0027 (028) / spec 0038 Part I (step 025) — pure domain tests for the Experiments module. The
@@ -30,9 +29,9 @@ module ExperimentProxyTests =
     let private desc (idStr : string) (label : string) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
         { ElementDescriptor.elementId = el idStr; label = ElementLabel label; kind = kind; placement = placementOf kind; binding = binding }
 
-    /// The version-one binding of the seeded 1 mm glass plate — a sample bound BY VERSION.
+    /// The version-one binding of `BuiltinCatalogue.sample`'s 1 mm glass plate.
     let private glassPlateBinding : ElementBinding =
-        BoundByVersion (SampleVersionRef (SampleVersionId.firstOf SeedSamples.glassPlate1mm.id))
+        BoundByVersion (SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId))
 
     // A single-source setup and a single-polarizer setup for the interactive-commit tests.
     let private srcSetup : ElementDescriptor list = [ desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600) ]
@@ -277,7 +276,7 @@ module ExperimentProxyTests =
     [<Fact>]
     let ``boundVersions collects the versioned bindings of the setup (samples yes, presets no)`` () =
         let bound = boundVersions [ e1 ]
-        Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SeedSamples.glassPlate1mm.id), bound)
+        Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId), bound)
         // E2 has no sample, so it binds no version; a dark line binds nothing.
         Assert.Empty(boundVersions [ e2 ])
         Assert.Empty(boundVersions [ e3 ])
@@ -286,34 +285,38 @@ module ExperimentProxyTests =
     let ``a bound version appears in versionsInUse and BLOCKS removal of that sample`` () =
         let seam = versionsInUseSeam (fun () -> [ e1 ])
         // The seam reports the bound version.
-        Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SeedSamples.glassPlate1mm.id), seam.versionsInUse ())
+        Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId), seam.versionsInUse ())
         // A store over the real seam refuses to remove the sample whose version an experiment binds …
-        let bound = SampleProxy.createInMemory seam
-        match bound.removeSample SeedSamples.glassPlate1mm.id with
+        let bound = BuiltinCatalogue.sampleStore seam
+        match bound.removeSample SampleIds.glassPlate1mmId with
         | Error (SampleVersionInUseErr _) -> ()
         | other -> Assert.Fail($"expected SampleVersionInUseErr, got %A{other}")
         // … while a store over the empty seam removes it freely (the rule is UNLOCKED only by the binding).
-        let free = SampleProxy.createInMemory VersionsInUse.empty
-        match free.removeSample SeedSamples.glassPlate1mm.id with
+        let free = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        match free.removeSample SampleIds.glassPlate1mmId with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok, got %A{other}")
 
     [<Fact>]
     let ``editing a USED sample version mints the next version instead of rewriting it`` () =
         let seam = versionsInUseSeam (fun () -> [ e1 ])
-        let store = SampleProxy.createInMemory seam
+        let store = BuiltinCatalogue.sampleStore seam
         // Change the bound sample's physics (1 mm plate → the 2 mm plate's structure) under the SAME id.
-        let edited = { SeedSamples.glassPlate1mm with structure = SeedSamples.glassPlate2mm.structure }
+        let edited =
+            {
+                BuiltinCatalogue.sample SampleIds.glassPlate1mmId with
+                    structure = (BuiltinCatalogue.sample SampleIds.glassPlate2mmId).structure
+            }
         match store.saveSample edited with
         | Ok () ->
             // v1 is frozen with the original physics …
-            match store.resolveVersion (SampleVersionId.firstOf SeedSamples.glassPlate1mm.id) with
-            | Ok (Some v1) -> Assert.Equal<SampleStructure>(SeedSamples.glassPlate1mm.structure, v1.structure)
+            match store.resolveVersion (SampleVersionId.firstOf SampleIds.glassPlate1mmId) with
+            | Ok (Some v1) -> Assert.Equal<SampleStructure>((BuiltinCatalogue.sample SampleIds.glassPlate1mmId).structure, v1.structure)
             | other -> Assert.Fail($"expected the frozen v1, got %A{other}")
             // … and v2 carries the edited physics as the new latest.
-            let v2Id = { sampleId = SeedSamples.glassPlate1mm.id; version = VersionNumber.first.next }
+            let v2Id = { sampleId = SampleIds.glassPlate1mmId; version = VersionNumber.first.next }
             match store.resolveVersion v2Id with
-            | Ok (Some v2) -> Assert.Equal<SampleStructure>(SeedSamples.glassPlate2mm.structure, v2.structure)
+            | Ok (Some v2) -> Assert.Equal<SampleStructure>((BuiltinCatalogue.sample SampleIds.glassPlate2mmId).structure, v2.structure)
             | other -> Assert.Fail($"expected a minted v2, got %A{other}")
         | other -> Assert.Fail($"expected Ok on the versioning save, got %A{other}")
 
@@ -338,7 +341,7 @@ module ExperimentProxyTests =
         | Some d -> Assert.Equal(BoundByEntryId PresetIds.detectorIntensity, d.binding)
         | None -> Assert.Fail "the committed chain lost its detector"
         // the sample binding rides along BY VERSION, so it counts as in-use
-        Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SeedSamples.glassPlate1mm.id), boundVersions c.experiments)
+        Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId), boundVersions c.experiments)
 
     // ============================ the mock proxy seam ============================
 

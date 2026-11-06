@@ -88,5 +88,7 @@ module ExperimentRunTests =
             | Error (InvalidSourceErr _) -> ()
             | other -> Assert.Fail($"expected InvalidSourceErr, got %A{other}")
         Assert.Equal(Some (400.0, 800.0), (tunable 400.0 800.0 600.0).tunableLimitsOpt |> Option.map (fun l -> round (l.lower.value / nmToMeter / oneNanometer), round (l.upper.value / nmToMeter / oneNanometer)))
-        // The seeded tunable sources are valid presets of their own kind.
-        Assert.All(SeedSources.tunables, fun s -> Assert.True(Option.isSome s.tunableLimitsOpt, s.name.value))
+        let tunables =
+            [ PresetIds.xenonMonochromator; PresetIds.tiSapphireTunable; PresetIds.supercontinuum; PresetIds.euvBeamline ]
+            |> List.map BuiltinCatalogue.source
+        Assert.All(tunables, fun s -> Assert.True(Option.isSome s.tunableLimitsOpt, s.name.value))

@@ -7,15 +7,11 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Propagation
 open OpticalConstructor.Domain.Facets
-open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.LibraryFacets
 
-/// Spec 0038 Part F (step 014) — ideal elements become ordinary protected entries and polarizer
-/// behaviour becomes data. Pins: `ComputedIdeal` parity with the EXISTING `analyzerMueller` /
-/// `inputStokes` synthesis across orientations; the `R(−θ)·M·R(θ)` component rotation; the ORDERED
-/// rotated product of a `ConstantMueller` compound (list in light-traversal order — first component
-/// applied first); whole-compound rotation ≡ per-component offset shift; `ProtectedBuiltIn` on every
-/// seeded preset with every seeded sample `UserManaged`; and the polarizer-category facet.
+/// Spec 0038 Part F step 014; spec 0050 S1.7: ideal parity, ordered compound rotation,
+/// and polarizer facets. `BuiltinCatalogue.presets` are protected;
+/// `BuiltinCatalogue.samples` are user-managed.
 module PolarizerBehaviorTests =
 
     let private deg (d : float) : Angle = Angle.degree (d * 1.0<Berreman.Constants.deg>)
@@ -126,7 +122,7 @@ module PolarizerBehaviorTests =
     [<Fact>]
     let ``every seeded preset is ProtectedBuiltIn and every seeded sample UserManaged`` () =
         let samples, presets =
-            seedEntries
+            ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ())
             |> List.partition (fun e ->
                 match e with
                 | SampleItem _ -> true
@@ -135,11 +131,11 @@ module PolarizerBehaviorTests =
         Assert.NotEmpty presets
         Assert.All(presets, fun e -> Assert.Equal<EntryProtection>(ProtectedBuiltIn, e.protection))
         Assert.All(samples, fun e -> Assert.Equal<EntryProtection>(UserManaged, e.protection))
-        // The protected built-ins are exactly the seeded presets the spec names (F.0) plus, since spec
-        // 0046, every seeded light source (the lasers and the UV / EUV lithography sources).
+        // Spec 0038 F.0; spec 0046; spec 0050 S1.7: BuiltinCatalogue.presets protects
+        // the ideal elements and every BuiltinCatalogue.sources entry.
         Assert.Equal<string list>(
             [ PresetIds.detectorEllipsometer; PresetIds.detectorIntensity; PresetIds.polarizerCpLeft; PresetIds.polarizerCpRight; PresetIds.polarizerLp ]
-            @ (SeedSources.allSeedSources |> List.map (fun s -> s.id))
+            @ (BuiltinCatalogue.sources () |> List.map (fun s -> s.id))
             |> List.map (fun i -> i.value)
             |> List.sort,
             presets |> List.map (fun e -> e.entryId.value) |> List.sort)
@@ -147,7 +143,7 @@ module PolarizerBehaviorTests =
     [<Fact>]
     let ``the three seeded ideals are ComputedIdeal entries with their Lp and Cp categories`` () =
         let polarizer (id : Placement.ElementValueId) : PolarizerPreset =
-            seedEntries
+            ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ())
             |> List.pick (fun e ->
                 match e with
                 | PolarizerItem p when p.id = id -> Some p
@@ -164,16 +160,16 @@ module PolarizerBehaviorTests =
     [<Fact>]
     let ``the polarizer-category facet applies only to polarizers and classifies the seeded ideals`` () =
         let def =
-            libraryFacets (BuiltinCatalogue.categories ()) builtInEntries
+            libraryFacets (BuiltinCatalogue.categories ()) (BuiltinCatalogue.materials ())
             |> List.find (fun d -> d.key = polarizerCategoryFacetKey)
-        for entry in seedEntries do
+        for entry in ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ()) do
             let expected =
                 match entry with
                 | PolarizerItem _ -> ApplicableAttribute
                 | SampleItem _ | SourceItem _ | DetectorItem _ -> InapplicableAttribute
             Assert.Equal<Applicability>(expected, def.appliesTo entry)
         let extractedLabels (id : Placement.ElementValueId) : string list =
-            seedEntries
+            ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ())
             |> List.find (fun e -> e.entryId = id)
             |> def.extract
             |> List.map (fun v -> v.label)

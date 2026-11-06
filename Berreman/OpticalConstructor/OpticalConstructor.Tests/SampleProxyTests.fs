@@ -8,38 +8,30 @@ open OpticalConstructor.Domain              // the Propagation module (the versi
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 
-/// Spec 0038 Part H step 022 (contract STORE_XDUO_0002) — the mutating samples write-seam re-typed
-/// IN PLACE into the VERSIONED store, the exact mirror of step 021's `MaterialProxy`.
-/// `SampleProxy.createInMemory versionsInUse` keeps a per-`SampleId` history (`ref Map<SampleId,
-/// version list>`, seeded from `seedEntries`' samples as version 1 active); the LATEST version is
-/// what the offers surface and the library edits, older versions are view-only resolution targets.
-/// These facts enumerate the version-growth decision table over a STUBBED `VersionsInUse`,
-/// latest-active default listing, inactive hidden from offers yet resolvable by version, supersede
-/// behaving as inactive, and the used-version removal hard-block — PLUS the sample-layer version-pin
-/// round-trip (a layer keeps resolving its pinned material version after the material mints a newer
-/// one). Every test builds a FRESH proxy (a shared stateful proxy would be order-dependent).
+/// Versioned sample-store behavior over fresh `BuiltinCatalogue.sampleStore` instances:
+/// version growth, lifecycle visibility, used-version removal, and material-version pins.
+/// Spec 0038 Part H step 022 (STORE_XDUO_0002); spec 0050 S1.7 supplies catalogue values.
 module SampleProxyTests =
 
     /// A fresh store with NO versions in use — the default over which the unused-side of the decision
     /// table and the read surface are exercised.
     let private freshProxy () : SampleProxy =
-        SampleProxy.createInMemory VersionsInUse.empty
+        BuiltinCatalogue.sampleStore VersionsInUse.empty
 
     /// A fresh store over which the given versioned references are reported as in-use by a live
     /// experiment (the step-20 seam, stubbed) — the used-side of the decision table and the
     /// used-version removal block.
     let private proxyWithUsed (refs : VersionRef list) : SampleProxy =
-        SampleProxy.createInMemory { versionsInUse = fun () -> Set.ofList refs }
+        BuiltinCatalogue.sampleStore
+            {
+                versionsInUse = fun () -> Set.ofList refs
+            }
 
-    /// A seeded template sample (fixed id, thick glass plate) the write tests reuse.
-    let private plate : Sample = SeedSamples.glassPlate1mm
+    let private plate : Sample = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
 
-    /// A distinct seeded sample whose STRUCTURE differs from `plate` (a 2 mm plate vs a 1 mm plate,
-    /// same material) — the physics-change source.
-    let private otherStructure : Sample = SeedSamples.glassPlate2mm
+    /// `BuiltinCatalogue.sample` supplies a different thickness with the same material.
+    let private otherStructure : Sample = BuiltinCatalogue.sample SampleIds.glassPlate2mmId
 
     /// A physics change of `plate`: SAME id / name / description / substrate kind, a DIFFERENT
     /// `SampleStructure`. `decideVersioning` sees the physics (the structure) as changed, the
@@ -59,7 +51,7 @@ module SampleProxyTests =
     let private v1Id (id : SampleId) : SampleVersionId = { sampleId = id; version = VersionNumber.first }
     let private v2Id (id : SampleId) : SampleVersionId = { sampleId = id; version = VersionNumber.first.next }
 
-    /// A fresh sample under a MINTED id (not in the seeded map) over the plate's structure.
+    /// A fresh sample under a MINTED id, absent from `BuiltinCatalogue.samples`.
     let private minted () : Sample =
         { plate with id = newSampleId (); name = EntryName "Test plate (minted)" }
 
@@ -68,14 +60,14 @@ module SampleProxyTests =
     let private emptyStructure : SampleStructure =
         { films = []; substrate = None; lower = None }
 
-    // ============================ the read surface over the seeded store ============================
+    // ============================ the read surface over BuiltinCatalogue.sampleStore ============================
 
     [<Fact>]
     let ``listSamples ActiveOnly returns the seeded samples with distinct ids`` () =
         match (freshProxy ()).listSamples ActiveOnly with
         | Ok samples ->
             Assert.NotEmpty samples
-            Assert.Equal(List.length SeedSamples.allSeedSamples, List.length samples)
+            Assert.Equal(List.length (BuiltinCatalogue.samples ()), List.length samples)
             let ids = samples |> List.map (fun s -> s.id)
             Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
         | Error err -> Assert.Fail($"%A{err}")
@@ -83,7 +75,7 @@ module SampleProxyTests =
     [<Fact>]
     let ``searchSamples with the empty query matches every seeded sample`` () =
         match (freshProxy ()).searchSamples SampleQuery.empty with
-        | Ok samples -> Assert.Equal(List.length SeedSamples.allSeedSamples, List.length samples)
+        | Ok samples -> Assert.Equal(List.length (BuiltinCatalogue.samples ()), List.length samples)
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
@@ -103,19 +95,19 @@ module SampleProxyTests =
             Assert.NotEmpty plates
             Assert.All(plates, fun s -> Assert.Equal(ThickPlate, s.substrate))
             Assert.Equal(
-                SeedSamples.allSeedSamples |> List.filter (fun s -> s.substrate = ThickPlate) |> List.length,
+                BuiltinCatalogue.samples () |> List.filter (fun s -> s.substrate = ThickPlate) |> List.length,
                 List.length plates)
         | Error err -> Assert.Fail($"%A{err}")
-        // "langasite" matches only the dispersive langasite-on-silicon seed, a thin film.
+        // "langasite" matches one thin film in BuiltinCatalogue.samples.
         match proxy.searchSamples { text = NameFragment "langasite"; substrate = Some ThinFilm } with
-        | Ok [ only ] -> Assert.Equal<SampleId>(SeedSamples.langasiteSilicon.id, only.id)
+        | Ok [ only ] -> Assert.Equal<SampleId>(SampleIds.langasiteSiliconId, only.id)
         | other -> Assert.Fail($"expected exactly the langasite sample, got %A{other}")
 
     [<Fact>]
     let ``tryGetSample hits a known id and misses a minted one`` () =
         let proxy = freshProxy ()
-        match proxy.tryGetSample SeedSamples.euvMoSi.id with
-        | Ok (Some s) -> Assert.Equal<SampleId>(SeedSamples.euvMoSi.id, s.id)
+        match proxy.tryGetSample SampleIds.euvMoSiId with
+        | Ok (Some s) -> Assert.Equal<SampleId>(SampleIds.euvMoSiId, s.id)
         | other -> Assert.Fail($"expected the EUV Mo/Si sample, got %A{other}")
         match proxy.tryGetSample (newSampleId ()) with
         | Ok None -> ()
@@ -124,10 +116,10 @@ module SampleProxyTests =
     [<Fact>]
     let ``resolveVersion hits version 1 of a seed, misses a non-existent version, and misses an unknown id`` () =
         let proxy = freshProxy ()
-        match proxy.resolveVersion (v1Id SeedSamples.glassPlate1mm.id) with
-        | Ok (Some s) -> Assert.Equal<SampleId>(SeedSamples.glassPlate1mm.id, s.id)
+        match proxy.resolveVersion (v1Id SampleIds.glassPlate1mmId) with
+        | Ok (Some s) -> Assert.Equal<SampleId>(SampleIds.glassPlate1mmId, s.id)
         | other -> Assert.Fail($"expected version 1 of the glass plate, got %A{other}")
-        match proxy.resolveVersion (v2Id SeedSamples.glassPlate1mm.id) with
+        match proxy.resolveVersion (v2Id SampleIds.glassPlate1mmId) with
         | Ok None -> ()
         | other -> Assert.Fail($"expected Ok None for a non-existent version 2, got %A{other}")
         match proxy.resolveVersion (v1Id (newSampleId ())) with
@@ -145,7 +137,7 @@ module SampleProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.listSamples ActiveOnly with
         | Ok samples ->
-            Assert.Equal(List.length SeedSamples.allSeedSamples + 1, List.length samples)
+            Assert.Equal(List.length (BuiltinCatalogue.samples ()) + 1, List.length samples)
             Assert.Contains(sample.id, samples |> List.map (fun s -> s.id))
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.resolveVersion (v1Id sample.id) with
@@ -172,12 +164,13 @@ module SampleProxyTests =
 
     // ==================== validateSample: a Plate requires a substrate (spec 0040 D.1) ====================
 
-    /// A `Plate`-geometry sample carrying a film but NO substrate plate: a thin-film seed (which has
-    /// a film and `structure.substrate = None`) re-labelled `Plate`. Because it has a film it is NOT
-    /// structurally empty, so the ONLY rule that can reject it is the new D.1 Plate-requires-a-
-    /// substrate rule — this isolates the new behaviour from the older structurally-empty reject.
+    /// Relabel `BuiltinCatalogue.sample`'s film as a plate to isolate the missing-substrate rule
+    /// from the structurally-empty rejection (spec 0040 D.1; spec 0050 S1.7).
     let private plateMissingSubstrate : Sample =
-        { SeedSamples.glassFilm600 with substrate = ThickPlate }
+        {
+            BuiltinCatalogue.sample SampleIds.glassFilm600Id with
+                substrate = ThickPlate
+        }
 
     [<Fact>]
     let ``validateSample rejects a Plate whose structure.substrate is None as InvalidSample`` () =
@@ -187,15 +180,15 @@ module SampleProxyTests =
 
     [<Fact>]
     let ``validateSample accepts a Plate that carries a substrate and a non-blank name`` () =
-        // glassPlate1mm is a Plate whose structure carries `Some` substrate — D.1 leaves it Ok.
-        match SeedSamples.glassPlate1mm.validate with
+        // BuiltinCatalogue.sample's 1 mm plate carries the substrate D.1 requires.
+        match (BuiltinCatalogue.sample SampleIds.glassPlate1mmId).validate with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () for a Plate with a substrate, got %A{other}")
 
     [<Fact>]
     let ``validateSample leaves a ThinFilm with no substrate Ok`` () =
-        // glassFilm600 is a ThinFilm with `structure.substrate = None` — unaffected by the D.1 rule.
-        match SeedSamples.glassFilm600.validate with
+        // BuiltinCatalogue.sample's 600 nm film needs no substrate under D.1.
+        match (BuiltinCatalogue.sample SampleIds.glassFilm600Id).validate with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () for a ThinFilm with no substrate, got %A{other}")
 
@@ -210,12 +203,15 @@ module SampleProxyTests =
 
     [<Fact>]
     let ``the seeded EUV multilayer is the one Mirror; seeded thin films and plates support both`` () =
-        Assert.Equal(Mirror, SeedSamples.euvMoSi.substrate)
-        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, SeedSamples.euvMoSi.supportedEmission)
-        for s in [ SeedSamples.glassFilm600; SeedSamples.glassFilm200; SeedSamples.multilayerQw; SeedSamples.glassPlate1mm ] do
+        Assert.Equal(Mirror, (BuiltinCatalogue.sample SampleIds.euvMoSiId).substrate)
+        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, (BuiltinCatalogue.sample SampleIds.euvMoSiId).supportedEmission)
+        let samples =
+            [ SampleIds.glassFilm600Id; SampleIds.glassFilm200Id; SampleIds.multilayerQwId; SampleIds.glassPlate1mmId ]
+            |> List.map BuiltinCatalogue.sample
+        for s in samples do
             Assert.Equal<Placement.Emission>(Placement.EmitBoth, s.supportedEmission)
-        // Every seed carrying R-only is a Mirror.
-        for s in SeedSamples.allSeedSamples do
+        // BuiltinCatalogue.samples permits R-only for mirrors.
+        for s in BuiltinCatalogue.samples () do
             match s.supportedEmission with
             | Placement.EmitReflectedOnly -> Assert.Equal(Mirror, s.substrate)
             | Placement.EmitBoth | Placement.EmitTransmittedOnly -> ()
@@ -226,17 +222,17 @@ module SampleProxyTests =
         for candidate in [ Placement.EmitReflectedOnly; Placement.EmitTransmittedOnly; Placement.EmitBoth ] do
             Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, constrainEmission Mirror candidate)
         // …and the Sample setter routes through it, so trying to clear R on a mirror is a no-op.
-        let mirror = SeedSamples.euvMoSi
+        let mirror = BuiltinCatalogue.sample SampleIds.euvMoSiId
         let clearedR = mirror.supportedEmission |> Placement.Emission.withReflected Placement.RayGroupOff
         let after = mirror |> withSupportedEmission clearedR
         Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, after.supportedEmission)
         // A thin film, by contrast, is constrainable like a plate (spec 0046).
-        let film = SeedSamples.glassFilm600 |> withSupportedEmission Placement.EmitTransmittedOnly
+        let film = BuiltinCatalogue.sample SampleIds.glassFilm600Id |> withSupportedEmission Placement.EmitTransmittedOnly
         Assert.Equal<Placement.Emission>(Placement.EmitTransmittedOnly, film.supportedEmission)
 
     [<Fact>]
     let ``a Plate is constrainable: clearing R via Emission.withReflected Placement.RayGroupOff leaves T on`` () =
-        let plate = SeedSamples.glassPlate1mm
+        let plate = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
         Assert.Equal<Placement.Emission>(Placement.EmitBoth, plate.supportedEmission)
         // The existing Emission setter clears the reflected branch; the both-off state is
         // unrepresentable, so T stays on (EmitTransmittedOnly)…
@@ -316,7 +312,7 @@ module SampleProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.listSamples ActiveOnly with
         | Ok samples ->
-            Assert.Equal(List.length SeedSamples.allSeedSamples, List.length samples)
+            Assert.Equal(List.length (BuiltinCatalogue.samples ()), List.length samples)
             let plateEntries = samples |> List.filter (fun s -> s.id = plate.id)
             Assert.Equal(1, List.length plateEntries)
             Assert.Equal(otherStructure.structure, plateEntries.Head.structure)
@@ -396,14 +392,14 @@ module SampleProxyTests =
     [<Fact>]
     let ``removeSample succeeds when no version is in use, then the id is unknown`` () =
         let proxy = freshProxy ()
-        match proxy.removeSample SeedSamples.langasiteSilicon.id with
+        match proxy.removeSample SampleIds.langasiteSiliconId with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
-        match proxy.tryGetSample SeedSamples.langasiteSilicon.id with
+        match proxy.tryGetSample SampleIds.langasiteSiliconId with
         | Ok None -> ()
         | other -> Assert.Fail($"expected Ok None after removal, got %A{other}")
-        match proxy.removeSample SeedSamples.langasiteSilicon.id with
-        | Error (UnknownSampleIdErr reason) -> Assert.Contains(string SeedSamples.langasiteSilicon.id.value, reason)
+        match proxy.removeSample SampleIds.langasiteSiliconId with
+        | Error (UnknownSampleIdErr reason) -> Assert.Contains(string SampleIds.langasiteSiliconId.value, reason)
         | other -> Assert.Fail($"expected Error (UnknownSampleIdErr _), got %A{other}")
 
     // ============================ the seam (reference equality + the stub) ============================
@@ -481,9 +477,13 @@ module SampleProxyTests =
         // The MATERIAL store: glass152 version 1 is USED by a live experiment, so a physics change
         // mints version 2 rather than mutating the bound version.
         let usedRef = MaterialVersionRef { materialId = MaterialIds.glass152; version = VersionNumber.first }
-        let materials = MaterialProxy.createInMemory (fun _ -> []) { versionsInUse = fun () -> Set.ofList [ usedRef ] }
-        let glass = builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass152)
-        let other = builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass200)
+        let materials =
+            BuiltinCatalogue.materialStore (fun _ -> [])
+                {
+                    versionsInUse = fun () -> Set.ofList [ usedRef ]
+                }
+        let glass = BuiltinCatalogue.materials () |> List.find (fun e -> e.id = MaterialIds.glass152)
+        let other = BuiltinCatalogue.materials () |> List.find (fun e -> e.id = MaterialIds.glass200)
         let glassPhysicsChanged = { glass with complexity = other.complexity }
         match materials.saveMaterial glassPhysicsChanged with
         | Ok () -> ()
@@ -491,14 +491,16 @@ module SampleProxyTests =
         // A sample whose single film pins glass152 VERSION ONE.
         let pinned = MaterialVersionId.firstOf MaterialIds.glass152
         let sample : Sample =
-            { SeedSamples.glassFilm200 with
-                id = newSampleId ()
-                structure =
-                    {
-                        films = [ SingleLayer { materialId = pinned; thickness = Thickness.nm 100.0<nm>; orientation = PrimaryAxes } ]
-                        substrate = None
-                        lower = None
-                    } }
+            {
+                BuiltinCatalogue.sample SampleIds.glassFilm200Id with
+                    id = newSampleId ()
+                    structure =
+                        {
+                            films = [ SingleLayer { materialId = pinned; thickness = Thickness.nm 100.0<nm>; orientation = PrimaryAxes } ]
+                            substrate = None
+                            lower = None
+                        }
+            }
         // The pinned layer STILL resolves — through the by-version resolve — after the mint.
         match Propagation.resolveSampleMaterials materials sample with
         | Ok _ -> ()
