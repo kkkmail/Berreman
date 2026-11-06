@@ -23,7 +23,7 @@ open OpticalConstructor.Storage.EntryFileJson
 
 /// One library entry per file: every kind is written, read back through its schema, version and hash checks
 /// and decoded to the value it was built from; each failure is its typed error (spec 0050 001 §B). The catalogue
-/// manifest's file follows the same law, and every code seed has a file form (001 §A, §B).
+/// manifest covers BuiltinCatalogue.materials/categories/samples/presets (001 §A, §B; S1.7).
 module EntryFileJsonTests =
 
     let private okOf (result : Result<'Value, StorageError>) : 'Value =
@@ -175,11 +175,11 @@ module EntryFileJsonTests =
 
     [<Fact>]
     let ``a multilayer sample entry file round-trips`` () =
-        for sample in [ SeedSamples.multilayerQw; SeedSamples.langasiteSilicon ] do
+        for sample in [ BuiltinCatalogue.sample SampleIds.multilayerQwId; BuiltinCatalogue.sample SampleIds.langasiteSiliconId ] do
             let readBack = LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue sample |> roundTrip
             Assert.Equal<Sample>(sample, readBack.content.toSample |> decodedOf)
 
-        match SeedSamples.multilayerQw.structure.films with
+        match (BuiltinCatalogue.sample SampleIds.multilayerQwId).structure.films with
         | Repeated _ :: _ -> ()
         | other -> Assert.Fail($"the quarter-wave stack opens with a period group, not %A{other}")
 
@@ -195,7 +195,7 @@ module EntryFileJsonTests =
 
     [<Fact>]
     let ``a tunable source entry file round-trips`` () =
-        let tunable = SeedSources.tunables |> List.find (fun s -> s.id = PresetIds.tiSapphireTunable)
+        let tunable = BuiltinCatalogue.source PresetIds.tiSapphireTunable
 
         for provenance, source in [ builtInCatalogue, tunable; UserProvenance, userSource ] do
             let readBack = LibraryEntryContent.ofSourcePreset VersionNumber.first provenance source |> decodedOf |> roundTrip
@@ -223,7 +223,7 @@ module EntryFileJsonTests =
     [<Fact>]
     let ``a detector and a category entry file round-trip`` () =
         let ellipsometer =
-            seedEntries
+            BuiltinCatalogue.presets ()
             |> List.pick (fun entry ->
                 match entry with
                 | DetectorItem d when d.id = PresetIds.detectorEllipsometer -> Some d
@@ -232,7 +232,7 @@ module EntryFileJsonTests =
         let detectorBack = LibraryEntryContent.ofDetectorPreset VersionNumber.first builtInCatalogue ellipsometer |> decodedOf |> roundTrip
         Assert.Equal<DetectorPreset>(ellipsometer, detectorBack.content.toDetectorPreset |> decodedOf)
 
-        let vacuum = standardCategories |> List.find (fun c -> c.id = CategoryIds.vacuumCategory)
+        let vacuum = BuiltinCatalogue.category CategoryIds.vacuumCategory
         let categoryBack = LibraryEntryContent.ofMaterialCategory VersionNumber.first builtInCatalogue vacuum |> decodedOf |> roundTrip
         Assert.Equal<MaterialCategory>(vacuum, categoryBack.content.toMaterialCategory |> decodedOf)
 
@@ -331,7 +331,7 @@ module EntryFileJsonTests =
         let withoutName = editedFileOf tamperableContent (fun entry -> entry.Remove "name" |> ignore)
         assertSchemaInvalid "a material file without its name" (withoutName.parseEntry MaterialEntryKind)
 
-        let sampleFile = fileOf (LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue SeedSamples.langasiteSilicon)
+        let sampleFile = fileOf (LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue (BuiltinCatalogue.sample SampleIds.langasiteSiliconId))
         assertSchemaInvalid "a sample's file read as a material" (sampleFile.parseEntry MaterialEntryKind)
 
         match (LibraryFileText "{ this is not JSON").parseEntry MaterialEntryKind with
@@ -342,9 +342,9 @@ module EntryFileJsonTests =
     let private threeKindManifest : CatalogueManifest =
         let contents =
             [
-                LibraryEntryContent.ofSourcePreset VersionNumber.first builtInCatalogue (SeedSources.tunables |> List.find (fun s -> s.id = PresetIds.tiSapphireTunable)) |> decodedOf
+                LibraryEntryContent.ofSourcePreset VersionNumber.first builtInCatalogue (BuiltinCatalogue.source PresetIds.tiSapphireTunable) |> decodedOf
                 LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue silica
-                LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue SeedSamples.langasiteSilicon
+                LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue (BuiltinCatalogue.sample SampleIds.langasiteSiliconId)
             ]
 
         contents
@@ -428,7 +428,7 @@ module EntryFileJsonTests =
     let private categoryContent (category : MaterialCategory) : LibraryEntryContent =
         LibraryEntryContent.ofMaterialCategory VersionNumber.first builtInCatalogue category |> decodedOf
 
-    let private seedContent (entry : LibraryEntry) : LibraryEntryContent =
+    let private entryContent (entry : LibraryEntry) : LibraryEntryContent =
         match entry with
         | SampleItem sample -> LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue sample
         | SourceItem source -> LibraryEntryContent.ofSourcePreset VersionNumber.first builtInCatalogue source |> decodedOf
@@ -437,19 +437,22 @@ module EntryFileJsonTests =
 
     [<Fact>]
     let ``every built-in seals, writes, reads and decodes equal to its seed`` () =
-        Assert.NotEmpty builtInEntries
-        Assert.NotEmpty standardCategories
-        Assert.NotEmpty seedEntries
+        let materials = BuiltinCatalogue.materials ()
+        let categories = BuiltinCatalogue.categories ()
+        let entries = (BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ()
+        Assert.NotEmpty materials
+        Assert.NotEmpty categories
+        Assert.NotEmpty entries
 
-        for material in builtInEntries do
+        for material in materials do
             assertMaterialRoundTrips builtInCatalogue material
 
-        for category in standardCategories do
+        for category in categories do
             let readBack = categoryContent category |> roundTrip
             Assert.Equal<MaterialCategory>(category, readBack.content.toMaterialCategory |> decodedOf)
 
-        for entry in seedEntries do
-            let readBack = seedContent entry |> roundTrip
+        for entry in entries do
+            let readBack = entryContent entry |> roundTrip
 
             match entry with
             | SampleItem sample -> Assert.Equal<Sample>(sample, readBack.content.toSample |> decodedOf)
@@ -459,15 +462,18 @@ module EntryFileJsonTests =
 
     [<Fact>]
     let ``the built-ins form one catalogue with unique file names per kind`` () =
+        let materials = BuiltinCatalogue.materials ()
+        let categories = BuiltinCatalogue.categories ()
+        let entries = (BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ()
         let contents =
-            (builtInEntries |> List.map (LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue))
-            @ (standardCategories |> List.map categoryContent)
-            @ (seedEntries |> List.map seedContent)
+            (materials |> List.map (LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue))
+            @ (categories |> List.map categoryContent)
+            @ (entries |> List.map entryContent)
 
         let envelopes = contents |> List.map (fun content -> content.``sealed`` |> okOf)
         let manifest = CatalogueManifest.tryCreate testCatalogueId (CatalogueName "Built-in") VersionNumber.first envelopes |> decodedOf
 
-        Assert.Equal(List.length builtInEntries + List.length standardCategories + List.length seedEntries, List.length manifest.entries)
+        Assert.Equal(List.length materials + List.length categories + List.length entries, List.length manifest.entries)
 
         let kinds = manifest.entries |> List.map (fun row -> row.kind) |> List.distinct
         Assert.Equal<LibraryEntryKind list>(LibraryEntryKind.all, kinds)

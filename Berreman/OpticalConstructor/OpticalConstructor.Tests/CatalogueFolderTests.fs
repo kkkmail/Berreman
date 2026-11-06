@@ -15,7 +15,7 @@ open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.CatalogueFolderStore
 
 /// The folder implementation of `CatalogueProxy`, over real folders under the test output (spec 0050 001 §A; .spec-md §4,
-/// §5). The fixtures are functions, so a seed lookup that fails sinks its fact and not the assembly's start-up.
+/// §5; S1.7). Delayed BuiltinCatalogue.source/material/category/sample/presets lookups fail their fact, not assembly start-up.
 module CatalogueFolderTests =
 
     let private okOf (result : Result<'Value, 'Problem>) : 'Value =
@@ -26,7 +26,7 @@ module CatalogueFolderTests =
     let private builtIn : EntryProvenance = BuiltInProvenance CatalogueIds.builtInCatalogue
 
     let private tunableSource () : SourcePreset =
-        SeedSources.tunables |> List.find (fun source -> source.id = PresetIds.xenonMonochromator)
+        BuiltinCatalogue.source PresetIds.xenonMonochromator
 
     /// The tunable source with new content under the same name, so the same file name and a new hash.
     let private retunedSource () : SourcePreset =
@@ -35,11 +35,11 @@ module CatalogueFolderTests =
 
     /// One entry of every kind but the polarizer, holding `source`.
     let private catalogueOf (source : SourcePreset) : CatalogueData =
-        let langasite = builtInEntries |> List.find (fun entry -> entry.id = MaterialIds.langasite)
-        let glass = standardCategories |> List.find (fun category -> category.id = CategoryIds.glass)
+        let langasite = BuiltinCatalogue.material MaterialIds.langasite
+        let glass = BuiltinCatalogue.category CategoryIds.glass
 
         let ellipsometer =
-            seedEntries
+            BuiltinCatalogue.presets ()
             |> List.pick (fun entry ->
                 match entry with
                 | DetectorItem detector when detector.id = PresetIds.detectorEllipsometer -> Some detector
@@ -47,7 +47,7 @@ module CatalogueFolderTests =
 
         [
             LibraryEntryContent.ofMaterialEntry VersionNumber.first builtIn langasite
-            LibraryEntryContent.ofSample VersionNumber.first builtIn SeedSamples.multilayerQw
+            LibraryEntryContent.ofSample VersionNumber.first builtIn (BuiltinCatalogue.sample SampleIds.multilayerQwId)
             LibraryEntryContent.ofSourcePreset VersionNumber.first builtIn source |> okOf
             LibraryEntryContent.ofDetectorPreset VersionNumber.first builtIn ellipsometer |> okOf
             LibraryEntryContent.ofMaterialCategory VersionNumber.first builtIn glass |> okOf

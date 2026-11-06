@@ -107,20 +107,20 @@ module LibraryEntryFilesTests =
         | Ok value -> value
         | Error error -> failwith $"expected Ok, got %A{error}"
 
-    let private langasite : MaterialEntry = builtInEntries |> List.find (fun e -> e.id = MaterialIds.langasite)
+    let private langasite : MaterialEntry = BuiltinCatalogue.material MaterialIds.langasite
 
     let private intensityDetector : DetectorPreset =
-        seedEntries
+        BuiltinCatalogue.presets ()
         |> List.pick (fun entry ->
             match entry with
             | DetectorItem d when d.id = PresetIds.detectorIntensity -> Some d
             | _ -> None)
 
-    let private glassCategory : MaterialCategory = standardCategories |> List.find (fun c -> c.id = CategoryIds.glass)
+    let private glassCategory : MaterialCategory = BuiltinCatalogue.category CategoryIds.glass
 
-    let private tunableTiSapphire : SourcePreset = SeedSources.tunables |> List.find (fun s -> s.id = PresetIds.tiSapphireTunable)
+    let private tunableTiSapphire : SourcePreset = BuiltinCatalogue.source PresetIds.tiSapphireTunable
 
-    let private tiSapphire800 : SourcePreset = SeedSources.lasers |> List.find (fun s -> s.id = PresetIds.tiSapphire800)
+    let private tiSapphire800 : SourcePreset = BuiltinCatalogue.source PresetIds.tiSapphire800
 
     /// A user's compound polarizer: two linear components 45° apart, in light order.
     let private userCompoundPolarizer : PolarizerPreset =
@@ -144,9 +144,9 @@ module LibraryEntryFilesTests =
         Assert.Equal<CategoryId option>(Some CategoryIds.crystal, materialContent.categoryOpt)
         Assert.Equal<Result<MaterialEntry, LibraryEntryError>>(Ok langasite, materialContent.toMaterialEntry)
 
-        let sampleContent = LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue SeedSamples.multilayerQw
+        let sampleContent = LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue (BuiltinCatalogue.sample SampleIds.multilayerQwId)
         Assert.Equal<EntrySchema>(schemaOf SampleEntryKind, sampleContent.schema)
-        Assert.Equal<Result<Sample, LibraryEntryError>>(Ok SeedSamples.multilayerQw, sampleContent.toSample)
+        Assert.Equal<Result<Sample, LibraryEntryError>>(Ok (BuiltinCatalogue.sample SampleIds.multilayerQwId), sampleContent.toSample)
 
         let sourceContent = LibraryEntryContent.ofSourcePreset VersionNumber.first builtInCatalogue tunableTiSapphire |> okOf
         Assert.Equal<EntrySchema>(schemaOf SourceEntryKind, sourceContent.schema)
@@ -215,7 +215,7 @@ module LibraryEntryFilesTests =
         | Error (MissingEntryFieldErr _) -> ()
         | other -> Assert.Fail($"a material without a category: expected MissingEntryFieldErr, got %A{other}")
 
-        let sampleContent = LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue SeedSamples.multilayerQw
+        let sampleContent = LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue (BuiltinCatalogue.sample SampleIds.multilayerQwId)
 
         match { sampleContent with descriptionOpt = None }.toSample with
         | Error (MissingEntryFieldErr _) -> ()
@@ -246,7 +246,10 @@ module LibraryEntryFilesTests =
         { content = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue langasite; contentHash = materialHash }
 
     let private sampleEnvelope : LibraryEntryEnvelope =
-        { content = LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue SeedSamples.multilayerQw; contentHash = sampleHash }
+        {
+            content = LibraryEntryContent.ofSample VersionNumber.first builtInCatalogue (BuiltinCatalogue.sample SampleIds.multilayerQwId)
+            contentHash = sampleHash
+        }
 
     let private sourceEnvelope : LibraryEntryEnvelope =
         { content = LibraryEntryContent.ofSourcePreset VersionNumber.first builtInCatalogue tiSapphire800 |> okOf; contentHash = sourceHash }
