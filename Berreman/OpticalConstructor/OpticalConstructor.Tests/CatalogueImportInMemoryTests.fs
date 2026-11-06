@@ -1,100 +1,91 @@
 namespace OpticalConstructor.Tests
 
 open Xunit
-open OpticalConstructor.Domain.MaterialLibrary   // standardCategories / builtInEntries / IncludeInactive
-open OpticalConstructor.Domain.Library           // SeedSamples / seedEntries / Sample / LibraryEntry
-open OpticalConstructor.Domain.CatalogueImport           // CatalogueImportProxy.createInMemory / CatalogueImportError / seedAll / InMemoryCatalogueStores
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueFolderStore
 
-/// Pins CatalogueImportProxy's in-memory catalogue counts, seed identity and duplicate refusal.
-/// Spec 0038 step 042; moved to Domain by spec 0050 §3.4.
+/// Exercises catalogue imports through the real empty stores (spec 0038 step 042; spec 0050 §3.4, §4).
 module CatalogueImportInMemoryTests =
 
-    /// Assert a fixed seed id resolved (through `tryGetMaterial` / `tryGetSample` / `tryGetEntry`) to
-    /// the SAME seed instance. Reference identity via `Object.ReferenceEquals` — the seeds are
-    /// module-level `let` values (computed once) and the store holds those very instances, so the
-    /// resolved value IS the seed (stronger than value-equality, and safe for the seed types whose
-    /// engine payloads carry no structural equality). `Result`-checked: a store error or a missing id
-    /// fails the test.
-    let private assertResolves (name : string) (expected : 'Item) (actual : Result<'Item option, 'Err>) : unit =
-        match actual with
-        | Ok (Some x) ->
-            Assert.True(
-                System.Object.ReferenceEquals(box expected, box x),
-                $"{name}: resolved a different instance than the seed value")
-        | Ok None -> Assert.Fail($"{name}: seed id did not resolve after seeding")
-        | Error e -> Assert.Fail($"{name}: resolution errored: %A{e}")
+    open CatalogueImportTestData
+
+    let private presetEntries (stores : InMemoryCatalogueStores) : LibraryEntry list =
+        [ LightSource; Detector; LinearPolarizer; CircularPolarizer ]
+        |> List.collect (fun kind ->
+            match stores.libraryEntries.entriesForKind kind with
+            | Ok entries -> entries
+            | Error _ -> failwith "The in-memory preset store must support every preset kind.")
+        |> List.distinctBy (fun entry -> entry.entryId)
 
     [<Fact>]
-    let ``seedAll over empty in-memory stores reproduces the seeded catalogue counts`` () =
+    let ``importFrom fills empty in-memory stores with the whole Built-in catalogue`` () : unit =
+        let catalogue = readImportCatalogue ()
         let stores = CatalogueImportProxy.createInMemory ()
+        let import : CatalogueProxy -> Result<unit, CatalogueImportError> = stores.proxy.importFrom
 
-        match stores.proxy.seedAll () with
-        | Ok () -> ()
-        | Error e -> Assert.Fail($"seedAll over empty in-memory stores should be Ok (), got %A{e}")
+        Assert.Equal<Result<unit, CatalogueImportError>>(Ok (), import (CatalogueProxy.createBuiltIn ()))
 
-        // Category / material / sample counts equal the Domain seed-list lengths (latest of each,
-        // IncludeInactive — nothing is retired, so latest = the seed).
-        match stores.categories.listCategories () with
-        | Ok cats -> Assert.Equal(List.length standardCategories, List.length cats)
-        | Error e -> Assert.Fail($"listCategories failed: %A{e}")
+        let countOf (kind : LibraryEntryKind) : int =
+            catalogue.envelopes |> List.filter (fun envelope -> envelope.content.schema.kind = kind) |> List.length
 
-        match stores.materials.listMaterials IncludeInactive with
-        | Ok mats -> Assert.Equal(List.length builtInEntries, List.length mats)
-        | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
-
-        match stores.samples.listSamples IncludeInactive with
-        | Ok samps -> Assert.Equal(List.length SeedSamples.allSeedSamples, List.length samps)
-        | Error e -> Assert.Fail($"listSamples failed: %A{e}")
-
-        // The library-entry store has no "list all" verb; union `entriesForKind` over the kinds the
-        // seeds actually use (derived from the seeds, not hard-coded), deduped by entry id — for the
-        // seed set this yields exactly `seedEntries`. Each per-kind read is Result-checked.
-        let seedKinds = seedEntries |> List.collect (fun e -> e.forKinds) |> List.distinct
-        let perKind = seedKinds |> List.map (fun k -> k, stores.libraryEntries.entriesForKind k)
-        for (k, r) in perKind do
-            match r with
-            | Ok _ -> ()
-            | Error e -> Assert.Fail($"entriesForKind for %A{k} failed: %A{e}")
-        let storedEntries =
-            perKind
-            |> List.collect (fun (_, r) -> match r with | Ok es -> es | Error _ -> [])
-            |> List.distinctBy (fun e -> e.entryId)
-        Assert.Equal(List.length seedEntries, List.length storedEntries)
+        Assert.Equal<Result<int, CategoryError>>(Ok (countOf CategoryEntryKind), stores.categories.listCategories () |> Result.map List.length)
+        Assert.Equal<Result<int, MaterialError>>(Ok (countOf MaterialEntryKind), stores.materials.listMaterials IncludeInactive |> Result.map List.length)
+        Assert.Equal<Result<int, SampleError>>(Ok (countOf SampleEntryKind), stores.samples.listSamples IncludeInactive |> Result.map List.length)
+        Assert.Equal(countOf SourceEntryKind + countOf PolarizerEntryKind + countOf DetectorEntryKind, (presetEntries stores).Length)
 
     [<Fact>]
-    let ``the fixed seed ids resolve to the same seed instances through the seeded in-memory stores`` () =
+    let ``every imported entry resolves by its id to its decoded value`` () : unit =
+        let catalogue = readImportCatalogue ()
         let stores = CatalogueImportProxy.createInMemory ()
-        match stores.proxy.seedAll () with
-        | Ok () -> ()
-        | Error e -> Assert.Fail($"seedAll should be Ok (), got %A{e}")
+        Assert.Equal<Result<unit, CatalogueImportError>>(Ok (), stores.proxy.importCatalogue catalogue)
 
-        // Categories resolve by their fixed CategoryIds, to the same seed records.
-        match stores.categories.listCategories () with
-        | Ok cats ->
-            standardCategories
-            |> List.iter (fun c ->
-                match cats |> List.tryFind (fun x -> x.id = c.id) with
-                | Some x ->
-                    Assert.True(
-                        System.Object.ReferenceEquals(box c, box x),
-                        $"category '{c.name}' resolved a different instance than the seed")
-                | None -> Assert.Fail($"category id '{string c.id.value}' did not resolve after seeding"))
-        | Error e -> Assert.Fail($"listCategories failed: %A{e}")
+        let assertPreset (entry : LibraryEntry) : unit =
+            Assert.True((Ok (Some entry) = stores.libraryEntries.tryGetEntry entry.entryId), "A preset id must resolve to its decoded value.")
 
-        // Materials / samples / library entries resolve by their fixed ids, to the same seed instances.
-        builtInEntries |> List.iter (fun m -> assertResolves $"material '{m.name}'" m (stores.materials.tryGetMaterial m.id))
-        SeedSamples.allSeedSamples |> List.iter (fun s -> assertResolves $"sample '{s.name}'" s (stores.samples.tryGetSample s.id))
-        seedEntries |> List.iter (fun e -> assertResolves $"entry '{e.entryId}'" e (stores.libraryEntries.tryGetEntry e.entryId))
+        for envelope in catalogue.envelopes do
+            let content = envelope.content
+            match content.schema.kind with
+            | CategoryEntryKind ->
+                let expected = content.toMaterialCategory |> decodeImportEntry
+                let actual = stores.categories.listCategories () |> Result.map (List.tryFind (fun category -> category.id = expected.id))
+                Assert.True((Ok (Some expected) = actual), "A category id must resolve to its decoded value.")
+            | MaterialEntryKind ->
+                let expected = content.toMaterialEntry |> decodeImportEntry
+                Assert.True((Ok (Some expected) = stores.materials.tryGetMaterial expected.id), "A material id must resolve to its decoded value.")
+            | SampleEntryKind ->
+                let expected = content.toSample |> decodeImportEntry
+                Assert.True((Ok (Some expected) = stores.samples.tryGetSample expected.id), "A sample id must resolve to its decoded value.")
+            | SourceEntryKind -> content.toSourcePreset |> decodeImportEntry |> SourceItem |> assertPreset
+            | PolarizerEntryKind -> content.toPolarizerPreset |> decodeImportEntry |> PolarizerItem |> assertPreset
+            | DetectorEntryKind -> content.toDetectorPreset |> decodeImportEntry |> DetectorItem |> assertPreset
 
     [<Fact>]
-    let ``re-seeding the already-seeded in-memory stores is rejected (the store is genuinely stateful)`` () =
-        // Proves the in-memory stores actually retain state: the first seedAll fills them; the second
-        // hits the first store's duplicate-id block, surfaced as ImportRejectedErr, and no Ok () no-op.
+    let ``importing a catalogue the stores already hold is refused`` () : unit =
+        let catalogue = readImportCatalogue ()
         let stores = CatalogueImportProxy.createInMemory ()
-        match stores.proxy.seedAll () with
-        | Ok () -> ()
-        | Error e -> Assert.Fail($"first seedAll should be Ok (), got %A{e}")
+        Assert.Equal<Result<unit, CatalogueImportError>>(Ok (), stores.proxy.importCatalogue catalogue)
 
-        match stores.proxy.seedAll () with
+        match stores.proxy.importCatalogue catalogue with
         | Error (ImportRejectedErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | Ok () -> Assert.Fail("re-seeding an already-seeded store should be rejected, not Ok ()")
+        | Error error -> Assert.Fail($"Expected a store refusal, got {error.describe}")
+        | Ok () -> Assert.Fail("A second import of the same catalogue must be refused.")
+
+    [<Fact>]
+    let ``importFrom an unreadable catalogue imports nothing and answers CatalogueUnreadableErr`` () : unit =
+        let stores = CatalogueImportProxy.createInMemory ()
+        let unreadable = CatalogueProxy.createInMemory ()
+
+        match stores.proxy.importFrom unreadable with
+        | Error (CatalogueUnreadableErr (CatalogueIoErr reason)) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | Error error -> Assert.Fail($"Expected a catalogue IO error, got {error.describe}")
+        | Ok () -> Assert.Fail("An unwritten catalogue must not import successfully.")
+
+        Assert.Equal<Result<MaterialCategory list, CategoryError>>(Ok [], stores.categories.listCategories ())
+        Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [], stores.materials.listMaterials IncludeInactive)
+        Assert.Equal<Result<Sample list, SampleError>>(Ok [], stores.samples.listSamples IncludeInactive)
+        Assert.Empty(presetEntries stores)

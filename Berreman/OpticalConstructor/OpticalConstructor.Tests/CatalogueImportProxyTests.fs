@@ -1,27 +1,36 @@
 namespace OpticalConstructor.Tests
 
 open Xunit
-open OpticalConstructor.Domain.MaterialLibrary   // MaterialCategory / MaterialEntry + standardCategories / builtInEntries
-open OpticalConstructor.Domain.Library           // Sample / LibraryEntry + SeedSamples / seedEntries
-open OpticalConstructor.Domain.CatalogueImport           // CatalogueImportProxy / CatalogueImportError / seedAll
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueFolderStore
 
-/// Pins CatalogueImportProxy push order, reference identity and rejection short-circuiting.
-/// Spec 0038 step 041; moved to Domain by spec 0050 §3.4.
+module internal CatalogueImportTestData =
+
+    let decodeImportEntry (result : Result<'Entry, LibraryEntryError>) : 'Entry =
+        match result with
+        | Ok entry -> entry
+        | Error error -> failwith error.describe
+
+    let readImportCatalogue () : CatalogueData =
+        match (CatalogueProxy.createBuiltIn ()).readCatalogue () with
+        | Ok catalogue -> catalogue
+        | Error error -> failwith error.describe
+
+/// Pins import order, values and failure short-circuiting (spec 0038 step 041; spec 0050 §3.4).
 module CatalogueImportProxyTests =
 
-    /// Which channel a push arrived on, recorded on a global call-order tape so the test proves the
-    /// category → material → sample → entry ordering ACROSS the four channels (not merely within each
-    /// list). A simple DU (structural equality) so the whole tape compares in one assertion.
+    open CatalogueImportTestData
+
     type private Channel =
         | CategoryChannel
         | MaterialChannel
         | SampleChannel
         | EntryChannel
 
-    /// The recording stub's ledger: the global call-order tape plus one per-channel list of the exact
-    /// values received. Values are recorded by reference (the lists hold the pushed instances), so the
-    /// test can pin that the SAME frozen seed instances flowed through — not merely value-equal copies
-    /// (the engine payloads on `MaterialEntry` / `LibraryEntry` carry no structural equality anyway).
     type private Recorder =
         {
             order : ResizeArray<Channel>
@@ -40,10 +49,6 @@ module CatalogueImportProxyTests =
                 entries = ResizeArray<LibraryEntry>()
             }
 
-    /// The recording `CatalogueImportProxy`: every save appends its channel tag + the received value and
-    /// returns `Ok ()`. Annotated `: CatalogueImportProxy` so the compiler checks each lambda against the
-    /// EXACT declared field signature — the "through the exact signatures" acceptance is enforced at
-    /// compile time, not merely asserted.
     let private recordingProxy (r : Recorder) : CatalogueImportProxy =
         {
             saveCategory = fun c -> r.order.Add CategoryChannel; r.categories.Add c; Ok ()
@@ -52,74 +57,117 @@ module CatalogueImportProxyTests =
             saveLibraryEntry = fun e -> r.order.Add EntryChannel; r.entries.Add e; Ok ()
         }
 
-    /// Assert a recorded channel received EXACTLY the seed list: same length (nothing pushed twice or
-    /// dropped) and the SAME instance at each index (the exact seed value flowed through, in order).
-    /// Reference identity via `Object.ReferenceEquals` — the seeds are module-level `let` values
-    /// (computed once), so the recorded reference is the seed list's own element.
-    let private assertPushedInOrder (name : string) (expected : 'Item list) (actual : ResizeArray<'Item>) : unit =
-        Assert.Equal(List.length expected, actual.Count)
-        expected
-        |> List.iteri (fun i e ->
-            Assert.True(
-                System.Object.ReferenceEquals(box e, box actual.[i]),
-                $"{name}[{i}]: seedAll pushed a different instance than the seed value"))
+    let private contentsFor (kind : LibraryEntryKind) (catalogue : CatalogueData) : LibraryEntryContent list =
+        catalogue.envelopes
+        |> List.map (fun envelope -> envelope.content)
+        |> List.filter (fun content -> content.schema.kind = kind)
 
-    // ============================ the seedAll acceptance ============================
+    let private assertPushedInOrder (expected : 'Entry list) (actual : ResizeArray<'Entry>) : unit =
+        Assert.True((expected = List.ofSeq actual), "The channel must receive exactly the decoded values in row order.")
 
     [<Fact>]
-    let ``seedAll pushes every seed value exactly once, in category-material-sample-entry order through the exact signatures`` () =
+    let ``importCatalogue pushes every entry once, categories then materials then samples then presets, through the exact signatures`` () : unit =
+        let catalogue = readImportCatalogue ()
         let r = Recorder.create ()
-        // Bind seedAll to an explicitly-typed local: the file fails to compile if seedAll drifts from
-        // its declared `CatalogueImportProxy -> Result<unit, CatalogueImportError>` shape.
-        let runSeed : CatalogueImportProxy -> Result<unit, CatalogueImportError> = fun proxy -> proxy.seedAll ()
+        let import : CatalogueData -> Result<unit, CatalogueImportError> = (recordingProxy r).importCatalogue
 
-        match runSeed (recordingProxy r) with
-        | Ok () -> ()
-        | Error e -> Assert.Fail($"seedAll over an all-accepting stub should be Ok (), got %A{e}")
+        Assert.Equal<Result<unit, CatalogueImportError>>(Ok (), import catalogue)
 
-        // Each channel received EXACTLY its seed list — same count, same instances, in order.
-        assertPushedInOrder "categories" standardCategories r.categories
-        assertPushedInOrder "materials" builtInEntries r.materials
-        assertPushedInOrder "samples" SeedSamples.allSeedSamples r.samples
-        assertPushedInOrder "entries" seedEntries r.entries
+        let categories = contentsFor CategoryEntryKind catalogue |> List.map (fun content -> content.toMaterialCategory |> decodeImportEntry)
+        let materials = contentsFor MaterialEntryKind catalogue |> List.map (fun content -> content.toMaterialEntry |> decodeImportEntry)
+        let samples = contentsFor SampleEntryKind catalogue |> List.map (fun content -> content.toSample |> decodeImportEntry)
+        let presets =
+            [
+                yield! contentsFor SourceEntryKind catalogue |> List.map (fun content -> content.toSourcePreset |> decodeImportEntry |> SourceItem)
+                yield! contentsFor PolarizerEntryKind catalogue |> List.map (fun content -> content.toPolarizerPreset |> decodeImportEntry |> PolarizerItem)
+                yield! contentsFor DetectorEntryKind catalogue |> List.map (fun content -> content.toDetectorPreset |> decodeImportEntry |> DetectorItem)
+            ]
 
-        // The global tape proves the cross-channel order: all categories, then all materials, then all
-        // samples, then all entries (and, by the counts, no interleaving and no extra push).
+        assertPushedInOrder categories r.categories
+        assertPushedInOrder materials r.materials
+        assertPushedInOrder samples r.samples
+        assertPushedInOrder presets r.entries
+
         let expectedOrder =
             [
-                yield! List.replicate (List.length standardCategories) CategoryChannel
-                yield! List.replicate (List.length builtInEntries) MaterialChannel
-                yield! List.replicate (List.length SeedSamples.allSeedSamples) SampleChannel
-                yield! List.replicate (List.length seedEntries) EntryChannel
+                yield! List.replicate categories.Length CategoryChannel
+                yield! List.replicate materials.Length MaterialChannel
+                yield! List.replicate samples.Length SampleChannel
+                yield! List.replicate presets.Length EntryChannel
             ]
         Assert.Equal<Channel list>(expectedOrder, List.ofSeq r.order)
+        Assert.Equal(catalogue.envelopes.Length, r.order.Count)
 
     [<Fact>]
-    let ``seedAll stops at the first rejected seed and returns that SeedRejected`` () =
-        // A stub that accepts every category but rejects the FIRST material. seedAll must return the
-        // rejection and push NO samples / entries (the material group short-circuits the chain).
+    let ``importCatalogue stops at the first rejected entry and answers its ImportRejectedErr`` () : unit =
+        let catalogue = readImportCatalogue ()
         let r = Recorder.create ()
+        let rejection = ImportRejectedErr "the stub rejects every material"
         let proxy : CatalogueImportProxy =
             {
-                saveCategory = fun c -> r.categories.Add c; Ok ()
-                saveMaterial = fun _ -> Error (ImportRejectedErr "the stub rejects every material")
-                saveSample = fun s -> r.samples.Add s; Ok ()
-                saveLibraryEntry = fun e -> r.entries.Add e; Ok ()
+                recordingProxy r with
+                    saveMaterial = fun _ -> r.order.Add MaterialChannel; Error rejection
             }
 
-        match proxy.seedAll () with
-        | Error (ImportRejectedErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | Ok () -> Assert.Fail("seedAll should surface the material rejection, not Ok ()")
+        Assert.Equal<Result<unit, CatalogueImportError>>(Error rejection, proxy.importCatalogue catalogue)
 
-        // Categories all pushed (they precede materials); no sample / entry reached after the reject.
-        Assert.Equal(List.length standardCategories, r.categories.Count)
-        Assert.Equal(0, r.samples.Count)
-        Assert.Equal(0, r.entries.Count)
+        let categories = contentsFor CategoryEntryKind catalogue |> List.map (fun content -> content.toMaterialCategory |> decodeImportEntry)
+        assertPushedInOrder categories r.categories
+        Assert.Empty r.materials
+        Assert.Empty r.samples
+        Assert.Empty r.entries
+        Assert.Equal<Channel list>(List.replicate categories.Length CategoryChannel @ [ MaterialChannel ], List.ofSeq r.order)
 
     [<Fact>]
-    let ``a CatalogueImportProxy compares by reference (the [<ReferenceEquality>] contract)`` () =
-        // Function-valued fields have no structural equality; the [<ReferenceEquality>] proxy compares
-        // by identity so a host holding one stays comparable.
+    let ``an entry that does not decode stops the import with UndecodableEntryErr`` () : unit =
+        let catalogue = readImportCatalogue ()
+        let firstEnvelope (kind : LibraryEntryKind) : LibraryEntryEnvelope =
+            catalogue.envelopes |> List.find (fun envelope -> envelope.content.schema.kind = kind)
+
+        let category = firstEnvelope CategoryEntryKind
+        let material = firstEnvelope MaterialEntryKind
+        let malformed =
+            {
+                material with
+                    content =
+                        {
+                            material.content with
+                                categoryOpt = None
+                        }
+            }
+        let sample = firstEnvelope SampleEntryKind
+        let partialCatalogue =
+            match CatalogueData.tryCreate catalogue.manifest.id catalogue.manifest.name catalogue.manifest.version [ category; malformed; sample ] with
+            | Ok data -> data
+            | Error error -> failwith error.describe
+        let r = Recorder.create ()
+
+        match (recordingProxy r).importCatalogue partialCatalogue with
+        | Error (UndecodableEntryErr (MissingEntryFieldErr reason)) ->
+            Assert.Contains(material.content.name.value, reason)
+        | Error error -> Assert.Fail($"Expected a missing entry field, got {error.describe}")
+        | Ok () -> Assert.Fail("An undecodable material must stop the import.")
+
+        assertPushedInOrder [ category.content.toMaterialCategory |> decodeImportEntry ] r.categories
+        Assert.Equal<Channel list>([ CategoryChannel ], List.ofSeq r.order)
+        Assert.Empty r.materials
+        Assert.Empty r.samples
+        Assert.Empty r.entries
+
+    [<Fact>]
+    let ``every import error renders its condition and its payload`` () : unit =
+        let rejected = ImportRejectedErr "store refused Silicon"
+        let entryError = MissingEntryFieldErr "Silicon has no category"
+        let undecodable = UndecodableEntryErr entryError
+        let catalogueError = CatalogueIoErr "the catalogue folder is unavailable"
+        let unreadable = CatalogueUnreadableErr catalogueError
+
+        Assert.Equal("a catalogue entry was rejected: store refused Silicon", rejected.describe)
+        Assert.Equal($"a catalogue entry could not be decoded: {entryError.describe}", undecodable.describe)
+        Assert.Equal($"the catalogue could not be read: {catalogueError.describe}", unreadable.describe)
+
+    [<Fact>]
+    let ``a CatalogueImportProxy compares by reference (the [<ReferenceEquality>] contract)`` () : unit =
         let make () : CatalogueImportProxy = recordingProxy (Recorder.create ())
         let p = make ()
         let same = p

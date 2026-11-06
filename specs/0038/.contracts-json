@@ -80,7 +80,7 @@
     "temporaries": []
   },
   "STORE_XDUO_0008": {
-    "lifecycle": "declared",
+    "lifecycle": "implemented",
     "declaringStep": 41,
     "implementStep": null,
     "openTemporary": false,

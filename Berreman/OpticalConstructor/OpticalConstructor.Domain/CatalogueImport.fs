@@ -1,20 +1,30 @@
 namespace OpticalConstructor.Domain
 
-open OpticalConstructor.Domain.MaterialLibrary   // MaterialCategory / MaterialEntry + standardCategories / builtInEntries / CategoryProxy / MaterialProxy / materialsReferencingCategory
-open OpticalConstructor.Domain.Library           // Sample / LibraryEntry + SeedSamples / seedEntries / SampleProxy / samplesReferencing / LibraryEntryStore
-open OpticalConstructor.Domain.Lifecycle         // VersionsInUse.empty (the injected in-use seam)
-open OpticalConstructor.Domain.MaterialStore     // MaterialProxy.createInMemoryEmpty (the versioned store augmentation)
-open OpticalConstructor.Domain.SampleStore       // SampleProxy.createInMemoryEmpty (the versioned store augmentation)
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialStore
+open OpticalConstructor.Domain.SampleStore
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueFiles
 
 /// The library-import seam and its in-memory stores (spec 0050 §3.4).
-/// Pushes the existing Domain catalogue through Result-returning save functions.
+/// Decodes parsed catalogue entries through Result-returning save functions.
 module CatalogueImport =
 
-    /// A catalogue import refusal carrying the store's diagnostic reason.
+    /// A store refusal, undecodable entry or unreadable catalogue with its diagnostic payload (spec 0050 §3.4).
     type CatalogueImportError =
         | ImportRejectedErr of reason : string
+        | UndecodableEntryErr of LibraryEntryError
+        | CatalogueUnreadableErr of CatalogueError
 
-    /// Saves each catalogue kind, returning CatalogueImportError on refusal.
+        member this.describe : string =
+            match this with
+            | ImportRejectedErr reason -> $"a catalogue entry was rejected: {reason}"
+            | UndecodableEntryErr error -> $"a catalogue entry could not be decoded: {error.describe}"
+            | CatalogueUnreadableErr error -> $"the catalogue could not be read: {error.describe}"
+
+    /// Saves each catalogue kind, returning CatalogueImportError on refusal (spec 0050 §3.4).
     /// Function-valued fields make proxy equality reference-based.
     [<ReferenceEquality>]
     type CatalogueImportProxy =
@@ -25,19 +35,33 @@ module CatalogueImport =
             saveLibraryEntry : LibraryEntry -> Result<unit, CatalogueImportError>
         }
 
-        /// Push every Domain seed in category, material, sample, then entry order so foreign keys resolve.
-        /// Preserves each list's order and stops on the first ImportRejectedErr; success returns Ok ().
-        member this.seedAll () : Result<unit, CatalogueImportError> =
-            let pushEach (save : 'Item -> Result<unit, CatalogueImportError>) (items : 'Item list) : Result<unit, CatalogueImportError> =
-                items
-                |> List.fold (fun acc item -> acc |> Result.bind (fun () -> save item)) (Ok ())
+        /// Imports categories, materials, samples, then source, polarizer and detector presets (spec 0050 §3.4).
+        /// Preserves row order within each kind; the first decode or save failure stops further writes, retaining prior saves.
+        member this.importCatalogue (catalogue : CatalogueData) : Result<unit, CatalogueImportError> =
+            let pushDecoded (save : 'Entry -> Result<unit, CatalogueImportError>) (decoded : Result<'Entry, LibraryEntryError>) : Result<unit, CatalogueImportError> =
+                decoded |> Result.mapError UndecodableEntryErr |> Result.bind save
 
-            pushEach this.saveCategory standardCategories
-            |> Result.bind (fun () -> pushEach this.saveMaterial builtInEntries)
-            |> Result.bind (fun () -> pushEach this.saveSample SeedSamples.allSeedSamples)
-            |> Result.bind (fun () -> pushEach this.saveLibraryEntry seedEntries)
+            let pushEnvelope (envelope : LibraryEntryEnvelope) : Result<unit, CatalogueImportError> =
+                let content = envelope.content
+                match content.schema.kind with
+                | CategoryEntryKind -> content.toMaterialCategory |> pushDecoded this.saveCategory
+                | MaterialEntryKind -> content.toMaterialEntry |> pushDecoded this.saveMaterial
+                | SampleEntryKind -> content.toSample |> pushDecoded this.saveSample
+                | SourceEntryKind -> content.toSourcePreset |> Result.map SourceItem |> pushDecoded this.saveLibraryEntry
+                | PolarizerEntryKind -> content.toPolarizerPreset |> Result.map PolarizerItem |> pushDecoded this.saveLibraryEntry
+                | DetectorEntryKind -> content.toDetectorPreset |> Result.map DetectorItem |> pushDecoded this.saveLibraryEntry
 
-    /// Empty stores bundled with the CatalogueImportProxy that fills them.
+            [ CategoryEntryKind; MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind ]
+            |> List.collect (fun kind -> catalogue.envelopes |> List.filter (fun envelope -> envelope.content.schema.kind = kind))
+            |> List.fold (fun imported envelope -> imported |> Result.bind (fun () -> pushEnvelope envelope)) (Ok ())
+
+        /// Reads and imports a catalogue, preserving the read failure's payload (spec 0050 §3.4).
+        member this.importFrom (catalogue : CatalogueProxy) : Result<unit, CatalogueImportError> =
+            catalogue.readCatalogue ()
+            |> Result.mapError CatalogueUnreadableErr
+            |> Result.bind this.importCatalogue
+
+    /// Empty stores bundled with the CatalogueImportProxy that fills them (spec 0050 §3.4).
     /// Read the imported catalogue through the four store proxies; equality is by reference.
     [<ReferenceEquality>]
     type InMemoryCatalogueStores =
@@ -51,7 +75,7 @@ module CatalogueImport =
 
     type CatalogueImportProxy with
 
-        /// Build a CatalogueImportProxy over empty in-memory stores, mapping refusals to ImportRejectedErr.
+        /// Builds a CatalogueImportProxy over empty in-memory stores, mapping refusals to ImportRejectedErr (spec 0050 §3.4).
         /// Returns InMemoryCatalogueStores with live reference lookups and no database or file IO.
         static member createInMemory () : InMemoryCatalogueStores =
             let samples = SampleProxy.createInMemoryEmpty VersionsInUse.empty
@@ -59,8 +83,6 @@ module CatalogueImport =
             let categories = CategoryProxy.createInMemoryEmpty (materialsReferencingCategory materials)
             let libraryEntries = Library.createInMemoryEmpty ()
 
-            // Each store carries its own error DU; every case carries a diagnostic `reason` — extract
-            // it (pattern-match, never reach into a case) and re-wrap as the seam's `ImportRejectedErr`.
             let categoryReason (e : CategoryError) : string =
                 match e with
                 | UnknownCategoryIdErr r | DuplicateCategoryIdErr r | CategoryStillReferencedErr r | BuiltInNotRemovableErr r | InvalidCategoryErr r -> r
