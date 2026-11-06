@@ -11,8 +11,8 @@ open Softellect.Sys.Logging
 
 open OpticalConstructor.Domain.WorkbenchSettings
 
-/// The single appsettings.json key inventory (§6): every key the app — and the
-/// Part M storage proof (step 040) — reads is a `[<Literal>]` HERE, never a string
+/// The single appsettings.json key inventory (§6): every key the app
+/// reads is a `[<Literal>]` HERE, never a string
 /// scattered at a call site. The literal values are the wire key names inside the
 /// file's `appSettings` / `connectionStrings` sections. (Softellect's `ConfigKey`
 /// single-case DU wraps these at the provider call; `Softellect.Sys.AppSettings` is
@@ -41,19 +41,7 @@ module ConfigKey =
     [<Literal>]
     let thicknessBucketCap = "ThicknessBucketCap"
 
-    /// appSettings string (Part M, consumed by step 040's EFC proof): the database
-    /// provider choice, "MSSQL" | "SQLite" — parsed to a DU on the F# side of the
-    /// step-040 test, never a naked string beyond that boundary.
-    [<Literal>]
-    let databaseProvider = "DatabaseProvider"
-
-    /// connectionStrings entry (Part M, step 040): the MSSQL connection string,
-    /// read via `AppSettingsProvider.tryGetConnectionString`.
-    [<Literal>]
-    let mssqlConnectionString = "OpticalConstructorMssql"
-
-    /// connectionStrings entry (Part M, step 040): the SQLite connection string,
-    /// read via `AppSettingsProvider.tryGetConnectionString`.
+    /// The library database's SQLite connection string, read through `AppSettingsProvider.tryGetConnectionString` (spec 0050 §3.18).
     [<Literal>]
     let sqliteConnectionString = "OpticalConstructorSqlite"
 
