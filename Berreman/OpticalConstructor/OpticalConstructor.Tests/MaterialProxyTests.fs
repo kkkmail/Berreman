@@ -9,56 +9,50 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.SampleStore
 
-/// Versioned material writes preserve history, lifecycle visibility and sample/version removal guards.
-/// Each fact uses a fresh BuiltinCatalogue.materialStore with injected sample references and explicit version pins.
-module MaterialProxyTests =
+module private MaterialProxyTestData =
 
-    let private freshProxy () : MaterialProxy =
-        BuiltinCatalogue.materialStore (fun _ -> [])
+    let glass : MaterialEntry =
+        BuiltinCatalogue.material MaterialIds.glass152
 
-    let private proxyWithPinned (versions : MaterialVersionId list) : MaterialProxy =
-        let proxy = freshProxy ()
+    let otherPhysics : MaterialEntry =
+        BuiltinCatalogue.material MaterialIds.glass200
+
+    let glassPhysicsChanged : MaterialEntry =
+        { glass with complexity = otherPhysics.complexity }
+
+    let glassRenamed : MaterialEntry =
+        { glass with name = EntryName "Renamed glass (metadata only)" }
+
+    let v1Id (id : MaterialId) : MaterialVersionId = { materialId = id; version = VersionNumber.first }
+    let v2Id (id : MaterialId) : MaterialVersionId = { materialId = id; version = VersionNumber.first.next }
+
+    let minted () : MaterialEntry =
+        { glass with id = newMaterialId (); name = EntryName "Test glass (minted)" }
+
+open MaterialProxyTestData
+
+type ReferencingSamples =
+    {
+        activeSampleIds : unit -> SampleId list
+        removeSample : SampleId -> unit
+    }
+
+/// Material stores preserve version history, lifecycle visibility and sample/version removal guards.
+[<AbstractClass>]
+type MaterialProxyContract () =
+
+    abstract freshProxy : unit -> MaterialProxy
+    abstract composedProxies : unit -> ReferencingSamples * MaterialProxy
+
+    member private this.proxyWithPinned (versions : MaterialVersionId list) : MaterialProxy =
+        let proxy = this.freshProxy ()
         for version in versions do
             Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.pinMaterialVersion version)
         proxy
 
-    /// The composed pair: a fresh BuiltinCatalogue.sampleStore and a materials store whose
-    /// referencing lookup is backed by it (`samplesReferencing` — the composition-root wiring; the
-    /// `MaterialStillReferencedErr` block).
-    let private composedProxies () : SampleProxy * MaterialProxy =
-        let samples = BuiltinCatalogue.sampleStore ()
-        samples, BuiltinCatalogue.materialStore (samplesReferencing samples)
-
-    /// A built-in EDITABLE template entry (fixed id, non-dispersive glass) the write tests reuse,
-    /// and a distinct built-in whose physics (complexity) differs.
-    let private glass : MaterialEntry =
-        BuiltinCatalogue.material MaterialIds.glass152
-
-    let private otherPhysics : MaterialEntry =
-        BuiltinCatalogue.material MaterialIds.glass200
-
-    /// A physics change of `glass`: SAME id / name / category / description, a DIFFERENT complexity.
-    /// `decideVersioning` sees the physics as changed, the metadata as unchanged.
-    let private glassPhysicsChanged : MaterialEntry =
-        { glass with complexity = otherPhysics.complexity }
-
-    /// A metadata-only change of `glass`: SAME complexity, a different display name. Physics
-    /// unchanged, metadata changed.
-    let private glassRenamed : MaterialEntry =
-        { glass with name = EntryName "Renamed glass (metadata only)" }
-
-    let private v1Id (id : MaterialId) : MaterialVersionId = { materialId = id; version = VersionNumber.first }
-    let private v2Id (id : MaterialId) : MaterialVersionId = { materialId = id; version = VersionNumber.first.next }
-
-    /// A fresh entry absent from BuiltinCatalogue.materials over the glass properties.
-    let private minted () : MaterialEntry =
-        { glass with id = newMaterialId (); name = EntryName "Test glass (minted)" }
-
-    // ============================ BuiltinCatalogue.materialStore read surface ============================
-
     [<Fact>]
-    let ``listMaterials ActiveOnly returns the seeded built-in entries with distinct ids`` () =
-        match (freshProxy ()).listMaterials ActiveOnly with
+    member this.``listMaterials ActiveOnly returns the seeded built-in entries with distinct ids`` () : unit =
+        match (this.freshProxy ()).listMaterials ActiveOnly with
         | Ok entries ->
             Assert.NotEmpty entries
             Assert.Equal(List.length (BuiltinCatalogue.materials ()), List.length entries)
@@ -67,14 +61,14 @@ module MaterialProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
-    let ``searchMaterials with the empty query matches every seeded entry`` () =
-        match (freshProxy ()).searchMaterials MaterialQuery.empty with
+    member this.``searchMaterials with the empty query matches every seeded entry`` () : unit =
+        match (this.freshProxy ()).searchMaterials MaterialQuery.empty with
         | Ok entries -> Assert.Equal(List.length (BuiltinCatalogue.materials ()), List.length entries)
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
-    let ``searchMaterials filters by name fragment case-insensitively`` () =
-        match (freshProxy ()).searchMaterials { MaterialQuery.empty with text = NameFragment "GLASS" } with
+    member this.``searchMaterials filters by name fragment case-insensitively`` () : unit =
+        match (this.freshProxy ()).searchMaterials { MaterialQuery.empty with text = NameFragment "GLASS" } with
         | Ok entries ->
             Assert.NotEmpty entries
             Assert.All(entries, fun e ->
@@ -82,8 +76,8 @@ module MaterialProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
-    let ``searchMaterials dispersion facets partition the library`` () =
-        let proxy = freshProxy ()
+    member this.``searchMaterials dispersion facets partition the library`` () : unit =
+        let proxy = this.freshProxy ()
         match proxy.searchMaterials { MaterialQuery.empty with dispersion = OnlyDispersive } with
         | Ok dispersive ->
             let ids = dispersive |> List.map (fun e -> e.id) |> Set.ofList
@@ -94,8 +88,8 @@ module MaterialProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
-    let ``tryGetMaterial hits a known id and misses a minted one`` () =
-        let proxy = freshProxy ()
+    member this.``tryGetMaterial hits a known id and misses a minted one`` () : unit =
+        let proxy = this.freshProxy ()
         match proxy.tryGetMaterial MaterialIds.silicon with
         | Ok (Some e) -> Assert.Equal<MaterialId>(MaterialIds.silicon, e.id)
         | other -> Assert.Fail($"expected the silicon entry, got %A{other}")
@@ -104,8 +98,8 @@ module MaterialProxyTests =
         | other -> Assert.Fail($"expected Ok None, got %A{other}")
 
     [<Fact>]
-    let ``resolveVersion hits version 1 of a seed, misses a non-existent version, and misses an unknown id`` () =
-        let proxy = freshProxy ()
+    member this.``resolveVersion hits version 1 of a seed, misses a non-existent version, and misses an unknown id`` () : unit =
+        let proxy = this.freshProxy ()
         match proxy.resolveVersion (v1Id MaterialIds.glass152) with
         | Ok (Some e) -> Assert.Equal<MaterialId>(MaterialIds.glass152, e.id)
         | other -> Assert.Fail($"expected version 1 of glass152, got %A{other}")
@@ -116,11 +110,9 @@ module MaterialProxyTests =
         | Ok None -> ()
         | other -> Assert.Fail($"expected Ok None for an unknown id, got %A{other}")
 
-    // ============================ saveMaterial: new material ============================
-
     [<Fact>]
-    let ``saveMaterial on a new id inserts version 1 active — appears in listing and resolves at v1`` () =
-        let proxy = freshProxy ()
+    member this.``saveMaterial on a new id inserts version 1 active — appears in listing and resolves at v1`` () : unit =
+        let proxy = this.freshProxy ()
         let entry = minted ()
         match proxy.saveMaterial entry with
         | Ok () -> ()
@@ -135,8 +127,8 @@ module MaterialProxyTests =
         | other -> Assert.Fail($"expected version 1 of the minted entry, got %A{other}")
 
     [<Fact>]
-    let ``saveMaterial rejects a blank name as InvalidMaterial and persists nothing`` () =
-        let proxy = freshProxy ()
+    member this.``saveMaterial rejects a blank name as InvalidMaterial and persists nothing`` () : unit =
+        let proxy = this.freshProxy ()
         let blank = { minted () with name = EntryName "   " }
         match proxy.saveMaterial blank with
         | Error (InvalidMaterialErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
@@ -145,15 +137,12 @@ module MaterialProxyTests =
         | Ok None -> ()
         | other -> Assert.Fail($"expected Ok None (nothing persisted), got %A{other}")
 
-    // ============================ the version-creation decision table ============================
-
     [<Fact>]
-    let ``KeepCurrent — an identical save on a pinned version leaves exactly version 1 unchanged`` () =
-        let proxy = proxyWithPinned [ v1Id MaterialIds.glass152 ]
+    member this.``KeepCurrent — an identical save on a pinned version leaves exactly version 1 unchanged`` () : unit =
+        let proxy = this.proxyWithPinned [ v1Id MaterialIds.glass152 ]
         match proxy.saveMaterial glass with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
-        // no version 2 minted, version 1 unchanged
         match proxy.resolveVersion (v2Id MaterialIds.glass152) with
         | Ok None -> ()
         | other -> Assert.Fail($"expected no version 2 after a no-op save, got %A{other}")
@@ -162,9 +151,8 @@ module MaterialProxyTests =
         | other -> Assert.Fail($"expected version 1 intact, got %A{other}")
 
     [<Fact>]
-    let ``MutateInPlace — a metadata-only edit of a PINNED version updates version 1 and does NOT mint`` () =
-        // The load-bearing rule: metadata (name / description / category) NEVER versions, even pinned.
-        let proxy = proxyWithPinned [ v1Id MaterialIds.glass152 ]
+    member this.``MutateInPlace — a metadata-only edit of a PINNED version updates version 1 and does NOT mint`` () : unit =
+        let proxy = this.proxyWithPinned [ v1Id MaterialIds.glass152 ]
         match proxy.saveMaterial glassRenamed with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
@@ -176,8 +164,8 @@ module MaterialProxyTests =
         | other -> Assert.Fail($"expected version 1 renamed in place, got %A{other}")
 
     [<Fact>]
-    let ``MutateInPlace — a physics change of an UNPINNED version updates version 1 in place`` () =
-        let proxy = freshProxy ()
+    member this.``MutateInPlace — a physics change of an UNPINNED version updates version 1 in place`` () : unit =
+        let proxy = this.freshProxy ()
         match proxy.saveMaterial glassPhysicsChanged with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
@@ -187,27 +175,24 @@ module MaterialProxyTests =
         | other -> Assert.Fail($"expected version 1 physics mutated in place, got %A{other}")
 
     [<Fact>]
-    let ``MintNextVersion — a physics change of a PINNED version freezes version 1 and mints version 2`` () =
-        let proxy = proxyWithPinned [ v1Id MaterialIds.glass152 ]
+    member this.``MintNextVersion — a physics change of a PINNED version freezes version 1 and mints version 2`` () : unit =
+        let proxy = this.proxyWithPinned [ v1Id MaterialIds.glass152 ]
         match proxy.saveMaterial glassPhysicsChanged with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
-        // version 1 preserved with the ORIGINAL physics (view-only history)…
         match proxy.resolveVersion (v1Id MaterialIds.glass152) with
         | Ok (Some e) -> Assert.Equal(glass.complexity, e.complexity)
         | other -> Assert.Fail($"expected version 1 frozen with original physics, got %A{other}")
-        // …version 2 carries the new physics…
         match proxy.resolveVersion (v2Id MaterialIds.glass152) with
         | Ok (Some e) -> Assert.Equal(otherPhysics.complexity, e.complexity)
         | other -> Assert.Fail($"expected version 2 with the new physics, got %A{other}")
-        // …and the latest (what the library edits and the offers surface) is version 2.
         match proxy.tryGetMaterial MaterialIds.glass152 with
         | Ok (Some e) -> Assert.Equal(otherPhysics.complexity, e.complexity)
         | other -> Assert.Fail($"expected the latest entry to be version 2, got %A{other}")
 
     [<Fact>]
-    let ``latest-active default listing shows one entry per material after a mint, not the frozen history`` () =
-        let proxy = proxyWithPinned [ v1Id MaterialIds.glass152 ]
+    member this.``latest-active default listing shows one entry per material after a mint, not the frozen history`` () : unit =
+        let proxy = this.proxyWithPinned [ v1Id MaterialIds.glass152 ]
         match proxy.saveMaterial glassPhysicsChanged with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
@@ -219,30 +204,24 @@ module MaterialProxyTests =
             Assert.Equal(otherPhysics.complexity, glassEntries.Head.complexity)
         | Error err -> Assert.Fail($"%A{err}")
 
-    // ============================ active / inactive / supersede ============================
-
     [<Fact>]
-    let ``markMaterialInactive hides an entry from the offers yet keeps it resolvable, and markMaterialActive revives it`` () =
-        let proxy = freshProxy ()
+    member this.``markMaterialInactive hides an entry from the offers yet keeps it resolvable, and markMaterialActive revives it`` () : unit =
+        let proxy = this.freshProxy ()
         match proxy.markMaterialInactive MaterialIds.glass152 with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
-        // hidden from the default (offers) listing and from search…
         match proxy.listMaterials ActiveOnly with
         | Ok entries -> Assert.DoesNotContain(MaterialIds.glass152, entries |> List.map (fun e -> e.id))
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.searchMaterials { MaterialQuery.empty with text = NameFragment glass.name.value } with
         | Ok entries -> Assert.DoesNotContain(MaterialIds.glass152, entries |> List.map (fun e -> e.id))
         | Error err -> Assert.Fail($"%A{err}")
-        // …shown with the include-inactive switch…
         match proxy.listMaterials IncludeInactive with
         | Ok entries -> Assert.Contains(MaterialIds.glass152, entries |> List.map (fun e -> e.id))
         | Error err -> Assert.Fail($"%A{err}")
-        // …still resolvable by version (existing references never break)…
         match proxy.resolveVersion (v1Id MaterialIds.glass152) with
         | Ok (Some _) -> ()
         | other -> Assert.Fail($"expected the inactive version to resolve, got %A{other}")
-        // …and revivable.
         match proxy.markMaterialActive MaterialIds.glass152 with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
@@ -251,8 +230,8 @@ module MaterialProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
-    let ``supersedeMaterial behaves as inactive — hidden from offers, present under include-inactive, resolvable by version`` () =
-        let proxy = freshProxy ()
+    member this.``supersedeMaterial behaves as inactive — hidden from offers, present under include-inactive, resolvable by version`` () : unit =
+        let proxy = this.freshProxy ()
         match proxy.supersedeMaterial MaterialIds.glass152 with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
@@ -267,19 +246,17 @@ module MaterialProxyTests =
         | other -> Assert.Fail($"expected the superseded version to resolve, got %A{other}")
 
     [<Fact>]
-    let ``the lifecycle verbs reject an unknown id with a diagnostic reason`` () =
-        let proxy = freshProxy ()
+    member this.``the lifecycle verbs reject an unknown id with a diagnostic reason`` () : unit =
+        let proxy = this.freshProxy ()
         let missing = (minted ()).id
         for verb in [ proxy.markMaterialInactive; proxy.markMaterialActive; proxy.supersedeMaterial ] do
             match verb missing with
             | Error (UnknownMaterialIdErr reason) -> Assert.Contains(string missing.value, reason)
             | other -> Assert.Fail($"expected Error (UnknownMaterialIdErr _), got %A{other}")
 
-    // ============================ removal: the two hard-blocks ============================
-
     [<Fact>]
-    let ``removeMaterial on a material referenced by seeded samples is blocked and leaves the store unchanged`` () =
-        let samples, proxy = composedProxies ()
+    member this.``removeMaterial on a material referenced by seeded samples is blocked and leaves the store unchanged`` () : unit =
+        let samples, proxy = this.composedProxies ()
         let pinned = MaterialVersionId.firstOf MaterialIds.glass152
         Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.pinMaterialVersion pinned)
         match proxy.removeMaterial MaterialIds.glass152 with
@@ -290,28 +267,25 @@ module MaterialProxyTests =
         match proxy.tryGetMaterial MaterialIds.glass152 with
         | Ok (Some _) -> ()
         | other -> Assert.Fail($"expected the glass entry to survive, got %A{other}")
-        match samples.listSamples ActiveOnly with
-        | Ok _ -> ()
-        | Error err -> Assert.Fail($"%A{err}")
+        let activeSampleIds = samples.activeSampleIds ()
+        Assert.Contains(SampleIds.glassPlate1mmId, activeSampleIds)
+        Assert.Contains(SampleIds.multilayerQwId, activeSampleIds)
 
     [<Fact>]
-    let ``removeMaterial on a material with a pinned version is blocked with a typed refusal naming the version`` () =
-        // No referencing samples on this store — the block is purely the pinned-version rule.
-        let proxy = proxyWithPinned [ v1Id MaterialIds.glass200 ]
+    member this.``removeMaterial on a material with a pinned version is blocked with a typed refusal naming the version`` () : unit =
+        let proxy = this.proxyWithPinned [ v1Id MaterialIds.glass200 ]
         match proxy.removeMaterial MaterialIds.glass200 with
         | Error (MaterialVersionPinnedErr reason) ->
             Assert.Contains(string MaterialIds.glass200.value, reason)
             Assert.Contains("v1", reason)
         | other -> Assert.Fail($"expected Error (MaterialVersionPinnedErr _), got %A{other}")
-        // never silently deletes: the entry survives.
         match proxy.tryGetMaterial MaterialIds.glass200 with
         | Ok (Some _) -> ()
         | other -> Assert.Fail($"expected the entry to survive the pinned-version block, got %A{other}")
 
     [<Fact>]
-    let ``removeMaterial succeeds when the material is neither sample-referenced nor pinned`` () =
-        // BuiltinCatalogue.samples never references the n = 2.00 glass; no version is pinned.
-        let _, proxy = composedProxies ()
+    member this.``removeMaterial succeeds when the material is neither sample-referenced nor pinned`` () : unit =
+        let _, proxy = this.composedProxies ()
         match proxy.removeMaterial MaterialIds.glass200 with
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
@@ -323,34 +297,103 @@ module MaterialProxyTests =
         | other -> Assert.Fail($"expected Error (UnknownMaterialIdErr _), got %A{other}")
 
     [<Fact>]
-    let ``the referencing lookup is live — removing the referencing sample unblocks the material`` () =
-        // BuiltinCatalogue.sample SampleIds.glassFilm600Id alone references glass175;
-        // the lookup must observe its removal from the live store.
-        let samples, proxy = composedProxies ()
+    member this.``the referencing lookup is live — removing the referencing sample unblocks the material`` () : unit =
+        let samples, proxy = this.composedProxies ()
         match proxy.removeMaterial MaterialIds.glass175 with
         | Error (MaterialStillReferencedErr reason) -> Assert.Contains((BuiltinCatalogue.sample SampleIds.glassFilm600Id).name.value, reason)
         | other -> Assert.Fail($"expected Error (MaterialStillReferencedErr _), got %A{other}")
-        match samples.removeSample SampleIds.glassFilm600Id with
-        | Ok () -> ()
-        | Error err -> Assert.Fail($"%A{err}")
+        samples.removeSample SampleIds.glassFilm600Id
         match proxy.removeMaterial MaterialIds.glass175 with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () once unreferenced, got %A{other}")
 
-    // ============================ the seam (reference equality + the stub) ============================
-
     [<Fact>]
-    let ``a MaterialProxy compares by reference (the Elmish-required equality)`` () =
-        let p = freshProxy ()
+    member this.``a MaterialProxy compares by reference (the Elmish-required equality)`` () : unit =
+        let p = this.freshProxy ()
         let same = p
         Assert.True((p = same))
-        Assert.False((p = freshProxy ()))
+        Assert.False((p = this.freshProxy ()))
 
     [<Fact>]
-    let ``a STUB MaterialProxy over the versioned surface exercises every function through its exact signature`` () =
-        // The stub proves the seam: the SAME record shape, in-test functions over a fixed
-        // two-entry list — a test substitutes these for the real store and exercises the exact same
-        // logic.
+    member this.``pinMaterialVersion pins one version, a minted version starts unpinned, and an unknown version is refused`` () : unit =
+        let proxy = this.freshProxy ()
+        let first = MaterialVersionId.firstOf MaterialIds.glass152
+        let second : MaterialVersionId =
+            {
+                first with version = first.version.next
+            }
+        let third : MaterialVersionId =
+            {
+                first with version = second.version.next
+            }
+        let missingId = newMaterialId ()
+        let missing = MaterialVersionId.firstOf missingId
+
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.pinMaterialVersion first)
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.pinMaterialVersion first)
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glass)
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glassRenamed)
+        for verb in [ proxy.markMaterialInactive; proxy.markMaterialActive; proxy.supersedeMaterial ] do
+            Assert.Equal<Result<unit, MaterialError>>(Ok (), verb glass.id)
+            match proxy.removeMaterial glass.id with
+            | Error (MaterialVersionPinnedErr reason) -> Assert.Contains("v1", reason)
+            | other -> Assert.Fail($"expected the pin to survive metadata and lifecycle edits, got %A{other}")
+
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glassPhysicsChanged)
+        match proxy.resolveVersion second with
+        | Ok (Some entry) -> Assert.Equal(glassPhysicsChanged.complexity, entry.complexity)
+        | other -> Assert.Fail($"expected a minted version 2, got %A{other}")
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glass)
+        match proxy.resolveVersion second with
+        | Ok (Some entry) -> Assert.Equal(glass.complexity, entry.complexity)
+        | other -> Assert.Fail($"expected version 2 to mutate in place, got %A{other}")
+        match proxy.resolveVersion third with
+        | Ok None -> ()
+        | other -> Assert.Fail($"expected no version 3, got %A{other}")
+        match proxy.resolveVersion first with
+        | Ok (Some entry) -> Assert.Equal(glass.complexity, entry.complexity)
+        | other -> Assert.Fail($"expected version 1 to keep its original physics, got %A{other}")
+
+        for version in [ missing; third ] do
+            match proxy.pinMaterialVersion version with
+            | Error (UnknownMaterialIdErr reason) ->
+                Assert.Contains(string version.materialId.value, reason)
+                Assert.Contains($"v{version.version.value}", reason)
+            | other -> Assert.Fail($"expected an unknown-version refusal, got %A{other}")
+
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.pinMaterialVersion second)
+        match proxy.removeMaterial glass.id with
+        | Error (MaterialVersionPinnedErr reason) ->
+            Assert.Contains(glass.name.value, reason)
+            Assert.Contains(string glass.id.value, reason)
+            Assert.Contains("2 version(s) pinned: v1, v2", reason)
+        | other -> Assert.Fail($"expected both pinned versions to block removal, got %A{other}")
+
+type MaterialProxyTests () =
+    inherit MaterialProxyContract ()
+
+    override _.freshProxy () : MaterialProxy =
+        BuiltinCatalogue.materialStore (fun _ -> [])
+
+    override _.composedProxies () : ReferencingSamples * MaterialProxy =
+        let samples = BuiltinCatalogue.sampleStore ()
+        let referencingSamples : ReferencingSamples =
+            {
+                activeSampleIds =
+                    fun () ->
+                        match samples.listSamples ActiveOnly with
+                        | Ok entries -> entries |> List.map (fun sample -> sample.id)
+                        | Error err -> failwith $"%A{err}"
+                removeSample =
+                    fun id ->
+                        match samples.removeSample id with
+                        | Ok () -> ()
+                        | Error err -> Assert.Fail($"%A{err}")
+            }
+        referencingSamples, BuiltinCatalogue.materialStore (samplesReferencing samples)
+
+    [<Fact>]
+    member _.``a STUB MaterialProxy over the versioned surface exercises every function through its exact signature`` () : unit =
         let referenced = glass
         let free = { glass with id = newMaterialId (); name = EntryName "Unreferenced test glass" }
         let fixedEntries = [ referenced; free ]
@@ -408,7 +451,7 @@ module MaterialProxyTests =
         | other -> Assert.Fail($"expected Ok (), got %A{other}")
 
     [<Fact>]
-    let ``referencedMaterialVersions keeps every referenced material version, a repeated cell once`` () : unit =
+    member _.``referencedMaterialVersions keeps every referenced material version, a repeated cell once`` () : unit =
         Assert.Equal<Set<MaterialVersionId>>(
             Set.ofList
                 [ MaterialVersionId.firstOf MaterialIds.glass152
@@ -443,10 +486,8 @@ module MaterialProxyTests =
             structure.referencedMaterialVersions)
         Assert.Equal<Set<MaterialId>>(Set.singleton MaterialIds.glass152, structure.referencedMaterials)
 
-    // ============================ referencedMaterials (structure coverage, unchanged) ============================
-
     [<Fact>]
-    let ``referencedMaterials covers films, repeated cells, the substrate plate, and the lower half-space`` () =
+    member _.``referencedMaterials covers films, repeated cells, the substrate plate, and the lower half-space`` () : unit =
         Assert.Equal<Set<MaterialId>>(
             Set.ofList [ MaterialIds.glass152 ],
             (BuiltinCatalogue.sample SampleIds.glassFilm200Id).structure.referencedMaterials)
@@ -459,58 +500,3 @@ module MaterialProxyTests =
         Assert.Equal<Set<MaterialId>>(
             Set.ofList [ MaterialIds.langasite; MaterialIds.silicon ],
             (BuiltinCatalogue.sample SampleIds.langasiteSiliconId).structure.referencedMaterials)
-
-    [<Fact>]
-    let ``pinMaterialVersion pins one version, a minted version starts unpinned, and an unknown version is refused`` () : unit =
-        let proxy = freshProxy ()
-        let first = MaterialVersionId.firstOf MaterialIds.glass152
-        let second : MaterialVersionId =
-            {
-                first with version = first.version.next
-            }
-        let third : MaterialVersionId =
-            {
-                first with version = second.version.next
-            }
-        let missingId = newMaterialId ()
-        let missing = MaterialVersionId.firstOf missingId
-
-        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.pinMaterialVersion first)
-        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.pinMaterialVersion first)
-        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glass)
-        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glassRenamed)
-        for verb in [ proxy.markMaterialInactive; proxy.markMaterialActive; proxy.supersedeMaterial ] do
-            Assert.Equal<Result<unit, MaterialError>>(Ok (), verb glass.id)
-            match proxy.removeMaterial glass.id with
-            | Error (MaterialVersionPinnedErr reason) -> Assert.Contains("v1", reason)
-            | other -> Assert.Fail($"expected the pin to survive metadata and lifecycle edits, got %A{other}")
-
-        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glassPhysicsChanged)
-        match proxy.resolveVersion second with
-        | Ok (Some entry) -> Assert.Equal(glassPhysicsChanged.complexity, entry.complexity)
-        | other -> Assert.Fail($"expected a minted version 2, got %A{other}")
-        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glass)
-        match proxy.resolveVersion second with
-        | Ok (Some entry) -> Assert.Equal(glass.complexity, entry.complexity)
-        | other -> Assert.Fail($"expected version 2 to mutate in place, got %A{other}")
-        match proxy.resolveVersion third with
-        | Ok None -> ()
-        | other -> Assert.Fail($"expected no version 3, got %A{other}")
-        match proxy.resolveVersion first with
-        | Ok (Some entry) -> Assert.Equal(glass.complexity, entry.complexity)
-        | other -> Assert.Fail($"expected version 1 to keep its original physics, got %A{other}")
-
-        for version in [ missing; third ] do
-            match proxy.pinMaterialVersion version with
-            | Error (UnknownMaterialIdErr reason) ->
-                Assert.Contains(string version.materialId.value, reason)
-                Assert.Contains($"v{version.version.value}", reason)
-            | other -> Assert.Fail($"expected an unknown-version refusal, got %A{other}")
-
-        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.pinMaterialVersion second)
-        match proxy.removeMaterial glass.id with
-        | Error (MaterialVersionPinnedErr reason) ->
-            Assert.Contains(glass.name.value, reason)
-            Assert.Contains(string glass.id.value, reason)
-            Assert.Contains("2 version(s) pinned: v1, v2", reason)
-        | other -> Assert.Fail($"expected both pinned versions to block removal, got %A{other}")
