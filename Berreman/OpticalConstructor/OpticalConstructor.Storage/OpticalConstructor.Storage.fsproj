@@ -113,6 +113,7 @@
              Numerics.csproj. No direct reference is needed (binding rule 1:
              no new C# project reference invented here). -->
         <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor.Database\OpticalConstructor.Database.csproj" />
     </ItemGroup>
 
 </Project>
