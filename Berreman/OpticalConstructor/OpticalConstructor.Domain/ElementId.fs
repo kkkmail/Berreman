@@ -771,6 +771,7 @@ module Library =
 
     /// Bundles library reads with the write seam used by CatalogueImportProxy
     /// (spec 0038 step 042; spec 0050 §3.4); duplicate ids return PresetRefusedErr (spec 0050 S2.3).
+    /// Built by Library.createInMemory or LibraryEntryStore.createInDatabase.
     [<ReferenceEquality>]
     type LibraryEntryStore =
         {
@@ -890,6 +891,7 @@ module Library =
             }
 
     /// Composes the catalogue preset store with live samples and user sources (spec 0046; spec 0050 §3.4).
+    /// Used with in-memory stores or by LibraryProxy.createInDatabase for SQLite stores (spec 0050 S2.3).
     /// Offers active samples, resolves retired samples, appends user sources after presets, and derives By kind
     /// from offered entries, preserving the first preset listing error (spec 0050 S1.7).
     let liveLibrary (presets : LibraryProxy) (samples : SampleProxy) (sources : SourceProxy) : LibraryProxy =

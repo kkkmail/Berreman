@@ -1,12 +1,22 @@
 namespace OpticalConstructor.Tests
 
+open System
 open Xunit
+open Softellect.Sys.Primitives
 open Berreman.Constants
 open Berreman.Fields
 open Berreman.Media
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.PresetDatabaseStore
+open OpticalConstructor.Storage.SampleDatabaseStore
+open OpticalConstructor.Storage.SourceDatabaseStore
 
 type LiveLibraryStores =
     {
@@ -408,3 +418,211 @@ type LibraryProxyTests () =
         match stub.tryGetEntry (ElementValueId "stub-det") with
         | Ok (Some (DetectorItem d)) -> Assert.Equal("stub-det", d.id.value)
         | other -> Assert.Fail($"%A{other}")
+
+type LibraryProxySqliteTests () =
+    inherit LibraryProxyContract ()
+
+    let databases = ResizeArray<LibraryDatabase>()
+
+    member private _.freshDatabase () : LibraryDatabase =
+        let database = BuiltinCatalogue.freshLibraryDatabase ()
+        databases.Add database
+        database
+
+    member private _.emptyDatabase () : LibraryDatabase =
+        let connectionString = ConnectionString "Data Source=:memory:"
+        let database =
+            LibraryDatabase.openOrCreate connectionString
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        databases.Add database
+        database
+
+    override this.liveStores () : LiveLibraryStores =
+        let database = this.freshDatabase ()
+        {
+            library = LibraryProxy.createInDatabase database
+            samples = SampleProxy.createInDatabase database
+            sources = SourceProxy.createInDatabase database
+        }
+
+    override this.emptyPresetStore () : LibraryEntryStore =
+        LibraryEntryStore.createInDatabase (this.emptyDatabase ())
+
+    [<Fact>]
+    member this.``the database preset store keeps detectors, polarizers and built-in sources, filed under their provenance`` () : unit =
+        let database = this.emptyDatabase ()
+        let store = LibraryEntryStore.createInDatabase database
+        let source : SourcePreset =
+            {
+                BuiltinCatalogue.source PresetIds.source600 with
+                    id = newSourceId ()
+                    name = EntryName "User source"
+                    protection = UserManaged
+            }
+        let latest (entry : LibraryEntry) : StoredEntryVersion option =
+            let entryId = entry.entryId.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith "Expected a GUID entry id")
+            database.run (fun context -> context.tryLatestStored entryId)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+
+        let sample = BuiltinCatalogue.sample SampleIds.euvMoSiId |> SampleItem
+        let userSource = SourceItem source
+        for entry in [ sample; userSource ] do
+            match store.addEntry entry with
+            | Error (PresetRefusedErr reason) ->
+                Assert.Contains(entry.entryName.value, reason)
+                Assert.Contains(entry.entryId.value, reason)
+            | _ -> Assert.Fail("Expected the preset store to refuse an entry belonging to another store")
+            Assert.Equal<StoredEntryVersion option>(None, latest entry)
+        let emptyTree : LibraryTree =
+            {
+                name = TreeName "By kind"
+                root = Group (TreeLabel "Library", [])
+            }
+        Assert.Equal(Ok [ emptyTree ], store.proxy.libraryTrees ())
+        database.run (fun context -> Assert.Empty context.EntryVersions; Assert.Empty context.LatestVersions)
+        |> Result.defaultWith (fun error -> failwith error.describe)
+
+        let polarizer =
+            match BuiltinCatalogue.preset PresetIds.polarizerLp with
+            | PolarizerItem preset ->
+                PolarizerItem
+                    {
+                        preset with
+                            id = newSourceId ()
+                            protection = UserManaged
+                    }
+            | _ -> failwith "Expected the catalogue's linear polarizer"
+        let detector = BuiltinCatalogue.preset PresetIds.detectorIntensity
+        for entry, provenance in [ polarizer, UserProvenance; detector, BuiltInProvenance CatalogueIds.builtInCatalogue ] do
+            Assert.Equal(Ok (), store.addEntry entry)
+            let stored = latest entry |> Option.defaultWith (fun () -> failwith "Expected a stored preset")
+            Assert.Equal(provenance, stored.envelope.content.provenance)
+            Assert.Equal(VersionNumber.first, stored.envelope.content.version)
+            Assert.Equal(ActiveEntry, stored.state.lifecycle)
+            Assert.Equal(VersionUnpinned, stored.state.pin)
+            Assert.Equal(Ok (Some entry), store.proxy.tryGetEntry entry.entryId)
+        Assert.Equal(Ok [ polarizer ], store.proxy.entriesForKind LinearPolarizer)
+        Assert.Equal(Ok [ detector ], store.proxy.entriesForKind Detector)
+
+        let sources = SourceProxy.createInDatabase database
+        Assert.Equal(Ok (), sources.saveSource source)
+        Assert.Equal(Ok [], store.proxy.entriesForKind LightSource)
+        Assert.Equal(Ok None, store.proxy.tryGetEntry source.id)
+        let collidingDetector =
+            match detector with
+            | DetectorItem preset -> DetectorItem { preset with id = source.id }
+            | _ -> failwith "Expected the intensity detector"
+        Assert.Equal(Error (LibraryError.entryAlreadyHeld collidingDetector), store.addEntry collidingDetector)
+        Assert.Equal(Ok (Some source), sources.tryGetSource source.id)
+
+        let tiedSources =
+            [ newSourceId (); newSourceId () ]
+            |> List.map (fun sourceId ->
+                SourceItem
+                    {
+                        BuiltinCatalogue.source PresetIds.source600 with
+                            id = sourceId
+                            name = EntryName "A tied preset"
+                    })
+            |> List.sortByDescending (fun entry -> entry.entryId)
+        let builtInSource = BuiltinCatalogue.preset PresetIds.source600
+        for entry in builtInSource :: tiedSources do
+            Assert.Equal(Ok (), store.addEntry entry)
+        let expectedSources = (builtInSource :: tiedSources) |> List.sortBy (fun entry -> entry.entryName, entry.entryId)
+        Assert.Equal(Ok expectedSources, store.proxy.entriesForKind LightSource)
+        let offered = (polarizer :: detector :: expectedSources) |> List.sortBy (fun entry -> entry.entryName, entry.entryId)
+        Assert.Equal(Ok [ LibraryTree.byKind offered ], store.proxy.libraryTrees ())
+
+        let invalidId = ElementValueId "not-a-guid"
+        let invalidSource =
+            SourceItem
+                {
+                    BuiltinCatalogue.source PresetIds.source600 with id = invalidId
+                }
+        match store.addEntry invalidSource with
+        | Error (PresetRefusedErr reason) -> Assert.Contains(invalidId.value, reason)
+        | _ -> Assert.Fail("Expected the content builder's non-GUID refusal")
+        Assert.Equal(Ok None, store.proxy.tryGetEntry invalidId)
+
+    [<Fact>]
+    member this.``an inactive preset is not offered but still resolves`` () : unit =
+        let database = this.freshDatabase ()
+        let store = LibraryEntryStore.createInDatabase database
+        let preset = BuiltinCatalogue.preset PresetIds.polarizerLp
+        let entryId = preset.entryId.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith "Expected the polarizer GUID")
+        database.run (fun context ->
+            context.tryLatestStored entryId
+            |> Result.bind (fun storedOpt ->
+                let stored = storedOpt |> Option.defaultWith (fun () -> failwith "Expected the catalogue polarizer")
+                let inactive =
+                    {
+                        stored with
+                            state =
+                                {
+                                    stored.state with lifecycle = InactiveEntry
+                                }
+                    }
+                context.stageVersion inactive
+                |> Result.map (fun () -> context.SaveChanges() |> ignore)))
+        |> Result.bind id
+        |> Result.defaultWith (fun error -> failwith error.describe)
+
+        Assert.Equal(Ok [], store.proxy.entriesForKind LinearPolarizer)
+        let rec leafIds (node : LibraryTreeNode) : ElementValueId list =
+            match node with
+            | Leaf (_, id) -> [ id ]
+            | Group (_, children) -> children |> List.collect leafIds
+        match store.proxy.libraryTrees () with
+        | Ok trees ->
+            let ids = trees |> List.collect (fun tree -> leafIds tree.root)
+            Assert.NotEmpty ids
+            Assert.DoesNotContain(preset.entryId, ids)
+        | Error _ -> Assert.Fail("Expected the active preset tree")
+        Assert.Equal(Ok (Some preset), store.proxy.tryGetEntry preset.entryId)
+        Assert.Equal(Error (LibraryError.entryAlreadyHeld preset), store.addEntry preset)
+
+    [<Fact>]
+    member this.``the database live view offers a user source after the built-in sources and resolves it until it is removed`` () : unit =
+        let database = this.freshDatabase ()
+        let library = LibraryProxy.createInDatabase database
+        let sources = SourceProxy.createInDatabase database
+        let source : SourcePreset =
+            {
+                BuiltinCatalogue.source PresetIds.source600 with
+                    id = newSourceId ()
+                    name = EntryName "A user source"
+                    protection = UserManaged
+            }
+        Assert.Equal(Ok (), sources.saveSource source)
+        match library.entriesForKind LightSource with
+        | Ok entries ->
+            Assert.Equal<LibraryEntry>(SourceItem source, List.last entries)
+            let presets = entries |> List.take (entries.Length - 1)
+            let expected = BuiltinCatalogue.sources () |> List.map (fun preset -> preset.id) |> Set.ofList
+            Assert.Equal(expected.Count, presets.Length)
+            Assert.Equal<Set<ElementValueId>>(expected, presets |> List.map (fun entry -> entry.entryId) |> Set.ofList)
+        | Error _ -> Assert.Fail("Expected built-in sources followed by the user source")
+        Assert.Equal(Ok (Some (SourceItem source)), library.tryGetEntry source.id)
+        Assert.Equal(Ok (), sources.removeSource source.id)
+        Assert.Equal(Ok None, library.tryGetEntry source.id)
+
+    [<Fact>]
+    member this.``a database failure below the preset store is LibraryUnavailableErr, never a throw`` () : unit =
+        let database = this.freshDatabase ()
+        let store = LibraryEntryStore.createInDatabase database
+        (database :> IDisposable).Dispose()
+        let unavailable (result : Result<'Outcome, LibraryError>) : unit =
+            match result with
+            | Error (LibraryUnavailableErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | _ -> Assert.Fail("Expected LibraryUnavailableErr from the disposed database")
+        let detector = BuiltinCatalogue.preset PresetIds.detectorIntensity
+        store.proxy.entriesForKind Detector |> unavailable
+        store.proxy.libraryTrees () |> unavailable
+        store.proxy.tryGetEntry detector.entryId |> unavailable
+        store.addEntry detector |> unavailable
+
+    interface IDisposable with
+        member _.Dispose () : unit =
+            for database in databases do
+                (database :> IDisposable).Dispose()
