@@ -697,21 +697,32 @@ module Library =
             removeSample : SampleId -> Result<unit, SampleError>
         }
 
-    /// User-source write failures; protected Built-in sources belong in the catalogue preset store
-    /// (spec 0046; spec 0050 §3.4).
+    /// User-source failures, including protected writes, pinned removal and an unavailable store
+    /// (spec 0046; spec 0050 §3.4, S2.3).
     type SourceError =
         | UnknownSourceIdErr of reason : string
         | InvalidSourceErr of reason : string
         | ProtectedSourceRefusedErr of reason : string
+        | SourceVersionPinnedErr of reason : string
+        | SourceStoreUnavailableErr of reason : string
 
         member this.reason : string =
             match this with
             | UnknownSourceIdErr reason
             | InvalidSourceErr reason
-            | ProtectedSourceRefusedErr reason -> reason
+            | ProtectedSourceRefusedErr reason
+            | SourceVersionPinnedErr reason
+            | SourceStoreUnavailableErr reason -> reason
 
-    /// Lists user sources in creation order and validates writes; protected presets live in the catalogue store.
-    /// Sources are unversioned and bound by entry id (spec 0046; spec 0050 §3.4).
+    type SourceError with
+
+        /// Reports an id absent from the user-sources store (spec 0050 S2.3).
+        static member unknownSource (id : ElementValueId) : SourceError =
+            UnknownSourceIdErr $"unknown source id '{id.value}'"
+
+    /// Unversioned user-source access by entry id: SourceProxy.createInMemory lists in creation order;
+    /// SourceProxy.createInDatabase lists the latest versions by name, then id (spec 0046; spec 0050 §3.4, S2.3).
+    /// SourceVersionPinnedErr and SourceStoreUnavailableErr never arise in memory, which has no pin or database.
     [<ReferenceEquality>]
     type SourceProxy =
         {
@@ -867,7 +878,7 @@ module Library =
                         | true ->
                             store.Value <- store.Value |> List.filter (fun s -> s.id <> id)
                             Ok ()
-                        | false -> Error (UnknownSourceIdErr $"unknown source id '%s{id.value}'")
+                        | false -> Error (SourceError.unknownSource id)
             }
 
     /// Composes the catalogue preset store with live samples and user sources (spec 0046; spec 0050 §3.4).

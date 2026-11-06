@@ -1,11 +1,17 @@
 namespace OpticalConstructor.Tests
 
+open System
 open Xunit
 open Berreman.Constants
 open Berreman.Fields
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.SourceDatabaseStore
 
 module private SourceLibraryTestData =
 
@@ -206,3 +212,236 @@ type SourceLibraryTests () =
         | other -> Assert.Fail($"the saved sample must resolve, got %A{other}")
         let nothing = ElementValueId (string (System.Guid.NewGuid ()))
         Assert.Equal(Ok None, live.tryGetEntry nothing)
+
+type SourceProxySqliteTests () =
+    inherit SourceProxyContract ()
+
+    let databases = ResizeArray<LibraryDatabase>()
+
+    member private _.freshDatabase () : LibraryDatabase =
+        let database = BuiltinCatalogue.freshLibraryDatabase ()
+        databases.Add database
+        database
+
+    override this.freshSources () : SourceProxy =
+        SourceProxy.createInDatabase (this.freshDatabase ())
+
+    [<Fact>]
+    member this.``a user source is versioned in the database, the proxy answers its latest, and a pinned source is not removable`` () : unit =
+        let database = this.freshDatabase ()
+        let proxy = SourceProxy.createInDatabase database
+        let source = userSource (newSourceId ()) "My versioned source" 532.0
+        let entryId = source.id.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith "Expected a minted GUID")
+        let latest () : StoredEntryVersion =
+            database.run (fun context -> context.tryLatestStored entryId)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+            |> Option.defaultWith (fun () -> failwith "Expected the latest source version")
+        let storedVersion (version : VersionNumber) : StoredEntryVersion option =
+            database.run (fun context -> context.tryStoredVersion entryId version)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let pinVersion (version : VersionNumber) : unit =
+            database.run (fun context ->
+                context.tryStoredVersion entryId version
+                |> Result.bind (fun storedOpt ->
+                    let stored = storedOpt |> Option.defaultWith (fun () -> failwith "Expected a version to pin")
+                    let pinned =
+                        {
+                            stored with
+                                state =
+                                    {
+                                        stored.state with pin = VersionPinned
+                                    }
+                        }
+                    context.stageVersion pinned
+                    |> Result.map (fun () -> context.SaveChanges() |> ignore)))
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+
+        Assert.Equal(Ok (), proxy.saveSource source)
+        let first = latest ()
+        Assert.Equal(VersionNumber.first, first.envelope.content.version)
+        Assert.Equal(UserProvenance, first.envelope.content.provenance)
+        Assert.Equal(VersionUnpinned, first.state.pin)
+        Assert.Equal(ActiveEntry, first.state.lifecycle)
+        Assert.Equal(Ok source, first.envelope.content.toSourcePreset)
+
+        pinVersion VersionNumber.first
+        let changed =
+            {
+                source with waveLength = WaveLength.nm 633.0<nm>
+            }
+        Assert.Equal(Ok (), proxy.saveSource changed)
+        let second = latest ()
+        Assert.Equal(VersionNumber.first.next, second.envelope.content.version)
+        Assert.Equal(UserProvenance, second.envelope.content.provenance)
+        Assert.Equal(VersionUnpinned, second.state.pin)
+        let frozen = storedVersion VersionNumber.first |> Option.defaultWith (fun () -> failwith "Expected version 1")
+        Assert.Equal(VersionPinned, frozen.state.pin)
+        Assert.Equal(first.envelope, frozen.envelope)
+        Assert.Equal(Ok source, frozen.envelope.content.toSourcePreset)
+        Assert.Equal(Ok (Some changed), proxy.tryGetSource source.id)
+        Assert.Equal(Ok [ changed ], proxy.listSources ())
+
+        let renamed =
+            {
+                changed with name = EntryName "Renamed versioned source"
+            }
+        Assert.Equal(Ok (), proxy.saveSource renamed)
+        Assert.Equal(Ok (), proxy.saveSource renamed)
+        let edited = latest ()
+        Assert.Equal(second.envelope.content.version, edited.envelope.content.version)
+        Assert.Equal(Ok renamed, edited.envelope.content.toSourcePreset)
+        Assert.Equal<StoredEntryVersion option>(None, storedVersion VersionNumber.first.next.next)
+        match proxy.removeSource source.id with
+        | Error (SourceVersionPinnedErr reason) ->
+            Assert.Contains(renamed.name.value, reason)
+            Assert.Contains(source.id.value, reason)
+            Assert.Contains("v1", reason)
+        | other -> Assert.Fail($"Expected a pinned-source refusal, got %A{other}")
+        Assert.Equal(Ok (Some renamed), proxy.tryGetSource source.id)
+
+        pinVersion second.envelope.content.version
+        let limits : Berreman.Dispersion.WaveLengthInterval =
+            {
+                lower = WaveLength.nm 500.0<nm>
+                upper = WaveLength.nm 700.0<nm>
+            }
+        let tunable =
+            {
+                renamed with
+                    tuning = TunableBetween limits
+            }
+        Assert.Equal(Ok (), proxy.saveSource tunable)
+        let third = latest ()
+        Assert.Equal(VersionNumber.first.next.next, third.envelope.content.version)
+        Assert.Equal(VersionUnpinned, third.state.pin)
+        let pinnedSecond = storedVersion second.envelope.content.version |> Option.defaultWith (fun () -> failwith "Expected version 2")
+        Assert.Equal(edited.envelope, pinnedSecond.envelope)
+        Assert.Equal(Ok (Some tunable), proxy.tryGetSource source.id)
+        Assert.Equal(Ok [ tunable ], proxy.listSources ())
+        match proxy.removeSource source.id with
+        | Error (SourceVersionPinnedErr reason) -> Assert.Contains("v1, v2", reason)
+        | other -> Assert.Fail($"Expected both pinned versions in the refusal, got %A{other}")
+
+    [<Fact>]
+    member this.``the database user-sources store holds user sources only and refuses an id it cannot hold`` () : unit =
+        let database = this.freshDatabase ()
+        let proxy = SourceProxy.createInDatabase database
+        let source = userSource (newSourceId ()) "User source" 532.0
+        let builtIn = BuiltinCatalogue.source PresetIds.source600
+        let presetId = builtIn.id.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith "Expected a preset GUID")
+        let presetBefore =
+            database.run (fun context -> context.tryLatestStored presetId)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+            |> Option.defaultWith (fun () -> failwith "Expected the catalogue source")
+        Assert.Equal(VersionNumber.first, presetBefore.envelope.content.version)
+        Assert.Equal(Ok builtIn, presetBefore.envelope.content.toSourcePreset)
+        Assert.Equal(Ok [], proxy.listSources ())
+
+        let protectedCollision =
+            {
+                source with id = PresetIds.source600
+            }
+        match proxy.saveSource protectedCollision with
+        | Error (ProtectedSourceRefusedErr reason) -> Assert.Contains(builtIn.name.value, reason)
+        | other -> Assert.Fail($"Expected a protected source id refusal, got %A{other}")
+        let sampleCollision =
+            {
+                source with id = SampleIds.multilayerQwId.toElementValueId
+            }
+        match proxy.saveSource sampleCollision with
+        | Error (InvalidSourceErr reason) ->
+            Assert.Contains(sampleCollision.id.value, reason)
+            Assert.Contains(".sample-json", reason)
+        | other -> Assert.Fail($"Expected a cross-kind id refusal, got %A{other}")
+        let textId = ElementValueId "not-a-guid"
+        let invalidId =
+            {
+                source with id = textId
+            }
+        match proxy.saveSource invalidId with
+        | Error (InvalidSourceErr reason) -> Assert.Contains(textId.value, reason)
+        | other -> Assert.Fail($"Expected a non-GUID id refusal, got %A{other}")
+        for absentId in [ PresetIds.source600; sampleCollision.id; textId; newSourceId () ] do
+            Assert.Equal(Ok None, proxy.tryGetSource absentId)
+            Assert.Equal(Error (SourceError.unknownSource absentId), proxy.removeSource absentId)
+        let presetAfter =
+            database.run (fun context -> context.tryLatestStored presetId)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(Some presetBefore, presetAfter)
+        Assert.Equal(Ok [], proxy.listSources ())
+
+        let imported = userSource (newSourceId ()) "A source" 500.0
+        let tied = userSource (newSourceId ()) "A source" 600.0
+        let kitId = Guid.NewGuid() |> KitId
+        let provenance = KitImportProvenance kitId
+        let content =
+            LibraryEntryContent.ofSourcePreset VersionNumber.first provenance imported
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        database.run (fun context ->
+            context.stageNewEntry content
+            |> Result.map (fun () -> context.SaveChanges() |> ignore))
+        |> Result.bind id
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        let inactive =
+            database.run (fun context -> context.tryLatestStored content.id)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+            |> Option.defaultWith (fun () -> failwith "Expected the imported source")
+            |> fun stored ->
+                {
+                    stored with
+                        state =
+                            {
+                                stored.state with lifecycle = InactiveEntry
+                            }
+                }
+        database.run (fun context ->
+            context.stageVersion inactive
+            |> Result.map (fun () -> context.SaveChanges() |> ignore))
+        |> Result.bind id
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(Ok (), proxy.saveSource source)
+        Assert.Equal(Ok (), proxy.saveSource tied)
+        let editedImport =
+            {
+                imported with waveLength = WaveLength.nm 510.0<nm>
+            }
+        Assert.Equal(Ok (), proxy.saveSource editedImport)
+        let heldImport =
+            database.run (fun context -> context.tryLatestStored content.id)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+            |> Option.defaultWith (fun () -> failwith "Expected the edited imported source")
+        Assert.Equal(provenance, heldImport.envelope.content.provenance)
+        Assert.Equal(VersionNumber.first, heldImport.envelope.content.version)
+        Assert.Equal(InactiveEntry, heldImport.state.lifecycle)
+        Assert.Equal(Ok (Some editedImport), proxy.tryGetSource imported.id)
+        let expected = (List.sortBy (fun (entry : SourcePreset) -> entry.id) [ editedImport; tied ]) @ [ source ]
+        Assert.Equal(Ok expected, proxy.listSources ())
+
+    [<Fact>]
+    member this.``a database failure below the user-sources store is SourceStoreUnavailableErr, never a throw`` () : unit =
+        let database = this.freshDatabase ()
+        let proxy = SourceProxy.createInDatabase database
+        (database :> IDisposable).Dispose()
+
+        let unavailable (result : Result<'Outcome, SourceError>) : unit =
+            match result with
+            | Error (SourceStoreUnavailableErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | other -> Assert.Fail($"Expected a typed database failure, got %A{other}")
+
+        let source = userSource (newSourceId ()) "Unavailable source" 532.0
+        proxy.listSources () |> unavailable
+        proxy.tryGetSource source.id |> unavailable
+        proxy.saveSource source |> unavailable
+        proxy.removeSource source.id |> unavailable
+
+    interface IDisposable with
+        member _.Dispose () : unit =
+            for database in databases do
+                (database :> IDisposable).Dispose()
