@@ -43,7 +43,7 @@
       "schemas\\spec_writer\\handoff_verifier\\handoff-verifier.system-md": "db615d534822dcc35c08761dc4a1f08c394580b984c64bc77ffb76ed2e502bef",
       "schemas\\spec_writer\\section_planner\\section-planner.system-md": "25da2620de97c5a8d94033cddc7f08a45ddf92b4abe2494b465f4879eceb8bda",
       "schemas\\spec_writer\\spec_author\\spec-author.system-md": "fcf8b84c6754eebd60508cd15914e4a146dbdce292fb4099b4fa79d39a58c2ac",
-      "project:arc-runner": "c48de0953bb90c422e31aa992ca389f7dd6838f3f44f94ddc38ffe73778a3607"
+      "project:arc-runner": "85e7ca0b940974f03a899603ffc0f5d64744b2608e47023325c06b0e6693e1af"
     },
     "validator": {
       "checker.py": "63f092348ac302bf2f9881bd034fae2a82a5c3ee7ddb3b15935a5ee0fcac19cc",

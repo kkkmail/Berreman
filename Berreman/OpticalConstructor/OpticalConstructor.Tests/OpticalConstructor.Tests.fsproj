@@ -224,7 +224,7 @@
         <Compile Include="EntryFileJsonTests.fs" />
         <Compile Include="CatalogueProxyTests.fs" />
         <Compile Include="CatalogueFolderTests.fs" />
-        <Compile Include="BuiltInCatalogueParityTests.fs" />
+        <Compile Include="BuiltInCatalogueIntegrityTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

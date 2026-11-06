@@ -208,6 +208,11 @@ ASG cannot; these are the ones STL's prompt carries (ASG spec 0090
    with a relaunch that re-runs the worker.
 4. **No failure allowance, waiver or carried red.**
 
+For spec 0050, every role reads
+`specs/0050/.manual/005-step-0056-parity-retirement.md` at steps 0056, 0057,
+0210 and 0354. It authorizes early parity retirement while preserving step
+0057's test effects, normal verification and measured-count checkpoint.
+
 The repository's own walls, from AGENTS.md:
 
 - **Never bump a version ring**, Berreman's or STL's.

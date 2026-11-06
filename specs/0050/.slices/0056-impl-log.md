@@ -1,5 +1,32 @@
 # Step 0056 implementation log
 
+## Operator repair, 2026-11-06
+
+Authority: `specs/0050/.manual/005-step-0056-parity-retirement.md`.
+Preserved the eight UI files committed in `eae94e0`. Completed step 0057's
+declared three-file replacement early: deleted the parity class, added its
+specified integrity fact, and replaced the project compile entry. No product
+code changed. Added the project-prompt pointer and refreshed only its hash in
+the profile-1 receipt after compiler validation.
+
+13:14:49 UTC: both unchanged gate rosters passed, 11/11 for 0056 and 10/10 for
+0057. UI smoke: 208; selected UI tests: 77; constructor tests: 801. All passed,
+none skipped, and exact census checks passed in each step's own context.
+Both acceptance searches passed. Full evidence and build-warning details are
+recorded in the ruling and `.artifacts/0056-operator-repair/`.
+
+All 494 compiled contracts, the test-effect declarations and supervisor-owned
+state/count records remain unchanged. Ready for the operator's commit; the arc
+remains stopped at 0056. After that commit and a relaunch instruction, accept
+0056 with `--accept-current-slice --executability-profile 1`, then let 0057 run
+normally and record its measured constructor checkpoint. Do not accept 0057
+manually.
+
+## Original worker attempt (historical)
+
+The entries below describe the attempt before the operator repair and its
+verification; their pending-gate statements are superseded above.
+
 ## Progress
 
 - Read the task, worker protocols, project prompt, AGENTS.md, naming conventions,
