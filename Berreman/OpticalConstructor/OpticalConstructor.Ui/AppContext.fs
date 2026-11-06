@@ -57,8 +57,8 @@ type AppContext =
         /// `experimentCollections` was before its builder wired in; a future disk-backed `create`
         /// swaps in with no change to any consumer.
         scenes : Scene.SceneProxy
-        /// Spec 0046: the experiment-data export seam — the CSV adapter writing each exported run into the
-        /// user's `Documents/Optical Constructor/Exports` folder (nothing touches the disk until an export).
+        /// Write each exported run as CSV in the configured exports folder (spec 0046; spec 0050 §3.9).
+        /// No file is written until an export is requested.
         experimentExport : ExperimentExport.ExperimentExportProxy
         /// The step-005 typed appsettings.json values (`AppConfig.loadWorkbenchSettings`
         /// elevates them once at the composition root); later Part C/E/F steps read the
@@ -69,7 +69,7 @@ type AppContext =
 
     /// Build one app scope over empty in-memory stores filled from the Built-in catalogue
     /// (spec 0038 §0.2; spec 0050 §3.4). Import failures are logged; entries already imported remain available.
-    static member create (settings : WorkbenchSettings) : AppContext =
+    static member create (locations : DataLocations) (settings : WorkbenchSettings) : AppContext =
         let stores = CatalogueImportProxy.createInMemory ()
         match stores.proxy.importFrom (CatalogueProxy.createBuiltIn ()) with
         | Ok () -> ()
@@ -93,9 +93,8 @@ type AppContext =
             // be composed at the root (step 047 "every proxy built once at the root").
             scenes = Scene.SceneProxy.createInMemory ()
             experimentExport =
-                let documents = System.Environment.GetFolderPath System.Environment.SpecialFolder.MyDocuments
                 OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
-                    (Softellect.Sys.Primitives.FolderName (System.IO.Path.Combine(documents, "Optical Constructor", "Exports")))
+                    locations.exportsFolder
                     (fun () -> OpticalConstructor.Storage.ExperimentExportFile.ExportTime System.DateTime.Now)
             settings = settings
         }

@@ -20,12 +20,14 @@ open Avalonia.Interactivity
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
-open OpticalConstructor.Domain.WorkbenchSettings
+open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.App
 
 module LauncherTests =
+
+    let private owner = FolderName "LauncherTests"
 
     let private buttons (w : Window) : Button list =
         w.GetVisualDescendants()
@@ -42,7 +44,7 @@ module LauncherTests =
 
     /// A fresh app-scope context per launcher (spec 0038 step 006: the launcher receives the
     /// ONE `Startup.context` in the app; each test isolates its own mutable stores the same way).
-    let private freshContext () : AppContext = AppContext.create WorkbenchSettings.defaults
+    let private freshContext () : AppContext = TestAppScope.freshAppContext owner
 
     /// Open a fresh launcher on the shared headless session and run `check` over it.
     let private withLauncher (check : LauncherWindow -> unit) : unit =

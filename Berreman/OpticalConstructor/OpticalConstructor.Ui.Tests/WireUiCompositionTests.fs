@@ -6,9 +6,9 @@ open Avalonia.Headless
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -17,6 +17,8 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// which fills empty stores from the Built-in catalogue (spec 0033 (026); 0035 (019); 0038 (006, 013, 015); 0050 §3.4).
 /// Real `EditorLaunchers.defaults` launches are observed through `Window.WindowOpenedEvent`.
 module WireUiCompositionTests =
+
+    let private owner = FolderName "WireUiCompositionTests"
 
     module MW = OpticalConstructor.Ui.MaterialsWindowView
     module LW = OpticalConstructor.Ui.LibraryWindowView
@@ -96,7 +98,7 @@ module WireUiCompositionTests =
     /// Elmish loop over `initMainWith` — exactly what the launcher's Main button does with
     /// `Startup.context` (spec 0038 step 006).
     let private mountRoot () : Window =
-        let window = OpticalConstructor.App.MainConstructorWindow(AppContext.create WorkbenchSettings.defaults)
+        let window = OpticalConstructor.App.MainConstructorWindow(TestAppScope.freshAppContext owner)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window :> Window

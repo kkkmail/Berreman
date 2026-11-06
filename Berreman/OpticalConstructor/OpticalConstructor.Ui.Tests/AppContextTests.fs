@@ -1,11 +1,14 @@
 namespace OpticalConstructor.Ui.Tests
 
+open System.IO
+open Softellect.Sys.Primitives
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
+open OpticalConstructor.Domain.ExperimentExport
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -26,6 +29,8 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// single-instance Materials / Library windows; each Main window's `Library…` strip button now
 /// carries the same two-surface argument through the Library window.)
 module AppContextTests =
+
+    let private owner = FolderName "AppContextTests"
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
     /// workbench rows / verb buttons live in variable-membership lists, so they carry an
@@ -76,7 +81,7 @@ module AppContextTests =
         | None -> Assert.Fail($"%s{id} was not found")
 
     /// One fresh app scope — exactly what `Startup.context` is in the product app.
-    let private freshContext () : AppContext = AppContext.create WorkbenchSettings.defaults
+    let private freshContext () : AppContext = TestAppScope.freshAppContext owner
 
     /// A workbench surface composed FROM the app scope — what `MainConstructorWindow` runs (the two
     /// experiment proxies thread by record update, spec 0038 Part L step 037).
@@ -89,8 +94,41 @@ module AppContextTests =
 
     [<Fact>]
     let ``create carries the settings record it was given, verbatim`` () =
-        let context = AppContext.create WorkbenchSettings.defaults
+        let context = AppContext.create (TestAppScope.testLocations owner) WorkbenchSettings.defaults
         Assert.Equal(WorkbenchSettings.defaults, context.settings)
+
+    [<Fact>]
+    let ``create writes experiment exports into the configured exports folder`` () : unit =
+        let locations = TestAppScope.testLocations owner
+        Directory.CreateDirectory locations.exportsFolder.value |> ignore
+        Directory.GetFiles locations.exportsFolder.value |> Array.iter File.Delete
+        let run : ExportedRun =
+            {
+                title = ExportText "Configured export"
+                xLabel = ExportText "Wavelength"
+                yLabel = ExportText "Intensity"
+                description = ExportText "App-scope export destination"
+                series =
+                    [
+                        {
+                            name = ExportText "Transmission"
+                            points =
+                                [
+                                    {
+                                        x = 500.0
+                                        y = 0.5
+                                    }
+                                    {
+                                        x = 600.0
+                                        y = 0.75
+                                    }
+                                ]
+                        }
+                    ]
+            }
+        let context = freshContext ()
+        Assert.Equal<Result<unit, ExportError>>(Ok (), context.experimentExport.exportRun run)
+        Assert.Single(Directory.GetFiles(locations.exportsFolder.value, "experiment-*.csv")) |> ignore
 
     [<Fact>]
     let ``create imports the Built-in catalogue into empty stores`` () : unit =

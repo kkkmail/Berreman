@@ -34,29 +34,13 @@ open OpticalConstructor.Ui.AppShell
 module private Startup =
     let settings = UserEnvironment.EnvironmentSettings.load (UserEnvironment.settingsPath ())
 
-    /// The typed appsettings.json values (spec 0038 Part C, step 005): the provider
-    /// is created ONCE here — `AppConfig.loadWorkbenchSettings` opens the
-    /// build-copied appsettings.json through `AppSettingsProvider`, `SetOnMissing`
-    /// writes every missing key's default back (the first run self-documents), and
-    /// the values flow inward only as this elevated Domain record (no view or Domain
-    /// module reads the provider ambiently). The binding initializes with the module
-    /// when `App.Initialize` reads `settings` above. Consumers arrive with the
-    /// Part C window-policy seam; `environment.json` (the user preferences above)
-    /// and appsettings.json never merge. Total — a missing/unreadable file falls
-    /// back to `WorkbenchSettings.defaults`, so startup (and the headless ui-smoke
-    /// session) never blocks on configuration.
-    let workbenchSettings = AppConfig.loadWorkbenchSettings ()
+    /// Load typed workbench settings and resolved locations once, with defaults on configuration failure
+    /// (spec 0038 Part C, step 005; spec 0050 §3.9).
+    let workbenchSettings, dataLocations = AppConfig.loadWorkbenchSettings ()
 
-    /// The ONE app-scope composition value (spec 0038 Part C, step 006): the five
-    /// domain proxies — library / experiments / materials / samples / categories —
-    /// built HERE, once, bundled with the step-005 settings record above. The module
-    /// initializes when `App.Initialize` reads `settings`, i.e. BEFORE any window
-    /// opens; the launcher, the Main workbench window, and every window opened later
-    /// receive THIS value, so they all observe the same in-memory stores. (The
-    /// in-window five-proxy composition this replaces lived in
-    /// `MainConstructorWindow`'s constructor; the test scenes keep their own
-    /// parameterless `DefaultStores` default in `TableAndElementRotationView`.)
-    let context = AppContext.create workbenchSettings
+    /// Share one app scope, composed over configured locations and settings, across every product window
+    /// (spec 0038 Part C, step 006; spec 0050 §3.9).
+    let context = AppContext.create dataLocations workbenchSettings
 
 /// Spec 0038 step 045: the shared body of the two constructor windows. The forward Main scene and
 /// the inverse scene are the SAME dynamic "Lego constructor" (`mainView` over

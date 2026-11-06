@@ -8,6 +8,7 @@ open Avalonia.Threading
 open Avalonia.VisualTree
 open Avalonia.FuncUI
 open Xunit
+open Softellect.Sys.Primitives
 open Berreman.Constants
 open Berreman.Geometry
 open OpticalConstructor.Controls
@@ -23,6 +24,8 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// gestures act on whatever is selected (the table view, or an element); rotating the table leaves
 /// the elements' own angles unchanged but moves how they project (they are snapped to the table).
 module TableAndElementRotationTests =
+
+    let private owner = FolderName "TableAndElementRotationTests"
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
     let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
@@ -238,7 +241,7 @@ module TableAndElementRotationTests =
         HeadlessSession.run (fun () ->
             // Spec 0038 step 006: the real window takes the injected app scope — a fresh one here
             // (this file opens the view module, not `OpticalConstructor.Ui`, so qualify the type).
-            let window = OpticalConstructor.App.MainConstructorWindow(OpticalConstructor.Ui.AppContext.create WorkbenchSettings.WorkbenchSettings.defaults)
+            let window = OpticalConstructor.App.MainConstructorWindow(TestAppScope.freshAppContext owner)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let click (name : string) : unit =

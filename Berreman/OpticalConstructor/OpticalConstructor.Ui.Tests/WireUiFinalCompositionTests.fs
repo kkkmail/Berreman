@@ -19,6 +19,7 @@ namespace OpticalConstructor.Ui.Tests
 open Avalonia.Controls
 open Avalonia.Threading
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -28,6 +29,8 @@ open OpticalConstructor.Ui.WindowLauncher
 open OpticalConstructor.App
 
 module WireUiFinalCompositionTests =
+
+    let private owner = FolderName "WireUiFinalCompositionTests"
 
     /// The SolverHandoff summary snapshot the root factory hands the window — an EMPTY collection, so
     /// the terminal screen renders its summary + solver-comes-later message with no per-experiment
@@ -94,7 +97,7 @@ module WireUiFinalCompositionTests =
 
     [<Fact>]
     let ``the finalized app scope carries every store proxy — the step-027 scene seam is composed at the root`` () =
-        let ctx = AppContext.create WorkbenchSettings.defaults
+        let ctx = TestAppScope.freshAppContext owner
         // The scene proxy (STORE_XDUO_0004) is now built once at the app scope: a fresh scope has no
         // saved scenes, and the seam answers (a live in-memory store, not a throwing stub).
         match ctx.scenes.listScenes () with
@@ -113,7 +116,7 @@ module WireUiFinalCompositionTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the launcher and both constructor states render over ONE root-composed app scope`` () =
         HeadlessSession.run (fun () ->
-            let ctx = AppContext.create WorkbenchSettings.defaults
+            let ctx = TestAppScope.freshAppContext owner
             // The three windows the composition root hands the context to (Program.fs): the launcher is
             // the startup window, Main / Inverse are its forward / inverse constructor scenes.
             showAssertClose (LauncherWindow(ctx))
@@ -124,7 +127,7 @@ module WireUiFinalCompositionTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the root window-launcher factory opens and renders Materials, Library, the three editors, and the SolverHandoff`` () =
         HeadlessSession.run (fun () ->
-            let ctx = AppContext.create WorkbenchSettings.defaults
+            let ctx = TestAppScope.freshAppContext owner
             // ONE factory covering every WindowKey, driven through the REAL launcher over the shared
             // host-layer WindowRegistry — the composition-root "every window factory" seam. Each open
             // creates + shows the window and is closed before the next, so no registry key leaks.
@@ -141,7 +144,7 @@ module WireUiFinalCompositionTests =
     [<Trait("Category", "ui-smoke")>]
     let ``both faceted windows render in Select state over the app scope`` () =
         HeadlessSession.run (fun () ->
-            let ctx = AppContext.create WorkbenchSettings.defaults
+            let ctx = TestAppScope.freshAppContext owner
             // The SAME Materials / Library windows the launcher opens Browse, opened in Select state
             // (the step-016 mode) over the app scope — the second of the "both modes" the acceptance
             // enumerates. The modeless-default modality means an ordinary Show (no modal block).

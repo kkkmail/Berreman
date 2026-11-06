@@ -4,7 +4,7 @@
 /// the sample R/T emission checkboxes + film-less-Plate substrate-via-Materials-Select of steps
 /// 010/011). This step is STRUCTURAL COMPOSITION — no new behaviour, no new wiring — it finalises
 /// the composition and drives the WHOLE changed surface headless over ONE app scope composed
-/// exactly like `Startup.context` (`AppContext.create WorkbenchSettings.defaults`).
+/// through `TestAppScope` with test-owned locations (spec 0050 .spec-md §3.9).
 ///
 /// The WIRE_UI family mandate is a headless wiring assertion that drives REAL input on the REAL
 /// wired views and asserts the resulting semantic-tree projection: render one frame each — without
@@ -27,15 +27,17 @@ open Avalonia.Media
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 module WireUi0040CompositionTests =
+
+    let private owner = FolderName "WireUi0040CompositionTests"
 
     module MW = OpticalConstructor.Ui.MaterialsWindowView
     module LW = OpticalConstructor.Ui.LibraryWindowView
@@ -173,7 +175,7 @@ module WireUi0040CompositionTests =
     /// are mutable): the SAME `MainConstructorWindow(AppContext.create …)` the launcher's Main
     /// button builds with `Startup.context` (spec 0038 step 006 / 045).
     let private mountRoot () : Window =
-        let window = OpticalConstructor.App.MainConstructorWindow(AppContext.create WorkbenchSettings.defaults)
+        let window = OpticalConstructor.App.MainConstructorWindow(TestAppScope.freshAppContext owner)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window :> Window
@@ -272,7 +274,7 @@ module WireUi0040CompositionTests =
     [<Trait("Category", "ui-smoke")>]
     let ``composition acceptance (013): the Material editor composes over the app scope with a wrapping description and restricted gyration/mu tabs`` () =
         HeadlessSession.run (fun () ->
-            let ctx = AppContext.create WorkbenchSettings.defaults
+            let ctx = TestAppScope.freshAppContext owner
             // The Add-open shape the Materials window's launcher builds: NewMaterial over the
             // app-scope materials + category proxies (spec 0038 step 013 / 023).
             let window =
@@ -302,7 +304,7 @@ module WireUi0040CompositionTests =
     [<Trait("Category", "ui-smoke")>]
     let ``composition acceptance (013): a Plate Sample editor over the app scope renders R/T checkboxes and sets its substrate through the Materials Select window`` () =
         HeadlessSession.run (fun () ->
-            let ctx = AppContext.create WorkbenchSettings.defaults
+            let ctx = TestAppScope.freshAppContext owner
             let window =
                 OpticalConstructor.Ui.SampleEditorWindow(
                     ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample (filmlessPlate ()))
@@ -346,7 +348,7 @@ module WireUi0040CompositionTests =
     [<Trait("Category", "ui-smoke")>]
     let ``composition acceptance (013): a Mirror Sample editor over the app scope pins R on and shows no T control`` () =
         HeadlessSession.run (fun () ->
-            let ctx = AppContext.create WorkbenchSettings.defaults
+            let ctx = TestAppScope.freshAppContext owner
             // BuiltinCatalogue.sample's EUV Mo/Si MIRROR opens over the app scope — R fixed on, no T
             // (spec 0046: only mirrors are observed in reflection alone).
             let window =

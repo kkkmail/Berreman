@@ -115,8 +115,7 @@ module WorkbenchSettingsDoors =
 
         member this.configValue : AppSettings.ConfigValue = AppSettings.ConfigValue $"{this.value}"
 
-/// The one `AppSettingsProvider` read seam. `loadWorkbenchSettings` is called once,
-/// from `Program.Startup`, and everything downstream sees only the returned record.
+/// Read workbench settings and data locations once for Startup; downstream consumers receive elevated values.
 module AppConfig =
 
     /// One key through its type's door: a value the door refuses is named in the log before the
@@ -184,14 +183,12 @@ module AppConfig =
 
         resolveLocations install configured
 
-    /// Create the provider ONCE via `AppSettingsProvider.tryCreate ()` (it opens the
-    /// build-copied appsettings.json beside the assembly), read the four workbench
-    /// keys — the provider's `WriteDefaultOnMissing` writes each missing or refused key's default back,
-    /// so the first run self-documents — persist the write-backs, and return the
-    /// elevated Domain record. Total: a missing/unreadable file logs a typed error and
-    /// falls back to `WorkbenchSettings.defaults`.
-    let loadWorkbenchSettings () : WorkbenchSettings =
+    /// Read workbench settings and resolved data locations through one provider, then save defaults once.
+    /// An unreadable file logs its error and returns built-in settings and resolved default locations.
+    let loadWorkbenchSettings () : WorkbenchSettings * DataLocations =
         let defaults = WorkbenchSettings.defaults
+        let install = FolderName System.AppContext.BaseDirectory
+        let documents = FolderName (Environment.GetFolderPath Environment.SpecialFolder.MyDocuments)
 
         match AppSettings.AppSettingsProvider.tryCreate () with
         | Ok provider ->
@@ -202,12 +199,13 @@ module AppConfig =
                     treeAutoBuildThreshold = readSetting provider (AppSettings.ConfigKey ConfigKey.treeAutoBuildThreshold) defaults.treeAutoBuildThreshold TreeAutoBuildThreshold.tryCreate _.configValue
                     thicknessBucketCap = readSetting provider (AppSettings.ConfigKey ConfigKey.thicknessBucketCap) defaults.thicknessBucketCap ThicknessBucketCap.tryCreate _.configValue
                 }
+            let locations = readDataLocations provider install documents
 
             match provider.trySave () with
             | Ok () -> ()
             | Error e -> Logger.logWarn $"loadWorkbenchSettings: could not write appsettings.json defaults back - %A{e}."
 
-            settings
+            settings, locations
         | Error e ->
             Logger.logError $"loadWorkbenchSettings: cannot open appsettings.json - %A{e}; using built-in defaults."
-            defaults
+            defaults, resolveLocations install (DataLocations.defaultsUnder documents)

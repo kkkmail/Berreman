@@ -18,6 +18,7 @@
     <ItemGroup>
         <Compile Include="..\OpticalConstructor.Tests\BuiltinCatalogue.fs" Link="BuiltinCatalogue.fs" />
         <Compile Include="TestApp.fs" />
+        <Compile Include="TestAppScope.fs" />
         <!-- Spec 0026 Part I (slice 003): pure localization logic tests (no headless
              session needed); runs under the `ui-tests` gate (Category!=ui-smoke). -->
         <Compile Include="LocalizationTests.fs" />
