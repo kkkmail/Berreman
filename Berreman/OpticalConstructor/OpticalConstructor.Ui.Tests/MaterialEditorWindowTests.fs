@@ -19,8 +19,6 @@ open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
@@ -93,14 +91,14 @@ module MaterialEditorWindowTests =
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
 
-    /// Fresh, isolated in-memory stores per test (the composition the App would perform).
+    /// Isolated BuiltinCatalogue.materialStore and BuiltinCatalogue.sampleStore preserve live reference checks per test.
     let private freshProxies () : MaterialProxy * SampleProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
         materials, samples
 
     let private builtIn (id : MaterialId) : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = id)
+        BuiltinCatalogue.material id
 
     /// A recording stub context (the functional-proxy seam — the test substitutes in-memory
     /// stubs of the SAME shape and observes which proxy function a Save/Cancel reached, and
@@ -120,7 +118,12 @@ module MaterialEditorWindowTests =
                 supersedeMaterial = fun _ -> Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
-        calls, saved, { materials = stub; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> calls.Add "close" }
+        calls, saved,
+        {
+            materials = stub
+            categories = BuiltinCatalogue.categoryStore (fun _ -> [])
+            requestClose = fun () -> calls.Add "close"
+        }
 
     /// Apply one edit message, failing the test on an unexpected typed rejection.
     let private applyOk (msg : MaterialComplexityMsg) (s : MaterialComplexityEditState) : MaterialComplexityEditState =
@@ -373,7 +376,7 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     let ``spec 0033 G9: PlanarActive (mm2) is reachable under biaxial and round-trips`` () =
-        // The seeded active crystal is biaxial + PlanarActive; it must derive (and thus be
+        // BuiltinCatalogue.material's active crystal is biaxial + PlanarActive; it must derive (and thus be
         // editable, not view-only) now that mm2 is offered under biaxial.
         let st = applied [ ChooseAnisotropy Biaxial; SetActivity ActivityOn; ChooseGyrationClass (PlanarActive (RhoValue 1.5e-6)) ]
         Assert.Equal("Planar", st.gyration.classCode)
@@ -569,7 +572,12 @@ module MaterialEditorWindowTests =
                 supersedeMaterial = fun _ -> Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
-        let context : MaterialEditorContext = { materials = failing; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> closes.Add "close" }
+        let context : MaterialEditorContext =
+            {
+                materials = failing
+                categories = BuiltinCatalogue.categoryStore (fun _ -> [])
+                requestClose = fun () -> closes.Add "close"
+            }
         let m = initMaterialEditor context (NewMaterial (newMaterialId ())) |> updateMaterialEditor MaterialSaveClicked
         Assert.Empty(closes)
         match m.status with

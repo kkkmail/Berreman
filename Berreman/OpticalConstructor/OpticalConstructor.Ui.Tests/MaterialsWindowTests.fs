@@ -17,13 +17,12 @@ open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.SampleStackEditor
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 
 /// Spec 0038 Part E (step 013) — the Materials window (UICOMP_XDUO_0009): the single-instance
@@ -166,13 +165,12 @@ module MaterialsWindowTests =
             | _ -> false)
         |> Seq.length
 
-    /// Fresh, isolated in-memory stores per test — the SAME composition the App performs
-    /// (samples first, then materials whose remove-block consults the LIVE samples, then
-    /// categories whose remove-block consults the LIVE materials).
+    /// BuiltinCatalogue.sampleStore, BuiltinCatalogue.materialStore and BuiltinCatalogue.categoryStore
+    /// stay isolated per test; removal consults the live sample and material references.
     let private freshStores () : MaterialProxy * SampleProxy * CategoryProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, samples, categories
 
     /// A recording stub context (the functional-proxy seam): the launchers append tags, so a
@@ -524,7 +522,7 @@ module MaterialsWindowTests =
         let caseInsensitive (a : string) (b : string) : int =
             System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
         let isSorted (labels : string list) : bool = labels = List.sortWith caseInsensitive labels
-        // Level 1 — the entry leaves under the entries group (the seeded corpus is NOT alphabetical).
+        // BuiltinCatalogue.materials row order must not determine the tree's alphabetical order (010/Q1).
         let entries = List.head state.tree
         let leafLabels = entries.children |> List.map (fun n -> n.label.value)
         Assert.Equal(12, List.length leafLabels)
@@ -689,7 +687,7 @@ module MaterialsWindowTests =
     /// Mount the REAL Main workbench MVU loop headless (the MainConstructorWindow shape with
     /// injectable stores), for the strip-button acceptance.
     let private mountMain (materials : MaterialProxy) (samples : SampleProxy) (categories : CategoryProxy) : HostWindow =
-        let model0 = Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
+        let model0 = Scene.initMainWith (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) materials samples categories
         let window = HostWindow(Width = 980.0, Height = 1050.0)
         Program.mkSimple (fun () -> model0) Scene.updateTableAndElementRotation Scene.mainView
         |> Program.withHost window
@@ -804,7 +802,7 @@ module MaterialsWindowTests =
             // matching filter narrows the tree to the just-saved entry.
             commitFilter window "Faceted window"
             Assert.Equal("1 results", textOf window ConstructorUiId.facetResultCount.value)
-            // The referenced remove: narrow to the seeded glass, select its leaf, Remove →
+            // The referenced remove: narrow to BuiltinCatalogue.material glass, select its leaf, Remove →
             // Confirm → the typed refusal NAMES the referencing sample and the store keeps it.
             commitFilter window "1.52"
             clickOn window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
@@ -1113,8 +1111,8 @@ module MaterialsWindowTests =
     let ``acceptance (016): Select returns the material through the TARGETED dispatch into the sample editor's layer and closes`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshStores ()
-            // The editor over a seeded one-layer sample — the Select session targets ITS row 0.
-            let editor, dispatch = mountEditorWithDispatch materials samples (SampleEditorView.EditSample SeedSamples.glassFilm600)
+            // BuiltinCatalogue.sample supplies one layer — the Select session targets ITS row 0.
+            let editor, dispatch = mountEditorWithDispatch materials samples (SampleEditorView.EditSample (BuiltinCatalogue.sample SampleIds.glassFilm600Id))
             let cancels = ResizeArray<string>()
             let selectCtx : SelectionContext<MaterialEntry> =
                 {
@@ -1146,11 +1144,11 @@ module MaterialsWindowTests =
             let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
             // The workbench staleness machinery is window-agnostic: the session handle closes
             // whichever Select-state window it points at.
-            let sceneSamples = SampleProxy.createInMemory VersionsInUse.empty
-            let sceneMaterials = MaterialProxy.createInMemory (samplesReferencing sceneSamples) VersionsInUse.empty
-            let sceneCategories = CategoryProxy.createInMemory (materialsReferencingCategory sceneMaterials)
+            let sceneSamples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+            let sceneMaterials = BuiltinCatalogue.materialStore (samplesReferencing sceneSamples) VersionsInUse.empty
+            let sceneCategories = BuiltinCatalogue.categoryStore (materialsReferencingCategory sceneMaterials)
             let model0 =
-                Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) sceneMaterials sceneSamples sceneCategories
+                Scene.initMainWith (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) sceneMaterials sceneSamples sceneCategories
             let session : Scene.SelectSession =
                 {
                     target = ElementId "det"
@@ -1216,7 +1214,7 @@ module MaterialsWindowTests =
     /// the multi-version history the live store never grows until step 25, proven here through a
     /// stub proxy: `resolveVersion` serves v1 and v2, `tryGetMaterial` / `listMaterials` the latest.
     let private twoVersionMaterials () : MaterialId * MaterialEntry * MaterialEntry * MaterialProxy =
-        let template = builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass152)
+        let template = BuiltinCatalogue.material MaterialIds.glass152
         let id = newMaterialId ()
         let v1 = { template with id = id; name = EntryName "Versioned material v1" }
         let v2 = { template with id = id; name = EntryName "Versioned material v2" }
@@ -1357,7 +1355,7 @@ module MaterialsWindowTests =
     [<Fact>]
     let ``the view panel enumerates versions and an older version is view-only while Edit targets the latest`` () =
         let id, _, v2, materials = twoVersionMaterials ()
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         let _, context = stubContext materials categories
         let selected = MW.initMaterialsWindow context Browse |> MW.updateMaterialsWindow (MW.SelectEntry id)
         // Both versions are enumerated (ascending), and the default view is the LATEST.
@@ -1406,7 +1404,7 @@ module MaterialsWindowTests =
     let ``acceptance (023): an older material version opens VIEW-ONLY inline while the latest stays editable`` () =
         HeadlessSession.run (fun () ->
             let id, _, _, materials = twoVersionMaterials ()
-            let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+            let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
             let _, context = stubContext materials categories
             // Mount the REAL MVU loop (the window minus its launcher composition — the gated-tree
             // mounting precedent) so the version-row clicks drive the pure update.

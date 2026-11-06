@@ -11,8 +11,6 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.Units
@@ -107,7 +105,7 @@ module EmbeddedChartTests =
         NkDispersionChart.nkDispersionChart MaterialComplexityEditor.Biaxial props Nanometer MaterialEditorView.previewRange
 
     let private builtInProps (id : MaterialId) : OpticalPropertiesWithDisp =
-        (builtInEntries |> List.find (fun e -> e.id = id)).properties
+        (BuiltinCatalogue.material id).properties
 
     let private applyOk (msg : MaterialComplexityMsg) (s : MaterialComplexityEditState) : MaterialComplexityEditState =
         match applyMaterialComplexityMsg msg s with
@@ -132,17 +130,17 @@ module EmbeddedChartTests =
         Dispatcher.UIThread.RunJobs()
         window
 
-    /// A fresh in-memory MaterialProxy for the Material editor window (the App composition).
+    /// BuiltinCatalogue.materialStore over an isolated BuiltinCatalogue.sampleStore preserves live reference checks.
     let private freshMaterialProxy () : MaterialProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
 
     // -- the Materials window (the step-013 view-panel host site) ----------------------------------
 
     let private freshStores () : MaterialProxy * CategoryProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let samples = BuiltinCatalogue.sampleStore VersionsInUse.empty
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples) VersionsInUse.empty
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, categories
 
     /// Commit `text` through the REAL faceted filter box (Enter is the commit gesture — the box

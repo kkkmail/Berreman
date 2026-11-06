@@ -12,6 +12,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Controls.ExperimentChart
 open OpticalConstructor.Controls.ChartStyle
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.NkDispersionChart
 
@@ -24,13 +25,13 @@ open OpticalConstructor.Ui.NkDispersionChart
 /// display unit rescales only the x-axis (AC-D7).
 module NkDispersionChartTests =
 
-    /// Silicon — a DISPERSIVE built-in: its dispersion is the published silicon law.
+    /// BuiltinCatalogue.material supplies silicon's published dispersion law.
     let private siliconEntry : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = MaterialIds.silicon)
+        BuiltinCatalogue.material MaterialIds.silicon
 
-    /// Vacuum — a NON-dispersive built-in (n = 1, k = 0 at every wavelength).
+    /// BuiltinCatalogue.material supplies vacuum (n = 1, k = 0 at every wavelength).
     let private vacuumEntry : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = MaterialIds.vacuumMaterial)
+        BuiltinCatalogue.material MaterialIds.vacuumMaterial
 
     let private applyOk (msg : MaterialComplexityMsg) (s : MaterialComplexityEditState) : MaterialComplexityEditState =
         match applyMaterialComplexityMsg msg s with
