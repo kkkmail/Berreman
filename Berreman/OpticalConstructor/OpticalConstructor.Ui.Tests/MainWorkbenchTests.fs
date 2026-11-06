@@ -12,10 +12,9 @@ open Xunit
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
+open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -65,24 +64,21 @@ module MainWorkbenchTests =
                     Dispatcher.UIThread.RunJobs()
             else Assert.Fail($"%s{id} has no on-screen position")
 
-    /// Fresh, isolated in-memory stores per test — the SAME composition the App performs: the
-    /// samples store first, then the materials store whose remove-block consults the LIVE
-    /// samples through `samplesReferencing`.
-    let private freshStores () : MaterialProxy * SampleProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        materials, samples
+    /// Fresh, isolated stores imported from the Built-in catalogue as in the App (spec 0050 §3.4–3.5).
+    let private freshStores () : InMemoryCatalogueStores =
+        BuiltinCatalogue.freshStores ()
 
-    /// The Main-scene model over the given stores (mock Library/Experiments proxies as in App).
-    /// The category store (spec 0035 step 009) is composed here from the materials store — its
-    /// `materialsReferencingCategory` lookup — exactly as the App root does.
-    let private mainWith (materials : MaterialProxy) (samples : SampleProxy) : TableAndElementRotationModel =
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        initMainWith (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
+    /// Composes Main from the Built-in catalogue and live stores as in the App (spec 0050 §3.4–3.5).
+    let private mainWith (stores : InMemoryCatalogueStores) : TableAndElementRotationModel =
+        initMainWith
+            (liveLibrary stores.libraryEntries stores.samples (SourceProxy.createInMemory ()))
+            (Experiments.createInMemoryExperiments ())
+            stores.materials
+            stores.samples
+            stores.categories
 
     let private freshMain () : TableAndElementRotationModel =
-        let materials, samples = freshStores ()
-        mainWith materials samples
+        freshStores () |> mainWith
 
     /// Mount the REAL Main-screen MVU loop over `model0` in a headless `HostWindow`, so a click
     /// dispatches through `update` and the view re-renders in the same pass (the
@@ -142,10 +138,14 @@ module MainWorkbenchTests =
 
     [<Fact>]
     let ``the material-editor create picker lists the live selectable catalogue, excludes HiddenOnCreate, and re-labels on a proxy rename`` () =
-        let materials, _ = freshStores ()
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let stores = freshStores ()
+        let categories = stores.categories
         let ctx : MaterialEditorView.MaterialEditorContext =
-            { materials = materials; categories = categories; requestClose = ignore }
+            {
+                materials = stores.materials
+                categories = categories
+                requestClose = ignore
+            }
         let em = MaterialEditorView.initMaterialEditor ctx (MaterialEditorView.NewMaterial (newMaterialId ()))
         let before = em.selectableCategories
         // The four SelectableOnCreate built-ins are offered; Vacuum (HiddenOnCreate) is excluded.
@@ -192,8 +192,8 @@ module MainWorkbenchTests =
     [<Trait("Category", "ui-smoke")>]
     let ``headless acceptance: both workbench tabs are gone, both strip buttons ride the ribbon row, and the table canvas persists`` () =
         HeadlessSession.run (fun () ->
-            let materials, samples = freshStores ()
-            let window = mountMain (mainWith materials samples)
+            let stores = freshStores ()
+            let window = mountMain (mainWith stores)
             // Spec 0038 steps 013/015: NO Materials and NO Library ribbon tab any more — the
             // tab-strip row carries the two right-aligned window buttons instead.
             Assert.False(isPresent window (ConstructorUiId.ribbonTab (ConstructorUiKey "Materials")).value,
