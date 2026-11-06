@@ -3,6 +3,12 @@ namespace OpticalConstructor.Tests
 open System
 open Xunit
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.MaterialDatabaseStore
+open OpticalConstructor.Storage.CategoryDatabaseStore
 
 module private CategoryProxyTestData =
 
@@ -310,3 +316,85 @@ type CategoryProxyTests () =
         match stub.removeCategory inUse.id with
         | Error (CategoryStillReferencedErr reason) -> Assert.Contains(inUse.name.value, reason)
         | other -> Assert.Fail($"expected Error (CategoryStillReferencedErr _), got %A{other}")
+
+type CategoryProxySqliteTests () =
+    inherit CategoryProxyContract ()
+
+    let database = BuiltinCatalogue.freshLibraryDatabase ()
+
+    override _.stores () : CategoryProxy * MaterialProxy =
+        CategoryProxy.createInDatabase database, MaterialProxy.createInDatabase database
+
+    [<Fact>]
+    member _.``a category's provenance follows its origin, and an update keeps it`` () : unit =
+        let proxy = CategoryProxy.createInDatabase database
+        let latestOf (categoryId : CategoryId) : StoredEntryVersion =
+            database.run (fun context -> context.tryLatestStored categoryId.toLibraryEntryId)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+            |> Option.defaultWith (fun () -> failwith $"Missing category {categoryId.value}")
+
+        let user = userCategory userCategoryId "User category"
+        Assert.Equal<Result<unit, CategoryError>>(Ok (), proxy.addCategory user)
+        let firstUser = latestOf user.id
+        Assert.Equal(VersionNumber.first, firstUser.envelope.content.version)
+        Assert.Equal(UserProvenance, firstUser.envelope.content.provenance)
+        Assert.Equal(VersionUnpinned, firstUser.state.pin)
+        Assert.Equal<Result<MaterialCategory, LibraryEntryError>>(Ok user, firstUser.envelope.content.toMaterialCategory)
+
+        let builtIn : MaterialCategory =
+            {
+                id = otherCategoryId
+                name = CategoryName "Additional built-in category"
+                visibility = SelectableOnCreate
+                origin = BuiltInCategory
+            }
+        let builtInProvenance = BuiltInProvenance CatalogueIds.builtInCatalogue
+        Assert.Equal<Result<unit, CategoryError>>(Ok (), proxy.addCategory builtIn)
+        let firstBuiltIn = latestOf builtIn.id
+        Assert.Equal(VersionNumber.first, firstBuiltIn.envelope.content.version)
+        Assert.Equal(builtInProvenance, firstBuiltIn.envelope.content.provenance)
+        Assert.Equal<Result<MaterialCategory, LibraryEntryError>>(Ok builtIn, firstBuiltIn.envelope.content.toMaterialCategory)
+        match proxy.removeCategory builtIn.id with
+        | Error (BuiltInNotRemovableErr reason) -> Assert.Contains(builtIn.name.value, reason)
+        | other -> Assert.Fail($"Expected built-in removal refusal, got %A{other}")
+        Assert.Equal(firstBuiltIn, latestOf builtIn.id)
+
+        let renamed =
+            {
+                glass with name = CategoryName "Glass renamed in SQLite"
+            }
+        Assert.Equal<Result<unit, CategoryError>>(Ok (), proxy.updateCategory renamed)
+        let edited = latestOf glass.id
+        Assert.Equal(VersionNumber.first, edited.envelope.content.version)
+        Assert.Equal(builtInProvenance, edited.envelope.content.provenance)
+        Assert.Equal<Result<MaterialCategory, LibraryEntryError>>(Ok renamed, edited.envelope.content.toMaterialCategory)
+
+        let changedOrigin =
+            {
+                renamed with origin = UserCategory
+            }
+        match proxy.updateCategory changedOrigin with
+        | Error (InvalidCategoryErr reason) -> Assert.Contains("origin disagrees", reason)
+        | other -> Assert.Fail($"Expected a provenance mismatch refusal, got %A{other}")
+        Assert.Equal(edited, latestOf glass.id)
+
+    [<Fact>]
+    member _.``a database failure below the category store is CategoryStoreUnavailableErr, never a throw`` () : unit =
+        let proxy = CategoryProxy.createInDatabase database
+        (database :> IDisposable).Dispose()
+
+        let unavailable (result : Result<'Outcome, CategoryError>) : unit =
+            match result with
+            | Error (CategoryStoreUnavailableErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | other -> Assert.Fail($"Expected a typed database failure, got %A{other}")
+
+        let user = userCategory userCategoryId "User category"
+        proxy.listCategories () |> unavailable
+        proxy.addCategory user |> unavailable
+        proxy.updateCategory glass |> unavailable
+        proxy.removeCategory glass.id |> unavailable
+
+    interface IDisposable with
+        member _.Dispose () : unit =
+            (database :> IDisposable).Dispose()

@@ -129,16 +129,18 @@ module MaterialLibrary =
     let tryFindCategoryByName (categories : MaterialCategory list) (name : CategoryName) : MaterialCategory option =
         categories |> List.tryFind (fun c -> c.name = name)
 
-    /// Category write refusals carry a reason identifying the invalid operation or referenced entry
-    /// (spec 0035 step 002; spec 0050 §3.4).
+    /// Category failures identify the refused operation, referenced entry or unavailable store
+    /// (spec 0035 step 002; spec 0050 §3.4, S2.2).
     type CategoryError =
         | UnknownCategoryIdErr of reason : string
         | DuplicateCategoryIdErr of reason : string
         | CategoryStillReferencedErr of reason : string
         | BuiltInNotRemovableErr of reason : string
         | InvalidCategoryErr of reason : string
+        | CategoryStoreUnavailableErr of reason : string
 
     /// Category reads and validated writes, with typed refusals (spec 0035 step 002; spec 0050 §3.4).
+    /// Stores: CategoryProxy.createInMemory and Storage's CategoryProxy.createInDatabase.
     /// Function-valued fields make proxy equality reference-based.
     [<ReferenceEquality>]
     type CategoryProxy =

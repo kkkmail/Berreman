@@ -135,6 +135,7 @@ module BuiltinCatalogue =
             | Error (DuplicateCategoryIdErr reason)
             | Error (CategoryStillReferencedErr reason)
             | Error (BuiltInNotRemovableErr reason)
+            | Error (CategoryStoreUnavailableErr reason)
             | Error (InvalidCategoryErr reason) ->
                 failwith $"The Built-in category '{entry.name.value}' ('{entry.id.value}') was refused: {reason}"
         store

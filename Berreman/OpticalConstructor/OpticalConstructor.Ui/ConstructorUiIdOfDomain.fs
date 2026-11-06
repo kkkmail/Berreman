@@ -307,6 +307,7 @@ module ConstructorUiIdOfDomain =
             | DuplicateCategoryIdErr reason
             | CategoryStillReferencedErr reason
             | BuiltInNotRemovableErr reason
+            | CategoryStoreUnavailableErr reason
             | InvalidCategoryErr reason -> ControlCaption reason
 
     type SourceError with
