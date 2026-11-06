@@ -2617,6 +2617,7 @@ type MaterialLibrary.MaterialError with
         | MaterialLibrary.DuplicateMaterialIdErr reason
         | MaterialLibrary.MaterialStillReferencedErr reason
         | MaterialLibrary.MaterialVersionPinnedErr reason
+        | MaterialLibrary.MaterialStoreUnavailableErr reason
         | MaterialLibrary.InvalidMaterialErr reason ->
             ControlCaption $"Cannot run: material library error ({reason})."
 

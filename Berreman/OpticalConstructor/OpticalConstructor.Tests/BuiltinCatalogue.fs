@@ -107,6 +107,7 @@ module BuiltinCatalogue =
             | Error (DuplicateMaterialIdErr reason)
             | Error (MaterialStillReferencedErr reason)
             | Error (InvalidMaterialErr reason)
+            | Error (MaterialStoreUnavailableErr reason)
             | Error (MaterialVersionPinnedErr reason) ->
                 failwith $"The Built-in material '{entry.name.value}' ('{entry.id.value}') was refused: {reason}"
         store

@@ -1,0 +1,44 @@
+# Secondary review — slice 0069, attempt 01
+
+Reviewed 2026-11-06 by the owning orchestrator after its automatic PID-watch callback. Recommendations only; repairs, acceptance, commits and restart await operator agreement.
+
+Primary report: [0069-01.postmortem-md](0069-01.postmortem-md), written by the postmortem agent, not the emergency mechanical fallback. Watch event: [event.json](../.artifacts/arc-watch/de9e62ab51604b9bb0be38e42844ee8c/event.json), id `de9e62ab51604b9bb0be38e42844ee8c`, supervisor PID 90808. The watcher returned `report_exit`; the current state and this launch's log establish an escalation, so the operator's standing instruction to perform a second review applies.
+
+## Diagnosis
+
+The primary diagnosis is correct: an ASG publication/lifecycle inconsistency stopped 0069 before supervisor review or acceptance gates. A second ASG defect misclassified that stop in the new watcher. Neither finding establishes a product defect or an agent defect. Bounded retries would not repair either deterministic mismatch.
+
+The resumed arc completed 0059–0068. Checkpoint 58 now contains the measured 794 constructor cases, confirming the previous executed-case accounting recovery worked. The accepted HEAD is `38c6d3c5d5c86cef040f069108b06062756ba96b` (0068), checkpoint 67 contains 811 constructor cases, and checkpoint 68 is absent. There are 68 completed slices. The 0069 product changes remain uncommitted. Supervisor 90808 has exited, and no replacement arc supervisor was found.
+
+### 1. Required inherited lifecycle initialization invalidates publication
+
+Independent read-only verification reproduced `validate_receipt`'s failure. Of every bound source, prompt, configuration and validator input, only `.contracts-json` differs. All 988 compiled descriptor/gate hashes match the receipt.
+
+The entire registry delta is one new `STORE_XDUO_0001` row: lifecycle `implemented`, declaringStep null, implementStep 69, empty consumers and temporaries, and openTemporary false. All existing entries are unchanged. The registry identity at HEAD equals the stored receipt hash (`53640948…7047b`); the working registry hashes to `e7127a41…a34b`.
+
+ASG's `implement_contract_worker.system-md` requires marking the contract implemented. `step_compiler/compile.py:_check_id_presence` explicitly permits a globally registered inherited contract without a current-arc lifecycle row. `contracts/registry_io.py:new_inherited_entry` defines exactly this inherited representation. However, `executability/receipt.py:_registry_identity` excludes progress fields only within existing rows: inserting a valid, planned row changes the bound set of ids and authored metadata. `run_arc_runner.py` revalidates immediately after the worker and stops before review or gates.
+
+ASG [0090 manual 017](C:/GitHub/AI-Strategy-Generator/specs/0090/.manual/017-cleaned-hashes-and-registry-progress-fix-log.md) fixed updates to existing rows, but did not cover the first current-arc row for an inherited contract. The original arbitrary-new-id rejection remains valuable and should remain enforced.
+
+The primary report's recurrence assessment is supported by the published ledger and active global identities: 0069 MaterialProxy, 0071 CategoryProxy, 0074 SampleProxy and 0095 CatalogueImportProxy all implement inherited seams; the latter three still lack current-arc rows. Merely refreshing today's receipt would unblock this particular insertion but leave the same failure ahead.
+
+### 2. The watcher misses this legitimate escalation path
+
+The supervisor console records `Arc-runner exited -- exit code 1`; redirected stderr is empty. The last events are the successful agent-written postmortem and `POSTMORTEM-RESULT` at 18:17:12 UTC. This is an orderly failure return, not evidence of a process crash.
+
+`run_arc_runner.py:_stop_reliability` calls `_supervisor_escalate`, which records `ESCALATION-RECORDED`, persists escalated state, and runs the postmortem. It then closes the log and returns failure **without emitting `ESCALATE`**. The watcher in `arc_watch.py:terminal_event` recognizes `ESCALATE`/`ESCALATED`, not `ESCALATION-RECORDED`, so it returns `report_exit` despite the matching escalated state and completed postmortem. The automatic callback itself worked and returned control to this conversation.
+
+This supplements the primary report: its expectation that a final `ESCALATE` would follow the postmortem is false for this code path. Existing watcher tests exercise the final event shape but miss this reliability-stop shape.
+
+## Verification limits
+
+The local TRX independently confirms 49 selected material cases passed with no failures or skips. The ledger declares 24 new constructor cases, implying 835 after the accepted 811 baseline. There are zero supervisor gate results for 0069 and no measured checkpoint 68. Local selected passes do not establish full acceptance. No build, gate or test was run during this review; no source, registry, receipt, state, checkpoint or Git mutation was made.
+
+## Proposed action plan
+
+1. **Repair inherited lifecycle initialization in ASG publication.** After validating the published plan and active global identities, prepare missing current-arc entries for inherited lifecycle-writing anchors before publishing the receipt, using `new_inherited_entry` and existing registry IO. Cover IMPLEMENT_CONTRACT and the existing MODIFY_CONTRACT first-touch path. Preserve existing entries, progress, declaration metadata, consumers and origin registries. Clarify the worker's current-arc registry target. Keep receipt binding of ids and authored metadata intact; do not ignore arbitrary new rows. Ensure failed validation does not leave partially initialized publication state and repeated compilation is idempotent.
+2. **Repair the escalation event contract.** Make `_stop_reliability` emit the standard terminal escalation event after the postmortem, consistently with other stop paths. Add a conservative watcher fallback for a current-launch `ESCALATION-RECORDED` matching the terminal escalated slice when no later completion/interruption or superseding launch exists. Preserve bookmark and duplicate-event protections. Test the actual reliability-stop sequence, missing/failed postmortem reporting, stale records, superseding launches and interruptions.
+3. **Verify and prepare recovery while the arc stays stopped.** Add focused regressions for planned inherited initialization, unchanged existing rows and descriptors, negative identity/metadata changes, and the monitor sequence; run the relevant executability/compiler/watcher checks. With the corrected compiler, preserve 0069's implemented row, initialize the remaining authorized inherited rows, and refresh the receipt while checking all 988 descriptor/gate hashes remain unchanged. Preserve published specs, gates, measured checkpoints and origin registries. Run all 15 unchanged 0069 gates, requiring the 835 constructor census, the 208 UI-smoke baseline, selected MaterialsWindowTests and all ten invariants. Save evidence in this arc's `.artifacts/` and address any discovered implementation failure within the subsequently agreed scope.
+4. **Document and pause for the operator's commit.** Update ASG error tracking and the next 0090 `.manual/` implementation log, and record the Berreman recovery ruling/handoff. Keep 0069's product work available for normal supervisor review and finalization. Wait for the operator to commit ASG and authorize relaunch.
+
+After those steps and the operator's relaunch instruction, resume 0069 **normally with an operator note and `--executability-profile 1`**, without `--accept-current-slice`. The normal review, full gates and measured checkpoint 68 must precede the slice's supervisor commit. Attach a new watcher ticket and completion channel. Do not run completion stat tools now: the arc is escalated, not complete.

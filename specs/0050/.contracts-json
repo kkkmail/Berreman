@@ -1,4 +1,12 @@
 {
+  "STORE_XDUO_0001": {
+    "lifecycle": "implemented",
+    "declaringStep": null,
+    "implementStep": 69,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
   "STORE_BigBoy_0001": {
     "lifecycle": "implemented",
     "declaringStep": 32,

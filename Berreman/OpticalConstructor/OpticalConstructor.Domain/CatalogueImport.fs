@@ -87,7 +87,7 @@ module CatalogueImport =
                 | UnknownCategoryIdErr r | DuplicateCategoryIdErr r | CategoryStillReferencedErr r | BuiltInNotRemovableErr r | InvalidCategoryErr r -> r
             let materialReason (e : MaterialError) : string =
                 match e with
-                | UnknownMaterialIdErr r | DuplicateMaterialIdErr r | MaterialStillReferencedErr r | InvalidMaterialErr r | MaterialVersionPinnedErr r -> r
+                | UnknownMaterialIdErr r | DuplicateMaterialIdErr r | MaterialStillReferencedErr r | InvalidMaterialErr r | MaterialVersionPinnedErr r | MaterialStoreUnavailableErr r -> r
             let sampleReason (e : SampleError) : string =
                 match e with
                 | UnknownSampleIdErr r | DuplicateSampleIdErr r | InvalidSampleErr r | SampleVersionPinnedErr r -> r

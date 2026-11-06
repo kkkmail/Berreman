@@ -24,6 +24,7 @@
         <Compile Include="EntryFileJson.fs" />
         <Compile Include="CatalogueFolderStore.fs" />
         <Compile Include="LibraryDatabaseStore.fs" />
+        <Compile Include="MaterialDatabaseStore.fs" />
         <Compile Include="ProjectJson.fs" />
         <Compile Include="ProjectFile.fs" />
         <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-

@@ -295,6 +295,7 @@ module ConstructorUiIdOfDomain =
             | DuplicateMaterialIdErr reason
             | MaterialStillReferencedErr reason
             | MaterialVersionPinnedErr reason
+            | MaterialStoreUnavailableErr reason
             | InvalidMaterialErr reason -> ControlCaption reason
 
     type CategoryError with

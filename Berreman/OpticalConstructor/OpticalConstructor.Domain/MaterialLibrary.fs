@@ -223,6 +223,7 @@ module MaterialLibrary =
         | InvalidMaterialErr of reason : string
         /// Removal is refused while any version is pinned (spec 0038 Part H; spec 0050 S2.2).
         | MaterialVersionPinnedErr of reason : string
+        | MaterialStoreUnavailableErr of reason : string
 
     type MaterialError with
 
@@ -386,9 +387,8 @@ module MaterialLibrary =
     /// - `removeMaterial id` — keeps the `MaterialStillReferencedErr` hard-block AND additionally
     ///   refuses any material carrying a pinned version (`MaterialVersionPinnedErr`).
     ///
-    /// The real, stateful in-memory store behind this surface is `MaterialProxy.createInMemory`
-    /// (a type augmentation in `MaterialStore.fs`, after `Lifecycle.fs`: it needs both the shared
-    /// `decideVersioning` rule and its `samplesReferencing` parameter's `Sample` type).
+    /// Implemented by `MaterialProxy.createInMemory` and the SQLite
+    /// `MaterialProxy.createInDatabase` store (spec 0050 S2.2).
     [<ReferenceEquality>]
     type MaterialProxy =
         {

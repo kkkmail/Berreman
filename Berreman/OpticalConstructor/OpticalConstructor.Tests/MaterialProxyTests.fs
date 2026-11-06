@@ -8,6 +8,12 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.SampleStore
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.MaterialDatabaseStore
 
 module private MaterialProxyTestData =
 
@@ -500,3 +506,126 @@ type MaterialProxyTests () =
         Assert.Equal<Set<MaterialId>>(
             Set.ofList [ MaterialIds.langasite; MaterialIds.silicon ],
             (BuiltinCatalogue.sample SampleIds.langasiteSiliconId).structure.referencedMaterials)
+
+type MaterialProxySqliteTests () =
+    inherit MaterialProxyContract ()
+
+    let databases = ResizeArray<LibraryDatabase>()
+
+    member private _.freshDatabase () : LibraryDatabase =
+        let database = BuiltinCatalogue.freshLibraryDatabase ()
+        databases.Add database
+        database
+
+    member private _.referencingSamples (database : LibraryDatabase) : ReferencingSamples =
+        {
+            activeSampleIds =
+                fun () ->
+                    database.run (fun context ->
+                        context.latestStoredOfKind SampleEntryKind
+                        |> Result.bind (fun versions ->
+                            versions
+                            |> List.filter (fun stored -> stored.state.lifecycle = ActiveEntry)
+                            |> List.fold (fun samples stored ->
+                                samples
+                                |> Result.bind (fun samples ->
+                                    stored.envelope.content.toSample
+                                    |> Result.mapError (fun error -> LibraryRowInvalidErr error.describe)
+                                    |> Result.map (fun sample -> sample.id :: samples))) (Ok [])))
+                    |> Result.bind id
+                    |> Result.defaultWith (fun error -> failwith error.describe)
+            removeSample =
+                fun sampleId ->
+                    database.run (fun context ->
+                        context.stageRemoval sampleId.toLibraryEntryId
+                        context.SaveChanges() |> ignore)
+                    |> Result.defaultWith (fun error -> failwith error.describe)
+        }
+
+    override this.freshProxy () : MaterialProxy =
+        let database = this.freshDatabase ()
+        // Spec 0050 S2.2: match the contract's reference-free factory; composedProxies retains samples.
+        database.run (fun context ->
+            context.latestStoredOfKind SampleEntryKind
+            |> Result.map (fun samples ->
+                for sample in samples do
+                    context.stageRemoval sample.envelope.content.id
+                context.SaveChanges() |> ignore))
+        |> Result.bind id
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        MaterialProxy.createInDatabase database
+
+    override this.composedProxies () : ReferencingSamples * MaterialProxy =
+        let database = this.freshDatabase ()
+        this.referencingSamples database, MaterialProxy.createInDatabase database
+
+    [<Fact>]
+    member this.``a material first saved through the database store is a user entry, and an edit keeps the stored provenance`` () : unit =
+        let database = this.freshDatabase ()
+        let proxy = MaterialProxy.createInDatabase database
+        let latestOf (materialId : MaterialId) : StoredEntryVersion =
+            database.run (fun context -> context.tryLatestStored materialId.toLibraryEntryId)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+            |> Option.defaultWith (fun () -> failwith $"Missing material {materialId.value}")
+
+        let entry = minted ()
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial entry)
+        let firstUser = latestOf entry.id
+        Assert.Equal(VersionNumber.first, firstUser.envelope.content.version)
+        Assert.Equal(UserProvenance, firstUser.envelope.content.provenance)
+        Assert.Equal(VersionUnpinned, firstUser.state.pin)
+
+        let silicon = BuiltinCatalogue.material MaterialIds.silicon
+        let renamed =
+            {
+                silicon with name = EntryName "Renamed silicon"
+            }
+        let builtInProvenance = BuiltInProvenance CatalogueIds.builtInCatalogue
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial renamed)
+        let edited = latestOf silicon.id
+        Assert.Equal(VersionNumber.first, edited.envelope.content.version)
+        Assert.Equal(renamed.name, edited.envelope.content.name)
+        Assert.Equal(builtInProvenance, edited.envelope.content.provenance)
+
+        let first = MaterialVersionId.firstOf silicon.id
+        let changed =
+            {
+                renamed with complexity = (BuiltinCatalogue.material MaterialIds.langasite).complexity
+            }
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.pinMaterialVersion first)
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial changed)
+        let next = latestOf silicon.id
+        Assert.Equal(VersionNumber.first.next, next.envelope.content.version)
+        Assert.Equal(builtInProvenance, next.envelope.content.provenance)
+        Assert.Equal(VersionUnpinned, next.state.pin)
+        Assert.Equal(ActiveEntry, next.state.lifecycle)
+        Assert.Equal<Result<MaterialEntry, LibraryEntryError>>(Ok changed, next.envelope.content.toMaterialEntry)
+
+    [<Fact>]
+    member this.``a database failure below the materials store is MaterialStoreUnavailableErr, never a throw`` () : unit =
+        let database = this.freshDatabase ()
+        let proxy = MaterialProxy.createInDatabase database
+        (database :> IDisposable).Dispose()
+
+        let unavailable (result : Result<'Outcome, MaterialError>) : unit =
+            match result with
+            | Error (MaterialStoreUnavailableErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | other -> Assert.Fail($"Expected a typed database failure, got %A{other}")
+
+        let version = MaterialVersionId.firstOf glass.id
+        proxy.listMaterials ActiveOnly |> unavailable
+        proxy.searchMaterials MaterialQuery.empty |> unavailable
+        proxy.tryGetMaterial glass.id |> unavailable
+        proxy.resolveVersion version |> unavailable
+        proxy.saveMaterial glass |> unavailable
+        proxy.markMaterialInactive glass.id |> unavailable
+        proxy.markMaterialActive glass.id |> unavailable
+        proxy.supersedeMaterial glass.id |> unavailable
+        proxy.pinMaterialVersion version |> unavailable
+        proxy.removeMaterial glass.id |> unavailable
+
+    interface IDisposable with
+        member _.Dispose () : unit =
+            for database in databases do
+                (database :> IDisposable).Dispose()
