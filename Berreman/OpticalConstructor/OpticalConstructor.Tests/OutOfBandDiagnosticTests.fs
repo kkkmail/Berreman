@@ -171,7 +171,16 @@ module OutOfBandDiagnosticTests =
             }
         Assert.Equal(SweptWavelengths (band 200.0 800.0), requestedWavelengthsOf fixedλ sweep)
         // A dark line (varied = None) has no sweep, so it runs at the fixed source λ.
-        let darkLine = seedExperiments |> List.head
+        let darkLine : Experiment =
+            {
+                id = ExperimentId 1
+                setup = []
+                varied = None
+                measurement = CaptureTransmitted
+                range = VariableRange.forVariable VaryR1
+                dataFileOpt = None
+                sourceWaveLengthOpt = None
+            }
         Assert.Equal(FixedWavelength fixedλ, requestedWavelengthsOf fixedλ darkLine)
 
     // ============================ the tooltip / Details text ============================

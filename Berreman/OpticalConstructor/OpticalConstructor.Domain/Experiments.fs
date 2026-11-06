@@ -484,28 +484,9 @@ module Experiments =
             tryGetExperiment : ExperimentId -> Result<Experiment option, ExperimentError>
         }
 
-    /// A dark-line seed template (spec 0038 Part I): an EMPTY setup with nothing varied — the "how much
-    /// ambient light reaches the detector with no source" calibration (operator, 001). Listable; the live
-    /// bay builds real experiments against the present scene.
-    let seedExperiments : Experiment list =
-        [
-            {
-                id = ExperimentId 1
-                setup = []
-                varied = None
-                measurement = CaptureTransmitted
-                range = VariableRange.forVariable VaryR1
-                dataFileOpt = None
-                sourceWaveLengthOpt = None
-            }
-        ]
-
-    /// The in-memory mock proxy (spec §3 / Q7): closes over the seed templates, no IO, deterministic for
-    /// tests. A real disk-backed `create` would live in `OpticalConstructor.Storage`, leaving the
-    /// bay / logic unchanged.
+    /// An in-memory proxy holding no experiment (spec 0050 S1.7).
     let createInMemoryExperiments () : ExperimentProxy =
-        let seeds = seedExperiments
         {
-            listExperiments = fun () -> Ok seeds
-            tryGetExperiment = fun id -> Ok (seeds |> List.tryFind (fun e -> e.id = id))
+            listExperiments = fun () -> Ok []
+            tryGetExperiment = fun _ -> Ok None
         }

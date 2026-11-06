@@ -2,8 +2,8 @@
   "manifest": "C:\\GitHub\\Berreman\\specs\\0050\\.manifest",
   "branch": "0050",
   "started_utc": "2026-11-05T11:30:30Z",
-  "last_updated_utc": "2026-11-06T09:34:50Z",
-  "cumulative_wall_seconds": 42319.3147428995,
+  "last_updated_utc": "2026-11-06T09:43:22Z",
+  "cumulative_wall_seconds": 42831.03260989953,
   "completed_slices": [
     {
       "index": 0,
@@ -340,11 +340,18 @@
       "commit": "8dd49833f4458cdb25cb935d5787f2e6c04d98ab",
       "manual": false,
       "utc": "2026-11-06T09:34:50Z"
+    },
+    {
+      "index": 48,
+      "path": "specs\\0050\\.slices\\0049.slice-md",
+      "commit": "ee89f59f1ef40e5ce61c43092e800445d4d2b090",
+      "manual": false,
+      "utc": "2026-11-06T09:43:22Z"
     }
   ],
   "current_slice": {
-    "index": 48,
-    "path": "specs\\0050\\.slices\\0049.slice-md",
+    "index": 49,
+    "path": "specs\\0050\\.slices\\0050.slice-md",
     "status": "running",
     "reason": "",
     "worker_logs": "",
@@ -365,23 +372,23 @@
       }
     ],
     "phase": "finalize",
-    "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
+    "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
     "review_epoch": 1,
     "review_cycle": 1,
     "review_attestation": {
-      "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
-      "slice_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0049.slice-md",
-      "slice_sha256": "110d30ef99288091d31ea96da8061e8507894e93411a3d44c87b2ac66c741ba3",
-      "gate_snapshot_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0049.gates",
-      "gate_snapshot_sha256": "6362255233fc865a31ae7e8ee083860b8a29ce0af32c4fca7d7c042a7abdac8a",
+      "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
+      "slice_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0050.slice-md",
+      "slice_sha256": "5dd13c69e4d8cc63592a16402b3ccf63bbde1de9beeed52de2d0757cc9c4a120",
+      "gate_snapshot_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0050.gates",
+      "gate_snapshot_sha256": "889ba92a5fb8f874497854b2dae2e96a676ecd49683fdaaf1cde9a9d0f2286ea",
       "review_epoch": 1,
       "review_cycle": 1,
       "critic_artifacts": [],
-      "judge_path": "C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\code_judge\\0049-01-code-judge.md",
-      "judge_sha256": "8812fad85fba2e1b26450190c994827774037c0f9a89ba45a17da941b16051bd",
+      "judge_path": "C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\code_judge\\0050-01-code-judge.md",
+      "judge_sha256": "0746d6314473f0e620307a4cc45a8a911a4830acbf0bfaaabc4c1d0cb4042a73",
       "verdict": "review-green",
       "mode": "full",
-      "timestamp_utc": "2026-11-06T09:41:15.568116+00:00",
+      "timestamp_utc": "2026-11-06T09:48:45.490223+00:00",
       "resolved_agents": [
         "code_judge"
       ]
@@ -394,9 +401,9 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 3.6502971001900733,
+        "elapsed_sec": 3.5275636999867857,
         "detail": "passed",
-        "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
+        "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
         "descriptor_sha256": "0be88f915c0087a8f42cdf883121271749fcf20b8fbadb87104215977ac94190",
         "contract": {
           "command": "dotnet build Berreman.slnx -c Release -nologo -v:m",
@@ -407,12 +414,12 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-06T09:41:20.004492+00:00"
+        "timestamp_utc": "2026-11-06T09:48:49.800364+00:00"
       }
     ],
     "build_repair_attempts": 0,
     "current_failed_build_gate": null,
-    "verification_gate_cursor": 10,
+    "verification_gate_cursor": 9,
     "verification_evidence": [
       {
         "gate": "elevation",
@@ -420,9 +427,9 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 89.25232789991423,
+        "elapsed_sec": 146.4993408001028,
         "detail": "passed",
-        "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
+        "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
         "descriptor_sha256": "2a49709324ea912aa29a65e426507048f55e318f814079fb9517342ea0e55a06",
         "contract": {
           "command": "powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004",
@@ -433,49 +440,28 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-06T09:43:21.187977+00:00"
+        "timestamp_utc": "2026-11-06T09:51:27.923895+00:00"
       },
       {
-        "gate": "ui-smoke",
+        "gate": "constructor-unit-tests",
         "phase": "verify",
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 22.924794299993664,
+        "elapsed_sec": 7.987120700068772,
         "detail": "passed",
-        "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
-        "descriptor_sha256": "3da7407d31e1e994b4211d0c7d041a5a2431cb5d65a4eb8aa5361abb89150154",
+        "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
+        "descriptor_sha256": "4f1ce5c8f3f2f5ba1fa445147f8ac5adb8ede1280f2594430b8360bc29c55d0f",
         "contract": {
-          "command": "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename ui-smoke.trx --filter-trait \"Category=ui-smoke\" {selector}",
-          "cwd": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
+          "command": "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename constructor-unit-tests.trx {selector}",
+          "cwd": "Berreman/OpticalConstructor/OpticalConstructor.Tests",
           "environment_names": [],
           "attempt_timeout_seconds": null,
           "filtered_timeout_seconds": null,
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-06T09:43:21.188133+00:00"
-      },
-      {
-        "gate": "ui-tests",
-        "phase": "verify",
-        "status": "pass",
-        "outcome": "PASS",
-        "exit_code": 0,
-        "elapsed_sec": 5.046678700018674,
-        "detail": "passed",
-        "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
-        "descriptor_sha256": "0e3a5ef3c3e1a9fd98867781cfcae6748c1858eea1380cdd543ac87385284a06",
-        "contract": {
-          "command": "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename ui-tests.trx --filter-not-trait \"Category=ui-smoke\" --filter-not-trait \"Category=kit-acceptance\" {selector}",
-          "cwd": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
-          "environment_names": [],
-          "attempt_timeout_seconds": null,
-          "filtered_timeout_seconds": null,
-          "total_timeout_seconds": null,
-          "platform": "Windows-11-10.0.22631-SP0"
-        },
-        "timestamp_utc": "2026-11-06T09:43:21.188292+00:00"
+        "timestamp_utc": "2026-11-06T09:51:27.924042+00:00"
       },
       {
         "gate": "invariant-s07-elev-list-empty",
@@ -483,9 +469,9 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17163799982517958,
+        "elapsed_sec": 0.17146799992769957,
         "detail": "passed",
-        "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
+        "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
         "descriptor_sha256": "989cbb22f69411dce88eea6ea69298b9ee67e7f18404a0964e27a632f4e3246e",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkVMRVYwIiAtLSBFbGV2YXRpb24vZWxldmF0aW9uLWtub3duLWZpbmRpbmdzLmpzb24=",
@@ -496,7 +482,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-06T09:43:21.188331+00:00"
+        "timestamp_utc": "2026-11-06T09:51:27.924085+00:00"
       },
       {
         "gate": "invariant-s07-no-vstest",
@@ -504,9 +490,9 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17066340008750558,
+        "elapsed_sec": 0.17076259991154075,
         "detail": "passed",
-        "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
+        "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
         "descriptor_sha256": "4d5e8045974d622eda859ba1aaf956398747ad1c6f4644f6644d8a2caae630ee",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIk1pY3Jvc29mdC5ORVQuVGVzdC5TZGt8eHVuaXQucnVubmVyLnZpc3VhbHN0dWRpb3xYdW5pdC5Ta2lwcGFibGVGYWN0fElzVGVzdGluZ1BsYXRmb3JtQXBwbGljYXRpb24iIC0tICIqLmZzcHJvaiIgIioucHJvcHMiICIqLnRhcmdldHMi",
@@ -517,7 +503,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-06T09:43:21.188376+00:00"
+        "timestamp_utc": "2026-11-06T09:51:27.924128+00:00"
       },
       {
         "gate": "invariant-s07-no-kit-kit-json",
@@ -525,9 +511,9 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.1788306999951601,
+        "elapsed_sec": 0.1776685998775065,
         "detail": "passed",
-        "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
+        "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
         "descriptor_sha256": "137b481248c5f7f122f32c198e3d236b32ad9525db946f559ad98df2c792d965",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgImtpdC5raXQtanNvbiIgLS0gQmVycmVtYW4v",
@@ -538,7 +524,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-06T09:43:21.188409+00:00"
+        "timestamp_utc": "2026-11-06T09:51:27.924164+00:00"
       },
       {
         "gate": "invariant-s07-no-eps-axis-evaluated",
@@ -546,9 +532,9 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17959640035405755,
+        "elapsed_sec": 0.17948759999126196,
         "detail": "passed",
-        "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
+        "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
         "descriptor_sha256": "e8f6e117b46f50535bcf36f0af4217e166c0cab268653c30d21fce2a06c8eaa1",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkVwc0F4aXNFdmFsdWF0ZWQiIC0tIEJlcnJlbWFuLw==",
@@ -559,7 +545,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-06T09:43:21.188442+00:00"
+        "timestamp_utc": "2026-11-06T09:51:27.924198+00:00"
       },
       {
         "gate": "invariant-s07-complexity-mandatory",
@@ -567,9 +553,9 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.175399299710989,
+        "elapsed_sec": 0.17707240022718906,
         "detail": "passed",
-        "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
+        "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
         "descriptor_sha256": "a8e40525f8314e4757eef70967d0642ee0a6d9f279f7bc7597741a71d05da76f",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgImNvbXBsZXhpdHkgPSAoTm9uZXxTb21lKSIgLS0gQmVycmVtYW4v",
@@ -580,7 +566,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-06T09:43:21.188476+00:00"
+        "timestamp_utc": "2026-11-06T09:51:27.924234+00:00"
       },
       {
         "gate": "invariant-s07-no-seeded-string-preset-ids",
@@ -588,9 +574,9 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18068650038912892,
+        "elapsed_sec": 0.18174909986555576,
         "detail": "passed",
-        "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
+        "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
         "descriptor_sha256": "5ed2641893b550dec586c0563fc7c65a54b543079bc43180b650860cb8f8b124",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIihzcmMtKDYwMHxoZW5lLXxhci00fGFyLTV8aGVjZC18ZGlvZGUtfHJ1YnktfHRpc2EtfG5keWFnLXxlci0xNTUwfGNvMi18aGctfGtyZi18YXJmLXxmMi0xfGV1di18YmV1di18eGUtbW9ub3xzdXBlcmNvbnRpbnV1bSl8ZGV0LShpbnRlbnNpdHl8ZWxsaXBzb21ldGVyKXxwb2wtKGxwfGNwLWxlZnR8Y3AtcmlnaHQpKSIgLS0gIkJlcnJlbWFuLyouZnMi",
@@ -601,7 +587,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-06T09:43:21.188522+00:00"
+        "timestamp_utc": "2026-11-06T09:51:27.924283+00:00"
       },
       {
         "gate": "invariant-s07-no-seeding-seam",
@@ -609,9 +595,9 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17832679999992251,
+        "elapsed_sec": 0.17761150002479553,
         "detail": "passed",
-        "tree_fingerprint": "73203b3801b728e6e66233d8680fac3b69332c00be65ad853696ca28b5cb2134",
+        "tree_fingerprint": "558f99fabb7cf000f840a3016bcedbc995324e41c5c2fabac0f1974aa95a005c",
         "descriptor_sha256": "cae816d2d5ba674d00663c1c10a4f24c58b8f1102bf2f072e2a2eb9d9dc9a0cc",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlNlZWRpbmdQcm94eXxzZWVkQWxsfE9wdGljYWxDb25zdHJ1Y3Rvci5TZWVkaW5nIiAtLSBCZXJyZW1hbi8=",
@@ -622,13 +608,12 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-06T09:43:21.188557+00:00"
+        "timestamp_utc": "2026-11-06T09:51:27.924320+00:00"
       }
     ],
     "post_repair_route": null
   },
   "remaining_slices": [
-    "specs\\0050\\.slices\\0050.slice-md",
     "specs\\0050\\.slices\\0051.slice-md",
     "specs\\0050\\.slices\\0052.slice-md",
     "specs\\0050\\.slices\\0053.slice-md",

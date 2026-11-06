@@ -343,19 +343,15 @@ module ExperimentProxyTests =
     // ============================ the mock proxy seam ============================
 
     [<Fact>]
-    let ``listExperiments returns at least one seed template`` () =
-        match proxy.listExperiments () with
-        | Ok experiments -> Assert.NotEmpty experiments
-        | Error err -> Assert.Fail($"%A{err}")
+    let ``the in-memory experiments proxy lists no experiment`` () : unit =
+        Assert.Equal<Result<Experiment list, ExperimentError>>(Ok [], proxy.listExperiments ())
 
     [<Fact>]
-    let ``tryGetExperiment hits a known seed id and misses an unknown one`` () =
-        match proxy.tryGetExperiment (ExperimentId 1) with
-        | Ok (Some e) -> Assert.Equal(1, e.id.value)
-        | other -> Assert.Fail($"expected seed 1, got %A{other}")
-        match proxy.tryGetExperiment (ExperimentId 9999) with
-        | Ok None -> ()
-        | other -> Assert.Fail($"expected Ok None, got %A{other}")
+    let ``the in-memory experiments proxy resolves no experiment id`` () : unit =
+        let firstId = ExperimentId 1
+        let unknownId = ExperimentId 9999
+        Assert.Equal<Result<Experiment option, ExperimentError>>(Ok None, proxy.tryGetExperiment firstId)
+        Assert.Equal<Result<Experiment option, ExperimentError>>(Ok None, proxy.tryGetExperiment unknownId)
 
     [<Fact>]
     let ``a STUB proxy of the same shape drives the same listing logic`` () =
