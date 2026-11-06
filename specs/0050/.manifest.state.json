@@ -408,8 +408,8 @@
         "model": "gpt-6-astra"
       }
     ],
-    "phase": "implement",
-    "tree_fingerprint": "c2a187ff5a92278b6eb341ba4aa57040047b9420f4d95d03066bf887e8c9521e",
+    "phase": "review",
+    "tree_fingerprint": "e125de8c95149a650f6f976f9126d553d148795182b0b2c32a2f35b464733cdb",
     "review_epoch": 0,
     "review_cycle": 1,
     "review_attestation": null,
@@ -419,7 +419,7 @@
     "current_failed_build_gate": null,
     "verification_gate_cursor": 0,
     "verification_evidence": [],
-    "post_repair_route": null,
+    "post_repair_route": "full-review",
     "reliability_counts": {
       "gate_attempts": 1,
       "resolver_invocations": 1
