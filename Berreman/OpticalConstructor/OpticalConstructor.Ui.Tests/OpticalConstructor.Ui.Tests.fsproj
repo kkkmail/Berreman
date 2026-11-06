@@ -15,9 +15,8 @@
         <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
-    <!-- TestApp.fs first: it carries the assembly-level AvaloniaTestApplication
-         attribute the headless xUnit runner reflects on. -->
     <ItemGroup>
+        <Compile Include="..\OpticalConstructor.Tests\BuiltinCatalogue.fs" Link="BuiltinCatalogue.fs" />
         <Compile Include="TestApp.fs" />
         <!-- Spec 0026 Part I (slice 003): pure localization logic tests (no headless
              session needed); runs under the `ui-tests` gate (Category!=ui-smoke). -->
