@@ -618,6 +618,15 @@ module Library =
                 substrate = None
             }
 
+        /// Filters names case-insensitively and optionally by substrate, preserving order (spec 0050 S2.3).
+        member this.selectFrom (samples : Sample list) : Sample list =
+            let byText =
+                samples
+                |> List.filter (fun s -> s.name.value.IndexOf(this.text.value, StringComparison.OrdinalIgnoreCase) >= 0)
+            match this.substrate with
+            | Some kind -> byText |> List.filter (fun s -> s.substrate = kind)
+            | None -> byText
+
     /// The samples write-seam error channel (errors as values; each case carries a diagnostic
     /// `reason` — a bare error case is useless in a log): an unknown id on lookup / update /
     /// remove, adding a sample under an id the library already holds, and rejecting a
@@ -628,6 +637,26 @@ module Library =
         | InvalidSampleErr of reason : string
         /// Removal is refused while any version is pinned (spec 0038 Part H; spec 0050 S2.2).
         | SampleVersionPinnedErr of reason : string
+
+    type SampleError with
+
+        /// Reports an unresolved sample identity (spec 0050 S2.3).
+        static member unknownSample (id : SampleId) : SampleError =
+            UnknownSampleIdErr $"unknown sample id '%s{string id.value}'"
+
+        /// Reports an unresolved sample version (spec 0050 S2.3).
+        static member unknownSampleVersion (version : SampleVersionId) : SampleError =
+            UnknownSampleIdErr $"unknown sample version '%s{string version.sampleId.value}' v%d{version.version.value}"
+
+        /// Reports removal blocked by pins, with ascending version numbers (spec 0050 S2.3).
+        static member versionsPinned (sample : Sample) (versions : VersionNumber list) : SampleError =
+            let versionList =
+                versions
+                |> List.map (fun version -> version.value)
+                |> List.sort
+                |> List.map (fun n -> $"v%d{n}")
+                |> String.concat ", "
+            SampleVersionPinnedErr $"sample '%s{sample.name.value}' ('%s{string sample.id.value}') has %d{List.length versions} version(s) pinned: %s{versionList}"
 
     /// The mutating samples write-seam (spec 0033 steps 004/005, contract STORE_XDUO_0002 —
     /// IMPLEMENTED lifecycle; re-typed IN PLACE at spec 0038 Part H step 022 into the VERSIONED

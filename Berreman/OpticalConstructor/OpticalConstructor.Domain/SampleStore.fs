@@ -1,6 +1,5 @@
 namespace OpticalConstructor.Domain
 
-open System
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
@@ -18,18 +17,27 @@ module SampleStore =
             sample : Sample
         }
 
-    /// The metadata half of a sample payload (spec 0038 Part H): the fields the rule treats as
-    /// never-versioning — a name / description edit, and the `SubstrateKind` display/search facet
-    /// (which the engine mapping never reads: `Propagation.resolveSampleMaterials` / `sampleToSystem`
-    /// consume only the `SampleStructure`). The physics half is the `(=)`-comparable `SampleStructure`
-    /// itself — the material/geometry tree the engine expands; unlike a material's engine `properties`
-    /// it carries no function case, so structural equality is direct.
-    type private SampleMetadata =
+    /// Sample display fields whose edits never mint a version (spec 0038 Part H; spec 0050 S2.3).
+    type SampleMetadata =
         {
             name : EntryName
             description : EntryDescription
             substrate : SubstrateKind
         }
+
+    type Sample with
+
+        /// Comparable structure physics and display metadata for the shared versioning rule (spec 0050 S2.3).
+        member this.versionPayload : VersionPayload<SampleStructure, SampleMetadata> =
+            {
+                physics = this.structure
+                metadata =
+                    {
+                        name = this.name
+                        description = this.description
+                        substrate = this.substrate
+                    }
+            }
 
     type SampleProxy with
 
@@ -49,20 +57,9 @@ module SampleStore =
                 |> Map.ofList
             let store = ref initialVersions
 
-            let unknown (id : SampleId) : SampleError =
-                UnknownSampleIdErr $"unknown sample id '%s{string id.value}'"
-
             /// The latest (highest-numbered) version of a non-empty history.
             let latestOf (versions : SampleVersionRecord list) : SampleVersionRecord =
                 versions |> List.maxBy (fun v -> v.versionNo.value)
-
-            /// The payload the shared rule sees: physics = the structure tree, metadata = the display
-            /// fields (name / description / substrate facet).
-            let payloadOf (s : Sample) : VersionPayload<SampleStructure, SampleMetadata> =
-                {
-                    physics = s.structure
-                    metadata = { name = s.name; description = s.description; substrate = s.substrate }
-                }
 
             /// The LATEST version of each sample, filtered by the show-inactive scope.
             let currentSamples (scope : InactiveVisibility) : Sample list =
@@ -86,19 +83,12 @@ module SampleStore =
                         |> List.map (fun v -> if v.versionNo = latest.versionNo then { v with lifecycle = lifecycle } else v)
                     store.Value <- store.Value |> Map.add id updated
                     Ok ()
-                | None -> Error (unknown id)
+                | None -> Error (SampleError.unknownSample id)
 
             {
                 listSamples = fun scope -> Ok (currentSamples scope)
 
-                searchSamples =
-                    fun q ->
-                        let byText =
-                            currentSamples ActiveOnly
-                            |> List.filter (fun s -> s.name.value.IndexOf(q.text.value, StringComparison.OrdinalIgnoreCase) >= 0)
-                        match q.substrate with
-                        | Some kind -> Ok (byText |> List.filter (fun s -> s.substrate = kind))
-                        | None -> Ok byText
+                searchSamples = fun q -> currentSamples ActiveOnly |> q.selectFrom |> Ok
 
                 tryGetSample =
                     fun id -> Ok (store.Value |> Map.tryFind id |> Option.map (fun versions -> (latestOf versions).sample))
@@ -128,7 +118,7 @@ module SampleStore =
                                 Ok ()
                             | Some versions ->
                                 let latest = latestOf versions
-                                match decideVersioning (payloadOf latest.sample) (payloadOf sample) latest.pin with
+                                match decideVersioning latest.sample.versionPayload sample.versionPayload latest.pin with
                                 | KeepCurrent -> Ok ()
                                 | MutateInPlace ->
                                     let updated =
@@ -169,7 +159,7 @@ module SampleStore =
                                     else v)
                             store.Value <- store.Value |> Map.add version.sampleId updated
                             Ok ()
-                        | _ -> Error (UnknownSampleIdErr $"unknown sample version '%s{string version.sampleId.value}' v%d{version.version.value}")
+                        | _ -> Error (SampleError.unknownSampleVersion version)
 
                 removeSample =
                     fun id ->
@@ -178,16 +168,14 @@ module SampleStore =
                             let pinnedVersions =
                                 versions
                                 |> List.filter (fun v -> v.pin = VersionPinned)
-                                |> List.map (fun v -> v.versionNo.value)
-                                |> List.sort
+                                |> List.map (fun v -> v.versionNo)
                             match pinnedVersions with
                             | [] ->
                                 store.Value <- store.Value |> Map.remove id
                                 Ok ()
                             | _ ->
-                                let versionList = pinnedVersions |> List.map (fun n -> $"v%d{n}") |> String.concat ", "
-                                Error (SampleVersionPinnedErr $"sample '%s{(latestOf versions).sample.name.value}' ('%s{string id.value}') has %d{List.length pinnedVersions} version(s) pinned: %s{versionList}")
-                        | None -> Error (unknown id)
+                                Error (SampleError.versionsPinned (latestOf versions).sample pinnedVersions)
+                        | None -> Error (SampleError.unknownSample id)
             }
 
         /// Empty sample store using the shared versioning rule (spec 0038 step 042; spec 0050 §3.4).
