@@ -414,17 +414,13 @@ let private freshId () : Library.ElementId = System.Guid.NewGuid().ToString() |>
 let private mkElement (point : TablePoint) (kind : CatalogueKind) : TestElement =
     { id = freshId (); placement = ElementPlacement.create kind point; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
 
-/// The default in-memory material / sample stores for the parameterless test scenes
-/// (`init` / `initMain`) — the SAME composition the App performs (spec 0033 steps 005/006): the
-/// samples store first, then the materials store whose remove-block consults the LIVE samples
-/// through `samplesReferencing`. A nested module so the `Library` open (required to see the
-/// optional `MaterialProxy.createInMemory` type extension) stays scoped away from this file's
-/// Avalonia names.
+/// Composes the parameterless scene's in-memory stores from the Built-in catalogue (spec 0050 §3.4–3.5).
 module private DefaultStores =
+    open Softellect.Sys.Logging
     open OpticalConstructor.Domain.Library
-    open OpticalConstructor.Domain.Lifecycle           // VersionsInUse.empty
-    open OpticalConstructor.Domain.MaterialStore       // MaterialProxy.createInMemory (versioned, spec 0038 step 021)
-    open OpticalConstructor.Domain.SampleStore         // SampleProxy.createInMemory (versioned, spec 0038 step 022)
+    open OpticalConstructor.Domain.CatalogueImport
+    open OpticalConstructor.Domain.CatalogueFiles
+    open OpticalConstructor.Storage.CatalogueFolderStore
 
     /// The default stores of a test scene.
     type DefaultStoreSet =
@@ -436,19 +432,20 @@ module private DefaultStores =
             sources : SourceProxy
         }
 
-    /// Spec 0035 (009): the category store joins the composition LAST — its remove-block consults
-    /// the live materials store through `materialsReferencingCategory` (the `samplesReferencing`
-    /// precedent), so a category referenced by a seeded material is not silently removable. The
-    /// materials store is versioned (spec 0038 step 021) and takes the `VersionsInUse` seam —
-    /// empty for the test scenes, which hold no persisted experiments. Spec 0046: the user-sources
-    /// store and the LIVE Library over it and the samples — the same composition `AppContext.create`
-    /// performs.
+    /// Imports fresh scene stores, logging any failure and retaining entries already imported.
     let create () : DefaultStoreSet =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
+        let stores = CatalogueImportProxy.createInMemory ()
+        match stores.proxy.importFrom (CatalogueProxy.createBuiltIn ()) with
+        | Ok () -> ()
+        | Error e -> Logger.logError $"DefaultStores.create: could not import the Built-in catalogue: {e.describe}"
         let sources = SourceProxy.createInMemory ()
-        { materials = materials; samples = samples; categories = categories; library = liveLibrary (createInMemory ()) samples sources; sources = sources }
+        {
+            materials = stores.materials
+            samples = stores.samples
+            categories = stores.categories
+            library = liveLibrary stores.libraryEntries stores.samples sources
+            sources = sources
+        }
 
 /// Spec 0038 Part L (037): the default experiment-data + experiment-collection proxies for the
 /// parameterless test scenes (`init` / `initMain` / the default `initInverse` caller). The

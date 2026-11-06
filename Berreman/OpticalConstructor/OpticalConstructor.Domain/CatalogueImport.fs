@@ -77,6 +77,7 @@ module CatalogueImport =
 
         /// Builds a CatalogueImportProxy over empty in-memory stores, mapping refusals to ImportRejectedErr (spec 0050 §3.4).
         /// Returns InMemoryCatalogueStores with live reference lookups and no database or file IO.
+        /// Preset queries read imported entries; libraryTrees reuses the existing By-kind grouping.
         static member createInMemory () : InMemoryCatalogueStores =
             let samples = SampleProxy.createInMemoryEmpty VersionsInUse.empty
             let materials = MaterialProxy.createInMemoryEmpty (samplesReferencing samples) VersionsInUse.empty
@@ -108,5 +109,9 @@ module CatalogueImport =
                 categories = categories
                 materials = materials
                 samples = samples
-                libraryEntries = libraryEntries.proxy
+                libraryEntries =
+                    {
+                        libraryEntries.proxy with
+                            libraryTrees = (Library.createInMemory ()).libraryTrees
+                    }
             }

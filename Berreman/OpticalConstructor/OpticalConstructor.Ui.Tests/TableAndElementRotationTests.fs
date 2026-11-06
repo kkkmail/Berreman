@@ -15,6 +15,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
+open OpticalConstructor.Tests
 open OpticalConstructor.TestWindows
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -67,6 +68,22 @@ module TableAndElementRotationTests =
         Assert.Equal(Detector, (elem 1 m).placement.catalogueKind)
         Assert.False(List.isEmpty m.palette, "the Main scene exposes an add palette")
         Assert.True(close m.view.zoom.value 1.0 && close m.view.r1.degrees 0.0, "same table / initial zoom as the test scene")
+
+    [<Fact>]
+    let ``the default test scene composes its stores from the Built-in catalogue`` () : unit =
+        let model = initMain ()
+        Assert.Equal<Result<Library.Sample list, Library.SampleError>>(
+            Ok (BuiltinCatalogue.samples () |> List.sortBy _.id),
+            model.samples.listSamples MaterialLibrary.IncludeInactive |> Result.map (List.sortBy _.id))
+        Assert.Equal<Result<MaterialLibrary.MaterialEntry list, MaterialLibrary.MaterialError>>(
+            Ok (BuiltinCatalogue.materials () |> List.sortBy _.id),
+            model.materials.listMaterials MaterialLibrary.IncludeInactive |> Result.map (List.sortBy _.id))
+        Assert.Equal<Result<MaterialLibrary.MaterialCategory list, MaterialLibrary.CategoryError>>(
+            Ok (BuiltinCatalogue.categories () |> List.sortBy _.id),
+            model.categories.listCategories () |> Result.map (List.sortBy _.id))
+        for preset in BuiltinCatalogue.presets () do
+            Assert.Equal<Result<Library.LibraryEntry option, Library.LibraryError>>(
+                Ok (Some preset), model.library.tryGetEntry preset.entryId)
 
     [<Fact>]
     let ``AddElement appends a catalogue element on the beam and selects it (so the bar acts on it)`` () =
