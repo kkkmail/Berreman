@@ -32,6 +32,7 @@
              click-opens-scene `ui-smoke`), the AppShell theme seam, and the catalogue
              name/code contract the Main scene and renderer share. -->
         <Compile Include="LauncherTests.fs" />
+        <Compile Include="AppConfigTests.fs" />
         <!-- Spec 0038 Part C (step 004, UICOMP_XDUO_0007): the TestLauncherWindow
              contract — the seven diagnostic scene buttons that left the product
              launcher for the standalone OpticalConstructor.TestWindows.App
@@ -240,6 +241,12 @@
              and a ThinFilm editor pins R on with no T control — all without throwing. Last in the
              list (it consumes the App composition root + every changed Ui window). -->
         <Compile Include="WireUi0040CompositionTests.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
     <ItemGroup>

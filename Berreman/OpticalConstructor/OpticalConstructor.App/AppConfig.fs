@@ -1,23 +1,18 @@
-/// Spec 0038 Part C (step 005): the appsettings.json seam of the product app.
-/// `ConfigKey` is the single key inventory; `AppConfig.loadWorkbenchSettings` is the
-/// ONE place the solution touches `Softellect.Sys.AppSettings.AppSettingsProvider`
-/// for the app configuration — created once at the composition root, values flowing
-/// inward only as the elevated `WorkbenchSettings` Domain record. User preferences
-/// stay in `environment.json` (`Ui/UserEnvironment.fs`); the two stores never merge.
+/// App configuration flows inward as elevated settings and data locations through this seam
+/// (spec 0038 Part C; spec 0050 S2.4). User preferences remain in environment.json.
 namespace OpticalConstructor.App
 
+open System
+open System.IO
 open Softellect.Sys
+open Softellect.Sys.AppSettings
 open Softellect.Sys.Logging
+open Softellect.Sys.Primitives
 
 open OpticalConstructor.Domain.WorkbenchSettings
 
-/// The single appsettings.json key inventory (§6): every key the app
-/// reads is a `[<Literal>]` HERE, never a string
-/// scattered at a call site. The literal values are the wire key names inside the
-/// file's `appSettings` / `connectionStrings` sections. (Softellect's `ConfigKey`
-/// single-case DU wraps these at the provider call; `Softellect.Sys.AppSettings` is
-/// deliberately NOT opened in this file so the unqualified `ConfigKey` name can only
-/// mean this module.)
+/// The appsettings.json key inventory for appSettings and connectionStrings.
+/// Provider calls wrap these wire names in AppSettings.ConfigKey.
 [<RequireQualifiedAccess>]
 module ConfigKey =
 
@@ -44,6 +39,30 @@ module ConfigKey =
     /// The library database's SQLite connection string, read through `AppSettingsProvider.tryGetConnectionString` (spec 0050 §3.18).
     [<Literal>]
     let sqliteConnectionString = "OpticalConstructorSqlite"
+
+    /// appSettings folder for DataLocations.backupsFolder.
+    [<Literal>]
+    let libraryBackupsFolder = "LibraryBackupsFolder"
+
+    /// appSettings folder for DataLocations.preferencesFolder.
+    [<Literal>]
+    let preferencesFolder = "PreferencesFolder"
+
+    /// appSettings folder for DataLocations.kitsFolder.
+    [<Literal>]
+    let kitsFolder = "KitsFolder"
+
+    /// appSettings folder for DataLocations.exportsFolder.
+    [<Literal>]
+    let exportsFolder = "ExportsFolder"
+
+    /// appSettings folder for DataLocations.cataloguesFolder.
+    [<Literal>]
+    let cataloguesFolder = "CataloguesFolder"
+
+    /// appSettings folder for DataLocations.shippedCatalogueFolder.
+    [<Literal>]
+    let shippedCatalogueFolder = "ShippedCatalogueFolder"
 
 /// The settings doors of the workbench settings (spec 0048 E042, the shape of STL's
 /// `BmbDesktopAppSettingsDoors`): a parse from the file's `ConfigValue` that hands back the
@@ -114,6 +133,56 @@ module AppConfig =
         | Ok _ -> ()
 
         provider.getOrDefault key defaultValue tryParse render
+
+    [<ElevationBoundary(nameof IoBoundary, "Resolve configured data locations through the process environment at the composition root.")>]
+    let private resolveLocations (install : FolderName) (configured : DataLocations) : DataLocations =
+        let resolveFolder (folder : FolderName) : FolderName =
+            let expanded = FolderName (Environment.ExpandEnvironmentVariables folder.value)
+            if Path.IsPathRooted expanded.value then expanded
+            else install.combine expanded
+
+        {
+            libraryConnection = ConnectionString (Environment.ExpandEnvironmentVariables configured.libraryConnection.value)
+            backupsFolder = resolveFolder configured.backupsFolder
+            preferencesFolder = resolveFolder configured.preferencesFolder
+            kitsFolder = resolveFolder configured.kitsFolder
+            exportsFolder = resolveFolder configured.exportsFolder
+            cataloguesFolder = resolveFolder configured.cataloguesFolder
+            shippedCatalogueFolder = resolveFolder configured.shippedCatalogueFolder
+        }
+
+    /// Read each location, writing missing or refused values back as configured defaults (spec 0050 S2.4).
+    /// Returned locations expand environment variables and root relative folders at install.
+    /// The caller saves the provider after all settings have been read.
+    let readDataLocations (provider : AppSettings.AppSettingsProvider) (install : FolderName) (documents : FolderName) : DataLocations =
+        let defaults = DataLocations.defaultsUnder documents
+        let connectionKey = AppSettings.ConfigKey ConfigKey.sqliteConnectionString
+        let libraryConnection =
+            match provider.tryGetConnectionString connectionKey with
+            | Ok (Some connection) -> connection
+            | missingOrRefused ->
+                match missingOrRefused with
+                | Error error -> Logger.logWarn $"readDataLocations: '{connectionKey.value}' is not usable ({error.Message}); using the built-in default."
+                | Ok _ -> ()
+
+                match provider.trySetConnectionString connectionKey defaults.libraryConnection with
+                | Error error -> Logger.logWarn $"readDataLocations: could not write the default for '{connectionKey.value}' back ({error.Message})."
+                | Ok () -> ()
+
+                defaults.libraryConnection
+
+        let configured =
+            {
+                libraryConnection = libraryConnection
+                backupsFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.libraryBackupsFolder) defaults.backupsFolder FolderName.tryCreate _.configValue
+                preferencesFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.preferencesFolder) defaults.preferencesFolder FolderName.tryCreate _.configValue
+                kitsFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.kitsFolder) defaults.kitsFolder FolderName.tryCreate _.configValue
+                exportsFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.exportsFolder) defaults.exportsFolder FolderName.tryCreate _.configValue
+                cataloguesFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.cataloguesFolder) defaults.cataloguesFolder FolderName.tryCreate _.configValue
+                shippedCatalogueFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.shippedCatalogueFolder) defaults.shippedCatalogueFolder FolderName.tryCreate _.configValue
+            }
+
+        resolveLocations install configured
 
     /// Create the provider ONCE via `AppSettingsProvider.tryCreate ()` (it opens the
     /// build-copied appsettings.json beside the assembly), read the four workbench
