@@ -47,6 +47,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Ui.ImportDialogView
 
 // ---------------------------------------------------------------------------
@@ -100,6 +101,8 @@ type LibraryWindowError =
     | LibraryBackupRefusedErr of LibraryBackupError
     /// The catalogue import store refused a drop, registration or unregistering.
     | CatalogueImportRefusedErr of CatalogueImportError
+    /// The selected-entry or catalogue export refused the request.
+    | LibraryExportRefusedErr of LibraryExportError
 
     /// The refusal's reason as the inline message shows it.
     member this.caption : ControlCaption =
@@ -111,6 +114,7 @@ type LibraryWindowError =
         | SourceRemoveRefusedErr sourceError -> sourceError.caption
         | LibraryBackupRefusedErr backupError -> backupError.caption
         | CatalogueImportRefusedErr importError -> importError.caption
+        | LibraryExportRefusedErr exportError -> exportError.caption
 
 /// One named tree-shaping representation the window offers (spec 0038 §D.0: search order ≠
 /// representation order): a stable `code` the control dispatches back, the picker label, and
@@ -296,6 +300,8 @@ type LibraryWindowModel =
         backupStatus : ControlCaption option
         /// The latest catalogue-folder registration or unregister status.
         importStatus : ControlCaption option
+        /// The most recent successful entry or catalogue export.
+        entryExportStatus : ControlCaption option
         /// Registrations whose complete row lists await the import dialog.
         pendingImports : PendingCatalogueImport list
         /// Which OLDER version of the selected SAMPLE the view panel is showing read-only
@@ -334,6 +340,18 @@ type LibraryWindowModel =
         match this.selectedEntryId with
         | Some id -> this.constrainedEntries |> List.tryFind (fun e -> e.entryId = id)
         | None -> None
+
+    /// The selected entry's latest held envelope, offered for export only in Browse mode.
+    member this.exportableSelection : LibraryEntryEnvelope option =
+        match this.mode, this.selectedEntry with
+        | Browse, Some entry ->
+            match entry.entryId.tryToLibraryEntryId with
+            | Some id ->
+                match this.context.catalogueImports.proxy.tryLatestEnvelope id with
+                | Ok envelopeOpt -> envelopeOpt
+                | Error _ -> None
+            | None -> None
+        | Select _, _ | Browse, None -> None
 
     /// The selected entry as an editable SAMPLE — the Edit verb's target. Only samples have an
     /// editor; a preset selection offers NO Edit affordance (removed, not greyed — the
@@ -448,6 +466,7 @@ let private initModel (context : LibraryWindowContext) (mode : LibraryWindowMode
         restoreGate = NoPendingLibraryRestore
         backupStatus = None
         importStatus = None
+        entryExportStatus = None
         pendingImports = []
         viewedVersion = None
         lastError = None
@@ -506,6 +525,12 @@ type LibraryWindowMsg =
     | LibraryImportApplied of ImportDialogApplied
     /// Forget a registered folder while keeping all its library entries.
     | UnregisterCatalogueFolder of CatalogueId
+    /// Export the selected entry's latest held version to its kind's entry file.
+    | ExportSelectedLibraryEntry of FileName
+    /// Export the filtered entries and their referenced user entries to a catalogue folder.
+    | ExportShownLibraryEntries of CatalogueExportTarget
+    /// Export every user entry to a catalogue folder.
+    | ExportMyLibrary of CatalogueExportTarget
     /// The show-inactive/superseded toggle (spec 0038 step 023): flip the sample scope between
     /// `ActiveOnly` and `IncludeInactive`.
     | ToggleShowInactiveEntries
@@ -610,6 +635,44 @@ let private requestLifecycle (action : MaterialsWindowView.LifecycleAction) (m :
 
 let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : LibraryWindowModel =
     match msg with
+    | ExportSelectedLibraryEntry file ->
+        match m.exportableSelection with
+        | None -> m
+        | Some envelope ->
+            match m.context.catalogueImports.exportEntry envelope.content.id file with
+            | Ok exported ->
+                {
+                    m with
+                        entryExportStatus = Some (exported.exportedCaption file)
+                        lastError = None
+                }
+            | Error error ->
+                {
+                    m with
+                        entryExportStatus = None
+                        lastError = Some (LibraryExportRefusedErr error)
+                }
+    | ExportShownLibraryEntries target
+    | ExportMyLibrary target ->
+        let result =
+            match msg with
+            | ExportShownLibraryEntries _ ->
+                let ids = m.filteredEntries |> List.choose (fun entry -> entry.entryId.tryToLibraryEntryId)
+                m.context.catalogueImports.exportEntries ids target
+            | _ -> m.context.catalogueImports.exportUserLibrary target
+        match result with
+        | Ok catalogue ->
+            {
+                m with
+                    entryExportStatus = Some (catalogue.exportedCaption target.folder)
+                    lastError = None
+            }
+        | Error error ->
+            {
+                m with
+                    entryExportStatus = None
+                    lastError = Some (LibraryExportRefusedErr error)
+            }
     | DropLibraryEntryFiles files ->
         match m.context.catalogueImports.decideDroppedFiles files with
         | Ok [] -> m
@@ -1353,6 +1416,42 @@ let private verbsRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> un
             @ (match m.pendingImports with
                | [] -> []
                | _ -> [ MaterialsWindowView.verbButton ConstructorUiId.libraryReviewImportsButton (ControlCaption "Review imports…") (fun () -> dispatch ReviewPendingImports) ])
+            @ (match m.mode with
+               | Select _ -> []
+               | Browse ->
+                   (match m.exportableSelection with
+                    | None -> []
+                    | Some envelope ->
+                        [ MaterialsWindowView.verbButtonOn ConstructorUiId.libraryExportButton (ControlCaption "Export…") (fun e ->
+                              match e.Source with
+                              | :? Visual as source ->
+                                  match TopLevel.GetTopLevel source with
+                                  | :? Window as owner ->
+                                      MaterialsWindowView.pickEntryExportFile owner m.context.catalogueImports.exportFolderOpt envelope
+                                          (ExportSelectedLibraryEntry >> dispatch)
+                                  | _ -> ()
+                              | _ -> ()) ])
+                   @ (match m.filteredEntries with
+                      | [] -> []
+                      | _ ->
+                          [ MaterialsWindowView.verbButtonOn ConstructorUiId.libraryExportShownButton (ControlCaption "Export shown to catalogue…") (fun e ->
+                                match e.Source with
+                                | :? Visual as source ->
+                                    match TopLevel.GetTopLevel source with
+                                    | :? Window as owner ->
+                                        MaterialsWindowView.pickLibraryFolder owner (ControlCaption "Export to catalogue folder") m.context.catalogueImports.exportFolderOpt
+                                            (CatalogueExportTarget.ofFolder >> ExportShownLibraryEntries >> dispatch)
+                                    | _ -> ()
+                                | _ -> ()) ])
+                   @ [ MaterialsWindowView.verbButtonOn ConstructorUiId.libraryExportMyLibraryButton (ControlCaption "Export my library…") (fun e ->
+                           match e.Source with
+                           | :? Visual as source ->
+                               match TopLevel.GetTopLevel source with
+                               | :? Window as owner ->
+                                   MaterialsWindowView.pickLibraryFolder owner (ControlCaption "Export my library to a catalogue folder") m.context.catalogueImports.exportFolderOpt
+                                       (CatalogueExportTarget.ofFolder >> ExportMyLibrary >> dispatch)
+                               | _ -> ()
+                           | _ -> ()) ])
             @ [
                 MaterialsWindowView.verbButton ConstructorUiId.libraryBackUpNowButton (ControlCaption "Back up library now…") (fun () -> dispatch BackUpLibraryNow)
                 MaterialsWindowView.verbButton ConstructorUiId.libraryRestoreButton (ControlCaption "Restore library…") (fun () -> dispatch RequestLibraryRestore)
@@ -1417,6 +1516,17 @@ let private libraryRestoreRows (m : LibraryWindowModel) (dispatch : LibraryWindo
           ] :> IView ]
 
 type LibraryWindowModel with
+
+    member internal this.libraryExportStatusRow : IView list =
+        match this.entryExportStatus with
+        | None -> []
+        | Some status ->
+            [ TextBlock.create [
+                  ConstructorUiId.libraryExportStatusText.automationAttribute<TextBlock> ()
+                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, status.value, ValueNone)
+                  TextBlock.text status.value
+                  TextBlock.textWrapping TextWrapping.Wrap
+              ] :> IView ]
 
     member internal this.libraryImportStatusRow : IView list =
         match this.importStatus with
@@ -1613,6 +1723,9 @@ let private viewPanel (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
                                 TextBlock.maxWidth 380.0
                                 TextBlock.text description
                             ] :> IView ]
+                          @ (match m.context.catalogueImports.proxy.attributionLinesOf entry.attributedEntryIds with
+                             | Ok lines -> MaterialsWindowView.attributionPanel ConstructorUiId.libraryAttributionPanel lines
+                             | Error _ -> [])
                           @ viewOnlyNote
                           @ versionsRow versions latestVersion shownVersion dispatch)
                   ])
@@ -1642,6 +1755,7 @@ let libraryWindowView (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
                                     @ [ verbsRow m dispatch ]
                                     @ catalogueFolderRows m dispatch
                                     @ m.libraryImportStatusRow
+                                    @ m.libraryExportStatusRow
                                     @ confirmRow m dispatch
                                     @ lifecycleConfirmRow m dispatch
                                     @ libraryRestoreRows m dispatch

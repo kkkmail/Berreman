@@ -1,0 +1,9 @@
+# Implementation plan
+
+Attempt 02 repairs the supervisor-reported FS0039 errors at the two catalogue-folder export callbacks. `CatalogueExportTarget.ofFolder` already exists as an extension in `OpticalConstructor.Storage.CatalogueImportStore`; import that module in LibraryWindowView, matching MaterialsWindowView and LibraryWindowTests. Keep the existing implementation, seven authorized test identities, and gate roster unchanged. Record the measured failure and repair in the canonical log and state-of-the-world; the supervisor owns verification.
+
+Wire the Library window to the existing CatalogueImportContext export operations and MaterialsWindowView pickers/caption/attribution helpers. Add the five centralized intent ids, Browse-only export buttons, success/refusal projection, and selected-entry attribution without changing selection, mode, or confirmation gates.
+
+Modify only LibraryWindowView.fs, Controls/UiIds.fs, and LibraryWindowTests.fs. Add exactly the seven authorized facts, reusing BuiltinCatalogue fixtures, the in-memory catalogue store, headless view infrastructure, and TestAppScope for the database round trip. Include a real-view input assertion within an authorized fact.
+
+Risks are keeping filtered export dependency closure in the existing domain seam, observing latest envelopes and pinned versions correctly, and keeping the expanded verbs row reachable. Preserve existing tests and layout patterns. The WIRE_UI worker protocol prohibits executing checks; the supervisor owns build, elevation, smoke, selected tests, and the eleven invariants. Do not claim gate results or author measured baselines.

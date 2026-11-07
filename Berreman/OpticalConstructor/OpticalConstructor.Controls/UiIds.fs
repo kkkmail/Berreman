@@ -541,6 +541,13 @@ type ConstructorUiId =
     // Spec 0050 S3.2: reopen pending catalogue import choices.
     static member libraryReviewImportsButton : ConstructorUiId = ConstructorUiId "LibraryReviewImportsButton"
 
+    // Spec 0050 S3.3: Library exports and selected-entry licence attribution.
+    static member libraryExportButton : ConstructorUiId = ConstructorUiId "LibraryExportButton"
+    static member libraryExportShownButton : ConstructorUiId = ConstructorUiId "LibraryExportShownButton"
+    static member libraryExportMyLibraryButton : ConstructorUiId = ConstructorUiId "LibraryExportMyLibraryButton"
+    static member libraryExportStatusText : ConstructorUiId = ConstructorUiId "LibraryExportStatusText"
+    static member libraryAttributionPanel : ConstructorUiId = ConstructorUiId "LibraryAttributionPanel"
+
     // --- The single-instance Materials window (`MaterialsWindowView`). ---
     static member materialsWindow : ConstructorUiId = ConstructorUiId "MaterialsWindow"
     static member materialsFacetTreeHost : ConstructorUiId = ConstructorUiId "MaterialsFacetTreeHost"

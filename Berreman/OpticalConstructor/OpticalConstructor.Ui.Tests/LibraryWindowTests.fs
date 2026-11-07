@@ -297,6 +297,363 @@ module LibraryWindowTests =
         System.IO.File.WriteAllText(file.value, text.value)
         file, source
 
+    let private freshLibraryExportContext () : InMemoryCatalogueStores * LW.LibraryWindowContext =
+        let stores = CatalogueImportProxy.createInMemory ()
+        let imports = CatalogueImportContext.create stores.proxy
+        imports.importFrom (CatalogueProxy.createBuiltIn ())
+        |> Result.bind (fun decisions -> imports.apply (decisions |> List.map _.byDefault))
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        |> ignore
+        let _, context = stubContext stores.libraryEntries stores.samples stores.materials
+        stores,
+        {
+            context with
+                categories = stores.categories
+                catalogueImports = imports
+        }
+
+    let private freshLibraryExportFolder () : FolderName =
+        FolderName (System.IO.Path.Combine(System.AppContext.BaseDirectory, "LibraryWindowTests", System.Guid.NewGuid().ToString("N")))
+
+    let private mountLibraryExportView (window : HostWindow) (model : LW.LibraryWindowModel) : unit =
+        Program.mkSimple (fun () -> model) LW.updateLibraryWindow LW.libraryWindowView
+        |> Program.withHost window
+        |> Program.run
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+
+    let private assertLibraryExportPreservesState (before : LW.LibraryWindowModel) (after : LW.LibraryWindowModel) : unit =
+        Assert.Same(before.context, after.context)
+        Assert.Equal(before.selectedEntryId, after.selectedEntryId)
+        Assert.Equal(before.selectedNodeOpt, after.selectedNodeOpt)
+        Assert.Equal(before.viewedVersion, after.viewedVersion)
+        Assert.Equal(before.removeGate, after.removeGate)
+        Assert.Equal(before.lifecycleGate, after.lifecycleGate)
+        Assert.Equal(before.restoreGate, after.restoreGate)
+        Assert.Equal<AppliedConstraint list>(before.appliedFacets, after.appliedFacets)
+        Assert.Equal(before.textFilter, after.textFilter)
+        match before.mode, after.mode with
+        | Browse, Browse -> ()
+        | Select expected, Select actual -> Assert.Same(expected, actual)
+        | _ -> Assert.Fail("An export must preserve the window mode.")
+
+    [<Fact>]
+    let ``the export and attribution UiIds of the Library window are the stable intent-named ids`` () : unit =
+        Assert.Equal("LibraryExportButton", ConstructorUiId.libraryExportButton.value)
+        Assert.Equal("LibraryExportShownButton", ConstructorUiId.libraryExportShownButton.value)
+        Assert.Equal("LibraryExportMyLibraryButton", ConstructorUiId.libraryExportMyLibraryButton.value)
+        Assert.Equal("LibraryExportStatusText", ConstructorUiId.libraryExportStatusText.value)
+        Assert.Equal("LibraryAttributionPanel", ConstructorUiId.libraryAttributionPanel.value)
+        HeadlessSession.run (fun () ->
+            let _, context = freshLibraryExportContext ()
+            let initial = LW.initLibraryWindow context Browse
+            let selected = initial |> LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.source600)
+            let targetId = ElementId "export-selection"
+            let target = TableElementTarget targetId
+            let _, selection = selectContext LightSource target
+            let selectModel = LW.initLibraryWindow context (Select selection) |> LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.source600)
+            let unmatched = initial |> LW.updateLibraryWindow (LW.CommitLibraryTextFilter (TextQuery "no matching library entry"))
+            for model in [ initial; selected; selectModel; unmatched ] do
+                let window = HostWindow(Width = 1150.0, Height = 800.0)
+                try
+                    mountLibraryExportView window model
+                    match model.exportableSelection with
+                    | Some _ ->
+                        Assert.True(isPresent window ConstructorUiId.libraryExportButton.value)
+                        Assert.Equal("Export…", textOf window ConstructorUiId.libraryExportButton.value)
+                    | None -> Assert.False(isPresent window ConstructorUiId.libraryExportButton.value)
+                    match model.mode with
+                    | Browse ->
+                        Assert.True(isPresent window ConstructorUiId.libraryExportMyLibraryButton.value)
+                        Assert.Equal("Export my library…", textOf window ConstructorUiId.libraryExportMyLibraryButton.value)
+                        Assert.Equal(not (List.isEmpty model.filteredEntries), isPresent window ConstructorUiId.libraryExportShownButton.value)
+                    | Select _ ->
+                        Assert.False(isPresent window ConstructorUiId.libraryExportShownButton.value)
+                        Assert.False(isPresent window ConstructorUiId.libraryExportMyLibraryButton.value)
+                    Assert.False(isPresent window ConstructorUiId.libraryExportStatusText.value)
+                finally window.Close())
+
+    [<Fact>]
+    let ``ExportSelectedLibraryEntry writes the selected entry's file and pins its version`` () : unit =
+        let stores, context = freshLibraryExportContext ()
+        let materialId = newMaterialId ()
+        let sampleId = newSampleId ()
+        let materialName = EntryName "Lab glass"
+        let sampleName = EntryName "Lab stack"
+        let material = BuiltinCatalogue.userMaterialContent materialId materialName
+        let sample = BuiltinCatalogue.sampleContentOver sampleId materialId sampleName
+        BuiltinCatalogue.putSealedEntries context.catalogueImports [ material; sample ]
+        let held =
+            stores.proxy.tryLatestEnvelope sample.id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+            |> Option.defaultWith (fun () -> failwith "Lab stack must be held.")
+        let folder = freshLibraryExportFolder ()
+        let leaf = FileName "Lab stack.sample-json"
+        let file = leaf.combine folder
+        let initial = LW.initLibraryWindow context Browse
+        Assert.Equal<ControlCaption option>(None, initial.entryExportStatus)
+        Assert.Same(initial, LW.updateLibraryWindow (LW.ExportSelectedLibraryEntry file) initial)
+        Assert.False(System.IO.File.Exists file.value)
+        let selected = initial |> LW.updateLibraryWindow (LW.SelectLibraryEntry sampleId.toElementValueId)
+        Assert.Equal<LibraryEntryEnvelope option>(Some held, selected.exportableSelection)
+        let removing = selected |> LW.updateLibraryWindow LW.RequestRemoveSelectedEntry
+        let before =
+            {
+                removing with
+                    lastError = Some (LW.ProtectedEntryRefusedErr "Previous refusal")
+            }
+        let exported = LW.updateLibraryWindow (LW.ExportSelectedLibraryEntry file) before
+        Assert.True(System.IO.File.Exists file.value)
+        let read = context.catalogueImports.readEntryFile SampleEntryKind file |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(held, read)
+        let expected = ControlCaption $"Exported Lab stack version 1 to {file.value}; that version is now pinned."
+        Assert.Equal<ControlCaption option>(Some expected, exported.entryExportStatus)
+        Assert.Equal<LW.LibraryWindowError option>(None, exported.lastError)
+        assertLibraryExportPreservesState before exported
+        match stores.samples.removeSample sampleId with
+        | Error (SampleVersionPinnedErr _) -> ()
+        | _ -> Assert.Fail("Removing an exported sample must return SampleVersionPinnedErr.")
+        let targetId = ElementId "export-selection"
+        let target = TableElementTarget targetId
+        let _, selection = selectContext CatalogueKind.Sample target
+        let selecting = LW.initLibraryWindow context (Select selection) |> LW.updateLibraryWindow (LW.SelectLibraryEntry sampleId.toElementValueId)
+        Assert.Equal<LibraryEntryEnvelope option>(None, selecting.exportableSelection)
+        Assert.Same(selecting, LW.updateLibraryWindow (LW.ExportSelectedLibraryEntry file) selecting)
+        let unreadable =
+            {
+                selected with
+                    context =
+                        {
+                            context with
+                                catalogueImports =
+                                    {
+                                        context.catalogueImports with
+                                            proxy =
+                                                {
+                                                    stores.proxy with
+                                                        tryHeldEnvelope = fun _ _ -> Error (ImportStoreUnavailableErr "Envelope unavailable")
+                                                }
+                                    }
+                        }
+            }
+        Assert.Equal<LibraryEntryEnvelope option>(None, unreadable.exportableSelection)
+        Assert.Same(unreadable, LW.updateLibraryWindow (LW.ExportSelectedLibraryEntry file) unreadable)
+        HeadlessSession.run (fun () ->
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountLibraryExportView window exported
+                Assert.Equal(expected.value, textOf window ConstructorUiId.libraryExportStatusText.value)
+                Assert.False(isPresent window ConstructorUiId.libraryWindowMessage.value)
+            finally window.Close())
+
+    [<Fact>]
+    let ``ExportShownLibraryEntries writes the shown entries and the user materials they reference`` () : unit =
+        let stores, context = freshLibraryExportContext ()
+        let materialId = newMaterialId ()
+        let sampleId = newSampleId ()
+        let otherId = newMaterialId ()
+        let materialName = EntryName "Lab glass"
+        let sampleName = EntryName "Lab stack"
+        let otherName = EntryName "Unshown glass"
+        let material = BuiltinCatalogue.userMaterialContent materialId materialName
+        let sample = BuiltinCatalogue.sampleContentOver sampleId materialId sampleName
+        let other = BuiltinCatalogue.userMaterialContent otherId otherName
+        BuiltinCatalogue.putSealedEntries context.catalogueImports [ material; sample; other ]
+        let before =
+            LW.initLibraryWindow context Browse
+            |> LW.updateLibraryWindow (LW.CommitLibraryTextFilter (TextQuery "Lab stack"))
+            |> LW.updateLibraryWindow (LW.SelectLibraryEntry sampleId.toElementValueId)
+            |> LW.updateLibraryWindow LW.RequestMarkSampleInactive
+        Assert.Equal(sampleId.toElementValueId, (Assert.Single before.filteredEntries).entryId)
+        let folder = freshLibraryExportFolder ()
+        let target = CatalogueExportTarget.ofFolder folder
+        let exported = LW.updateLibraryWindow (LW.ExportShownLibraryEntries target) before
+        let catalogue = (context.catalogueImports.openCatalogue folder).readCatalogue () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Set<LibraryEntryId>>(Set.ofList [ sample.id; material.id ], catalogue.envelopes |> List.map _.content.id |> Set.ofList)
+        for envelope in catalogue.envelopes do
+            Assert.Equal<Result<LibraryEntryEnvelope option, CatalogueImportError>>(Ok (Some envelope), stores.proxy.tryLatestEnvelope envelope.content.id)
+        let expected = ControlCaption $"Exported 2 entries to the catalogue folder {folder.value}; their versions are now pinned."
+        Assert.Equal<ControlCaption option>(Some expected, exported.entryExportStatus)
+        Assert.Equal<LW.LibraryWindowError option>(None, exported.lastError)
+        assertLibraryExportPreservesState before exported
+
+    [<Fact>]
+    let ``ExportMyLibrary writes every user entry to a catalogue folder`` () : unit =
+        let stores, context = freshLibraryExportContext ()
+        let materialId = newMaterialId ()
+        let sampleId = newSampleId ()
+        let licensedId = newMaterialId ()
+        let materialName = EntryName "Lab glass"
+        let sampleName = EntryName "Lab stack"
+        let licensedName = EntryName "PTB glass"
+        let licence = EntryLicence "CC-BY-4.0"
+        let citation = EntryCitation "A. Author, Test optical constants (2026), doi:10.0000/test"
+        let material = BuiltinCatalogue.userMaterialContent materialId materialName
+        let sample = BuiltinCatalogue.sampleContentOver sampleId materialId sampleName
+        let licensed = BuiltinCatalogue.licensedMaterialContent licensedId licensedName licence citation
+        BuiltinCatalogue.putSealedEntries context.catalogueImports [ material; sample; licensed ]
+        let held = stores.proxy.heldUserEntries () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(3, held.Length)
+        let before =
+            {
+                LW.initLibraryWindow context Browse with
+                    textFilter = TextQuery "nothing shown"
+                    restoreGate = LW.PendingLibraryRestore ([], None)
+                    lastError = Some (LW.ProtectedEntryRefusedErr "Previous refusal")
+            }
+        Assert.Empty before.filteredEntries
+        let folder = freshLibraryExportFolder ()
+        let target = CatalogueExportTarget.ofFolder folder
+        let exported = LW.updateLibraryWindow (LW.ExportMyLibrary target) before
+        let catalogue = (context.catalogueImports.openCatalogue folder).readCatalogue () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Set<LibraryEntryId>>(held |> List.map _.id |> Set.ofList, catalogue.envelopes |> List.map _.content.id |> Set.ofList)
+        for envelope in catalogue.envelopes do
+            match envelope.content.provenance with
+            | BuiltInProvenance _ -> Assert.Fail("Export my library must contain only user-managed entries.")
+            | _ -> ()
+            Assert.Equal<Result<LibraryEntryEnvelope option, CatalogueImportError>>(Ok (Some envelope), stores.proxy.tryLatestEnvelope envelope.content.id)
+        let expected = ControlCaption $"Exported 3 entries to the catalogue folder {folder.value}; their versions are now pinned."
+        Assert.Equal<ControlCaption option>(Some expected, exported.entryExportStatus)
+        Assert.Equal<LW.LibraryWindowError option>(None, exported.lastError)
+        assertLibraryExportPreservesState before exported
+
+    [<Fact>]
+    let ``a refused Library export shows its reason as the window message`` () : unit =
+        let _, context = freshLibraryExportContext ()
+        let before =
+            {
+                LW.initLibraryWindow context Browse with
+                    entryExportStatus = Some (ControlCaption "Previous export succeeded.")
+                    restoreGate = LW.PendingLibraryRestore ([], None)
+            }
+        let folder = freshLibraryExportFolder ()
+        let target = CatalogueExportTarget.ofFolder folder
+        let refused = LW.updateLibraryWindow (LW.ExportMyLibrary target) before
+        let reason =
+            match refused.lastError with
+            | Some (LW.LibraryExportRefusedErr (EmptyLibraryExportErr _ as error)) -> error.caption
+            | _ -> failwith "An empty user library must return the typed export refusal."
+        Assert.Equal<ControlCaption option>(None, refused.entryExportStatus)
+        Assert.False(System.IO.Directory.Exists folder.value)
+        assertLibraryExportPreservesState before refused
+        HeadlessSession.run (fun () ->
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountLibraryExportView window refused
+                Assert.Equal(reason.value, textOf window ConstructorUiId.libraryWindowMessage.value)
+                Assert.False(isPresent window ConstructorUiId.libraryExportStatusText.value)
+            finally window.Close())
+
+    [<Fact>]
+    let ``the Library window shows the citation of a CC-BY material of the selected sample`` () : unit =
+        HeadlessSession.run (fun () ->
+            let stores, context = freshLibraryExportContext ()
+            let materialId = newMaterialId ()
+            let sampleId = newSampleId ()
+            let materialName = EntryName "PTB glass"
+            let sampleName = EntryName "PTB stack"
+            let licence = EntryLicence "CC-BY-4.0"
+            let citation = EntryCitation "A. Author, Test optical constants (2026), doi:10.0000/test"
+            let material = BuiltinCatalogue.licensedMaterialContent materialId materialName licence citation
+            let sample = BuiltinCatalogue.sampleContentOver sampleId materialId sampleName
+            BuiltinCatalogue.putSealedEntries context.catalogueImports [ material; sample ]
+            let initial = LW.initLibraryWindow context Browse
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountLibraryExportView window initial
+                commitFilter window "PTB stack"
+                expandEntries window
+                clickOn window (ConstructorUiId.libraryEntryNode sampleId.toElementValueId).value
+                Assert.Equal("PTB glass: Licence CC-BY-4.0 — cite: A. Author, Test optical constants (2026), doi:10.0000/test",
+                             textOf window ConstructorUiId.libraryAttributionPanel.value)
+                match tryFindControl window ConstructorUiId.libraryAttributionPanel.value with
+                | Some (:? StackPanel as panel) ->
+                    Assert.Equal("Licence attribution", Avalonia.Automation.AutomationProperties.GetName panel)
+                    let line = Assert.IsType<TextBlock>(Assert.Single panel.Children)
+                    Assert.Equal(TextWrapping.Wrap, line.TextWrapping)
+                | _ -> Assert.Fail("A sample's licensed material must have an attribution panel.")
+                commitFilter window ""
+                clickOn window (ConstructorUiId.libraryEntryNode PresetIds.source600).value
+                Assert.False(isPresent window ConstructorUiId.libraryAttributionPanel.value)
+            finally window.Close()
+            let failedContext =
+                {
+                    context with
+                        catalogueImports =
+                            {
+                                context.catalogueImports with
+                                    proxy =
+                                        {
+                                            stores.proxy with
+                                                tryHeldEntry = fun _ -> Error (ImportStoreUnavailableErr "Attribution unavailable")
+                                        }
+                            }
+                }
+            let failed = LW.initLibraryWindow failedContext Browse |> LW.updateLibraryWindow (LW.SelectLibraryEntry sampleId.toElementValueId)
+            let failedWindow = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountLibraryExportView failedWindow failed
+                Assert.True(isPresent failedWindow ConstructorUiId.libraryViewPanel.value)
+                Assert.False(isPresent failedWindow ConstructorUiId.libraryAttributionPanel.value)
+            finally failedWindow.Close())
+
+    [<Fact>]
+    let ``Export my library over the app library writes a catalogue folder that a new library registers with every user entry`` () : unit =
+        let owner = FolderName "LibraryWindowExportTests"
+        let firstLocations = TestAppScope.fileLocations owner
+        let first = AppContext.create firstLocations WorkbenchSettings.defaults |> Result.defaultWith (fun error -> failwith error.describe)
+        TestAppScope.settlePendingImports first
+        let materialId = newMaterialId ()
+        let sampleId = newSampleId ()
+        let materialName = EntryName "Lab glass"
+        let sampleName = EntryName "Lab stack"
+        let material = (BuiltinCatalogue.userMaterialContent materialId materialName).toMaterialEntry |> Result.defaultWith (fun error -> failwith error.describe)
+        let sample = (BuiltinCatalogue.sampleContentOver sampleId materialId sampleName).toSample |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), first.materials.saveMaterial material)
+        Assert.Equal<Result<unit, SampleError>>(Ok (), first.samples.saveSample sample)
+        let _, context = stubContext first.library first.samples first.materials
+        let configured =
+            {
+                context with
+                    categories = first.categories
+                    sources = first.sources
+                    libraryBackups = first.libraryBackups
+                    catalogueImports = first.catalogueImports
+            }
+        let folder = freshLibraryExportFolder ()
+        let target = CatalogueExportTarget.ofFolder folder
+        let exported = LW.initLibraryWindow configured Browse |> LW.updateLibraryWindow (LW.ExportMyLibrary target)
+        let expected = ControlCaption $"Exported 2 entries to the catalogue folder {folder.value}; their versions are now pinned."
+        Assert.Equal<ControlCaption option>(Some expected, exported.entryExportStatus)
+        Assert.Equal<LW.LibraryWindowError option>(None, exported.lastError)
+        let secondLocations = TestAppScope.fileLocations owner
+        let second = AppContext.create secondLocations WorkbenchSettings.defaults |> Result.defaultWith (fun error -> failwith error.describe)
+        TestAppScope.settlePendingImports second
+        let beforeLogs = second.catalogueImports.proxy.loggedImports () |> Result.defaultWith (fun error -> failwith error.describe)
+        let beforeEntries = second.catalogueImports.proxy.heldUserEntries () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Empty beforeEntries
+        let pending =
+            match second.catalogueImports.registerFolder folder with
+            | Ok (CatalogueAwaitsChoices pending) -> pending
+            | Ok _ -> failwith "A new catalogue must await confirmation of every row."
+            | Error error -> failwith error.describe
+        Assert.Equal(2, pending.decisions.Length)
+        let incomingIds =
+            pending.decisions |> List.map (fun decision ->
+                match decision.status with
+                | EntryIdNotHeld envelope -> envelope.content.id
+                | _ -> failwith "Every exported entry must be a new id in the fresh library.")
+        Assert.Equal<Set<LibraryEntryId>>(Set.ofList [ materialId.toLibraryEntryId; sampleId.toLibraryEntryId ], Set.ofList incomingIds)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok None, second.materials.tryGetMaterial materialId)
+        Assert.Equal<Result<Sample option, SampleError>>(Ok None, second.samples.tryGetSample sampleId)
+        Assert.Equal<Result<HeldEntry list, CatalogueImportError>>(Ok beforeEntries, second.catalogueImports.proxy.heldUserEntries ())
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok beforeLogs, second.catalogueImports.proxy.loggedImports ())
+        confirmCatalogueRegistration second.catalogueImports pending
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some material), second.materials.tryGetMaterial materialId)
+        Assert.Equal<Result<Sample option, SampleError>>(Ok (Some sample), second.samples.tryGetSample sampleId)
+        let registered = second.catalogueImports.proxy.registeredFolders () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(folder, (Assert.Single registered).folder)
+
     [<Fact>]
     let ``dropping entry files on the Library window decides them and opens the import dialog, applying nothing`` () : unit =
         let file, source = droppedSourceFixture ()
