@@ -1,0 +1,9 @@
+# Implementation plan — 0139
+
+Implement `KitLibraryContext.snapshotReferences` in a new Domain file immediately after `CatalogueImport.fs`. Reuse the existing reference types, envelope dependency list, import lookup/pinning seam, and kit snapshot seam. Resolve exact versions from the kit first, latest references from the library first, then traverse dependencies depth first with an immutable visited set. Preserve successful writes on failure so a subsequent call can complete the closure.
+
+Add exactly the eight authorized facts in `KitLibraryTests.fs`, appended to the test project's compile list. Use fresh catalogue stores, an initialized in-memory kit opened with a stepping clock, and a pin recorder. Cover snapshot ordering and content, repeated references, latest selection and fallback, preserved snapshots, missing references, read-only access, SQLite pin persistence, and error rendering. Exercise failure ordering and continuation within those authorized facts.
+
+Only the two new source files and their project compile entries are product edits. Risks are dependency traversal through already-held snapshots, latest versus exact-version precedence, and ensuring a failed pin cannot produce a snapshot. Gate execution belongs to the supervisor under the IMPLEMENT worker protocol; no gate outcomes or measured counts will be invented.
+
+Attempt 02 repairs the supervisor-reported failure in the existing latest-source fact. The source schema requires `descriptionOpt` to be null, and `LibraryEntryContent.ofSourcePreset` produces that shape. Change the version-2 fixture's distinguishing field to its valid `name`, preserving the inherited absent description, all assertions, and all eight authorized test identities. No production/schema edit or scope expansion is needed. Record the supplied failure and hand the repaired fixture back to the supervisor for verification.
