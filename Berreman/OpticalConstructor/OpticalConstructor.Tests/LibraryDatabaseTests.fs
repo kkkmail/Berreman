@@ -127,11 +127,16 @@ module LibraryDatabaseTests =
 
         member _.databaseFile : FileName = file
 
-        member _.connectionString : ConnectionString =
+        member _.fileNamed (name : string) : FileName =
+            FileName (Path.Combine(folder.value, name))
+
+        member _.connectionStringFor (databaseFile : FileName) : ConnectionString =
             let builder = SqliteConnectionStringBuilder()
-            builder.DataSource <- file.value
+            builder.DataSource <- databaseFile.value
             builder.Pooling <- false
             ConnectionString builder.ConnectionString
+
+        member this.connectionString : ConnectionString = this.connectionStringFor file
 
         interface IDisposable with
             member _.Dispose () : unit = Directory.Delete(folder.value, true)
@@ -281,6 +286,233 @@ module LibraryDatabaseTests =
         reopened.run (fun context -> Assert.Single<LibraryCatalogueImportRow>(context.CatalogueImports))
         |> expectDatabaseOk
         |> assertCatalogueImport expected
+
+    [<Fact>]
+    let ``openOrCreate says whether it created the library database or opened an existing one`` () : unit =
+        let memoryString = ConnectionString "Data Source=:memory:"
+        use memory = LibraryDatabase.openOrCreate memoryString |> expectDatabaseOk
+        Assert.Equal<LibraryDatabaseOrigin>(CreatedLibraryDatabase, memory.origin)
+        assertLibraryStamp memory
+
+        use fixture = new LibraryDatabaseFixture()
+
+        do
+            use created = LibraryDatabase.openOrCreate fixture.connectionString |> expectDatabaseOk
+            Assert.Equal<LibraryDatabaseOrigin>(CreatedLibraryDatabase, created.origin)
+            assertLibraryStamp created
+
+        use opened = LibraryDatabase.openOrCreate fixture.connectionString |> expectDatabaseOk
+        Assert.Equal<LibraryDatabaseOrigin>(OpenedLibraryDatabase, opened.origin)
+        assertLibraryStamp opened
+
+    [<Fact>]
+    let ``openOrCreate creates the missing folder of a new library database file`` () : unit =
+        use fixture = new LibraryDatabaseFixture()
+        let nestedFile = fixture.fileNamed (Path.Combine("missing", "nested", "library.db"))
+        let nestedString = fixture.connectionStringFor nestedFile
+        Assert.False(Directory.Exists(Path.GetDirectoryName(nestedFile.value)))
+
+        use database = LibraryDatabase.openOrCreate nestedString |> expectDatabaseOk
+        Assert.True(File.Exists(nestedFile.value))
+        Assert.Equal<LibraryDatabaseOrigin>(CreatedLibraryDatabase, database.origin)
+        assertLibraryStamp database
+
+        let obstruction = fixture.fileNamed "blocked"
+        File.WriteAllText(obstruction.value, "preserved")
+        let blockedFile = fixture.fileNamed (Path.Combine("blocked", "nested", "library.db"))
+        let blockedString = fixture.connectionStringFor blockedFile
+
+        match LibraryDatabase.openOrCreate blockedString with
+        | Error (LibraryDatabaseExn _) -> ()
+        | Error error -> Assert.Fail(error.describe)
+        | Ok unexpected ->
+            use unexpected = unexpected
+            Assert.Fail("a file was accepted as the database's parent directory")
+
+        Assert.Equal("preserved", File.ReadAllText(obstruction.value))
+
+    [<Fact>]
+    let ``vacuumInto writes a stamped copy of the library and refuses a target that exists`` () : unit =
+        use fixture = new LibraryDatabaseFixture()
+        use database = LibraryDatabase.openOrCreate fixture.connectionString |> expectDatabaseOk
+        let expected = catalogueImportFixture ()
+        database.run (fun context ->
+            context.CatalogueImports.Add(expected) |> ignore
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        let backup = fixture.fileNamed "library's backup.db"
+        let backupString = fixture.connectionStringFor backup
+        database.vacuumInto backup |> expectDatabaseOk
+
+        let assertBackup () : unit =
+            use copied = LibraryDatabase.openOrCreate backupString |> expectDatabaseOk
+            Assert.Equal<LibraryDatabaseOrigin>(OpenedLibraryDatabase, copied.origin)
+            assertLibraryStamp copied
+            copied.run (fun context -> Assert.Single<LibraryCatalogueImportRow>(context.CatalogueImports))
+            |> expectDatabaseOk
+            |> assertCatalogueImport expected
+
+        assertBackup ()
+        let originalBytes = File.ReadAllBytes(backup.value)
+
+        match database.vacuumInto backup with
+        | Error (LibraryDatabaseExn _) -> ()
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail("VACUUM INTO overwrote an existing backup")
+
+        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(backup.value))
+        assertBackup ()
+
+        let emptyTarget = fixture.fileNamed "empty-backup.db"
+        File.WriteAllText(emptyTarget.value, String.Empty)
+
+        match database.vacuumInto emptyTarget with
+        | Error (LibraryDatabaseExn _) -> ()
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail("VACUUM INTO overwrote an existing empty file")
+
+        Assert.True(File.Exists(emptyTarget.value))
+        Assert.Empty(File.ReadAllBytes(emptyTarget.value))
+
+        let missingFolderTarget = fixture.fileNamed (Path.Combine("not-created", "backup.db"))
+        match database.vacuumInto missingFolderTarget with
+        | Error (LibraryDatabaseExn _) -> ()
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail("VACUUM INTO created its target directory")
+
+        Assert.False(Directory.Exists(Path.GetDirectoryName(missingFolderTarget.value)))
+
+    [<Fact>]
+    let ``restoreFrom backs up the live library, then replaces it with a backup's under the same handle, and refuses another schema`` () : unit =
+        use fixture = new LibraryDatabaseFixture()
+        use database = LibraryDatabase.openOrCreate fixture.connectionString |> expectDatabaseOk
+        let first = catalogueImportFixture ()
+        database.run (fun context ->
+            context.CatalogueImports.Add(first) |> ignore
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        let backup = fixture.fileNamed "backup.db"
+        database.vacuumInto backup |> expectDatabaseOk
+        let second = catalogueImportFixture ()
+        second.CatalogueId <- Guid.Parse("decc1067-3d8f-4323-a608-bcce72a33982")
+        second.Folder <- "second-catalogue"
+        database.run (fun context ->
+            context.CatalogueImports.Add(second) |> ignore
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        let liveConnection =
+            database.run (fun context -> context.Database.GetDbConnection()) |> expectDatabaseOk
+        let beforeRestore = fixture.fileNamed "before-restore.db"
+        database.restoreFrom backup beforeRestore |> expectDatabaseOk
+
+        let assertLiveRestored () : unit =
+            database.run (fun context ->
+                Assert.Same(liveConnection, context.Database.GetDbConnection())
+                Assert.Single<LibraryCatalogueImportRow>(context.CatalogueImports))
+            |> expectDatabaseOk
+            |> assertCatalogueImport first
+            assertLibraryStamp database
+
+        assertLiveRestored ()
+        let beforeRestoreString = fixture.connectionStringFor beforeRestore
+
+        do
+            use previous = LibraryDatabase.openOrCreate beforeRestoreString |> expectDatabaseOk
+            Assert.Equal<LibraryDatabaseOrigin>(OpenedLibraryDatabase, previous.origin)
+            assertLibraryStamp previous
+            previous.run (fun context ->
+                let rows = context.CatalogueImports |> Seq.toList
+                Assert.Equal(2, rows.Length)
+                rows |> List.find (fun row -> row.CatalogueId = first.CatalogueId) |> assertCatalogueImport first
+                rows |> List.find (fun row -> row.CatalogueId = second.CatalogueId) |> assertCatalogueImport second)
+            |> expectDatabaseOk
+
+        let incompatible = fixture.fileNamed "incompatible.db"
+        database.vacuumInto incompatible |> expectDatabaseOk
+        let incompatibleString = fixture.connectionStringFor incompatible
+
+        do
+            use connection = new SqliteConnection(incompatibleString.value)
+            connection.Open()
+            use command = connection.CreateCommand()
+            command.CommandText <- "UPDATE SchemaStamp SET SchemaVersion = 2 WHERE Id = 1;"
+            command.ExecuteNonQuery() |> ignore
+
+        let assertRestoreMismatch (source : FileName) (target : FileName) (foundOpt : LibrarySchemaVersion option) : unit =
+            let sourceBytes = File.ReadAllBytes(source.value)
+            match database.restoreFrom source target with
+            | Error (LibrarySchemaMismatchErr info) ->
+                Assert.Equal<LibrarySchemaVersion option>(foundOpt, info.foundOpt)
+                Assert.Equal<LibrarySchemaVersion>(LibrarySchemaVersion.current, info.expected)
+            | Error error -> Assert.Fail(error.describe)
+            | Ok () -> Assert.Fail("restore accepted an incompatible schema")
+
+            Assert.False(File.Exists(target.value))
+            Assert.Equal<byte[]>(sourceBytes, File.ReadAllBytes(source.value))
+            assertLiveRestored ()
+
+        let rejectedTarget = fixture.fileNamed "rejected-before-restore.db"
+        let incompatibleVersion = LibrarySchemaVersion 2
+        assertRestoreMismatch incompatible rejectedTarget (Some incompatibleVersion)
+
+        let unstamped = fixture.fileNamed "unstamped.db"
+        database.vacuumInto unstamped |> expectDatabaseOk
+        let unstampedString = fixture.connectionStringFor unstamped
+
+        do
+            use connection = new SqliteConnection(unstampedString.value)
+            connection.Open()
+            use command = connection.CreateCommand()
+            command.CommandText <- "DELETE FROM SchemaStamp;"
+            command.ExecuteNonQuery() |> ignore
+
+        assertRestoreMismatch unstamped rejectedTarget None
+
+        let unrelated = fixture.fileNamed "unrelated.db"
+        let unrelatedString = fixture.connectionStringFor unrelated
+
+        do
+            use connection = new SqliteConnection(unrelatedString.value)
+            connection.Open()
+            use command = connection.CreateCommand()
+            command.CommandText <- "CREATE TABLE Unrelated (Value TEXT NOT NULL);"
+            command.ExecuteNonQuery() |> ignore
+
+        assertRestoreMismatch unrelated rejectedTarget None
+
+        let missing = fixture.fileNamed "missing.db"
+        match database.restoreFrom missing rejectedTarget with
+        | Error (LibraryDatabaseExn _) -> ()
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail("restore accepted a missing backup")
+
+        Assert.False(File.Exists(missing.value))
+        Assert.False(File.Exists(rejectedTarget.value))
+        assertLiveRestored ()
+
+        let emptyBeforeRestore = fixture.fileNamed "empty-before-restore.db"
+        File.WriteAllText(emptyBeforeRestore.value, String.Empty)
+
+        match database.restoreFrom beforeRestore emptyBeforeRestore with
+        | Error (LibraryDatabaseExn _) -> ()
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail("restore accepted an existing empty safety-backup file")
+
+        Assert.True(File.Exists(emptyBeforeRestore.value))
+        Assert.Empty(File.ReadAllBytes(emptyBeforeRestore.value))
+        assertLiveRestored ()
+
+        let previousBytes = File.ReadAllBytes(beforeRestore.value)
+        match database.restoreFrom beforeRestore beforeRestore with
+        | Error (LibraryDatabaseExn _) -> ()
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail("restore replaced the library after its safety backup failed")
+
+        Assert.Equal<byte[]>(previousBytes, File.ReadAllBytes(beforeRestore.value))
+        assertLiveRestored ()
 
     [<Fact>]
     let ``a stamp other than the model's is LibrarySchemaMismatchErr and the file is left as it was`` () : unit =

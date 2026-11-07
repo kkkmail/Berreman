@@ -2,6 +2,7 @@ namespace OpticalConstructor.Storage
 
 open System
 open System.Data
+open System.IO
 open System.Linq
 open Microsoft.Data.Sqlite
 open Microsoft.EntityFrameworkCore
@@ -183,10 +184,18 @@ module LibraryDatabaseStore =
                             Error (LibraryRowInvalidErr $"entry {this.EntryId} v{this.Version}: column {column} differs from its entry file")
                         | None -> Ok stored))
 
+    /// Whether openOrCreate created and stamped the schema or found it stamped.
+    type LibraryDatabaseOrigin =
+        | CreatedLibraryDatabase
+        | OpenedLibraryDatabase
+
     /// Owns one open SQLite connection and serializes context use for its lifetime (spec 0050 001 §C).
     [<Sealed>]
-    type LibraryDatabase private (connection : SqliteConnection) =
+    type LibraryDatabase private (connection : SqliteConnection, origin : LibraryDatabaseOrigin) =
         let syncRoot = obj ()
+
+        /// Reports whether this handle created or opened the stamped schema (001 §C; spec 0050 S2.4).
+        member _.origin : LibraryDatabaseOrigin = origin
 
         [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught here and mapped to a typed error")>]
         member _.run<'Outcome> (work : LibraryDbContext -> 'Outcome) : Result<'Outcome, StorageError> =
@@ -202,69 +211,114 @@ module LibraryDatabaseStore =
             with error ->
                 Error (LibraryDatabaseExn error)
 
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): schema reads are shared by open and restore, whose boundaries catch every exception")>]
+        static member private verifyStamp (context : LibraryDbContext) : Result<unit, StorageError> =
+            use command = context.Database.GetDbConnection().CreateCommand()
+            command.CommandText <- "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'SchemaStamp';"
+
+            let foundOpt =
+                if unbox<int64> (command.ExecuteScalar()) = 0L then
+                    None
+                else
+                    context.SchemaStamps.AsNoTracking()
+                    |> Seq.tryFind (fun row -> row.Id = 1)
+                    |> Option.map (fun row -> LibrarySchemaVersion row.SchemaVersion)
+
+            match foundOpt with
+            | Some found when found = LibrarySchemaVersion.current -> Ok ()
+            | _ ->
+                Error (LibrarySchemaMismatchErr
+                    {
+                        foundOpt = foundOpt
+                        expected = LibrarySchemaVersion.current
+                    })
+
+        /// Writes a stamped, compacted copy to a new file without creating its directory (001 §C; spec 0050 S2.4).
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught here and mapped to a typed error")>]
+        member _.vacuumInto (target : FileName) : Result<unit, StorageError> =
+            try
+                lock syncRoot (fun () ->
+                    let targetPath = Path.GetFullPath(target.value)
+                    // Spec 0050 S2.4: SQLite accepts empty existing targets, but a backup must preserve them.
+                    if File.Exists(targetPath) then
+                        Error (LibraryDatabaseExn (IOException($"The backup target already exists: {targetPath}")))
+                    else
+                        use command = connection.CreateCommand()
+                        command.CommandText <- "VACUUM INTO $target;"
+                        command.Parameters.AddWithValue("$target", targetPath) |> ignore
+                        command.ExecuteNonQuery() |> ignore
+                        Ok ())
+            with error ->
+                Error (LibraryDatabaseExn error)
+
+        /// Validates the backup, saves the live library, then restores into this handle (001 §C; spec 0050 S2.4).
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught here and mapped to a typed error")>]
+        member this.restoreFrom (backup : FileName) (beforeRestore : FileName) : Result<unit, StorageError> =
+            try
+                lock syncRoot (fun () ->
+                    let builder = SqliteConnectionStringBuilder()
+                    builder.DataSource <- Path.GetFullPath(backup.value)
+                    builder.Mode <- SqliteOpenMode.ReadOnly
+                    builder.Pooling <- false
+                    use backupConnection = new SqliteConnection(builder.ConnectionString)
+                    backupConnection.Open()
+                    let options = DbContextOptionsBuilder<LibraryDbContext>().UseSqlite(backupConnection).Options
+                    use context = new LibraryDbContext(options)
+
+                    LibraryDatabase.verifyStamp context
+                    |> Result.bind (fun () -> this.vacuumInto beforeRestore)
+                    |> Result.map (fun () -> backupConnection.BackupDatabase(connection)))
+            with error ->
+                Error (LibraryDatabaseExn error)
+
         [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught here and mapped to a typed error")>]
         static member openOrCreate (connectionString : ConnectionString) : Result<LibraryDatabase, StorageError> =
             try
                 let builder = SqliteConnectionStringBuilder(connectionString.value)
                 builder.Pooling <- false
+                let isFileDatabase = builder.DataSource <> ":memory:" && builder.Mode <> SqliteOpenMode.Memory
+
+                if isFileDatabase then
+                    let directory = Path.GetDirectoryName(builder.DataSource)
+                    if not (String.IsNullOrEmpty directory) then
+                        Directory.CreateDirectory(directory) |> ignore
+
                 let connection = new SqliteConnection(builder.ConnectionString)
 
                 try
                     connection.Open()
-                    let database = new LibraryDatabase(connection)
+                    let options = DbContextOptionsBuilder<LibraryDbContext>().UseSqlite(connection).Options
+                    use context = new LibraryDbContext(options)
 
                     let initialization =
-                        database.run (fun context ->
-                            use command = connection.CreateCommand()
-                            command.CommandText <- "PRAGMA foreign_keys = ON;"
-                            command.ExecuteNonQuery() |> ignore
+                        use command = connection.CreateCommand()
+                        command.CommandText <- "PRAGMA foreign_keys = ON;"
+                        command.ExecuteNonQuery() |> ignore
 
-                            let verifyStamp () : Result<unit, StorageError> =
-                                use stampCommand = connection.CreateCommand()
-                                stampCommand.CommandText <- "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'SchemaStamp';"
+                        // Spec 0050 S21-OPEN-STAMP: WAL changes the file header, so reject foreign schemas first.
+                        command.CommandText <- "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT GLOB 'sqlite_*';"
+                        let preflight =
+                            if unbox<int64> (command.ExecuteScalar()) = 0L then Ok ()
+                            else LibraryDatabase.verifyStamp context
 
-                                let foundOpt =
-                                    if unbox<int64> (stampCommand.ExecuteScalar()) = 0L then
-                                        None
-                                    else
-                                        context.SchemaStamps.AsNoTracking()
-                                        |> Seq.tryFind (fun row -> row.Id = 1)
-                                        |> Option.map (fun row -> LibrarySchemaVersion row.SchemaVersion)
+                        preflight
+                        |> Result.bind (fun () ->
+                            if isFileDatabase then
+                                command.CommandText <- "PRAGMA journal_mode = WAL;"
+                                command.ExecuteNonQuery() |> ignore
 
-                                match foundOpt with
-                                | Some found when found = LibrarySchemaVersion.current -> Ok ()
-                                | _ ->
-                                    Error (LibrarySchemaMismatchErr
-                                        {
-                                            foundOpt = foundOpt
-                                            expected = LibrarySchemaVersion.current
-                                        })
-
-                            // Spec 0050 S21-OPEN-STAMP: WAL changes the file header, so reject foreign schemas first.
-                            command.CommandText <- "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT GLOB 'sqlite_*';"
-                            let preflight =
-                                if unbox<int64> (command.ExecuteScalar()) = 0L then Ok ()
-                                else verifyStamp ()
-
-                            preflight
-                            |> Result.bind (fun () ->
-                                if builder.DataSource <> ":memory:" && builder.Mode <> SqliteOpenMode.Memory then
-                                    command.CommandText <- "PRAGMA journal_mode = WAL;"
-                                    command.ExecuteNonQuery() |> ignore
-
-                                if context.Database.EnsureCreated() then
-                                    let stamp = LibrarySchemaStampRow(Id = 1, SchemaVersion = LibrarySchemaVersion.current.value)
-                                    context.SchemaStamps.Add(stamp) |> ignore
-                                    context.SaveChanges() |> ignore
-                                    Ok ()
-                                else
-                                    verifyStamp ()))
-                        |> Result.bind id
+                            if context.Database.EnsureCreated() then
+                                let stamp = LibrarySchemaStampRow(Id = 1, SchemaVersion = LibrarySchemaVersion.current.value)
+                                context.SchemaStamps.Add(stamp) |> ignore
+                                context.SaveChanges() |> ignore
+                                Ok CreatedLibraryDatabase
+                            else
+                                LibraryDatabase.verifyStamp context |> Result.map (fun () -> OpenedLibraryDatabase))
 
                     match initialization with
-                    | Ok () -> Ok database
+                    | Ok origin -> Ok (new LibraryDatabase(connection, origin))
                     | Error error ->
-                        (database :> IDisposable).Dispose()
+                        connection.Dispose()
                         Error error
                 with error ->
                     connection.Dispose()
