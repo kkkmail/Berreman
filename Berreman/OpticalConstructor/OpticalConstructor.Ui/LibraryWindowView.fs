@@ -1257,29 +1257,8 @@ let private libraryVerbButtonWithBackground (id : ConstructorUiId) (label : Cont
         |> Avalonia.FuncUI.DSL.View.withKey id.value
     keyedBox :> IView
 
-let private verbButtonOn (id : ConstructorUiId) (label : ControlCaption) (onPressed : PointerPressedEventArgs -> unit) : IView =
-    libraryVerbButtonWithBackground id label idleBackground onPressed
-
-let private verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
-    verbButtonOn id label (fun _ -> onClick ())
-
-let private pickCatalogueFolder (owner : Window) (onPicked : FolderName -> unit) : unit =
-    let pick =
-        async {
-            try
-                let options = Avalonia.Platform.Storage.FolderPickerOpenOptions(Title = "Register catalogue folder", AllowMultiple = false)
-                let! folders = owner.StorageProvider.OpenFolderPickerAsync options |> Async.AwaitTask
-                match List.ofSeq folders with
-                | folder :: _ ->
-                    let picked = FolderName folder.Path.LocalPath
-                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> onPicked picked)
-                | [] -> ()
-            with _ -> ()
-        }
-    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
-
 /// A positive/negative ACTION box (the Save/Cancel styling precedent) — same look as
-/// `verbButton` but colour-coded and wider-padded; keyed, AutomationId'd (variable
+/// `MaterialsWindowView.verbButton` but colour-coded and wider-padded; keyed, AutomationId'd (variable
 /// membership: the pair exists only in Select state).
 let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
     let keyedBox =
@@ -1336,9 +1315,9 @@ let private selectModeRows (m : LibraryWindowModel) (dispatch : LibraryWindowMsg
 /// One lifecycle verb box (spec 0038 step 023), by its action.
 let private lifecycleButton (dispatch : LibraryWindowMsg -> unit) (action : MaterialsWindowView.LifecycleAction) : IView =
     match action with
-    | MaterialsWindowView.MarkInactiveAction -> verbButton ConstructorUiId.libraryMarkInactiveButton (ControlCaption "Mark inactive") (fun () -> dispatch RequestMarkSampleInactive)
-    | MaterialsWindowView.MarkActiveAction -> verbButton ConstructorUiId.libraryMarkActiveButton (ControlCaption "Mark active") (fun () -> dispatch RequestMarkSampleActive)
-    | MaterialsWindowView.SupersedeAction -> verbButton ConstructorUiId.librarySupersedeButton (ControlCaption "Supersede…") (fun () -> dispatch RequestSupersedeSample)
+    | MaterialsWindowView.MarkInactiveAction -> MaterialsWindowView.verbButton ConstructorUiId.libraryMarkInactiveButton (ControlCaption "Mark inactive") (fun () -> dispatch RequestMarkSampleInactive)
+    | MaterialsWindowView.MarkActiveAction -> MaterialsWindowView.verbButton ConstructorUiId.libraryMarkActiveButton (ControlCaption "Mark active") (fun () -> dispatch RequestMarkSampleActive)
+    | MaterialsWindowView.SupersedeAction -> MaterialsWindowView.verbButton ConstructorUiId.librarySupersedeButton (ControlCaption "Supersede…") (fun () -> dispatch RequestSupersedeSample)
 
 /// The verbs row: Add sample, Make multilayer and (spec 0046) Add source always; Edit only for a
 /// SAMPLE or USER-SOURCE selection (a preset has no editor — the verb is removed, not greyed); Remove
@@ -1351,32 +1330,32 @@ let private verbsRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> un
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children (
             [
-                verbButton ConstructorUiId.libraryAddSampleButton (ControlCaption "Add sample") (fun () -> dispatch AddSample)
-                verbButton ConstructorUiId.libraryMakeMultilayerButton (ControlCaption "Make multilayer") (fun () -> dispatch MakeMultilayer)
-                verbButton ConstructorUiId.libraryAddSourceButton (ControlCaption "Add source") (fun () -> dispatch AddSource)
+                MaterialsWindowView.verbButton ConstructorUiId.libraryAddSampleButton (ControlCaption "Add sample") (fun () -> dispatch AddSample)
+                MaterialsWindowView.verbButton ConstructorUiId.libraryMakeMultilayerButton (ControlCaption "Make multilayer") (fun () -> dispatch MakeMultilayer)
+                MaterialsWindowView.verbButton ConstructorUiId.libraryAddSourceButton (ControlCaption "Add source") (fun () -> dispatch AddSource)
             ]
             @ (match m.editableSample, m.editableSource with
-               | Some _, _ | None, Some _ -> [ verbButton ConstructorUiId.libraryEditButton (ControlCaption "Edit") (fun () -> dispatch EditSelectedEntry) ]
+               | Some _, _ | None, Some _ -> [ MaterialsWindowView.verbButton ConstructorUiId.libraryEditButton (ControlCaption "Edit") (fun () -> dispatch EditSelectedEntry) ]
                | None, None -> [])
             @ (match m.selectedEntry with
-               | Some _ -> [ verbButton ConstructorUiId.libraryRemoveButton (ControlCaption "Remove") (fun () -> dispatch RequestRemoveSelectedEntry) ]
+               | Some _ -> [ MaterialsWindowView.verbButton ConstructorUiId.libraryRemoveButton (ControlCaption "Remove") (fun () -> dispatch RequestRemoveSelectedEntry) ]
                | None -> [])
             @ (m.offeredLifecycleActions |> List.map (lifecycleButton dispatch))
             @ [
-                verbButtonOn ConstructorUiId.libraryRegisterCatalogueFolderButton (ControlCaption "Register catalogue folder…") (fun e ->
+                MaterialsWindowView.verbButtonOn ConstructorUiId.libraryRegisterCatalogueFolderButton (ControlCaption "Register catalogue folder…") (fun e ->
                     match e.Source with
                     | :? Visual as source ->
                         match TopLevel.GetTopLevel source with
-                        | :? Window as owner -> pickCatalogueFolder owner (RegisterCatalogueFolder >> dispatch)
+                        | :? Window as owner -> MaterialsWindowView.pickLibraryFolder owner (ControlCaption "Register catalogue folder") None (RegisterCatalogueFolder >> dispatch)
                         | _ -> ()
                     | _ -> ())
             ]
             @ (match m.pendingImports with
                | [] -> []
-               | _ -> [ verbButton ConstructorUiId.libraryReviewImportsButton (ControlCaption "Review imports…") (fun () -> dispatch ReviewPendingImports) ])
+               | _ -> [ MaterialsWindowView.verbButton ConstructorUiId.libraryReviewImportsButton (ControlCaption "Review imports…") (fun () -> dispatch ReviewPendingImports) ])
             @ [
-                verbButton ConstructorUiId.libraryBackUpNowButton (ControlCaption "Back up library now…") (fun () -> dispatch BackUpLibraryNow)
-                verbButton ConstructorUiId.libraryRestoreButton (ControlCaption "Restore library…") (fun () -> dispatch RequestLibraryRestore)
+                MaterialsWindowView.verbButton ConstructorUiId.libraryBackUpNowButton (ControlCaption "Back up library now…") (fun () -> dispatch BackUpLibraryNow)
+                MaterialsWindowView.verbButton ConstructorUiId.libraryRestoreButton (ControlCaption "Restore library…") (fun () -> dispatch RequestLibraryRestore)
             ])
     ] :> IView
 
@@ -1401,7 +1380,7 @@ let private catalogueFolderRows (m : LibraryWindowModel) (dispatch : LibraryWind
                               TextBlock.create [ TextBlock.text entry.folder.value; TextBlock.textWrapping TextWrapping.Wrap ]
                               TextBlock.create [ TextBlock.text $"imported {importedAt} UTC" ]
                               TextBlock.create [ TextBlock.text $"{entry.entryCount.value} entries" ]
-                              verbButton (ConstructorUiId.libraryUnregisterCatalogueButton entry.catalogueId.uiKey) (ControlCaption "Unregister") (fun () -> dispatch (UnregisterCatalogueFolder entry.catalogueId))
+                              MaterialsWindowView.verbButton (ConstructorUiId.libraryUnregisterCatalogueButton entry.catalogueId.uiKey) (ControlCaption "Unregister") (fun () -> dispatch (UnregisterCatalogueFolder entry.catalogueId))
                           ]
                       ]
                       |> Avalonia.FuncUI.DSL.View.withKey id.value
@@ -1473,7 +1452,7 @@ let private toggleRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
             match m.showInactive with
             | ActiveOnly -> ControlCaption $"Show inactive (%d{n.value})"
             | IncludeInactive -> ControlCaption $"Hide inactive (%d{n.value})"
-        [ verbButton ConstructorUiId.libraryShowInactiveToggle label (fun () -> dispatch ToggleShowInactiveEntries) ]
+        [ MaterialsWindowView.verbButton ConstructorUiId.libraryShowInactiveToggle label (fun () -> dispatch ToggleShowInactiveEntries) ]
 
 /// The inline remove confirmation — present only while a sample or source remove is armed.
 let private confirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
@@ -1499,8 +1478,8 @@ let private confirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> 
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  verbButton ConstructorUiId.libraryRemoveConfirmButton (ControlCaption "Remove") (fun () -> dispatch ConfirmEntryRemove)
-                  verbButton ConstructorUiId.libraryRemoveCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelEntryRemove)
+                  MaterialsWindowView.verbButton ConstructorUiId.libraryRemoveConfirmButton (ControlCaption "Remove") (fun () -> dispatch ConfirmEntryRemove)
+                  MaterialsWindowView.verbButton ConstructorUiId.libraryRemoveCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelEntryRemove)
               ]
           ] :> IView ]
 
@@ -1528,8 +1507,8 @@ let private lifecycleConfirmRow (m : LibraryWindowModel) (dispatch : LibraryWind
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  verbButton ConstructorUiId.libraryLifecycleConfirmButton (ControlCaption "Confirm") (fun () -> dispatch ConfirmSampleLifecycle)
-                  verbButton ConstructorUiId.libraryLifecycleCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelSampleLifecycle)
+                  MaterialsWindowView.verbButton ConstructorUiId.libraryLifecycleConfirmButton (ControlCaption "Confirm") (fun () -> dispatch ConfirmSampleLifecycle)
+                  MaterialsWindowView.verbButton ConstructorUiId.libraryLifecycleCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelSampleLifecycle)
               ]
           ] :> IView ]
 
@@ -1569,7 +1548,7 @@ let private versionsRow (versions : (VersionNumber * Sample) list) (latest : Ver
                       |> List.map (fun (version, _) ->
                           let marker = if version = shown then "▸ " else ""
                           let latestTag = if version = latest then " (latest)" else ""
-                          verbButton (ConstructorUiId.libraryVersionRow version) (ControlCaption $"%s{marker}v%d{version.value}%s{latestTag}") (fun () -> dispatch (ViewSampleVersion version)))))
+                          MaterialsWindowView.verbButton (ConstructorUiId.libraryVersionRow version) (ControlCaption $"%s{marker}v%d{version.value}%s{latestTag}") (fun () -> dispatch (ViewSampleVersion version)))))
           ] :> IView ]
 
 /// The view panel: the selected entry's kind, protection state and FULL description (the

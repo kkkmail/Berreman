@@ -23,6 +23,7 @@ module OpticalConstructor.Ui.MaterialsWindowView
 open Avalonia
 open Avalonia.Automation
 open Avalonia.Controls
+open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.FuncUI.Builder
@@ -901,11 +902,13 @@ let positiveBackground : Color = Color.FromRgb(186uy, 224uy, 186uy)
 /// The Materials and import-dialog negative action fill (spec 0050 S3.2).
 let negativeBackground : Color = Color.FromRgb(236uy, 202uy, 202uy)
 
-/// A keyed verb box shared with the import dialog; handled presses prevent duplicate Tunnel/Bubble dispatch (spec 0050 S3.2).
-let verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
+/// A keyed verb box shared by both library windows and the import dialog (spec 0050 S3.2; S3.3).
+/// Handles the press once and supplies its event to the caller for owner-window lookup.
+let verbButtonOn (id : ConstructorUiId) (label : ControlCaption) (onPressed : PointerPressedEventArgs -> unit) : IView =
     let keyedBox =
         Border.create [
             id.automationAttribute<Border> ()
+            AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
             Border.background (brush idleBackground)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
@@ -914,10 +917,38 @@ let verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -
             Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
             Border.verticalAlignment VerticalAlignment.Center
             Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onPressed e), SubPatchOptions.OnChangeOf (box id.value))
         ]
         |> Avalonia.FuncUI.DSL.View.withKey id.value
     keyedBox :> IView
+
+/// A shared verb box whose action needs no pointer event (spec 0050 S3.3).
+let verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
+    verbButtonOn id label (fun _ -> onClick ())
+
+/// Picks one library folder with an optional starting location, posting a confirmed pick on the UI thread (spec 0050 S3.3).
+/// Cancellation or an unavailable storage provider leaves the caller unchanged.
+let pickLibraryFolder (owner : Window) (title : ControlCaption) (startOpt : FolderName option) (onPicked : FolderName -> unit) : unit =
+    let pick =
+        async {
+            try
+                let options = Avalonia.Platform.Storage.FolderPickerOpenOptions(Title = title.value, AllowMultiple = false)
+                match startOpt with
+                | Some folder ->
+                    let! suggested =
+                        Avalonia.Platform.Storage.StorageProviderExtensions.TryGetFolderFromPathAsync(owner.StorageProvider, folder.value)
+                        |> Async.AwaitTask
+                    options.SuggestedStartLocation <- suggested
+                | None -> ()
+                let! folders = owner.StorageProvider.OpenFolderPickerAsync options |> Async.AwaitTask
+                match List.ofSeq folders with
+                | folder :: _ ->
+                    let picked = FolderName folder.Path.LocalPath
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> onPicked picked)
+                | [] -> ()
+            with _ -> ()
+        }
+    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
 
 /// A keyed, colour-coded action box shared by Materials and the import dialog (spec 0050 S3.2).
 let actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =

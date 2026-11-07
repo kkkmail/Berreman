@@ -73,7 +73,11 @@ type AppContext =
         let samples = SampleProxy.createInDatabase database
         let sources = SourceProxy.createInDatabase database
         let categories = CategoryProxy.createInDatabase database
-        let catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database)
+        let catalogueImports =
+            {
+                CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database) with
+                    exportFolderOpt = Some locations.cataloguesFolder
+            }
         let pendingImports =
             match catalogueImports.importOnStart (CatalogueProxy.builtInFolderUnder locations.shippedCatalogueFolder) with
             | Error e ->

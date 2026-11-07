@@ -1,11 +1,16 @@
 namespace OpticalConstructor.Ui.Tests
 
 open System.IO
+open System.Collections.Generic
+open System.Reflection
+open System.Threading.Tasks
 open Microsoft.Data.Sqlite
 open Softellect.Sys.Primitives
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Platform
 open Avalonia.Headless
+open Avalonia.Platform.Storage
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
@@ -19,17 +24,99 @@ open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
+// Spec 0050 S3.3: isolated picker sessions must not race the assembly's Avalonia session.
+[<CollectionDefinition("Library picker isolation", DisableParallelization = true)>]
+type LibraryPickerTestCollection() = class end
+
+// Spec 0050 S3.3: Avalonia's NotClientImplementable storage contracts need runtime test doubles.
+type LibraryPickerStorageTestProxy() =
+    inherit DispatchProxy()
+
+    let mutable invokeOpt : (MethodInfo -> obj array -> obj) option = None
+
+    member private _.initialize (invoke : MethodInfo -> obj array -> obj) : unit =
+        invokeOpt <- Some invoke
+
+    override _.Invoke(methodInfo : MethodInfo, arguments : obj array) : obj =
+        match invokeOpt with
+        | Some invoke -> invoke methodInfo arguments
+        | None -> invalidOp "The library picker storage proxy was not configured."
+
+    static member create<'StorageContract> (invoke : MethodInfo -> obj array -> obj) : 'StorageContract =
+        let storage = DispatchProxy.Create<'StorageContract, LibraryPickerStorageTestProxy>()
+        let proxy = box storage :?> LibraryPickerStorageTestProxy
+        proxy.initialize invoke
+        storage
+
 /// Pins shared database stores, startup errors and catalogue import across app scopes
 /// and real windows (spec 0038 Part C; spec 0050 S2.4).
+[<Collection("Library picker isolation")>]
 module AppContextTests =
 
     let private owner = FolderName "AppContextTests"
+
+    let private unexpectedPickerStorageCall (methodInfo : MethodInfo) : 'Item =
+        invalidOp $"The library folder picker requested an unrelated storage operation: {methodInfo.Name}."
+
+    type private LibraryPickerTestFolder =
+        static member create (folder : FolderName) : IStorageFolder =
+            LibraryPickerStorageTestProxy.create<IStorageFolder> (fun methodInfo _ ->
+                match methodInfo.Name with
+                | "get_Name" -> box (Path.GetFileName folder.value)
+                | "get_Path" -> box (System.Uri(folder.value))
+                | "get_CanBookmark" -> box false
+                | "Dispose" -> null
+                | _ -> unexpectedPickerStorageCall methodInfo)
+
+    type private LibraryPickerTestProvider(suggested : IStorageFolder, selected : IStorageFolder list) =
+        let resolvedPaths = ResizeArray<System.Uri>()
+        let pickerOptions = ResizeArray<FolderPickerOpenOptions>()
+        let storageProvider =
+            LibraryPickerStorageTestProxy.create<IStorageProvider> (fun methodInfo arguments ->
+                match methodInfo.Name with
+                | "get_CanOpen" | "get_CanSave" -> box false
+                | "get_CanPickFolder" -> box true
+                | "TryGetFolderFromPathAsync" ->
+                    let path = unbox<System.Uri> arguments.[0]
+                    resolvedPaths.Add path
+                    box (Task.FromResult<IStorageFolder> suggested)
+                | "OpenFolderPickerAsync" ->
+                    let options = unbox<FolderPickerOpenOptions> arguments.[0]
+                    pickerOptions.Add options
+                    box (Task.FromResult<IReadOnlyList<IStorageFolder>>(List.toArray selected))
+                | _ -> unexpectedPickerStorageCall methodInfo)
+
+        member _.storageProvider : IStorageProvider = storageProvider
+        member _.paths : System.Uri list = List.ofSeq resolvedPaths
+        member _.options : FolderPickerOpenOptions list = List.ofSeq pickerOptions
+
+    type private LibraryPickerTestWindow(createProvider : TopLevel -> IStorageProvider) =
+        inherit Window()
+
+        member this.createStorageProvider () : IStorageProvider = createProvider this
+
+    type private LibraryPickerTestAppBuilder() =
+        static member BuildAvaloniaApp () : AppBuilder =
+            let factory =
+                {
+                    new IStorageProviderFactory with
+                        member _.CreateProvider topLevel =
+                            match topLevel with
+                            | :? LibraryPickerTestWindow as window -> window.createStorageProvider ()
+                            | _ -> null
+                }
+            TestAppBuilder.BuildAvaloniaApp().With<IStorageProviderFactory>(factory)
+
+    let private runLibraryPickerTest (action : unit -> unit) : unit =
+        use session = HeadlessUnitTestSession.StartNew(typeof<LibraryPickerTestAppBuilder>)
+        session.Dispatch(System.Action(action), System.Threading.CancellationToken.None).GetAwaiter().GetResult()
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
     /// workbench rows / verb buttons live in variable-membership lists, so they carry an
@@ -128,6 +215,94 @@ module AppContextTests =
             AppContext.create (TestAppScope.testLocations owner) WorkbenchSettings.defaults
             |> Result.defaultWith (fun error -> failwith error.describe)
         Assert.Equal(WorkbenchSettings.defaults, context.settings)
+
+    [<Fact>]
+    let ``the app's import context suggests the configured catalogues folder for exports`` () : unit =
+        let locations = TestAppScope.testLocations owner
+        let context = TestAppScope.freshAppContext owner
+        let standalone = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
+        Assert.Equal<FolderName option>(Some locations.cataloguesFolder, context.catalogueImports.exportFolderOpt)
+        Assert.Equal<FolderName option>(None, standalone.exportFolderOpt)
+
+    [<Fact>]
+    let ``the library folder picker resolves its start folder and delivers only the first selected folder on the UI thread`` () : unit =
+        runLibraryPickerTest (fun () ->
+            let start = FolderName (Path.Combine(System.AppContext.BaseDirectory, "Picker suggestions"))
+            let chosen = FolderName (Path.Combine(System.AppContext.BaseDirectory, "Chosen catalogue #1"))
+            let ignored = FolderName (Path.Combine(System.AppContext.BaseDirectory, "Ignored catalogue"))
+            let suggested = LibraryPickerTestFolder.create start
+            let first = LibraryPickerTestFolder.create chosen
+            let second = LibraryPickerTestFolder.create ignored
+            let provider = LibraryPickerTestProvider(suggested, [ first; second ])
+            let window = LibraryPickerTestWindow(fun _ -> provider.storageProvider)
+            try
+                Assert.Same(provider.storageProvider, window.StorageProvider)
+                let title = ControlCaption "Export test catalogue"
+                let picked = ResizeArray<FolderName>()
+                let callbackThreads = ResizeArray<System.Threading.Thread>()
+                let uiThread = System.Threading.Thread.CurrentThread
+                MaterialsWindowView.pickLibraryFolder window title (Some start) (fun folder ->
+                    picked.Add folder
+                    callbackThreads.Add System.Threading.Thread.CurrentThread)
+                Assert.Empty picked
+                Dispatcher.UIThread.RunJobs()
+                Assert.Equal(start.value, (Assert.Single provider.paths).LocalPath)
+                let options = Assert.Single provider.options
+                Assert.Equal(title.value, options.Title)
+                Assert.False options.AllowMultiple
+                Assert.Same(suggested, options.SuggestedStartLocation)
+                Assert.Equal(chosen, Assert.Single picked)
+                Assert.Same(uiThread, Assert.Single callbackThreads)
+            finally
+                window.Close())
+
+    [<Fact>]
+    let ``cancelling the library folder picker leaves the selection unchanged`` () : unit =
+        runLibraryPickerTest (fun () ->
+            let previous = FolderName (Path.Combine(System.AppContext.BaseDirectory, "Previous catalogue"))
+            let provider = LibraryPickerTestProvider(null, [])
+            let window = LibraryPickerTestWindow(fun _ -> provider.storageProvider)
+            try
+                Assert.Same(provider.storageProvider, window.StorageProvider)
+                let title = ControlCaption "Register catalogue folder"
+                let picked = ResizeArray<FolderName>()
+                let mutable selection = Some previous
+                MaterialsWindowView.pickLibraryFolder window title None (fun folder ->
+                    picked.Add folder
+                    selection <- Some folder)
+                Dispatcher.UIThread.RunJobs()
+                Assert.Empty provider.paths
+                let options = Assert.Single provider.options
+                Assert.Equal(title.value, options.Title)
+                Assert.False options.AllowMultiple
+                Assert.Null options.SuggestedStartLocation
+                Assert.Empty picked
+                Assert.Equal<FolderName option>(Some previous, selection)
+            finally
+                window.Close())
+
+    [<Fact>]
+    let ``an unavailable storage provider leaves the library folder selection unchanged`` () : unit =
+        runLibraryPickerTest (fun () ->
+            let requestedOwners = ResizeArray<TopLevel>()
+            let window =
+                LibraryPickerTestWindow(fun topLevel ->
+                    requestedOwners.Add topLevel
+                    raise (System.PlatformNotSupportedException("No storage provider is available in this test host.")))
+            try
+                let previous = FolderName (Path.Combine(System.AppContext.BaseDirectory, "Unavailable catalogue"))
+                let title = ControlCaption "Export unavailable catalogue"
+                let picked = ResizeArray<FolderName>()
+                let mutable selection = Some previous
+                MaterialsWindowView.pickLibraryFolder window title (Some previous) (fun folder ->
+                    picked.Add folder
+                    selection <- Some folder)
+                Dispatcher.UIThread.RunJobs()
+                Assert.Same(window, Assert.Single requestedOwners)
+                Assert.Empty picked
+                Assert.Equal<FolderName option>(Some previous, selection)
+            finally
+                window.Close())
 
     [<Fact>]
     let ``create imports the Built-in catalogue into a new library database file and a reopen does not import again`` () : unit =
