@@ -98,6 +98,20 @@ module KitLibrary =
                         |> Result.map (fun row -> row :: rows))) (Ok [])
                 |> Result.map List.rev)
 
+        /// Applies confirmed rows, then pins added incoming versions in choice order (spec 0050 S4.2).
+        /// Returns the import outcome or first failure; forks remain unpinned and the kit is unchanged.
+        member this.confirm (choices : ImportChoice list) : Result<ImportOutcome, CatalogueImportError> =
+            this.imports.apply choices
+            |> Result.bind (fun outcome ->
+                choices
+                |> List.fold (fun result choice ->
+                    result |> Result.bind (fun () ->
+                        match choice.action, choice.decision.incomingOpt with
+                        | (AddIncomingEntry | AddIncomingVersion _), Some incoming ->
+                            this.imports.proxy.pinEntryVersion incoming.content.id incoming.content.version
+                        | _ -> Ok ())) (Ok ())
+                |> Result.map (fun () -> outcome))
+
         /// Pins and writes missing versions depth first, retaining held snapshots and returning writes in visit order (spec 0050 S4.2).
         /// Read-only access performs no IO; the first failure stops traversal and keeps earlier writes for the next call.
         member this.snapshotReferences (references : EntryReference list) : Result<LibraryVersionRef list, KitLibraryError> =

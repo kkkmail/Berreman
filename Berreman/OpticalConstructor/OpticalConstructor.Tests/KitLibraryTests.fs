@@ -134,6 +134,84 @@ module KitLibraryTests =
         let name = (catalogueEnvelope MaterialIds.silicon.toLibraryEntryId).content.name
         BuiltinCatalogue.userMaterialContent id name
 
+    type private KitConfirmationOperation =
+        | WriteConfirmedVersion of LibraryVersionRef
+        | PinConfirmedVersion of LibraryVersionRef
+
+    type private KitConfirmationFixture =
+        {
+            original : KitLibraryFixture
+            context : KitLibraryContext
+            snapshots : LibraryEntryEnvelope list
+            paths : KitRelativePath list
+            metadata : KitFile
+            operations : ResizeArray<KitConfirmationOperation>
+        }
+
+    let private openConfirmationFixture (original : KitLibraryFixture) (proxy : CatalogueImportProxy) : KitConfirmationFixture =
+        let operations = ResizeArray<KitConfirmationOperation>()
+        let refuseWrite () = failwith "Confirming kit choices must only write added library versions and their pins."
+        let opened =
+            KitContext.openKit (KitProxy.createInMemory original.folder) ReadOnlyKitAccess original.context.kit.clock
+            |> expectKitOk
+        let kitProxy =
+            {
+                opened.proxy with
+                    initialiseKit = fun _ -> refuseWrite ()
+                    writeKitFile = fun _ -> refuseWrite ()
+                    writeKindFile = fun _ _ _ -> refuseWrite ()
+                    deleteKindFile = fun _ _ -> refuseWrite ()
+                    copyInFile = fun _ _ _ -> refuseWrite ()
+                    writeSnapshot = fun _ -> refuseWrite ()
+                    acquireLock = fun _ -> refuseWrite ()
+                    releaseLock = refuseWrite
+            }
+        let recordingProxy =
+            {
+                proxy with
+                    putEntryVersion = fun put ->
+                        operations.Add(WriteConfirmedVersion put.envelope.libraryVersionRef)
+                        proxy.putEntryVersion put
+                    pinEntryVersion = fun id version ->
+                        let reference : LibraryVersionRef =
+                            {
+                                entryId = id
+                                version = version
+                            }
+                        operations.Add(PinConfirmedVersion reference)
+                        proxy.pinEntryVersion id version
+                    retireEntry = fun _ -> refuseWrite ()
+                    logImport = fun _ -> refuseWrite ()
+                    forgetImport = fun _ -> refuseWrite ()
+            }
+        {
+            original = original
+            context =
+                {
+                    kit =
+                        {
+                            opened with proxy = kitProxy
+                        }
+                    imports = CatalogueImportContext.create recordingProxy
+                }
+            snapshots = opened.proxy.listSnapshots () |> expectKitOk
+            paths = original.folder.paths ()
+            metadata = opened.proxy.readKitFile () |> expectKitOk
+            operations = operations
+        }
+
+    let private freshConfirmationFixture () : KitConfirmationFixture =
+        let original = freshSnapshotFixture ()
+        let sourceId = PresetIds.source600.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith "The preset must have an entry id.")
+        original.context.snapshotReferences [ EntryVersionReference (sampleEnvelope ()).libraryVersionRef; EntryLatestReference sourceId ]
+        |> expectSnapshotOk |> ignore
+        openConfirmationFixture original (CatalogueImportProxy.createInMemory ()).proxy
+
+    let private assertConfirmationKitUnchanged (fixture : KitConfirmationFixture) : unit =
+        Assert.Equal<KitRelativePath list>(fixture.paths, fixture.original.folder.paths ())
+        Assert.Equal<KitFile>(fixture.metadata, fixture.original.context.kit.proxy.readKitFile () |> expectKitOk)
+        assertSnapshots fixture.snapshots fixture.original
+
     [<Fact>]
     let ``referencing a sample snapshots it with its materials and their categories, each once, and pins each`` () : unit =
         let fixture = freshSnapshotFixture ()
@@ -1108,6 +1186,249 @@ module KitLibraryTests =
         Assert.Empty(empty.proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> expectImportOk)
         Assert.Empty(empty.proxy.heldUserEntries () |> expectImportOk)
         Assert.Empty(empty.proxy.loggedImports () |> expectImportOk)
+
+    [<Fact>]
+    let ``adding a kit's entry to the library holds it and pins the version the kit references`` () : unit =
+        let fixture = freshConfirmationFixture ()
+        let source = fixture.snapshots |> List.find (fun envelope -> envelope.content.schema.kind = SourceEntryKind)
+        let choices =
+            fixture.context.resolveSnapshots () |> expectSnapshotOk
+            |> List.map (fun row ->
+                if row.entryId = source.content.id then
+                    {
+                        decision = row
+                        action = AddIncomingEntry
+                    }
+                else row.byDefault)
+        let outcome = fixture.context.confirm choices |> expectImportOk
+        Assert.Empty outcome.rebindings
+        Assert.Empty outcome.forks
+        Assert.Equal<KitConfirmationOperation list>(
+            [ WriteConfirmedVersion source.libraryVersionRef; PinConfirmedVersion source.libraryVersionRef ],
+            List.ofSeq fixture.operations)
+        for envelope in fixture.snapshots do
+            let held = fixture.context.imports.proxy.tryHeldEntry envelope.content.id |> expectImportOk
+            if envelope.content.id = source.content.id then
+                let entry = held |> Option.defaultWith (fun () -> failwith "The selected source must be held.")
+                Assert.Equal<VersionNumber>(source.content.version, entry.latest)
+                Assert.Equal<ContentHash>(source.contentHash, (Assert.Single entry.versions).contentHash)
+            else Assert.Equal<HeldEntry option>(None, held)
+        Assert.Equal<LibraryEntryEnvelope option>(
+            Some source, fixture.context.imports.proxy.tryHeldEnvelope source.content.id source.content.version |> expectImportOk)
+        assertConfirmationKitUnchanged fixture
+
+        let newerContent =
+            {
+                source.content with version = VersionNumber 2
+            }
+        let versionStores = CatalogueImportProxy.createInMemory ()
+        BuiltinCatalogue.putSealedEntries (CatalogueImportContext.create versionStores.proxy) [ newerContent ]
+        let versionFixture = openConfirmationFixture fixture.original versionStores.proxy
+        let versionRow =
+            versionFixture.context.resolveSnapshots () |> expectSnapshotOk
+            |> List.find (fun row -> row.entryId = source.content.id)
+        let versionChoice : ImportChoice =
+            {
+                decision = versionRow
+                action = AddIncomingVersion KeepLatestVersion
+            }
+        versionFixture.context.confirm [ versionChoice ] |> expectImportOk |> ignore
+        let held =
+            versionStores.proxy.tryHeldEntry source.content.id |> expectImportOk
+            |> Option.defaultWith (fun () -> failwith "Both source versions must remain held.")
+        Assert.Equal<VersionNumber>(newerContent.version, held.latest)
+        Assert.Equal<VersionNumber list>([ source.content.version; newerContent.version ], held.versions |> List.map _.version)
+        Assert.Equal<LibraryEntryEnvelope option>(
+            Some source, versionStores.proxy.tryHeldEnvelope source.content.id source.content.version |> expectImportOk)
+        Assert.Equal<KitConfirmationOperation list>(
+            [ WriteConfirmedVersion source.libraryVersionRef; PinConfirmedVersion source.libraryVersionRef ],
+            List.ofSeq versionFixture.operations)
+        assertConfirmationKitUnchanged versionFixture
+
+        let divergentContent =
+            {
+                source.content with descriptionOpt = Some (EntryDescription "The receiving library's source")
+            }
+        let forkStores = CatalogueImportProxy.createInMemory ()
+        BuiltinCatalogue.putSealedEntries (CatalogueImportContext.create forkStores.proxy) [ divergentContent ]
+        let forkFixture = openConfirmationFixture fixture.original forkStores.proxy
+        let forkRow =
+            forkFixture.context.resolveSnapshots () |> expectSnapshotOk
+            |> List.find (fun row -> row.entryId = source.content.id)
+        let forkChoice : ImportChoice =
+            {
+                decision = forkRow
+                action = ForkIncomingEntry
+            }
+        let forkOutcome = forkFixture.context.confirm [ forkChoice ] |> expectImportOk
+        let fork = Assert.Single forkOutcome.forks
+        Assert.Empty forkOutcome.rebindings
+        Assert.Equal<LibraryEntryId>(source.content.id, fork.original)
+        Assert.NotEqual<LibraryEntryId>(source.content.id, fork.fork)
+        let forkEnvelope =
+            forkStores.proxy.tryHeldEnvelope fork.fork VersionNumber.first |> expectImportOk
+            |> Option.defaultWith (fun () -> failwith "The fork must be held under its new identity.")
+        Assert.Equal<KitConfirmationOperation list>([ WriteConfirmedVersion forkEnvelope.libraryVersionRef ], List.ofSeq forkFixture.operations)
+        Assert.Equal<LibraryEntryPayload>(source.content.payload, forkEnvelope.content.payload)
+        assertConfirmationKitUnchanged forkFixture
+
+        let writeFailure = ImportStoreUnavailableErr "the source cannot be written"
+        let empty = CatalogueImportProxy.createInMemory ()
+        let failedProxy =
+            {
+                empty.proxy with putEntryVersion = fun _ -> Error writeFailure
+            }
+        let failedFixture = openConfirmationFixture fixture.original failedProxy
+        Assert.Equal<Result<ImportOutcome, CatalogueImportError>>(Error writeFailure, failedFixture.context.confirm choices)
+        Assert.Equal<KitConfirmationOperation list>([ WriteConfirmedVersion source.libraryVersionRef ], List.ofSeq failedFixture.operations)
+        Assert.Empty(empty.proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> expectImportOk)
+        assertConfirmationKitUnchanged failedFixture
+
+    [<Fact>]
+    let ``adding a sample while its material stays in the kit is refused and writes nothing`` () : unit =
+        let fixture = freshConfirmationFixture ()
+        let sample = sampleEnvelope ()
+        let rows = fixture.context.resolveSnapshots () |> expectSnapshotOk
+        let sourceRow = rows |> List.find (fun row -> row.kind = SourceEntryKind)
+        let remaining = rows |> List.filter (fun row -> row.entryId <> sourceRow.entryId)
+        let choices =
+            sourceRow :: remaining
+            |> List.map (fun row ->
+                if row.entryId = sample.content.id || row.entryId = sourceRow.entryId then
+                    {
+                        decision = row
+                        action = AddIncomingEntry
+                    }
+                else row.byDefault)
+        match fixture.context.confirm choices with
+        | Error (DanglingReferenceErr reason) -> Assert.Contains(sample.content.id.value.ToString(), reason)
+        | Error error -> Assert.Fail(error.describe)
+        | Ok _ -> Assert.Fail("A sample whose materials stay in the kit must be refused.")
+        Assert.Empty fixture.operations
+        for envelope in fixture.snapshots do
+            Assert.Equal<HeldEntry option>(None, fixture.context.imports.proxy.tryHeldEntry envelope.content.id |> expectImportOk)
+        assertConfirmationKitUnchanged fixture
+
+        let invalidChoices =
+            choices |> List.map (fun choice ->
+                if choice.decision.entryId = sample.content.id then
+                    {
+                        choice with action = AddIncomingVersion KeepLatestVersion
+                    }
+                else choice)
+        match fixture.context.confirm invalidChoices with
+        | Error (InvalidImportChoiceErr reason) -> Assert.Contains(sample.content.id.value.ToString(), reason)
+        | Error error -> Assert.Fail(error.describe)
+        | Ok _ -> Assert.Fail("An action absent from the row must be refused.")
+        Assert.Empty fixture.operations
+        Assert.Empty(fixture.context.imports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> expectImportOk)
+        assertConfirmationKitUnchanged fixture
+
+    [<Fact>]
+    let ``confirming the kit's defaults writes nothing, and a re-binding is answered for the session`` () : unit =
+        let fixture = freshConfirmationFixture ()
+        let choices = fixture.context.resolveSnapshots () |> expectSnapshotOk |> List.map _.byDefault
+        let outcome = fixture.context.confirm choices |> expectImportOk
+        Assert.Empty outcome.rebindings
+        Assert.Empty outcome.forks
+        Assert.Empty fixture.operations
+        for envelope in fixture.snapshots do
+            Assert.Equal<HeldEntry option>(None, fixture.context.imports.proxy.tryHeldEntry envelope.content.id |> expectImportOk)
+        let emptyOutcome = fixture.context.confirm [] |> expectImportOk
+        Assert.Equal<ImportOutcome>(outcome, emptyOutcome)
+        Assert.Empty fixture.operations
+        assertConfirmationKitUnchanged fixture
+
+        let incoming = fixture.original.context.imports.sealEntry (collidingResolutionContent ()) |> expectImportOk
+        fixture.original.context.kit.proxy.writeSnapshot incoming |> expectKitOk
+        let builtIn = BuiltinCatalogue.freshStores ()
+        let heldBefore = builtIn.proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> expectImportOk
+        let reboundFixture = openConfirmationFixture fixture.original builtIn.proxy
+        let silicon = catalogueEnvelope MaterialIds.silicon.toLibraryEntryId
+        let rebindingChoices =
+            reboundFixture.context.resolveSnapshots () |> expectSnapshotOk
+            |> List.map (fun row ->
+                if row.entryId = incoming.content.id then
+                    {
+                        decision = row
+                        action = RebindToHeldEntry silicon.content.id
+                    }
+                else row.byDefault)
+        let rebound = reboundFixture.context.confirm rebindingChoices |> expectImportOk
+        let expected : EntryRebinding =
+            {
+                incoming = incoming.content.id
+                held = silicon.content.id
+            }
+        Assert.Equal<EntryRebinding list>([ expected ], rebound.rebindings)
+        Assert.Empty rebound.forks
+        Assert.Empty reboundFixture.operations
+        Assert.Equal<HeldEntry option>(None, builtIn.proxy.tryHeldEntry incoming.content.id |> expectImportOk)
+        Assert.Equal<HeldEntry list>(heldBefore, builtIn.proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> expectImportOk)
+        Assert.Empty(builtIn.proxy.heldUserEntries () |> expectImportOk)
+        Assert.Empty(builtIn.proxy.loggedImports () |> expectImportOk)
+        let overlay = reboundFixture.context.openOverlay rebound.rebindings |> expectSnapshotOk
+        let replacement = Assert.Single overlay.replacements
+        Assert.Equal<LibraryEntryId>(incoming.content.id, replacement.incoming)
+        Assert.Equal<LibraryEntryEnvelope>(silicon, replacement.held)
+        Assert.Empty reboundFixture.operations
+        assertConfirmationKitUnchanged reboundFixture
+
+    [<Fact>]
+    let ``once added, a kit's entries resolve as reused`` () : unit =
+        let fixture = freshConfirmationFixture ()
+        let choices =
+            fixture.context.resolveSnapshots () |> expectSnapshotOk |> List.rev
+            |> List.map (fun row ->
+                {
+                    decision = row
+                    action = AddIncomingEntry
+                })
+        let versions =
+            choices |> List.map (fun choice ->
+                choice.decision.incomingOpt
+                |> Option.defaultWith (fun () -> failwith "Every kit row must have its snapshot.")
+                |> fun envelope -> envelope.libraryVersionRef)
+        let outcome = fixture.context.confirm choices |> expectImportOk
+        Assert.Empty outcome.rebindings
+        Assert.Empty outcome.forks
+        let operations = List.ofSeq fixture.operations
+        let writes = operations |> List.take versions.Length
+        Assert.Equal<Set<KitConfirmationOperation>>(versions |> List.map WriteConfirmedVersion |> Set.ofList, Set.ofList writes)
+        Assert.Equal<KitConfirmationOperation list>(versions |> List.map PinConfirmedVersion, operations |> List.skip versions.Length)
+        let rows = fixture.context.resolveSnapshots () |> expectSnapshotOk
+        Assert.Equal<LibraryEntryId list>(fixture.snapshots |> List.map (fun envelope -> envelope.content.id), rows |> List.map _.entryId)
+        for row in rows do
+            match row.status with
+            | SameContentHash (incoming, held) ->
+                Assert.Equal<LibraryEntryId>(incoming.content.id, held.id)
+                Assert.Equal<VersionNumber>(incoming.content.version, held.latest)
+                Assert.Equal<LibraryEntryEnvelope option>(
+                    Some incoming, fixture.context.imports.proxy.tryHeldEnvelope incoming.content.id incoming.content.version |> expectImportOk)
+            | _ -> Assert.Fail("Every confirmed snapshot must now resolve as reused.")
+            Assert.Equal<ImportAction>(ReuseHeldEntry, row.defaultAction)
+        fixture.context.confirm (rows |> List.map _.byDefault) |> expectImportOk |> ignore
+        Assert.Equal<KitConfirmationOperation list>(operations, List.ofSeq fixture.operations)
+        assertConfirmationKitUnchanged fixture
+
+        let failedVersion = versions |> List.item 1
+        let pinFailure = ImportStoreUnavailableErr "the second confirmed version cannot be pinned"
+        let empty = CatalogueImportProxy.createInMemory ()
+        let failingProxy =
+            {
+                empty.proxy with
+                    pinEntryVersion = fun id version ->
+                        if id = failedVersion.entryId && version = failedVersion.version then Error pinFailure
+                        else empty.proxy.pinEntryVersion id version
+            }
+        let failedFixture = openConfirmationFixture fixture.original failingProxy
+        Assert.Equal<Result<ImportOutcome, CatalogueImportError>>(Error pinFailure, failedFixture.context.confirm choices)
+        Assert.Equal<KitConfirmationOperation list>(
+            writes @ (versions |> List.take 2 |> List.map PinConfirmedVersion), List.ofSeq failedFixture.operations)
+        for envelope in fixture.snapshots do
+            Assert.Equal<LibraryEntryEnvelope option>(
+                Some envelope, empty.proxy.tryHeldEnvelope envelope.content.id envelope.content.version |> expectImportOk)
+        assertConfirmationKitUnchanged failedFixture
 
     [<Fact>]
     let ``every kit library error renders its condition and its payload`` () : unit =
