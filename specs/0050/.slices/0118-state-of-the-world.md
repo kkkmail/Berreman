@@ -1,58 +1,92 @@
 # Where we are
 
-Slice 0118 implements S33-SHARED-WINDOW-PIECES in spec 0050 S3.3. Both library windows use the shared ordinary verb helpers, the reusable folder picker supports a suggested start location, and app composition supplies the configured catalogue-export folder. Attempt 04 addresses the supervisor-reported FS0366 errors by replacing direct storage interface implementations in the test fixture with runtime proxies. All four new facts, their behavioral assertions and the production implementation are retained. Execution and acceptance belong to the supervisor under the IMPLEMENT worker protocol.
+Slice 0118 implements S33-SHARED-WINDOW-PIECES. The approved operator recovery is
+verified and ready for commit; the arc remains stopped and escalated. The failed
+attempt was committed as `0552847`; accepted 0117 is `32c7211`. The operator's
+census decision is `.manual/008-step-0118-picker-tests-recovery.md`.
 
 # What's working
 
-- Extracted MaterialsWindowView.verbButtonOn and retained verbButton as its unit-callback adapter.
-- Moved the folder picker into MaterialsWindowView.pickLibraryFolder with a configurable title and suggested start folder.
-- Redirected Library verbs and catalogue-folder registration to the shared helpers, preserving styling, accessibility, ids, and messages.
-- Configured the catalogue-export suggestion in the composition shared by AppContext.create and recreateLibrary.
-- Added the declared AppContextTests fact covering the configured app folder and the standalone factory's None default.
-- Replaced direct storage interface implementations with runtime test proxies, retaining public provider registration and isolated headless sessions in a nonparallel collection.
+- Both library windows use MaterialsWindowView's shared ordinary verb helpers.
+  The shared renderer preserves captions, stable ids, keys, appearance and handled
+  press delivery. The distinct colored backup-selection renderer remains.
+- The shared folder picker resolves an optional start location, selects only the
+  first returned folder and posts its callback on the UI thread. Cancellation
+  and unavailable providers leave the caller unchanged.
+- AppContext's composition shared by create and recreateLibrary supplies
+  `Some locations.cataloguesFolder`; the standalone import factory keeps `None`.
+- All four new AppContextTests facts pass. The fixture uses public app-builder
+  provider registration, isolated headless sessions and a nonparallel collection;
+  runtime storage proxies avoid Avalonia's NotClientImplementable interface issue.
 
-# Tests
+# Operator repair and authority
 
-The supervisor reported three FS0366 build errors for the non-client-implementable members of IStorageFolder, IStorageItem and IStorageProvider after attempt 03. Attempt 04 removes those direct implementations. No build, tests, analyzers, or invariants were executed by this worker, as required by IMPLEMENT worker invariant 6; the repair awaits supervisor verification. The resolved roster remains build, elevation, ui-smoke, selected ui-tests, and the eleven invariant-s14-* gates in 0118.gates. The selected classes remain AppContextTests, ImportDialogTests, LibraryWindowTests, MaterialsWindowTests, and ScrollExtentTests. The declared AppContext fact and three retry-authorized picker facts add four expected discovered ui-tests cases in total; measured counts remain the supervisor's responsibility. Existing window and import-dialog facts were left unchanged.
+The FS0905 collision is removed by renaming the private binding to
+`providerInstance`, retaining the `storageProvider` member. The first runtime
+check then found Avalonia returns the starting directory URI with a trailing
+separator. The assertion now trims that separator before comparing the same
+requested directory. Every assertion and all four identities remain; product
+code was not changed during this recovery.
 
-The confirmation fact calls MaterialsWindowView.pickLibraryFolder with Some start, observes the provider's requested path and returned folder in SuggestedStartLocation, checks title and single-selection options, and expects only the first selected FolderName on the UI thread. Cancellation covers None start and an empty result without changing the caller's prior selection. The unavailable-provider fact records the factory request, simulates PlatformNotSupportedException, and expects neither a callback nor a selection change.
+The previous handoff incorrectly called the three extra picker facts
+retry-authorized. A coverage retry and selected class authorize neither new test
+identities nor a census change. The operator has now retained the facts in
+`.manual/008`, with three exact `create` rows effective at step 118 in
+`.operator-test-effects-jsonl`. The earlier step-52 rename is preserved. The
+published step's one declared fact plus those three effects gives four new facts.
 
-```yaml
-gates: {}
-```
+# Measured verification
 
-No baseline or checkpoint was authored or changed by the worker.
+All 15 unchanged 0118 gates passed on 2026-11-07:
 
-# Architecture
+- Build: 0 warnings, 0 errors.
+- ui-smoke: 215 passed, 0 failed, 0 skipped; exact census matched.
+- Selected ui-tests: 126 passed, 0 failed, 0 skipped; exact census matched,
+  including the configured-folder fact and all three picker facts.
+- Elevation and all eleven invariant-s14 gates passed. Because the product code
+  was already committed, a supplementary elevation run against accepted 0117
+  covered the four affected product projects and found zero new findings.
 
-MaterialsWindowView owns the shared pointer-aware verb renderer and its unit-action adapter. LibraryWindowView declares no verbButton, verbButtonOn, or pickCatalogueFolder. Its distinct colored backup-selection renderer continues to serve backup rows. The shared ordinary renderer retains the existing Library accessible-caption property as well as keyed controls, stable automation ids, and handled press delivery.
+The selected classes remain AppContextTests, ImportDialogTests,
+LibraryWindowTests, MaterialsWindowTests and ScrollExtentTests. The 126 selected
+cases are not a whole-suite baseline. The smoke floor remains 215; the resolved
+constructor baseline remains 1014. Expected-red record 116 is empty.
 
-pickLibraryFolder is the existing UI IO boundary moved to its lower reusable home. It resolves Some start folders through StorageProviderExtensions.TryGetFolderFromPathAsync, opens a single-folder picker, elevates the first selected local path immediately, and posts the callback on the UI thread. Cancel or an unavailable provider leaves the caller unchanged.
+Full publication validation passed through step 0494. The profile-1 receipt now
+binds the operator effects and updated ASG prompts; all 988 compiled artifacts
+remain byte-identical. Published requirements, lifecycle/origin registries,
+supervisor state, counters, checkpoints and expected-red records are unchanged.
+No checkpoint 117 was created and no version was bumped.
 
-Tests substitute only Avalonia's storage boundary. LibraryPickerStorageTestProxy derives from System.Reflection.DispatchProxy and creates runtime IStorageFolder and IStorageProvider doubles without declaring their prohibited client implementations in F# source. Its callback is configured by the factory; unexpected storage calls identify their method. The folder fixture supplies its path and metadata, and the provider fixture captures lookups and options and returns completed tasks. No package or reference changes are needed.
+Evidence: `.artifacts/0118-operator-repair/verification-summary.json`,
+`gate-results.json`, `test-inventory.json`, copied TRX reports,
+`elevation-from-0117.log` and `final-review.md`. The initial failed picker run is
+retained as `picker-preflight.log`. The final gate build has zero warnings; the
+initial rebuild reported two existing SYSLIB0051 warnings in vendored MathNet.
 
-LibraryPickerTestAppBuilder reuses TestAppBuilder and registers IStorageProviderFactory through the public AppBuilder.With API. Each LibraryPickerTestWindow owns its provider function. runLibraryPickerTest creates and disposes a HeadlessUnitTestSession for each picker fact, and AppContextTests belongs to an xUnit collection with DisableParallelization so those sessions cannot race the suite's assembly session. The production helper remains unchanged. Completed tasks and dispatcher draining provide deterministic execution without sleeps, native dialogs, or filesystem writes. Assertions inspect captured requests and callbacks outside the production catch boundary, and each window is closed.
+# Separate ASG repair
 
-AppContext.compose updates only exportFolderOpt on the constructed CatalogueImportContext. Both normal creation and library recreation receive Some locations.cataloguesFolder. The factory and all other compositions retain None. No durable format, serialized contract, schema, or migration path changes.
+ASG 0090 `.manual/031-auth-evidence-and-test-census-authority.md` records shared
+provider-auth evidence filtering and explicit judge/worker census authority.
+377 relevant tests and strict mypy passed. Real auth/quota signals remain
+recognized; XML/source text read by a successful worker no longer suffices.
+Repair budgets and coverage obligations are unchanged.
 
-# Deferred
+# Handoff
 
-No implementation requirement was deferred. Required gate execution belongs to the supervisor and remains pending.
-
-# Gotchas
-
-- The original Library buttons explicitly set AutomationProperties.Name. The shared renderer preserves their accessible captions; this property is now also available to Materials and import-dialog verbs.
-- Catalogue-folder registration intentionally supplies None for its start location. The app's configured suggestion is carried in its import context for export consumers.
-- The pre-existing supervisor modification to specs/0050/.manifest.state.json was left untouched. No git mutation or version bump was performed.
-- Source diffs show no carriage-return churn. All worker documents use the supplied canonical paths.
-- The empty gates YAML block avoids inventing measured baselines; the supervisor owns those counts.
-- The retry explicitly authorizes additional helper coverage in an already selected class. AppContextTests contains all three new picker facts, so the gate roster and project entries require no changes.
-- AvaloniaLocator's mutable APIs appear in the runtime assembly but are private API and absent from the consumer reference surface. Use AppBuilder.With to configure this fixture's factory; runtime reflection alone does not establish compile-time availability.
-- Avalonia's storage interfaces carry NotClientImplementable. The fixture uses runtime proxies only in tests; do not implement the reference-only sentinel members or alter package references to bypass the compiler errors. The DispatchProxy base must stay public, non-sealed and parameterless.
+Wait for the operator to commit ASG and BRM. No commit or relaunch occurred in
+this repair. After commit and a relaunch instruction, check readiness and use
+`--accept-current-slice --executability-profile 1` with a fresh monitor ticket.
+Do not reset counters, fabricate checkpoint 117, or promote the selected UI count
+to a whole-suite floor. No completion stat tools are due while the arc is escalated.
 
 # Changelog
 
-- 2026-11-07: Shared library-window verb and folder-picker helpers, wired the configured catalogue-export folder into app composition, and added the declared regression fact; handed off for supervisor verification.
-- 2026-11-07 (attempt 02): Added controlled-provider coverage of the production folder picker for start-folder resolution, confirmed selection, cancellation, and unavailable-provider behavior; retained the AppContext fact and left gate execution to the supervisor.
-- 2026-11-07 (attempt 03): Replaced unsupported locator calls with public app-builder provider registration, isolated headless sessions, and nonparallel test scheduling; preserved all assertions and left verification to the supervisor.
-- 2026-11-07 (attempt 04): Replaced direct storage interface implementations with DispatchProxy test doubles; retained the four facts, behavioral assertions and production implementation, with verification reserved for the supervisor.
+- Attempt 01: extracted shared window helpers and configured the export suggestion.
+- Attempt 02: added real helper coverage; unsupported locator API failed to compile.
+- Attempt 03: switched to public provider registration; direct storage interfaces
+  failed the NotClientImplementable check.
+- Attempt 04: replaced interfaces with runtime proxies; the binding/member name
+  collision still failed compilation.
+- Operator recovery, 2026-11-07: repaired fixture compilation and URI comparison,
+  recorded census authority, verified the full gate roster and left the arc stopped.

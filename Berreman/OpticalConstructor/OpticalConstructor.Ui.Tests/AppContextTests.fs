@@ -78,7 +78,7 @@ module AppContextTests =
     type private LibraryPickerTestProvider(suggested : IStorageFolder, selected : IStorageFolder list) =
         let resolvedPaths = ResizeArray<System.Uri>()
         let pickerOptions = ResizeArray<FolderPickerOpenOptions>()
-        let storageProvider =
+        let providerInstance =
             LibraryPickerStorageTestProxy.create<IStorageProvider> (fun methodInfo arguments ->
                 match methodInfo.Name with
                 | "get_CanOpen" | "get_CanSave" -> box false
@@ -93,7 +93,7 @@ module AppContextTests =
                     box (Task.FromResult<IReadOnlyList<IStorageFolder>>(List.toArray selected))
                 | _ -> unexpectedPickerStorageCall methodInfo)
 
-        member _.storageProvider : IStorageProvider = storageProvider
+        member _.storageProvider : IStorageProvider = providerInstance
         member _.paths : System.Uri list = List.ofSeq resolvedPaths
         member _.options : FolderPickerOpenOptions list = List.ofSeq pickerOptions
 
@@ -246,7 +246,7 @@ module AppContextTests =
                     callbackThreads.Add System.Threading.Thread.CurrentThread)
                 Assert.Empty picked
                 Dispatcher.UIThread.RunJobs()
-                Assert.Equal(start.value, (Assert.Single provider.paths).LocalPath)
+                Assert.Equal(start.value, Path.TrimEndingDirectorySeparator((Assert.Single provider.paths).LocalPath))
                 let options = Assert.Single provider.options
                 Assert.Equal(title.value, options.Title)
                 Assert.False options.AllowMultiple

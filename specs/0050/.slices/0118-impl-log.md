@@ -1,3 +1,37 @@
+# Operator recovery — 2026-11-07
+
+Approved plan: `0118-01.postmortem-review-md`; decision:
+`../.manual/008-step-0118-picker-tests-recovery.md`. This measured operator
+recovery supersedes the earlier worker-only testing state below. Historical
+claims that a retry authorized extra identities are incorrect: the new operator
+ruling supplies that authority.
+
+- Renamed the fixture binding/RHS to `providerInstance` to remove FS0905.
+- A real runtime preflight passed 14/15 AppContextTests cases and exposed a
+  directory-URI trailing-separator mismatch. Normalized the observed directory
+  before the same equality assertion. Preserved all four facts and every
+  assertion; production sources and package references are unchanged.
+- Added the three exact step-118 operator create effects, preserving the step-52
+  rename. Full 494-step validation passed; refreshed the profile-1 receipt while
+  preserving all 988 compiled files and published requirements byte-for-byte.
+- All 15 unchanged gates passed: build (zero warnings/errors), elevation,
+  ui-smoke (215), selected ui-tests (126) and eleven s14 invariants. Both test
+  selections match the accepted identities exactly, with no failures or skips.
+- Supplementary elevation against accepted 0117 (`32c7211`) covered the four
+  affected product projects and found zero new findings. Reviewed the completed
+  product diff and fixture assertions; see the saved final review.
+- ASG separately fixes false auth classification and clarifies census authority;
+  377 relevant tests and strict mypy passed (ASG 0090 manual 031).
+- Evidence is in `../.artifacts/0118-operator-repair/`. The initial rebuild's two
+  vendored MathNet SYSLIB0051 warnings and the runtime preflight failure remain
+  recorded; the final gate build is warning-free.
+- Git HEAD/index, arc state/counters, numeric baselines/checkpoints, expected-red
+  records and version remain unchanged. No checkpoint 117, commit or launch.
+  Wait for the operator to commit both repositories; a later approved relaunch
+  uses `--accept-current-slice --executability-profile 1`.
+
+---
+
 # Implementation log
 
 ## Progress
