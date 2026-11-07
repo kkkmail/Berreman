@@ -24,7 +24,13 @@ open Avalonia.VisualTree
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Tests
@@ -54,9 +60,20 @@ module LauncherTests =
     let private matchesId (id : string) (c : Control) : bool =
         c.Name = id || AutomationProperties.GetAutomationId c = id
 
-    /// A fresh app-scope context per launcher (spec 0038 step 006: the launcher receives the
-    /// ONE `Startup.context` in the app; each test isolates its own mutable stores the same way).
-    let private freshContext () : AppContext = TestAppScope.freshAppContext owner
+    /// Confirms the fixture catalogue before handing the launcher its remaining work (spec 0050 S3.2).
+    let private freshContext () : AppContext =
+        let context = TestAppScope.freshAppContext owner
+        { context with pendingImports = [] }
+
+    let private tryFindLauncherControl (window : Window) (id : ConstructorUiId) : Control option =
+        window.GetVisualDescendants()
+        |> Seq.tryPick (function
+            | :? Control as control when AutomationProperties.GetAutomationId control = id.value -> Some control
+            | _ -> None)
+
+    let private launcherControl (window : Window) (id : ConstructorUiId) : Control =
+        tryFindLauncherControl window id
+        |> Option.defaultWith (fun () -> failwith $"Missing control {id.value}.")
 
     /// Open a fresh launcher on the shared headless session and run `check` over it.
     let private withLauncher (check : LauncherWindow -> unit) : unit =
@@ -122,6 +139,18 @@ module LauncherTests =
                   ConstructorUiId.openMaterialsButton.value
                   ConstructorUiId.openLibraryButton.value ],
                 names))
+
+    [<Fact>]
+    let ``a launcher with no pending import shows no import notice`` () : unit =
+        withLauncher (fun launcher ->
+            Assert.True(tryFindLauncherControl launcher ConstructorUiId.launcherPendingImportsText |> Option.isNone)
+            Assert.True(tryFindLauncherControl launcher ConstructorUiId.launcherReviewImportsButton |> Option.isNone)
+            Assert.Equal<string list>(
+                [ ConstructorUiId.openMainButton.value
+                  ConstructorUiId.openInverseButton.value
+                  ConstructorUiId.openMaterialsButton.value
+                  ConstructorUiId.openLibraryButton.value ],
+                buttons launcher |> List.map _.Name))
 
     [<Fact>]
     let ``each launcher button carries its stable AutomationId and label`` () =
@@ -230,6 +259,180 @@ module LauncherTests =
     // ---------------------- behaviour (gate `ui-smoke`) ----------------------
     // Click each launcher button headlessly and observe the surface it opens via
     // `Window.WindowOpenedEvent` (the WireUiCompositionTests seam).
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: a start-up catalogue whose rows await a choice opens the import dialog from the launcher; Cancel keeps it waiting and Apply settles it`` () : unit =
+        HeadlessSession.run (fun () ->
+            let fileLocations = TestAppScope.fileLocations owner
+            let shipped = FolderName (Path.Combine(Path.GetDirectoryName fileLocations.backupsFolder.value, "ShippedCatalogue"))
+            let locations = { fileLocations with shippedCatalogueFolder = shipped }
+            let catalogue = BuiltinCatalogue.catalogueData ()
+            let writeCatalogue (data : CatalogueData) : unit =
+                let folder = CatalogueProxy.builtInFolderUnder locations.shippedCatalogueFolder
+                (CatalogueProxy.create folder).writeCatalogue data
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let openContext () : AppContext =
+                AppContext.create locations WorkbenchSettings.defaults
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let heldEntries (context : AppContext) : HeldEntry list =
+                context.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let loggedImports (context : AppContext) : CatalogueImportLogEntry list =
+                context.catalogueImports.proxy.loggedImports ()
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let materials (context : AppContext) : MaterialEntry list =
+                context.materials.listMaterials IncludeInactive
+                |> Result.defaultWith (fun error -> failwith error.caption.value)
+                |> List.sortBy _.id
+            let exercisePendingLauncher (context : AppContext) : unit =
+                let pending = Assert.Single context.pendingImports
+                let heldBefore = heldEntries context
+                let importsBefore = loggedImports context
+                let materialsBefore = materials context
+                let expectedCount = context.pendingImports |> List.sumBy (fun waiting -> waiting.decisions.Length)
+                let launcher = LauncherWindow(locations, WorkbenchSettings.defaults, Ok context)
+                let opened = ResizeArray<Window>()
+                use _subscription =
+                    Window.WindowOpenedEvent.Raised
+                    |> Observable.subscribe (fun (struct (sender, _)) ->
+                        match sender with
+                        | :? Window as window when not (obj.ReferenceEquals(window, launcher)) -> opened.Add window
+                        | _ -> ())
+                let assertUnchanged () : unit =
+                    Assert.Equal<HeldEntry list>(heldBefore, heldEntries context)
+                    Assert.Equal<CatalogueImportLogEntry list>(importsBefore, loggedImports context)
+                    Assert.Equal<MaterialEntry list>(materialsBefore, materials context)
+                let assertNotice () : unit =
+                    let notice = Assert.IsType<TextBlock>(launcherControl launcher ConstructorUiId.launcherPendingImportsText)
+                    Assert.Equal($"Library entries waiting for an import decision: {expectedCount}.", notice.Text)
+                    Assert.Equal(ConstructorUiId.launcherPendingImportsText.value, notice.Name)
+                    Assert.Equal(notice.Text, AutomationProperties.GetName notice)
+                    Assert.Equal(Avalonia.Media.TextWrapping.Wrap, notice.TextWrapping)
+                    let review = Assert.IsType<Button>(launcherControl launcher ConstructorUiId.launcherReviewImportsButton)
+                    Assert.Equal(ConstructorUiId.launcherReviewImportsButton.value, review.Name)
+                    Assert.Equal("Review imports…", string review.Content)
+                    Assert.Equal("Review imports…", AutomationProperties.GetName review)
+                let assertRows (dialog : ImportDialogWindow) : unit =
+                    let rows = Assert.IsType<StackPanel>(launcherControl dialog ConstructorUiId.importDecisionList)
+                    Assert.Equal(pending.decisions.Length, rows.Children.Count)
+                    for decision in pending.decisions do
+                        let row = launcherControl dialog (ConstructorUiId.importDecisionRow decision.entryId.uiKey)
+                        let texts =
+                            row.GetVisualDescendants()
+                            |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None)
+                            |> Seq.toList
+                        Assert.Contains($"Default: {(decision.actionCaption decision.defaultAction).value}", texts)
+                        launcherControl dialog (ConstructorUiId.importActionOption decision.entryId.uiKey decision.defaultAction.uiKey)
+                        |> ignore
+                try
+                    launcher.Show()
+                    Dispatcher.UIThread.RunJobs()
+                    let initialDialog = Assert.IsType<ImportDialogWindow>(Assert.Single opened)
+                    Assert.True(initialDialog.IsVisible)
+                    assertNotice ()
+                    assertRows initialDialog
+                    assertUnchanged ()
+                    clickBorder initialDialog ConstructorUiId.importCancelButton.value
+                    Assert.False(initialDialog.IsVisible)
+                    Assert.Single opened |> ignore
+                    assertNotice ()
+                    assertUnchanged ()
+
+                    let reviewed = clickAndObserve launcher ConstructorUiId.launcherReviewImportsButton.value
+                    let reviewDialog = Assert.IsType<ImportDialogWindow>(Assert.Single reviewed)
+                    Assert.Equal(2, opened.Count)
+                    Assert.True(reviewDialog.IsVisible)
+                    assertRows reviewDialog
+                    assertUnchanged ()
+                    clickBorder reviewDialog ConstructorUiId.importApplyButton.value
+                    Assert.False(reviewDialog.IsVisible)
+                    Assert.True(tryFindLauncherControl launcher ConstructorUiId.launcherPendingImportsText |> Option.isNone)
+                    Assert.True(tryFindLauncherControl launcher ConstructorUiId.launcherReviewImportsButton |> Option.isNone)
+                    for decision in pending.decisions do
+                        let held =
+                            context.catalogueImports.proxy.tryHeldEntry decision.entryId
+                            |> Result.defaultWith (fun error -> failwith error.describe)
+                        Assert.True(held |> Option.isSome, "Apply must settle every decision row.")
+                    let logged = Assert.Single(loggedImports context)
+                    Assert.Equal(pending.entry.catalogueId, logged.catalogueId)
+                    Assert.Equal(pending.entry.manifestHash, logged.manifestHash)
+                    Assert.Equal(pending.entry.entryCount, logged.entryCount)
+                    let reopened = openContext ()
+                    Assert.Empty reopened.pendingImports
+                    Assert.Equal<HeldEntry list>(heldEntries context, heldEntries reopened)
+                    Assert.Equal<CatalogueImportLogEntry list>(loggedImports context, loggedImports reopened)
+                finally
+                    for window in opened do window.Close()
+                    launcher.Close()
+                    Dispatcher.UIThread.RunJobs()
+
+            writeCatalogue catalogue
+            let fresh = openContext ()
+            Assert.Empty(heldEntries fresh)
+            Assert.Empty(loggedImports fresh)
+            Assert.Empty(materials fresh)
+            let freshPending = Assert.Single fresh.pendingImports
+            Assert.Equal(catalogue.envelopes.Length, freshPending.decisions.Length)
+            Assert.All(freshPending.decisions, fun decision -> Assert.Equal(AddIncomingEntry, decision.defaultAction))
+            exercisePendingLauncher fresh
+
+            // Spec 0050 S32-LAUNCHER-PENDING: a changed manifest still asks when every row reuses.
+            let reuseCatalogue =
+                CatalogueData.tryCreate catalogue.manifest.id catalogue.manifest.name catalogue.manifest.version.next catalogue.envelopes
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            writeCatalogue reuseCatalogue
+            let reusing = openContext ()
+            let reusePending = Assert.Single reusing.pendingImports
+            Assert.Equal(catalogue.envelopes.Length, reusePending.decisions.Length)
+            Assert.All(reusePending.decisions, fun decision -> Assert.Equal(ReuseHeldEntry, decision.defaultAction))
+            exercisePendingLauncher reusing
+
+            let userMaterial =
+                {
+                    BuiltinCatalogue.material MaterialIds.glass152 with
+                        id = newMaterialId ()
+                        name = EntryName "Lab glass"
+                }
+            Assert.Equal<Result<unit, MaterialError>>(Ok (), reusing.materials.saveMaterial userMaterial)
+            let incomingMaterialId = newMaterialId ()
+            let glass = catalogue.envelopes |> List.find (fun envelope -> envelope.content.id = MaterialIds.glass152.toLibraryEntryId)
+            let incomingContent =
+                {
+                    glass.content with
+                        id = incomingMaterialId.toLibraryEntryId
+                        name = userMaterial.name
+                        provenance = BuiltInProvenance CatalogueIds.builtInCatalogue
+                }
+            let incoming = incomingContent.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+            let source = catalogue.envelopes |> List.find (fun envelope -> envelope.content.schema.kind = SourceEntryKind)
+            let sourceContent =
+                {
+                    source.content with
+                        id = LibraryEntryId (System.Guid.NewGuid())
+                        name = EntryName "New startup source"
+                        provenance = BuiltInProvenance CatalogueIds.builtInCatalogue
+                }
+            let incomingSource = sourceContent.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+            let changed =
+                CatalogueData.tryCreate catalogue.manifest.id catalogue.manifest.name reuseCatalogue.manifest.version.next
+                    (catalogue.envelopes @ [ incoming; incomingSource ])
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            writeCatalogue changed
+            let mixed = openContext ()
+            let mixedPending = Assert.Single mixed.pendingImports
+            Assert.Equal(changed.envelopes.Length, mixedPending.decisions.Length)
+            Assert.Equal(catalogue.envelopes.Length, mixedPending.decisions |> List.filter (fun decision -> decision.defaultAction = ReuseHeldEntry) |> List.length)
+            let collision = mixedPending.decisions |> List.find (fun decision -> decision.entryId = incoming.content.id)
+            match collision.status with
+            | NameCollision (_, sameName) -> Assert.Equal(userMaterial.id.toLibraryEntryId, (Assert.Single sameName).id)
+            | _ -> Assert.Fail("Lab glass must await a same-name import decision.")
+            let added = mixedPending.decisions |> List.find (fun decision -> decision.entryId = incomingSource.content.id)
+            Assert.Equal(AddIncomingEntry, added.defaultAction)
+            exercisePendingLauncher mixed
+            Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some userMaterial), mixed.materials.tryGetMaterial userMaterial.id)
+            let glasses = materials mixed |> List.filter (fun material -> material.name = userMaterial.name)
+            Assert.Equal<MaterialId list>([ userMaterial.id; incomingMaterialId ] |> List.sort, glasses |> List.map _.id |> List.sort))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

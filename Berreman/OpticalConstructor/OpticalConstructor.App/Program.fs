@@ -25,10 +25,12 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.AppShell
+open OpticalConstructor.Ui.ImportDialogView
 
 /// Load the persisted user environment once at startup (J.6). `load` is total and
 /// falls back to the built-in `defaults` on a missing/invalid settings file, so the
@@ -109,8 +111,14 @@ type InverseConstructorWindow(context : AppContext) as this =
 
 /// Opens Main, Inverse, Materials and Library over one app scope, sharing editor-window launchers.
 /// A library-open failure is displayed with all surface actions disabled (spec 0038 step 045; spec 0050 S2.4).
+/// Startup catalogue decisions remain pending until their import dialog applies them (spec 0050 S3.2).
 type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, opened : Result<AppContext, StorageError>) as this =
     inherit Window()
+
+    let mutable pendingImports : PendingCatalogueImport list =
+        match opened with
+        | Ok context -> context.pendingImports
+        | Error _ -> []
 
     do
         this.Title <- "Optical Constructor — Launcher"
@@ -164,7 +172,22 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
             let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
             panel.Children.Add title
             match outcome with
-            | Ok _ -> ()
+            | Ok _ ->
+                match pendingImports with
+                | [] -> ()
+                | _ ->
+                    let count = pendingImports |> List.sumBy (fun pending -> pending.decisions.Length)
+                    let message = $"Library entries waiting for an import decision: {count}."
+                    let notice =
+                        TextBlock(
+                            Name = ConstructorUiId.launcherPendingImportsText.value,
+                            Text = message,
+                            TextWrapping = TextWrapping.Wrap)
+                    AutomationProperties.SetAutomationId(notice, ConstructorUiId.launcherPendingImportsText.value)
+                    AutomationProperties.SetName(notice, message)
+                    panel.Children.Add notice
+                    panel.Children.Add(
+                        surfaceButton ConstructorUiId.launcherReviewImportsButton "Review imports…" reviewPendingImports)
             | Error error ->
                 let message = $"The library could not be opened: {error.describe}"
                 let errorText =
@@ -187,7 +210,12 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                     AutomationProperties.SetAutomationId(recreateButton, ConstructorUiId.launcherRecreateLibraryButton.value)
                     AutomationProperties.SetName(recreateButton, label)
                     recreateButton.Click.Add(fun _ ->
-                        this.Content <- launcherContent (AppContext.recreateLibrary locations settings))
+                        let recreated = AppContext.recreateLibrary locations settings
+                        pendingImports <-
+                            match recreated with
+                            | Ok context -> context.pendingImports
+                            | Error _ -> []
+                        this.Content <- launcherContent recreated)
                     panel.Children.Add recreateButton
                 | _ -> ()
             panel.Children.Add mainButton
@@ -203,7 +231,26 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                 VerticalScrollBarVisibility = Primitives.ScrollBarVisibility.Auto))
             form
 
+        and reviewPendingImports (context : AppContext) : unit =
+            match pendingImports with
+            | [] -> ()
+            | head :: _ ->
+                let onApplied (applied : ImportDialogApplied) : unit =
+                    match applied.request with
+                    | SettlePendingCatalogue pending ->
+                        pendingImports <- pendingImports |> List.filter (fun waiting -> waiting.entry.catalogueId <> pending.entry.catalogueId)
+                        this.Content <- launcherContent (Ok context)
+                    | ApplyDroppedEntries _ -> ()
+                ImportDialogWindow(context.catalogueImports, SettlePendingCatalogue head, onApplied).Show(this)
+
         this.Content <- launcherContent opened
+        let mutable startupShown = false
+        this.Opened.Add(fun _ ->
+            if not startupShown then
+                startupShown <- true
+                match opened with
+                | Ok context -> reviewPendingImports context
+                | Error _ -> ())
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
 /// (§J.8 — `Theme.themeVariant` is the only theme-label → Avalonia seam).

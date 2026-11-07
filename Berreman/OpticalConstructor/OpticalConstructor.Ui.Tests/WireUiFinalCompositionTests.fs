@@ -119,7 +119,8 @@ module WireUiFinalCompositionTests =
             let ctx = TestAppScope.freshAppContext owner
             // The three windows the composition root hands the context to (Program.fs): the launcher is
             // the startup window, Main / Inverse are its forward / inverse constructor scenes.
-            showAssertClose (LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok ctx))
+            let settled = { ctx with pendingImports = [] }
+            showAssertClose (LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok settled))
             showAssertClose (MainConstructorWindow(ctx))
             showAssertClose (InverseConstructorWindow(ctx)))
 

@@ -629,6 +629,10 @@ type ConstructorUiId =
     static member launcherLibraryErrorText : ConstructorUiId = ConstructorUiId "LauncherLibraryErrorText"
     /// Recreates an incompatible library from catalogues after preserving its backup (spec 0050 001 §C).
     static member launcherRecreateLibraryButton : ConstructorUiId = ConstructorUiId "LauncherRecreateLibraryButton"
+    /// Counts every startup import row still awaiting confirmation (spec 0050 S3.2).
+    static member launcherPendingImportsText : ConstructorUiId = ConstructorUiId "LauncherPendingImportsText"
+    /// Reopens the next pending startup catalogue's import decisions (spec 0050 S3.2).
+    static member launcherReviewImportsButton : ConstructorUiId = ConstructorUiId "LauncherReviewImportsButton"
 
     // --- The diagnostic test launcher window (`TestLauncherWindow`, project TestWindows.App). ---
     static member openTableRotationTestButton : ConstructorUiId = ConstructorUiId "OpenTableRotationTestButton"
