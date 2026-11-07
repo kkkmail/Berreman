@@ -29,6 +29,7 @@ open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.ImportDialogView
 open OpticalConstructor.Tests
 
 /// Spec 0038 Part F (step 015) — the Library window (UICOMP_XDUO_0010): the single-instance
@@ -178,6 +179,7 @@ module LibraryWindowTests =
                 categories = BuiltinCatalogue.categoryStore (fun _ -> [])
                 libraryBackups = LibraryBackupProxy.createInMemory ()
                 catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
+                openImportDialog = fun _ -> calls.Add "import-requested"
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
                 thicknessBucketCap = ThicknessBucketCap.defaultValue
                 openSampleEditor =
@@ -274,6 +276,201 @@ module LibraryWindowTests =
         let pending = Assert.Single pendingModel.pendingImports
         confirmCatalogueRegistration model.context.catalogueImports pending
         pendingModel
+
+    let private freshImportModel () : ResizeArray<ImportDialogRequest> * LW.LibraryWindowModel =
+        let _, model = freshModel ()
+        let requests = ResizeArray<ImportDialogRequest>()
+        let context =
+            {
+                model.context with
+                    openImportDialog = requests.Add
+            }
+        requests, { model with context = context }
+
+    let private droppedSourceFixture () : FileName * SourcePreset =
+        let folder, catalogue = catalogueFolderFixture ()
+        let envelope = Assert.Single catalogue.envelopes
+        let source = envelope.content.toSourcePreset |> Result.defaultWith (fun error -> failwith error.describe)
+        let text = envelope.fileText |> Result.defaultWith (fun error -> failwith error.describe)
+        let leaf = FileName "dropped.source-json"
+        let file = leaf.combine folder
+        System.IO.File.WriteAllText(file.value, text.value)
+        file, source
+
+    [<Fact>]
+    let ``dropping entry files on the Library window decides them and opens the import dialog, applying nothing`` () : unit =
+        let file, source = droppedSourceFixture ()
+        let entryId = source.id.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith "The fixture source must have a GUID identity.")
+        let opened, initial = freshImportModel ()
+        let before =
+            {
+                initial with
+                    removeGate = LW.PendingSampleRemove SampleIds.glassFilm600Id
+                    importStatus = Some (ControlCaption "Previous import")
+                    lastError = Some (LW.CatalogueImportRefusedErr (DroppedFileRefusedErr "Previous refusal"))
+            }
+        Assert.Same(before, LW.updateLibraryWindow (LW.DropLibraryEntryFiles []) before)
+        Assert.Empty opened
+        let dropped = LW.updateLibraryWindow (LW.DropLibraryEntryFiles [ file ]) before
+        let request = Assert.Single opened
+        let decisions =
+            match request with
+            | ApplyDroppedEntries decisions -> decisions
+            | SettlePendingCatalogue _ -> failwith "Dropped files must open their own decision rows."
+        let row = Assert.Single decisions
+        Assert.Equal(entryId, row.entryId)
+        Assert.Equal(DroppedFileOrigin file.leafName, row.origin)
+        match row.status with
+        | EntryIdNotHeld incoming -> Assert.Equal(entryId, incoming.content.id)
+        | _ -> Assert.Fail "A new source must be offered as an unheld entry."
+        Assert.Equal<LW.LibraryWindowError option>(None, dropped.lastError)
+        Assert.Equal<ControlCaption option>(None, dropped.importStatus)
+        Assert.Equal(before.removeGate, dropped.removeGate)
+        Assert.Equal(before.lifecycleGate, dropped.lifecycleGate)
+        Assert.Equal(before.restoreGate, dropped.restoreGate)
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, initial.context.catalogueImports.proxy.tryHeldEntry row.entryId)
+        Assert.Equal<Result<SourcePreset option, SourceError>>(Ok None, initial.context.sources.tryGetSource source.id)
+        let choices = decisions |> List.map _.byDefault
+        let outcome = initial.context.catalogueImports.apply choices |> Result.defaultWith (fun error -> failwith error.describe)
+        let applied : ImportDialogApplied =
+            {
+                request = request
+                choices = choices
+                outcome = outcome
+            }
+        let completed = LW.updateLibraryWindow (LW.LibraryImportApplied applied) dropped
+        Assert.Equal(Some applied.summary, completed.importStatus)
+        Assert.Equal<LW.LibraryWindowError option>(None, completed.lastError)
+        Assert.Equal<PendingCatalogueImport list>(dropped.pendingImports, completed.pendingImports)
+        Assert.Equal(dropped.removeGate, completed.removeGate)
+
+    [<Fact>]
+    let ``a refused drop on the Library window shows its reason as the window message`` () : unit =
+        let folder, _ = catalogueFolderFixture ()
+        let leaf = FileName "notes.txt"
+        let file = leaf.combine folder
+        System.IO.File.WriteAllText(file.value, "Not a library entry")
+        let opened, initial = freshImportModel ()
+        let before =
+            {
+                initial with
+                    lifecycleGate = LW.PendingSampleLifecycle (SampleIds.glassFilm600Id, MaterialsWindowView.MarkInactiveAction)
+                    importStatus = Some (ControlCaption "Previous import")
+            }
+        let refused = LW.updateLibraryWindow (LW.DropLibraryEntryFiles [ file ]) before
+        let error =
+            match refused.lastError with
+            | Some (LW.CatalogueImportRefusedErr (DroppedFileRefusedErr reason) as error) ->
+                Assert.Contains("notes.txt", reason)
+                error
+            | _ -> failwith "The unsupported file must surface DroppedFileRefusedErr."
+        Assert.Empty opened
+        Assert.Equal<ControlCaption option>(None, refused.importStatus)
+        Assert.Equal(before.removeGate, refused.removeGate)
+        Assert.Equal(before.lifecycleGate, refused.lifecycleGate)
+        Assert.Equal(before.restoreGate, refused.restoreGate)
+        HeadlessSession.run (fun () ->
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                Program.mkSimple (fun () -> refused) LW.updateLibraryWindow LW.libraryWindowView
+                |> Program.withHost window
+                |> Program.run
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                Assert.Equal(error.caption.value, textOf window ConstructorUiId.libraryWindowMessage.value)
+            finally window.Close())
+
+    [<Fact>]
+    let ``a registration whose rows await a choice opens the import dialog, and Review imports reopens it`` () : unit =
+        let opened, initial = freshImportModel ()
+        Assert.Same(initial, LW.updateLibraryWindow LW.ReviewPendingImports initial)
+        Assert.Empty opened
+        let folder, _ = catalogueFolderFixture ()
+        let registered = LW.updateLibraryWindow (LW.RegisterCatalogueFolder folder) initial
+        let pending = Assert.Single registered.pendingImports
+        Assert.Equal(SettlePendingCatalogue pending, Assert.Single opened)
+        Assert.Same(registered, LW.updateLibraryWindow LW.ReviewPendingImports registered)
+        Assert.Equal<ImportDialogRequest list>([ SettlePendingCatalogue pending; SettlePendingCatalogue pending ], List.ofSeq opened)
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok [], initial.context.catalogueImports.proxy.registeredFolders ())
+        for decision in pending.decisions do
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, initial.context.catalogueImports.proxy.tryHeldEntry decision.entryId)
+        Assert.Equal("LibraryReviewImportsButton", ConstructorUiId.libraryReviewImportsButton.value)
+        let events, selection = selectContext LightSource (TableElementTarget (ElementId "review-source"))
+        HeadlessSession.run (fun () ->
+            for mode in [ Browse; Select selection ] do
+                let model =
+                    {
+                        registered with
+                            mode = mode
+                    }
+                let window = HostWindow(Width = 1150.0, Height = 800.0)
+                try
+                    Program.mkSimple (fun () -> model) LW.updateLibraryWindow LW.libraryWindowView
+                    |> Program.withHost window
+                    |> Program.run
+                    window.Show()
+                    Dispatcher.UIThread.RunJobs()
+                    Assert.Equal("Review imports…", textOf window ConstructorUiId.libraryReviewImportsButton.value)
+                    clickOn window ConstructorUiId.libraryReviewImportsButton.value
+                    Assert.Equal(SettlePendingCatalogue pending, Seq.last opened)
+                finally window.Close())
+        Assert.Equal(4, opened.Count)
+        Assert.Empty events
+
+    [<Fact>]
+    let ``a settled registration leaves the pending list and its summary is the status`` () : unit =
+        let opened, initial = freshImportModel ()
+        let folder, _ = catalogueFolderFixture ()
+        let registered = LW.updateLibraryWindow (LW.RegisterCatalogueFolder folder) initial
+        let pending = Assert.Single registered.pendingImports
+        let choices = pending.decisions |> List.map _.byDefault
+        let outcome = registered.context.catalogueImports.settle pending choices |> Result.defaultWith (fun error -> failwith error.describe)
+        let applied : ImportDialogApplied =
+            {
+                request = Assert.Single opened
+                choices = choices
+                outcome = outcome
+            }
+        let events, selection = selectContext LightSource (TableElementTarget (ElementId "settled-source"))
+        let before =
+            {
+                registered with
+                    mode = Select selection
+                    selectedEntryId = Some PresetIds.source600
+                    restoreGate = LW.PendingLibraryRestore ([], None)
+                    lastError = Some (LW.CatalogueImportRefusedErr (DroppedFileRefusedErr "Previous refusal"))
+            }
+        let completed = LW.updateLibraryWindow (LW.LibraryImportApplied applied) before
+        Assert.Empty completed.pendingImports
+        Assert.Equal(Some applied.summary, completed.importStatus)
+        Assert.Equal<LW.LibraryWindowError option>(None, completed.lastError)
+        Assert.Equal(before.removeGate, completed.removeGate)
+        Assert.Equal(before.lifecycleGate, completed.lifecycleGate)
+        Assert.Equal(before.restoreGate, completed.restoreGate)
+        Assert.Equal(before.selectedEntryId, completed.selectedEntryId)
+        match completed.mode with
+        | Select actual -> Assert.Same(selection, actual)
+        | Browse -> Assert.Fail "Import completion must preserve the Select session."
+        Assert.Empty events
+        let entries = completed.context.catalogueImports.proxy.registeredFolders () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(folder, (Assert.Single entries).folder)
+        let nextFolder, _ = catalogueFolderFixture ()
+        let withNext = LW.updateLibraryWindow (LW.RegisterCatalogueFolder nextFolder) before
+        let nextPending = List.last withNext.pendingImports
+        let completedFirst = LW.updateLibraryWindow (LW.LibraryImportApplied applied) withNext
+        Assert.Equal<PendingCatalogueImport list>([ nextPending ], completedFirst.pendingImports)
+        HeadlessSession.run (fun () ->
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                Program.mkSimple (fun () -> completed) LW.updateLibraryWindow LW.libraryWindowView
+                |> Program.withHost window
+                |> Program.run
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                Assert.False(isPresent window ConstructorUiId.libraryReviewImportsButton.value)
+                Assert.Equal(applied.summary.value, textOf window ConstructorUiId.libraryImportStatusText.value)
+                Assert.True(isPresent window (ConstructorUiId.libraryCatalogueFolderRow pending.entry.catalogueId.uiKey).value)
+            finally window.Close())
 
     [<Fact>]
     let ``the catalogue-folder UiIds are the stable intent-named ids`` () : unit =
@@ -912,6 +1109,55 @@ module LibraryWindowTests =
         // clicking proofs below find their rows (expansion persists across the window's lifetime).
         expandEntries window
         window
+
+    [<Fact>]
+    let ``the Library window accepts dropped files`` () : unit =
+        HeadlessSession.run (fun () ->
+            let library, samples, materials = freshStores ()
+            let window = mountLibraryWindow library samples materials
+            try Assert.True(DragDrop.GetAllowDrop window)
+            finally window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: a source file dropped on the Library window opens the import dialog, and Apply adds it to the app library`` () : unit =
+        HeadlessSession.run (fun () ->
+            let owner = FolderName "LibraryWindowDropTests"
+            let ctx =
+                AppContext.create (TestAppScope.fileLocations owner) WorkbenchSettings.defaults
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            TestAppScope.settlePendingImports ctx
+            let file, source = droppedSourceFixture ()
+            let window = LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups, ctx.catalogueImports)
+            let opened = ResizeArray<ImportDialogWindow>()
+            use _subscription =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _)) ->
+                    match sender with
+                    | :? ImportDialogWindow as dialog -> opened.Add dialog
+                    | _ -> ())
+            try
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                commitFilter window source.name.value
+                Assert.False(isPresent window ConstructorUiId.libraryImportStatusText.value)
+                window.DropEntryFiles [ file ]
+                Dispatcher.UIThread.RunJobs()
+                let dialog = Assert.Single opened
+                Assert.True(dialog.IsVisible)
+                Assert.Equal<Result<SourcePreset option, SourceError>>(Ok None, ctx.sources.tryGetSource source.id)
+                Assert.False(isPresent window ConstructorUiId.libraryImportStatusText.value)
+                clickOn dialog ConstructorUiId.importApplyButton.value
+                Assert.False(dialog.IsVisible)
+                Assert.Equal<Result<SourcePreset option, SourceError>>(Ok (Some source), ctx.sources.tryGetSource source.id)
+                Assert.Equal("Imported the dropped entry files (decisions applied: 1).", textOf window ConstructorUiId.libraryImportStatusText.value)
+                expandEntries window
+                Assert.True(isPresent window (ConstructorUiId.libraryEntryNode source.id).value,
+                            "Apply must refresh the Library tree without reopening the window.")
+            finally
+                for dialog in opened do dialog.Close()
+                window.Close()
+                Dispatcher.UIThread.RunJobs())
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

@@ -106,6 +106,7 @@ module WorkbenchInfoAndCaptureTests =
             categories = BuiltinCatalogue.categoryStore (fun _ -> [])
             libraryBackups = LibraryBackupProxy.createInMemory ()
             catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
+            openImportDialog = ignore
             treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
             thicknessBucketCap = ThicknessBucketCap.defaultValue
             openSampleEditor = ignore

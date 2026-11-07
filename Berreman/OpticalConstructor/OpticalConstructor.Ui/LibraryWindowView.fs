@@ -47,6 +47,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Ui.ImportDialogView
 
 // ---------------------------------------------------------------------------
 // Elevated window-local states (named DUs, never bools). The lifecycle action, the
@@ -97,7 +98,7 @@ type LibraryWindowError =
     | SampleLifecycleRefusedErr of SampleError
     /// The backup store refused a backup, listing or restore request.
     | LibraryBackupRefusedErr of LibraryBackupError
-    /// The catalogue import store refused registration or unregistering.
+    /// The catalogue import store refused a drop, registration or unregistering.
     | CatalogueImportRefusedErr of CatalogueImportError
 
     /// The refusal's reason as the inline message shows it.
@@ -178,6 +179,8 @@ type LibraryWindowContext =
         libraryBackups : LibraryBackupProxy
         /// The app-scope catalogue import seam.
         catalogueImports : CatalogueImportContext
+        /// Open the import dialog over pending entries; the host supplies the window, tests record calls.
+        openImportDialog : ImportDialogRequest -> unit
         treeAutoBuildThreshold : TreeAutoBuildThreshold
         thicknessBucketCap : ThicknessBucketCap
         /// Open the Sample editor by intent: `NewBlankSample` / `NewSeededMultilayer` (the Add /
@@ -495,6 +498,12 @@ type LibraryWindowMsg =
     | CancelLibraryRestore
     /// Inspect a catalogue folder and hold every import row for confirmation.
     | RegisterCatalogueFolder of FolderName
+    /// Decide dropped entry files and open their pending import choices.
+    | DropLibraryEntryFiles of FileName list
+    /// Reopen the first catalogue registration still awaiting a choice.
+    | ReviewPendingImports
+    /// Publish the import summary and remove a completed pending registration.
+    | LibraryImportApplied of ImportDialogApplied
     /// Forget a registered folder while keeping all its library entries.
     | UnregisterCatalogueFolder of CatalogueId
     /// The show-inactive/superseded toggle (spec 0038 step 023): flip the sample scope between
@@ -601,6 +610,39 @@ let private requestLifecycle (action : MaterialsWindowView.LifecycleAction) (m :
 
 let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : LibraryWindowModel =
     match msg with
+    | DropLibraryEntryFiles files ->
+        match m.context.catalogueImports.decideDroppedFiles files with
+        | Ok [] -> m
+        | Ok decisions ->
+            m.context.openImportDialog (ApplyDroppedEntries decisions)
+            {
+                m with
+                    lastError = None
+                    importStatus = None
+            }
+        | Error error ->
+            {
+                m with
+                    lastError = Some (CatalogueImportRefusedErr error)
+                    importStatus = None
+            }
+    | ReviewPendingImports ->
+        match m.pendingImports with
+        | pending :: _ -> m.context.openImportDialog (SettlePendingCatalogue pending)
+        | [] -> ()
+        m
+    | LibraryImportApplied applied ->
+        let pendingImports =
+            match applied.request with
+            | SettlePendingCatalogue pending ->
+                m.pendingImports |> List.filter (fun candidate -> candidate.entry.catalogueId <> pending.entry.catalogueId)
+            | ApplyDroppedEntries _ -> m.pendingImports
+        {
+            m with
+                pendingImports = pendingImports
+                importStatus = Some applied.summary
+                lastError = None
+        }
     | RegisterCatalogueFolder folder ->
         match m.context.catalogueImports.registerFolder folder with
         | Ok (CatalogueImported entry) ->
@@ -610,6 +652,7 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
                     lastError = None
             }
         | Ok (CatalogueAwaitsChoices pending) ->
+            m.context.openImportDialog (SettlePendingCatalogue pending)
             {
                 m with
                     pendingImports = m.pendingImports @ [ pending ]
@@ -1327,6 +1370,11 @@ let private verbsRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> un
                         | :? Window as owner -> pickCatalogueFolder owner (RegisterCatalogueFolder >> dispatch)
                         | _ -> ()
                     | _ -> ())
+            ]
+            @ (match m.pendingImports with
+               | [] -> []
+               | _ -> [ verbButton ConstructorUiId.libraryReviewImportsButton (ControlCaption "Review imports…") (fun () -> dispatch ReviewPendingImports) ])
+            @ [
                 verbButton ConstructorUiId.libraryBackUpNowButton (ControlCaption "Back up library now…") (fun () -> dispatch BackUpLibraryNow)
                 verbButton ConstructorUiId.libraryRestoreButton (ControlCaption "Restore library…") (fun () -> dispatch RequestLibraryRestore)
             ])

@@ -538,6 +538,9 @@ type ConstructorUiId =
     static member libraryUnregisterCatalogueButton (catalogue : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"LibraryUnregisterCatalogueButton_{catalogue.value}"
     static member libraryImportStatusText : ConstructorUiId = ConstructorUiId "LibraryImportStatusText"
 
+    // Spec 0050 S3.2: reopen pending catalogue import choices.
+    static member libraryReviewImportsButton : ConstructorUiId = ConstructorUiId "LibraryReviewImportsButton"
+
     // --- The single-instance Materials window (`MaterialsWindowView`). ---
     static member materialsWindow : ConstructorUiId = ConstructorUiId "MaterialsWindow"
     static member materialsFacetTreeHost : ConstructorUiId = ConstructorUiId "MaterialsFacetTreeHost"

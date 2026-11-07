@@ -12,26 +12,12 @@ open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Ui.ImportDialogView
+open Softellect.Sys.Primitives
 
-/// Spec 0038 Part F (step 015) — the Library window (UICOMP_XDUO_0010): a FuncUI `HostWindow`
-/// mounting the pure `LibraryWindowView` MVU loop — the step-012 `FacetedTreeControls` over the
-/// step-011 library facet catalogue (seeded default representation "By kind"), a view panel,
-/// and the Add sample / Make multilayer / Add source / Edit / Remove verbs — over the injected
-/// `LibraryProxy` and app-scope samples, sources, materials, backups and catalogue import seam. The
-/// composition root: the context's launcher opens the Sample editor through the step-008
-/// SVC_XDUO_0001 `WindowLauncher` under `SampleEditorKey` (an Add-minted or edited entity id),
-/// Browse-mode over the ONE host-layer `WindowRegistry`, so an editor opened from THIS window
-/// and the same editor opened from anywhere else meet in one open-or-activate space. The window
-/// itself is opened single-instance under `LibraryWindowKey` by ITS callers (the workbench's
-/// `Library…` strip button through `EditorLaunchers.defaults`; the launcher-form button lands
-/// in step 45). Step 016: `mode` opens the window Browse (the default) or Select — the SAME
-/// window pre-constrained to the session's kind with the Select/Close pair; `Retarget` is the
-/// launcher's re-target seam (a Select-state open of the LIVE instance re-points its session),
-/// and the `Closed` hook cancels a still-pending session exactly once (the title-bar X and a
-/// staleness `Close()` from the requesting surface both land there). Step 019: the app-scope
-/// `categories` store threads through to the Sample editor, whose per-layer Choose material…
-/// verb composes the Materials window (its category facet reads the LIVE store) in Select
-/// state.
+/// Hosts the live Library in Browse or Select mode, with shared stores and editor launchers
+/// (spec 0038 Part F). Dropped entry files and pending registrations open import choices;
+/// only Apply writes them (spec 0050 S3.2).
 type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : SourceProxy, materials : MaterialProxy, categories : CategoryProxy, libraryBackups : LibraryBackupProxy, catalogueImports : CatalogueImportContext, ?mode : LibraryWindowMode<LibraryEntry>, ?treeAutoBuildThreshold : TreeAutoBuildThreshold, ?thicknessBucketCap : ThicknessBucketCap) as this =
     inherit HostWindow()
 
@@ -67,6 +53,10 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
                 categories = categories
                 libraryBackups = libraryBackups
                 catalogueImports = catalogueImports
+                openImportDialog =
+                    fun request ->
+                        ImportDialogWindow(catalogueImports, request,
+                            fun applied -> dispatch (LibraryWindowView.LibraryImportApplied applied)).Show()
                 // The Domain defaults unless a caller threads the app-configured values in (the
                 // step-008 defaults precedent — step 47 owns the composition acceptance).
                 treeAutoBuildThreshold = defaultArg treeAutoBuildThreshold TreeAutoBuildThreshold.defaultValue
@@ -97,6 +87,7 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
             LibraryWindowView.libraryWindowView
         |> Program.withHost this
         |> Program.run
+        EntryFileDrop.acceptEntryFiles this (fun files -> dispatch (LibraryWindowView.DropLibraryEntryFiles files))
         // ANY close path funnels here (title-bar X, a staleness Close(), the Select/Close
         // verbs' requestClose): a still-pending Select session cancels exactly once — the
         // verbs flip the mode to Browse in the same update that fires their callback, so the
@@ -108,3 +99,7 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
     /// the pure update; the window instance stays (single-instance semantics).
     member _.Retarget (context : SelectionContext<LibraryEntry>) : unit =
         dispatch (LibraryWindowView.RetargetLibrarySelect context)
+
+    /// Decide dropped entry files and open their import choices without applying them.
+    member _.DropEntryFiles (files : FileName list) : unit =
+        dispatch (LibraryWindowView.DropLibraryEntryFiles files)
