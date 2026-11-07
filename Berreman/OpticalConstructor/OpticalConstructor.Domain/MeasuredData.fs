@@ -232,6 +232,11 @@ module MeasuredData =
                                 | None -> Error (MalformedDataFileErr $"row {lineNo.value} is not a valid ellipsometric row (expected {columns.count} invariant-culture numbers): '{row.value}'")
                         loop dataLines []
 
+    type Kit.KitFileText with
+
+        /// Hands kit text unchanged to the measured-data parsers (spec 0050 S4.2).
+        member this.dataFileText : DataFileText = DataFileText this.value
+
     // -------------------------------------------------------------------------------------------------
     // Validation against a step-25 experiment (LOUD errors, never a silent trim).
     // -------------------------------------------------------------------------------------------------

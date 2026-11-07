@@ -7,15 +7,8 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 open OpticalConstructor.Domain
 
-/// Spec 0038 Part L (step 039) — the SolverHandoffWindow (UICOMP_XDUO_0011): a FuncUI `HostWindow`
-/// mounting the pure `SolverHandoffView` MVU loop over the inverse flow's TERMINAL screen. The
-/// composition root: the injected read-only `LibraryProxy` (detector-kind resolution) and the
-/// `ExperimentDataProxy` (the step-36 measured-data load seam) validate the RECEIVED collection
-/// snapshot; the window Close routes through the context's `requestClose = this.Close`. The window is a
-/// single-instance one under `SolverHandoffWindowKey` (`WindowLauncher`) — but this step only DECLARES
-/// the component (its surface + a headless test); the composition-root wiring that opens it from the
-/// inverse constructor through the launcher lands at step 047 (WIRE_UI). Basic validation only — NO
-/// solver math and NO normalization run here; the data is gathered raw for the future solver.
+/// Hosts the inverse collection summary and basic validation over the library and kit measured-data seam;
+/// Close routes through the window context (spec 0038 steps 039/047; spec 0050 S4.2).
 type SolverHandoffWindow(library : Library.LibraryProxy, experimentData : ExperimentData.ExperimentDataProxy, collection : ExperimentCollectionStore.ExperimentCollectionSnapshot) as this =
     inherit HostWindow()
 

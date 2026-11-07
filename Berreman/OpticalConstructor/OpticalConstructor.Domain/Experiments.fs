@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Domain
 
+open OpticalConstructor.Domain.Kit
 open Berreman.Geometry                              // Angle (the placement/orientation summary)
 open Berreman.Fields                                // WaveLength (a tunable source's set wavelength, spec 0046)
 open OpticalConstructor.Domain.Placement           // CatalogueKind / Emission / ElementPlacement / TablePoint
@@ -138,17 +139,6 @@ module Experiments =
 
         member this.next : ExperimentId = ExperimentId (this.value + 1)
 
-    /// An elevated filesystem path to an experiment's measured data file (spec 0038 Part I, step 025) —
-    /// a single-case DU, never a bare `string` in the `Experiment` record or the serialized contract.
-    /// `.value` is the raw path, reached ONLY at the IO boundary (the future `ExperimentDataProxy` file
-    /// adapter, §15.4). Mirrors the sibling `Library.ElementId` (a `create` + `.value`, no `tryCreate`):
-    /// parse-time validation of a picked path lands with the data-file parsers (Part L).
-    type DataFilePath =
-        | DataFilePath of string
-
-        member this.value = let (DataFilePath p) = this in p
-        static member create (path : string) : DataFilePath = DataFilePath path
-
     /// Binds a versioned entry by its exact VersionRef, a preset by its stable id, or leaves it
     /// unbound (spec 0038 Part I; spec 0050 S2.2). Store pinning is a separate explicit operation.
     type ElementBinding =
@@ -223,7 +213,8 @@ module Experiments =
             varied : VariedElement option
             measurement : MeasurementMode
             range : VariableRange
-            dataFileOpt : DataFilePath option
+            /// The measured-data kit-relative path and its recorded hash (spec 0050 S4.2).
+            dataFileOpt : DataAttachment option
             /// Spec 0046: the wavelength a TUNABLE source is set to while the experiment varies something
             /// else; `None` = the source's own setting (always the case for a fixed line).
             sourceWaveLengthOpt : WaveLength option
@@ -415,14 +406,21 @@ module Experiments =
                     draft = { c.draft with editingId = Some exp.id } }
             | None -> c
 
-    /// Attach (or replace) the measured-data file of a stored experiment (spec 0038 Part I): the inverse
-    /// flow gives each experiment one data file. A no-op for an unknown id. Pure — the picker IO that
-    /// yields the `DataFilePath` lives at the edge (Part L).
-    let attachDataFile (id : ExperimentId) (path : DataFilePath) (c : ExperimentCollection) : ExperimentCollection =
+    /// Binds one kit-relative measured-data path and hash, replacing any attachment; an unknown id is unchanged
+    /// (spec 0038 Part I; spec 0050 S4.2).
+    let attachDataFile (id : ExperimentId) (attachment : DataAttachment) (c : ExperimentCollection) : ExperimentCollection =
         let experiments =
             c.experiments
-            |> List.map (fun e -> if e.id = id then { e with dataFileOpt = Some path } else e)
-        { c with experiments = experiments }
+            |> List.map (fun e ->
+                if e.id = id then
+                    {
+                        e with dataFileOpt = Some attachment
+                    }
+                else
+                    e)
+        {
+            c with experiments = experiments
+        }
 
     /// Load an existing experiment into the draft for editing (spec 028: "if the user chooses an experiment
     /// then the user can change anything in the experiment"). A later `commit` updates it in place. A

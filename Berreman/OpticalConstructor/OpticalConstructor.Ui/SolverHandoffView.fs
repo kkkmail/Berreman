@@ -83,10 +83,10 @@ type Experiments.Experiment with
         |> String.concat "  →  "
         |> ControlCaption
 
-    /// The attached data file's name, or a note that none is attached.
+    /// The attached data file's kit-relative path, or a note that none is attached.
     member private this.handoffFileCaption : ControlCaption =
         match this.dataFileOpt with
-        | Some path -> ControlCaption (System.IO.Path.GetFileName path.value)
+        | Some attachment -> attachment.path.toControlCaption
         | None -> ControlCaption "(no file attached)"
 
 /// Spec 0038 Part L (step 039): the BASIC per-experiment validation, three checks in order (no solver
@@ -109,8 +109,8 @@ let validateExperiment
     | [] ->
         match experiment.dataFileOpt with
         | None -> MissingDataFile (ControlCaption "no measured-data file is attached to this experiment")
-        | Some path ->
-            match ExperimentDataLoad.loadAndValidate library dataProxy experiment path with
+        | Some attachment ->
+            match ExperimentDataLoad.loadAndValidate library dataProxy experiment attachment with
             | Ok series -> HandoffReady series.pointCount
             | Error ((MeasuredData.MalformedDataFileErr _ | MeasuredData.EmptyDataFileErr _) as err) -> DataFileParseError err.caption
             | Error ((MeasuredData.DataRangeMismatchErr _ | MeasuredData.DataUnitsMismatchErr _) as err) -> DataFileValidationError err.caption

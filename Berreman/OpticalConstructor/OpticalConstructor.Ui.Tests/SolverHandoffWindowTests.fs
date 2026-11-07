@@ -6,6 +6,8 @@ open Avalonia.Headless
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary
@@ -23,6 +25,8 @@ open OpticalConstructor.Tests
 /// anywhere. The component is declared, not wired — no parent view opens it here (step 047 owns the
 /// launcher wiring).
 module SolverHandoffWindowTests =
+
+    let private attachmentHash : ContentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
     // ---- headless semantic-tree helpers (the CategoryEditorWindowTests precedent) --------------------
 
@@ -80,8 +84,15 @@ module SolverHandoffWindowTests =
         // the same-named union CASE in expression position (the step-037 shadowing gotcha).
         { exp with id = Experiments.ExperimentId n }
 
-    let private withFile (path : string) (exp : Experiments.Experiment) : Experiments.Experiment =
-        { exp with dataFileOpt = Some (Experiments.DataFilePath path) }
+    let private withFile (name : string) (exp : Experiments.Experiment) : Experiments.Experiment =
+        let attachment : DataAttachment =
+            {
+                path = KitRelativePath $"data/{name}"
+                contentHash = attachmentHash
+            }
+        {
+            exp with dataFileOpt = Some attachment
+        }
 
     let private noFile (exp : Experiments.Experiment) : Experiments.Experiment =
         { exp with dataFileOpt = None }
@@ -93,30 +104,46 @@ module SolverHandoffWindowTests =
 
     /// An intensity load proxy that answers by the attached path — so ONE proxy serves a collection
     /// whose experiments each attach a different file (valid / out-of-range / …).
-    let private mockIntensityByPath (byPath : Map<string, Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>>) : ExperimentData.ExperimentDataProxy =
+    let private mockIntensityByPath (byPath : Map<KitRelativePath, Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>>) : ExperimentData.ExperimentDataProxy =
         {
+            attachDataFile =
+                fun file ->
+                    Ok
+                        {
+                            path = KitRelativePath $"data/{System.IO.Path.GetFileName file.value}"
+                            contentHash = attachmentHash
+                        }
+            attachmentStatus = fun _ -> Ok AttachedDataUnchanged
             tryLoadIntensity =
-                fun (p : Experiments.DataFilePath) ->
-                    match byPath |> Map.tryFind p.value with
+                fun (attachment : DataAttachment) ->
+                    match byPath |> Map.tryFind attachment.path with
                     | Some r -> r
-                    | None -> Error (MeasuredData.MalformedDataFileErr $"no mock intensity registered for '%s{p.value}'")
+                    | None -> Error (MeasuredData.MalformedDataFileErr $"no mock intensity registered for '%s{attachment.path.value}'")
             tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data")
         }
 
     let private mockIntensity (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
-        { tryLoadIntensity = fun _ -> result
-          tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data") }
+        {
+            mockIntensityByPath Map.empty with
+                tryLoadIntensity = fun _ -> result
+        }
 
     let private mockEllipsometric (result : Result<MeasuredData.EllipsometricSeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
-        { tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no intensity data")
-          tryLoadEllipsometric = fun _ -> result }
+        {
+            mockIntensity (Error (MeasuredData.MalformedDataFileErr "the mock has no intensity data")) with
+                tryLoadEllipsometric = fun _ -> result
+        }
 
-    /// An intensity proxy that COUNTS its loads — the "no computation beyond validation" proof.
     let private recordingIntensity (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>) : int ref * ExperimentData.ExperimentDataProxy =
         let calls = ref 0
         let proxy : ExperimentData.ExperimentDataProxy =
-            { tryLoadIntensity = fun _ -> calls.Value <- calls.Value + 1; result
-              tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data") }
+            {
+                mockIntensity result with
+                    tryLoadIntensity =
+                        fun _ ->
+                            calls.Value <- calls.Value + 1
+                            result
+            }
         calls, proxy
 
     let private snapshotOf (experiments : Experiments.Experiment list) : ExperimentCollectionStore.ExperimentCollectionSnapshot =
@@ -212,8 +239,10 @@ module SolverHandoffWindowTests =
               missing0 |> withId 2 |> noFile
               oor0 |> withId 3 |> withFile "oor.csv" ]
         let proxy =
-            mockIntensityByPath (Map.ofList [ "good.csv", Ok (intensitySeries [ 0.0, 1.0; 89.0, 0.2 ])
-                                              "oor.csv", Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]) ])
+            mockIntensityByPath
+                (Map.ofList
+                    [ KitRelativePath "data/good.csv", Ok (intensitySeries [ 0.0, 1.0; 89.0, 0.2 ])
+                      KitRelativePath "data/oor.csv", Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]) ])
         let model : SolverHandoffView.SolverHandoffModel = (contextOf library proxy experiments).initSolverHandoff
         Assert.Equal("run-A", model.collectionName.value)
         Assert.Equal(3, List.length model.rows)
@@ -236,7 +265,7 @@ module SolverHandoffWindowTests =
             let library, valid0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
             let _, missing0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorIntensity)
             let experiments = [ valid0 |> withId 1 |> withFile "good.csv"; missing0 |> withId 2 |> noFile ]
-            let proxy = mockIntensityByPath (Map.ofList [ "good.csv", Ok (intensitySeries [ 0.0, 1.0; 89.0, 0.2 ]) ])
+            let proxy = mockIntensityByPath (Map.ofList [ KitRelativePath "data/good.csv", Ok (intensitySeries [ 0.0, 1.0; 89.0, 0.2 ]) ])
             let window = SolverHandoffWindow(library, proxy, snapshotOf experiments)
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -260,8 +289,10 @@ module SolverHandoffWindowTests =
                   missing0 |> withId 2 |> noFile
                   oor0 |> withId 3 |> withFile "oor.csv" ]
             let proxy =
-                mockIntensityByPath (Map.ofList [ "good.csv", Ok (intensitySeries [ 0.0, 1.0; 89.0, 0.2 ])
-                                                  "oor.csv", Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]) ])
+                mockIntensityByPath
+                    (Map.ofList
+                        [ KitRelativePath "data/good.csv", Ok (intensitySeries [ 0.0, 1.0; 89.0, 0.2 ])
+                          KitRelativePath "data/oor.csv", Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]) ])
             let window = SolverHandoffWindow(library, proxy, snapshotOf experiments)
             window.Show()
             Dispatcher.UIThread.RunJobs()

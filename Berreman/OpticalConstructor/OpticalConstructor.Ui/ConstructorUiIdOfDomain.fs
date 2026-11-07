@@ -434,6 +434,16 @@ module ConstructorUiIdOfDomain =
             | DetectorKind.Intensity -> ControlCaption "Intensity"
             | DetectorKind.Ellipsometer -> ControlCaption "Ellipsometer"
 
+    type OpticalConstructor.Domain.Kit.KitError with
+
+        /// The kit failure as the measured-data attachment status (spec 0050 S4.2).
+        member this.caption : ControlCaption = ControlCaption this.describe
+
+    type OpticalConstructor.Domain.Kit.KitRelativePath with
+
+        /// The kit-relative path as its data-file caption (spec 0050 S4.2).
+        member this.toControlCaption : ControlCaption = ControlCaption this.value
+
     type OpticalConstructor.Domain.MeasuredData.ExperimentDataError with
 
         /// The typed rejection's reason as a status line shows it.

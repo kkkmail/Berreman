@@ -2,7 +2,6 @@ namespace OpticalConstructor.Ui.Tests
 
 open Xunit
 open Softellect.Sys.Primitives
-open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Ui.UserEnvironment
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -22,12 +21,12 @@ module DataFilePickerFolderTests =
 
     [<Fact>]
     let ``a confirmed selection records the file's folder under the purpose key`` () =
-        let updated = applyPick measuredDataFolderKey (FilePicked (DataFilePath @"C:\work\optics\run-01\measured.csv")) noFolders
+        let updated = applyPick measuredDataFolderKey (FilePicked (FileName @"C:\work\optics\run-01\measured.csv")) noFolders
         Assert.Equal<FolderName option>(Some (FolderName @"C:\work\optics\run-01"), lastFolder measuredDataFolderKey updated)
 
     [<Fact>]
     let ``a cancel leaves the persisted folder untouched`` () =
-        let seeded = rememberFolder measuredDataFolderKey (DataFilePath @"C:\prev\a.csv") noFolders
+        let seeded = rememberFolder measuredDataFolderKey (FileName @"C:\prev\a.csv") noFolders
         let afterCancel = applyPick measuredDataFolderKey PickCancelled seeded
         // Cancel changes nothing: the whole environment (and the persisted folder) is unchanged.
         Assert.Equal<EnvironmentSettings>(seeded, afterCancel)
@@ -37,19 +36,19 @@ module DataFilePickerFolderTests =
     let ``the next open passes the persisted folder as the picker start folder`` () =
         // A confirmed selection persists its folder; the NEXT open reads exactly that folder to seed the
         // picker's SuggestedStartLocation (resolved through the provider at the IO edge).
-        let afterPick = applyPick measuredDataFolderKey (FilePicked (DataFilePath @"D:\data\ellipso\e.csv")) noFolders
+        let afterPick = applyPick measuredDataFolderKey (FilePicked (FileName @"D:\data\ellipso\e.csv")) noFolders
         Assert.Equal<FolderName option>(Some (FolderName @"D:\data\ellipso"), lastFolder measuredDataFolderKey afterPick)
 
     [<Fact>]
     let ``a re-pick in a new folder replaces the persisted folder`` () =
-        let first = applyPick measuredDataFolderKey (FilePicked (DataFilePath @"C:\a\one.csv")) noFolders
-        let second = applyPick measuredDataFolderKey (FilePicked (DataFilePath @"C:\b\two.csv")) first
+        let first = applyPick measuredDataFolderKey (FilePicked (FileName @"C:\a\one.csv")) noFolders
+        let second = applyPick measuredDataFolderKey (FilePicked (FileName @"C:\b\two.csv")) first
         Assert.Equal<FolderName option>(Some (FolderName @"C:\b"), lastFolder measuredDataFolderKey second)
 
     [<Fact>]
     let ``a bare filename with no directory part leaves the folder map untouched`` () =
         // Path.GetDirectoryName of a bare name is empty — no folder to remember, so the map is unchanged.
-        let updated = applyPick measuredDataFolderKey (FilePicked (DataFilePath "measured.csv")) noFolders
+        let updated = applyPick measuredDataFolderKey (FilePicked (FileName "measured.csv")) noFolders
         Assert.Equal<FolderName option>(None, lastFolder measuredDataFolderKey updated)
 
     [<Fact>]

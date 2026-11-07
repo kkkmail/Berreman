@@ -1,23 +1,13 @@
 namespace OpticalConstructor.Domain
 
 open OpticalConstructor.Domain.Library                 // LibraryProxy / DetectorKind / DetectorItem
-open OpticalConstructor.Domain.Experiments             // Experiment / ElementBinding / DataFilePath
+open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MeasuredData            // MeasuredSeries / validateAgainstExperiment / ExperimentDataError
 open OpticalConstructor.Domain.ExperimentData          // ExperimentDataProxy
 
-/// Spec 0038 Part L (step 037) — the pure orchestration that turns an experiment's attached data file
-/// into a validated measured series through the injected proxies. It is the seam the inverse flow's
-/// per-experiment attach status reads (and the future `SolverHandoffWindow`'s per-file validation
-/// will reuse): resolve the experiment's detector kind through the Library, read the file at its
-/// `DataFilePath` through the `ExperimentDataProxy` in the shape that detector kind fixes (intensity
-/// or ellipsometric), and validate the parsed series against the step-25 experiment's varied
-/// parameter and range. Pure given the proxies (the proxies are pure DATA — records of
-/// `Result`-returning functions), so a test drives it end-to-end over in-memory mock proxies with no
-/// real IO. No filesystem access of its own: the disk read lives behind the `ExperimentDataProxy`.
-///
-/// Compiles LAST in the Domain (after `ExperimentDataProxy.fs`): it names `Library` (the detector
-/// resolution), `Experiments` (the experiment + its `DataFilePath`), `MeasuredData` (the series /
-/// validation) and `ExperimentData` (the load seam); nothing in the Domain depends on it.
+/// Loads a kit attachment in the experiment's detector shape and validates its range through injected proxies
+/// (spec 0038 Part L step 037; spec 0050 S4.2).
 module ExperimentDataLoad =
 
     /// Resolve an experiment's detector kind through the Library (spec 034/037): the captured setup's
@@ -37,27 +27,22 @@ module ExperimentDataLoad =
             | BoundByVersion _ | Unbound -> Intensity
         | None -> Intensity
 
-    /// Load + validate an experiment's measured-data file through the proxies (spec 0038 Part L, step
-    /// 037): read the file at `path` through the `ExperimentDataProxy` in the shape the experiment's
-    /// detector kind fixes (`tryLoadIntensity` for an intensity detector, `tryLoadEllipsometric` for an
-    /// ellipsometer), then validate the parsed series against the experiment's varied parameter and
-    /// numeric range through `MeasuredData.validateAgainstExperiment`. Returns the validated
-    /// `MeasuredSeries` on success, or the typed `ExperimentDataError` a parse, empty-file, range or
-    /// units mismatch raises. Pure given the proxies — the disk read is behind the proxy.
+    /// Loads the kit attachment and validates the series against the experiment, preserving typed errors
+    /// (spec 0038 Part L step 037; spec 0050 S4.2).
     let loadAndValidate
         (library : LibraryProxy)
         (dataProxy : ExperimentDataProxy)
         (experiment : Experiment)
-        (path : DataFilePath)
+        (attachment : DataAttachment)
         : Result<MeasuredSeries, ExperimentDataError> =
         let detector = detectorKindOf library experiment
         let varied = experiment.varied |> Option.map (fun v -> v.variable)
         match detector with
         | Intensity ->
-            dataProxy.tryLoadIntensity path
+            dataProxy.tryLoadIntensity attachment
             |> Result.map IntensityData
             |> Result.bind (validateAgainstExperiment varied experiment.range detector)
         | Ellipsometer ->
-            dataProxy.tryLoadEllipsometric path
+            dataProxy.tryLoadEllipsometric attachment
             |> Result.map EllipsometricData
             |> Result.bind (validateAgainstExperiment varied experiment.range detector)

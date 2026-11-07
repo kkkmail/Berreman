@@ -7,18 +7,27 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle             // VersionRef / SampleVersionRef
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.ExperimentCollectionStore
 
-/// Spec 0038 step 029 (IMPLEMENT_CONTRACT STORE_XDUO_0005): the experiment-collection persistence
-/// seam is now implemented — a real in-memory `ExperimentCollectionProxy.createInMemory` (a `ref`-map
-/// store) behind the seam declared at step 028. This drives the acceptance round-trip over
-/// deterministic data: a collection holding a full E1 setup, a sample-less E2, and a dark E3 — with
-/// and without `DataFilePath` attachments — `saveCollection` → `listCollections` → `tryLoadCollection`
-/// reproduces the whole snapshot value-identically, preserving ordered setups, the optional
-/// sample/source shapes (incl. the dark experiment), and the per-experiment attachments. Plus the
-/// upsert, load-miss, blank-name rejection, and multi-collection listing. Mirrors
-/// `SceneRoundTripTests.fs`.
+/// Collection storage preserves full, sample-less and dark setups with optional DataAttachment values
+/// (spec 0038 step 029; spec 0050 S4.2).
 module ExperimentCollectionRoundTripTests =
+
+    let private attachmentHash : ContentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+    let private e1Attachment : DataAttachment =
+        {
+            path = KitRelativePath "data/e1-transmitted.csv"
+            contentHash = attachmentHash
+        }
+
+    let private e3Attachment : DataAttachment =
+        {
+            path = KitRelativePath "data/e3-dark.csv"
+            contentHash = attachmentHash
+        }
 
     /// Build a `CollectionName` through the validated `tryCreate` path (the test names are non-blank).
     let private collectionName (s : string) : CollectionName =
@@ -42,7 +51,7 @@ module ExperimentCollectionRoundTripTests =
         BoundByVersion (SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId))
 
     // Deterministic experiments spanning the three shapes the acceptance enumerates (E1/E2/E3), each
-    // fixing its optional `DataFilePath` so the round-trip proves the attachment survives with AND
+    // fixing its optional `DataAttachment` so the round-trip proves the attachment survives with AND
     // without a file.
 
     /// E1 — a full setup: source + polarizer + SAMPLE (bound BY VERSION) + rotating polarizer +
@@ -62,7 +71,7 @@ module ExperimentCollectionRoundTripTests =
             varied = Some { elementId = el "lp2"; variable = VaryR1 }
             measurement = CaptureTransmitted
             range = VariableRange.forVariable VaryR1
-            dataFileOpt = Some (DataFilePath.create "C:/data/e1-transmitted.csv")
+            dataFileOpt = Some e1Attachment
             sourceWaveLengthOpt = None
         }
 
@@ -91,7 +100,7 @@ module ExperimentCollectionRoundTripTests =
             varied = None
             measurement = CaptureTransmitted
             range = VariableRange.forVariable VaryR1
-            dataFileOpt = Some (DataFilePath.create "C:/data/e3-dark.csv")
+            dataFileOpt = Some e3Attachment
             sourceWaveLengthOpt = None
         }
 
@@ -100,7 +109,7 @@ module ExperimentCollectionRoundTripTests =
         { name = name; experiments = [ e1; e2; e3 ] }
 
     [<Fact>]
-    let ``createInMemory round-trips a collection of E1 (full) / E2 (sample-less) / E3 (dark), preserving ordered setups, optional shapes, and DataFilePath attachments`` () =
+    let ``createInMemory round-trips a collection of E1 (full) / E2 (sample-less) / E3 (dark), preserving ordered setups, optional shapes, and data attachments`` () =
         let proxy = ExperimentCollectionProxy.createInMemory ()
         let name = collectionName "Ellipsometry sweeps"
         let snapshot = snapshotOf name
@@ -141,11 +150,10 @@ module ExperimentCollectionRoundTripTests =
         Assert.Empty((List.item 1 loaded.experiments).versionRefs)
         Assert.Equal(None, (List.item 2 loaded.experiments).varied)
 
-        // DataFilePath attachments (with AND without) ride along per experiment.
-        Assert.Equal<DataFilePath option list>(
-            [ Some (DataFilePath.create "C:/data/e1-transmitted.csv")
+        Assert.Equal<DataAttachment option list>(
+            [ Some e1Attachment
               None
-              Some (DataFilePath.create "C:/data/e3-dark.csv") ],
+              Some e3Attachment ],
             loaded.experiments |> List.map (fun e -> e.dataFileOpt))
 
     [<Fact>]

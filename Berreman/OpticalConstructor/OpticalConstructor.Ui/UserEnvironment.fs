@@ -427,16 +427,11 @@ let measuredDataFolderKey : PickerPurpose = PickerPurpose "measured-data"
 let lastFolder (purpose : PickerPurpose) (settings : EnvironmentSettings) : FolderName option =
     settings.lastFolders |> Map.tryFind purpose
 
-type Experiments.DataFilePath with
-
-    /// The folder this data file is in, or `None` for a path with no folder part.
-    member this.tryGetFolderName : FolderName option = (FileName this.value).tryGetFolderName
-
 /// Record the folder of a confirmed `selectedFile` under `purpose` — the pure state transition the
 /// picker persists on a confirmed selection. A path with no folder part leaves the map untouched.
 let rememberFolder
     (purpose : PickerPurpose)
-    (selectedFile : Experiments.DataFilePath)
+    (selectedFile : FileName)
     (settings : EnvironmentSettings)
     : EnvironmentSettings =
     match selectedFile.tryGetFolderName with
@@ -447,7 +442,7 @@ let rememberFolder
 /// confirmed-vs-cancel decision the picker makes at its IO edge folds through `applyPick` here rather
 /// than living as untested control flow.
 type DataFilePick =
-    | FilePicked of Experiments.DataFilePath
+    | FilePicked of FileName
     | PickCancelled
 
 /// Fold a picker outcome into the environment: a confirmed selection records its folder under

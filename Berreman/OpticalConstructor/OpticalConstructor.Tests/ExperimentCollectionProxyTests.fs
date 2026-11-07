@@ -6,17 +6,19 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.ExperimentCollectionStore
 
-/// Spec 0038 step 028 (ADD_CONTRACT STORE_XDUO_0005): the experiment-collection persistence seam —
-/// the elevated `CollectionName` key (blank-rejecting `tryCreate`), the pure
-/// `ExperimentCollectionSnapshot` over a NAMED list of the step-25 full-setup `Experiment` values
-/// (each carrying its optional `DataFilePath` attachment), and the `[<ReferenceEquality>]`
-/// `ExperimentCollectionProxy`. A DECLARED contract: this file supplies the MOCK (an inline stub over
-/// a fixed map) and a mock-driven test exercising `saveCollection`, `tryLoadCollection`, and
-/// `listCollections` through their exact signatures — the real store lands in a later
-/// IMPLEMENT_CONTRACT. Mirrors `SceneProxyTests.fs`.
+/// Named collection proxy signatures preserve ordered setups and optional DataAttachment values
+/// (spec 0038 step 028; spec 0050 S4.2).
 module ExperimentCollectionProxyTests =
+
+    let private runAttachment : DataAttachment =
+        {
+            path = KitRelativePath "data/run1.csv"
+            contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
 
     /// Build a `CollectionName` through the validated `tryCreate` path (the test names are all
     /// non-blank, so this never fails); a `failwith` on the impossible `Error` keeps the happy path
@@ -37,8 +39,8 @@ module ExperimentCollectionProxyTests =
         { ElementDescriptor.elementId = el idStr; label = ElementLabel label; kind = kind; placement = placementOf kind; binding = binding }
 
     /// A step-25 full-setup experiment (source + polarizer + detector, the polarizer varied) carrying
-    /// its optional `DataFilePath` attachment — the field that must ride along through the snapshot.
-    let private experimentWith (n : int) (dataFileOpt : DataFilePath option) : Experiment =
+    /// its optional `DataAttachment` — the field that must ride along through the snapshot.
+    let private experimentWith (n : int) (dataFileOpt : DataAttachment option) : Experiment =
         {
             id = ExperimentId n
             setup =
@@ -56,13 +58,13 @@ module ExperimentCollectionProxyTests =
 
     /// A pure `ExperimentCollectionSnapshot` fixture under the given name: two full-setup experiments,
     /// the first WITH an attached measured-data file and the second WITHOUT — so the round-trip proves
-    /// the optional `DataFilePath` attachment survives per experiment. No IO, deterministic across runs.
+    /// the optional `DataAttachment` survives per experiment. No IO, deterministic across runs.
     let private sampleSnapshot (name : CollectionName) : ExperimentCollectionSnapshot =
         {
             name = name
             experiments =
                 [
-                    experimentWith 1 (Some (DataFilePath.create "C:/data/run1.csv"))
+                    experimentWith 1 (Some runAttachment)
                     experimentWith 2 None
                 ]
         }
@@ -135,8 +137,7 @@ module ExperimentCollectionProxyTests =
         match proxy.tryLoadCollection seeded with
         | Ok (Some loaded) ->
             Assert.Equal<ExperimentCollectionSnapshot>(seededSnapshot, loaded)
-            // the optional DataFilePath attachment rides along per experiment (step-25 shape)
-            Assert.Equal(Some (DataFilePath.create "C:/data/run1.csv"), (List.head loaded.experiments).dataFileOpt)
+            Assert.Equal(Some runAttachment, (List.head loaded.experiments).dataFileOpt)
             Assert.Equal(None, (List.item 1 loaded.experiments).dataFileOpt)
         | other -> Assert.Fail($"expected Ok (Some _), got %A{other}")
         match proxy.tryLoadCollection (collectionName "nowhere") with

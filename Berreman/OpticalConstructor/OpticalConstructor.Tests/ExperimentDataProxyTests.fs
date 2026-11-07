@@ -2,18 +2,16 @@ namespace OpticalConstructor.Tests
 
 open Xunit
 open OpticalConstructor.Domain
-open OpticalConstructor.Domain.Experiments             // DataFilePath (step 025)
+open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MeasuredData            // series / point / ExperimentDataError + parsers (step 034)
-open OpticalConstructor.Domain.ExperimentData          // ExperimentDataProxy (the DECLARED load seam)
+open OpticalConstructor.Domain.ExperimentData
 
-/// Spec 0038 step 035 (ADD_CONTRACT STORE_XDUO_0006): the measured-data LOAD seam — the DECLARED
-/// `[<ReferenceEquality>] ExperimentDataProxy` (`tryLoadIntensity` / `tryLoadEllipsometric` :
-/// `DataFilePath -> Result<series, ExperimentDataError>`). This file supplies the MOCK (canned series
-/// keyed by path, built through the step-34 parsers so the fixtures are honest) and the mock-driven
-/// test that exercises BOTH fields through their exact signatures — a hit returns the canned series,
-/// an unknown path returns a typed error (never a throw), and the proxy compares by reference. The
-/// real disk-backed store lands in a later IMPLEMENT_CONTRACT.
+/// Exact measured-data attachment signatures over a canned kit-path map (spec 0038 step 035; spec 0050 S4.2).
 module ExperimentDataProxyTests =
+
+    let private attachmentHash : ContentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
     /// A canned intensity fixture, parsed from an in-memory `X,Y` string through the step-34 parser
     /// (labels row ignored) — no file IO, deterministic across runs. A `failwith` on the impossible
@@ -30,33 +28,36 @@ module ExperimentDataProxyTests =
         | Ok s -> s
         | Error e -> failwith $"the canned ellipsometric fixture unexpectedly failed to parse: %A{e}"
 
-    /// The MOCK: an inline `ExperimentDataProxy` whose canned series are keyed by the raw path
-    /// (`DataFilePath.value`). A hit returns the canned series; a miss returns a typed
-    /// `ExperimentDataError` (a mock has no such data file) — staying WITHIN the step-34 declared
-    /// four-case channel (`MalformedDataFileErr`), never a throw and never a fifth case. A later slice
-    /// substitutes the real disk-backed store for this and exercises the exact same logic.
     let private makeMock
-        (intensityByPath : Map<string, IntensitySeries>)
-        (ellipsometricByPath : Map<string, EllipsometricSeries>)
+        (intensityByPath : Map<KitRelativePath, IntensitySeries>)
+        (ellipsometricByPath : Map<KitRelativePath, EllipsometricSeries>)
         : ExperimentDataProxy =
         {
+            attachDataFile =
+                fun file ->
+                    Ok
+                        {
+                            path = KitRelativePath $"data/{System.IO.Path.GetFileName file.value}"
+                            contentHash = attachmentHash
+                        }
+            attachmentStatus = fun _ -> Ok AttachedDataUnchanged
             tryLoadIntensity =
-                fun (path : DataFilePath) ->
-                    match Map.tryFind path.value intensityByPath with
+                fun (attachment : DataAttachment) ->
+                    match Map.tryFind attachment.path intensityByPath with
                     | Some s -> Ok s
-                    | None -> Error (MalformedDataFileErr $"the mock has no canned intensity series for path '{path.value}'")
+                    | None -> Error (MalformedDataFileErr $"the mock has no canned intensity series for path '{attachment.path.value}'")
             tryLoadEllipsometric =
-                fun (path : DataFilePath) ->
-                    match Map.tryFind path.value ellipsometricByPath with
+                fun (attachment : DataAttachment) ->
+                    match Map.tryFind attachment.path ellipsometricByPath with
                     | Some s -> Ok s
-                    | None -> Error (MalformedDataFileErr $"the mock has no canned ellipsometric series for path '{path.value}'")
+                    | None -> Error (MalformedDataFileErr $"the mock has no canned ellipsometric series for path '{attachment.path.value}'")
         }
 
     /// A mock seeded with one intensity file and one ellipsometric file at distinct paths.
     let private seededMock () : ExperimentDataProxy =
         makeMock
-            (Map.ofList [ "C:/data/run-intensity.csv", intensityFixture ])
-            (Map.ofList [ "C:/data/run-ellipsometric.csv", ellipsometricFixture ])
+            (Map.ofList [ KitRelativePath "data/run-intensity.csv", intensityFixture ])
+            (Map.ofList [ KitRelativePath "data/run-ellipsometric.csv", ellipsometricFixture ])
 
     // ============================ the ExperimentDataProxy seam ============================
 
@@ -66,21 +67,41 @@ module ExperimentDataProxyTests =
 
         // Pin the EXACT signatures the acceptance names by binding each field to an explicitly-typed
         // local: the compiler rejects the file if either field drifts from its declared shape.
-        let loadIntensity : DataFilePath -> Result<IntensitySeries, ExperimentDataError> = proxy.tryLoadIntensity
-        let loadEllipsometric : DataFilePath -> Result<EllipsometricSeries, ExperimentDataError> = proxy.tryLoadEllipsometric
+        let loadIntensity : DataAttachment -> Result<IntensitySeries, ExperimentDataError> = proxy.tryLoadIntensity
+        let loadEllipsometric : DataAttachment -> Result<EllipsometricSeries, ExperimentDataError> = proxy.tryLoadEllipsometric
 
-        match loadIntensity (DataFilePath.create "C:/data/run-intensity.csv") with
+        let intensityAttachment : DataAttachment =
+            {
+                path = KitRelativePath "data/run-intensity.csv"
+                contentHash = attachmentHash
+            }
+        let ellipsometricAttachment : DataAttachment =
+            {
+                path = KitRelativePath "data/run-ellipsometric.csv"
+                contentHash = attachmentHash
+            }
+        let attach : FileName -> Result<DataAttachment, KitError> = proxy.attachDataFile
+        let status : DataAttachment -> Result<DataAttachmentStatus, KitError> = proxy.attachmentStatus
+        let picked = FileName "C:/outside/run-intensity.csv"
+        Assert.Equal<Result<DataAttachment, KitError>>(Ok intensityAttachment, attach picked)
+        Assert.Equal<Result<DataAttachmentStatus, KitError>>(Ok AttachedDataUnchanged, status intensityAttachment)
+
+        match loadIntensity intensityAttachment with
         | Ok series -> Assert.Equal<IntensitySeries>(intensityFixture, series)
         | Error e -> Assert.Fail($"expected the canned intensity series, got %A{e}")
 
-        match loadEllipsometric (DataFilePath.create "C:/data/run-ellipsometric.csv") with
+        match loadEllipsometric ellipsometricAttachment with
         | Ok series -> Assert.Equal<EllipsometricSeries>(ellipsometricFixture, series)
         | Error e -> Assert.Fail($"expected the canned ellipsometric series, got %A{e}")
 
     [<Fact>]
     let ``an unknown path yields a typed ExperimentDataError from both fields, never a throw`` () =
         let proxy = seededMock ()
-        let unknown = DataFilePath.create "C:/data/nowhere.csv"
+        let unknown : DataAttachment =
+            {
+                path = KitRelativePath "data/nowhere.csv"
+                contentHash = attachmentHash
+            }
 
         match proxy.tryLoadIntensity unknown with
         | Error (MalformedDataFileErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)

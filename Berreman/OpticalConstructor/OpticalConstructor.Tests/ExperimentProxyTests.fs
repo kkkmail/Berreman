@@ -7,6 +7,8 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary       // VersionNumber (spec 0038 Part H)
 open OpticalConstructor.Domain.Lifecycle             // VersionRef / SampleVersionRef
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.LibraryEntryFiles
 
 /// Experiment capture, collection editing and explicit pins on bound sample versions
 /// (spec 0027; spec 0038 Part I; spec 0050 S2.2).
@@ -252,18 +254,20 @@ module ExperimentProxyTests =
         Assert.Contains("Transmitted", e1.description)
         Assert.Contains("Linear polarizer #3", e2.description)
 
-    // ============================ step 025: the DataFilePath attachment ============================
-
     [<Fact>]
-    let ``DataFilePath elevates a raw path and attachDataFile binds one per experiment`` () =
-        let path = DataFilePath.create "C:/data/run1.csv"
-        Assert.Equal("C:/data/run1.csv", path.value)
+    let ``attachDataFile binds one data attachment per experiment`` () =
+        let attachment : DataAttachment =
+            {
+                path = KitRelativePath "data/run1.csv"
+                contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            }
+        Assert.Equal("data/run1.csv", attachment.path.value)
         let c = withSource () |> commit srcSetup
         let id = (List.head c.experiments).id
         Assert.Equal(None, (List.head c.experiments).dataFileOpt)
-        let c2 = attachDataFile id path c
+        let c2 = attachDataFile id attachment c
         let exp = c2.experiments |> List.find (fun e -> e.id = id)
-        Assert.Equal(Some path, exp.dataFileOpt)
+        Assert.Equal(Some attachment, exp.dataFileOpt)
 
     // ============================ spec 0050 S2.2: version bindings and explicit pins ============================
 

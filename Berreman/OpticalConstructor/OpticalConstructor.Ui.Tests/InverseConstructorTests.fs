@@ -5,6 +5,9 @@ open Avalonia.Headless
 open Avalonia.Threading
 open Avalonia.FuncUI
 open Xunit
+open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary
@@ -47,15 +50,25 @@ module InverseConstructorTests =
     let private intensitySeries (points : (float * float) list) : MeasuredData.IntensitySeries =
         { points = points |> List.map (fun (x, i) -> { x = MeasuredData.MeasuredAbscissa x; intensity = MeasuredData.MeasuredIntensity i }) }
 
-    /// A data proxy that answers intensity loads with `result` and refuses ellipsometric loads.
     let private mockIntensity (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
-        { tryLoadIntensity = fun _ -> result
-          tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data") }
+        {
+            attachDataFile =
+                fun file ->
+                    Ok
+                        {
+                            path = KitRelativePath $"data/{System.IO.Path.GetFileName file.value}"
+                            contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                        }
+            attachmentStatus = fun _ -> Ok AttachedDataUnchanged
+            tryLoadIntensity = fun _ -> result
+            tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data")
+        }
 
-    /// A data proxy that answers ellipsometric loads with `result` and refuses intensity loads.
     let private mockEllipsometric (result : Result<MeasuredData.EllipsometricSeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
-        { tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no intensity data")
-          tryLoadEllipsometric = fun _ -> result }
+        {
+            mockIntensity (Error (MeasuredData.MalformedDataFileErr "the mock has no intensity data")) with
+                tryLoadEllipsometric = fun _ -> result
+        }
 
     /// An inverse model whose data proxy is the given mock, with ONE committed intensity experiment
     /// (the sample varied over R2 — an intensity sweep; the detector defaults to Intensity).
@@ -110,19 +123,18 @@ module InverseConstructorTests =
     let ``attaching a valid intensity file records a typed Loaded status and the attachment`` () =
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.6; 89.0, 0.2 ]))
         let m, expId = withIntensityExperiment proxy
-        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "measured.csv"))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "measured.csv"))
         match m1.experimentDataStatus |> Map.tryFind expId with
         | Some (DataFileValidated (MeasuredData.MeasuredPointCount 3)) -> ()
         | other -> Assert.Fail($"expected DataFileValidated (MeasuredData.MeasuredPointCount 3), got %A{other}")
-        // the picked path is recorded on the experiment (rides the collection save/load).
         let exp = List.head m1.experimentCollection.experiments
-        Assert.Equal<string option>(Some "measured.csv", exp.dataFileOpt |> Option.map (fun p -> p.value))
+        Assert.Equal<string option>(Some "data/measured.csv", exp.dataFileOpt |> Option.map (fun attachment -> attachment.path.value))
 
     [<Fact>]
     let ``attaching a malformed intensity file records a typed parse-error status`` () =
         let proxy = mockIntensity (Error (MeasuredData.MalformedDataFileErr "row 3 is not a valid X,Y pair"))
         let m, expId = withIntensityExperiment proxy
-        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "bad.csv"))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "bad.csv"))
         match m1.experimentDataStatus |> Map.tryFind expId with
         | Some (AttachedFileParseError reason) -> Assert.Contains("row 3", reason.value)
         | other -> Assert.Fail($"expected AttachedFileParseError, got %A{other}")
@@ -132,7 +144,7 @@ module InverseConstructorTests =
         // The R2 experiment's range is 0…89°; an abscissa of 200 is a LOUD range mismatch.
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]))
         let m, expId = withIntensityExperiment proxy
-        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "oor.csv"))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "oor.csv"))
         match m1.experimentDataStatus |> Map.tryFind expId with
         | Some (AttachedFileValidationError reason) -> Assert.Contains("outside the experiment range", reason.value)
         | other -> Assert.Fail($"expected AttachedFileValidationError, got %A{other}")
@@ -155,10 +167,51 @@ module InverseConstructorTests =
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation ExpCommit
         let expId = (List.head m1.experimentCollection.experiments).id
-        let m2 = m1 |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "ellipso.csv"))
+        let m2 = m1 |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "ellipso.csv"))
         match m2.experimentDataStatus |> Map.tryFind expId with
         | Some (DataFileValidated (MeasuredData.MeasuredPointCount 2)) -> ()
         | other -> Assert.Fail($"expected DataFileValidated (MeasuredData.MeasuredPointCount 2) from the ellipsometric path, got %A{other}")
+
+    [<Fact>]
+    let ``a picked file the kit cannot attach records a typed attach-failed status and no attachment`` () =
+        let readyProxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.5 ]))
+        let attachError = KitIoErr "picked measured.csv could not be read"
+        let picked = FileName "measured.csv"
+        let refusingProxy : ExperimentData.ExperimentDataProxy =
+            {
+                readyProxy with
+                    attachDataFile =
+                        fun file ->
+                            Assert.Equal(picked, file)
+                            Error attachError
+                    tryLoadIntensity = fun _ -> failwith "an attachment failure must not load intensity data"
+                    tryLoadEllipsometric = fun _ -> failwith "an attachment failure must not load ellipsometric data"
+            }
+        let model, expId = withIntensityExperiment refusingProxy
+        let failed = model |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
+        Assert.Equal<DataAttachment option>(None, (List.head failed.experimentCollection.experiments).dataFileOpt)
+        Assert.Equal(model.experimentCollection, failed.experimentCollection)
+        match Map.tryFind expId failed.experimentDataStatus with
+        | Some (DataFileAttachFailed reason as status) ->
+            Assert.Equal(attachError.describe, reason.value)
+            Assert.Contains("Attach failed", status.caption.value)
+            Assert.Contains(attachError.describe, status.caption.value)
+        | other -> Assert.Fail($"expected DataFileAttachFailed, got %A{other}")
+
+        let attached =
+            {
+                model with experimentData = readyProxy
+            }
+            |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
+        let refusedReplacement =
+            {
+                attached with experimentData = refusingProxy
+            }
+            |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
+        Assert.Equal(attached.experimentCollection, refusedReplacement.experimentCollection)
+        match Map.tryFind expId refusedReplacement.experimentDataStatus with
+        | Some (DataFileAttachFailed reason) -> Assert.Equal(attachError.describe, reason.value)
+        | other -> Assert.Fail($"expected DataFileAttachFailed for replacement, got %A{other}")
 
     // ================================ named collection save / list / load ================================
 
@@ -169,7 +222,7 @@ module InverseConstructorTests =
         let mBuilt, expId = withIntensityExperiment proxy
         let mSaved =
             mBuilt
-            |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "run.csv"))
+            |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "run.csv"))
             |> updateTableAndElementRotation (CollectionSetName (ControlCaption "run-A"))
             |> updateTableAndElementRotation CollectionSave
         // list: the saved name appears.
@@ -181,7 +234,7 @@ module InverseConstructorTests =
         // the experiments round-trip value-identically (setup + varied + attachment).
         Assert.Equal<Experiments.Experiment list>(mSaved.experimentCollection.experiments, mLoaded.experimentCollection.experiments)
         let loaded = List.head mLoaded.experimentCollection.experiments
-        Assert.Equal<string option>(Some "run.csv", loaded.dataFileOpt |> Option.map (fun p -> p.value))
+        Assert.Equal<string option>(Some "data/run.csv", loaded.dataFileOpt |> Option.map (fun attachment -> attachment.path.value))
 
     [<Fact>]
     let ``saving a collection with a blank name reports a typed status and stores nothing`` () =
@@ -216,7 +269,7 @@ module InverseConstructorTests =
             let expId = (List.head expId0Model.experimentCollection.experiments).id
             let seed =
                 expId0Model
-                |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "m.csv"))
+                |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "m.csv"))
                 |> updateTableAndElementRotation (CollectionSetName (ControlCaption "run-A"))
                 |> updateTableAndElementRotation CollectionSave
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)

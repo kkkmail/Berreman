@@ -162,14 +162,14 @@
              seam — CollectionName's blank-rejecting tryCreate, and the mock/stub
              ExperimentCollectionProxy exercised through saveCollection / tryLoadCollection /
              listCollections' exact signatures over a named list of the step-25 full-setup Experiments
-             (the optional DataFilePath attachment riding along per experiment). Declared contract:
+             (the optional DataAttachment attachment riding along per experiment). Declared contract:
              types + inline map-backed mock + test, no real store yet. -->
         <Compile Include="ExperimentCollectionProxyTests.fs" />
         <!-- Spec 0038 step 029 (IMPLEMENT_CONTRACT STORE_XDUO_0005): the experiment-collection
              persistence seam is implemented — the real in-memory
              ExperimentCollectionProxy.createInMemory (ref-map store). Drives the acceptance
              round-trip saveCollection -> listCollections -> tryLoadCollection over a collection of a
-             full E1 setup, a sample-less E2, and a dark E3 (with and without DataFilePath
+             full E1 setup, a sample-less E2, and a dark E3 (with and without DataAttachment
              attachments), reproducing ordered setups, the optional sample/source/dark shapes, and the
              per-experiment attachments value-identically; plus the upsert, load-miss, blank-name
              rejection, and multi-collection listing. -->

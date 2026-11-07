@@ -23,6 +23,9 @@ open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Fields
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Storage.KitFolderStore
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.CatalogueImportStore
@@ -250,18 +253,17 @@ type ConstructorMode =
     | ForwardConstructor
     | InverseConstructor
 
-/// Spec 0038 Part L (037): the typed per-experiment measured-data status shown inline in the
-/// collection builder. A file that loaded and passed `validateAgainstExperiment` reports its parsed
-/// point count; a parse / empty-file failure and a range / units validation failure carry the
-/// domain error's `reason`. Elevated — never a bare status string in the model map — with a `.caption`
-/// projection the bay renders. Derived from `ExperimentDataLoad.loadAndValidate`'s typed result.
+/// Attachment, parse and validation status for one experiment's measured data
+/// (spec 0038 Part L step 037; spec 0050 S4.2).
 type ExperimentFileStatus =
+    | DataFileAttachFailed of reason : ControlCaption
     | DataFileValidated of points : MeasuredData.MeasuredPointCount
     | AttachedFileParseError of reason : ControlCaption
     | AttachedFileValidationError of reason : ControlCaption
 
     member this.caption : ControlCaption =
         match this with
+        | DataFileAttachFailed reason -> ControlCaption $"Attach failed — {reason.value}"
         | DataFileValidated n -> ControlCaption $"Loaded — {n.value} point(s), schema-valid"
         | AttachedFileParseError reason -> ControlCaption $"Parse error — {reason.value}"
         | AttachedFileValidationError reason -> ControlCaption $"Validation error — {reason.value}"
@@ -353,10 +355,7 @@ type TableAndElementRotationModel =
         /// FORWARD Main scene, or the INVERSE flow `initInverse` seeds (unbound sample, chart
         /// gated on a hint). Defaults to `ForwardConstructor`; `initInverse` sets the inverse mode.
         constructorMode : ConstructorMode
-        /// Spec 0038 Part L (037): the measured-data LOAD seam (STORE_XDUO_0006, step 035/036) —
-        /// the collection builder's per-experiment file attach reads a picked `DataFilePath`
-        /// through this proxy (intensity or ellipsometric per the experiment's detector kind).
-        /// `[<ReferenceEquality>]` proxy ⇒ reference-compared, so the model keeps its equality.
+        /// Measured-data attachments over the session's in-memory kit (spec 0050 S4.2).
         experimentData : ExperimentData.ExperimentDataProxy
         /// Spec 0038 Part I/L (037): the experiment-collection persistence seam (STORE_XDUO_0005,
         /// step 028/029) — named collections of the live experiments save / list / load through it.
@@ -461,15 +460,9 @@ module private DefaultStores =
             catalogueImports = context
         }
 
-/// Spec 0038 Part L (037): the default experiment-data + experiment-collection proxies for the
-/// parameterless test scenes (`init` / `initMain` / the default `initInverse` caller). The
-/// measured-data load seam is the real file-backed adapter (step 036 — the one file-read seam
-/// spec-md §0.3c permits; the test scenes never attach a file, so it is never asked to read), and
-/// the collection store is the step-029 in-memory `createInMemory`. The composition root injects its
-/// own proxies via `initMainWith` / `initInverse`, threaded from `AppContext` (step 47 owns the
-/// composition acceptance).
+/// Session-local kit and collection seams for constructors without injected app proxies (spec 0050 S4.2).
 let private defaultExperimentProxies () : ExperimentData.ExperimentDataProxy * ExperimentCollectionStore.ExperimentCollectionProxy =
-    OpticalConstructor.Storage.ExperimentDataStore.createFileBacked (),
+    OpticalConstructor.Storage.ExperimentDataStore.createFileBacked (KitProxy.createInMemory (InMemoryKitFolder.create ())),
     ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
 
 /// The Main-screen "Lego" palette — the catalogue kinds the user can add to the scene. Shared by the
@@ -773,12 +766,8 @@ type TableAndElementRotationMsg =
     | CollectionSetName of ControlCaption
     | CollectionSave
     | CollectionLoad of ExperimentCollectionStore.CollectionName
-    /// Spec 0038 Part L (037): attach a picked measured-data file to a collected experiment — record
-    /// the `DataFilePath` on the experiment AND load + validate it through the `ExperimentDataProxy`
-    /// (intensity or ellipsometric per the experiment's detector kind), storing the typed
-    /// parse/validation status. The file picker (IO) yields the `DataFilePath` at the edge; a headless
-    /// test dispatches this directly over a mock proxy.
-    | AttachDataFileTo of Experiments.ExperimentId * Experiments.DataFilePath
+    /// Records a picked file through the kit, then loads and validates its attachment (spec 0050 S4.2).
+    | AttachDataFileTo of Experiments.ExperimentId * FileName
     /// Spec 0038 (013) — the ribbon tab-strip row's right-aligned "Materials…" button: open the
     /// SINGLE-INSTANCE Materials window (UICOMP_XDUO_0009) over the app-scope material + category
     /// stores through the launcher seam (a second click ACTIVATES the live window — the shared
@@ -1808,22 +1797,28 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             { model with collectionStatus = Some (ControlCaption $"No collection named '{name.value}' is stored.") }
         | Error (ExperimentCollectionStore.InvalidCollectionErr reason) ->
             { model with collectionStatus = Some (ControlCaption $"Load failed — {reason}") }
-    | AttachDataFileTo (experimentId, path) ->
-        // Spec 0038 Part L (037): attach the picked file to the experiment, then load + validate it
-        // through the `ExperimentDataProxy` (in the shape its detector kind fixes) and record the
-        // typed per-experiment status. The attachment is recorded regardless of the load outcome (the
-        // file is the user's choice); the status reflects the parse / validation result.
-        let collection = Experiments.attachDataFile experimentId path model.experimentCollection
-        match collection.experiments |> List.tryFind (fun e -> e.id = experimentId) with
-        | Some experiment ->
-            let status =
-                match ExperimentDataLoad.loadAndValidate model.library model.experimentData experiment path with
-                | Ok series -> DataFileValidated series.pointCount
-                | Error error -> error.fileStatus
-            { model with
-                experimentCollection = collection
-                experimentDataStatus = model.experimentDataStatus |> Map.add experimentId status }
-        | None -> model
+    | AttachDataFileTo (experimentId, file) ->
+        match model.experimentData.attachDataFile file with
+        | Error error ->
+            {
+                model with
+                    experimentDataStatus = model.experimentDataStatus |> Map.add experimentId (DataFileAttachFailed error.caption)
+            }
+        | Ok attachment ->
+            // Spec 0038 Part L (037); spec 0050 S4.2: keep a successful attachment even when parsing or validation fails.
+            let collection = Experiments.attachDataFile experimentId attachment model.experimentCollection
+            match collection.experiments |> List.tryFind (fun e -> e.id = experimentId) with
+            | Some experiment ->
+                let status =
+                    match ExperimentDataLoad.loadAndValidate model.library model.experimentData experiment attachment with
+                    | Ok series -> DataFileValidated series.pointCount
+                    | Error error -> error.fileStatus
+                {
+                    model with
+                        experimentCollection = collection
+                        experimentDataStatus = model.experimentDataStatus |> Map.add experimentId status
+                }
+            | None -> model
     | OpenMaterialsWindow ->
         // Spec 0038 step 013: a pure launch of the single-instance Materials window
         // (UICOMP_XDUO_0009) over app-scope stores and import seam — the launcher seam's
@@ -3379,18 +3374,9 @@ let buildDataFilePickerOptions
     | None -> ()
     options
 
-/// Spec 0038 Part L (037/038): open a measured-data file picker over the requesting window's storage
-/// provider and, on a confirmed selection, dispatch the chosen `DataFilePath` back on the UI thread.
-/// Spec 0038 Part L (038): the picker now STARTS at the persisted last-used folder for the
-/// measured-data purpose (`UserEnvironment.lastFolders` keyed by `measuredDataFolderKey`, resolved to a
-/// `SuggestedStartLocation` through the provider) and, on a confirmed selection, records the chosen
-/// file's folder back through `EnvironmentSettings.save` — cancel changes nothing on disk. IO edge — the
-/// `openChartWindowHook` seam precedent — wrapped so an unavailable provider (a headless host) degrades
-/// to a no-op rather than throwing. A headless test never clicks Attach; it dispatches
-/// `AttachDataFileTo` directly over a mock proxy, so the picker is off the tested path; the pure
-/// option-building (`buildDataFilePickerOptions`) and folder-persistence (`UserEnvironment.applyPick` /
-/// `lastFolder` / `rememberFolder`) it composes are unit-tested without a real picker.
-let private pickDataFile (owner : Window) (onPicked : Experiments.DataFilePath -> unit) : unit =
+/// Picks a measured-data file and remembers its folder; cancellation leaves settings unchanged
+/// (spec 0038 Part L steps 037/038; spec 0050 S4.2).
+let private pickDataFile (owner : Window) (onPicked : FileName -> unit) : unit =
     try
         let settingsPath = UserEnvironment.settingsPath ()
         let settings = UserEnvironment.EnvironmentSettings.load settingsPath
@@ -3412,11 +3398,7 @@ let private pickDataFile (owner : Window) (onPicked : Experiments.DataFilePath -
                 let! files = owner.StorageProvider.OpenFilePickerAsync options |> Async.AwaitTask
                 let pick =
                     match List.ofSeq files with
-                    // The single-case `DataFilePath` case constructor (its `.create` factory is
-                    // identical); the module-qualified `.create` would bind the same-named case in
-                    // expression position. The picked local path is both the attach target and the
-                    // folder we persist.
-                    | file :: _ -> UserEnvironment.FilePicked (Experiments.DataFilePath file.Path.LocalPath)
+                    | file :: _ -> UserEnvironment.FilePicked (FileName file.Path.LocalPath)
                     | [] -> UserEnvironment.PickCancelled
                 // Fold the outcome into the environment and persist ONLY when a confirmed selection
                 // actually changed the folder (best-effort — a save failure must not sink the attach);
@@ -3462,7 +3444,7 @@ let private attachDataFileButton (dispatch : TableAndElementRotationMsg -> unit)
 let private dataFileRow (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
     let attachedText =
         match experiment.dataFileOpt with
-        | Some path -> $"file: %s{System.IO.Path.GetFileName path.value}"
+        | Some attachment -> $"file: {attachment.path.value}"
         | None -> "no file attached"
     let statusText =
         match model.experimentDataStatus |> Map.tryFind experiment.id with

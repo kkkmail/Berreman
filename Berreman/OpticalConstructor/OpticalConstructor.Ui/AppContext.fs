@@ -1,6 +1,8 @@
 namespace OpticalConstructor.Ui
 
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Library
@@ -42,9 +44,7 @@ type AppContext =
         catalogueImports : CatalogueImportContext
         /// Startup catalogues whose complete row lists await confirmation (spec 0050 §3.7).
         pendingImports : PendingCatalogueImport list
-        /// Spec 0038 Part L (037): the measured-data LOAD seam (STORE_XDUO_0006) —
-        /// the real file-backed adapter (step 036, the one file-read seam §0.3c
-        /// permits) behind the inverse flow's per-experiment data-file attach.
+        /// Measured-data attachments over the session's in-memory kit (spec 0050 S4.2).
         experimentData : ExperimentData.ExperimentDataProxy
         /// Spec 0038 Part I/L (037): the experiment-collection persistence seam
         /// (STORE_XDUO_0005, step 029 in-memory `createInMemory`) — named collections
@@ -100,7 +100,7 @@ type AppContext =
             libraryBackups = LibraryBackupProxy.createInDatabase database locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
             catalogueImports = catalogueImports
             pendingImports = pendingImports
-            experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked ()
+            experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked (KitProxy.createInMemory (InMemoryKitFolder.create ()))
             experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
             scenes = Scene.SceneProxy.createInMemory ()
             experimentExport =

@@ -1,22 +1,7 @@
 namespace OpticalConstructor.Domain
 
-/// Spec 0038 (028, ADD_CONTRACT STORE_XDUO_0005) — the experiment-collection persistence seam.
-/// Declares, in the Domain, the DECLARED-lifecycle `ExperimentCollectionProxy`: the elevated
-/// `CollectionName` key, the pure `ExperimentCollectionSnapshot` that captures a NAMED collection of
-/// step-25 full-setup `Experiments.Experiment` values (each carrying its optional `DataFilePath`
-/// attachment) as DATA, the `ExperimentCollectionError` channel, and the `[<ReferenceEquality>]`
-/// `ExperimentCollectionProxy` functional-proxy record — the sibling `Scene.SceneProxy` convention
-/// (`Scene.fs`): a record of camelCase `Result`-returning functions a test substitutes with an
-/// in-memory stub. This is ONLY the seam: NO disk format and NO `.ocproj` wiring. A future storage
-/// cycle (`IMPLEMENT_CONTRACT STORE_XDUO_0005`) swaps in a real, file-backed `create` in
-/// `OpticalConstructor.Storage`, leaving the bay / host logic that holds the proxy unchanged. Every primitive is elevated: the key
-/// is a single-case DU with a blank-rejecting `tryCreate`, and the error carries a diagnostic reason.
-///
-/// The module is `ExperimentCollectionStore` (NOT `ExperimentCollection`) so it never collides with
-/// the existing `Experiments.ExperimentCollection` TYPE (the editable draft-plus-list collection).
-/// It compiles AFTER `Experiments.fs` because `ExperimentCollectionSnapshot` reuses that module's
-/// `Experiment` (the ordered `ElementDescriptor` setup + `DataFilePath` attachment introduced at
-/// step 025).
+/// Stores named collections of ordered experiment setups and their optional DataAttachment values
+/// (spec 0038 steps 028/029; spec 0050 S4.2).
 module ExperimentCollectionStore =
 
     /// The experiment-collection persistence error channel (errors as values; the case carries a
@@ -42,12 +27,8 @@ module ExperimentCollectionStore =
             then Error (InvalidCollectionErr "an experiment-collection name must not be blank")
             else Ok (CollectionName name)
 
-    /// A named collection of experiments captured as pure DATA (the seam a future storage cycle
-    /// serializes): the `name` key and the ordered `experiments` — the step-25 full-setup
-    /// `Experiments.Experiment` values, each with its captured `ElementDescriptor` setup and its
-    /// optional `DataFilePath` attachment (`dataFileOpt`). Holds no live element reference and no
-    /// Avalonia handle — every field is a pure Domain value, so a saved collection survives the
-    /// session that authored it and a save-load round-trip.
+    /// A named, ordered collection preserving each experiment's setup and optional DataAttachment
+    /// (spec 0038 step 028; spec 0050 S4.2).
     type ExperimentCollectionSnapshot =
         {
             name : CollectionName
