@@ -221,6 +221,7 @@
         <Compile Include="BuiltInCatalogueIntegrityTests.fs" />
         <Compile Include="LibraryDatabaseTests.fs" />
         <Compile Include="LibraryBackupProxyTests.fs" />
+        <Compile Include="KitTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
