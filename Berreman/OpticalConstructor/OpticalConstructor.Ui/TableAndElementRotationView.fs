@@ -24,6 +24,7 @@ open Berreman.MaterialProperties
 open Berreman.Fields
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
@@ -3173,6 +3174,18 @@ type Library.Sample with
 
 type TableAndElementRotationModel with
 
+    /// Credits the selected binding and its sample materials (spec 0050 S3.3).
+    member model.detailsAttributionLines : EntryAttributionLine list =
+        match model.selection with
+        | ElementSelected i ->
+            match model.tryElementAt i |> Option.bind (boundEntry model) with
+            | Some entry ->
+                match model.catalogueImports.proxy.attributionLinesOf entry.attributedEntryIds with
+                | Ok lines -> lines
+                | Error _ -> []
+            | None -> []
+        | TableSelected | NothingSelected -> []
+
     /// Build the `LayerBandsControls.State` for the selected element. A bound layered sample yields the band
     /// view (collapsed "×N" bands with material + thickness labels); a bound non-sample entry yields just the
     /// title + full description; nothing selected / unbound yields a hint title and no bands.
@@ -3189,11 +3202,23 @@ type TableAndElementRotationModel with
                         ({ title = ControlCaption $"{entry.displayName} — {entry.fullDescription}"; bands = [] } : LayerBandsControls.LayerBandsControlsState)
                     | None ->
                         ({ title = ControlCaption "No Library entry bound — pick one in the Select bay to see its details."; bands = [] } : LayerBandsControls.LayerBandsControlsState)
-                // Spec 0038 (031): surface the SAME out-of-band warning text the badge tooltip shows, so the
-                // Details bay states the offending material(s) and both ranges in prose besides the schematic cue.
-                match outOfBandWarningFor model e with
-                | Some warning -> { baseState with title = ControlCaption $"{baseState.title.value}\n⚠ {warning.value}" }
-                | None -> baseState
+                // Spec 0038 (031), 0050 S3.3: keep the badge warning above the licence credits.
+                let withWarning =
+                    match outOfBandWarningFor model e with
+                    | Some warning ->
+                        {
+                            baseState with
+                                title = ControlCaption $"{baseState.title.value}\n⚠ {warning.value}"
+                        }
+                    | None -> baseState
+                let title =
+                    withWarning.title.value :: (model.detailsAttributionLines |> List.map _.text)
+                    |> String.concat "\n"
+                    |> ControlCaption
+                {
+                    withWarning with
+                        title = title
+                }
             | None -> hint
         | TableSelected | NothingSelected -> hint
 
