@@ -1,0 +1,9 @@
+# Implementation plan
+
+Implement S41-KIND-FILES in the three authorized source files. Extend the existing shared KitProxyContract first with the three prescribed facts, inherited by both concrete classes, and add the one prescribed folder-only replacement-failure fact. Retain every existing test and assertion; exercise all kinds, exact lab names, ordinal root-only listings, case-insensitive extensions, missing-file errors, shared proxy state, UTF-8/BOM handling and atomic replacement cleanup within those seven identities.
+
+Add four documented KitProxy fields in Domain/KitFolders.fs. Reuse the folder's text map for the in-memory implementation and share the extension-filtering/ordering rule between both implementations. Implement the Storage closures at the existing caught IO boundary, using KitFileKind.fileNameOf and the existing FileName.writeBytesAtomically with FileByteContent. Share text encoding and BOM removal rather than introducing another atomic writer or parser. No durable schema changes, migration, compatibility path or kind-specific verbs are needed.
+
+Risks are divergence between memory and Windows filename handling, accidentally listing nested or temporary files, and losing original contents after a failed replacement. The contract tests and exclusive file-handle fixture cover these. The existing supervisor-owned .manifest.state.json change is preserved. No version, gate, census, oracle, checkpoint, STL or ASG changes are authorized.
+
+Under the IMPLEMENT worker's invariant 6, do not run checks or gates. Inspect the source changes and write the implementation log and state-of-the-world at the supplied paths. The supervisor owns build, elevation, all-discovered constructor-unit-tests, the eleven s15 invariants and measured counts; no gate pass or commit readiness will be claimed.

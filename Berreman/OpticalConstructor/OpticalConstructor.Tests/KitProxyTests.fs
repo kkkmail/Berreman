@@ -172,6 +172,119 @@ type KitProxyContract () =
         Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxy.readKitFile ())
         Assert.Equal<string list>(before, folder.paths ())
 
+    [<Fact>]
+    member this.``kit files of every kind are listed, read, replaced and deleted by their names`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let otherProxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        let firstStem = FileStem.ofText "QZ-LR"
+        let secondStem = FileStem.ofText "CPL-(QZ#45-LR#45)-CPL"
+        let firstTexts =
+            KitFileKind.all
+            |> List.map (fun kind -> kind, KitFileText $"First {kind.extension.value}: μ, λ\r\n")
+            |> Map.ofList
+        let secondTexts =
+            KitFileKind.all
+            |> List.map (fun kind -> kind, KitFileText $"Second {kind.extension.value}: 測定\n")
+            |> Map.ofList
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+
+        for kind in KitFileKind.all do
+            Assert.Equal<Result<FileStem list, KitError>>(Ok [], proxy.listKindFiles kind)
+            Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile kind firstStem (firstTexts[kind]))
+            Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile kind secondStem (secondTexts[kind]))
+
+        let expectedPaths =
+            [ ".kit-json"; "data"; "library" ]
+            @ [ for kind in KitFileKind.all do
+                    (kind.fileNameOf firstStem).value
+                    (kind.fileNameOf secondStem).value ]
+            |> List.sortWith (fun first second -> String.CompareOrdinal(first, second))
+        Assert.Equal<string list>(expectedPaths, folder.paths ())
+
+        for kind in KitFileKind.all do
+            let replacement = KitFileText $"Replaced {kind.extension.value}\n"
+            Assert.Equal<Result<FileStem list, KitError>>(Ok [ secondStem; firstStem ], otherProxy.listKindFiles kind)
+            Assert.Equal<Result<KitFileText, KitError>>(Ok (firstTexts[kind]), otherProxy.readKindFile kind firstStem)
+            Assert.Equal<Result<KitFileText, KitError>>(Ok (secondTexts[kind]), otherProxy.readKindFile kind secondStem)
+            Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile kind firstStem replacement)
+            Assert.Equal<Result<KitFileText, KitError>>(Ok replacement, otherProxy.readKindFile kind firstStem)
+            Assert.Equal<Result<unit, KitError>>(Ok (), otherProxy.deleteKindFile kind secondStem)
+            Assert.Equal<Result<FileStem list, KitError>>(Ok [ firstStem ], (folder.openProxy ()).listKindFiles kind)
+            Assert.Contains((kind.fileNameOf firstStem).value, folder.paths ())
+            Assert.DoesNotContain((kind.fileNameOf secondStem).value, folder.paths ())
+
+            folder.placeLabFile $"ignored{kind.extension.value}.tmp" "Temporary text"
+            folder.placeLabFile $"data/hidden{kind.extension.value}" "Nested text"
+            let upperStem = FileStem.ofText "Z-lab"
+            let lowerStem = FileStem.ofText "a-lab"
+            let unicodeStem = FileStem.ofText "Å-lab"
+            let labText = KitFileText $"Lab {kind.extension.value}: μ\n"
+            for stem in [ lowerStem; unicodeStem; upperStem ] do
+                folder.placeLabFile $"{stem.value}{kind.extension.value.ToUpperInvariant()}" $"\uFEFF{labText.value}"
+
+            Assert.Equal<Result<FileStem list, KitError>>(
+                Ok [ firstStem; upperStem; lowerStem; unicodeStem ], proxy.listKindFiles kind)
+            for stem in [ upperStem; lowerStem; unicodeStem ] do
+                Assert.Equal<Result<KitFileText, KitError>>(Ok labText, proxy.readKindFile kind stem)
+                Assert.Equal<Result<unit, KitError>>(Ok (), otherProxy.writeKindFile kind stem replacement)
+                Assert.Equal<Result<KitFileText, KitError>>(Ok replacement, proxy.readKindFile kind stem)
+                folder.placeLabFile (kind.fileNameOf stem).value labText.value
+                Assert.Equal<Result<KitFileText, KitError>>(Ok labText, otherProxy.readKindFile kind stem)
+                Assert.Equal<Result<unit, KitError>>(Ok (), proxy.deleteKindFile kind stem)
+
+            Assert.Equal<Result<FileStem list, KitError>>(Ok [ firstStem ], otherProxy.listKindFiles kind)
+            Assert.Contains($"ignored{kind.extension.value}.tmp", folder.paths ())
+            Assert.Contains($"data/hidden{kind.extension.value}", folder.paths ())
+
+        Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxy.readKitFile ())
+
+    [<Fact>]
+    member this.``reading or deleting a missing kit file is MissingKitFileErr and changes nothing`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        let stem = FileStem.ofText "Never written"
+        let keptStem = FileStem.ofText "QZ-LR"
+        let keptText = KitFileText "Keep this text"
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        for kind in KitFileKind.all do
+            Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile kind keptStem keptText)
+        let before = folder.paths ()
+
+        for kind in KitFileKind.all do
+            let file = kind.fileNameOf stem
+            match proxy.readKindFile kind stem with
+            | Error (MissingKitFileErr reason) -> Assert.Contains(file.value, reason)
+            | Error error -> Assert.Fail($"Expected MissingKitFileErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("Reading a missing kit file must fail.")
+            Assert.Equal<string list>(before, folder.paths ())
+
+            match proxy.deleteKindFile kind stem with
+            | Error (MissingKitFileErr reason) -> Assert.Contains(file.value, reason)
+            | Error error -> Assert.Fail($"Expected MissingKitFileErr, got {error.describe}")
+            | Ok () -> Assert.Fail("Deleting a missing kit file must fail.")
+            Assert.Equal<string list>(before, folder.paths ())
+            Assert.Equal<Result<KitFileText, KitError>>(Ok keptText, proxy.readKindFile kind keptStem)
+
+        Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxy.readKitFile ())
+
+    [<Fact>]
+    member this.``replacing a kit file leaves only its new text and no temporary file`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        let stem = FileStem.ofText "QZ-LR"
+        let original = KitFileText "Long original setup text that must be completely replaced\n"
+        let replacement = KitFileText "μ\n"
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile SetupKitFile stem original)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile SetupKitFile stem replacement)
+        Assert.Equal<string list>([ ".kit-json"; "QZ-LR.setup-json"; "data"; "library" ], folder.paths ())
+        Assert.False(folder.paths () |> List.exists (fun path -> path.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)))
+        Assert.Equal<Result<KitFileText, KitError>>(Ok replacement, (folder.openProxy ()).readKindFile SetupKitFile stem)
+
 /// Runs the shared kit-file contract over one in-memory folder per fact (spec 0050 S4.1).
 type KitProxyTests () =
     inherit KitProxyContract ()
@@ -269,3 +382,39 @@ type KitProxyFolderTests () =
 
         Assert.Equal<byte>(Encoding.UTF8.GetBytes "{", File.ReadAllBytes file.value)
         Assert.Equal<string list>([ ".kit-json"; "data"; "library" ], folder.paths ())
+
+    [<Fact>]
+    member _.``a replace that fails keeps the old file whole, removes its temporary file and is KitIoErr`` () : unit =
+        let path = freshKitFolderPath ()
+        let folder = kitFolderAdapter path
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        let stem = FileStem.ofText "QZ-LR"
+        let original = KitFileText "Original setup: μ, λ\r\n"
+        let replacement = KitFileText "New setup: 測定\n"
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile SetupKitFile stem original)
+        let file = (SetupKitFile.fileNameOf stem).combine path
+        let originalBytes = File.ReadAllBytes file.value
+        Assert.Equal<byte>(Encoding.UTF8.GetBytes original.value, originalBytes)
+        let before = folder.paths ()
+
+        do
+            use lockedFile = new FileStream(file.value, FileMode.Open, FileAccess.Read, FileShare.None)
+            match proxy.writeKindFile SetupKitFile stem replacement with
+            | Error (KitIoErr reason) ->
+                Assert.Contains(file.value, reason)
+                Assert.Contains(path.value, reason)
+            | Error error -> Assert.Fail($"Expected KitIoErr, got {error.describe}")
+            | Ok () -> Assert.Fail("Replacing an exclusively held file must fail.")
+            Assert.Equal<string list>(before, folder.paths ())
+
+        Assert.Equal<byte>(originalBytes, File.ReadAllBytes file.value)
+        Assert.Equal<Result<KitFileText, KitError>>(Ok original, proxy.readKindFile SetupKitFile stem)
+        Assert.Equal<string list>(before, folder.paths ())
+        Assert.False(folder.paths () |> List.exists (fun name -> name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)))
+
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile SetupKitFile stem replacement)
+        Assert.Equal<byte>(Encoding.UTF8.GetBytes replacement.value, File.ReadAllBytes file.value)
+        Assert.Equal<Result<KitFileText, KitError>>(Ok replacement, proxy.readKindFile SetupKitFile stem)
+        Assert.Equal<string list>(before, folder.paths ())
