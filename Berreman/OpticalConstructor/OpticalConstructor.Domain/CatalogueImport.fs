@@ -277,6 +277,8 @@ module CatalogueImport =
     type CatalogueImportProxy =
         {
             tryHeldEntry : LibraryEntryId -> Result<HeldEntry option, CatalogueImportError>
+            /// Returns one held version's envelope regardless of lifecycle, or None when not held (spec 0050 S3.2).
+            tryHeldEnvelope : LibraryEntryId -> VersionNumber -> Result<LibraryEntryEnvelope option, CatalogueImportError>
             heldEntriesNamed : LibraryEntryKind -> EntryName -> Result<HeldEntry list, CatalogueImportError>
             heldEntriesOf : CatalogueId -> Result<HeldEntry list, CatalogueImportError>
             putEntryVersion : EntryVersionPut -> Result<unit, CatalogueImportError>
@@ -679,6 +681,10 @@ module CatalogueImport =
             let proxy : CatalogueImportProxy =
                 {
                     tryHeldEntry = fun id -> Ok (entries.Value |> Map.tryFind id |> Option.map _.heldEntry)
+                    tryHeldEnvelope = fun id version ->
+                        entries.Value |> Map.tryFind id
+                        |> Option.bind (fun state -> state.envelopes |> List.tryFind (fun envelope -> envelope.content.version = version))
+                        |> Ok
                     heldEntriesNamed = fun kind name ->
                         entries.Value |> Map.toList |> List.map (fun (_, state) -> state.heldEntry)
                         |> List.filter (fun held -> held.kind = kind && held.name = name) |> Ok

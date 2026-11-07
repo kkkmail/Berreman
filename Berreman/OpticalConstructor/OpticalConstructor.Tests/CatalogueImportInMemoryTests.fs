@@ -293,6 +293,33 @@ type CatalogueImportContract () =
     abstract freshImport : unit -> ImportStoreSet
 
     [<Fact>]
+    member this.``tryHeldEnvelope answers every held version's envelope and nothing for a version not held`` () : unit =
+        let context = (this.freshImport ()).context
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let silicon = (readImportRowEntries ()).silicon
+        let incoming = nextImportEnvelope silicon
+        let put =
+            {
+                envelope = incoming
+                latest = KeepLatestVersion
+            }
+        context.proxy.putEntryVersion put |> expectImportOk
+        let siliconId = MaterialIds.silicon.toLibraryEntryId
+        let missingVersion = incoming.content.version.next
+        let missingId = LibraryEntryId (Guid.Parse "31801b05-444f-43c8-8440-000000000105")
+        let assertEnvelopes () : unit =
+            Assert.Equal<LibraryEntryEnvelope option>(Some silicon, context.proxy.tryHeldEnvelope siliconId silicon.content.version |> expectImportOk)
+            Assert.Equal<LibraryEntryEnvelope option>(Some incoming, context.proxy.tryHeldEnvelope siliconId incoming.content.version |> expectImportOk)
+            Assert.Equal<LibraryEntryEnvelope option>(None, context.proxy.tryHeldEnvelope siliconId missingVersion |> expectImportOk)
+            Assert.Equal<LibraryEntryEnvelope option>(None, context.proxy.tryHeldEnvelope missingId VersionNumber.first |> expectImportOk)
+        Assert.Equal(VersionNumber.first, (heldImportRow context siliconId).latest)
+        assertEnvelopes ()
+        context.proxy.retireEntry siliconId |> expectImportOk
+        Assert.Equal(InactiveEntry, (heldImportRow context siliconId).lifecycle)
+        assertEnvelopes ()
+
+    [<Fact>]
     member this.``dropped entry files are decided against the library, each under its own file name`` () : unit =
         let stores = this.freshImport ()
         stores.context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
@@ -1664,6 +1691,7 @@ type CatalogueImportSqliteTests () =
             | Error error -> Assert.Fail($"Expected a storage failure, got {error.describe}")
             | Ok _ -> Assert.Fail("A disposed database must fail through the typed import error.")
         proxy.tryHeldEntry envelope.content.id |> assertUnavailable
+        proxy.tryHeldEnvelope envelope.content.id envelope.content.version |> assertUnavailable
         proxy.heldEntriesNamed envelope.content.schema.kind envelope.content.name |> assertUnavailable
         proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> assertUnavailable
         proxy.putEntryVersion put |> assertUnavailable

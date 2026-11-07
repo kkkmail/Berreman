@@ -35,6 +35,7 @@ module CatalogueImportProxyTests =
     let private recordingProxy (tape : ResizeArray<ImportWrite>) (refuse : EntryVersionPut -> bool) : CatalogueImportProxy =
         {
             tryHeldEntry = fun _ -> Ok None
+            tryHeldEnvelope = fun _ _ -> Ok None
             heldEntriesNamed = fun _ _ -> Ok []
             heldEntriesOf = fun _ -> Ok []
             putEntryVersion = fun put ->

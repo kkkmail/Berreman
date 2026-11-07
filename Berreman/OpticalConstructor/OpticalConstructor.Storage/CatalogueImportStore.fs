@@ -88,6 +88,11 @@ module CatalogueImportStore =
 
             {
                 tryHeldEntry = fun id -> runImport (fun context -> tryHeld context id)
+                tryHeldEnvelope = fun id version ->
+                    runImport (fun context ->
+                        context.tryStoredVersion id version
+                        |> storageResult
+                        |> Result.map (Option.map _.envelope))
                 heldEntriesNamed = fun kind name ->
                     runImport (fun context ->
                         query
