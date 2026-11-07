@@ -223,6 +223,7 @@
         <Compile Include="LibraryBackupProxyTests.fs" />
         <Compile Include="KitTests.fs" />
         <Compile Include="KitFileJsonTests.fs" />
+        <Compile Include="KitProxyTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
