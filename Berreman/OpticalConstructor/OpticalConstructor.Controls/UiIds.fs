@@ -555,6 +555,11 @@ type ConstructorUiId =
     static member materialsWindowMessage : ConstructorUiId = ConstructorUiId "MaterialsWindowMessage"
     // Spec 0050 S3.2: dropped-entry import completion or refusal.
     static member materialsImportStatusText : ConstructorUiId = ConstructorUiId "MaterialsImportStatusText"
+    // Spec 0050 S3.3: material export outcomes and licence attribution.
+    static member materialsExportButton : ConstructorUiId = ConstructorUiId "MaterialsExportButton"
+    static member materialsExportShownButton : ConstructorUiId = ConstructorUiId "MaterialsExportShownButton"
+    static member materialsExportStatusText : ConstructorUiId = ConstructorUiId "MaterialsExportStatusText"
+    static member materialsAttributionPanel : ConstructorUiId = ConstructorUiId "MaterialsAttributionPanel"
     /// The lifecycle surface (spec 0038 step 023).
     static member materialsShowInactiveToggle : ConstructorUiId = ConstructorUiId "MaterialsShowInactiveToggle"
     static member materialsMarkInactiveButton : ConstructorUiId = ConstructorUiId "MaterialsMarkInactiveButton"

@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui
 
 open Berreman.Dispersion
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.Facets
@@ -8,6 +9,7 @@ open OpticalConstructor.Domain.FacetBuckets
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MaterialLibrary
@@ -95,6 +97,23 @@ module ConstructorUiIdOfDomain =
 
         /// The import refusal as the Library-window message.
         member this.caption : ControlCaption = ControlCaption this.describe
+
+    type LibraryExportError with
+
+        /// The library-export refusal shown by either library window.
+        member this.caption : ControlCaption = ControlCaption this.describe
+
+    type LibraryEntryEnvelope with
+
+        /// The exported entry, destination and newly pinned version shown by either library window.
+        member this.exportedCaption (file : FileName) : ControlCaption =
+            ControlCaption $"Exported {this.content.name.value} version {this.content.version.value} to {file.value}; that version is now pinned."
+
+    type CatalogueData with
+
+        /// The exported catalogue's entry count, destination and pinned versions shown by either library window.
+        member this.exportedCaption (folder : FolderName) : ControlCaption =
+            ControlCaption $"Exported {this.envelopes.Length} entries to the catalogue folder {folder.value}; their versions are now pinned."
 
     type LibraryBackupName with
 

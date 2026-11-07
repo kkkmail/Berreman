@@ -32,6 +32,7 @@ open Avalonia.FuncUI.Types
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
@@ -41,6 +42,7 @@ open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Ui.NkDispersionChart
 
 // ---------------------------------------------------------------------------
@@ -239,6 +241,10 @@ type MaterialsWindowModel =
         importStatus : ControlCaption option
         /// The last refusal while deciding dropped entry files.
         importError : CatalogueImportError option
+        /// The last export's completion summary and pinned-version confirmation.
+        entryExportStatus : ControlCaption option
+        /// The last refusal while exporting a material or the shown catalogue.
+        entryExportError : LibraryExportError option
     }
 
     /// The scope the corpus projection lists at (spec 0038 step 023): `ActiveOnly` in Select mode (a
@@ -259,6 +265,15 @@ type MaterialsWindowModel =
             | Ok (Some entry) -> Some entry
             | Ok None | Error _ -> None
         | None -> None
+
+    /// The selected material's latest held envelope, offered for export only in Browse mode.
+    member this.exportableSelection : LibraryEntryEnvelope option =
+        match this.mode, this.selectedId with
+        | Browse, Some id ->
+            match this.context.catalogueImports.proxy.tryLatestEnvelope id.toLibraryEntryId with
+            | Ok envelopeOpt -> envelopeOpt
+            | Error _ -> None
+        | Select _, _ | Browse, None -> None
 
     /// The selected entry when its complexity is LOSSLESSLY EDITABLE — the Edit verb's target. A
     /// view-only entry offers NO Edit affordance (removed, not greyed). The gate is
@@ -343,6 +358,8 @@ let initMaterialsWindow (context : MaterialsWindowContext) (mode : LibraryWindow
         lastError = None
         importStatus = None
         importError = None
+        entryExportStatus = None
+        entryExportError = None
     }
 
 type MaterialsWindowMsg =
@@ -350,6 +367,10 @@ type MaterialsWindowMsg =
     | DropMaterialEntryFiles of FileName list
     /// Publish the import dialog's completion summary and refresh live projections.
     | MaterialsImportApplied of summary : ControlCaption
+    /// Export the selected material's latest version to the file chosen in the save dialog.
+    | ExportSelectedMaterial of FileName
+    /// Export the materials shown by the text filter and facets to a catalogue folder.
+    | ExportShownMaterials of CatalogueExportTarget
     /// Apply the offered value as this facet's (single-key) constraint — an offered-value
     /// click; re-applying a constrained facet REPLACES its selection.
     | ApplyFacetValue of AttributeKey * DiscreteKey
@@ -489,6 +510,38 @@ let private requestLifecycle (action : LifecycleAction) (m : MaterialsWindowMode
 
 let updateMaterialsWindow (msg : MaterialsWindowMsg) (m : MaterialsWindowModel) : MaterialsWindowModel =
     match msg with
+    | ExportSelectedMaterial file ->
+        match m.selectedId with
+        | None -> m
+        | Some id ->
+            match m.context.catalogueImports.exportEntry id.toLibraryEntryId file with
+            | Ok envelope ->
+                {
+                    m with
+                        entryExportStatus = Some (envelope.exportedCaption file)
+                        entryExportError = None
+                }
+            | Error error ->
+                {
+                    m with
+                        entryExportStatus = None
+                        entryExportError = Some error
+                }
+    | ExportShownMaterials target ->
+        let ids = m.filteredEntries |> List.map (fun entry -> entry.id.toLibraryEntryId)
+        match m.context.catalogueImports.exportEntries ids target with
+        | Ok catalogue ->
+            {
+                m with
+                    entryExportStatus = Some (catalogue.exportedCaption target.folder)
+                    entryExportError = None
+            }
+        | Error error ->
+            {
+                m with
+                    entryExportStatus = None
+                    entryExportError = Some error
+            }
     | DropMaterialEntryFiles files ->
         match m.context.catalogueImports.decideDroppedFiles files with
         | Ok [] -> m
@@ -903,7 +956,7 @@ let positiveBackground : Color = Color.FromRgb(186uy, 224uy, 186uy)
 let negativeBackground : Color = Color.FromRgb(236uy, 202uy, 202uy)
 
 /// A keyed verb box shared by both library windows and the import dialog (spec 0050 S3.2; S3.3).
-/// Handles the press once and supplies its event to the caller for owner-window lookup.
+/// Refreshes captured selection data and supplies the handled press for owner-window lookup.
 let verbButtonOn (id : ConstructorUiId) (label : ControlCaption) (onPressed : PointerPressedEventArgs -> unit) : IView =
     let keyedBox =
         Border.create [
@@ -917,7 +970,7 @@ let verbButtonOn (id : ConstructorUiId) (label : ControlCaption) (onPressed : Po
             Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
             Border.verticalAlignment VerticalAlignment.Center
             Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onPressed e), SubPatchOptions.OnChangeOf (box id.value))
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onPressed e), SubPatchOptions.Always)
         ]
         |> Avalonia.FuncUI.DSL.View.withKey id.value
     keyedBox :> IView
@@ -949,6 +1002,55 @@ let pickLibraryFolder (owner : Window) (title : ControlCaption) (startOpt : Fold
             with _ -> ()
         }
     Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
+
+/// Saves one library entry with its kind's extension and an optional starting folder (spec 0050 S3.3).
+let pickEntryExportFile (owner : Window) (startOpt : FolderName option) (envelope : LibraryEntryEnvelope) (onPicked : FileName -> unit) : unit =
+    let pick =
+        async {
+            try
+                let extension = envelope.content.schema.kind.extension
+                let fileType =
+                    Avalonia.Platform.Storage.FilePickerFileType(envelope.content.schema.kind.caption.value,
+                        Patterns = [ "*" + extension.value ])
+                let options =
+                    Avalonia.Platform.Storage.FilePickerSaveOptions(
+                        Title = "Export library entry",
+                        SuggestedFileName = envelope.content.fileName.value,
+                        DefaultExtension = extension.value.TrimStart('.'),
+                        FileTypeChoices = [ fileType ],
+                        ShowOverwritePrompt = System.Nullable true)
+                match startOpt with
+                | Some folder ->
+                    let! suggested =
+                        Avalonia.Platform.Storage.StorageProviderExtensions.TryGetFolderFromPathAsync(owner.StorageProvider, folder.value)
+                        |> Async.AwaitTask
+                    options.SuggestedStartLocation <- suggested
+                | None -> ()
+                let! file = owner.StorageProvider.SaveFilePickerAsync options |> Async.AwaitTask
+                if not (isNull file) then
+                    let picked = FileName file.Path.LocalPath
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> onPicked picked)
+            with _ -> ()
+        }
+    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
+
+/// Shows each entry's attribution as wrapping text, omitting the panel when there is none (spec 0050 S3.3).
+let attributionPanel (id : ConstructorUiId) (lines : EntryAttributionLine list) : IView list =
+    match lines with
+    | [] -> []
+    | _ ->
+        [ StackPanel.create [
+              id.automationAttribute<StackPanel> ()
+              AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Licence attribution", ValueNone)
+              StackPanel.orientation Orientation.Vertical
+              StackPanel.children (
+                  lines |> List.map (fun line ->
+                      TextBlock.create [
+                          TextBlock.text line.text
+                          TextBlock.textWrapping TextWrapping.Wrap
+                          TextBlock.maxWidth 380.0
+                      ] :> IView))
+          ] :> IView ]
 
 /// A keyed, colour-coded action box shared by Materials and the import dialog (spec 0050 S3.2).
 let actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
@@ -1025,7 +1127,34 @@ let private verbsRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -
                | Some _ -> [ verbButton ConstructorUiId.materialsRemoveButton (ControlCaption "Remove") (fun () -> dispatch RequestRemoveSelected) ]
                | None -> [])
             @ (m.offeredLifecycleActions |> List.map (lifecycleButton dispatch))
-            @ [ verbButton ConstructorUiId.materialsCategoriesButton (ControlCaption "Categories…") (fun () -> dispatch OpenCategories) ])
+            @ [ verbButton ConstructorUiId.materialsCategoriesButton (ControlCaption "Categories…") (fun () -> dispatch OpenCategories) ]
+            @ (match m.mode with
+               | Select _ -> []
+               | Browse ->
+                   (match m.exportableSelection with
+                    | None -> []
+                    | Some envelope ->
+                        [ verbButtonOn ConstructorUiId.materialsExportButton (ControlCaption "Export…") (fun e ->
+                              match e.Source with
+                              | :? Visual as source ->
+                                  match TopLevel.GetTopLevel source with
+                                  | :? Window as owner ->
+                                      pickEntryExportFile owner m.context.catalogueImports.exportFolderOpt envelope
+                                          (fun file -> dispatch (ExportSelectedMaterial file))
+                                  | _ -> ()
+                              | _ -> ()) ])
+                   @ (match m.filteredEntries with
+                      | [] -> []
+                      | _ ->
+                          [ verbButtonOn ConstructorUiId.materialsExportShownButton (ControlCaption "Export shown to catalogue…") (fun e ->
+                                match e.Source with
+                                | :? Visual as source ->
+                                    match TopLevel.GetTopLevel source with
+                                    | :? Window as owner ->
+                                        pickLibraryFolder owner (ControlCaption "Export to catalogue folder") m.context.catalogueImports.exportFolderOpt
+                                            (fun folder -> dispatch (ExportShownMaterials (CatalogueExportTarget.ofFolder folder)))
+                                    | _ -> ()
+                                | _ -> ()) ])))
     ] :> IView
 
 /// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
@@ -1108,6 +1237,24 @@ let private messageRow (m : MaterialsWindowModel) : IView list =
           ] :> IView ]
 
 type MaterialsWindowModel with
+
+    member internal this.materialsExportStatusRow : IView list =
+        let captionOpt =
+            match this.entryExportError with
+            | Some error -> Some error.caption
+            | None -> this.entryExportStatus
+        match captionOpt with
+        | None -> []
+        | Some caption ->
+            [ TextBlock.create [
+                  ConstructorUiId.materialsExportStatusText.automationAttribute<TextBlock> ()
+                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
+                  TextBlock.text caption.value
+                  TextBlock.textWrapping TextWrapping.Wrap
+                  match this.entryExportError with
+                  | Some _ -> TextBlock.foreground (brush messageColor)
+                  | None -> ()
+              ] :> IView ]
 
     member internal this.materialsImportStatusRow : IView list =
         let captionOpt =
@@ -1210,6 +1357,9 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
                                 TextBlock.maxWidth 380.0
                                 TextBlock.text (shownEntry.description |> Option.map (fun d -> d.value) |> Option.defaultValue "")
                             ] :> IView ]
+                          @ (match m.context.catalogueImports.proxy.attributionLinesOf [ shownEntry.id.toLibraryEntryId ] with
+                             | Ok lines -> attributionPanel ConstructorUiId.materialsAttributionPanel lines
+                             | Error _ -> [])
                           @ viewOnlyNote
                           @ versionsRow m versions latestVersion shownVersion dispatch
                           @ [ EmbeddedChart.embeddedChartView ConstructorUiId.materialsViewPanelNkChart chart (NkDispersionChart.nkDispersionStyle anisotropy chart) ])
@@ -1240,6 +1390,7 @@ let materialsWindowView (m : MaterialsWindowModel) (dispatch : MaterialsWindowMs
                                     @ lifecycleConfirmRow m dispatch
                                     @ messageRow m
                                     @ m.materialsImportStatusRow
+                                    @ m.materialsExportStatusRow
                                     @ viewPanel m dispatch)
                             ])
                     ])
