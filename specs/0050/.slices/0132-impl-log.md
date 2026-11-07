@@ -1,5 +1,87 @@
 # Implementation log — 0132
 
+## Normal recovery resume — 2026-11-07 (current)
+
+This entry supersedes the historical pending-commit and authority-conflict
+statuses below. Entry HEAD is `66ac13c` (`0050-0132-manual`), containing the
+operator-approved recovery. The current task explicitly requests its
+preservation and return for normal supervisor verification under manual 009.
+
+### Progress
+
+- Read the task, both worker protocols, project prompt and its manual-009
+  pointer, slice, unchanged gate snapshot, recovery ruling and final review.
+- Before source review: compare S42-ATTACH-SHAPES and S41-KIT-LOCK with the
+  committed source and existing fact coverage. Preserve production/test files
+  and all test identities; report a concrete discrepancy if one is found.
+- The only intended writes in this worker round are the three prescribed
+  reports. No gate is run under IMPLEMENT invariant 6.
+- Reviewed the current `Kit.fs` and all four attachment facts against
+  S42-ATTACH-SHAPES in the immutable oracle. Data-folder validation uses ordinal
+  spelling; collision selection keeps the name and takes the first free suffix
+  before the last non-leading dot, ignoring case and validating each candidate.
+  Kit containment normalizes separators, requires the folder separator prefix
+  and validates the remainder. Attachments reuse the file's path and hash and
+  compare current hashes for unchanged/changed/missing status.
+- Reviewed `KitFolderStore.fs` against S41-KIT-LOCK and manual 009. Production
+  acquisition and release call the same `KitLockGuardProxy.acquireGuard`.
+  Native 5/32/33 guard-open failures have at most 101 opening attempts and 100
+  ten-millisecond waits; other failures return immediately. Typed errors keep
+  the original exception type, HRESULT and guard path. The exclusive
+  delete-on-close guard, ownership recheck, non-overwriting move and finally
+  cleanup remain. A failed release does not clear `heldLockOpt`.
+- Read the existing `KitProxyTests.fs` regression coverage: scripted success,
+  the last allowed attempt, exhausted native 5/32/33 retries, immediate failure,
+  interrupted waits, actual permanent sharing/access denial, release recovery,
+  foreign ownership, and 25 synchronized empty/stale/malformed contention
+  rounds. No fact or assertion was edited or added in this worker round.
+- Read the operator's `source-review-checks.json`, `gate-results.json` and
+  `verification-summary.json`. They retain the prior exact-census evidence and
+  preservation record; they are not fresh results from this worker. The
+  checkpoint file still records 1,072 constructor cases at index 130 and has no
+  index 131. The current code presents no discrepancy requiring a repair.
+- Before final handoff: replace the stale pending-commit state-of-world text
+  with the current normal-resume disposition, retaining the inherited count and
+  explicitly reserving every acceptance action to the supervisor.
+- Completed the three reports. The preserved implementation is ready to be
+  returned for normal supervisor review and gate execution. No implementation
+  requirement remains unaddressed and no source change was necessary.
+
+### Files modified
+
+- `0132-impl-plan.md`: added the normal-resume plan; retained historical plans.
+- `0132-impl-log.md`: added this current entry; retained the previous evidence.
+- `0132-state-of-the-world.md`: recorded the completed review and current
+  normal-resume handoff in place of the stale pending-commit status.
+
+### Testing state
+
+No gates run by this worker; `gates_run` is empty and `gate_results` is empty.
+Source review is complete. The operator's existing measurements are indexed by
+`.artifacts/0132-operator-repair/final-review.md`; those measurements do not
+publish the supervisor checkpoint. Gate execution and acceptance remain the
+supervisor's responsibility after this worker exits. `commit_ready: true`
+returns the completed, preserved implementation under the role-specific
+act-only protocol; it asserts no new gate result. Normal profile-1 verification
+must succeed before checkpoint 131, the measured constructor floor and
+expected-red bookkeeping are published by the supervisor.
+
+### Artifacts
+
+No new execution artifacts. Existing operator evidence is read only under
+the authoritative `.artifacts/0132-operator-repair/` directory.
+
+### Gotchas
+
+- `.executability-json`, `.manifest.state.json` and `.supervisor-lock.diag`
+  were already modified on entry and are left to the supervisor.
+- Manual 009 explicitly overrides the standing committed-green direct-accept
+  rule. Do not reset state/counters, change expected-red records, fabricate a
+  checkpoint or accept this slice directly.
+- The role-specific invariant 6 supersedes legacy worker self-check wording.
+
+## Historical implementation and repair record
+
 ## Operator-authorized recovery — 2026-11-07
 
 This section supersedes the unresolved authority conflict and testing status

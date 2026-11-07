@@ -1,1 +1,1 @@
-pid=146300 exe=C:\Python314\python.exe argv=[C:\GitHub\AI-Strategy-Generator\arc-runner.py C:\GitHub\Berreman\specs\0050\.manifest --accept-current-slice --executability-profile 1] acquired_at=2026-11-07T12:49:50Z
+pid=128516 exe=C:\Python314\python.exe argv=[C:\GitHub\AI-Strategy-Generator\arc-runner.py C:\GitHub\Berreman\specs\0050\.manifest --operator-reply C:\GitHub\Berreman\specs\0050\.artifacts\0132-operator-repair\operator-reply.md --executability-profile 1] acquired_at=2026-11-07T20:12:53Z
