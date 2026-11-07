@@ -17,6 +17,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.EntryTextDiff
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.EntryFileJson
@@ -319,6 +320,66 @@ module EntryFileJsonTests =
         Assert.Equal<LibraryFileText>(text, readBack.fileText |> okOf)
         Assert.Equal<ContentHash>(contentHashOf tamperableContent |> okOf, readBack.contentHash)
         Assert.Equal<ContentHash>(contentHashOf readBack.content |> okOf, readBack.contentHash)
+
+    [<Fact>]
+    let ``two versions of an entry diff by the lines of their files`` () : unit =
+        let held =
+            (BuiltinCatalogue.catalogueData ()).envelopes
+            |> List.find (fun envelope -> envelope.content.id = MaterialIds.silicon.toLibraryEntryId)
+        let changedContent =
+            {
+                held.content with
+                    descriptionOpt = Some (EntryDescription "Silicon with a revised description")
+            }
+        let incoming = changedContent.``sealed`` |> okOf
+
+        let fileLines (envelope : LibraryEntryEnvelope) : EntryTextLine list =
+            let text = envelope.fileText |> okOf
+            let segments = text.value.Split '\n'
+            Assert.Equal<string>("", Array.last segments)
+            segments |> Array.take (segments.Length - 1) |> Array.map EntryTextLine |> Array.toList
+
+        let changedLine (line : EntryTextLine) : bool =
+            line.value.StartsWith("  \"contentHash\":", StringComparison.Ordinal)
+            || line.value.StartsWith("  \"descriptionOpt\":", StringComparison.Ordinal)
+
+        let heldLines = fileLines held
+        let incomingLines = fileLines incoming
+        let removed = heldLines |> List.filter changedLine
+        let added = incomingLines |> List.filter changedLine
+        let unchanged = heldLines |> List.filter (changedLine >> not)
+        let actual = incoming.diffFrom held |> okOf
+
+        Assert.Equal(2, removed.Length)
+        Assert.Equal(2, added.Length)
+        Assert.Equal<EntryTextLine list>(removed, actual |> List.choose (function RemovedEntryLine line -> Some line | _ -> None))
+        Assert.Equal<EntryTextLine list>(added, actual |> List.choose (function AddedEntryLine line -> Some line | _ -> None))
+        Assert.Equal<EntryTextLine list>(unchanged, actual |> List.choose (function SameEntryLine line -> Some line | _ -> None))
+        Assert.Equal<EntryTextLine list>(heldLines, actual |> List.choose (function SameEntryLine line | RemovedEntryLine line -> Some line | _ -> None))
+        Assert.Equal<EntryTextLine list>(incomingLines, actual |> List.choose (function SameEntryLine line | AddedEntryLine line -> Some line | _ -> None))
+
+        let beforeChanges = heldLines |> List.takeWhile (changedLine >> not) |> List.map SameEntryLine
+        let afterChanges = heldLines |> List.skipWhile (changedLine >> not) |> List.skipWhile changedLine |> List.map SameEntryLine
+        Assert.Equal<EntryDiffLine list>(beforeChanges @ (removed |> List.map RemovedEntryLine) @ (added |> List.map AddedEntryLine) @ afterChanges, actual)
+        Assert.Equal<EntryDiffLine list>(heldLines |> List.map SameEntryLine, held.diffFrom held |> okOf)
+
+        let invalidIndex = RefractionIndex Double.NaN
+        let invalidPayload = MaterialPayload (epsOnly (EpsWithoutDispValue (IsotropicTransparent invalidIndex)))
+        let invalidEnvelope =
+            {
+                held with
+                    content =
+                        {
+                            held.content with
+                                payload = invalidPayload
+                        }
+            }
+
+        match invalidEnvelope.fileText with
+        | Error error ->
+            Assert.Equal<Result<EntryDiffLine list, StorageError>>(Error error, incoming.diffFrom invalidEnvelope)
+            Assert.Equal<Result<EntryDiffLine list, StorageError>>(Error error, invalidEnvelope.diffFrom held)
+        | Ok _ -> Assert.Fail "a non-finite index must fail canonical rendering"
 
     /// `file` with its JSON changed by `edit`.
     let private editedText (file : LibraryFileText) (edit : JsonObject -> unit) : LibraryFileText =

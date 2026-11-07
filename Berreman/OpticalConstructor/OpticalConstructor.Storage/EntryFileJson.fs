@@ -4,6 +4,7 @@ open System.Text.Json
 open System.Text.Json.Nodes
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.EntryTextDiff
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
 
@@ -99,6 +100,21 @@ module EntryFileJson =
                     entry[nameof this.contentHash] <- hashNode
                     Ok (LibraryFileText $"{entry.indentedCanonicalText}\n")
                 | _ -> Error (MalformedJsonErr "an entry's content is not a JSON object")
+
+        /// Compares the held file with this incoming file, preserving rendering failures (spec 0050 S3.2).
+        member this.diffFrom (held : LibraryEntryEnvelope) : Result<EntryDiffLine list, StorageError> =
+            let linesOf (file : LibraryFileText) : EntryTextLine list =
+                let reversed = file.value.Split '\n' |> Array.toList |> List.rev
+                let withoutFinalSegment =
+                    match reversed with
+                    | "" :: rest -> rest
+                    | rest -> rest
+                withoutFinalSegment |> List.rev |> List.map EntryTextLine
+
+            held.fileText
+            |> Result.bind (fun heldText ->
+                this.fileText
+                |> Result.map (fun incomingText -> EntryDiffLine.diffLines (linesOf heldText) (linesOf incomingText)))
 
     type CatalogueManifest with
 
