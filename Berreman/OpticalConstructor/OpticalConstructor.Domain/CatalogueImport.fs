@@ -227,6 +227,36 @@ module CatalogueImport =
             entryCount : CatalogueEntryCount
         }
 
+    /// Every row of a changed catalogue, with metadata to log only after confirmation (spec 0050 §3.7).
+    type PendingCatalogueImport =
+        {
+            entry : CatalogueImportLogEntry
+            decisions : ImportDecision list
+        }
+
+    type FolderImportResult =
+        | CatalogueUnchanged of CatalogueImportLogEntry
+        | CatalogueImported of CatalogueImportLogEntry
+        | CatalogueAwaitsChoices of PendingCatalogueImport
+
+    type FolderImportReport =
+        {
+            folder : FolderName
+            outcome : Result<FolderImportResult, CatalogueImportError>
+        }
+
+    /// Startup results retain folder order and individual failures (spec 0050 S3.1).
+    type StartupImportReport =
+        {
+            folders : FolderImportReport list
+        }
+
+        member this.pending : PendingCatalogueImport list =
+            this.folders |> List.choose (fun report ->
+                match report.outcome with
+                | Ok (CatalogueAwaitsChoices pending) -> Some pending
+                | Ok (CatalogueUnchanged _ | CatalogueImported _) | Error _ -> None)
+
     /// Reads held versions and puts active, unpinned envelopes without overwriting (spec 0050 S3.1).
     /// A first put or MoveLatestVersion sets latest; duplicate versions and kind conflicts are refused.
     /// Retires held entries and maintains the catalogue import log; equality is by reference.
@@ -292,6 +322,9 @@ module CatalogueImport =
             proxy : CatalogueImportProxy
             sealEntry : LibraryEntryContent -> Result<LibraryEntryEnvelope, CatalogueImportError>
             newEntryId : unit -> LibraryEntryId
+            hashManifest : CatalogueManifest -> Result<ContentHash, CatalogueImportError>
+            now : unit -> CatalogueImportTime
+            openCatalogue : FolderName -> CatalogueProxy
         }
 
         /// Validates every confirmed choice before writing in reference order, retaining writes before a failure (spec 0050 S3.1).
@@ -402,6 +435,52 @@ module CatalogueImport =
             catalogue.readCatalogue ()
             |> Result.mapError CatalogueUnreadableErr
             |> Result.bind this.importCatalogue
+
+        member private this.inspectImportFolder (imports : CatalogueImportLogEntry list) (folder : FolderName) : Result<FolderImportResult, CatalogueImportError> =
+            let catalogue = this.openCatalogue folder
+            catalogue.readManifest ()
+            |> Result.mapError CatalogueUnreadableErr
+            |> Result.bind (fun manifest ->
+                this.hashManifest manifest
+                |> Result.bind (fun hash ->
+                    match imports |> List.tryFind (fun entry -> entry.catalogueId = manifest.id) with
+                    | Some entry when entry.manifestHash = hash -> Ok (CatalogueUnchanged entry)
+                    | _ ->
+                        this.importFrom catalogue
+                        |> Result.map (fun decisions ->
+                            CatalogueAwaitsChoices
+                                {
+                                    entry =
+                                        {
+                                            catalogueId = manifest.id
+                                            folder = folder
+                                            manifestHash = hash
+                                            importedAt = this.now ()
+                                            entryCount = CatalogueEntryCount manifest.entries.Length
+                                        }
+                                    decisions = decisions
+                                })))
+
+        /// An unchanged manifest skips entry reads; otherwise every row awaits confirmation without writes (spec 0050 §3.7).
+        member this.importFolder (folder : FolderName) : Result<FolderImportResult, CatalogueImportError> =
+            this.proxy.loggedImports ()
+            |> Result.bind (fun imports -> this.inspectImportFolder imports folder)
+
+        /// Inspects the shipped folder first, then each logged non-built-in folder; folder failures remain local (spec 0050 S3.1).
+        member this.importOnStart (builtInFolder : FolderName) : Result<StartupImportReport, CatalogueImportError> =
+            this.proxy.loggedImports ()
+            |> Result.map (fun imports ->
+                let registered =
+                    imports
+                    |> List.filter (fun entry -> entry.catalogueId <> CatalogueIds.builtInCatalogue)
+                    |> List.map _.folder
+                {
+                    folders = builtInFolder :: registered |> List.map (fun folder ->
+                        {
+                            folder = folder
+                            outcome = this.inspectImportFolder imports folder
+                        })
+                })
 
     /// Empty stores bundled with the CatalogueImportProxy that fills them (spec 0050 §3.4).
     /// Read the imported catalogue through the four store proxies; equality is by reference.

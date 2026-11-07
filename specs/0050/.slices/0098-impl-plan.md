@@ -1,0 +1,7 @@
+# Implementation plan
+
+Implement startup catalogue discovery in the existing Domain import context. Add pending/folder/startup reports and injected manifest hashing, clock and catalogue opener. Read the import log once per startup, inspect the shipped folder first and then non-built-in logged folders in their supplied order. Reuse the existing per-entry decision table; changed catalogues return all rows without applying, retiring or logging anything. An unchanged manifest returns its existing log entry without reading entries.
+
+Supply the new dependencies through CatalogueImportStore using canonical manifestHash and CatalogueProxy.create. Keep IO and ambient time at that boundary. Add the five specified shared CatalogueImportContract facts, inherited by both stores, with fresh GUID folders under AppContext.BaseDirectory/CatalogueImportTests and deterministic clocks. Explicit apply-and-log remains a fixture operation for this slice, ready for step 0099's settle replacement.
+
+Modify only CatalogueImport.fs, CatalogueImportStore.fs and CatalogueImportInMemoryTests.fs, plus the prescribed worker outputs. Main risks are accidental writes before confirmation, skipping Reuse rows, failure isolation/order, and changing latest/lifecycle protections. Verify with the Release build, affected elevation scope, full constructor suite and resolved section invariants. Preserve supervisor-owned state and do not mutate Git, versions, baselines or analyzer policy.

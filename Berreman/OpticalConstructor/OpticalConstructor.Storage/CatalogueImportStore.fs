@@ -4,10 +4,12 @@ open System
 open Softellect.Sys.Primitives
 open OpticalConstructor.Database
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Storage.EntryFileJson
+open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open Softellect.Sys
@@ -184,7 +186,8 @@ module CatalogueImportStore =
 
     type CatalogueImportContext with
 
-        /// Supplies canonical sealing and fresh entry identities at the IO boundary (spec 0050 S3.1).
+        /// Supplies canonical hashes, fresh identities, the UTC clock and folder IO (spec 0050 S3.1).
+        [<ElevationBoundary(nameof IoBoundary, "the catalogue import composition root: canonical hashing, ambient clock, fresh identities and filesystem proxies")>]
         static member create (proxy : CatalogueImportProxy) : CatalogueImportContext =
             {
                 proxy = proxy
@@ -192,4 +195,10 @@ module CatalogueImportStore =
                     content.``sealed``
                     |> Result.mapError (fun error -> EntryHashingErr $"entry '{content.name.value}' ({content.id.value}): {error.describe}")
                 newEntryId = fun () -> LibraryEntryId (Guid.NewGuid())
+                hashManifest = fun manifest ->
+                    manifest.manifestHash
+                    |> Result.mapError (fun error ->
+                        CatalogueUnreadableErr (CatalogueFileRejectedErr $"manifest '{manifest.name.value}' ({manifest.id.value}): {error.describe}"))
+                now = fun () -> CatalogueImportTime DateTime.UtcNow
+                openCatalogue = CatalogueProxy.create
             }

@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Tests
 
 open System
+open System.IO
 open Softellect.Sys.Primitives
 open Xunit
 open OpticalConstructor.Domain.Lifecycle
@@ -148,6 +149,96 @@ module private CatalogueImportContractData =
                 contentHash = envelope.contentHash
             })
 
+    let startupImportTime = CatalogueImportTime (DateTime(2026, 11, 6, 15, 30, 0, DateTimeKind.Utc))
+
+    let deterministicImportContext (proxy : CatalogueImportProxy) : CatalogueImportContext =
+        {
+            CatalogueImportContext.create proxy with
+                now = fun () -> startupImportTime
+        }
+
+    let freshImportFolder () : FolderName =
+        FolderName (Path.Combine(AppContext.BaseDirectory, "CatalogueImportTests", Guid.NewGuid().ToString("N")))
+
+    let writeImportFolder (folder : FolderName) (catalogue : CatalogueData) : unit =
+        (CatalogueProxy.create folder).writeCatalogue catalogue
+        |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let writtenImportFolder (catalogue : CatalogueData) : FolderName =
+        let folder = freshImportFolder ()
+        writeImportFolder folder catalogue
+        folder
+
+    type StartupImportObservation =
+        {
+            context : CatalogueImportContext
+            puts : ResizeArray<EntryVersionPut>
+            retirements : ResizeArray<LibraryEntryId>
+            logs : ResizeArray<CatalogueImportLogEntry>
+            opened : ResizeArray<FolderName>
+            manifestsRead : ResizeArray<FolderName>
+            cataloguesRead : ResizeArray<FolderName>
+        }
+
+    let observeStartupImport (context : CatalogueImportContext) : StartupImportObservation =
+        let observed, puts, retirements = observeImportRows context
+        let logs = ResizeArray<CatalogueImportLogEntry>()
+        let opened = ResizeArray<FolderName>()
+        let manifestsRead = ResizeArray<FolderName>()
+        let cataloguesRead = ResizeArray<FolderName>()
+        {
+            context =
+                {
+                    observed with
+                        proxy =
+                            {
+                                observed.proxy with
+                                    logImport = fun entry ->
+                                        logs.Add entry
+                                        observed.proxy.logImport entry
+                            }
+                        openCatalogue = fun folder ->
+                            opened.Add folder
+                            let catalogue = context.openCatalogue folder
+                            {
+                                catalogue with
+                                    readManifest = fun () ->
+                                        manifestsRead.Add folder
+                                        catalogue.readManifest ()
+                                    readCatalogue = fun () ->
+                                        cataloguesRead.Add folder
+                                        catalogue.readCatalogue ()
+                            }
+                }
+            puts = puts
+            retirements = retirements
+            logs = logs
+            opened = opened
+            manifestsRead = manifestsRead
+            cataloguesRead = cataloguesRead
+        }
+
+    let pendingImport (outcome : Result<FolderImportResult, CatalogueImportError>) : PendingCatalogueImport =
+        match expectImportOk outcome with
+        | CatalogueAwaitsChoices pending -> pending
+        | _ -> failwith "A changed catalogue must await confirmation of every row."
+
+    let assertNoStartupWrites (observed : StartupImportObservation) : unit =
+        Assert.Empty observed.puts
+        Assert.Empty observed.retirements
+        Assert.Empty observed.logs
+
+    // Spec 0050 step 0098: step 0099 replaces this fixture sequence with settle.
+    let confirmImportDefaults (context : CatalogueImportContext) (pending : PendingCatalogueImport) : CatalogueImportLogEntry =
+        pending.decisions |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let entry =
+            {
+                pending.entry with
+                    importedAt = context.now ()
+            }
+        context.proxy.logImport entry |> expectImportOk
+        entry
+
 open CatalogueImportContractData
 
 /// The same import contract runs over empty in-memory and SQLite stores (spec 0050 S3.1).
@@ -155,6 +246,232 @@ open CatalogueImportContractData
 type CatalogueImportContract () =
 
     abstract freshImport : unit -> ImportStoreSet
+
+    [<Fact>]
+    member this.``the start-up import logs the shipped catalogue and skips it, reading no entry file, while its manifest hash is unchanged`` () : unit =
+        let catalogue = readImportCatalogue ()
+        let folder = writtenImportFolder catalogue
+        let stores = this.freshImport ()
+        let observed = observeStartupImport stores.context
+        let context = observed.context
+        let report = context.importOnStart folder |> expectImportOk
+        let folderReport = Assert.Single report.folders
+        Assert.Equal(folder, folderReport.folder)
+        let pending = pendingImport folderReport.outcome
+        Assert.Equal<PendingCatalogueImport list>([ pending ], report.pending)
+        Assert.Equal<LibraryEntryId list>(catalogue.manifest.entries |> List.map _.id, pending.decisions |> List.map _.entryId)
+        Assert.All(pending.decisions, fun row -> Assert.Equal(AddIncomingEntry, row.defaultAction))
+        Assert.Equal(catalogue.manifest.id, pending.entry.catalogueId)
+        Assert.Equal(folder, pending.entry.folder)
+        Assert.Equal(catalogue.manifest.manifestHash |> expectImportDatabaseOk, pending.entry.manifestHash)
+        Assert.Equal(startupImportTime, pending.entry.importedAt)
+        Assert.Equal(CatalogueEntryCount catalogue.envelopes.Length, pending.entry.entryCount)
+        Assert.Equal<FolderName list>([ folder ], observed.manifestsRead |> Seq.toList)
+        Assert.Equal<FolderName list>([ folder ], observed.cataloguesRead |> Seq.toList)
+        assertNoStartupWrites observed
+        assertEmptyStores stores
+        Assert.Empty(context.proxy.loggedImports () |> expectImportOk)
+
+        let logged = confirmImportDefaults context pending
+        Assert.Equal(logged, Assert.Single observed.logs)
+        Assert.Equal<CatalogueImportLogEntry list>([ logged ], context.proxy.loggedImports () |> expectImportOk)
+        Assert.Equal(catalogue.envelopes.Length, observed.puts.Count)
+        File.Delete((catalogue.envelopes.Head.content.fileName.combine folder).value)
+        let next = observeStartupImport stores.context
+        let unchanged = next.context.importOnStart folder |> expectImportOk
+        Assert.Equal(Ok (CatalogueUnchanged logged), (Assert.Single unchanged.folders).outcome)
+        Assert.Empty unchanged.pending
+        Assert.Equal<FolderName list>([ folder ], next.manifestsRead |> Seq.toList)
+        Assert.Empty next.cataloguesRead
+        assertNoStartupWrites next
+        Assert.Equal<CatalogueImportLogEntry list>([ logged ], context.proxy.loggedImports () |> expectImportOk)
+
+    [<Fact>]
+    member this.``a changed built-in catalogue mints the new version and moves the latest on the next start`` () : unit =
+        let entries = readImportRowEntries ()
+        let original = rowCatalogue CatalogueIds.builtInCatalogue entries.builtInName [ entries.category; entries.silicon ]
+        let folder = writtenImportFolder original
+        let stores = this.freshImport ()
+        let first = stores.context.importOnStart folder |> expectImportOk
+        let logged = confirmImportDefaults stores.context (Assert.Single first.pending)
+        let newer = nextImportEnvelope entries.silicon
+        let changed = rowCatalogue original.manifest.id original.manifest.name [ entries.category; newer ]
+        writeImportFolder folder changed
+        let observed = observeStartupImport stores.context
+        let before = importRowSnapshot observed.context [ entries.category.content.id; entries.silicon.content.id ]
+        let report = observed.context.importOnStart folder |> expectImportOk
+        let pending = Assert.Single report.pending
+        Assert.Equal(2, pending.decisions.Length)
+        let materialRow = pending.decisions |> List.find (fun row -> row.entryId = entries.silicon.content.id)
+        Assert.Equal(AddIncomingVersion MoveLatestVersion, materialRow.defaultAction)
+        Assert.Equal(ReuseHeldEntry, (pending.decisions |> List.find (fun row -> row.entryId = entries.category.content.id)).defaultAction)
+        assertImportRowsPending observed.context observed.puts observed.retirements before pending.decisions
+        assertNoStartupWrites observed
+        Assert.Equal<CatalogueImportLogEntry list>([ logged ], observed.context.proxy.loggedImports () |> expectImportOk)
+        Assert.NotEqual(logged.manifestHash, pending.entry.manifestHash)
+
+        let updatedLog = confirmImportDefaults observed.context pending
+        let held = heldImportRow observed.context entries.silicon.content.id
+        Assert.Equal<HeldEntryVersion list>(importVersions [ entries.silicon; newer ], held.versions)
+        Assert.Equal(newer.content.version, held.latest)
+        Assert.Equal(ActiveEntry, held.lifecycle)
+        Assert.Equal(newer, (Assert.Single observed.puts).envelope)
+        Assert.Equal(updatedLog, Assert.Single observed.logs)
+        Assert.Equal<CatalogueImportLogEntry list>([ updatedLog ], observed.context.proxy.loggedImports () |> expectImportOk)
+
+    [<Fact>]
+    member this.``a changed catalogue holds every row without writes or logging until confirmation`` () : unit =
+        let entries = readImportRowEntries ()
+        let userContent =
+            {
+                (userImportMaterial entries.silicon).content with
+                    name = EntryName "Lab glass"
+            }
+        let user = userContent.``sealed`` |> expectImportDatabaseOk
+        let collisionContent =
+            {
+                user.content with
+                    id = forkEntryId
+            }
+        let collision = collisionContent.``sealed`` |> expectImportDatabaseOk
+        let builtIn = rowCatalogue CatalogueIds.builtInCatalogue entries.builtInName [ entries.category ]
+        let shipped = writtenImportFolder builtIn
+        let lab = rowCatalogue labCatalogueId labCatalogueName [ entries.category; user ]
+        let labFolder = writtenImportFolder lab
+        let stores = this.freshImport ()
+        stores.context.importFolder shipped |> pendingImport |> confirmImportDefaults stores.context |> ignore
+        stores.context.importFolder labFolder |> pendingImport |> confirmImportDefaults stores.context |> ignore
+        let priorLog = stores.context.proxy.loggedImports () |> expectImportOk
+        File.Delete((user.content.fileName.combine labFolder).value)
+        let changed = rowCatalogue labCatalogueId labCatalogueName [ entries.category; collision; entries.source ]
+        writeImportFolder labFolder changed
+        let observed = observeStartupImport stores.context
+        let before = importRowSnapshot observed.context [ entries.category.content.id; user.content.id; collision.content.id; entries.source.content.id ]
+        let startAndAssertPending () : PendingCatalogueImport =
+            let report = observed.context.importOnStart shipped |> expectImportOk
+            Assert.Equal<FolderName list>([ shipped; labFolder ], report.folders |> List.map _.folder)
+            let pending = Assert.Single report.pending
+            Assert.Equal(labFolder, pending.entry.folder)
+            Assert.Equal<LibraryEntryId list>(changed.manifest.entries |> List.map _.id, pending.decisions |> List.map _.entryId)
+            let rowFor (id : LibraryEntryId) : ImportDecision = pending.decisions |> List.find (fun row -> row.entryId = id)
+            Assert.Equal(ReuseHeldEntry, (rowFor entries.category.content.id).defaultAction)
+            Assert.Equal(NameCollision (collision, [ heldImportRow stores.context user.content.id ]), (rowFor collision.content.id).status)
+            Assert.Equal(EntryIdNotHeld entries.source, (rowFor entries.source.content.id).status)
+            assertImportRowsPending observed.context observed.puts observed.retirements before pending.decisions
+            assertNoStartupWrites observed
+            Assert.Equal<CatalogueImportLogEntry list>(priorLog, stores.context.proxy.loggedImports () |> expectImportOk)
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, stores.context.proxy.tryHeldEntry entries.source.content.id)
+            pending
+        let cancelled = startAndAssertPending ()
+        let retried = startAndAssertPending ()
+        Assert.Equal(cancelled, retried)
+        Assert.Equal<FolderName list>([ labFolder; labFolder ], observed.cataloguesRead |> Seq.toList)
+
+    [<Fact>]
+    member this.``every logged folder is re-checked on start, and a failing one is reported without stopping the others`` () : unit =
+        let entries = readImportRowEntries ()
+        let builtIn = rowCatalogue CatalogueIds.builtInCatalogue entries.builtInName [ entries.category ]
+        let shipped = writtenImportFolder builtIn
+        let stores = this.freshImport ()
+        stores.context.importFolder shipped |> pendingImport |> confirmImportDefaults stores.context |> ignore
+        let folders = [ freshImportFolder (); freshImportFolder (); freshImportFolder () ] |> List.sortBy _.value
+        let catalogues =
+            folders |> List.map (fun folder ->
+                let catalogueId = CatalogueId (Guid.NewGuid())
+                let catalogue = rowCatalogue catalogueId labCatalogueName [ entries.category ]
+                writeImportFolder folder catalogue
+                stores.context.importFolder folder |> pendingImport |> confirmImportDefaults stores.context |> ignore
+                folder, catalogue)
+        let firstFolder, first = catalogues[0]
+        let brokenFolder, _ = catalogues[1]
+        let lastFolder, last = catalogues[2]
+        writeImportFolder firstFolder (rowCatalogue first.manifest.id first.manifest.name [ entries.category; entries.source ])
+        File.Delete((CatalogueManifest.fileName.combine brokenFolder).value)
+        writeImportFolder lastFolder (rowCatalogue last.manifest.id last.manifest.name [ entries.category; entries.source ])
+        let priorLog = stores.context.proxy.loggedImports () |> expectImportOk
+        let observed = observeStartupImport stores.context
+        let report = observed.context.importOnStart shipped |> expectImportOk
+        let expectedOrder = shipped :: (priorLog |> List.filter (fun entry -> entry.catalogueId <> CatalogueIds.builtInCatalogue) |> List.map _.folder)
+        Assert.Equal<FolderName list>(expectedOrder, report.folders |> List.map _.folder)
+        Assert.Equal<FolderName list>(expectedOrder, observed.opened |> Seq.toList)
+        Assert.Equal<FolderName list>(expectedOrder, observed.manifestsRead |> Seq.toList)
+        Assert.Equal<FolderName list>([ firstFolder; lastFolder ], observed.cataloguesRead |> Seq.toList)
+        Assert.Equal<FolderName list>([ firstFolder; lastFolder ], report.pending |> List.map _.entry.folder)
+        for pending in report.pending do
+            Assert.Equal(2, pending.decisions.Length)
+        match report.folders[2].outcome with
+        | Error (CatalogueUnreadableErr (CatalogueIoErr reason)) -> Assert.Contains(brokenFolder.value, reason)
+        | _ -> Assert.Fail("The unreadable folder must retain its typed IO failure in the report.")
+        assertNoStartupWrites observed
+        Assert.Equal<CatalogueImportLogEntry list>(priorLog, stores.context.proxy.loggedImports () |> expectImportOk)
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, stores.context.proxy.tryHeldEntry entries.source.content.id)
+
+        let unavailable = ImportStoreUnavailableErr "startup log unavailable"
+        let failed =
+            {
+                observed.context with
+                    proxy =
+                        {
+                            observed.context.proxy with
+                                loggedImports = fun () -> Error unavailable
+                        }
+            }
+        observed.opened.Clear()
+        Assert.Equal<Result<StartupImportReport, CatalogueImportError>>(Error unavailable, failed.importOnStart shipped)
+        Assert.Empty observed.opened
+        assertNoStartupWrites observed
+
+    [<Fact>]
+    member this.``a user entry is never touched by the start-up import`` () : unit =
+        let entries = readImportRowEntries ()
+        let user = userImportMaterial entries.silicon
+        let builtIn = rowCatalogue CatalogueIds.builtInCatalogue entries.builtInName [ entries.category; entries.silicon ]
+        let shipped = writtenImportFolder builtIn
+        let stores = this.freshImport ()
+        stores.context.importFolder shipped |> pendingImport |> confirmImportDefaults stores.context |> ignore
+        seedImportRows stores.context [ user ]
+        let originalUser = heldImportRow stores.context user.content.id
+        let originalBuiltIn = heldImportRow stores.context entries.silicon.content.id
+        File.Delete((entries.silicon.content.fileName.combine shipped).value)
+        writeImportFolder shipped (rowCatalogue builtIn.manifest.id builtIn.manifest.name [ entries.category ])
+        let observed = observeStartupImport stores.context
+        let pending = observed.context.importOnStart shipped |> expectImportOk |> _.pending |> Assert.Single
+        Assert.Equal(2, pending.decisions.Length)
+        Assert.DoesNotContain(pending.decisions, fun row -> row.entryId = user.content.id)
+        Assert.Equal(RetireHeldEntry, (pending.decisions |> List.find (fun row -> row.entryId = originalBuiltIn.id)).defaultAction)
+        assertNoStartupWrites observed
+        Assert.Equal(originalUser, heldImportRow stores.context user.content.id)
+        Assert.Equal(originalBuiltIn, heldImportRow stores.context originalBuiltIn.id)
+        confirmImportDefaults observed.context pending |> ignore
+        Assert.Equal(originalUser, heldImportRow stores.context user.content.id)
+        let retiredBuiltIn =
+            {
+                originalBuiltIn with
+                    lifecycle = InactiveEntry
+            }
+        Assert.Equal(retiredBuiltIn, heldImportRow stores.context originalBuiltIn.id)
+        Assert.Empty observed.puts
+        Assert.Equal(originalBuiltIn.id, Assert.Single observed.retirements)
+
+        let newerUser = nextImportEnvelope user
+        let lab = rowCatalogue labCatalogueId labCatalogueName [ user ]
+        let labFolder = writtenImportFolder lab
+        stores.context.importFolder labFolder |> pendingImport |> confirmImportDefaults stores.context |> ignore
+        writeImportFolder labFolder (rowCatalogue labCatalogueId labCatalogueName [ newerUser ])
+        let next = observeStartupImport stores.context
+        let userPending = next.context.importOnStart shipped |> expectImportOk |> _.pending |> Assert.Single
+        Assert.Equal(AddIncomingVersion KeepLatestVersion, (Assert.Single userPending.decisions).defaultAction)
+        assertNoStartupWrites next
+        Assert.Equal(originalUser, heldImportRow stores.context user.content.id)
+        confirmImportDefaults next.context userPending |> ignore
+        let expectedUser =
+            {
+                originalUser with
+                    versions = importVersions [ user; newerUser ]
+            }
+        Assert.Equal(expectedUser, heldImportRow stores.context user.content.id)
+        Assert.Equal(KeepLatestVersion, (Assert.Single next.puts).latest)
+        Assert.Empty next.retirements
 
     [<Fact>]
     member this.``the import log records, replaces and forgets a catalogue by its id`` () : unit =
@@ -694,7 +1011,7 @@ type CatalogueImportInMemoryTests () =
     override _.freshImport () : ImportStoreSet =
         let stores = CatalogueImportProxy.createInMemory ()
         {
-            context = CatalogueImportContext.create stores.proxy
+            context = deterministicImportContext stores.proxy
             categories = stores.categories
             materials = stores.materials
             samples = stores.samples
@@ -751,7 +1068,7 @@ type CatalogueImportSqliteTests () =
     override this.freshImport () : ImportStoreSet =
         let database = this.openDatabase ()
         {
-            context = CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database)
+            context = deterministicImportContext (CatalogueImportProxy.createInDatabase database)
             categories = CategoryProxy.createInDatabase database
             materials = MaterialProxy.createInDatabase database
             samples = SampleProxy.createInDatabase database
