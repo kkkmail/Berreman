@@ -388,6 +388,8 @@ module LibraryWindowTests =
             |> Result.defaultWith (fun error -> failwith error.describe)
             |> Option.defaultWith (fun () -> failwith "Lab stack must be held.")
         let folder = freshLibraryExportFolder ()
+        // Spec 0050 S3.3: a save-picker destination has an existing parent folder.
+        System.IO.Directory.CreateDirectory folder.value |> ignore
         let leaf = FileName "Lab stack.sample-json"
         let file = leaf.combine folder
         let initial = LW.initLibraryWindow context Browse

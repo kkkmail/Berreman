@@ -1,5 +1,8 @@
 # Progress
 
+- Attempt 03, before repair: read the new task, worker prompts, authorized effects, gate roster, existing test and export call chain. The supervisor reports ui-tests exit 2 with 70 successes and one failure at the selected-export file-existence assertion. The fixture only constructs a GUID folder path; CatalogueImportContext.writeEntryFile reaches LibraryFileText.writeAtomically, whose File.WriteAllText requires the parent directory. MaterialsWindowTests already creates its file-export fixture directory. Repair the selected-export setup alone; changing freshLibraryExportFolder would break the refusal fact's deliberate absent-folder assertion.
+- Attempt 03, after repair: created the fresh destination directory inside the existing selected-entry export fact before composing its file path. Kept every existing assertion, all test identities, and the shared helper unchanged. Production code, acceptance, gates, census, and supervisor state were not edited. This is an authorized fixture repair, with no scope conflict or behavioral deviation.
+
 - Attempt 02, before repair: read the task's measured build failure and trace both FS0039 errors to the missing `open OpticalConstructor.Storage.CatalogueImportStore` in LibraryWindowView. The extension is already implemented in storage and imported by MaterialsWindowView and LibraryWindowTests. Repair only the import; preserve acceptance, existing assertions, and the seven authorized test identities.
 - Attempt 02, after repair: added the missing module import in LibraryWindowView. Both existing export callbacks now have the extension's defining module in scope. No export behavior, storage API, test body, test identity, gate, or supervisor-owned file was changed in this retry. Updated the plan and state-of-the-world for supervisor verification.
 - Read the complete worker protocol, WIRE_UI role, project prompt, repository instructions, slice 0120, and resolved gate snapshot.
@@ -12,6 +15,7 @@
 
 # Files modified
 
+- Attempt 03: LibraryWindowTests.fs adds only the selected-export directory setup and its one-line rationale. The canonical plan, log and state-of-the-world record the diagnosis and supervisor handoff.
 - Worker plan and log created at the supervisor-provided paths.
 - LibraryWindowView.fs: export model/update/view wiring and selected-entry attribution.
 - Attempt 02: LibraryWindowView.fs additionally opens the existing CatalogueImportStore extension module; only the canonical worker documents were otherwise updated in this retry.
@@ -19,6 +23,8 @@
 - LibraryWindowTests.fs: four local fixture/assertion helpers and exactly seven new facts; no existing test removed or renamed.
 
 # Testing state
+
+Attempt 03 input: the supervisor reports green review and passed build gates, followed by ui-tests exit 2 (71 total, 70 succeeded, 1 failed, 0 skipped). The only reported failure is `ExportSelectedLibraryEntry writes the selected entry's file and pins its version`, at the file-existence assertion. The source-level diagnosis and fixture repair are recorded above; no post-repair result is claimed. No build, tests, analyzers, or invariant gates were executed in this attempt, per WIRE_UI invariant 6. The unchanged gate roster must be run by the supervisor. There is no missing edit authority or implementation blocker.
 
 Attempt 02 starts from the supervisor's failed build (exit 1): LibraryWindowView.fs lines 1442 and 1451 could not resolve `CatalogueExportTarget.ofFolder` (FS0039). The supplied build output also reported two SYSLIB0051 warnings in vendored MathNetNumerics/Exceptions.cs, outside this slice's authorized edits. No downstream gate result was supplied. Post-repair compilation and all gate results remain for the supervisor to measure.
 
@@ -30,6 +36,8 @@ No runtime artifacts were produced. The plan, log, and state-of-the-world use th
 
 # Gotchas
 
+- Attempt 03 starts with supervisor-owned modifications to both .expected-red-observed-json and .manifest.state.json. Leave both untouched.
+- freshLibraryExportFolder intentionally allocates only a path. Create its directory locally for the single-file export, not globally in that helper: the refused whole-library export must leave its target absent.
 - `CatalogueExportTarget.ofFolder` is an optional F# extension in `OpticalConstructor.Storage.CatalogueImportStore`, not an intrinsic member of the domain type. Consumers must open the defining module; opening `OpticalConstructor.Domain.CatalogueImport` alone does not expose it. This repair follows the spec unchanged and introduces no duplicate conversion.
 - The initial worktree contains a supervisor-owned modification to specs/0050/.manifest.state.json; leave it untouched.
 - The per-anchor prohibition on running checks supersedes the legacy self-check section of the shared worker prompt.

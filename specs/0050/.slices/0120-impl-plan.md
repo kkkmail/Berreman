@@ -1,5 +1,7 @@
 # Implementation plan
 
+Attempt 03 repairs the supervisor-reported selected-entry export failure at LibraryWindowTests.fs:406. The fresh folder helper returns a path without creating it, while CatalogueImportContext.writeEntryFile delegates to LibraryFileText.writeAtomically, which writes a sibling temporary file in an existing directory. Create the destination directory only in the selected-entry export fact, matching the save-picker precondition and the Materials-window export fixture. Preserve every assertion, all seven authorized test identities, the shared folder helper's absent-directory behavior, and production wiring. Update the canonical log and state-of-the-world; the supervisor owns all verification.
+
 Attempt 02 repairs the supervisor-reported FS0039 errors at the two catalogue-folder export callbacks. `CatalogueExportTarget.ofFolder` already exists as an extension in `OpticalConstructor.Storage.CatalogueImportStore`; import that module in LibraryWindowView, matching MaterialsWindowView and LibraryWindowTests. Keep the existing implementation, seven authorized test identities, and gate roster unchanged. Record the measured failure and repair in the canonical log and state-of-the-world; the supervisor owns verification.
 
 Wire the Library window to the existing CatalogueImportContext export operations and MaterialsWindowView pickers/caption/attribution helpers. Add the five centralized intent ids, Browse-only export buttons, success/refusal projection, and selected-entry attribution without changing selection, mode, or confirmation gates.
