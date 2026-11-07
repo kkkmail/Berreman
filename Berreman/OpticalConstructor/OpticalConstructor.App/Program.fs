@@ -25,6 +25,7 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.AppShell
@@ -104,7 +105,7 @@ type InverseConstructorWindow(context : AppContext) as this =
 
 /// Opens Main, Inverse, Materials and Library over one app scope, sharing editor-window launchers.
 /// A library-open failure is displayed with all surface actions disabled (spec 0038 step 045; spec 0050 S2.4).
-type LauncherWindow(opened : Result<AppContext, StorageError>) as this =
+type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, opened : Result<AppContext, StorageError>) as this =
     inherit Window()
 
     do
@@ -113,78 +114,92 @@ type LauncherWindow(opened : Result<AppContext, StorageError>) as this =
         this.Height <- 300.0
         this.CanResize <- false
         OpticalConstructor.Controls.WindowFit.keepOnScreen this
-        let title =
-            TextBlock(
-                Text = "Optical Constructor",
-                FontSize = 18.0,
-                FontWeight = FontWeight.SemiBold,
-                Margin = Thickness(0.0, 0.0, 0.0, 14.0))
-        let surfaceButton (id : ConstructorUiId) (label : string) (onClick : AppContext -> unit) : Button =
-            let button =
-                Button(
-                    Name = id.value,
-                    Content = label,
-                    HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
-            AutomationProperties.SetAutomationId(button, id.value)
-            AutomationProperties.SetName(button, label)
-            match opened with
-            | Ok context -> button.Click.Add(fun _ -> onClick context)
-            | Error _ -> button.IsEnabled <- false
-            button
-        // Materials / Library go through the SAME launcher seam as the constructor strip
-        // (`EditorLaunchers.defaults`) over the ONE shared `WindowRegistry`, so both callers share one
-        // single-instance window.
-        let launchers = TableAndElementRotationView.EditorLaunchers.defaults
-        let mainButton =
-            surfaceButton ConstructorUiId.openMainButton "Main" (fun context -> MainConstructorWindow(context).Show())
-        let inverseButton =
-            surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun context -> InverseConstructorWindow(context).Show())
-        let materialsButton =
-            surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun context ->
-                launchers.openMaterialsWindow context.materials context.categories)
-        let libraryButton =
-            surfaceButton ConstructorUiId.openLibraryButton "Library" (fun context ->
-                launchers.openLibraryWindow context.library context.samples context.sources context.materials context.categories)
-        // Spec 0046: the app version (the STL slow-ring scheme, one ring for the whole app) as a footer
-        // line at the bottom of the form, read from the ONE F# source of it (`Berreman.BuildInfo`).
-        let versionText = $"Version {Berreman.BuildInfo.version.value}"
-        let version =
-            TextBlock(
-                Name = ConstructorUiId.launcherVersionText.value,
-                Text = versionText,
-                FontSize = 11.0,
-                Opacity = 0.7,
-                HorizontalAlignment = Layout.HorizontalAlignment.Right,
-                Margin = Thickness(20.0, 0.0, 20.0, 10.0))
-        AutomationProperties.SetAutomationId(version, ConstructorUiId.launcherVersionText.value)
-        AutomationProperties.SetName(version, versionText)
-        DockPanel.SetDock(version, Dock.Bottom)
-        let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
-        panel.Children.Add title
-        match opened with
-        | Ok _ -> ()
-        | Error error ->
-            let message = $"The library could not be opened: {error.describe}"
-            let errorText =
+        let rec launcherContent (outcome : Result<AppContext, StorageError>) : Control =
+            let title =
                 TextBlock(
-                    Name = ConstructorUiId.launcherLibraryErrorText.value,
-                    Text = message,
-                    TextWrapping = TextWrapping.Wrap)
-            AutomationProperties.SetAutomationId(errorText, ConstructorUiId.launcherLibraryErrorText.value)
-            AutomationProperties.SetName(errorText, message)
-            panel.Children.Add errorText
-        panel.Children.Add mainButton
-        panel.Children.Add inverseButton
-        panel.Children.Add materialsButton
-        panel.Children.Add libraryButton
-        let form = DockPanel()
-        form.Children.Add version
-        // Spec 0046; spec 0050 S2.4: a wrapped open error must not push the buttons out of reach.
-        form.Children.Add(ScrollViewer(
-            Content = panel,
-            HorizontalScrollBarVisibility = Primitives.ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = Primitives.ScrollBarVisibility.Auto))
-        this.Content <- form
+                    Text = "Optical Constructor",
+                    FontSize = 18.0,
+                    FontWeight = FontWeight.SemiBold,
+                    Margin = Thickness(0.0, 0.0, 0.0, 14.0))
+            let surfaceButton (id : ConstructorUiId) (label : string) (onClick : AppContext -> unit) : Button =
+                let button =
+                    Button(
+                        Name = id.value,
+                        Content = label,
+                        HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
+                AutomationProperties.SetAutomationId(button, id.value)
+                AutomationProperties.SetName(button, label)
+                match outcome with
+                | Ok context -> button.Click.Add(fun _ -> onClick context)
+                | Error _ -> button.IsEnabled <- false
+                button
+            // Spec 0038 step 045: share the constructor strip's single-instance window registry.
+            let launchers = TableAndElementRotationView.EditorLaunchers.defaults
+            let mainButton =
+                surfaceButton ConstructorUiId.openMainButton "Main" (fun context -> MainConstructorWindow(context).Show())
+            let inverseButton =
+                surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun context -> InverseConstructorWindow(context).Show())
+            let materialsButton =
+                surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun context ->
+                    launchers.openMaterialsWindow context.materials context.categories)
+            let libraryButton =
+                surfaceButton ConstructorUiId.openLibraryButton "Library" (fun context ->
+                    launchers.openLibraryWindow context.library context.samples context.sources context.materials context.categories)
+            let versionText = $"Version {Berreman.BuildInfo.version.value}"
+            let version =
+                TextBlock(
+                    Name = ConstructorUiId.launcherVersionText.value,
+                    Text = versionText,
+                    FontSize = 11.0,
+                    Opacity = 0.7,
+                    HorizontalAlignment = Layout.HorizontalAlignment.Right,
+                    Margin = Thickness(20.0, 0.0, 20.0, 10.0))
+            AutomationProperties.SetAutomationId(version, ConstructorUiId.launcherVersionText.value)
+            AutomationProperties.SetName(version, versionText)
+            DockPanel.SetDock(version, Dock.Bottom)
+            let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
+            panel.Children.Add title
+            match outcome with
+            | Ok _ -> ()
+            | Error error ->
+                let message = $"The library could not be opened: {error.describe}"
+                let errorText =
+                    TextBlock(
+                        Name = ConstructorUiId.launcherLibraryErrorText.value,
+                        Text = message,
+                        TextWrapping = TextWrapping.Wrap)
+                AutomationProperties.SetAutomationId(errorText, ConstructorUiId.launcherLibraryErrorText.value)
+                AutomationProperties.SetName(errorText, message)
+                panel.Children.Add errorText
+                // Spec 0050 S2.4: the original mismatch authorizes retry even after a backup or IO failure.
+                match opened with
+                | Error (LibrarySchemaMismatchErr _) ->
+                    let label = "Recreate library from catalogues"
+                    let recreateButton =
+                        Button(
+                            Name = ConstructorUiId.launcherRecreateLibraryButton.value,
+                            Content = label,
+                            HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
+                    AutomationProperties.SetAutomationId(recreateButton, ConstructorUiId.launcherRecreateLibraryButton.value)
+                    AutomationProperties.SetName(recreateButton, label)
+                    recreateButton.Click.Add(fun _ ->
+                        this.Content <- launcherContent (AppContext.recreateLibrary locations settings))
+                    panel.Children.Add recreateButton
+                | _ -> ()
+            panel.Children.Add mainButton
+            panel.Children.Add inverseButton
+            panel.Children.Add materialsButton
+            panel.Children.Add libraryButton
+            let form = DockPanel()
+            form.Children.Add version
+            // Spec 0046; spec 0050 S2.4: a wrapped open error must not push the buttons out of reach.
+            form.Children.Add(ScrollViewer(
+                Content = panel,
+                HorizontalScrollBarVisibility = Primitives.ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = Primitives.ScrollBarVisibility.Auto))
+            form
+
+        this.Content <- launcherContent opened
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
 /// (§J.8 — `Theme.themeVariant` is the only theme-label → Avalonia seam).
@@ -201,7 +216,7 @@ type App() =
             // The launcher is the startup window. Closing it after opening Main / a test
             // window must NOT quit the app, so shut down only when the last window closes.
             desktop.ShutdownMode <- ShutdownMode.OnLastWindowClose
-            desktop.MainWindow <- LauncherWindow(Startup.context)
+            desktop.MainWindow <- LauncherWindow(Startup.dataLocations, Startup.workbenchSettings, Startup.context)
         | _ -> ()
 
 module Program =

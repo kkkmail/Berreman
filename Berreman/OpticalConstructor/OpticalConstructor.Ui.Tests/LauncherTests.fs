@@ -12,6 +12,8 @@
 /// lifetime makes this window the startup `MainWindow` with the persisted theme.
 namespace OpticalConstructor.Ui.Tests
 
+open System.IO
+open Microsoft.Data.Sqlite
 open Avalonia
 open Avalonia.Automation
 open Avalonia.Controls
@@ -22,7 +24,10 @@ open Avalonia.VisualTree
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.App
 
@@ -38,6 +43,12 @@ module LauncherTests =
     let private tryFindButton (name : string) (w : Window) : Button option =
         buttons w |> List.tryFind (fun b -> b.Name = name)
 
+    let private tryFindLibraryError (window : Window) : TextBlock option =
+        window.GetVisualDescendants()
+        |> Seq.tryPick (function
+            | :? TextBlock as text when text.Name = ConstructorUiId.launcherLibraryErrorText.value -> Some text
+            | _ -> None)
+
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the windows
     /// the launcher opens set both — the `WireUiCompositionTests` precedent).
     let private matchesId (id : string) (c : Control) : bool =
@@ -50,7 +61,7 @@ module LauncherTests =
     /// Open a fresh launcher on the shared headless session and run `check` over it.
     let private withLauncher (check : LauncherWindow -> unit) : unit =
         HeadlessSession.run (fun () ->
-            let launcher = LauncherWindow(Ok (freshContext ()))
+            let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok (freshContext ()))
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
             try check launcher
@@ -136,16 +147,11 @@ module LauncherTests =
                     expected = LibrarySchemaVersion.current
                 }
             let error = LibrarySchemaMismatchErr mismatch
-            let launcher = LauncherWindow(Error error)
+            let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Error error)
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
             try
-                let errorText =
-                    launcher.GetVisualDescendants()
-                    |> Seq.tryPick (function
-                        | :? TextBlock as text when text.Name = ConstructorUiId.launcherLibraryErrorText.value -> Some text
-                        | _ -> None)
-                match errorText with
+                match tryFindLibraryError launcher with
                 | Some text ->
                     Assert.Equal($"The library could not be opened: {error.describe}", text.Text)
                     Assert.Contains("schema version 2", text.Text)
@@ -167,6 +173,34 @@ module LauncherTests =
                     finally
                         for window in opened do window.Close()
             finally launcher.Close())
+
+    [<Fact>]
+    let ``the launcher offers Recreate library from catalogues for a schema mismatch only`` () : unit =
+        HeadlessSession.run (fun () ->
+            let mismatch : LibrarySchemaMismatchInfo =
+                {
+                    foundOpt = Some (LibrarySchemaVersion 2)
+                    expected = LibrarySchemaVersion.current
+                }
+            for error in [ LibrarySchemaMismatchErr mismatch; LibraryDatabaseExn (System.Exception "disk full") ] do
+                let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Error error)
+                launcher.Show()
+                Dispatcher.UIThread.RunJobs()
+                try
+                    match tryFindLibraryError launcher with
+                    | Some text -> Assert.Equal($"The library could not be opened: {error.describe}", text.Text)
+                    | None -> Assert.Fail("the library open error must be shown on the launcher")
+
+                    let recreate = tryFindButton ConstructorUiId.launcherRecreateLibraryButton.value launcher
+                    match error, recreate with
+                    | LibrarySchemaMismatchErr _, Some button ->
+                        Assert.Equal("Recreate library from catalogues", string button.Content)
+                        Assert.Equal(ConstructorUiId.launcherRecreateLibraryButton.value, AutomationProperties.GetAutomationId button)
+                        Assert.Equal("Recreate library from catalogues", AutomationProperties.GetName button)
+                        Assert.True(button.IsEnabled)
+                    | LibraryDatabaseExn _, None -> ()
+                    | _ -> Assert.Fail("only a schema mismatch must offer Recreate library from catalogues")
+                finally launcher.Close())
 
     [<Fact>]
     let ``the launcher footer shows the app version from BuildInfo, below the buttons`` () =
@@ -196,6 +230,94 @@ module LauncherTests =
     // ---------------------- behaviour (gate `ui-smoke`) ----------------------
     // Click each launcher button headlessly and observe the surface it opens via
     // `Window.WindowOpenedEvent` (the WireUiCompositionTests seam).
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: Recreate library from catalogues keeps the old file in Backups, opens a new library and enables the buttons`` () : unit =
+        HeadlessSession.run (fun () ->
+            let locations = TestAppScope.fileLocations owner
+            do
+                use database =
+                    LibraryDatabase.openOrCreate locations.libraryConnection
+                    |> Result.defaultWith (fun error -> failwith error.describe)
+                Assert.Equal(CreatedLibraryDatabase, database.origin)
+
+            let incompatible = LibrarySchemaVersion 2
+            let builder = SqliteConnectionStringBuilder(locations.libraryConnection.value)
+            builder.Pooling <- false
+            do
+                use connection = new SqliteConnection(builder.ConnectionString)
+                connection.Open()
+                use command = connection.CreateCommand()
+                command.CommandText <- "UPDATE SchemaStamp SET SchemaVersion = $version WHERE Id = 1;"
+                command.Parameters.AddWithValue("$version", incompatible.value) |> ignore
+                Assert.Equal(1, command.ExecuteNonQuery())
+
+            let before = File.ReadAllBytes builder.DataSource
+            let opened = AppContext.create locations WorkbenchSettings.defaults
+            match opened with
+            | Error (LibrarySchemaMismatchErr mismatch) -> Assert.Equal(Some incompatible, mismatch.foundOpt)
+            | Error error -> Assert.Fail(error.describe)
+            | Ok _ -> Assert.Fail("the incompatible library must be refused before recreation")
+
+            let launcher = LauncherWindow(locations, WorkbenchSettings.defaults, opened)
+            launcher.Show()
+            Dispatcher.UIThread.RunJobs()
+            try
+                // Spec 0050 S24-LAUNCHER-RECREATE: a failed backup must leave the remedy available for retry.
+                File.WriteAllText(locations.backupsFolder.value, "blocked backup folder")
+                Assert.Empty(clickAndObserve launcher ConstructorUiId.launcherRecreateLibraryButton.value)
+                match tryFindLibraryError launcher with
+                | Some text -> Assert.Contains(locations.backupsFolder.value, text.Text)
+                | None -> Assert.Fail("a failed recreation must show its diagnostic")
+                match tryFindButton ConstructorUiId.launcherRecreateLibraryButton.value launcher with
+                | Some button -> Assert.True(button.IsEnabled)
+                | None -> Assert.Fail("a failed recreation must keep its retry button")
+                for id in
+                    [ ConstructorUiId.openMainButton; ConstructorUiId.openInverseButton
+                      ConstructorUiId.openMaterialsButton; ConstructorUiId.openLibraryButton ] do
+                    match tryFindButton id.value launcher with
+                    | Some button -> Assert.False(button.IsEnabled)
+                    | None -> Assert.Fail($"launcher button '{id.value}' was not found")
+                Assert.Equal<byte>(before, File.ReadAllBytes builder.DataSource)
+                File.Delete locations.backupsFolder.value
+
+                Assert.Empty(clickAndObserve launcher ConstructorUiId.launcherRecreateLibraryButton.value)
+                match tryFindLibraryError launcher with
+                | None -> ()
+                | Some text -> Assert.Fail($"the recreation error must be removed: {text.Text}")
+                match tryFindButton ConstructorUiId.launcherRecreateLibraryButton.value launcher with
+                | None -> ()
+                | Some _ -> Assert.Fail("the recreate button must be removed after success")
+                for id in
+                    [ ConstructorUiId.openMainButton; ConstructorUiId.openInverseButton
+                      ConstructorUiId.openMaterialsButton; ConstructorUiId.openLibraryButton ] do
+                    match tryFindButton id.value launcher with
+                    | Some button -> Assert.True(button.IsEnabled)
+                    | None -> Assert.Fail($"launcher button '{id.value}' was not found")
+
+                let backup = FileName (Assert.Single(Directory.GetFiles(locations.backupsFolder.value, "library-*.db")))
+                Assert.Equal<byte>(before, File.ReadAllBytes backup.value)
+                let backupBuilder = SqliteConnectionStringBuilder()
+                backupBuilder.DataSource <- backup.value
+                backupBuilder.Mode <- SqliteOpenMode.ReadOnly
+                backupBuilder.Pooling <- false
+                let backupConnection = ConnectionString backupBuilder.ConnectionString
+                builder.Mode <- SqliteOpenMode.ReadOnly
+                let liveConnection = ConnectionString builder.ConnectionString
+                for connectionString, expected in [ backupConnection, incompatible; liveConnection, LibrarySchemaVersion.current ] do
+                    use connection = new SqliteConnection(connectionString.value)
+                    connection.Open()
+                    use command = connection.CreateCommand()
+                    command.CommandText <- "SELECT SchemaVersion FROM SchemaStamp WHERE Id = 1;"
+                    Assert.Equal(int64 expected.value, unbox<int64> (command.ExecuteScalar()))
+
+                use live = new SqliteConnection(liveConnection.value)
+                live.Open()
+                use entries = live.CreateCommand()
+                entries.CommandText <- "SELECT COUNT(*) FROM EntryVersion;"
+                Assert.Equal(int64 (BuiltinCatalogue.catalogueData ()).envelopes.Length, unbox<int64> (entries.ExecuteScalar()))
+            finally launcher.Close())
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -253,7 +375,7 @@ module LauncherTests =
         // meet in ONE window (the second open ACTIVATES, it does not stack a copy).
         HeadlessSession.run (fun () ->
             let context = freshContext ()
-            let launcher = LauncherWindow(Ok context)
+            let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok context)
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
             let constructorWindow = MainConstructorWindow(context)

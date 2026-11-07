@@ -594,6 +594,8 @@ type ConstructorUiId =
     static member launcherVersionText : ConstructorUiId = ConstructorUiId "LauncherVersionText"
     /// The library-open failure shown on the launcher (spec 0050 S2.4).
     static member launcherLibraryErrorText : ConstructorUiId = ConstructorUiId "LauncherLibraryErrorText"
+    /// Recreates an incompatible library from catalogues after preserving its backup (spec 0050 001 §C).
+    static member launcherRecreateLibraryButton : ConstructorUiId = ConstructorUiId "LauncherRecreateLibraryButton"
 
     // --- The diagnostic test launcher window (`TestLauncherWindow`, project TestWindows.App). ---
     static member openTableRotationTestButton : ConstructorUiId = ConstructorUiId "OpenTableRotationTestButton"

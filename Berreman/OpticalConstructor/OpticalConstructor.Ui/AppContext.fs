@@ -9,6 +9,7 @@ open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CategoryDatabaseStore
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.LibraryBackupStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
 open OpticalConstructor.Storage.PresetDatabaseStore
@@ -59,36 +60,43 @@ type AppContext =
         settings : WorkbenchSettings
     }
 
+    static member private compose (locations : DataLocations) (settings : WorkbenchSettings) (database : LibraryDatabase) : AppContext =
+        let materials = MaterialProxy.createInDatabase database
+        let samples = SampleProxy.createInDatabase database
+        let sources = SourceProxy.createInDatabase database
+        let categories = CategoryProxy.createInDatabase database
+        match database.origin with
+        | CreatedLibraryDatabase ->
+            let importer = CatalogueImportProxy.ofStores categories materials samples (LibraryEntryStore.createInDatabase database)
+            match importer.importFrom (CatalogueProxy.createBuiltInUnder locations.shippedCatalogueFolder) with
+            | Ok () -> ()
+            | Error e -> Logger.logError $"AppContext.compose: could not import the Built-in catalogue: {e.describe}"
+        | OpenedLibraryDatabase -> ()
+
+        {
+            library = LibraryProxy.createInDatabase database
+            experiments = Experiments.createInMemoryExperiments ()
+            materials = materials
+            samples = samples
+            sources = sources
+            categories = categories
+            experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked ()
+            experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
+            scenes = Scene.SceneProxy.createInMemory ()
+            experimentExport =
+                OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
+                    locations.exportsFolder
+                    (fun () -> OpticalConstructor.Storage.ExperimentExportFile.ExportTime System.DateTime.Now)
+            settings = settings
+        }
+
     /// Opens or creates the configured library database and imports the Built-in catalogue into a new one.
     /// Answers open failures unchanged; import failures are logged, retaining prior imports (001 §C; spec 0050 S2.4).
     static member create (locations : DataLocations) (settings : WorkbenchSettings) : Result<AppContext, StorageError> =
         LibraryDatabase.openOrCreate locations.libraryConnection
-        |> Result.map (fun database ->
-            let materials = MaterialProxy.createInDatabase database
-            let samples = SampleProxy.createInDatabase database
-            let sources = SourceProxy.createInDatabase database
-            let categories = CategoryProxy.createInDatabase database
-            match database.origin with
-            | CreatedLibraryDatabase ->
-                let importer = CatalogueImportProxy.ofStores categories materials samples (LibraryEntryStore.createInDatabase database)
-                match importer.importFrom (CatalogueProxy.createBuiltInUnder locations.shippedCatalogueFolder) with
-                | Ok () -> ()
-                | Error e -> Logger.logError $"AppContext.create: could not import the Built-in catalogue: {e.describe}"
-            | OpenedLibraryDatabase -> ()
+        |> Result.map (AppContext.compose locations settings)
 
-            {
-                library = LibraryProxy.createInDatabase database
-                experiments = Experiments.createInMemoryExperiments ()
-                materials = materials
-                samples = samples
-                sources = sources
-                categories = categories
-                experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked ()
-                experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
-                scenes = Scene.SceneProxy.createInMemory ()
-                experimentExport =
-                    OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
-                        locations.exportsFolder
-                        (fun () -> OpticalConstructor.Storage.ExperimentExportFile.ExportTime System.DateTime.Now)
-                settings = settings
-            })
+    /// Preserves the old library in Backups, then composes a new library with the Built-in catalogue (spec 0050 001 §C).
+    static member recreateLibrary (locations : DataLocations) (settings : WorkbenchSettings) : Result<AppContext, StorageError> =
+        LibraryDatabase.recreate locations.libraryConnection locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
+        |> Result.map (AppContext.compose locations settings)
