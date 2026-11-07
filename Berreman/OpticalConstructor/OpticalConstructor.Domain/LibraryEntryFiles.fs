@@ -319,6 +319,15 @@ module LibraryEntryFiles =
         /// The entry as an error names it: its name, id and version.
         member this.describe : string = $"'{this.name.value}' ({this.id.value} v{this.version.value})"
 
+        /// The entries this one names, so an import never leaves a reference dangling (spec 0050 001 §B).
+        member this.referencedEntryIds : Set<LibraryEntryId> =
+            match this.payload with
+            | MaterialPayload _ ->
+                this.categoryOpt |> Option.toList |> List.map (fun category -> category.toLibraryEntryId) |> Set.ofList
+            | SamplePayload sample ->
+                sample.structure.referencedMaterials |> Set.map (fun material -> material.toLibraryEntryId)
+            | SourcePayload _ | PolarizerPayload _ | DetectorPayload _ | CategoryPayload _ -> Set.empty
+
         static member private ofPayload (version : VersionNumber) (provenance : EntryProvenance) (id : LibraryEntryId) (name : EntryName) (payload : LibraryEntryPayload) : LibraryEntryContent =
             {
                 schema = payload.currentSchema

@@ -204,6 +204,7 @@
         <Compile Include="ExperimentDataStoreTests.fs" />
         <Compile Include="CatalogueImportProxyTests.fs" />
         <Compile Include="CatalogueImportInMemoryTests.fs" />
+        <Compile Include="ImportDecisionTests.fs" />
         <Compile Include="BuiltinCatalogueFixtureTests.fs" />
         <!-- Spec 0040 Part D.3 (step 012): a placed sample's default Placement.emission derives from
              the bound sample's geometry-constrained supportedEmission (not the generic

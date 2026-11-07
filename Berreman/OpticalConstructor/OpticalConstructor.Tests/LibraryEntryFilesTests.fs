@@ -16,6 +16,25 @@ open OpticalConstructor.Domain.CatalogueFiles
 module LibraryEntryFilesTests =
 
     [<Fact>]
+    let ``an entry's references are its category and its materials`` () : unit =
+        let envelopes = (BuiltinCatalogue.catalogueData ()).envelopes
+        let silicon = envelopes |> List.find (fun envelope -> envelope.content.id = MaterialIds.silicon.toLibraryEntryId)
+        let categoryId =
+            match silicon.content.categoryOpt with
+            | Some category -> category.toLibraryEntryId
+            | None -> failwith "The shipped Silicon material must name its category."
+        let sample = envelopes |> List.find (fun envelope -> envelope.content.id = SampleIds.multilayerQwId.toLibraryEntryId)
+        let expectedMaterials = Set.ofList [ MaterialIds.glass152.toLibraryEntryId; MaterialIds.vacuumMaterial.toLibraryEntryId ]
+
+        Assert.Equal<Set<LibraryEntryId>>(Set.singleton categoryId, silicon.content.referencedEntryIds)
+        Assert.Equal<Set<LibraryEntryId>>(expectedMaterials, sample.content.referencedEntryIds)
+        for envelope in envelopes do
+            match envelope.content.schema.kind with
+            | MaterialEntryKind | SampleEntryKind -> ()
+            | CategoryEntryKind | SourceEntryKind | PolarizerEntryKind | DetectorEntryKind ->
+                Assert.Empty(envelope.content.referencedEntryIds)
+
+    [<Fact>]
     let ``every library entry error renders its condition and its reason`` () : unit =
         let cases : (LibraryEntryError * string) list =
             [
