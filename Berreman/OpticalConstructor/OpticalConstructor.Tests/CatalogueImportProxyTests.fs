@@ -126,6 +126,8 @@ module CatalogueImportProxyTests =
         Assert.Equal("an import choice is invalid: Silicon cannot be reused", (InvalidImportChoiceErr "Silicon cannot be reused").describe)
         Assert.Equal("an import would leave a dangling reference: Plate references skipped Silicon", (DanglingReferenceErr "Plate references skipped Silicon").describe)
         Assert.Equal("a catalogue entry could not be hashed: Silicon cannot be sealed", (EntryHashingErr "Silicon cannot be sealed").describe)
+        Assert.Equal("a dropped file was refused: notes.txt: not a library entry file", (DroppedFileRefusedErr "notes.txt: not a library entry file").describe)
+        Assert.Equal("a dropped entry has an unresolved reference: Plate references absent Silicon", (UnresolvedReferenceErr "Plate references absent Silicon").describe)
 
     [<Fact>]
     let ``a CatalogueImportProxy compares by reference (the [<ReferenceEquality>] contract)`` () : unit =

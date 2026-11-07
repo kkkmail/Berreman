@@ -160,6 +160,13 @@ module private CatalogueImportContractData =
     let freshImportFolder () : FolderName =
         FolderName (Path.Combine(AppContext.BaseDirectory, "CatalogueImportTests", Guid.NewGuid().ToString("N")))
 
+    let writeDroppedEntry (folder : FolderName) (envelope : LibraryEntryEnvelope) : FileName =
+        Directory.CreateDirectory folder.value |> ignore
+        let file = envelope.content.fileName.combine folder
+        let text = envelope.fileText |> expectImportDatabaseOk
+        text.writeAtomically file |> expectImportDatabaseOk
+        file
+
     let writeImportFolder (folder : FolderName) (catalogue : CatalogueData) : unit =
         (CatalogueProxy.create folder).writeCatalogue catalogue
         |> Result.defaultWith (fun error -> failwith error.describe)
@@ -284,6 +291,215 @@ open CatalogueImportContractData
 type CatalogueImportContract () =
 
     abstract freshImport : unit -> ImportStoreSet
+
+    [<Fact>]
+    member this.``dropped entry files are decided against the library, each under its own file name`` () : unit =
+        let stores = this.freshImport ()
+        stores.context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> stores.context.apply |> expectImportOk |> ignore
+        let entries = readImportRowEntries ()
+        let incoming = userImportMaterial entries.silicon
+        let folder = freshImportFolder ()
+        let materialFile = writeDroppedEntry folder incoming
+        let siliconFile = writeDroppedEntry folder entries.silicon
+        let observed = observeStartupImport stores.context
+        let reads = ResizeArray<LibraryEntryKind * FileName>()
+        let context =
+            {
+                observed.context with
+                    readEntryFile = fun kind file ->
+                        reads.Add(kind, file)
+                        stores.context.readEntryFile kind file
+            }
+        let before = importRowSnapshot context [ incoming.content.id; entries.silicon.content.id ]
+        let decide : FileName list -> Result<ImportDecision list, CatalogueImportError> = context.decideDroppedFiles
+        Assert.Empty(decide [] |> expectImportOk)
+        Assert.Empty reads
+        let rows = decide [ materialFile; siliconFile ] |> expectImportOk
+        Assert.Equal<LibraryEntryId list>([ incoming.content.id; entries.silicon.content.id ], rows |> List.map _.entryId)
+        Assert.Equal<ImportOrigin list>([ DroppedFileOrigin materialFile.leafName; DroppedFileOrigin siliconFile.leafName ], rows |> List.map _.origin)
+        Assert.Equal<ImportStatus list>([ EntryIdNotHeld incoming; SameContentHash (entries.silicon, heldImportRow context entries.silicon.content.id) ], rows |> List.map _.status)
+        Assert.Equal<(LibraryEntryKind * FileName) list>([ MaterialEntryKind, materialFile; MaterialEntryKind, siliconFile ], List.ofSeq reads)
+        assertImportRowsPending context observed.puts observed.retirements before rows
+        assertNoStartupWrites observed
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.proxy.tryHeldEntry incoming.content.id)
+
+        let failure = ImportStoreUnavailableErr "dropped-entry lookup failed"
+        let lookups = ResizeArray<LibraryEntryId>()
+        let failingContext =
+            {
+                context with
+                    proxy =
+                        {
+                            context.proxy with
+                                tryHeldEntry = fun id ->
+                                    lookups.Add id
+                                    if id = incoming.content.id then Error failure
+                                    else context.proxy.tryHeldEntry id
+                        }
+            }
+        Assert.Equal<Result<ImportDecision list, CatalogueImportError>>(Error failure, failingContext.decideDroppedFiles [ materialFile; siliconFile ])
+        Assert.Equal(incoming.content.id, lookups |> Seq.last)
+        Assert.DoesNotContain(entries.silicon.content.id, lookups)
+        assertNoStartupWrites observed
+
+    [<Fact>]
+    member this.``a dropped file that is not a library entry file or does not read is refused, naming every such file`` () : unit =
+        let stores = this.freshImport ()
+        stores.context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> stores.context.apply |> expectImportOk |> ignore
+        let entries = readImportRowEntries ()
+        let incoming = userImportMaterial entries.silicon
+        let folder = freshImportFolder ()
+        let materialFile = writeDroppedEntry folder incoming
+        let notesName = FileName "notes.txt"
+        let missingName = FileName "missing.material-json"
+        let notes = notesName.combine folder
+        let missing = missingName.combine folder
+        File.WriteAllText(notes.value, "Not a library entry")
+        let observed = observeStartupImport stores.context
+        let reads = ResizeArray<FileName>()
+        let lookups = ResizeArray<LibraryEntryId>()
+        let context =
+            {
+                observed.context with
+                    readEntryFile = fun kind file ->
+                        reads.Add file
+                        stores.context.readEntryFile kind file
+                    proxy =
+                        {
+                            observed.context.proxy with
+                                tryHeldEntry = fun id ->
+                                    lookups.Add id
+                                    observed.context.proxy.tryHeldEntry id
+                        }
+            }
+        let readFailure =
+            match stores.context.readEntryFile MaterialEntryKind missing with
+            | Error (DroppedFileRefusedErr reason) ->
+                Assert.Contains(missing.value, reason)
+                reason
+            | _ -> failwith "A missing entry file must become DroppedFileRefusedErr."
+        match context.decideDroppedFiles [ notes; missing; materialFile ] with
+        | Error (DroppedFileRefusedErr reason) ->
+            Assert.Equal($"{notes.value}: not a library entry file\n{readFailure}", reason)
+            Assert.DoesNotContain(materialFile.leafName.value, reason)
+        | _ -> Assert.Fail("Every refused file must be reported together.")
+        Assert.Equal<FileName list>([ missing; materialFile ], List.ofSeq reads)
+        Assert.Empty lookups
+
+        let refusal = DroppedFileRefusedErr $"{materialFile.value}: injected reader refusal"
+        let injected = { context with readEntryFile = fun _ _ -> Error refusal }
+        Assert.Equal<Result<ImportDecision list, CatalogueImportError>>(Error refusal, injected.decideDroppedFiles [ materialFile ])
+        Assert.Empty lookups
+        assertNoStartupWrites observed
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, stores.context.proxy.tryHeldEntry incoming.content.id)
+
+    [<Fact>]
+    member this.``two dropped files of one id and version are one row when equal and refused when they differ`` () : unit =
+        let stores = this.freshImport ()
+        stores.context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> stores.context.apply |> expectImportOk |> ignore
+        let incoming = userImportMaterial (readImportRowEntries ()).silicon
+        let folder = freshImportFolder ()
+        let materialFile = writeDroppedEntry folder incoming
+        let copyName = FileName "copy.material-json"
+        let copyFile = copyName.combine folder
+        let text = incoming.fileText |> expectImportDatabaseOk
+        text.writeAtomically copyFile |> expectImportDatabaseOk
+        let observed = observeStartupImport stores.context
+        let context = observed.context
+        let row = context.decideDroppedFiles [ materialFile; copyFile ] |> expectImportOk |> Assert.Single
+        Assert.Equal(EntryIdNotHeld incoming, row.status)
+        Assert.Equal(DroppedFileOrigin materialFile.leafName, row.origin)
+        let reversed = context.decideDroppedFiles [ copyFile; materialFile ] |> expectImportOk |> Assert.Single
+        Assert.Equal(DroppedFileOrigin copyFile.leafName, reversed.origin)
+
+        let changedContent =
+            {
+                incoming.content with
+                    name = EntryName "Changed lab material"
+            }
+        let changed = changedContent.``sealed`` |> expectImportDatabaseOk
+        let changedFile = writeDroppedEntry folder changed
+        match context.decideDroppedFiles [ materialFile; changedFile ] with
+        | Error (DroppedFileRefusedErr reason) ->
+            Assert.Contains(materialFile.value, reason)
+            Assert.Contains(changedFile.value, reason)
+        | _ -> Assert.Fail("Conflicting content under one id and version must be refused.")
+
+        let next = nextImportEnvelope incoming
+        let nextFile = writeDroppedEntry (freshImportFolder ()) next
+        let versions = context.decideDroppedFiles [ materialFile; nextFile ] |> expectImportOk
+        Assert.Equal<ImportStatus list>([ EntryIdNotHeld incoming; EntryIdNotHeld next ], versions |> List.map _.status)
+        assertNoStartupWrites observed
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.proxy.tryHeldEntry incoming.content.id)
+
+    [<Fact>]
+    member this.``a dropped entry naming an entry neither held nor dropped is UnresolvedReferenceErr`` () : unit =
+        let stores = this.freshImport ()
+        stores.context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> stores.context.apply |> expectImportOk |> ignore
+        let material = userImportMaterial (readImportRowEntries ()).silicon
+        let materialEntry = material.content.toMaterialEntry |> decodeImportEntry
+        let materialVersion : MaterialVersionId =
+            {
+                materialId = materialEntry.id
+                version = material.content.version
+            }
+        let sample : Sample =
+            {
+                id = SampleId (Guid.Parse "31801b01-444f-43c8-8440-000000000104")
+                name = EntryName "Dropped lab sample"
+                structure =
+                    {
+                        films = []
+                        substrate = None
+                        lower = Some materialVersion
+                    }
+                substrate = ThinFilm
+                description = EntryDescription "A sample referencing the dropped lab material"
+                supportedEmission = EmitBoth
+            }
+        let sampleContent = LibraryEntryContent.ofSample VersionNumber.first UserProvenance sample
+        let envelope = sampleContent.``sealed`` |> expectImportDatabaseOk
+        let folder = freshImportFolder ()
+        let sampleFile = writeDroppedEntry folder envelope
+        let materialFile = writeDroppedEntry folder material
+        let observed = observeStartupImport stores.context
+        let context = observed.context
+        let before = importRowSnapshot context [ material.content.id; envelope.content.id ]
+        match context.decideDroppedFiles [ sampleFile ] with
+        | Error (UnresolvedReferenceErr reason) ->
+            Assert.Contains(material.content.id.value.ToString(), reason)
+            Assert.Contains(envelope.content.id.value.ToString(), reason)
+            Assert.Contains(envelope.content.name.value, reason)
+            Assert.Contains(sampleFile.value, reason)
+        | _ -> Assert.Fail("A missing material must be an unresolved dropped-entry reference.")
+        let rows = context.decideDroppedFiles [ materialFile; sampleFile ] |> expectImportOk
+        Assert.Equal<ImportStatus list>([ EntryIdNotHeld material; EntryIdNotHeld envelope ], rows |> List.map _.status)
+        Assert.Equal<ImportOrigin list>([ DroppedFileOrigin materialFile.leafName; DroppedFileOrigin sampleFile.leafName ], rows |> List.map _.origin)
+        let reversed = context.decideDroppedFiles [ sampleFile; materialFile ] |> expectImportOk
+        Assert.Equal<ImportStatus list>([ EntryIdNotHeld envelope; EntryIdNotHeld material ], reversed |> List.map _.status)
+        assertImportRowsPending context observed.puts observed.retirements before rows
+        assertNoStartupWrites observed
+
+        let failure = ImportStoreUnavailableErr "dropped reference lookup failed"
+        let lookups = ResizeArray<LibraryEntryId>()
+        let failingContext =
+            {
+                context with
+                    proxy =
+                        {
+                            context.proxy with
+                                tryHeldEntry = fun id ->
+                                    lookups.Add id
+                                    Error failure
+                        }
+            }
+        Assert.Equal<Result<ImportDecision list, CatalogueImportError>>(Error failure, failingContext.decideDroppedFiles [ sampleFile ])
+        Assert.Equal(material.content.id, Assert.Single lookups)
+        assertNoStartupWrites observed
 
     [<Fact>]
     member this.``the start-up import logs the shipped catalogue and skips it, reading no entry file, while its manifest hash is unchanged`` () : unit =

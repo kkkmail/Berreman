@@ -24,6 +24,8 @@ module CatalogueImport =
         | InvalidImportChoiceErr of reason : string
         | DanglingReferenceErr of reason : string
         | EntryHashingErr of reason : string
+        | DroppedFileRefusedErr of reason : string
+        | UnresolvedReferenceErr of reason : string
 
         member this.describe : string =
             match this with
@@ -35,6 +37,8 @@ module CatalogueImport =
             | InvalidImportChoiceErr reason -> $"an import choice is invalid: {reason}"
             | DanglingReferenceErr reason -> $"an import would leave a dangling reference: {reason}"
             | EntryHashingErr reason -> $"a catalogue entry could not be hashed: {reason}"
+            | DroppedFileRefusedErr reason -> $"a dropped file was refused: {reason}"
+            | UnresolvedReferenceErr reason -> $"a dropped entry has an unresolved reference: {reason}"
 
     /// One version and content hash held by the library (spec 0050 001 §B).
     type HeldEntryVersion =
@@ -339,7 +343,65 @@ module CatalogueImport =
             hashManifest : CatalogueManifest -> Result<ContentHash, CatalogueImportError>
             now : unit -> CatalogueImportTime
             openCatalogue : FolderName -> CatalogueProxy
+            /// Reads one entry file, retaining its file name in a refusal (spec 0050 S3.2).
+            readEntryFile : LibraryEntryKind -> FileName -> Result<LibraryEntryEnvelope, CatalogueImportError>
         }
+
+        /// Validates the complete drop and returns decisions in file order without writing (spec 0050 001 §B, §H; S3.2).
+        member this.decideDroppedFiles (files : FileName list) : Result<ImportDecision list, CatalogueImportError> =
+            let readFile (file : FileName) : Result<FileName * LibraryEntryEnvelope, CatalogueImportError> =
+                match LibraryEntryKind.tryOfFileName file with
+                | None -> Error (DroppedFileRefusedErr $"{file.value}: not a library entry file")
+                | Some kind ->
+                    this.readEntryFile kind file
+                    |> Result.map (fun envelope -> file, envelope)
+                    |> Result.mapError (function
+                        | DroppedFileRefusedErr _ as error -> error
+                        | error -> DroppedFileRefusedErr $"{file.value}: {error.describe}")
+
+            let readResults = files |> List.map readFile
+            let refusals =
+                readResults |> List.choose (function
+                    | Error (DroppedFileRefusedErr reason) -> Some reason
+                    | Error error -> Some error.describe
+                    | Ok _ -> None)
+
+            match refusals with
+            | _ :: _ -> Error (DroppedFileRefusedErr (String.concat "\n" refusals))
+            | [] ->
+                let entries = readResults |> List.choose (function Ok entry -> Some entry | Error _ -> None)
+                entries
+                |> List.fold (fun result (file, envelope) ->
+                    result |> Result.bind (fun ((seen : Map<LibraryEntryId * VersionNumber, FileName * LibraryEntryEnvelope>), unique) ->
+                        let key = envelope.content.id, envelope.content.version
+                        match Map.tryFind key seen with
+                        | Some (_, first) when first.contentHash = envelope.contentHash -> Ok (seen, unique)
+                        | Some (firstFile, _) ->
+                            Error (DroppedFileRefusedErr $"{firstFile.value} and {file.value}: different content for entry {envelope.content.describe}")
+                        | None -> Ok (Map.add key (file, envelope) seen, (file, envelope) :: unique))) (Ok (Map.empty, []))
+                |> Result.bind (fun (_, reversed) ->
+                    let unique = List.rev reversed
+                    let droppedIds = unique |> List.map (fun (_, envelope) -> envelope.content.id) |> Set.ofList
+                    let validateReferences ((file, envelope) : FileName * LibraryEntryEnvelope) : Result<unit, CatalogueImportError> =
+                        envelope.content.referencedEntryIds
+                        |> Set.fold (fun result referenced ->
+                            result |> Result.bind (fun () ->
+                                if Set.contains referenced droppedIds then Ok ()
+                                else
+                                    this.proxy.tryHeldEntry referenced
+                                    |> Result.bind (function
+                                        | Some _ -> Ok ()
+                                        | None -> Error (UnresolvedReferenceErr $"entry {envelope.content.describe} in {file.value} references missing entry {referenced.value}")))) (Ok ())
+
+                    unique
+                    |> List.fold (fun result entry -> result |> Result.bind (fun () -> validateReferences entry)) (Ok ())
+                    |> Result.bind (fun () ->
+                        unique
+                        |> List.fold (fun result (file, envelope) ->
+                            result |> Result.bind (fun rows ->
+                                let origin = DroppedFileOrigin file.leafName
+                                this.proxy.decideEntry origin envelope |> Result.map (fun row -> row :: rows))) (Ok [])
+                        |> Result.map List.rev))
 
         /// Validates every confirmed choice before writing in reference order, retaining writes before a failure (spec 0050 S3.1).
         member this.apply (choices : ImportChoice list) : Result<ImportOutcome, CatalogueImportError> =
