@@ -133,6 +133,21 @@ module CatalogueImportProxyTests =
         Assert.Equal("a dropped entry has an unresolved reference: Plate references absent Silicon", (UnresolvedReferenceErr "Plate references absent Silicon").describe)
 
     [<Fact>]
+    let ``every export error renders its condition and its payload`` () : unit =
+        let missingReason = "entry 31801b03-444f-43c8-8440-000000000116 is absent"
+        let importError = ImportRejectedErr "the latest version cannot be pinned"
+        let writeReason = "Lab glass.material-json: access was denied"
+        let cases =
+            [
+                ExportedEntryNotHeldErr missingReason, $"the entry to export is not held: {missingReason}"
+                ExportLibraryRefusedErr importError, $"the library refused the export: {importError.describe}"
+                ExportFileWriteErr writeReason, $"the entry file could not be written: {writeReason}"
+            ]
+        for error, expected in cases do
+            Assert.Equal(expected, error.describe)
+        Assert.Equal(3, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
+
+    [<Fact>]
     let ``a CatalogueImportProxy compares by reference (the [<ReferenceEquality>] contract)`` () : unit =
         let make () : CatalogueImportProxy = recordingProxy (ResizeArray<ImportWrite>()) (fun _ -> false)
         let proxy = make ()

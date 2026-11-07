@@ -211,7 +211,7 @@ module CatalogueImportStore =
 
     type CatalogueImportContext with
 
-        /// Supplies canonical hashes, fresh identities, the UTC clock and catalogue/entry-file IO (spec 0050 S3.1; S3.2).
+        /// Supplies canonical hashes, fresh identities, the UTC clock and catalogue/entry-file IO (spec 0050 S3.1; S3.2; S3.3).
         [<ElevationBoundary(nameof IoBoundary, "the catalogue import composition root: canonical hashing, ambient clock, fresh identities and filesystem proxies")>]
         static member create (proxy : CatalogueImportProxy) : CatalogueImportContext =
             {
@@ -229,4 +229,9 @@ module CatalogueImportStore =
                 readEntryFile = fun kind file ->
                     LibraryFileText.readEntryFile kind file
                     |> Result.mapError (fun error -> DroppedFileRefusedErr $"{file.value}: {error.describe}")
+                writeEntryFile = fun file envelope ->
+                    envelope.fileText
+                    |> Result.bind (fun text -> text.writeAtomically file)
+                    |> Result.mapError (fun error -> ExportFileWriteErr $"{file.value}: {error.describe}")
+                exportFolderOpt = None
             }

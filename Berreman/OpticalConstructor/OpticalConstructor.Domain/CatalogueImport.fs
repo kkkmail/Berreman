@@ -292,6 +292,13 @@ module CatalogueImport =
             forgetImport : CatalogueId -> Result<unit, CatalogueImportError>
         }
 
+        /// Reads the latest held envelope, or None when the entry or version is absent (spec 0050 S3.3).
+        member this.tryLatestEnvelope (id : LibraryEntryId) : Result<LibraryEntryEnvelope option, CatalogueImportError> =
+            this.tryHeldEntry id
+            |> Result.bind (function
+                | Some held -> this.tryHeldEnvelope id held.latest
+                | None -> Ok None)
+
         /// Credits distinct held entries in input order using their latest provenance (spec 0050 S3.3).
         /// Unheld or unlicensed entries add nothing; the first read error stops the read without writes.
         member this.attributionLinesOf (ids : LibraryEntryId list) : Result<EntryAttributionLine list, CatalogueImportError> =
@@ -360,6 +367,21 @@ module CatalogueImport =
             forks : EntryFork list
         }
 
+    /// Failures reading, pinning or writing an exported library entry (spec 0050 S3.3).
+    type LibraryExportError =
+        /// The library does not hold the entry to export, named by its id.
+        | ExportedEntryNotHeldErr of reason : string
+        /// The import seam refused to read or pin the exported version.
+        | ExportLibraryRefusedErr of CatalogueImportError
+        /// The entry file could not be written, named with its underlying failure.
+        | ExportFileWriteErr of reason : string
+
+        member this.describe : string =
+            match this with
+            | ExportedEntryNotHeldErr reason -> $"the entry to export is not held: {reason}"
+            | ExportLibraryRefusedErr error -> $"the library refused the export: {error.describe}"
+            | ExportFileWriteErr reason -> $"the entry file could not be written: {reason}"
+
     [<ReferenceEquality>]
     type CatalogueImportContext =
         {
@@ -371,7 +393,24 @@ module CatalogueImport =
             openCatalogue : FolderName -> CatalogueProxy
             /// Reads one entry file, retaining its file name in a refusal (spec 0050 S3.2).
             readEntryFile : LibraryEntryKind -> FileName -> Result<LibraryEntryEnvelope, CatalogueImportError>
+            /// Writes one entry file, retaining its file name in a refusal (spec 0050 S3.3).
+            writeEntryFile : FileName -> LibraryEntryEnvelope -> Result<unit, LibraryExportError>
+            /// The configured catalogue-export folder in which export dialogs open, if any (spec 0050 001 §G).
+            exportFolderOpt : FolderName option
         }
+
+        /// Reads the latest envelope and pins its version before writing its entry file (spec 0050 001 §B, §C).
+        /// Returns the envelope written; a read or pin refusal prevents the write.
+        member this.exportEntry (id : LibraryEntryId) (file : FileName) : Result<LibraryEntryEnvelope, LibraryExportError> =
+            this.proxy.tryLatestEnvelope id
+            |> Result.mapError ExportLibraryRefusedErr
+            |> Result.bind (function
+                | None -> Error (ExportedEntryNotHeldErr $"entry {id.value}")
+                | Some envelope ->
+                    this.proxy.pinEntryVersion id envelope.content.version
+                    |> Result.mapError ExportLibraryRefusedErr
+                    |> Result.bind (fun () -> this.writeEntryFile file envelope)
+                    |> Result.map (fun () -> envelope))
 
         /// Validates the complete drop and returns decisions in file order without writing (spec 0050 001 §B, §H; S3.2).
         member this.decideDroppedFiles (files : FileName list) : Result<ImportDecision list, CatalogueImportError> =

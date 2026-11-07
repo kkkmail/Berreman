@@ -293,6 +293,145 @@ type CatalogueImportContract () =
     abstract freshImport : unit -> ImportStoreSet
 
     [<Fact>]
+    member this.``exporting one entry pins its latest version and writes its entry file, which a drop decides as a reuse`` () : unit =
+        let stores = this.freshImport ()
+        let context = stores.context
+        Assert.Equal<FolderName option>(None, context.exportFolderOpt)
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let labId = MaterialId (Guid.Parse "31801b01-444f-43c8-8440-000000000116")
+        let labName = EntryName "Lab glass"
+        let lab = BuiltinCatalogue.userMaterialContent labId labName
+        BuiltinCatalogue.putSealedEntries context [ lab ]
+        let expected = context.sealEntry lab |> expectImportOk
+        let folder = FolderName (Path.Combine(AppContext.BaseDirectory, "LibraryExportTests", Guid.NewGuid().ToString("N")))
+        Directory.CreateDirectory folder.value |> ignore
+        let file = lab.fileName.combine folder
+        let pins = ResizeArray<LibraryEntryId * VersionNumber>()
+        let observed =
+            {
+                context with
+                    proxy =
+                        {
+                            context.proxy with
+                                pinEntryVersion = fun id version ->
+                                    context.proxy.pinEntryVersion id version
+                                    |> Result.map (fun () -> pins.Add(id, version))
+                        }
+                    writeEntryFile = fun destination envelope ->
+                        Assert.Equal<LibraryEntryId * VersionNumber>(
+                            (envelope.content.id, envelope.content.version), Assert.Single pins)
+                        context.writeEntryFile destination envelope
+            }
+        let exported = observed.exportEntry lab.id file |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(expected, exported)
+        Assert.Equal(expected, context.readEntryFile MaterialEntryKind file |> expectImportOk)
+        let row = context.decideDroppedFiles [ file ] |> expectImportOk |> Assert.Single
+        Assert.Equal(SameContentHash (expected, heldImportRow context lab.id), row.status)
+        Assert.Equal(ReuseHeldEntry, row.defaultAction)
+
+        let material = lab.toMaterialEntry |> decodeImportEntry
+        let langasite = BuiltinCatalogue.material MaterialIds.langasite
+        let edited =
+            {
+                material with
+                    complexity = langasite.complexity
+            }
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
+        let first = MaterialVersionId.firstOf labId
+        let second =
+            {
+                first with
+                    version = first.version.next
+            }
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some material), stores.materials.resolveVersion first)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some edited), stores.materials.resolveVersion second)
+        Assert.Equal(expected, context.readEntryFile MaterialEntryKind file |> expectImportOk)
+        pins.Clear()
+        let siliconFile = FileName (Path.Combine(folder.value, "Silicon.material-json"))
+        observed.exportEntry MaterialIds.silicon.toLibraryEntryId siliconFile
+        |> Result.defaultWith (fun error -> failwith error.describe) |> ignore
+        let shipped = FileName (Path.Combine(AppContext.BaseDirectory, "Catalogue", "Builtin", "Silicon.material-json"))
+        Assert.Equal<byte>(File.ReadAllBytes shipped.value, File.ReadAllBytes siliconFile.value)
+
+    [<Fact>]
+    member this.``exporting an entry the library does not hold is refused and writes nothing`` () : unit =
+        let context = (this.freshImport ()).context
+        let missingId = LibraryEntryId (Guid.Parse "31801b02-444f-43c8-8440-000000000116")
+        let folder = FolderName (Path.Combine(AppContext.BaseDirectory, "LibraryExportTests", Guid.NewGuid().ToString("N")))
+        Directory.CreateDirectory folder.value |> ignore
+        let file = FileName (Path.Combine(folder.value, "Missing.material-json"))
+        let unwritable =
+            {
+                context with
+                    proxy =
+                        {
+                            context.proxy with
+                                tryHeldEnvelope = fun _ _ -> failwith "An unheld entry must not read an envelope."
+                                pinEntryVersion = fun _ _ -> failwith "An unheld entry must not be pinned."
+                        }
+                    writeEntryFile = fun _ _ -> failwith "A refused export must not write a file."
+            }
+        match unwritable.exportEntry missingId file with
+        | Error (ExportedEntryNotHeldErr reason) -> Assert.Contains(missingId.value.ToString(), reason)
+        | _ -> Assert.Fail("An unheld entry must be refused with its id.")
+
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let id = MaterialIds.silicon.toLibraryEntryId
+        let noPin =
+            {
+                context.proxy with
+                    pinEntryVersion = fun _ _ -> failwith "A failed envelope read must not pin a version."
+            }
+        let readError = ImportStoreUnavailableErr "the export metadata read failed"
+        let envelopeError = ImportRejectedErr "the export envelope read failed"
+        let pinError = ImportRejectedErr "the export version could not be pinned"
+        let refused =
+            [
+                {
+                    noPin with
+                        tryHeldEntry = fun _ -> Error readError
+                        tryHeldEnvelope = fun _ _ -> failwith "A failed metadata read must not read an envelope."
+                }, readError
+                {
+                    noPin with
+                        tryHeldEnvelope = fun _ _ -> Error envelopeError
+                }, envelopeError
+                {
+                    context.proxy with
+                        pinEntryVersion = fun _ _ -> Error pinError
+                }, pinError
+            ]
+        for proxy, error in refused do
+            let failing =
+                {
+                    unwritable with
+                        proxy = proxy
+                }
+            Assert.Equal<Result<LibraryEntryEnvelope, LibraryExportError>>(
+                Error (ExportLibraryRefusedErr error), failing.exportEntry id file)
+        let absentEnvelope =
+            {
+                unwritable with
+                    proxy =
+                        {
+                            noPin with
+                                tryHeldEnvelope = fun _ _ -> Ok None
+                        }
+            }
+        match absentEnvelope.exportEntry id file with
+        | Error (ExportedEntryNotHeldErr reason) -> Assert.Contains(id.value.ToString(), reason)
+        | _ -> Assert.Fail("An absent latest envelope must be refused with its id.")
+        let invalidFile = FileName (Path.Combine(folder.value, "absent", "Silicon.material-json"))
+        match context.exportEntry id invalidFile with
+        | Error (ExportFileWriteErr reason) ->
+            Assert.Contains(invalidFile.value, reason)
+            Assert.Contains($"{invalidFile.value}.tmp", reason)
+        | _ -> Assert.Fail("A failed atomic write must name its destination and storage error.")
+        Assert.Empty(Directory.EnumerateFileSystemEntries folder.value)
+
+    [<Fact>]
     member this.``heldUserEntries answers every entry whose latest version is not a built-in`` () : unit =
         let context = (this.freshImport ()).context
         Assert.Empty(context.proxy.heldUserEntries () |> expectImportOk)

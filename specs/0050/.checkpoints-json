@@ -56,6 +56,9 @@
   "114": {
     "constructor_unit_tests": 995
   },
+  "115": {
+    "constructor_unit_tests": 1000
+  },
   "12": {
     "constructor_unit_tests": 736,
     "ui_smoke_tests": 208
