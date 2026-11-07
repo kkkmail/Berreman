@@ -24,16 +24,19 @@ module OpticalConstructor.Ui.LibraryWindowView
 
 open System
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.FuncUI.DSL
+open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.Types
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.FacetBuckets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
@@ -56,6 +59,11 @@ type LibraryRemoveGate =
     | NoPendingLibraryRemove
     | PendingSampleRemove of SampleId
     | PendingSourceRemove of ElementValueId
+
+/// The restore panel: closed, or open over listed backups with an optional picked backup.
+type LibraryRestoreGate =
+    | NoPendingLibraryRestore
+    | PendingLibraryRestore of backups : LibraryBackupName list * pickedOpt : LibraryBackupName option
 
 /// Which lifecycle verb (if any) awaits its inline confirmation, carrying the `SampleId` the verb
 /// click targeted (the `LibraryRemoveGate` confirm-gating shape). Only a SAMPLE can arm this — a
@@ -83,6 +91,8 @@ type LibraryWindowError =
     /// The samples store refused a confirmed lifecycle verb (spec 0038 step 023 — e.g. the sample
     /// vanished behind the window's back) — the typed `SampleError` carries its own reason.
     | SampleLifecycleRefusedErr of SampleError
+    /// The backup store refused a backup, listing or restore request.
+    | LibraryBackupRefusedErr of LibraryBackupError
 
     /// The refusal's reason as the inline message shows it.
     member this.caption : ControlCaption =
@@ -92,6 +102,7 @@ type LibraryWindowError =
         | SampleRemoveRefusedErr sampleError
         | SampleLifecycleRefusedErr sampleError -> sampleError.caption
         | SourceRemoveRefusedErr sourceError -> sourceError.caption
+        | LibraryBackupRefusedErr backupError -> backupError.caption
 
 /// One named tree-shaping representation the window offers (spec 0038 §D.0: search order ≠
 /// representation order): a stable `code` the control dispatches back, the picker label, and
@@ -144,7 +155,7 @@ let private libraryEntriesCode : ConstructorUiKey = ConstructorUiKey "entries"
 
 /// The window's context: the read-only Library seam (the preset entries), the app-scope
 /// samples WRITE store (the live sample corpus AND the Remove verb's target), the materials
-/// store (the step-011 catalogue resolves sample constituents through it), the Domain
+/// and backup stores, the Domain
 /// tree-gating threshold and bucket cap, and the Sample-editor launcher (the composition root —
 /// `LibraryWindow` — bakes the step-008 `WindowLauncher` `SampleEditorKey` into it; tests
 /// substitute recording stubs). Function-valued fields have no structural equality, so the
@@ -157,6 +168,8 @@ type LibraryWindowContext =
         materials : MaterialProxy
         /// Live category store for facet names (spec 0050 S1.7).
         categories : CategoryProxy
+        /// The app-scope library backup and restore store.
+        libraryBackups : LibraryBackupProxy
         treeAutoBuildThreshold : TreeAutoBuildThreshold
         thicknessBucketCap : ThicknessBucketCap
         /// Open the Sample editor by intent: `NewBlankSample` / `NewSeededMultilayer` (the Add /
@@ -266,6 +279,10 @@ type LibraryWindowModel =
         removeGate : LibraryRemoveGate
         /// Which lifecycle verb (if any) awaits its inline confirmation.
         lifecycleGate : SampleLifecycleGate
+        /// The listed backups and optional pick awaiting restore confirmation.
+        restoreGate : LibraryRestoreGate
+        /// The most recent successful backup or restore, naming its backups.
+        backupStatus : ControlCaption option
         /// Which OLDER version of the selected SAMPLE the view panel is showing read-only
         /// (`None` = the latest, the editable default; `Some v` = version `v` view-only — spec
         /// 0038 step 023). Reset to `None` on every selection change.
@@ -413,6 +430,8 @@ let private initModel (context : LibraryWindowContext) (mode : LibraryWindowMode
         showInactive = ActiveOnly
         removeGate = NoPendingLibraryRemove
         lifecycleGate = NoPendingSampleLifecycle
+        restoreGate = NoPendingLibraryRestore
+        backupStatus = None
         viewedVersion = None
         lastError = None
     }
@@ -450,6 +469,16 @@ type LibraryWindowMsg =
     | RequestRemoveSelectedEntry
     | ConfirmEntryRemove
     | CancelEntryRemove
+    /// Back up the whole library and report the backup's name.
+    | BackUpLibraryNow
+    /// List available backups and open the restore confirmation panel.
+    | RequestLibraryRestore
+    /// Pick one of the backups listed in the open restore panel.
+    | PickLibraryBackup of LibraryBackupName
+    /// Restore the picked backup, preserving the current library first.
+    | ConfirmLibraryRestore
+    /// Close the restore panel without restoring anything.
+    | CancelLibraryRestore
     /// The show-inactive/superseded toggle (spec 0038 step 023): flip the sample scope between
     /// `ActiveOnly` and `IncludeInactive`.
     | ToggleShowInactiveEntries
@@ -542,7 +571,14 @@ let initLibraryWindow (context : LibraryWindowContext) (mode : LibraryWindowMode
 /// selection is inert (its verbs never render).
 let private requestLifecycle (action : MaterialsWindowView.LifecycleAction) (m : LibraryWindowModel) : LibraryWindowModel =
     match m.editableSample with
-    | Some sample -> { m with lifecycleGate = PendingSampleLifecycle (sample.id, action); removeGate = NoPendingLibraryRemove; lastError = None }
+    | Some sample ->
+        {
+            m with
+                lifecycleGate = PendingSampleLifecycle (sample.id, action)
+                removeGate = NoPendingLibraryRemove
+                restoreGate = NoPendingLibraryRestore
+                lastError = None
+        }
     | None -> m
 
 let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : LibraryWindowModel =
@@ -614,8 +650,22 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
                     lastError = Some (ProtectedEntryRefusedErr $"'%s{entry.displayName}' is a protected built-in entry — it cannot be removed.") }
             | UserManaged ->
                 match entry with
-                | SampleItem sample -> { m with removeGate = PendingSampleRemove sample.id; lastError = None }
-                | SourceItem source -> { m with removeGate = PendingSourceRemove source.id; lastError = None }
+                | SampleItem sample ->
+                    {
+                        m with
+                            removeGate = PendingSampleRemove sample.id
+                            lifecycleGate = NoPendingSampleLifecycle
+                            restoreGate = NoPendingLibraryRestore
+                            lastError = None
+                    }
+                | SourceItem source ->
+                    {
+                        m with
+                            removeGate = PendingSourceRemove source.id
+                            lifecycleGate = NoPendingSampleLifecycle
+                            restoreGate = NoPendingLibraryRestore
+                            lastError = None
+                    }
                 | DetectorItem _ | PolarizerItem _ ->
                     // Unreachable over today's corpus (every detector / polarizer seed is
                     // protected) — total handling, never a throw.
@@ -650,6 +700,65 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
         // Cancel only ever disarms — it never dismisses the inline message (the next query /
         // selection change clears it).
         { m with removeGate = NoPendingLibraryRemove }
+    | BackUpLibraryNow ->
+        match m.context.libraryBackups.backUpLibrary () with
+        | Ok name ->
+            {
+                m with
+                    backupStatus = Some (ControlCaption $"Library backed up to {name.value}.")
+                    lastError = None
+            }
+        | Error error ->
+            {
+                m with
+                    lastError = Some (LibraryBackupRefusedErr error)
+                    backupStatus = None
+            }
+    | RequestLibraryRestore ->
+        match m.context.libraryBackups.listBackups () with
+        | Ok backups ->
+            {
+                m with
+                    restoreGate = PendingLibraryRestore (backups, None)
+                    removeGate = NoPendingLibraryRemove
+                    lifecycleGate = NoPendingSampleLifecycle
+                    lastError = None
+                    backupStatus = None
+            }
+        | Error error ->
+            {
+                m with lastError = Some (LibraryBackupRefusedErr error)
+            }
+    | PickLibraryBackup name ->
+        match m.restoreGate with
+        | PendingLibraryRestore (backups, _) when List.contains name backups ->
+            {
+                m with restoreGate = PendingLibraryRestore (backups, Some name)
+            }
+        | PendingLibraryRestore _ | NoPendingLibraryRestore -> m
+    | ConfirmLibraryRestore ->
+        match m.restoreGate with
+        | PendingLibraryRestore (_, Some picked) ->
+            match m.context.libraryBackups.restoreLibrary picked with
+            | Ok before ->
+                {
+                    m with
+                        restoreGate = NoPendingLibraryRestore
+                        selectedEntryId = None
+                        selectedNodeOpt = None
+                        viewedVersion = None
+                        lastError = None
+                        backupStatus = Some (ControlCaption $"Library restored from {picked.value}. The library before the restore is backed up as {before.value}.")
+                }
+            | Error error ->
+                {
+                    m with lastError = Some (LibraryBackupRefusedErr error)
+                }
+        | PendingLibraryRestore (_, None) | NoPendingLibraryRestore -> m
+    | CancelLibraryRestore ->
+        {
+            m with restoreGate = NoPendingLibraryRestore
+        }
     | ToggleShowInactiveEntries ->
         let flipped =
             match m.showInactive with
@@ -1020,11 +1129,12 @@ let private negativeBackground = Color.FromRgb(236uy, 202uy, 202uy)
 /// changes recreate a shifted box; `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble
 /// pass. The verbs, confirm row, message and panel all have variable membership, so every id is
 /// an AutomationId, never `StyledElement.Name` (the `FacetedTreeControls` discipline).
-let private verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
+let private libraryVerbButtonWithBackground (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
     let keyedBox =
         Border.create [
             id.automationAttribute<Border> ()
-            Border.background (brush idleBackground)
+            AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
+            Border.background (brush background)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
             Border.cornerRadius (CornerRadius 3.0)
@@ -1037,6 +1147,9 @@ let private verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick 
         |> Avalonia.FuncUI.DSL.View.withKey id.value
     keyedBox :> IView
 
+let private verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
+    libraryVerbButtonWithBackground id label idleBackground onClick
+
 /// A positive/negative ACTION box (the Save/Cancel styling precedent) — same look as
 /// `verbButton` but colour-coded and wider-padded; keyed, AutomationId'd (variable
 /// membership: the pair exists only in Select state).
@@ -1044,6 +1157,7 @@ let private actionButton (id : ConstructorUiId) (label : ControlCaption) (backgr
     let keyedBox =
         Border.create [
             id.automationAttribute<Border> ()
+            AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
             Border.background (brush background)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
@@ -1119,8 +1233,54 @@ let private verbsRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> un
             @ (match m.selectedEntry with
                | Some _ -> [ verbButton ConstructorUiId.libraryRemoveButton (ControlCaption "Remove") (fun () -> dispatch RequestRemoveSelectedEntry) ]
                | None -> [])
-            @ (m.offeredLifecycleActions |> List.map (lifecycleButton dispatch)))
+            @ (m.offeredLifecycleActions |> List.map (lifecycleButton dispatch))
+            @ [
+                verbButton ConstructorUiId.libraryBackUpNowButton (ControlCaption "Back up library now…") (fun () -> dispatch BackUpLibraryNow)
+                verbButton ConstructorUiId.libraryRestoreButton (ControlCaption "Restore library…") (fun () -> dispatch RequestLibraryRestore)
+            ])
     ] :> IView
+
+let private libraryRestoreRows (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
+    match m.restoreGate with
+    | NoPendingLibraryRestore -> []
+    | PendingLibraryRestore (backups, pickedOpt) ->
+        let prompt = ControlCaption "Restore the whole library from a backup. The current library is backed up first."
+        [ StackPanel.create [
+              ConstructorUiId.libraryRestorePanel.automationAttribute<StackPanel> ()
+              AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, prompt.value, ValueNone)
+              StackPanel.spacing 6.0
+              StackPanel.children (
+                  [ TextBlock.create [
+                        TextBlock.text prompt.value
+                        TextBlock.textWrapping TextWrapping.Wrap
+                    ] :> IView ]
+                  @ (match backups with
+                     | [] -> [ TextBlock.create [ TextBlock.text "No backup yet." ] :> IView ]
+                     | names ->
+                         names |> List.map (fun name ->
+                             let background = if pickedOpt = Some name then positiveBackground else idleBackground
+                             libraryVerbButtonWithBackground (ConstructorUiId.libraryBackupRow name.uiKey) name.caption background (fun () -> dispatch (PickLibraryBackup name))))
+                  @ [ WrapPanel.create [
+                          WrapPanel.orientation Orientation.Horizontal
+                          WrapPanel.children [
+                              actionButton ConstructorUiId.libraryRestoreConfirmButton (ControlCaption "Restore") positiveBackground (fun () -> dispatch ConfirmLibraryRestore)
+                              actionButton ConstructorUiId.libraryRestoreCancelButton (ControlCaption "Cancel") negativeBackground (fun () -> dispatch CancelLibraryRestore)
+                          ]
+                      ] :> IView ])
+          ] :> IView ]
+
+type LibraryWindowModel with
+
+    member internal this.libraryBackupStatusRow : IView list =
+        match this.backupStatus with
+        | None -> []
+        | Some status ->
+            [ TextBlock.create [
+                  ConstructorUiId.libraryBackupStatusText.automationAttribute<TextBlock> ()
+                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, status.value, ValueNone)
+                  TextBlock.text status.value
+                  TextBlock.textWrapping TextWrapping.Wrap
+              ] :> IView ]
 
 /// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
 /// visible count badge — `Show inactive (N)` while hidden, `Hide inactive (N)` while shown.
@@ -1324,6 +1484,8 @@ let libraryWindowView (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
                                     @ [ verbsRow m dispatch ]
                                     @ confirmRow m dispatch
                                     @ lifecycleConfirmRow m dispatch
+                                    @ libraryRestoreRows m dispatch
+                                    @ m.libraryBackupStatusRow
                                     @ messageRow m
                                     @ viewPanel m dispatch)
                             ])

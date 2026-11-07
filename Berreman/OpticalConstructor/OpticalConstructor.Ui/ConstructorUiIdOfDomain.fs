@@ -6,6 +6,7 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.FacetBuckets
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.DispersionModels
@@ -16,6 +17,19 @@ open OpticalConstructor.Domain.Units
 /// the lowest project that sees both.
 [<AutoOpen>]
 module ConstructorUiIdOfDomain =
+
+    type LibraryBackupName with
+
+        /// The backup's name as its Library-window row key.
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
+        /// The backup's file name as the Library-window row caption.
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type LibraryBackupError with
+
+        /// The backup or restore refusal as the Library-window message.
+        member this.caption : ControlCaption = ControlCaption this.describe
 
     type MaterialId with
 

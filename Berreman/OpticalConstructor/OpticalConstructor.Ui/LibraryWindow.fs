@@ -7,6 +7,7 @@ open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -16,7 +17,7 @@ open OpticalConstructor.Domain.WorkbenchSettings
 /// step-011 library facet catalogue (seeded default representation "By kind"), a view panel,
 /// and the Add sample / Make multilayer / Add source / Edit / Remove verbs — over the injected
 /// `LibraryProxy` (the preset entries) and the app-scope samples, user-sources (spec 0046) and
-/// materials stores. The
+/// materials and backup stores. The
 /// composition root: the context's launcher opens the Sample editor through the step-008
 /// SVC_XDUO_0001 `WindowLauncher` under `SampleEditorKey` (an Add-minted or edited entity id),
 /// Browse-mode over the ONE host-layer `WindowRegistry`, so an editor opened from THIS window
@@ -31,7 +32,7 @@ open OpticalConstructor.Domain.WorkbenchSettings
 /// `categories` store threads through to the Sample editor, whose per-layer Choose material…
 /// verb composes the Materials window (its category facet reads the LIVE store) in Select
 /// state.
-type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : SourceProxy, materials : MaterialProxy, categories : CategoryProxy, ?mode : LibraryWindowMode<LibraryEntry>, ?treeAutoBuildThreshold : TreeAutoBuildThreshold, ?thicknessBucketCap : ThicknessBucketCap) as this =
+type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : SourceProxy, materials : MaterialProxy, categories : CategoryProxy, libraryBackups : LibraryBackupProxy, ?mode : LibraryWindowMode<LibraryEntry>, ?treeAutoBuildThreshold : TreeAutoBuildThreshold, ?thicknessBucketCap : ThicknessBucketCap) as this =
     inherit HostWindow()
 
     // The Elmish dispatch, captured by the init Cmd the moment the loop starts (Program.run is
@@ -64,6 +65,7 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
                 samples = samples
                 materials = materials
                 categories = categories
+                libraryBackups = libraryBackups
                 // The Domain defaults unless a caller threads the app-configured values in (the
                 // step-008 defaults precedent — step 47 owns the composition acceptance).
                 treeAutoBuildThreshold = defaultArg treeAutoBuildThreshold TreeAutoBuildThreshold.defaultValue

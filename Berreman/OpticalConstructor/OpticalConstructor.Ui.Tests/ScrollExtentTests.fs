@@ -13,6 +13,7 @@ open Elmish
 open Xunit
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
@@ -135,7 +136,7 @@ module ScrollExtentTests =
     [<Fact>]
     let ``Library and Materials windows: the facet rows wrap, nothing is clipped`` () =
         let materials, samples, categories, library = stores ()
-        assertReachable "Library" (fun () -> LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories))
+        assertReachable "Library" (fun () -> LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, LibraryBackupProxy.createInMemory ()))
         assertReachable "Materials" (fun () -> MaterialsWindow(materials, categories))
 
     [<Fact>]

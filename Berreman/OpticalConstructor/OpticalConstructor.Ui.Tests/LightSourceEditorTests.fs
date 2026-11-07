@@ -16,6 +16,7 @@ open Berreman.Fields
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.WindowMode
@@ -127,6 +128,7 @@ module LightSourceEditorTests =
             samples = samples
             materials = materials
             categories = BuiltinCatalogue.categoryStore (fun _ -> [])
+            libraryBackups = LibraryBackupProxy.createInMemory ()
             treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
             thicknessBucketCap = ThicknessBucketCap.defaultValue
             openSampleEditor = fun _ -> calls.Add "sample-editor"

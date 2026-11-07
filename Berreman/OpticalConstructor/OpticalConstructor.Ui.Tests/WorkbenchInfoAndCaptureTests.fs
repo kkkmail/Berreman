@@ -15,6 +15,7 @@ open Berreman.Fields
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
@@ -101,6 +102,7 @@ module WorkbenchInfoAndCaptureTests =
             samples = samples
             materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
             categories = BuiltinCatalogue.categoryStore (fun _ -> [])
+            libraryBackups = LibraryBackupProxy.createInMemory ()
             treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
             thicknessBucketCap = ThicknessBucketCap.defaultValue
             openSampleEditor = ignore
@@ -132,7 +134,7 @@ module WorkbenchInfoAndCaptureTests =
     let ``the menu's Choose… hands the Library the element's current binding`` () =
         HeadlessSession.run (fun () ->
             let captured : SelectionContext<LibraryEntry> option ref = ref None
-            let launchers = { EditorLaunchers.defaults with openLibrarySelectWindow = fun _ _ _ _ _ _ _ ctx -> captured.Value <- Some ctx; None }
+            let launchers = { EditorLaunchers.defaults with openLibrarySelectWindow = fun _ _ _ _ _ _ _ _ ctx -> captured.Value <- Some ctx; None }
             let m0 = { (initMain () |> bind 0 PresetIds.krf248) with launchers = launchers }
             let opened = updateTableAndElementRotation (OpenElementMenuAt (canvasPointOf 0 m0)) m0
             let mutable model = opened

@@ -522,6 +522,15 @@ type ConstructorUiId =
     static member librarySelectCloseButton : ConstructorUiId = ConstructorUiId "LibrarySelectCloseButton"
     static member librarySelectConstraint : ConstructorUiId = ConstructorUiId "LibrarySelectConstraint"
 
+    // Spec 0050 S2.4: library-wide backup and confirmed restore.
+    static member libraryBackUpNowButton : ConstructorUiId = ConstructorUiId "LibraryBackUpNowButton"
+    static member libraryRestoreButton : ConstructorUiId = ConstructorUiId "LibraryRestoreButton"
+    static member libraryRestorePanel : ConstructorUiId = ConstructorUiId "LibraryRestorePanel"
+    static member libraryBackupRow (backup : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"LibraryBackupRow_{backup.value}"
+    static member libraryRestoreConfirmButton : ConstructorUiId = ConstructorUiId "LibraryRestoreConfirmButton"
+    static member libraryRestoreCancelButton : ConstructorUiId = ConstructorUiId "LibraryRestoreCancelButton"
+    static member libraryBackupStatusText : ConstructorUiId = ConstructorUiId "LibraryBackupStatusText"
+
     // --- The single-instance Materials window (`MaterialsWindowView`). ---
     static member materialsWindow : ConstructorUiId = ConstructorUiId "MaterialsWindow"
     static member materialsFacetTreeHost : ConstructorUiId = ConstructorUiId "MaterialsFacetTreeHost"

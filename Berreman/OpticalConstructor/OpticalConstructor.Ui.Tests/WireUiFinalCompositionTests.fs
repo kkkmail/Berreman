@@ -49,7 +49,7 @@ module WireUiFinalCompositionTests =
         | MaterialsWindowKey ->
             MaterialsWindow(ctx.materials, ctx.categories) :> Window |> Ok
         | LibraryWindowKey ->
-            LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories) :> Window |> Ok
+            LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups) :> Window |> Ok
         | SolverHandoffWindowKey ->
             SolverHandoffWindow(ctx.library, ctx.experimentData, handoffSnapshot) :> Window |> Ok
         | CategoryEditorKey ->
@@ -151,4 +151,4 @@ module WireUiFinalCompositionTests =
             let materialSelect : SelectionContext<MaterialLibrary.MaterialEntry> = selectContext Placement.Sample
             showAssertClose (MaterialsWindow(ctx.materials, ctx.categories, mode = Select materialSelect))
             let librarySelect : SelectionContext<Library.LibraryEntry> = selectContext Placement.Sample
-            showAssertClose (LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, mode = Select librarySelect)))
+            showAssertClose (LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups, mode = Select librarySelect)))

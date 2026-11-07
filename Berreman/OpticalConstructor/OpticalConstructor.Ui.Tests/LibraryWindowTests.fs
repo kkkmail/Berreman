@@ -11,11 +11,13 @@ open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -168,6 +170,7 @@ module LibraryWindowTests =
                 samples = samples
                 materials = materials
                 categories = BuiltinCatalogue.categoryStore (fun _ -> [])
+                libraryBackups = LibraryBackupProxy.createInMemory ()
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
                 thicknessBucketCap = ThicknessBucketCap.defaultValue
                 openSampleEditor =
@@ -765,7 +768,7 @@ module LibraryWindowTests =
 
     let private mountLibraryWindow (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) : LibraryWindow =
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
-        let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories)
+        let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, LibraryBackupProxy.createInMemory ())
         window.Show()
         Dispatcher.UIThread.RunJobs()
         // The tree opens collapsed (spec 0040 step 002); expand the entries group so the leaf-
@@ -1152,7 +1155,7 @@ module LibraryWindowTests =
 
     let private mountSelectLibraryWindow (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) (selectCtx : SelectionContext<LibraryEntry>) : LibraryWindow =
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
-        let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, mode = Select selectCtx)
+        let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, LibraryBackupProxy.createInMemory (), mode = Select selectCtx)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         // The tree opens collapsed (spec 0040 step 002); expand entries so the Select proofs reach
@@ -1726,3 +1729,208 @@ module LibraryWindowTests =
             Assert.Contains("view-only", textOf window ConstructorUiId.libraryViewOnlyNote.value)
             Assert.True(isPresent window ConstructorUiId.libraryEditButton.value, "the library still edits the latest version")
             window.Close())
+
+    [<Fact>]
+    let ``the backup and restore UiIds are the stable intent-named ids`` () : unit =
+        let name = LibraryBackupName "library-20261106-120000.db"
+        Assert.Equal("LibraryBackUpNowButton", ConstructorUiId.libraryBackUpNowButton.value)
+        Assert.Equal("LibraryRestoreButton", ConstructorUiId.libraryRestoreButton.value)
+        Assert.Equal("LibraryRestorePanel", ConstructorUiId.libraryRestorePanel.value)
+        Assert.Equal("LibraryBackupRow_library-20261106-120000.db", (ConstructorUiId.libraryBackupRow name.uiKey).value)
+        Assert.Equal("LibraryRestoreConfirmButton", ConstructorUiId.libraryRestoreConfirmButton.value)
+        Assert.Equal("LibraryRestoreCancelButton", ConstructorUiId.libraryRestoreCancelButton.value)
+        Assert.Equal("LibraryBackupStatusText", ConstructorUiId.libraryBackupStatusText.value)
+
+    [<Fact>]
+    let ``BackUpLibraryNow reaches the backup store and shows the backup's name`` () : unit =
+        let _, initial = freshModel ()
+        let error = LibraryBackupFailedErr "previous failure"
+        let model =
+            {
+                initial with lastError = Some (LW.LibraryBackupRefusedErr error)
+            }
+        Assert.Equal(LW.NoPendingLibraryRestore, model.restoreGate)
+        Assert.Equal<ControlCaption option>(None, model.backupStatus)
+        let backedUp = LW.updateLibraryWindow LW.BackUpLibraryNow model
+        let backups = model.context.libraryBackups.listBackups () |> Result.defaultWith (fun error -> failwith error.describe)
+        let name = Assert.Single backups
+        Assert.Equal(Some (ControlCaption $"Library backed up to {name.value}."), backedUp.backupStatus)
+        Assert.Equal<LW.LibraryWindowError option>(None, backedUp.lastError)
+
+    [<Fact>]
+    let ``a refused backup shows its reason as the window message and no status`` () : unit =
+        let _, initial = freshModel ()
+        let error = LibraryBackupFailedErr "the backup folder is unavailable"
+        let backups : LibraryBackupProxy =
+            {
+                backUpLibrary = fun () -> Error error
+                listBackups = fun () -> Error error
+                restoreLibrary = fun _ -> Error error
+            }
+        let model =
+            {
+                initial with
+                    context =
+                        {
+                            initial.context with libraryBackups = backups
+                        }
+                    backupStatus = Some (ControlCaption "Previous backup succeeded.")
+            }
+        let refused = LW.updateLibraryWindow LW.BackUpLibraryNow model
+        Assert.Equal(Some (LW.LibraryBackupRefusedErr error), refused.lastError)
+        Assert.Equal<ControlCaption option>(None, refused.backupStatus)
+        match refused.lastError with
+        | Some failure -> Assert.Equal(error.describe, failure.caption.value)
+        | None -> Assert.Fail "the backup refusal must carry the store's reason"
+        let listRefused = LW.updateLibraryWindow LW.RequestLibraryRestore model
+        Assert.Equal(Some (LW.LibraryBackupRefusedErr error), listRefused.lastError)
+        Assert.Equal(LW.NoPendingLibraryRestore, listRefused.restoreGate)
+        let name = LibraryBackupName "unavailable-backup"
+        let picked =
+            {
+                model with restoreGate = LW.PendingLibraryRestore ([ name ], Some name)
+            }
+        let restoreRefused = LW.updateLibraryWindow LW.ConfirmLibraryRestore picked
+        Assert.Equal(Some (LW.LibraryBackupRefusedErr error), restoreRefused.lastError)
+        Assert.Equal(picked.restoreGate, restoreRefused.restoreGate)
+        Assert.Equal(picked.selectedEntryId, restoreRefused.selectedEntryId)
+
+    [<Fact>]
+    let ``RequestLibraryRestore opens the panel over the backups, and Restore stays inert until one is picked`` () : unit =
+        let _, model = freshModel ()
+        let empty = LW.updateLibraryWindow LW.RequestLibraryRestore model
+        Assert.Equal(LW.PendingLibraryRestore ([], None), empty.restoreGate)
+        Assert.Equal(empty, LW.updateLibraryWindow LW.ConfirmLibraryRestore empty)
+        let first = model.context.libraryBackups.backUpLibrary () |> Result.defaultWith (fun error -> failwith error.describe)
+        let second = model.context.libraryBackups.backUpLibrary () |> Result.defaultWith (fun error -> failwith error.describe)
+        let opened = LW.updateLibraryWindow LW.RequestLibraryRestore model
+        Assert.Equal(LW.PendingLibraryRestore ([ second; first ], None), opened.restoreGate)
+        Assert.Equal<ControlCaption option>(None, opened.backupStatus)
+        Assert.Equal<LW.LibraryWindowError option>(None, opened.lastError)
+        Assert.Equal(opened, LW.updateLibraryWindow LW.ConfirmLibraryRestore opened)
+        let unlisted = LibraryBackupName "not-listed"
+        Assert.Equal(opened, LW.updateLibraryWindow (LW.PickLibraryBackup unlisted) opened)
+        Assert.Equal(model, LW.updateLibraryWindow (LW.PickLibraryBackup first) model)
+        Assert.Equal(model, LW.updateLibraryWindow LW.ConfirmLibraryRestore model)
+        Assert.Equal<Result<LibraryBackupName list, LibraryBackupError>>(Ok [ second; first ], model.context.libraryBackups.listBackups ())
+
+    [<Fact>]
+    let ``confirming a picked backup restores it, names the pre-restore backup, closes the panel and clears the selection`` () : unit =
+        let _, model = freshModel ()
+        let backup = model.context.libraryBackups.backUpLibrary () |> Result.defaultWith (fun error -> failwith error.describe)
+        let selected =
+            model
+            |> LW.updateLibraryWindow (LW.SelectLibraryEntry glassFilm600EntryId)
+            |> LW.updateLibraryWindow (LW.ViewSampleVersion VersionNumber.first)
+        Assert.Equal(Some glassFilm600EntryId, selected.selectedEntryId)
+        Assert.Equal(Some glassFilm600EntryId.libraryEntryCode, selected.selectedNodeOpt)
+        Assert.Equal(Some VersionNumber.first, selected.viewedVersion)
+        let picked =
+            selected
+            |> LW.updateLibraryWindow LW.RequestLibraryRestore
+            |> LW.updateLibraryWindow (LW.PickLibraryBackup backup)
+        Assert.Equal(LW.PendingLibraryRestore ([ backup ], Some backup), picked.restoreGate)
+        let restored = LW.updateLibraryWindow LW.ConfirmLibraryRestore picked
+        Assert.Equal(LW.NoPendingLibraryRestore, restored.restoreGate)
+        Assert.Equal<ElementValueId option>(None, restored.selectedEntryId)
+        Assert.Equal<ConstructorUiKey option>(None, restored.selectedNodeOpt)
+        Assert.Equal<VersionNumber option>(None, restored.viewedVersion)
+        Assert.Equal<LW.LibraryWindowError option>(None, restored.lastError)
+        match model.context.libraryBackups.listBackups () with
+        | Ok [ before; original ] ->
+            Assert.Equal(backup, original)
+            Assert.NotEqual(backup, before)
+            Assert.Equal(Some (ControlCaption $"Library restored from {backup.value}. The library before the restore is backed up as {before.value}."), restored.backupStatus)
+        | _ -> Assert.Fail "restore must put the pre-restore backup first, before the original"
+
+    [<Fact>]
+    let ``Cancel closes the restore panel and restores nothing, and arming Remove closes it too`` () : unit =
+        let _, initial = freshModel ()
+        let backup = initial.context.libraryBackups.backUpLibrary () |> Result.defaultWith (fun error -> failwith error.describe)
+        let opened =
+            initial
+            |> LW.updateLibraryWindow (LW.SelectLibraryEntry glassFilm600EntryId)
+            |> LW.updateLibraryWindow LW.RequestLibraryRestore
+            |> LW.updateLibraryWindow (LW.PickLibraryBackup backup)
+        let cancelled = LW.updateLibraryWindow LW.CancelLibraryRestore opened
+        let expected =
+            {
+                opened with restoreGate = LW.NoPendingLibraryRestore
+            }
+        Assert.Equal(expected, cancelled)
+        let removing = LW.updateLibraryWindow LW.RequestRemoveSelectedEntry opened
+        Assert.Equal(LW.NoPendingLibraryRestore, removing.restoreGate)
+        Assert.Equal(LW.PendingSampleRemove SampleIds.glassFilm600Id, removing.removeGate)
+        let reopened = LW.updateLibraryWindow LW.RequestLibraryRestore removing
+        Assert.Equal(LW.NoPendingLibraryRemove, reopened.removeGate)
+        let retiring = LW.updateLibraryWindow LW.RequestMarkSampleInactive reopened
+        Assert.Equal(LW.NoPendingLibraryRestore, retiring.restoreGate)
+        Assert.Equal(LW.NoPendingLibraryRemove, retiring.removeGate)
+        Assert.Equal(LW.PendingSampleLifecycle (SampleIds.glassFilm600Id, MaterialsWindowView.MarkInactiveAction), retiring.lifecycleGate)
+        Assert.Equal(LW.NoPendingSampleLifecycle, (LW.updateLibraryWindow LW.RequestLibraryRestore retiring).lifecycleGate)
+        Assert.Equal(LW.NoPendingSampleLifecycle, (LW.updateLibraryWindow LW.RequestRemoveSelectedEntry retiring).lifecycleGate)
+        Assert.Equal<Result<LibraryBackupName list, LibraryBackupError>>(Ok [ backup ], initial.context.libraryBackups.listBackups ())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the Library window backs up and restores the app-scope library through its buttons`` () : unit =
+        HeadlessSession.run (fun () ->
+            let owner = FolderName "LibraryWindowBackupTests"
+            let locations = TestAppScope.fileLocations owner
+            let ctx =
+                AppContext.create locations WorkbenchSettings.defaults
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let window = LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            try
+                Assert.True(isPresent window ConstructorUiId.libraryBackUpNowButton.value)
+                Assert.True(isPresent window ConstructorUiId.libraryRestoreButton.value)
+                clickOn window ConstructorUiId.libraryBackUpNowButton.value
+                let backups = ctx.libraryBackups.listBackups () |> Result.defaultWith (fun error -> failwith error.describe)
+                let backup = Assert.Single backups
+                Assert.Equal($"Library backed up to {backup.value}.", textOf window ConstructorUiId.libraryBackupStatusText.value)
+                let sample =
+                    {
+                        BuiltinCatalogue.sample SampleIds.glassFilm600Id with
+                            id = newSampleId ()
+                            name = EntryName "Sample added after the backup"
+                    }
+                Assert.Equal<Result<unit, SampleError>>(Ok (), ctx.samples.saveSample sample)
+                Assert.Equal<Result<Sample option, SampleError>>(Ok (Some sample), ctx.samples.tryGetSample sample.id)
+                clickOn window ConstructorUiId.libraryRestoreButton.value
+                Assert.True(isPresent window ConstructorUiId.libraryRestorePanel.value)
+                Assert.Contains("The current library is backed up first.", textOf window ConstructorUiId.libraryRestorePanel.value)
+                Assert.False(isPresent window ConstructorUiId.libraryBackupStatusText.value)
+                clickOn window ConstructorUiId.libraryRestoreConfirmButton.value
+                Assert.Equal<Result<Sample option, SampleError>>(Ok (Some sample), ctx.samples.tryGetSample sample.id)
+                Assert.Equal<Result<LibraryBackupName list, LibraryBackupError>>(Ok [ backup ], ctx.libraryBackups.listBackups ())
+                let rowId = ConstructorUiId.libraryBackupRow backup.uiKey
+                let idle = backgroundColorOf (labelBorderOf window rowId.value)
+                clickOn window rowId.value
+                let picked = backgroundColorOf (labelBorderOf window rowId.value)
+                Assert.NotEqual(idle, picked)
+                let restoreButton = labelBorderOf window ConstructorUiId.libraryRestoreConfirmButton.value
+                let cancelButton = labelBorderOf window ConstructorUiId.libraryRestoreCancelButton.value
+                Assert.Equal(picked, backgroundColorOf restoreButton)
+                Assert.NotEqual(backgroundColorOf restoreButton, backgroundColorOf cancelButton)
+                Assert.Same(restoreButton.Parent, cancelButton.Parent)
+                Assert.True(restoreButton.Bounds.Right < cancelButton.Bounds.Left, "Restore and Cancel must have a visible gap")
+                clickOn window ConstructorUiId.libraryRestoreConfirmButton.value
+                Assert.Equal<Result<Sample option, SampleError>>(Ok None, ctx.samples.tryGetSample sample.id)
+                Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok None, ctx.library.tryGetEntry sample.id.toElementValueId)
+                Assert.False(isPresent window ConstructorUiId.libraryRestorePanel.value)
+                let restoredBackups = ctx.libraryBackups.listBackups () |> Result.defaultWith (fun error -> failwith error.describe)
+                match restoredBackups with
+                | [ before; original ] ->
+                    Assert.Equal(backup, original)
+                    Assert.NotEqual(backup, before)
+                    Assert.Equal($"Library restored from {backup.value}. The library before the restore is backed up as {before.value}.", textOf window ConstructorUiId.libraryBackupStatusText.value)
+                | _ -> Assert.Fail "the restore must leave the original and the pre-restore backup"
+                let files = System.IO.Directory.GetFiles(locations.backupsFolder.value, "*.db")
+                Assert.Equal(2, files.Length)
+                for name in restoredBackups do
+                    Assert.True(System.IO.File.Exists(System.IO.Path.Combine(locations.backupsFolder.value, name.value)))
+            finally
+                window.Close()
+                Dispatcher.UIThread.RunJobs())

@@ -4,6 +4,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.CatalogueFolderStore
@@ -34,6 +35,8 @@ type AppContext =
         sources : Library.SourceProxy
         /// The category database store refuses removal while materials reference the category.
         categories : MaterialLibrary.CategoryProxy
+        /// The library's backup store, Backups beside the database (spec 0050 001 §G).
+        libraryBackups : LibraryBackupProxy
         /// Spec 0038 Part L (037): the measured-data LOAD seam (STORE_XDUO_0006) —
         /// the real file-backed adapter (step 036, the one file-read seam §0.3c
         /// permits) behind the inverse flow's per-experiment data-file attach.
@@ -80,6 +83,7 @@ type AppContext =
             samples = samples
             sources = sources
             categories = categories
+            libraryBackups = LibraryBackupProxy.createInDatabase database locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
             experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked ()
             experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
             scenes = Scene.SceneProxy.createInMemory ()
