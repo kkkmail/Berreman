@@ -11,15 +11,20 @@ open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.ImportDialogView
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0046 (operator): "if we put a tall control above another, the window must have enough scroll length
@@ -140,6 +145,51 @@ module ScrollExtentTests =
         let materials, samples, categories, library = stores ()
         assertReachable "Library" (fun () -> LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, LibraryBackupProxy.createInMemory (), CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy))
         assertReachable "Materials" (fun () -> MaterialsWindow(materials, categories))
+
+    [<Fact>]
+    let ``the import dialog leaves everything reachable`` () : unit =
+        let envelopes = (BuiltinCatalogue.catalogueData ()).envelopes
+        let decisions =
+            envelopes |> List.map (fun envelope ->
+                let origin = DroppedFileOrigin envelope.content.fileName
+                ImportDecision.decide origin envelope None [])
+        let material = envelopes |> List.find (fun envelope -> envelope.content.schema.kind = MaterialEntryKind)
+        let collisionContent =
+            {
+                material.content with
+                    id = LibraryEntryId (System.Guid.Parse "31801b01-444f-43c8-8440-000000000108")
+                    provenance = UserProvenance
+            }
+        let collision = collisionContent.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+        let firstHeld : HeldEntry =
+            {
+                id = material.content.id
+                kind = material.content.schema.kind
+                name = material.content.name
+                latest = material.content.version
+                lifecycle = ActiveEntry
+                provenance = material.content.provenance
+                versions =
+                    [
+                        {
+                            version = material.content.version
+                            contentHash = material.contentHash
+                        }
+                    ]
+            }
+        let secondHeld =
+            {
+                firstHeld with
+                    id = LibraryEntryId (System.Guid.Parse "31801b01-444f-43c8-8440-000000000208")
+                    provenance = UserProvenance
+            }
+        let collisionFile = FileName "collision.material-json"
+        let collisionOrigin = DroppedFileOrigin collisionFile
+        let collisionDecision = ImportDecision.decide collisionOrigin collision None [ firstHeld; secondHeld ]
+        let request = ApplyDroppedEntries (decisions @ [ collisionDecision ])
+        assertReachable "ImportDialog" (fun () ->
+            let imports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
+            ImportDialogWindow(imports, request, ignore))
 
     [<Fact>]
     let ``Material, Sample, Category and Source editors leave everything reachable`` () =

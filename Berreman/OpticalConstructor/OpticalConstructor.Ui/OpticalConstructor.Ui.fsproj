@@ -86,6 +86,7 @@
              scene, whose EditorLaunchers.defaults opens the window under MaterialsWindowKey. -->
         <Compile Include="MaterialsWindowView.fs" />
         <Compile Include="ImportDialogView.fs" />
+        <Compile Include="ImportDialogWindow.fs" />
         <Compile Include="MaterialsWindow.fs" />
         <!-- Spec 0038 Part G (step 019): the Sample editor's composition root follows the
              Materials window — its per-layer Choose material… verb builds (or re-targets)
