@@ -63,6 +63,7 @@ module Kit =
         | MissingKitFileErr of reason : string
         | InvalidKitPathErr of reason : string
         | KitLockedErr of holder : KitLockHolder
+        | KitReadOnlyErr of reason : string
 
         member this.describe : string =
             match this with
@@ -74,6 +75,7 @@ module Kit =
             | MissingKitFileErr reason -> $"the kit holds no such file: {reason}"
             | InvalidKitPathErr reason -> $"the path is not inside the kit: {reason}"
             | KitLockedErr holder -> $"the kit is open elsewhere: {holder.describe}"
+            | KitReadOnlyErr reason -> $"the kit is open read-only: {reason}"
 
     /// The display name, preserved as given; its file stem follows the shared name rule (spec 0050 S4.1).
     type KitName =

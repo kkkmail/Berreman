@@ -296,3 +296,75 @@ module KitFolders =
                             Ok ())
             }
 
+    type KitProxy with
+
+        /// Refuses every write, passes reads through and leaves lock ownership untouched (spec 0050 S4.1).
+        member this.readOnlyView : KitProxy =
+            {
+                initialiseKit = fun _ -> Error (KitReadOnlyErr "initialiseKit")
+                readKitFile = this.readKitFile
+                writeKitFile = fun _ -> Error (KitReadOnlyErr "writeKitFile")
+                listKindFiles = this.listKindFiles
+                readKindFile = this.readKindFile
+                writeKindFile = fun _ _ _ -> Error (KitReadOnlyErr "writeKindFile")
+                deleteKindFile = fun _ _ -> Error (KitReadOnlyErr "deleteKindFile")
+                readDataFile = this.readDataFile
+                recordStamps = this.recordStamps
+                changedKitFiles = this.changedKitFiles
+                acquireLock = fun _ -> Error (KitReadOnlyErr "acquireLock")
+                releaseLock = fun () -> Ok ()
+            }
+
+    /// An opened kit's metadata, access-controlled proxy and injected clock (spec 0050 S4.1).
+    type KitContext =
+        {
+            proxy : KitProxy
+            kitFile : KitFile
+            access : KitAccess
+            clock : ClockProvider
+        }
+
+        /// Reads metadata, locks read-write access and records stamps; stamp failure releases the acquired lock (spec 0050 S4.1).
+        static member openKit (proxy : KitProxy) (access : KitAccess) (clock : ClockProvider) : Result<KitContext, KitError> =
+            let kitProxy =
+                match access with
+                | ReadOnlyKitAccess -> proxy.readOnlyView
+                | ReadWriteKitAccess -> proxy
+            kitProxy.readKitFile ()
+            |> Result.bind (fun kitFile ->
+                let lockResult =
+                    match access with
+                    | ReadWriteKitAccess -> kitProxy.acquireLock (clock.now ()) |> Result.map ignore
+                    | ReadOnlyKitAccess -> Ok ()
+                lockResult
+                |> Result.bind (fun () ->
+                    match kitProxy.recordStamps () with
+                    | Ok () ->
+                        Ok
+                            {
+                                proxy = kitProxy
+                                kitFile = kitFile
+                                access = access
+                                clock = clock
+                            }
+                    | Error error ->
+                        match access with
+                        | ReadWriteKitAccess -> kitProxy.releaseLock () |> ignore
+                        | ReadOnlyKitAccess -> ()
+                        Error error))
+
+        /// Releases this context's lock; read-only contexts leave locks untouched (spec 0050 S4.1).
+        member this.close () : Result<unit, KitError> = this.proxy.releaseLock ()
+
+        /// Stamps modified from the clock and returns the saved context, or the proxy's write error (spec 0050 S4.1).
+        member this.saveKitFile (kitFile : KitFile) : Result<KitContext, KitError> =
+            let savedKitFile =
+                {
+                    kitFile with modified = this.clock.now ()
+                }
+            this.proxy.writeKitFile savedKitFile
+            |> Result.map (fun () ->
+                {
+                    this with kitFile = savedKitFile
+                })
+

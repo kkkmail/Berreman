@@ -655,6 +655,260 @@ type KitProxyContract () =
         Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
         Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxyC.readKitFile ())
 
+    [<Fact>]
+    member this.``opening a kit read-write reads its kit file and takes the lock, and closing it releases the lock`` () : unit =
+        let folder = this.freshFolder ()
+        let proxyA = folder.openProxy ()
+        let proxyB = folder.openProxy ()
+        let clock = steppingClock ()
+        let kit = newKitFile clock
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.initialiseKit kit)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [ KitFile.fileName ], proxyA.changedKitFiles ())
+
+        let context =
+            KitContext.openKit proxyA ReadWriteKitAccess clock
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<KitFile>(kit, context.kitFile)
+        Assert.Equal<KitAccess>(ReadWriteKitAccess, context.access)
+        Assert.Same(proxyA, context.proxy)
+        Assert.Same(clock, context.clock)
+        Assert.Contains(".oc/lock", folder.paths ())
+        let lockTime = ClockTime (kit.created.value.AddSeconds 1.0)
+        Assert.Equal<ClockTime>(lockTime, (storedKitLock proxyB).acquiredAt)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], context.proxy.changedKitFiles ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), context.close ())
+        Assert.DoesNotContain(".oc/lock", folder.paths ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), context.close ())
+
+        let stampError = KitIoErr "cannot record kit-file stamps"
+        let cleanupError = KitIoErr "lock cleanup reported an error"
+        for cleanupResult in [ Ok (); Error cleanupError ] do
+            let failingProxy =
+                {
+                    proxyA with
+                        recordStamps =
+                            fun () ->
+                                Assert.Contains(".oc/lock", folder.paths ())
+                                Error stampError
+                        releaseLock =
+                            fun () ->
+                                Assert.Contains(".oc/lock", folder.paths ())
+                                Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
+                                cleanupResult
+                }
+            let result = KitContext.openKit failingProxy ReadWriteKitAccess clock |> Result.map (fun opened -> opened.kitFile)
+            Assert.Equal<Result<KitFile, KitError>>(Error stampError, result)
+            Assert.DoesNotContain(".oc/lock", folder.paths ())
+            let reopened =
+                KitContext.openKit proxyB ReadWriteKitAccess clock
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            Assert.Equal<Result<unit, KitError>>(Ok (), reopened.close ())
+
+    [<Fact>]
+    member this.``a kit open elsewhere refuses a read-write open and allows a read-only one`` () : unit =
+        let folder = this.freshFolder ()
+        let proxyA = folder.openProxy ()
+        let proxyB = folder.openProxy ()
+        let clock = steppingClock ()
+        let kit = newKitFile clock
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.initialiseKit kit)
+        let owner =
+            KitContext.openKit proxyA ReadWriteKitAccess clock
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let holder = storedKitLock proxyB
+        let before = folder.paths ()
+        let lockBefore = proxyB.readDataFile KitRelativePath.kitLockPath
+        let refusedProxy =
+            {
+                proxyB with
+                    recordStamps = fun () -> failwith "A lock refusal must not record stamps."
+                    releaseLock = fun () -> failwith "A lock refusal must not release a lock."
+            }
+        let refused = KitContext.openKit refusedProxy ReadWriteKitAccess clock |> Result.map (fun opened -> opened.kitFile)
+        Assert.Equal<Result<KitFile, KitError>>(Error (KitLockedErr holder), refused)
+        Assert.Equal<string list>(before, folder.paths ())
+        Assert.Equal<Result<KitDataFile, KitError>>(lockBefore, proxyB.readDataFile KitRelativePath.kitLockPath)
+
+        let unusedClock : ClockProvider =
+            {
+                now = fun () -> failwith "A read-only open must not consult the lock clock."
+            }
+        for proxy in [ proxyB; proxyA ] do
+            let reader =
+                KitContext.openKit proxy ReadOnlyKitAccess unusedClock
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            Assert.Equal<KitFile>(kit, reader.kitFile)
+            Assert.Equal<KitAccess>(ReadOnlyKitAccess, reader.access)
+            Assert.Same(unusedClock, reader.clock)
+            Assert.Equal<Result<FileName list, KitError>>(Ok [], reader.proxy.changedKitFiles ())
+            Assert.Equal<Result<unit, KitError>>(Ok (), reader.close ())
+            Assert.Equal<string list>(before, folder.paths ())
+            Assert.Equal<Result<KitDataFile, KitError>>(lockBefore, proxyB.readDataFile KitRelativePath.kitLockPath)
+
+        Assert.Equal<Result<unit, KitError>>(Ok (), owner.close ())
+        let nextOwner =
+            KitContext.openKit proxyB ReadWriteKitAccess clock
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<unit, KitError>>(Ok (), nextOwner.close ())
+
+    [<Fact>]
+    member this.``a read-only kit context writes nothing, not even the cache folder`` () : unit =
+        let folder = this.freshFolder ()
+        let proxyA = folder.openProxy ()
+        let proxyB = folder.openProxy ()
+        let clock = steppingClock ()
+        let kit = newKitFile clock
+        let experiment = FileStem.ofText "QZ-LR"
+        let original = KitFileText "Original experiment: μ\n"
+        let replacement = KitFileText "Refused replacement\n"
+        let reviewed =
+            {
+                kit with notes = KitNotes "Refused review"
+            }
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.initialiseKit kit)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.writeKindFile ExperimentKitFile experiment original)
+        let before = folder.paths ()
+        let guardedProxy =
+            {
+                proxyA with
+                    acquireLock = fun _ -> failwith "A read-only context must not acquire a lock."
+                    releaseLock = fun () -> failwith "A read-only context must not release a lock."
+            }
+        let context =
+            KitContext.openKit guardedProxy ReadOnlyKitAccess clock
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<KitAccess>(ReadOnlyKitAccess, context.access)
+        Assert.Equal<KitFile>(kit, context.kitFile)
+        Assert.Equal<string list>(before, folder.paths ())
+        let assertReadOnly (verb : string) (result : Result<unit, KitError>) : unit =
+            Assert.Equal<Result<unit, KitError>>(Error (KitReadOnlyErr verb), result)
+            Assert.Equal<string list>(before, folder.paths ())
+            Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxyB.readKitFile ())
+            Assert.Equal<Result<KitFileText, KitError>>(Ok original, proxyB.readKindFile ExperimentKitFile experiment)
+        assertReadOnly "initialiseKit" (context.proxy.initialiseKit reviewed)
+        assertReadOnly "writeKitFile" (context.proxy.writeKitFile reviewed)
+        assertReadOnly "writeKindFile" (context.proxy.writeKindFile ExperimentKitFile experiment replacement)
+        assertReadOnly "deleteKindFile" (context.proxy.deleteKindFile ExperimentKitFile experiment)
+        assertReadOnly "acquireLock" (context.proxy.acquireLock (clock.now ()) |> Result.map ignore)
+        assertReadOnly "writeKitFile" (context.saveKitFile reviewed |> Result.map ignore)
+
+        Assert.Equal<Result<KitFile, KitError>>(Ok kit, context.proxy.readKitFile ())
+        Assert.Equal<Result<FileStem list, KitError>>(Ok [ experiment ], context.proxy.listKindFiles ExperimentKitFile)
+        Assert.Equal<Result<KitFileText, KitError>>(Ok original, context.proxy.readKindFile ExperimentKitFile experiment)
+        let experimentPath =
+            KitRelativePath.tryCreate (ExperimentKitFile.fileNameOf experiment).value
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<KitDataFile, KitError>>(proxyB.readDataFile experimentPath, context.proxy.readDataFile experimentPath)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], context.proxy.changedKitFiles ())
+        let changed = KitFileText "An outside writer changed the experiment\n"
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.writeKindFile ExperimentKitFile experiment changed)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [ ExperimentKitFile.fileNameOf experiment ], context.proxy.changedKitFiles ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), context.proxy.recordStamps ())
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], context.proxy.changedKitFiles ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), context.close ())
+        Assert.Equal<string list>(before, folder.paths ())
+        Assert.DoesNotContain(".oc", folder.paths ())
+
+        let stampError = KitIoErr "read-only stamp scan failed"
+        let failingReader =
+            {
+                guardedProxy with recordStamps = fun () -> Error stampError
+            }
+        let failed = KitContext.openKit failingReader ReadOnlyKitAccess clock |> Result.map (fun opened -> opened.kitFile)
+        Assert.Equal<Result<KitFile, KitError>>(Error stampError, failed)
+        Assert.Equal<string list>(before, folder.paths ())
+        Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxyB.readKitFile ())
+        Assert.Equal<Result<KitFileText, KitError>>(Ok changed, proxyB.readKindFile ExperimentKitFile experiment)
+
+    [<Fact>]
+    member this.``saving the kit file through the context stamps its modified time`` () : unit =
+        let folder = this.freshFolder ()
+        let proxyA = folder.openProxy ()
+        let proxyB = folder.openProxy ()
+        let clock = steppingClock ()
+        let kit = newKitFile clock
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.initialiseKit kit)
+        let context =
+            KitContext.openKit proxyA ReadWriteKitAccess clock
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let reviewed =
+            {
+                context.kitFile with notes = KitNotes "Reviewed"
+            }
+        let expectedModified = ClockTime (kit.created.value.AddSeconds 2.0)
+        let expected =
+            {
+                reviewed with modified = expectedModified
+            }
+        let saved = context.saveKitFile reviewed |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<KitFile>(expected, saved.kitFile)
+        Assert.Equal<ClockTime>(kit.created, saved.kitFile.created)
+        Assert.Equal<ClockTime>(expectedModified, saved.kitFile.modified)
+        Assert.Equal<KitFile>(kit, context.kitFile)
+        Assert.Equal<KitAccess>(ReadWriteKitAccess, saved.access)
+        Assert.Same(context.proxy, saved.proxy)
+        Assert.Same(clock, saved.clock)
+        Assert.Equal<Result<KitFile, KitError>>(Ok expected, proxyB.readKitFile ())
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], saved.proxy.changedKitFiles ())
+
+        let metadataPath = KitRelativePath ".kit-json"
+        let storedMetadata = proxyB.readDataFile metadataPath
+        let experiment = FileStem.ofText "QZ-LR"
+        let text = KitFileText "Experiment without a metadata edit\n"
+        Assert.Equal<Result<unit, KitError>>(Ok (), saved.proxy.writeKindFile ExperimentKitFile experiment text)
+        Assert.Equal<Result<KitDataFile, KitError>>(storedMetadata, proxyB.readDataFile metadataPath)
+        Assert.Equal<Result<unit, KitError>>(Ok (), saved.proxy.deleteKindFile ExperimentKitFile experiment)
+        Assert.Equal<Result<KitDataFile, KitError>>(storedMetadata, proxyB.readDataFile metadataPath)
+
+        let writeError = KitIoErr "metadata replacement refused"
+        let failingContext =
+            {
+                saved with
+                    proxy =
+                        {
+                            saved.proxy with writeKitFile = fun _ -> Error writeError
+                        }
+            }
+        let failed = failingContext.saveKitFile kit |> Result.map (fun opened -> opened.kitFile)
+        Assert.Equal<Result<KitFile, KitError>>(Error writeError, failed)
+        Assert.Equal<KitFile>(expected, saved.kitFile)
+        Assert.Equal<Result<KitFile, KitError>>(Ok expected, proxyB.readKitFile ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), saved.close ())
+        Assert.DoesNotContain(".oc/lock", folder.paths ())
+
+    [<Fact>]
+    member this.``opening a folder that is not a kit writes nothing`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let unusedClock : ClockProvider =
+            {
+                now = fun () -> failwith "A failed metadata read must not consult the clock."
+            }
+        let guardedProxy =
+            {
+                proxy with
+                    acquireLock = fun _ -> failwith "A failed metadata read must not acquire a lock."
+                    releaseLock = fun () -> failwith "A failed metadata read must not release a lock."
+                    recordStamps = fun () -> failwith "A failed metadata read must not record stamps."
+            }
+        for access in [ ReadWriteKitAccess; ReadOnlyKitAccess ] do
+            let result = KitContext.openKit guardedProxy access unusedClock |> Result.map (fun opened -> opened.kitFile)
+            Assert.Equal<Result<KitFile, KitError>>(proxy.readKitFile (), result)
+            match result with
+            | Error (NotAKitFolderErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail($"Expected NotAKitFolderErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("Opening an empty folder must not create a kit.")
+            Assert.Empty(folder.paths ())
+
+            let readError = KitFileRejectedErr "invalid kit metadata"
+            let rejectedProxy =
+                {
+                    guardedProxy with readKitFile = fun () -> Error readError
+                }
+            let rejected = KitContext.openKit rejectedProxy access unusedClock |> Result.map (fun opened -> opened.kitFile)
+            Assert.Equal<Result<KitFile, KitError>>(Error readError, rejected)
+            Assert.Empty(folder.paths ())
+
 /// Runs the shared kit-file contract over one in-memory folder per fact (spec 0050 S4.1).
 type KitProxyTests () =
     inherit KitProxyContract ()

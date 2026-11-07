@@ -165,10 +165,11 @@ module KitTests =
                 MissingKitFileErr "data/missing.csv", "the kit holds no such file: data/missing.csv"
                 InvalidKitPathErr "../outside.csv", "the path is not inside the kit: ../outside.csv"
                 KitLockedErr exampleLockHolder, "the kit is open elsewhere: lab on BENCH-1 (process 4242) since 2026-11-03 12:00:00 UTC"
+                KitReadOnlyErr "writeKitFile", "the kit is open read-only: writeKitFile"
             ]
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
-        Assert.Equal(8, descriptions |> List.distinct |> List.length)
+        Assert.Equal(9, descriptions |> List.distinct |> List.length)
