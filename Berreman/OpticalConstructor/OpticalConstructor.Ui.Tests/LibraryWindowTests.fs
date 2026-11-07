@@ -1880,6 +1880,8 @@ module LibraryWindowTests =
             let ctx =
                 AppContext.create locations WorkbenchSettings.defaults
                 |> Result.defaultWith (fun error -> failwith error.describe)
+            ctx.catalogueDecisions |> List.map _.byDefault |> ctx.catalogueImport.apply
+            |> Result.defaultWith (fun error -> failwith error.describe) |> ignore
             let window = LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups)
             window.Show()
             Dispatcher.UIThread.RunJobs()

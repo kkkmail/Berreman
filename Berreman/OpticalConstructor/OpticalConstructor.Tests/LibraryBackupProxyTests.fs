@@ -12,6 +12,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.CategoryDatabaseStore
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.LibraryBackupStore
@@ -121,7 +122,10 @@ type LibraryBackupProxySqliteTests () =
                 (MaterialProxy.createInDatabase database)
                 samples
                 (LibraryEntryStore.createInDatabase database)
-        Assert.Equal<Result<unit, CatalogueImportError>>(Ok (), importer.importFrom (CatalogueProxy.createBuiltIn ()))
+        let context = CatalogueImportContext.create importer
+        let rows = context.importFrom (CatalogueProxy.createBuiltIn ()) |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<Sample list, SampleError>>(Ok [], samples.listSamples IncludeInactive)
+        rows |> List.map _.byDefault |> context.apply |> Result.defaultWith (fun error -> failwith error.describe) |> ignore
         samples
 
     static member private newUserSample () : Sample =

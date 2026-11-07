@@ -100,6 +100,10 @@ module AppContextTests =
             AppContext.create locations WorkbenchSettings.defaults
             |> Result.defaultWith (fun error -> failwith error.describe)
         let expected = BuiltinCatalogue.samples () |> List.sortBy _.id
+        Assert.Equal<Result<Sample list, SampleError>>(Ok [], first.samples.listSamples IncludeInactive)
+        Assert.Equal((BuiltinCatalogue.catalogueData ()).envelopes.Length, first.catalogueDecisions.Length)
+        first.catalogueDecisions |> List.map _.byDefault |> first.catalogueImport.apply
+        |> Result.defaultWith (fun error -> failwith error.describe) |> ignore
         Assert.Equal<Result<Sample list, SampleError>>(
             Ok expected,
             first.samples.listSamples IncludeInactive |> Result.map (List.sortBy _.id))
@@ -108,6 +112,7 @@ module AppContextTests =
         let reopened =
             AppContext.create locations WorkbenchSettings.defaults
             |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Empty reopened.catalogueDecisions
         Assert.Equal<Result<Sample list, SampleError>>(
             Ok (expected |> List.filter (fun sample -> sample.id <> SampleIds.glassFilm600Id)),
             reopened.samples.listSamples IncludeInactive |> Result.map (List.sortBy _.id))

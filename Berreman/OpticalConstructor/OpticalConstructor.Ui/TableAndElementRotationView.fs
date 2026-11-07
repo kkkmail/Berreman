@@ -423,6 +423,7 @@ module private DefaultStores =
     open OpticalConstructor.Domain.CatalogueImport
     open OpticalConstructor.Domain.CatalogueFiles
     open OpticalConstructor.Storage.CatalogueFolderStore
+    open OpticalConstructor.Storage.CatalogueImportStore
 
     /// The default stores of a test scene.
     type DefaultStoreSet =
@@ -437,8 +438,12 @@ module private DefaultStores =
     /// Imports fresh scene stores, logging any failure and retaining entries already imported.
     let create () : DefaultStoreSet =
         let stores = CatalogueImportProxy.createInMemory ()
-        match stores.proxy.importFrom (CatalogueProxy.createBuiltIn ()) with
-        | Ok () -> ()
+        let context = CatalogueImportContext.create stores.proxy
+        let confirmed =
+            context.importFrom (CatalogueProxy.createBuiltIn ())
+            |> Result.bind (fun rows -> rows |> List.map _.byDefault |> context.apply)
+        match confirmed with
+        | Ok _ -> ()
         | Error e -> Logger.logError $"DefaultStores.create: could not import the Built-in catalogue: {e.describe}"
         let sources = SourceProxy.createInMemory ()
         {

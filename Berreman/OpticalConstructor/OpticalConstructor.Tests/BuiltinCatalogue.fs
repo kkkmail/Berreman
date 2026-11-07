@@ -13,6 +13,7 @@ open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 
 module BuiltinCatalogue =
@@ -59,8 +60,10 @@ module BuiltinCatalogue =
     /// Returns independent stores filled with the shipped catalogue, failing with the import error's description.
     let freshStores () : InMemoryCatalogueStores =
         let stores = CatalogueImportProxy.createInMemory ()
-        match stores.proxy.importCatalogue (catalogueData ()) with
-        | Ok () -> stores
+        let context = CatalogueImportContext.create stores.proxy
+        let rows = context.importCatalogue (catalogueData ()) |> Result.defaultWith (fun error -> failwith error.describe)
+        match rows |> List.map _.byDefault |> context.apply with
+        | Ok _ -> stores
         | Error error -> failwith error.describe
 
     let private contentsOfKind (kind : LibraryEntryKind) : LibraryEntryContent list =

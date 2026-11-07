@@ -41,5 +41,9 @@ module TestAppScope =
 
     /// Compose a fresh database app scope, failing the calling fact on an open error (spec 0050 S2.4).
     let freshAppContext (owner : FolderName) : AppContext =
-        AppContext.create (testLocations owner) WorkbenchSettings.defaults
-        |> Result.defaultWith (fun error -> failwith error.describe)
+        let context =
+            AppContext.create (testLocations owner) WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        context.catalogueDecisions |> List.map _.byDefault |> context.catalogueImport.apply
+        |> Result.defaultWith (fun error -> failwith error.describe) |> ignore
+        context

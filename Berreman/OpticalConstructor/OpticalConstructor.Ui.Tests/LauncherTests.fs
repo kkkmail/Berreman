@@ -316,7 +316,7 @@ module LauncherTests =
                 live.Open()
                 use entries = live.CreateCommand()
                 entries.CommandText <- "SELECT COUNT(*) FROM EntryVersion;"
-                Assert.Equal(int64 (BuiltinCatalogue.catalogueData ()).envelopes.Length, unbox<int64> (entries.ExecuteScalar()))
+                Assert.Equal(0L, unbox<int64> (entries.ExecuteScalar()))
             finally launcher.Close())
 
     [<Fact>]

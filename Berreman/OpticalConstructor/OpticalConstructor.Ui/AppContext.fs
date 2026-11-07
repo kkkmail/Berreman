@@ -8,6 +8,7 @@ open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.CategoryDatabaseStore
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.LibraryBackupStore
@@ -37,6 +38,10 @@ type AppContext =
         categories : MaterialLibrary.CategoryProxy
         /// The library's backup store, Backups beside the database (spec 0050 001 §G).
         libraryBackups : LibraryBackupProxy
+        /// The write context for explicitly confirmed catalogue decisions (spec 0050 S3.1).
+        catalogueImport : CatalogueImportContext
+        /// Every startup row remains pending until confirmed (spec 0050 §3.7).
+        catalogueDecisions : ImportDecision list
         /// Spec 0038 Part L (037): the measured-data LOAD seam (STORE_XDUO_0006) —
         /// the real file-backed adapter (step 036, the one file-read seam §0.3c
         /// permits) behind the inverse flow's per-experiment data-file attach.
@@ -68,13 +73,18 @@ type AppContext =
         let samples = SampleProxy.createInDatabase database
         let sources = SourceProxy.createInDatabase database
         let categories = CategoryProxy.createInDatabase database
-        match database.origin with
-        | CreatedLibraryDatabase ->
-            let importer = CatalogueImportProxy.ofStores categories materials samples (LibraryEntryStore.createInDatabase database)
-            match importer.importFrom (CatalogueProxy.createBuiltInUnder locations.shippedCatalogueFolder) with
-            | Ok () -> ()
-            | Error e -> Logger.logError $"AppContext.compose: could not import the Built-in catalogue: {e.describe}"
-        | OpenedLibraryDatabase -> ()
+        let importer =
+            CatalogueImportProxy.ofStores categories materials samples (LibraryEntryStore.createInDatabase database)
+            |> CatalogueImportContext.create
+        let decisions =
+            match database.origin with
+            | CreatedLibraryDatabase ->
+                match importer.importFrom (CatalogueProxy.createBuiltInUnder locations.shippedCatalogueFolder) with
+                | Ok rows -> rows
+                | Error e ->
+                    Logger.logError $"AppContext.compose: could not import the Built-in catalogue: {e.describe}"
+                    []
+            | OpenedLibraryDatabase -> []
 
         {
             library = LibraryProxy.createInDatabase database
@@ -84,6 +94,8 @@ type AppContext =
             sources = sources
             categories = categories
             libraryBackups = LibraryBackupProxy.createInDatabase database locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
+            catalogueImport = importer
+            catalogueDecisions = decisions
             experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked ()
             experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
             scenes = Scene.SceneProxy.createInMemory ()
@@ -94,8 +106,8 @@ type AppContext =
             settings = settings
         }
 
-    /// Opens or creates the configured library database and imports the Built-in catalogue into a new one.
-    /// Answers open failures unchanged; import failures are logged, retaining prior imports (001 §C; spec 0050 S2.4).
+    /// Opens the library and retains Built-in import decisions for confirmation on creation (spec 0050 S2.4; S3.1).
+    /// Answers open failures unchanged and logs catalogue read failures without writing entries.
     static member create (locations : DataLocations) (settings : WorkbenchSettings) : Result<AppContext, StorageError> =
         LibraryDatabase.openOrCreate locations.libraryConnection
         |> Result.map (AppContext.compose locations settings)
