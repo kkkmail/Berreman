@@ -43,6 +43,9 @@ module CatalogueImportProxyTests =
                     tape.Add(PutVersion put)
                     Ok ()
             retireEntry = fun id -> tape.Add(RetireEntry id); Ok ()
+            loggedImports = fun () -> Ok []
+            logImport = fun _ -> Ok ()
+            forgetImport = fun _ -> Ok ()
         }
 
     let private forkId = LibraryEntryId (Guid.Parse "121b9a30-fd22-4b18-b22b-bd7c07fd42c5")

@@ -157,6 +157,55 @@ type CatalogueImportContract () =
     abstract freshImport : unit -> ImportStoreSet
 
     [<Fact>]
+    member this.``the import log records, replaces and forgets a catalogue by its id`` () : unit =
+        let proxy = (this.freshImport ()).context.proxy
+        let first =
+            {
+                catalogueId = CatalogueIds.builtInCatalogue
+                folder = FolderName "b"
+                manifestHash = ContentHash (String('a', 64))
+                importedAt = CatalogueImportTime (DateTime(2026, 11, 6, 12, 30, 45, DateTimeKind.Utc).AddTicks(1234567L))
+                entryCount = CatalogueEntryCount 12
+            }
+        let second =
+            {
+                catalogueId = labCatalogueId
+                folder = FolderName "a"
+                manifestHash = ContentHash (String('b', 64))
+                importedAt = CatalogueImportTime (DateTime(2026, 11, 6, 13, 30, 45, DateTimeKind.Utc).AddTicks(7654321L))
+                entryCount = CatalogueEntryCount 3
+            }
+        let assertLog (expected : CatalogueImportLogEntry list) : unit =
+            let actual = proxy.loggedImports () |> expectImportOk
+            Assert.Equal<CatalogueImportLogEntry list>(expected, actual)
+            for entry in actual do
+                Assert.Equal(DateTimeKind.Utc, entry.importedAt.value.Kind)
+
+        assertLog []
+        proxy.logImport first |> expectImportOk
+        assertLog [ first ]
+        proxy.logImport second |> expectImportOk
+        assertLog [ second; first ]
+        Assert.Empty((this.freshImport ()).context.proxy.loggedImports () |> expectImportOk)
+
+        let replacement =
+            {
+                first with
+                    folder = FolderName "B"
+                    manifestHash = ContentHash (String('c', 64))
+                    importedAt = CatalogueImportTime (DateTime(2026, 11, 7, 1, 2, 3, DateTimeKind.Utc).AddTicks(9876543L))
+                    entryCount = CatalogueEntryCount 15
+            }
+        proxy.logImport replacement |> expectImportOk
+        assertLog [ replacement; second ]
+        proxy.forgetImport first.catalogueId |> expectImportOk
+        assertLog [ second ]
+        Assert.Equal<Result<unit, CatalogueImportError>>(Ok (), proxy.forgetImport first.catalogueId)
+        assertLog [ second ]
+        proxy.forgetImport second.catalogueId |> expectImportOk
+        assertLog []
+
+    [<Fact>]
     member this.``importFrom fills empty stores with the whole Built-in catalogue`` () : unit =
         let catalogue = readImportCatalogue ()
         let stores = this.freshImport ()
@@ -828,6 +877,14 @@ type CatalogueImportSqliteTests () =
                 envelope = envelope
                 latest = MoveLatestVersion
             }
+        let logEntry =
+            {
+                catalogueId = CatalogueIds.builtInCatalogue
+                folder = FolderName "b"
+                manifestHash = envelope.contentHash
+                importedAt = CatalogueImportTime (DateTime(2026, 11, 6, 12, 0, 0, DateTimeKind.Utc))
+                entryCount = CatalogueEntryCount 1
+            }
         (database :> IDisposable).Dispose()
         let assertUnavailable (result : Result<'Outcome, CatalogueImportError>) : unit =
             match result with
@@ -841,6 +898,9 @@ type CatalogueImportSqliteTests () =
         proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> assertUnavailable
         proxy.putEntryVersion put |> assertUnavailable
         proxy.retireEntry envelope.content.id |> assertUnavailable
+        proxy.loggedImports () |> assertUnavailable
+        proxy.logImport logEntry |> assertUnavailable
+        proxy.forgetImport logEntry.catalogueId |> assertUnavailable
 
     interface IDisposable with
         member _.Dispose () : unit =

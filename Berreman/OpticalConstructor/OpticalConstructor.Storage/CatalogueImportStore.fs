@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Storage
 
 open System
+open Softellect.Sys.Primitives
 open OpticalConstructor.Database
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -13,9 +14,32 @@ open Softellect.Sys
 
 module CatalogueImportStore =
 
+    type CatalogueImportLogEntry with
+
+        [<ElevationBoundary(nameof StorageBoundary, "the catalogue import log seam (spec 0050 001 §B, §C): elevated import metadata becomes database columns")>]
+        member this.importRow : LibraryCatalogueImportRow =
+            LibraryCatalogueImportRow(
+                CatalogueId = this.catalogueId.value,
+                Folder = this.folder.value,
+                ManifestHash = this.manifestHash.value,
+                ImportedAtUtc = this.importedAt.value,
+                EntryCount = this.entryCount.value)
+
+    type LibraryCatalogueImportRow with
+
+        [<ElevationBoundary(nameof StorageBoundary, "the catalogue import log seam (spec 0050 001 §B, §C): database columns become elevated metadata, restoring SQLite's unspecified time kind to UTC")>]
+        member this.toLogEntry : CatalogueImportLogEntry =
+            {
+                catalogueId = CatalogueId this.CatalogueId
+                folder = FolderName this.Folder
+                manifestHash = ContentHash this.ManifestHash
+                importedAt = CatalogueImportTime (DateTime.SpecifyKind(this.ImportedAtUtc, DateTimeKind.Utc))
+                entryCount = CatalogueEntryCount this.EntryCount
+            }
+
     type CatalogueImportProxy with
 
-        [<ElevationBoundary(nameof StorageBoundary, "the SQLite import seam (001 §B, §C): every field is one LibraryDatabase.run over the entry-version rows")>]
+        [<ElevationBoundary(nameof StorageBoundary, "the SQLite import seam (001 §B, §C): every field is one LibraryDatabase.run over the entry-version rows or catalogue import log")>]
         static member createInDatabase (database : LibraryDatabase) : CatalogueImportProxy =
             let storageResult (result : Result<'Outcome, StorageError>) : Result<'Outcome, CatalogueImportError> =
                 result |> Result.mapError (fun error -> ImportStoreUnavailableErr error.describe)
@@ -133,6 +157,29 @@ module CatalogueImportStore =
                                 context.stageVersion retired
                                 |> storageResult
                                 |> Result.map (fun () -> context.SaveChanges() |> ignore)))
+                loggedImports = fun () ->
+                    runImport (fun context ->
+                        context.CatalogueImports
+                        |> Seq.map _.toLogEntry
+                        |> Seq.sortWith (fun first second -> StringComparer.Ordinal.Compare(first.folder.value, second.folder.value))
+                        |> Seq.toList
+                        |> Ok)
+                logImport = fun entry ->
+                    runImport (fun context ->
+                        let incoming = entry.importRow
+                        match context.CatalogueImports.Find(incoming.CatalogueId) with
+                        | null -> context.CatalogueImports.Add incoming |> ignore
+                        | row -> context.Entry(row).CurrentValues.SetValues incoming
+                        context.SaveChanges() |> ignore
+                        Ok ())
+                forgetImport = fun id ->
+                    runImport (fun context ->
+                        match context.CatalogueImports.Find(id.value) with
+                        | null -> ()
+                        | row ->
+                            context.CatalogueImports.Remove row |> ignore
+                            context.SaveChanges() |> ignore
+                        Ok ())
             }
 
     type CatalogueImportContext with

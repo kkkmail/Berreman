@@ -1,5 +1,7 @@
 namespace OpticalConstructor.Domain
 
+open System
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialStore
@@ -203,9 +205,31 @@ module CatalogueImport =
             latest : LatestMove
         }
 
+    /// The UTC time at which a catalogue was imported (spec 0050 S3.1).
+    type CatalogueImportTime =
+        | CatalogueImportTime of DateTime
+
+        member this.value : DateTime = let (CatalogueImportTime time) = this in time
+
+    /// The number of entries absorbed from a catalogue (spec 0050 S3.1).
+    type CatalogueEntryCount =
+        | CatalogueEntryCount of int
+
+        member this.value : int = let (CatalogueEntryCount count) = this in count
+
+    /// A catalogue's registered folder and last completed import (spec 0050 S3.1, 001 §B, §C).
+    type CatalogueImportLogEntry =
+        {
+            catalogueId : CatalogueId
+            folder : FolderName
+            manifestHash : ContentHash
+            importedAt : CatalogueImportTime
+            entryCount : CatalogueEntryCount
+        }
+
     /// Reads held versions and puts active, unpinned envelopes without overwriting (spec 0050 S3.1).
     /// A first put or MoveLatestVersion sets latest; duplicate versions and kind conflicts are refused.
-    /// Retirement marks latest inactive, refusing an unheld id; equality is by reference.
+    /// Retires held entries and maintains the catalogue import log; equality is by reference.
     [<ReferenceEquality>]
     type CatalogueImportProxy =
         {
@@ -214,6 +238,9 @@ module CatalogueImport =
             heldEntriesOf : CatalogueId -> Result<HeldEntry list, CatalogueImportError>
             putEntryVersion : EntryVersionPut -> Result<unit, CatalogueImportError>
             retireEntry : LibraryEntryId -> Result<unit, CatalogueImportError>
+            loggedImports : unit -> Result<CatalogueImportLogEntry list, CatalogueImportError>
+            logImport : CatalogueImportLogEntry -> Result<unit, CatalogueImportError>
+            forgetImport : CatalogueId -> Result<unit, CatalogueImportError>
         }
 
         member this.decideCatalogue (catalogue : CatalogueData) : Result<ImportDecision list, CatalogueImportError> =
@@ -434,6 +461,7 @@ module CatalogueImport =
                 | UnknownEntryIdErr r | NoEntriesForKindErr r | LibraryUnavailableErr r | PresetRefusedErr r -> r
 
             let entries = ref (Map.empty<LibraryEntryId, ImportEntryState>)
+            let imports = ref (Map.empty<CatalogueId, CatalogueImportLogEntry>)
 
             let pushDecoded (save : 'Entry -> Result<unit, CatalogueImportError>) (decoded : Result<'Entry, LibraryEntryError>) : Result<unit, CatalogueImportError> =
                 decoded |> Result.mapError UndecodableEntryErr |> Result.bind save
@@ -498,6 +526,16 @@ module CatalogueImport =
                                 }
                             entries.Value <- Map.add id retired entries.Value
                             Ok ()
+                    loggedImports = fun () ->
+                        imports.Value |> Map.toList |> List.map snd
+                        |> List.sortWith (fun first second -> StringComparer.Ordinal.Compare(first.folder.value, second.folder.value))
+                        |> Ok
+                    logImport = fun entry ->
+                        imports.Value <- Map.add entry.catalogueId entry imports.Value
+                        Ok ()
+                    forgetImport = fun id ->
+                        imports.Value <- Map.remove id imports.Value
+                        Ok ()
                 }
 
             {
