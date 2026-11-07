@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Storage
 
 open System
+open System.IO
 open Softellect.Sys.Primitives
 open OpticalConstructor.Database
 open OpticalConstructor.Domain.Library
@@ -16,6 +17,15 @@ open OpticalConstructor.Storage.LibraryDatabaseStore
 open Softellect.Sys
 
 module CatalogueImportStore =
+
+    type CatalogueExportTarget with
+
+        /// Names a new catalogue export after its destination folder's last segment (spec 0050 S3.3).
+        static member ofFolder (folder : FolderName) : CatalogueExportTarget =
+            {
+                folder = folder
+                name = CatalogueName (Path.GetFileName(folder.value.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))
+            }
 
     type CatalogueImportLogEntry with
 
@@ -220,6 +230,7 @@ module CatalogueImportStore =
                     content.``sealed``
                     |> Result.mapError (fun error -> EntryHashingErr $"entry '{content.name.value}' ({content.id.value}): {error.describe}")
                 newEntryId = fun () -> LibraryEntryId (Guid.NewGuid())
+                newCatalogueId = fun () -> CatalogueId (Guid.NewGuid())
                 hashManifest = fun manifest ->
                     manifest.manifestHash
                     |> Result.mapError (fun error ->

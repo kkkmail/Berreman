@@ -11,9 +11,11 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.CatalogueImportStore
 
 /// The folder implementation of `CatalogueProxy`, over real folders under the test output (spec 0050 001 §A; .spec-md §4,
 /// §5; S1.7). Delayed BuiltinCatalogue.source/material/category/sample/presets lookups fail their fact, not assembly start-up.
@@ -92,6 +94,15 @@ module CatalogueFolderTests =
         match answer with
         | Error (UnlistedEntryFileErr reason) -> Assert.Contains(file, reason)
         | other -> Assert.Fail($"expected UnlistedEntryFileErr naming '{file}', got %A{other}")
+
+    [<Fact>]
+    let ``a catalogue export target is named by its folder`` () : unit =
+        let name = CatalogueName "Lab catalogue"
+        let folders = [ FolderName "D:/Exports/Lab catalogue"; FolderName "D:/Exports/Lab catalogue/" ]
+        for folder in folders do
+            let target = CatalogueExportTarget.ofFolder folder
+            Assert.Equal(folder, target.folder)
+            Assert.Equal(name, target.name)
 
     [<Fact>]
     let ``the Built-in catalogue proxy reads the catalogue the build copies beside the assembly`` () : unit =

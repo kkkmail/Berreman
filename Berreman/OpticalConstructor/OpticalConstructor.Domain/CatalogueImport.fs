@@ -367,7 +367,14 @@ module CatalogueImport =
             forks : EntryFork list
         }
 
-    /// Failures reading, pinning or writing an exported library entry (spec 0050 S3.3).
+    /// The destination folder and manifest name of a new catalogue export (spec 0050 S3.3).
+    type CatalogueExportTarget =
+        {
+            folder : FolderName
+            name : CatalogueName
+        }
+
+    /// Failures reading, validating, pinning or writing a library export (spec 0050 S3.3).
     type LibraryExportError =
         /// The library does not hold the entry to export, named by its id.
         | ExportedEntryNotHeldErr of reason : string
@@ -375,12 +382,21 @@ module CatalogueImport =
         | ExportLibraryRefusedErr of CatalogueImportError
         /// The entry file could not be written, named with its underlying failure.
         | ExportFileWriteErr of reason : string
+        /// The entries cannot form a catalogue, or the catalogue folder could not be written.
+        | ExportCatalogueRefusedErr of CatalogueError
+        /// The target folder already holds a catalogue manifest, named by its folder.
+        | ExportFolderHoldsCatalogueErr of reason : string
+        /// No entries were selected or held in the user's library, named with the target folder.
+        | EmptyLibraryExportErr of reason : string
 
         member this.describe : string =
             match this with
             | ExportedEntryNotHeldErr reason -> $"the entry to export is not held: {reason}"
             | ExportLibraryRefusedErr error -> $"the library refused the export: {error.describe}"
             | ExportFileWriteErr reason -> $"the entry file could not be written: {reason}"
+            | ExportCatalogueRefusedErr error -> $"the catalogue export was refused: {error.describe}"
+            | ExportFolderHoldsCatalogueErr reason -> $"the export folder already holds a catalogue: {reason}"
+            | EmptyLibraryExportErr reason -> $"there is nothing to export: {reason}"
 
     [<ReferenceEquality>]
     type CatalogueImportContext =
@@ -388,6 +404,8 @@ module CatalogueImport =
             proxy : CatalogueImportProxy
             sealEntry : LibraryEntryContent -> Result<LibraryEntryEnvelope, CatalogueImportError>
             newEntryId : unit -> LibraryEntryId
+            /// Mints the identity of a new exported catalogue (spec 0050 S3.3).
+            newCatalogueId : unit -> CatalogueId
             hashManifest : CatalogueManifest -> Result<ContentHash, CatalogueImportError>
             now : unit -> CatalogueImportTime
             openCatalogue : FolderName -> CatalogueProxy
@@ -411,6 +429,73 @@ module CatalogueImport =
                     |> Result.mapError ExportLibraryRefusedErr
                     |> Result.bind (fun () -> this.writeEntryFile file envelope)
                     |> Result.map (fun () -> envelope))
+
+        /// Exports the latest selected entries and their user-managed references as a new catalogue (spec 0050 S3.3).
+        /// Refuses duplicate file names and an existing manifest before pinning every version and writing the folder.
+        member this.exportEntries (ids : LibraryEntryId list) (target : CatalogueExportTarget) : Result<CatalogueData, LibraryExportError> =
+            let readLatest (id : LibraryEntryId) : Result<LibraryEntryEnvelope, LibraryExportError> =
+                this.proxy.tryLatestEnvelope id
+                |> Result.mapError ExportLibraryRefusedErr
+                |> Result.bind (function
+                    | Some envelope -> Ok envelope
+                    | None -> Error (ExportedEntryNotHeldErr $"entry {id.value}"))
+
+            let rec collectReferences (envelopes : Map<LibraryEntryId, LibraryEntryEnvelope>)
+                (pending : LibraryEntryId list) : Result<LibraryEntryEnvelope list, LibraryExportError> =
+                match pending with
+                | [] -> envelopes |> Map.toList |> List.map snd |> Ok
+                | id :: rest when Map.containsKey id envelopes -> collectReferences envelopes rest
+                | id :: rest ->
+                    this.proxy.tryHeldEntry id
+                    |> Result.mapError ExportLibraryRefusedErr
+                    |> Result.bind (function
+                        | None -> collectReferences envelopes rest
+                        | Some held ->
+                            match held.provenance.protection with
+                            | ProtectedBuiltIn -> collectReferences envelopes rest
+                            | UserManaged ->
+                                readLatest id
+                                |> Result.bind (fun envelope ->
+                                    let references = envelope.content.referencedEntryIds |> Set.toList
+                                    collectReferences (Map.add id envelope envelopes) (references @ rest)))
+
+            match ids with
+            | [] -> Error (EmptyLibraryExportErr $"catalogue folder '{target.folder.value}'")
+            | _ ->
+                ids
+                |> List.distinct
+                |> List.fold (fun result id ->
+                    result |> Result.bind (fun envelopes ->
+                        readLatest id |> Result.map (fun envelope -> Map.add id envelope envelopes))) (Ok Map.empty)
+                |> Result.bind (fun envelopes ->
+                    let references =
+                        envelopes |> Map.toList
+                        |> List.collect (fun (_, envelope) -> envelope.content.referencedEntryIds |> Set.toList)
+                        |> List.distinct
+                    collectReferences envelopes references)
+                |> Result.bind (fun envelopes ->
+                    let catalogueId = this.newCatalogueId ()
+                    CatalogueData.tryCreate catalogueId target.name VersionNumber.first envelopes
+                    |> Result.mapError ExportCatalogueRefusedErr)
+                |> Result.bind (fun data ->
+                    let catalogue = this.openCatalogue target.folder
+                    match catalogue.readManifest () with
+                    | Ok _ | Error (CatalogueFileRejectedErr _) ->
+                        Error (ExportFolderHoldsCatalogueErr $"catalogue folder '{target.folder.value}'")
+                    | Error _ ->
+                        data.envelopes
+                        |> List.fold (fun result envelope ->
+                            result |> Result.bind (fun () ->
+                                this.proxy.pinEntryVersion envelope.content.id envelope.content.version
+                                |> Result.mapError ExportLibraryRefusedErr)) (Ok ())
+                        |> Result.bind (fun () -> catalogue.writeCatalogue data |> Result.mapError ExportCatalogueRefusedErr)
+                        |> Result.map (fun () -> data))
+
+        /// Exports the latest version of every user-managed entry, including inactive entries (spec 0050 S3.3).
+        member this.exportUserLibrary (target : CatalogueExportTarget) : Result<CatalogueData, LibraryExportError> =
+            this.proxy.heldUserEntries ()
+            |> Result.mapError ExportLibraryRefusedErr
+            |> Result.bind (fun entries -> this.exportEntries (entries |> List.map _.id) target)
 
         /// Validates the complete drop and returns decisions in file order without writing (spec 0050 001 §B, §H; S3.2).
         member this.decideDroppedFiles (files : FileName list) : Result<ImportDecision list, CatalogueImportError> =

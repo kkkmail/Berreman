@@ -137,15 +137,21 @@ module CatalogueImportProxyTests =
         let missingReason = "entry 31801b03-444f-43c8-8440-000000000116 is absent"
         let importError = ImportRejectedErr "the latest version cannot be pinned"
         let writeReason = "Lab glass.material-json: access was denied"
+        let catalogueError = InvalidCatalogueEntriesErr (DuplicateEntryFileNameErr "Lab glass names two material entries")
+        let occupiedReason = "D:/Exports/Lab catalogue already holds a manifest"
+        let emptyReason = "D:/Exports/Empty catalogue has no entries to export"
         let cases =
             [
                 ExportedEntryNotHeldErr missingReason, $"the entry to export is not held: {missingReason}"
                 ExportLibraryRefusedErr importError, $"the library refused the export: {importError.describe}"
                 ExportFileWriteErr writeReason, $"the entry file could not be written: {writeReason}"
+                ExportCatalogueRefusedErr catalogueError, $"the catalogue export was refused: {catalogueError.describe}"
+                ExportFolderHoldsCatalogueErr occupiedReason, $"the export folder already holds a catalogue: {occupiedReason}"
+                EmptyLibraryExportErr emptyReason, $"there is nothing to export: {emptyReason}"
             ]
         for error, expected in cases do
             Assert.Equal(expected, error.describe)
-        Assert.Equal(3, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
+        Assert.Equal(6, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
 
     [<Fact>]
     let ``a CatalogueImportProxy compares by reference (the [<ReferenceEquality>] contract)`` () : unit =

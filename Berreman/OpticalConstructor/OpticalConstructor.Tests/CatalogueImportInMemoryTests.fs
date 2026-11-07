@@ -284,6 +284,43 @@ module private CatalogueImportContractData =
         writeImportFolder fixture.labFolder changed
         changed
 
+    let freshCatalogueExportTarget () : CatalogueExportTarget =
+        let folder = FolderName (Path.Combine(AppContext.BaseDirectory, "LibraryExportTests", Guid.NewGuid().ToString("N")))
+        CatalogueExportTarget.ofFolder folder
+
+    let expectCatalogueExportOk (result : Result<'Outcome, LibraryExportError>) : 'Outcome =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    type CatalogueExportFixture =
+        {
+            category : LibraryEntryContent
+            material : LibraryEntryContent
+            sample : LibraryEntryContent
+        }
+
+    let prepareCatalogueExport (context : CatalogueImportContext) : CatalogueExportFixture =
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let categoryId = CategoryId (Guid.Parse "31801b01-444f-43c8-8440-000000000117")
+        let materialId = MaterialId (Guid.Parse "31801b02-444f-43c8-8440-000000000117")
+        let sampleId = SampleId (Guid.Parse "31801b03-444f-43c8-8440-000000000117")
+        let categoryName = CategoryName "Lab category"
+        let materialName = EntryName "Lab glass"
+        let sampleName = EntryName "Lab stack"
+        let category = BuiltinCatalogue.userCategoryContent categoryId categoryName
+        let material =
+            {
+                BuiltinCatalogue.userMaterialContent materialId materialName with
+                    categoryOpt = Some categoryId
+            }
+        let sample = BuiltinCatalogue.sampleContentOver sampleId materialId sampleName
+        BuiltinCatalogue.putSealedEntries context [ category; material; sample ]
+        {
+            category = category
+            material = material
+            sample = sample
+        }
+
 open CatalogueImportContractData
 
 /// The same import contract runs over empty in-memory and SQLite stores (spec 0050 S3.1).
@@ -291,6 +328,246 @@ open CatalogueImportContractData
 type CatalogueImportContract () =
 
     abstract freshImport : unit -> ImportStoreSet
+
+    [<Fact>]
+    member this.``a catalogue export carries the user entries its entries reference, and importing it back reuses every entry`` () : unit =
+        let context = (this.freshImport ()).context
+        let fixture = prepareCatalogueExport context
+        let target = freshCatalogueExportTarget ()
+        Assert.False(Directory.Exists target.folder.value)
+        let catalogueId = CatalogueId (Guid.Parse "31801b04-444f-43c8-8440-000000000117")
+        let deterministic =
+            {
+                context with
+                    newCatalogueId = fun () -> catalogueId
+            }
+        let exported = deterministic.exportEntries [ fixture.sample.id ] target |> expectCatalogueExportOk
+        let expected =
+            [ fixture.category; fixture.material; fixture.sample ]
+            |> List.map (fun content ->
+                match context.proxy.tryLatestEnvelope content.id |> expectImportOk with
+                | Some envelope -> envelope
+                | None -> failwith $"Expected latest envelope for {content.describe}.")
+        Assert.Equal<LibraryEntryEnvelope list>(expected |> List.sortBy _.content.id, exported.envelopes |> List.sortBy _.content.id)
+        Assert.Equal(catalogueId, exported.manifest.id)
+        Assert.Equal(target.name, exported.manifest.name)
+        Assert.Equal(VersionNumber.first, exported.manifest.version)
+        let readBack = (CatalogueProxy.create target.folder).readCatalogue () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(exported, readBack)
+        let before = context.proxy.heldUserEntries () |> expectImportOk
+        let logsBefore = context.proxy.loggedImports () |> expectImportOk
+        let observed = observeStartupImport context
+        let decisions = observed.context.proxy.decideCatalogue readBack |> expectImportOk
+        Assert.Equal(3, decisions.Length)
+        for row in decisions do
+            let envelope = expected |> List.find (fun envelope -> envelope.content.id = row.entryId)
+            Assert.Equal(SameContentHash (envelope, heldImportRow context row.entryId), row.status)
+            Assert.Equal(ReuseHeldEntry, row.defaultAction)
+        let pending = observed.context.importCatalogue readBack |> expectImportOk
+        Assert.Equal<ImportDecision list>(decisions, pending)
+        Assert.Equal<ImportDecision list>(decisions, (ImportDecision.split pending).awaiting)
+        Assert.Empty observed.puts
+        Assert.Empty observed.retirements
+        Assert.Empty observed.logs
+        Assert.Equal<HeldEntry list>(before, context.proxy.heldUserEntries () |> expectImportOk)
+        Assert.Equal<CatalogueImportLogEntry list>(logsBefore, context.proxy.loggedImports () |> expectImportOk)
+        pending |> List.map _.byDefault |> observed.context.apply |> expectImportOk |> ignore
+        Assert.Equal<HeldEntry list>(before, context.proxy.heldUserEntries () |> expectImportOk)
+        Assert.Empty observed.puts
+        Assert.Empty observed.retirements
+        Assert.Empty observed.logs
+
+        let duplicated = context.exportEntries [ fixture.sample.id; fixture.material.id; fixture.sample.id ] (freshCatalogueExportTarget ()) |> expectCatalogueExportOk
+        Assert.Equal<LibraryEntryEnvelope list>(exported.envelopes, duplicated.envelopes)
+        let siliconSampleId = SampleId (Guid.Parse "31801b05-444f-43c8-8440-000000000117")
+        let siliconSampleName = EntryName "Silicon stack"
+        let siliconSample = BuiltinCatalogue.sampleContentOver siliconSampleId MaterialIds.silicon siliconSampleName
+        BuiltinCatalogue.putSealedEntries context [ siliconSample ]
+        let siliconExport = context.exportEntries [ siliconSample.id ] (freshCatalogueExportTarget ()) |> expectCatalogueExportOk
+        Assert.Equal(siliconSample.id, (Assert.Single siliconExport.envelopes).content.id)
+
+    [<Fact>]
+    member this.``a catalogue export pins every exported version`` () : unit =
+        let stores = this.freshImport ()
+        let context = stores.context
+        let fixture = prepareCatalogueExport context
+        let target = freshCatalogueExportTarget ()
+        let pins = ResizeArray<LibraryEntryId * VersionNumber>()
+        let observed =
+            {
+                context with
+                    proxy =
+                        {
+                            context.proxy with
+                                pinEntryVersion = fun id version ->
+                                    Assert.False(Directory.Exists target.folder.value)
+                                    context.proxy.pinEntryVersion id version
+                                    |> Result.map (fun () -> pins.Add(id, version))
+                        }
+                    openCatalogue = fun folder ->
+                        let catalogue = context.openCatalogue folder
+                        {
+                            catalogue with
+                                writeCatalogue = fun data ->
+                                    Assert.Equal<Set<LibraryEntryId * VersionNumber>>(
+                                        data.envelopes |> List.map (fun envelope -> envelope.content.id, envelope.content.version) |> Set.ofList,
+                                        pins |> Set.ofSeq)
+                                    Assert.Equal(data.envelopes.Length, pins.Count)
+                                    catalogue.writeCatalogue data
+                        }
+            }
+        observed.exportEntries [ fixture.sample.id ] target |> expectCatalogueExportOk |> ignore
+        let material = fixture.material.toMaterialEntry |> decodeImportEntry
+        let langasite = BuiltinCatalogue.material MaterialIds.langasite
+        let edited =
+            {
+                material with
+                    complexity = langasite.complexity
+            }
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
+        let first = MaterialVersionId.firstOf material.id
+        let second =
+            {
+                first with
+                    version = first.version.next
+            }
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some material), stores.materials.resolveVersion first)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some edited), stores.materials.resolveVersion second)
+        let sample = fixture.sample.toSample |> decodeImportEntry
+        match stores.samples.removeSample sample.id with
+        | Error (SampleVersionPinnedErr reason) ->
+            Assert.Contains(sample.name.value, reason)
+            Assert.Contains("v1", reason)
+        | _ -> Assert.Fail("A catalogue export must pin the sample's version against removal.")
+
+    [<Fact>]
+    member this.``a catalogue export of two entries of one kind with one file name is refused, naming both, and pins and writes nothing`` () : unit =
+        let stores = this.freshImport ()
+        let context = stores.context
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let firstId = MaterialId (Guid.Parse "31801b06-444f-43c8-8440-000000000117")
+        let secondId = MaterialId (Guid.Parse "31801b07-444f-43c8-8440-000000000117")
+        let name = EntryName "Lab glass"
+        let first = BuiltinCatalogue.userMaterialContent firstId name
+        let second = BuiltinCatalogue.userMaterialContent secondId name
+        BuiltinCatalogue.putSealedEntries context [ first; second ]
+        let target = freshCatalogueExportTarget ()
+        let refusing =
+            {
+                context with
+                    proxy =
+                        {
+                            context.proxy with
+                                pinEntryVersion = fun _ _ -> failwith "Duplicate file names must be refused before pinning."
+                        }
+                    openCatalogue = fun _ -> failwith "Duplicate file names must be refused before inspecting the target."
+            }
+        match refusing.exportEntries [ first.id; second.id ] target with
+        | Error (ExportCatalogueRefusedErr (InvalidCatalogueEntriesErr (DuplicateEntryFileNameErr reason))) ->
+            Assert.Contains(name.value, reason)
+            Assert.Contains(first.id.value.ToString(), reason)
+            Assert.Contains(second.id.value.ToString(), reason)
+        | _ -> Assert.Fail("Duplicate file names must name both exported entries in the catalogue refusal.")
+        Assert.False(Directory.Exists target.folder.value)
+        let material = first.toMaterialEntry |> decodeImportEntry
+        let langasite = BuiltinCatalogue.material MaterialIds.langasite
+        let edited =
+            {
+                material with
+                    complexity = langasite.complexity
+            }
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
+        let firstVersion = MaterialVersionId.firstOf firstId
+        let secondVersion =
+            {
+                firstVersion with
+                    version = firstVersion.version.next
+            }
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some edited), stores.materials.resolveVersion firstVersion)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok None, stores.materials.resolveVersion secondVersion)
+
+    [<Fact>]
+    member this.``a catalogue export refuses a folder that already holds a catalogue`` () : unit =
+        let context = (this.freshImport ()).context
+        let fixture = prepareCatalogueExport context
+        let target = freshCatalogueExportTarget ()
+        context.exportEntries [ fixture.material.id ] target |> expectCatalogueExportOk |> ignore
+        let texts () : Map<FileName, LibraryFileText> =
+            Directory.GetFiles target.folder.value
+            |> Array.map FileName
+            |> Array.map (fun file -> file, LibraryFileText (File.ReadAllText file.value))
+            |> Map.ofArray
+        let refusing =
+            {
+                context with
+                    proxy =
+                        {
+                            context.proxy with
+                                pinEntryVersion = fun _ _ -> failwith "An occupied folder must be refused before pinning."
+                        }
+            }
+        let assertOccupied () : unit =
+            let before = texts ()
+            match refusing.exportEntries [ fixture.sample.id ] target with
+            | Error (ExportFolderHoldsCatalogueErr reason) -> Assert.Contains(target.folder.value, reason)
+            | _ -> Assert.Fail("A catalogue export must not overwrite an existing manifest.")
+            Assert.Equal<Map<FileName, LibraryFileText>>(before, texts ())
+        assertOccupied ()
+        let manifestFile = CatalogueManifest.fileName.combine target.folder
+        File.WriteAllText(manifestFile.value, "invalid manifest")
+        assertOccupied ()
+
+    [<Fact>]
+    member this.``Export my library writes every user entry, inactive ones included, and no built-in`` () : unit =
+        let context = (this.freshImport ()).context
+        let fixture = prepareCatalogueExport context
+        let ptbId = MaterialId (Guid.Parse "31801b08-444f-43c8-8440-000000000117")
+        let ptbName = EntryName "PTB glass"
+        let licence = EntryLicence "CC BY 4.0"
+        let citation = EntryCitation "PTB optical constants"
+        let ptb = BuiltinCatalogue.licensedMaterialContent ptbId ptbName licence citation
+        BuiltinCatalogue.putSealedEntries context [ ptb ]
+        context.proxy.retireEntry ptb.id |> expectImportOk
+        let held = context.proxy.heldUserEntries () |> expectImportOk
+        Assert.Equal(4, held.Length)
+        Assert.Equal(InactiveEntry, (held |> List.find (fun entry -> entry.id = ptb.id)).lifecycle)
+        let target = freshCatalogueExportTarget ()
+        let exported = context.exportUserLibrary target |> expectCatalogueExportOk
+        Assert.Equal<Set<LibraryEntryId>>(held |> List.map _.id |> Set.ofList, exported.envelopes |> List.map _.content.id |> Set.ofList)
+        Assert.Equal<Set<LibraryEntryId>>(
+            Set.ofList [ fixture.category.id; fixture.material.id; fixture.sample.id; ptb.id ],
+            exported.envelopes |> List.map _.content.id |> Set.ofList)
+        for envelope in exported.envelopes do
+            match envelope.content.provenance with
+            | BuiltInProvenance _ -> Assert.Fail("Export my library must omit the shipped entries.")
+            | _ -> ()
+            Assert.Equal<LibraryEntryEnvelope option>(Some envelope, context.proxy.tryLatestEnvelope envelope.content.id |> expectImportOk)
+        let readBack = (CatalogueProxy.create target.folder).readCatalogue () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(exported, readBack)
+
+    [<Fact>]
+    member this.``an export with nothing to write is refused`` () : unit =
+        let context = (this.freshImport ()).context
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let target = freshCatalogueExportTarget ()
+        let refusing =
+            {
+                context with
+                    proxy =
+                        {
+                            context.proxy with
+                                pinEntryVersion = fun _ _ -> failwith "An empty export must not pin."
+                        }
+                    openCatalogue = fun _ -> failwith "An empty export must not open its target."
+                    newCatalogueId = fun () -> failwith "An empty export must not mint a catalogue identity."
+            }
+        for result in [ refusing.exportEntries [] target; refusing.exportUserLibrary target ] do
+            match result with
+            | Error (EmptyLibraryExportErr reason) -> Assert.Contains(target.folder.value, reason)
+            | _ -> Assert.Fail("An empty catalogue export must be refused with its destination.")
+        Assert.False(Directory.Exists target.folder.value)
 
     [<Fact>]
     member this.``exporting one entry pins its latest version and writes its entry file, which a drop decides as a reuse`` () : unit =
@@ -1872,6 +2149,40 @@ type CatalogueImportSqliteTests () =
             samples = SampleProxy.createInDatabase database
             presets = LibraryProxy.createInDatabase database
         }
+
+    [<Fact>]
+    member this.``a catalogue export pins the version row of every exported kind`` () : unit =
+        let database = this.openDatabase ()
+        let context = deterministicImportContext (CatalogueImportProxy.createInDatabase database)
+        let fixture = prepareCatalogueExport context
+        let catalogue = readImportCatalogue ()
+        let sourceEnvelope = catalogue.envelopes |> List.find (fun envelope -> envelope.content.schema.kind = SourceEntryKind)
+        let source = sourceEnvelope.content.toSourcePreset |> decodeImportEntry
+        let sourceId = newSourceId ()
+        let userSource =
+            {
+                source with
+                    id = sourceId
+                    protection = UserManaged
+            }
+        let sourceContent = LibraryEntryContent.ofSourcePreset VersionNumber.first UserProvenance userSource |> decodeImportEntry
+        BuiltinCatalogue.putSealedEntries context [ sourceContent ]
+        let polarizer = catalogue.envelopes |> List.find (fun envelope -> envelope.content.schema.kind = PolarizerEntryKind)
+        let detector = catalogue.envelopes |> List.find (fun envelope -> envelope.content.schema.kind = DetectorEntryKind)
+        let ids = [ fixture.category.id; fixture.material.id; fixture.sample.id; sourceContent.id; polarizer.content.id; detector.content.id ]
+        let exported = context.exportEntries ids (freshCatalogueExportTarget ()) |> expectCatalogueExportOk
+        Assert.Equal<Set<LibraryEntryId>>(Set.ofList ids, exported.envelopes |> List.map _.content.id |> Set.ofList)
+        database.run (fun stored ->
+            for envelope in exported.envelopes do
+                match stored.tryStoredVersion envelope.content.id envelope.content.version |> expectImportDatabaseOk with
+                | Some version ->
+                    Assert.Equal(VersionPinned, version.state.pin)
+                    Assert.Equal(envelope, version.envelope)
+                | None -> Assert.Fail($"Exported entry {envelope.content.describe} must retain its pinned version.")
+            match stored.tryStoredVersion sourceEnvelope.content.id sourceEnvelope.content.version |> expectImportDatabaseOk with
+            | Some version -> Assert.Equal(VersionUnpinned, version.state.pin)
+            | None -> Assert.Fail("The unexported built-in source must remain held and unpinned."))
+        |> expectImportDatabaseOk
 
     [<Fact>]
     member this.``pinEntryVersion pins the version row of every kind, keeping its lifecycle`` () : unit =
