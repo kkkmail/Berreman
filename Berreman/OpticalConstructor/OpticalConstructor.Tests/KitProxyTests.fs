@@ -283,6 +283,136 @@ type KitProxyContract () =
     abstract freshFolder : unit -> KitTestFolder
 
     [<Fact>]
+    member this.``attaching a file inside the kit records it in place and writes nothing`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let path = KitRelativePath "data/run 1.csv"
+        let text = KitFileText "phi,I\n0,0.5\n"
+        folder.placeLabFile path.value text.value
+        folder.placeLabFile "notes.txt" "Keep these notes\n"
+        let source : LabFileSource =
+            {
+                file = folder.absoluteName path.value
+                content = Encoding.UTF8.GetBytes "Different picked bytes\n" |> FileByteContent
+            }
+        let stored = proxy.readDataFile path |> Result.defaultWith (fun error -> failwith error.describe)
+        let before = folder.paths ()
+        let storedFiles =
+            before
+            |> List.choose (fun name ->
+                let relativePath = KitRelativePath name
+                proxy.readDataFile relativePath |> Result.toOption)
+        for reader in [ proxy; proxy.readOnlyView ] do
+            let attached =
+                reader.attachLabFile KitDataFolder.root source
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            Assert.Equal<KitRelativePath>(path, attached.path)
+            Assert.Equal<ContentHash>(stored.contentHash, attached.contentHash)
+            Assert.NotEqual<ContentHash>(ContentHash.ofBytes source.content, attached.contentHash)
+            Assert.Equal<string list>(before, folder.paths ())
+            for original in storedFiles do
+                Assert.Equal<Result<KitDataFile, KitError>>(Ok original, proxy.readDataFile original.path)
+
+        folder.removeLabFile path.value
+        let afterRemoval = folder.paths ()
+        for reader in [ proxy; proxy.readOnlyView ] do
+            match reader.attachLabFile KitDataFolder.root source with
+            | Error (MissingKitFileErr reason) -> Assert.Contains(path.value, reason)
+            | Error error -> Assert.Fail($"Expected MissingKitFileErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("A missing in-kit file must not be recreated from the picked bytes.")
+            Assert.Equal<string list>(afterRemoval, folder.paths ())
+
+    [<Fact>]
+    member this.``attaching a file from outside copies it into data, and another of that name gets a suffix`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let firstText = KitFileText "phi,I\n0,0.5\n"
+        let otherText = KitFileText "phi,I\n0,0.75\n"
+        let firstSource : LabFileSource =
+            {
+                file = folder.outsideName "run 1.csv"
+                content = Encoding.UTF8.GetBytes firstText.value |> FileByteContent
+            }
+        let otherSource : LabFileSource =
+            {
+                file = folder.outsideName "another/run 1.csv"
+                content = Encoding.UTF8.GetBytes otherText.value |> FileByteContent
+            }
+        let firstPath = KitRelativePath "data/run 1.csv"
+        let secondPath = KitRelativePath "data/run 1 (2).csv"
+        let first =
+            proxy.attachLabFile KitDataFolder.root firstSource
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let second =
+            proxy.attachLabFile KitDataFolder.root otherSource
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<KitRelativePath>(firstPath, first.path)
+        Assert.Equal<ContentHash>(ContentHash.ofBytes firstSource.content, first.contentHash)
+        Assert.Equal<KitRelativePath>(secondPath, second.path)
+        Assert.Equal<ContentHash>(ContentHash.ofBytes otherSource.content, second.contentHash)
+        for attachment, text in [ first, firstText; second, otherText ] do
+            let stored = proxy.readDataFile attachment.path |> Result.defaultWith (fun error -> failwith error.describe)
+            Assert.Equal<KitFileText>(text, stored.text)
+            Assert.Equal<DataAttachment>(attachment, stored.attachment)
+        let before = folder.paths ()
+        Assert.Equal<string list>(
+            [ ".kit-json"; "data"; "data/run 1 (2).csv"; "data/run 1.csv"; "library" ], before)
+        Assert.Equal<Result<DataAttachment, KitError>>(
+            Error (KitReadOnlyErr "copyInFile"), proxy.readOnlyView.attachLabFile KitDataFolder.root otherSource)
+        Assert.Equal<string list>(before, folder.paths ())
+
+    [<Fact>]
+    member this.``an attachment whose file changed since attach is flagged, and one whose file is gone is missing`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let source : LabFileSource =
+            {
+                file = folder.outsideName "run 1.csv"
+                content = Encoding.UTF8.GetBytes "phi,I\n0,0.5\n" |> FileByteContent
+            }
+        let attachment =
+            proxy.attachLabFile KitDataFolder.root source
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let readers = [ proxy; proxy.readOnlyView ]
+        let assertStatus (expected : DataAttachmentStatus) : unit =
+            let before = folder.paths ()
+            let original = proxy.readDataFile attachment.path
+            for reader in readers do
+                Assert.Equal<Result<DataAttachmentStatus, KitError>>(Ok expected, reader.attachmentStatus attachment)
+                Assert.Equal<string list>(before, folder.paths ())
+                Assert.Equal<Result<KitDataFile, KitError>>(original, proxy.readDataFile attachment.path)
+                Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxy.readKitFile ())
+        assertStatus AttachedDataUnchanged
+        let changedText = KitFileText "phi,I\n0,0.75\n"
+        folder.placeLabFile attachment.path.value changedText.value
+        let changed = proxy.readDataFile attachment.path |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.NotEqual<ContentHash>(attachment.contentHash, changed.contentHash)
+        let changedStatus = AttachedDataChanged changed.contentHash
+        assertStatus changedStatus
+        folder.removeLabFile attachment.path.value
+        assertStatus AttachedDataMissing
+
+        let readError = KitIoErr "The attached file cannot be read"
+        let failingProxy =
+            {
+                proxy with
+                    readDataFile =
+                        fun path ->
+                            Assert.Equal<KitRelativePath>(attachment.path, path)
+                            Error readError
+            }
+        let beforeFailure = folder.paths ()
+        for reader in [ failingProxy; failingProxy.readOnlyView ] do
+            Assert.Equal<Result<DataAttachmentStatus, KitError>>(Error readError, reader.attachmentStatus attachment)
+            Assert.Equal<string list>(beforeFailure, folder.paths ())
+
+    [<Fact>]
     member this.``a copied-in file keeps its name and bytes, and a taken name gets the next free suffix`` () : unit =
         let folder = this.freshFolder ()
         let proxy = folder.openProxy ()

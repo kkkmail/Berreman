@@ -356,6 +356,21 @@ module KitFolders =
                 releaseLock = fun () -> Ok ()
             }
 
+        /// Records an in-kit file in place or copies an outside file into data, retaining its relative path and stored hash (spec 0050 S4.2).
+        member this.attachLabFile (target : KitDataFolder) (source : LabFileSource) : Result<DataAttachment, KitError> =
+            let data =
+                match this.tryKitPathOf source.file with
+                | Some path -> this.readDataFile path
+                | None -> this.copyInFile target source.file.leafName source.content
+            data |> Result.map (fun file -> file.attachment)
+
+        /// Reads the current attachment without writing; only a missing file becomes absence, and other errors pass through (spec 0050 S4.2).
+        member this.attachmentStatus (attachment : DataAttachment) : Result<DataAttachmentStatus, KitError> =
+            match this.readDataFile attachment.path with
+            | Ok file -> Ok (attachment.statusAgainst (Some file))
+            | Error (MissingKitFileErr _) -> Ok (attachment.statusAgainst None)
+            | Error error -> Error error
+
     /// An opened kit's metadata, access-controlled proxy and injected clock (spec 0050 S4.1).
     type KitContext =
         {
