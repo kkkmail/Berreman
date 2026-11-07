@@ -16,6 +16,15 @@ module CatalogueFolderStore =
 
     type LibraryFileText with
 
+        /// Reads a UTF-8 entry file through its schema, version and hash checks; IO failures are FileIoExn (spec 0050 S3.2).
+        static member readEntryFile (kind : LibraryEntryKind) (file : FileName) : Result<LibraryEntryEnvelope, StorageError> =
+            let text =
+                try
+                    File.ReadAllText(file.value, Encoding.UTF8) |> LibraryFileText |> Ok
+                with error -> Error (FileIoExn error)
+
+            text |> Result.bind (fun entryText -> entryText.parseEntry kind)
+
         /// The text at `file` as UTF-8 without a BOM, written to a `.tmp` beside it and then moved over it, so a reader
         /// never meets a file that is not whole (spec 0050 .spec-md §4). A failure deletes the `.tmp` and is `FileIoExn`.
         member this.writeAtomically (file : FileName) : Result<unit, StorageError> =
@@ -64,14 +73,11 @@ module CatalogueFolderStore =
         /// The top-level files whose extension is a kind's (spec 0050 .spec-md §3.5): the manifest, a `.tmp` and a README
         /// are not entry files. This throws on IO, so every caller runs it inside `tryFolderIo`.
         member private this.listEntryFiles () : FileName list =
-            let entryExtensions = LibraryEntryKind.all |> List.map (fun (kind : LibraryEntryKind) -> kind.extension)
-
             Directory.GetFiles(this.value)
             |> Array.toList
             |> List.map (fun (path : string) -> FileName (Path.GetFileName(path)))
-            |> List.filter (fun (file : FileName) ->
-                let extension = Path.GetExtension(file.value)
-                entryExtensions |> List.exists (fun (entryExtension : FileExtension) -> String.Equals(extension, entryExtension.value, StringComparison.OrdinalIgnoreCase)))
+            |> List.choose (fun (file : FileName) ->
+                LibraryEntryKind.tryOfFileName file |> Option.map (fun _ -> file))
 
         member private this.readText (file : FileName) : Result<LibraryFileText, CatalogueError> =
             let path = file.combine this
@@ -87,8 +93,9 @@ module CatalogueFolderStore =
         /// result passes `validate`. A row's name must match the listing, so a row cannot reach outside the folder.
         member private this.readCatalogueFolder () : Result<CatalogueData, CatalogueError> =
             let parseRow (row : CatalogueManifestRow) : Result<LibraryEntryEnvelope, CatalogueError> =
-                this.readText row.fileName
-                |> Result.bind (fun (text : LibraryFileText) -> text.parseEntry row.kind |> Result.mapError (fileRejectedErr this row.fileName))
+                let file = row.fileName.combine this
+                LibraryFileText.readEntryFile row.kind file
+                |> Result.mapError (fileRejectedErr this row.fileName)
 
             let readEntries (manifest : CatalogueManifest) (entryFiles : FileName list) : Result<CatalogueData, CatalogueError> =
                 let rowFiles = manifest.entries |> List.map (fun (row : CatalogueManifestRow) -> row.fileName)

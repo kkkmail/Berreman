@@ -56,6 +56,27 @@ module LibraryEntryFilesTests =
         [ MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind; CategoryEntryKind ]
 
     [<Fact>]
+    let ``a file's extension names its entry kind, ignoring case`` () : unit =
+        let silicon = FileName "Silicon.material-json"
+        let glass = FileName "C:/lab/Glass.CATEGORY-JSON"
+
+        Assert.Equal<LibraryEntryKind option>(Some MaterialEntryKind, LibraryEntryKind.tryOfFileName silicon)
+        Assert.Equal<LibraryEntryKind option>(Some CategoryEntryKind, LibraryEntryKind.tryOfFileName glass)
+
+        let stem = FileStem "An entry"
+
+        for kind in kindsInTagOrder do
+            let file = stem.withExtension kind.extension
+            let upperCaseFile = FileName (file.value.ToUpperInvariant())
+            Assert.Equal<LibraryEntryKind option>(Some kind, LibraryEntryKind.tryOfFileName file)
+            Assert.Equal<LibraryEntryKind option>(Some kind, LibraryEntryKind.tryOfFileName upperCaseFile)
+
+        let nonEntryFiles = [ CatalogueManifest.fileName; FileName "notes.txt"; FileName "Silicon" ]
+
+        for file in nonEntryFiles do
+            Assert.Equal<LibraryEntryKind option>(None, LibraryEntryKind.tryOfFileName file)
+
+    [<Fact>]
     let ``every library entry kind round-trips its wire tag and renders its 001 extension`` () =
         Assert.Equal<int list>([ 1; 2; 3; 4; 5; 6 ], kindsInTagOrder |> List.map (fun k -> k.value))
         Assert.Equal<LibraryEntryKind option list>(kindsInTagOrder |> List.map Some, kindsInTagOrder |> List.map (fun k -> LibraryEntryKind.tryOfWire k.value))

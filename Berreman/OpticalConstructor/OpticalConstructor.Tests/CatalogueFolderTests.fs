@@ -11,6 +11,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.CatalogueFolderStore
 
@@ -143,6 +144,85 @@ module CatalogueFolderTests =
 
         Assert.Equal<string list>(expectedFiles, textsIn folder |> List.map fst)
         Assert.Equal<CatalogueData>(second, proxy.readCatalogue () |> okOf)
+
+    [<Fact>]
+    let ``readEntryFile reads one entry file through its schema, version and hash checks`` () : unit =
+        let catalogue = catalogueOf (tunableSource ())
+        let folder, _ = writtenFolder "entry-file-alone" catalogue
+        File.Delete(manifestPath folder)
+
+        for row in catalogue.manifest.entries do
+            let file = row.fileName.combine folder
+            let expected = catalogue.envelopes |> List.find (fun envelope -> envelope.manifestRow = row)
+            Assert.Equal<LibraryEntryEnvelope>(expected, LibraryFileText.readEntryFile row.kind file |> okOf)
+
+        let missingName = FileName "Missing.source-json"
+        let missingFile = missingName.combine folder
+
+        match LibraryFileText.readEntryFile SourceEntryKind missingFile with
+        | Error (FileIoExn error) -> Assert.IsType<FileNotFoundException>(error) |> ignore
+        | Error error -> Assert.Fail($"expected FileIoExn, got {error.describe}")
+        | Ok _ -> Assert.Fail "expected FileIoExn for a missing entry file"
+
+        let sample = catalogue.envelopes |> List.find (fun envelope -> envelope.content.schema.kind = SampleEntryKind)
+        let sampleFile = sample.content.fileName.combine folder
+
+        match LibraryFileText.readEntryFile MaterialEntryKind sampleFile with
+        | Error (SchemaValidationErr messages) -> Assert.NotEmpty messages
+        | Error error -> Assert.Fail($"expected SchemaValidationErr, got {error.describe}")
+        | Ok _ -> Assert.Fail "expected SchemaValidationErr for a sample read as a material"
+
+        let source = sourceEnvelopeIn catalogue
+        let sourceFile = source.content.fileName.combine folder
+
+        do
+            use lockedFile = new FileStream(sourceFile.value, FileMode.Open, FileAccess.Read, FileShare.None)
+
+            match LibraryFileText.readEntryFile SourceEntryKind sourceFile with
+            | Error (FileIoExn error) -> Assert.IsAssignableFrom<IOException>(error) |> ignore
+            | Error error -> Assert.Fail($"expected FileIoExn, got {error.describe}")
+            | Ok _ -> Assert.Fail "expected FileIoExn for an entry file locked against reading"
+
+        let retuned = sourceEnvelopeIn (catalogueOf (retunedSource ()))
+        let tampered =
+            {
+                retuned with contentHash = source.contentHash
+            }
+
+        (tampered.fileText |> okOf).writeAtomically sourceFile |> okOf
+
+        match LibraryFileText.readEntryFile SourceEntryKind sourceFile with
+        | Error (ContentHashMismatchErr info) ->
+            Assert.Equal<LibraryEntryId>(source.content.id, info.entryId)
+            Assert.Equal<ContentHash>(source.contentHash, info.recorded)
+            Assert.Equal<ContentHash>(retuned.contentHash, info.computed)
+            Assert.NotEqual<ContentHash>(info.recorded, info.computed)
+        | Error error -> Assert.Fail($"expected ContentHashMismatchErr, got {error.describe}")
+        | Ok _ -> Assert.Fail "expected ContentHashMismatchErr for a changed payload with its original hash"
+
+        let unsupportedSchema =
+            {
+                source.content.schema with version = FileSchemaVersion 2
+            }
+
+        let unsupported =
+            {
+                source with
+                    content =
+                        {
+                            source.content with schema = unsupportedSchema
+                        }
+            }
+
+        (unsupported.fileText |> okOf).writeAtomically sourceFile |> okOf
+
+        match LibraryFileText.readEntryFile SourceEntryKind sourceFile with
+        | Error (UnsupportedSchemaVersionErr info) ->
+            Assert.Equal<FileExtension>(SourceEntryKind.extension, info.fileExtension)
+            Assert.Equal<FileSchemaVersion>(unsupportedSchema.version, info.found)
+            Assert.Equal<FileSchemaVersion>(SourceEntryKind.currentSchemaVersion, info.expected)
+        | Error error -> Assert.Fail($"expected UnsupportedSchemaVersionErr, got {error.describe}")
+        | Ok _ -> Assert.Fail "expected UnsupportedSchemaVersionErr for a different schema version"
 
     [<Fact>]
     let ``readManifest reads the manifest without opening an entry file`` () : unit =

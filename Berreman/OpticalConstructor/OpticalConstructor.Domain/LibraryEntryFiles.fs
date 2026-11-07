@@ -71,6 +71,14 @@ module LibraryEntryFiles =
         static member all : LibraryEntryKind list =
             [ MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind; CategoryEntryKind ]
 
+        /// The entry kind named by the file's extension, ignoring case, or none for other files (spec 0050 001 §A).
+        static member tryOfFileName (file : FileName) : LibraryEntryKind option =
+            match file.tryGetExtension () with
+            | Some extension ->
+                LibraryEntryKind.all
+                |> List.tryFind (fun kind -> String.Equals(kind.extension.value, extension.value, StringComparison.OrdinalIgnoreCase))
+            | None -> None
+
     /// An entry file's `schema`: its kind and the schema version it declares (spec 0050 001 §B).
     type EntrySchema =
         {
