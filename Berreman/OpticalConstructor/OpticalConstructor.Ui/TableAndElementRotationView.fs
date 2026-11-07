@@ -23,6 +23,7 @@ open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Fields
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Storage.KitFolderStore
 open Softellect.Sys.Primitives
@@ -260,6 +261,10 @@ type ExperimentFileStatus =
     | DataFileValidated of points : MeasuredData.MeasuredPointCount
     | AttachedFileParseError of reason : ControlCaption
     | AttachedFileValidationError of reason : ControlCaption
+    /// The file's current content differs from the hash recorded when attached.
+    | DataFileChangedSinceAttach
+    /// The attached file is absent at its recorded kit-relative path.
+    | DataFileMissingFromKit of path : ControlCaption
 
     member this.caption : ControlCaption =
         match this with
@@ -267,6 +272,8 @@ type ExperimentFileStatus =
         | DataFileValidated n -> ControlCaption $"Loaded — {n.value} point(s), schema-valid"
         | AttachedFileParseError reason -> ControlCaption $"Parse error — {reason.value}"
         | AttachedFileValidationError reason -> ControlCaption $"Validation error — {reason.value}"
+        | DataFileChangedSinceAttach -> ControlCaption "Data changed since attach — attach it again to validate it"
+        | DataFileMissingFromKit path -> ControlCaption $"Data file missing — {path.value}"
 
 type TableAndElementRotationModel =
     {
@@ -1575,6 +1582,15 @@ type MeasuredData.ExperimentDataError with
         | MeasuredData.DataRangeMismatchErr _
         | MeasuredData.DataUnitsMismatchErr _ -> AttachedFileValidationError error.caption
 
+let private validateExperimentAttachment
+    (model : TableAndElementRotationModel)
+    (experiment : Experiments.Experiment)
+    (attachment : DataAttachment)
+    : ExperimentFileStatus =
+    match ExperimentDataLoad.loadAndValidate model.library model.experimentData experiment attachment with
+    | Ok series -> DataFileValidated series.pointCount
+    | Error error -> error.fileStatus
+
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -1781,18 +1797,31 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         | Error (ExperimentCollectionStore.InvalidCollectionErr reason) ->
             { model with collectionStatus = Some (ControlCaption $"Save failed — {reason}") }
     | CollectionLoad name ->
-        // Spec 0038 Part L (037): load a stored collection back into the live collection through the
-        // proxy. The loaded experiments carry their captured setups AND their `dataFileOpt`
-        // attachments; `nextId` advances past the loaded ids so a subsequent add never collides. The
-        // per-experiment statuses are session-derived, so they clear on load (re-attach to re-validate).
+        // Spec 0038 Part L (037); spec 0050 .manual/001 §E: check attachments on open before validating unchanged data.
         match model.experimentCollections.tryLoadCollection name with
         | Ok (Some snapshot) ->
             let experiments = snapshot.experiments
-            { model with
-                experimentCollection = Experiments.ExperimentCollection.ofLoaded experiments
-                collectionName = name.caption
-                experimentDataStatus = Map.empty
-                collectionStatus = Some (ControlCaption $"Loaded collection '{name.value}' ({List.length experiments} experiment(s)).") }
+            let statuses =
+                experiments
+                |> List.choose (fun experiment ->
+                    match experiment.dataFileOpt with
+                    | Some attachment ->
+                        let status =
+                            match model.experimentData.attachmentStatus attachment with
+                            | Ok AttachedDataUnchanged -> validateExperimentAttachment model experiment attachment
+                            | Ok (AttachedDataChanged _) -> DataFileChangedSinceAttach
+                            | Ok AttachedDataMissing -> DataFileMissingFromKit attachment.path.toControlCaption
+                            | Error error -> AttachedFileParseError error.caption
+                        Some (experiment.id, status)
+                    | None -> None)
+                |> Map.ofList
+            {
+                model with
+                    experimentCollection = Experiments.ExperimentCollection.ofLoaded experiments
+                    collectionName = name.caption
+                    experimentDataStatus = statuses
+                    collectionStatus = Some (ControlCaption $"Loaded collection '{name.value}' ({List.length experiments} experiment(s)).")
+            }
         | Ok None ->
             { model with collectionStatus = Some (ControlCaption $"No collection named '{name.value}' is stored.") }
         | Error (ExperimentCollectionStore.InvalidCollectionErr reason) ->
@@ -1809,10 +1838,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             let collection = Experiments.attachDataFile experimentId attachment model.experimentCollection
             match collection.experiments |> List.tryFind (fun e -> e.id = experimentId) with
             | Some experiment ->
-                let status =
-                    match ExperimentDataLoad.loadAndValidate model.library model.experimentData experiment attachment with
-                    | Ok series -> DataFileValidated series.pointCount
-                    | Error error -> error.fileStatus
+                let status = validateExperimentAttachment model experiment attachment
                 {
                     model with
                         experimentCollection = collection

@@ -237,6 +237,141 @@ module InverseConstructorTests =
         Assert.Equal<string option>(Some "data/run.csv", loaded.dataFileOpt |> Option.map (fun attachment -> attachment.path.value))
 
     [<Fact>]
+    let ``loading a collection re-validates an attachment whose data is unchanged`` () =
+        let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.5 ]))
+        let built, expId = withIntensityExperiment proxy
+        let picked = FileName "unchanged.csv"
+        let collectionName = ExperimentCollectionStore.CollectionName "unchanged-data"
+        let saved =
+            built
+            |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
+            |> updateTableAndElementRotation ExpNew
+            |> updateTableAndElementRotation (ExpChooseElement (theSample built).id)
+            |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
+            |> updateTableAndElementRotation ExpCommit
+            |> updateTableAndElementRotation (CollectionSetName collectionName.caption)
+            |> updateTableAndElementRotation CollectionSave
+        let attachment =
+            match (List.head saved.experimentCollection.experiments).dataFileOpt with
+            | Some attached -> attached
+            | None -> failwith "the saved experiment must carry its attachment"
+        let unattachedId = (List.last saved.experimentCollection.experiments).id
+        Assert.NotEqual(expId, unattachedId)
+
+        let loadWith (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>) : TableAndElementRotationModel =
+            let inspected = ResizeArray<DataAttachment>()
+            let loadedAttachments = ResizeArray<DataAttachment>()
+            let loadingProxy =
+                {
+                    proxy with
+                        attachDataFile = fun _ -> failwith "opening a collection must not re-attach its files"
+                        attachmentStatus =
+                            fun attached ->
+                                inspected.Add attached
+                                Ok AttachedDataUnchanged
+                        tryLoadIntensity =
+                            fun attached ->
+                                loadedAttachments.Add attached
+                                result
+                }
+            let fresh =
+                {
+                    inverse () with
+                        experimentCollections = saved.experimentCollections
+                        experimentData = loadingProxy
+                }
+            let loaded = fresh |> updateTableAndElementRotation (CollectionLoad collectionName)
+            Assert.Equal<DataAttachment list>([ attachment ], inspected |> Seq.toList)
+            Assert.Equal<DataAttachment list>([ attachment ], loadedAttachments |> Seq.toList)
+            Assert.Equal<Experiments.Experiment list>(saved.experimentCollection.experiments, loaded.experimentCollection.experiments)
+            Assert.Equal(1, Map.count loaded.experimentDataStatus)
+            Assert.Equal<ExperimentFileStatus option>(None, Map.tryFind unattachedId loaded.experimentDataStatus)
+            loaded
+
+        let loaded = loadWith (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.6; 89.0, 0.2 ]))
+        let expected = DataFileValidated (MeasuredData.MeasuredPointCount 3)
+        Assert.Equal<ExperimentFileStatus option>(Some expected, Map.tryFind expId loaded.experimentDataStatus)
+
+        let parseError = MeasuredData.MalformedDataFileErr "row 3 is not a valid X,Y pair"
+        let malformed = loadWith (Error parseError)
+        Assert.Equal<ExperimentFileStatus option>(Some (AttachedFileParseError parseError.caption), Map.tryFind expId malformed.experimentDataStatus)
+
+        let outOfRange = loadWith (Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]))
+        match Map.tryFind expId outOfRange.experimentDataStatus with
+        | Some (AttachedFileValidationError reason) -> Assert.Contains("outside the experiment range", reason.value)
+        | other -> Assert.Fail($"expected AttachedFileValidationError on open, got %A{other}")
+
+    [<Fact>]
+    let ``loading a collection flags an attachment whose data changed since attach or is missing`` () =
+        let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.5 ]))
+        let built, firstId = withIntensityExperiment proxy
+        let firstFile = FileName "a.csv"
+        let secondFile = FileName "b.csv"
+        let firstPath = KitRelativePath "data/a.csv"
+        let secondPath = KitRelativePath "data/b.csv"
+        let collectionName = ExperimentCollectionStore.CollectionName "changed-or-missing-data"
+        let withSecond =
+            built
+            |> updateTableAndElementRotation (AttachDataFileTo (firstId, firstFile))
+            |> updateTableAndElementRotation ExpNew
+            |> updateTableAndElementRotation (ExpChooseElement (theSample built).id)
+            |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
+            |> updateTableAndElementRotation ExpCommit
+        let secondId = (List.last withSecond.experimentCollection.experiments).id
+        Assert.NotEqual(firstId, secondId)
+        let saved =
+            withSecond
+            |> updateTableAndElementRotation (AttachDataFileTo (secondId, secondFile))
+            |> updateTableAndElementRotation (CollectionSetName collectionName.caption)
+            |> updateTableAndElementRotation CollectionSave
+        let attachments = saved.experimentCollection.experiments |> List.choose (fun experiment -> experiment.dataFileOpt)
+        Assert.Equal<KitRelativePath list>([ firstPath; secondPath ], attachments |> List.map (fun attachment -> attachment.path))
+        let currentHash = ContentHash "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        let inspected = ResizeArray<DataAttachment>()
+        let loadingProxy =
+            {
+                proxy with
+                    attachDataFile = fun _ -> failwith "opening a collection must preserve its recorded attachments"
+                    attachmentStatus =
+                        fun attachment ->
+                            inspected.Add attachment
+                            if attachment.path = firstPath then Ok (AttachedDataChanged currentHash)
+                            elif attachment.path = secondPath then Ok AttachedDataMissing
+                            else failwith "only the saved attachments may be inspected"
+                    tryLoadIntensity = fun _ -> failwith "changed or missing data must not be validated"
+                    tryLoadEllipsometric = fun _ -> failwith "changed or missing data must not be validated"
+            }
+        let fresh =
+            {
+                inverse () with
+                    experimentCollections = saved.experimentCollections
+                    experimentData = loadingProxy
+            }
+        let loaded = fresh |> updateTableAndElementRotation (CollectionLoad collectionName)
+        let missing = DataFileMissingFromKit secondPath.toControlCaption
+        Assert.Equal<DataAttachment list>(attachments, inspected |> Seq.toList)
+        Assert.Equal<Map<Experiments.ExperimentId, ExperimentFileStatus>>(
+            Map.ofList [ firstId, DataFileChangedSinceAttach; secondId, missing ], loaded.experimentDataStatus)
+        Assert.Equal("Data changed since attach — attach it again to validate it", DataFileChangedSinceAttach.caption.value)
+        Assert.Equal("Data file missing — data/b.csv", missing.caption.value)
+        Assert.Equal<Experiments.Experiment list>(saved.experimentCollection.experiments, loaded.experimentCollection.experiments)
+
+        let readError = KitIoErr "cannot read data/a.csv or data/b.csv"
+        let unreadable =
+            {
+                fresh with
+                    experimentData =
+                        {
+                            loadingProxy with attachmentStatus = fun _ -> Error readError
+                        }
+            }
+            |> updateTableAndElementRotation (CollectionLoad collectionName)
+        let readFailure = AttachedFileParseError readError.caption
+        Assert.Equal<Map<Experiments.ExperimentId, ExperimentFileStatus>>(
+            Map.ofList [ firstId, readFailure; secondId, readFailure ], unreadable.experimentDataStatus)
+        Assert.Equal<Experiments.Experiment list>(saved.experimentCollection.experiments, unreadable.experimentCollection.experiments)
+
+    [<Fact>]
     let ``saving a collection with a blank name reports a typed status and stores nothing`` () =
         let m1 = inverse () |> updateTableAndElementRotation (CollectionSetName (ControlCaption "   ")) |> updateTableAndElementRotation CollectionSave
         match m1.collectionStatus with
