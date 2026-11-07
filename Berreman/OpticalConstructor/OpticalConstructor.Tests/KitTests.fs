@@ -173,3 +173,142 @@ module KitTests =
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
         Assert.Equal(9, descriptions |> List.distinct |> List.length)
+
+    [<Fact>]
+    let ``a data folder is the kit's data folder or a folder inside it`` () : unit =
+        let rootPath = KitRelativePath "data"
+        Assert.Equal<KitRelativePath>(rootPath, KitDataFolder.root.value)
+
+        for path in [ rootPath; KitRelativePath "data/raw/run 1" ] do
+            match KitDataFolder.tryCreate path with
+            | Ok folder -> Assert.Equal<KitRelativePath>(path, folder.value)
+            | Error error -> Assert.Fail(error.describe)
+
+        let invalidPaths =
+            [
+                KitRelativePath "raw"
+                KitRelativePath "library"
+                KitRelativePath "datax"
+                KitRelativePath ".oc/data"
+                KitRelativePath "Data"
+                KitRelativePath "DATA/raw"
+            ]
+
+        for path in invalidPaths do
+            match KitDataFolder.tryCreate path with
+            | Error (InvalidKitPathErr reason) -> Assert.Contains(path.value, reason)
+            | Error error -> Assert.Fail($"expected an invalid data folder: {error.describe}")
+            | Ok folder -> Assert.Fail($"accepted an invalid data folder: '{folder.value.value}'")
+
+    [<Fact>]
+    let ``a copy keeps its file name and takes the first free numbered suffix, ignoring case`` () : unit =
+        let run = FileName "run 1.csv"
+        let runPath = KitRelativePath "data/run 1.csv"
+        let secondRunPath = KitRelativePath "data/run 1 (2).csv"
+        let upperSecondRunPath = KitRelativePath "data/RUN 1 (2).CSV"
+        let thirdRunPath = KitRelativePath "data/run 1 (3).csv"
+        let copyCases : (FileName * KitRelativePath list * KitRelativePath) list =
+            [
+                run, [], runPath
+                run, [ runPath ], secondRunPath
+                run, [ runPath; upperSecondRunPath ], thirdRunPath
+                run, [ runPath; thirdRunPath ], secondRunPath
+                run, [ secondRunPath; thirdRunPath ], runPath
+                run, [ KitRelativePath "DATA/RUN 1.CSV" ], secondRunPath
+                FileName "archive.tar.gz", [ KitRelativePath "data/archive.tar.gz" ], KitRelativePath "data/archive.tar (2).gz"
+                FileName "README", [ KitRelativePath "data/README" ], KitRelativePath "data/README (2)"
+                FileName ".hidden", [ KitRelativePath "data/.hidden" ], KitRelativePath "data/.hidden (2)"
+            ]
+
+        for leaf, taken, expected in copyCases do
+            match KitDataFolder.root.copyTargetFor leaf taken with
+            | Ok path -> Assert.Equal<KitRelativePath>(expected, path)
+            | Error error -> Assert.Fail(error.describe)
+
+        let rawPath = KitRelativePath "data/raw"
+        let leaf = FileName "a.csv"
+        let expectedRawPath = KitRelativePath "data/raw/a.csv"
+        let occupiedElsewhere = [ KitRelativePath "data/a.csv" ]
+        match KitDataFolder.tryCreate rawPath with
+        | Ok folder ->
+            match folder.copyTargetFor leaf occupiedElsewhere with
+            | Ok path -> Assert.Equal<KitRelativePath>(expectedRawPath, path)
+            | Error error -> Assert.Fail(error.describe)
+        | Error error -> Assert.Fail(error.describe)
+
+        let invalidLeaf = FileName "C:a.csv"
+        match KitDataFolder.root.copyTargetFor invalidLeaf [] with
+        | Error (InvalidKitPathErr reason) -> Assert.Contains(invalidLeaf.value, reason)
+        | Error error -> Assert.Fail($"expected an invalid copy target: {error.describe}")
+        | Ok path -> Assert.Fail($"accepted an invalid copy target: '{path.value}'")
+
+    [<Fact>]
+    let ``a file is inside the kit when its absolute name lies under the kit folder`` () : unit =
+        let folderName = FolderName "C:/kits/Optics"
+        let folder = KitFolder folderName
+        let validFiles : (FileName * KitRelativePath) list =
+            [
+                FileName "C:/kits/Optics/data/run 1.csv", KitRelativePath "data/run 1.csv"
+                FileName @"c:\KITS\optics\data\run 1.csv", KitRelativePath "data/run 1.csv"
+                FileName "C:/kits/Optics/notes.txt", KitRelativePath "notes.txt"
+            ]
+        let invalidFiles =
+            [
+                FileName "C:/kits/Optics"
+                FileName "C:/kits/Optics/"
+                FileName "C:/kits/OpticsB/data/a.csv"
+                FileName "D:/lab/a.csv"
+                FileName "C:/kits/Optics/../a.csv"
+                FileName "C:/kits/Optics/data/../../a.csv"
+                FileName "C:/kits/Optics/data/./a.csv"
+                FileName "C:/kits/Optics//a.csv"
+                FileName "data/a.csv"
+            ]
+        let trailingSlashName = FolderName "C:/kits/Optics/"
+        let trailingSlashFolder = KitFolder trailingSlashName
+        let backslashName = FolderName @"C:\kits\Optics\"
+        let backslashFolder = KitFolder backslashName
+
+        for kitFolder in [ folder; trailingSlashFolder; backslashFolder ] do
+            for file, expected in validFiles do
+                Assert.Equal<KitRelativePath option>(Some expected, kitFolder.tryKitPathOf file)
+
+            for file in invalidFiles do
+                Assert.Equal<KitRelativePath option>(None, kitFolder.tryKitPathOf file)
+
+    [<Fact>]
+    let ``an attachment records its data file's path and hash, and its status compares that hash with the file now`` () : unit =
+        let path = KitRelativePath "data/a.csv"
+        let sourceName = FileName "D:/lab/a.csv"
+        let originalBytes = FileByteContent (System.Text.Encoding.UTF8.GetBytes "abc")
+        let source : LabFileSource =
+            {
+                file = sourceName
+                content = originalBytes
+            }
+        let originalHash = ContentHash.ofBytes source.content
+        let file : KitDataFile =
+            {
+                path = path
+                text = KitFileText "abc"
+                contentHash = originalHash
+            }
+        let attachment = file.attachment
+
+        Assert.Equal<FileName>(sourceName, source.file)
+        Assert.Equal<FileByteContent>(originalBytes, source.content)
+        Assert.Equal<KitRelativePath>(path, attachment.path)
+        Assert.Equal<ContentHash>(originalHash, attachment.contentHash)
+        Assert.Equal<DataAttachmentStatus>(AttachedDataUnchanged, attachment.statusAgainst (Some file))
+
+        let changedBytes = FileByteContent (System.Text.Encoding.UTF8.GetBytes "abd")
+        let changedHash = ContentHash.ofBytes changedBytes
+        let changedFile =
+            {
+                file with
+                    text = KitFileText "abd"
+                    contentHash = changedHash
+            }
+        Assert.Equal<DataAttachmentStatus>(AttachedDataChanged changedHash, attachment.statusAgainst (Some changedFile))
+        Assert.Equal<DataAttachmentStatus>(AttachedDataMissing, attachment.statusAgainst None)
+        Assert.Equal<ContentHash>(originalHash, attachment.contentHash)

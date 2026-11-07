@@ -207,3 +207,98 @@ module Kit =
             text : KitFileText
             contentHash : ContentHash
         }
+
+    /// The data folder or one of its subfolders, where lab files are copied (spec 0050 S4.2).
+    type KitDataFolder =
+        | KitDataFolder of KitRelativePath
+
+        member this.value : KitRelativePath = let (KitDataFolder path) = this in path
+
+        /// The default home for attached lab files (spec 0050 S4.2).
+        static member root : KitDataFolder =
+            let path = KitRelativePath "data"
+            KitDataFolder path
+
+        /// Accepts data and its descendants using ordinal, case-sensitive spelling (spec 0050 S4.2).
+        static member tryCreate (path : KitRelativePath) : Result<KitDataFolder, KitError> =
+            if path = KitDataFolder.root.value || path.value.StartsWith("data/", StringComparison.Ordinal) then
+                Ok (KitDataFolder path)
+            else
+                Error (InvalidKitPathErr $"'{path.value}': a data folder must be data or a folder inside it")
+
+        /// Keeps the leaf name, then tries numbered suffixes before its extension, ignoring occupied-path case (spec 0050 S4.2).
+        member this.copyTargetFor (leaf : FileName) (taken : KitRelativePath list) : Result<KitRelativePath, KitError> =
+            let extensionStart = leaf.value.LastIndexOf('.')
+            let stem =
+                if extensionStart > 0 then leaf.value.Substring(0, extensionStart) else leaf.value
+                |> FileStem
+            let extension =
+                if extensionStart > 0 then leaf.value.Substring(extensionStart) else ""
+                |> FileExtension
+
+            let rec tryCandidate (suffix : int) : Result<KitRelativePath, KitError> =
+                let candidate =
+                    if suffix = 1 then
+                        $"{this.value.value}/{leaf.value}"
+                    else
+                        let number = suffix.ToString(CultureInfo.InvariantCulture)
+                        $"{this.value.value}/{stem.value} ({number}){extension.value}"
+
+                match KitRelativePath.tryCreate candidate with
+                | Error error -> Error error
+                | Ok path ->
+                    if taken |> List.exists (fun held -> String.Equals(held.value, path.value, StringComparison.OrdinalIgnoreCase)) then
+                        tryCandidate (suffix + 1)
+                    else
+                        Ok path
+
+            tryCandidate 1
+
+    type KitFolder with
+
+        /// Resolves a file inside this folder to a validated relative path without reading disk (spec 0050 S4.2).
+        member this.tryKitPathOf (file : FileName) : KitRelativePath option =
+            let folder = this.value.value.Replace('\\', '/').TrimEnd('/')
+            let absoluteFile = file.value.Replace('\\', '/')
+            let prefix = $"{folder}/"
+
+            if absoluteFile.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) then
+                absoluteFile.Substring(prefix.Length) |> KitRelativePath.tryCreate |> Result.toOption
+            else
+                None
+
+    /// A picked lab file's absolute name and original bytes (spec 0050 S4.2).
+    type LabFileSource =
+        {
+            file : FileName
+            content : FileByteContent
+        }
+
+    /// Whether attached bytes are unchanged, changed since attach, or missing (spec 0050 S4.2).
+    type DataAttachmentStatus =
+        | AttachedDataUnchanged
+        | AttachedDataChanged of current : ContentHash
+        | AttachedDataMissing
+
+    /// A data file's kit-relative path and SHA-256 recorded at attach time (spec 0050 S4.2).
+    type DataAttachment =
+        {
+            path : KitRelativePath
+            contentHash : ContentHash
+        }
+
+        /// Compares the current file's hash with the recorded hash, or reports absence (spec 0050 S4.2).
+        member this.statusAgainst (currentOpt : KitDataFile option) : DataAttachmentStatus =
+            match currentOpt with
+            | None -> AttachedDataMissing
+            | Some file when file.contentHash = this.contentHash -> AttachedDataUnchanged
+            | Some file -> AttachedDataChanged file.contentHash
+
+    type KitDataFile with
+
+        /// Records this file's kit-relative path and current hash for an experiment (spec 0050 S4.2).
+        member this.attachment : DataAttachment =
+            {
+                path = this.path
+                contentHash = this.contentHash
+            }
