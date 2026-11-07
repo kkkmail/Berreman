@@ -2,6 +2,7 @@ namespace OpticalConstructor.Tests
 
 open System
 open Xunit
+open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
@@ -37,6 +38,17 @@ module KitLibraryTests =
 
     let private expectSnapshotOk (result : Result<'Value, KitLibraryError>) : 'Value =
         result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let private expectOverlayStoreOk (result : Result<'Value, 'Error>) : 'Value =
+        result |> Result.defaultWith (fun _ -> failwith "The overlay store operation must succeed.")
+
+    let private storesForOverlay (stores : InMemoryCatalogueStores) : KitLibraryStores =
+        {
+            library = liveLibrary stores.libraryEntries stores.samples (SourceProxy.createInMemory ())
+            materials = stores.materials
+            samples = stores.samples
+            categories = stores.categories
+        }
 
     let private catalogueEnvelope (id : LibraryEntryId) : LibraryEntryEnvelope =
         (BuiltinCatalogue.catalogueData ()).envelopes
@@ -656,6 +668,446 @@ module KitLibraryTests =
                     Assert.Equal<PinState>(VersionUnpinned, stored.state.pin)
                     Assert.Equal<EntryLifecycle>(ActiveEntry, stored.state.lifecycle))
         |> Result.defaultWith (fun error -> failwith error.describe)
+
+    [<Fact>]
+    let ``a kit opened against an empty library resolves every entry from its snapshots`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        let sourceId = PresetIds.source600.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith "The preset must have an entry id.")
+        let references =
+            [ EntryVersionReference (sampleEnvelope ()).libraryVersionRef; EntryLatestReference sourceId ]
+        fixture.context.snapshotReferences references |> expectSnapshotOk |> ignore
+        let snapshots = fixture.context.kit.proxy.listSnapshots () |> expectKitOk
+        Assert.Equal<LibraryEntryEnvelope list>(
+            (sampleClosure () @ [ catalogueEnvelope sourceId ]) |> List.sortBy (fun envelope -> envelope.content.id),
+            snapshots |> List.sortBy (fun envelope -> envelope.content.id))
+        let empty = CatalogueImportProxy.createInMemory ()
+        let stores = storesForOverlay empty
+        let opened =
+            KitContext.openKit (KitProxy.createInMemory fixture.folder) ReadOnlyKitAccess fixture.context.kit.clock |> expectKitOk
+        let context : KitLibraryContext =
+            {
+                kit = opened
+                imports = CatalogueImportContext.create empty.proxy
+            }
+        let paths = fixture.folder.paths ()
+        let metadata = opened.proxy.readKitFile () |> expectKitOk
+        let rows = context.resolveSnapshots () |> expectSnapshotOk
+        Assert.Equal(snapshots.Length, rows.Length)
+        for snapshot, row in List.zip snapshots rows do
+            Assert.Equal<ImportStatus>(EntryIdNotHeld snapshot, row.status)
+        let overlay = context.openOverlay [] |> expectSnapshotOk
+        Assert.Equal<LibraryEntryEnvelope list>(snapshots, overlay.snapshots)
+        Assert.Empty overlay.replacements
+        let session = stores.overlaidWith overlay
+        let categories = session.categories.listCategories () |> expectOverlayStoreOk
+        for snapshot in snapshots do
+            let content = snapshot.content
+            match content.schema.kind with
+            | SampleEntryKind ->
+                let sample = content.toSample |> expectOverlayStoreOk
+                Assert.Equal<Sample>(BuiltinCatalogue.sample sample.id, sample)
+                let version = SampleVersionId.firstOf sample.id
+                Assert.Equal<Result<Sample option, SampleError>>(Ok (Some sample), session.samples.resolveVersion version)
+                Assert.Equal<Result<Sample option, SampleError>>(Ok (Some sample), session.samples.tryGetSample sample.id)
+                Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok (Some (SampleItem sample)), session.library.tryGetEntry sample.id.toElementValueId)
+            | MaterialEntryKind ->
+                let material = content.toMaterialEntry |> expectOverlayStoreOk
+                Assert.Equal<MaterialEntry>(BuiltinCatalogue.material material.id, material)
+                let version = MaterialVersionId.firstOf material.id
+                Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some material), session.materials.resolveVersion version)
+                Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some material), session.materials.tryGetMaterial material.id)
+            | CategoryEntryKind ->
+                let category = content.toMaterialCategory |> expectOverlayStoreOk
+                Assert.Equal<MaterialCategory>(BuiltinCatalogue.category category.id, category)
+                Assert.Contains(category, categories)
+            | SourceEntryKind ->
+                let source = content.toSourcePreset |> expectOverlayStoreOk |> SourceItem
+                Assert.Equal<LibraryEntry>(BuiltinCatalogue.preset PresetIds.source600, source)
+                Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok (Some source), session.library.tryGetEntry source.entryId)
+                Assert.Equal<Result<LibraryEntry list, LibraryError>>(Ok [ source ], session.library.entriesForKind LightSource)
+            | _ -> Assert.Fail("The sample and source closure must contain only samples, materials, categories and sources.")
+        let expectedEntries = [ SampleItem (BuiltinCatalogue.sample SampleIds.multilayerQwId); BuiltinCatalogue.preset PresetIds.source600 ]
+        Assert.Equal<Result<LibraryTree list, LibraryError>>(Ok [ LibraryTree.byKind expectedEntries ], session.library.libraryTrees ())
+        Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+        Assert.Equal<KitFile>(metadata, opened.proxy.readKitFile () |> expectKitOk)
+        Assert.Empty(empty.proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> expectImportOk)
+        Assert.Empty(empty.proxy.heldUserEntries () |> expectImportOk)
+        Assert.Empty(empty.proxy.loggedImports () |> expectImportOk)
+
+        let higherSnapshots =
+            snapshots |> List.map (fun snapshot ->
+                let content =
+                    {
+                        snapshot.content with
+                            version = snapshot.content.version.next
+                            name = EntryName $"{snapshot.content.name.value} kit v2"
+                    }
+                context.imports.sealEntry content |> expectImportOk)
+        let multipleVersions : KitLibraryOverlay =
+            {
+                snapshots = higherSnapshots @ snapshots
+                replacements = []
+            }
+        let latest = stores.overlaidWith multipleVersions
+        for snapshot in higherSnapshots do
+            match snapshot.content.schema.kind with
+            | SampleEntryKind ->
+                let sample = snapshot.content.toSample |> expectOverlayStoreOk
+                Assert.Equal<Result<Sample option, SampleError>>(Ok (Some sample), latest.samples.tryGetSample sample.id)
+                Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok (Some (SampleItem sample)), latest.library.tryGetEntry sample.id.toElementValueId)
+                Assert.Equal<Result<LibraryEntry list, LibraryError>>(Ok [ SampleItem sample ], latest.library.entriesForKind CatalogueKind.Sample)
+                let first = SampleVersionId.firstOf sample.id
+                Assert.Equal<Result<Sample option, SampleError>>(Ok (Some (BuiltinCatalogue.sample sample.id)), latest.samples.resolveVersion first)
+            | MaterialEntryKind ->
+                let material = snapshot.content.toMaterialEntry |> expectOverlayStoreOk
+                Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some material), latest.materials.tryGetMaterial material.id)
+                let first = MaterialVersionId.firstOf material.id
+                Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some (BuiltinCatalogue.material material.id)), latest.materials.resolveVersion first)
+            | CategoryEntryKind ->
+                let category = snapshot.content.toMaterialCategory |> expectOverlayStoreOk
+                let found = latest.categories.listCategories () |> expectOverlayStoreOk |> List.filter (fun entry -> entry.id = category.id)
+                Assert.Equal<MaterialCategory>(category, Assert.Single found)
+            | SourceEntryKind ->
+                let source = snapshot.content.toSourcePreset |> expectOverlayStoreOk |> SourceItem
+                Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok (Some source), latest.library.tryGetEntry source.entryId)
+                Assert.Equal<Result<LibraryEntry list, LibraryError>>(Ok [ source ], latest.library.entriesForKind LightSource)
+            | _ -> Assert.Fail("Unexpected kind in the higher snapshot versions.")
+        let unknownSample = SampleId (Guid.Parse "14200000-0000-4000-8000-000000000001")
+        let unknownVersion = SampleVersionId.firstOf unknownSample
+        Assert.Equal<Result<Sample option, SampleError>>(Ok None, latest.samples.resolveVersion unknownVersion)
+        Assert.Equal<Result<Sample option, SampleError>>(Ok None, latest.samples.tryGetSample unknownSample)
+        Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok None, latest.library.tryGetEntry unknownSample.toElementValueId)
+        let textId = ElementValueId "not-a-guid"
+        Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok None, latest.library.tryGetEntry textId)
+
+    [<Fact>]
+    let ``the session resolves a divergent version to the kit's snapshot`` () : unit =
+        let held = BuiltinCatalogue.freshStores ()
+        let stores = storesForOverlay held
+        let fixture = snapshotFixture held.proxy ReadWriteKitAccess
+        let silicon = catalogueEnvelope MaterialIds.silicon.toLibraryEntryId
+        let content =
+            {
+                silicon.content with descriptionOpt = Some (EntryDescription "Silicon measured for this kit")
+            }
+        let incoming = fixture.context.imports.sealEntry content |> expectImportOk
+        fixture.context.kit.proxy.writeSnapshot incoming |> expectKitOk
+        let overlay = fixture.context.openOverlay [] |> expectSnapshotOk
+        let session = stores.overlaidWith overlay
+        let version = MaterialVersionId.firstOf MaterialIds.silicon
+        let kitMaterial = content.toMaterialEntry |> expectOverlayStoreOk
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some kitMaterial), session.materials.resolveVersion version)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(
+            Ok (Some (BuiltinCatalogue.material MaterialIds.silicon)), session.materials.tryGetMaterial MaterialIds.silicon)
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.pinMaterialVersion version)
+        // Spec 0050 S2.2/S4.2: a pinned version advances only when its physics changes.
+        let newer =
+            {
+                BuiltinCatalogue.material MaterialIds.silicon with
+                    description = Some (EntryDescription "Latest library Silicon")
+                    complexity = (BuiltinCatalogue.material MaterialIds.glass152).complexity
+            }
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial newer)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some newer), session.materials.tryGetMaterial MaterialIds.silicon)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some kitMaterial), session.materials.resolveVersion version)
+        let newerVersion : MaterialVersionId =
+            {
+                materialId = MaterialIds.silicon
+                version = VersionNumber.first.next
+            }
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(
+            Ok (Some (BuiltinCatalogue.material MaterialIds.silicon)), stores.materials.resolveVersion version)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some newer), stores.materials.resolveVersion newerVersion)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some newer), session.materials.resolveVersion newerVersion)
+
+        let sampleContent =
+            {
+                (sampleEnvelope ()).content with descriptionOpt = Some (EntryDescription "Kit multilayer measurement")
+            }
+        let kitSample = sampleContent.toSample |> expectOverlayStoreOk
+        let sampleSnapshot = fixture.context.imports.sealEntry sampleContent |> expectImportOk
+        let extended : KitLibraryOverlay =
+            {
+                overlay with snapshots = sampleSnapshot :: overlay.snapshots
+            }
+        let sampleSession = stores.overlaidWith extended
+        let sampleVersion = SampleVersionId.firstOf kitSample.id
+        Assert.Equal<Result<Sample option, SampleError>>(Ok (Some kitSample), sampleSession.samples.resolveVersion sampleVersion)
+        Assert.Equal<Result<Sample option, SampleError>>(stores.samples.tryGetSample kitSample.id, sampleSession.samples.tryGetSample kitSample.id)
+        Assert.Equal<Result<LibraryEntry option, LibraryError>>(
+            stores.library.tryGetEntry kitSample.id.toElementValueId, sampleSession.library.tryGetEntry kitSample.id.toElementValueId)
+        Assert.Equal<Result<LibraryEntry list, LibraryError>>(
+            stores.library.entriesForKind CatalogueKind.Sample, sampleSession.library.entriesForKind CatalogueKind.Sample)
+        let hiddenLibrary =
+            {
+                stores.library with entriesForKind = fun _ -> Ok []
+            }
+        Assert.Equal<Result<LibraryEntry list, LibraryError>>(
+            Ok [], (hiddenLibrary.overlaidWith extended).entriesForKind CatalogueKind.Sample)
+        let categorySnapshot = catalogueEnvelope CategoryIds.glass.toLibraryEntryId
+        let categoryContent =
+            {
+                categorySnapshot.content with name = EntryName "Kit-specific glass category"
+            }
+        let divergentCategory = fixture.context.imports.sealEntry categoryContent |> expectImportOk
+        let categoryOverlay : KitLibraryOverlay =
+            {
+                extended with snapshots = divergentCategory :: extended.snapshots
+            }
+        Assert.Equal<Result<MaterialCategory list, CategoryError>>(
+            stores.categories.listCategories (), (stores.overlaidWith categoryOverlay).categories.listCategories ())
+
+        let materialError = MaterialStoreUnavailableErr "material read unavailable"
+        let sampleError = SampleStoreUnavailableErr "sample read unavailable"
+        let libraryError = LibraryUnavailableErr "library read unavailable"
+        let categoryError = CategoryStoreUnavailableErr "category read unavailable"
+        let failingStores : KitLibraryStores =
+            {
+                materials =
+                    {
+                        stores.materials with
+                            tryGetMaterial = fun _ -> Error materialError
+                            resolveVersion = fun _ -> Error materialError
+                    }
+                samples =
+                    {
+                        stores.samples with
+                            tryGetSample = fun _ -> Error sampleError
+                            resolveVersion = fun _ -> Error sampleError
+                    }
+                library =
+                    {
+                        stores.library with
+                            tryGetEntry = fun _ -> Error libraryError
+                            entriesForKind = fun _ -> Error libraryError
+                    }
+                categories =
+                    {
+                        stores.categories with listCategories = fun () -> Error categoryError
+                    }
+            }
+        let failed = failingStores.overlaidWith extended
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some kitMaterial), failed.materials.resolveVersion version)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Error materialError, failed.materials.tryGetMaterial MaterialIds.silicon)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Error materialError, failed.materials.resolveVersion newerVersion)
+        Assert.Equal<Result<Sample option, SampleError>>(Ok (Some kitSample), failed.samples.resolveVersion sampleVersion)
+        Assert.Equal<Result<Sample option, SampleError>>(Error sampleError, failed.samples.tryGetSample kitSample.id)
+        Assert.Equal<Result<LibraryEntry option, LibraryError>>(Error libraryError, failed.library.tryGetEntry kitSample.id.toElementValueId)
+        Assert.Equal<Result<LibraryEntry list, LibraryError>>(Error libraryError, failed.library.entriesForKind CatalogueKind.Sample)
+        Assert.Equal<Result<LibraryTree list, LibraryError>>(Error libraryError, failed.library.libraryTrees ())
+        Assert.Equal<Result<MaterialCategory list, CategoryError>>(Error categoryError, failed.categories.listCategories ())
+
+        let missingCategory =
+            {
+                content with categoryOpt = None
+            }
+        let missingDescription =
+            {
+                sampleContent with descriptionOpt = None
+            }
+        let category = catalogueEnvelope CategoryIds.glass.toLibraryEntryId
+        let wrongCategory =
+            {
+                category.content with payload = content.payload
+            }
+        let invalidOverlay : KitLibraryOverlay =
+            {
+                snapshots =
+                    [
+                        {
+                            incoming with content = missingCategory
+                        }
+                        {
+                            sampleSnapshot with content = missingDescription
+                        }
+                        {
+                            category with content = wrongCategory
+                        }
+                    ]
+                replacements = []
+            }
+        let invalid = (storesForOverlay (CatalogueImportProxy.createInMemory ())).overlaidWith invalidOverlay
+        let refusalDescription (decoded : Result<'Entry, LibraryEntryError>) : string =
+            match decoded with
+            | Error error -> error.describe
+            | Ok _ -> failwith "The intentionally incomplete content must not decode."
+        let materialReason = $"snapshot {missingCategory.describe}: {refusalDescription missingCategory.toMaterialEntry}"
+        let sampleReason = $"snapshot {missingDescription.describe}: {refusalDescription missingDescription.toSample}"
+        let categoryReason = $"snapshot {wrongCategory.describe}: {refusalDescription wrongCategory.toMaterialCategory}"
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Error (MaterialStoreUnavailableErr materialReason), invalid.materials.resolveVersion version)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Error (MaterialStoreUnavailableErr materialReason), invalid.materials.tryGetMaterial MaterialIds.silicon)
+        Assert.Equal<Result<Sample option, SampleError>>(Error (SampleStoreUnavailableErr sampleReason), invalid.samples.resolveVersion sampleVersion)
+        Assert.Equal<Result<Sample option, SampleError>>(Error (SampleStoreUnavailableErr sampleReason), invalid.samples.tryGetSample kitSample.id)
+        Assert.Equal<Result<LibraryEntry option, LibraryError>>(Error (LibraryUnavailableErr sampleReason), invalid.library.tryGetEntry kitSample.id.toElementValueId)
+        Assert.Equal<Result<LibraryEntry list, LibraryError>>(Error (LibraryUnavailableErr sampleReason), invalid.library.entriesForKind CatalogueKind.Sample)
+        Assert.Equal<Result<MaterialCategory list, CategoryError>>(Error (CategoryStoreUnavailableErr categoryReason), invalid.categories.listCategories ())
+
+    [<Fact>]
+    let ``a re-bound entry resolves to the held entry`` () : unit =
+        let held = BuiltinCatalogue.freshStores ()
+        let stores = storesForOverlay held
+        let fixture = snapshotFixture held.proxy ReadWriteKitAccess
+        let sample : Sample =
+            {
+                BuiltinCatalogue.sample SampleIds.glassFilm200Id with
+                    id = SampleId (Guid.Parse "14200000-0000-4000-8000-000000000002")
+                    name = EntryName "Kit-only sample"
+            }
+        let kitVersion = VersionNumber 7
+        let incoming =
+            LibraryEntryContent.ofSample kitVersion UserProvenance sample
+            |> fixture.context.imports.sealEntry |> expectImportOk
+        fixture.context.kit.proxy.writeSnapshot incoming |> expectKitOk
+        let rebinding : EntryRebinding =
+            {
+                incoming = incoming.content.id
+                held = SampleIds.multilayerQwId.toLibraryEntryId
+            }
+        let paths = fixture.folder.paths ()
+        let overlay = fixture.context.openOverlay [ rebinding ] |> expectSnapshotOk
+        let replacement = Assert.Single overlay.replacements
+        Assert.Equal<LibraryEntryId>(incoming.content.id, replacement.incoming)
+        Assert.Equal<LibraryEntryEnvelope>(sampleEnvelope (), replacement.held)
+        let session = stores.overlaidWith overlay
+        let expected = BuiltinCatalogue.sample SampleIds.multilayerQwId
+        let incomingVersion : SampleVersionId =
+            {
+                sampleId = sample.id
+                version = incoming.content.version
+            }
+        Assert.Equal<Result<Sample option, SampleError>>(Ok (Some expected), session.samples.tryGetSample sample.id)
+        Assert.Equal<Result<Sample option, SampleError>>(Ok (Some expected), session.samples.resolveVersion incomingVersion)
+        Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok (Some (SampleItem expected)), session.library.tryGetEntry sample.id.toElementValueId)
+        let offered = session.library.entriesForKind CatalogueKind.Sample |> expectOverlayStoreOk
+        Assert.DoesNotContain(sample.id.toElementValueId, offered |> List.map (fun entry -> entry.entryId))
+        Assert.Equal<Result<LibraryEntry list, LibraryError>>(stores.library.entriesForKind CatalogueKind.Sample, Ok offered)
+        Assert.Equal<Result<Sample option, SampleError>>(Ok None, stores.samples.tryGetSample sample.id)
+        Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+        assertSnapshots [ incoming ] fixture
+        Assert.Empty fixture.pins
+
+        let heldVersion = SampleVersionId.firstOf expected.id
+        let newer =
+            {
+                expected with description = EntryDescription "Latest held multilayer"
+            }
+        Assert.Equal<Result<unit, SampleError>>(Ok (), stores.samples.pinSampleVersion heldVersion)
+        let newerEnvelope =
+            LibraryEntryContent.ofSample VersionNumber.first.next UserProvenance newer
+            |> fixture.context.imports.sealEntry |> expectImportOk
+        let put : EntryVersionPut =
+            {
+                envelope = newerEnvelope
+                latest = MoveLatestVersion
+            }
+        held.proxy.putEntryVersion put |> expectImportOk
+        let reopened = fixture.context.openOverlay [ rebinding ] |> expectSnapshotOk
+        Assert.Equal<LibraryEntryEnvelope>(newerEnvelope, (Assert.Single reopened.replacements).held)
+        Assert.Equal<Result<Sample option, SampleError>>(Ok (Some newer), (stores.overlaidWith reopened).samples.resolveVersion incomingVersion)
+
+        let missingId = LibraryEntryId (Guid.Parse "14200000-0000-4000-8000-000000000003")
+        let missingRebinding : EntryRebinding =
+            {
+                rebinding with held = missingId
+            }
+        match fixture.context.openOverlay [ missingRebinding ] with
+        | Error (UnheldEntryErr reason) ->
+            Assert.Contains(string missingId.value, reason)
+            Assert.Contains(string incoming.content.id.value, reason)
+        | _ -> Assert.Fail("A missing rebinding target must return UnheldEntryErr.")
+        let reads = ResizeArray<LibraryEntryId>()
+        let readError = ImportStoreUnavailableErr "held entry lookup unavailable"
+        let failedImports =
+            {
+                held.proxy with
+                    tryHeldEntry = fun id ->
+                        reads.Add id
+                        Error readError
+            }
+        let failedContext =
+            {
+                fixture.context with imports = CatalogueImportContext.create failedImports
+            }
+        Assert.Equal<Result<KitLibraryOverlay, KitLibraryError>>(
+            Error (KitLibraryImportErr readError), failedContext.openOverlay [ rebinding; missingRebinding ])
+        Assert.Equal<LibraryEntryId>(rebinding.held, Assert.Single reads)
+        reads.Clear()
+        let kitError = KitIoErr "overlay snapshot listing unavailable"
+        let failedKitProxy =
+            {
+                fixture.context.kit.proxy with listSnapshots = fun () -> Error kitError
+            }
+        let failedKitContext =
+            {
+                failedContext with
+                    kit =
+                        {
+                            failedContext.kit with proxy = failedKitProxy
+                        }
+            }
+        Assert.Equal<Result<KitLibraryOverlay, KitLibraryError>>(
+            Error (KitLibraryKitErr kitError), failedKitContext.openOverlay [ rebinding ])
+        Assert.Empty reads
+
+    [<Fact>]
+    let ``the overlay passes every write to the library and never lists a kit entry in it`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        let sourceId = PresetIds.source600.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith "The preset must have an entry id.")
+        fixture.context.snapshotReferences [ EntryVersionReference (sampleEnvelope ()).libraryVersionRef; EntryLatestReference sourceId ]
+        |> expectSnapshotOk |> ignore
+        let overlay = fixture.context.openOverlay [] |> expectSnapshotOk
+        let empty = CatalogueImportProxy.createInMemory ()
+        let stores = storesForOverlay empty
+        let session = stores.overlaidWith overlay
+        Assert.Same(stores.materials.saveMaterial, session.materials.saveMaterial)
+        Assert.Same(stores.materials.markMaterialInactive, session.materials.markMaterialInactive)
+        Assert.Same(stores.materials.markMaterialActive, session.materials.markMaterialActive)
+        Assert.Same(stores.materials.supersedeMaterial, session.materials.supersedeMaterial)
+        Assert.Same(stores.materials.pinMaterialVersion, session.materials.pinMaterialVersion)
+        Assert.Same(stores.materials.removeMaterial, session.materials.removeMaterial)
+        Assert.Same(stores.samples.saveSample, session.samples.saveSample)
+        Assert.Same(stores.samples.markSampleInactive, session.samples.markSampleInactive)
+        Assert.Same(stores.samples.markSampleActive, session.samples.markSampleActive)
+        Assert.Same(stores.samples.supersedeSample, session.samples.supersedeSample)
+        Assert.Same(stores.samples.pinSampleVersion, session.samples.pinSampleVersion)
+        Assert.Same(stores.samples.removeSample, session.samples.removeSample)
+        Assert.Same(stores.categories.addCategory, session.categories.addCategory)
+        Assert.Same(stores.categories.updateCategory, session.categories.updateCategory)
+        Assert.Same(stores.categories.removeCategory, session.categories.removeCategory)
+        Assert.Same(stores.materials.listMaterials, session.materials.listMaterials)
+        Assert.Same(stores.materials.searchMaterials, session.materials.searchMaterials)
+        Assert.Same(stores.samples.listSamples, session.samples.listSamples)
+        Assert.Same(stores.samples.searchSamples, session.samples.searchSamples)
+        let paths = fixture.folder.paths ()
+        let sample : Sample =
+            {
+                BuiltinCatalogue.sample SampleIds.glassFilm200Id with
+                    id = SampleId (Guid.Parse "14200000-0000-4000-8000-000000000004")
+                    name = EntryName "Written through the kit session"
+            }
+        Assert.Equal<Result<unit, SampleError>>(Ok (), session.samples.saveSample sample)
+        Assert.Equal<Result<Sample option, SampleError>>(Ok (Some sample), stores.samples.tryGetSample sample.id)
+        for visibility in [ ActiveOnly; IncludeInactive ] do
+            Assert.Equal<Result<Sample list, SampleError>>(Ok [ sample ], stores.samples.listSamples visibility)
+            Assert.Equal<Result<Sample list, SampleError>>(Ok [ sample ], session.samples.listSamples visibility)
+            Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [], stores.materials.listMaterials visibility)
+            Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [], session.materials.listMaterials visibility)
+        Assert.Equal<Result<Sample list, SampleError>>(Ok [ sample ], session.samples.searchSamples SampleQuery.empty)
+        Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [], session.materials.searchMaterials MaterialQuery.empty)
+        Assert.Equal<Result<Sample list, SampleError>>(Ok [ sample ], stores.samples.searchSamples SampleQuery.empty)
+        Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [], stores.materials.searchMaterials MaterialQuery.empty)
+        Assert.Equal<Result<MaterialCategory list, CategoryError>>(Ok [], stores.categories.listCategories ())
+        for kind in [ CatalogueKind.Sample; LightSource; Detector; LinearPolarizer; CircularPolarizer ] do
+            let expected = if kind = CatalogueKind.Sample then [ SampleItem sample ] else []
+            Assert.Equal<Result<LibraryEntry list, LibraryError>>(Ok expected, stores.library.entriesForKind kind)
+        Assert.Equal<Result<LibraryTree list, LibraryError>>(Ok [ LibraryTree.byKind [ SampleItem sample ] ], stores.library.libraryTrees ())
+        Assert.Equal<Result<LibraryEntry list, LibraryError>>(
+            Ok [ SampleItem sample; SampleItem (BuiltinCatalogue.sample SampleIds.multilayerQwId) ], session.library.entriesForKind CatalogueKind.Sample)
+        Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+        Assert.Equal<LibraryEntryEnvelope list>(overlay.snapshots, fixture.context.kit.proxy.listSnapshots () |> expectKitOk)
+        Assert.Empty(empty.proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> expectImportOk)
+        Assert.Empty(empty.proxy.heldUserEntries () |> expectImportOk)
+        Assert.Empty(empty.proxy.loggedImports () |> expectImportOk)
 
     [<Fact>]
     let ``every kit library error renders its condition and its payload`` () : unit =
