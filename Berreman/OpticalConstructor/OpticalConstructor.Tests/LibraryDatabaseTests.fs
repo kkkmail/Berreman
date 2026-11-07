@@ -21,6 +21,7 @@ open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CategoryDatabaseStore
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.EntryFileJson
+open OpticalConstructor.Storage.LibraryBackupStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
 open OpticalConstructor.Storage.PresetDatabaseStore
@@ -126,6 +127,8 @@ module LibraryDatabaseTests =
         do Directory.CreateDirectory(folder.value) |> ignore
 
         member _.databaseFile : FileName = file
+
+        member _.backupsFolder : FolderName = FolderName (Path.Combine(folder.value, "Backups"))
 
         member _.fileNamed (name : string) : FileName =
             FileName (Path.Combine(folder.value, name))
@@ -330,6 +333,127 @@ module LibraryDatabaseTests =
             Assert.Fail("a file was accepted as the database's parent directory")
 
         Assert.Equal("preserved", File.ReadAllText(obstruction.value))
+
+    [<Fact>]
+    let ``recreate copies the old library file into the backups folder, then creates a new stamped library`` () : unit =
+        use fixture = new LibraryDatabaseFixture()
+        let backups = fixture.backupsFolder
+        let time = LibraryBackupTime (DateTime(2026, 11, 6, 14, 30, 0, DateTimeKind.Utc))
+        let now () : LibraryBackupTime = time
+        let original = builtinEnvelope MaterialIds.silicon.toLibraryEntryId
+
+        do
+            use database = LibraryDatabase.openOrCreate fixture.connectionString |> expectDatabaseOk
+            database.run (fun context ->
+                context.stageNewEntry original.content |> expectDatabaseOk
+                context.SaveChanges() |> ignore)
+            |> expectDatabaseOk
+
+        do
+            use connection = new SqliteConnection(fixture.connectionString.value)
+            connection.Open()
+            use command = connection.CreateCommand()
+            command.CommandText <- "UPDATE SchemaStamp SET SchemaVersion = 2 WHERE Id = 1;"
+            Assert.Equal(1, command.ExecuteNonQuery())
+
+        let incompatibleVersion = LibrarySchemaVersion 2
+        assertSchemaMismatch (Some incompatibleVersion) fixture.connectionString
+        let originalBytes = File.ReadAllBytes(fixture.databaseFile.value)
+        let sidecars =
+            [ "-wal"; "-shm"; "-journal" ]
+            |> List.map (fun suffix -> FileName $"{fixture.databaseFile.value}{suffix}")
+        for sidecar in sidecars do
+            File.WriteAllText(sidecar.value, "old library sidecar")
+
+        do
+            use locked = new FileStream(fixture.databaseFile.value, FileMode.Open, FileAccess.Read, FileShare.None)
+            match LibraryDatabase.recreate fixture.connectionString backups now with
+            | Error (FileIoExn _) -> ()
+            | Error error -> Assert.Fail(error.describe)
+            | Ok unexpected ->
+                use unexpected = unexpected
+                Assert.Fail("recreation succeeded while the source could not be copied")
+
+        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(fixture.databaseFile.value))
+        Assert.Empty(Directory.GetFiles(backups.value))
+        for sidecar in sidecars do
+            Assert.Equal("old library sidecar", File.ReadAllText(sidecar.value))
+
+        do
+            use recreated = LibraryDatabase.recreate fixture.connectionString backups now |> expectDatabaseOk
+            Assert.Equal<LibraryDatabaseOrigin>(CreatedLibraryDatabase, recreated.origin)
+            assertLibraryStamp recreated
+            recreated.run (fun context ->
+                Assert.Empty(context.EntryVersions)
+                Assert.Empty(context.LatestVersions)
+                Assert.Empty(context.CatalogueImports))
+            |> expectDatabaseOk
+
+        for sidecar in sidecars do
+            Assert.False(File.Exists(sidecar.value), $"old sidecar remains: {sidecar.value}")
+
+        let backup = FileName (Path.Combine(backups.value, "library-20261106-143000.db"))
+        Assert.Equal<string>(backup.value, Assert.Single<string>(Directory.GetFiles(backups.value)))
+        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(backup.value))
+
+        do
+            let backupString = fixture.connectionStringFor backup
+            use connection = new SqliteConnection(backupString.value)
+            connection.Open()
+            use command = connection.CreateCommand()
+            command.CommandText <- "SELECT SchemaVersion FROM SchemaStamp WHERE Id = 1;"
+            Assert.Equal(2L, unbox<int64> (command.ExecuteScalar()))
+            command.CommandText <- "SELECT COUNT(*) FROM EntryVersion;"
+            Assert.Equal(1L, unbox<int64> (command.ExecuteScalar()))
+
+        do
+            use recreatedAgain = LibraryDatabase.recreate fixture.connectionString backups now |> expectDatabaseOk
+            Assert.Equal<LibraryDatabaseOrigin>(CreatedLibraryDatabase, recreatedAgain.origin)
+            assertLibraryStamp recreatedAgain
+
+        let numberedBackup = FileName (Path.Combine(backups.value, "library-20261106-143000-2.db"))
+        Assert.Equal<Set<string>>(set [ backup.value; numberedBackup.value ], Directory.GetFiles(backups.value) |> Set.ofArray)
+        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(backup.value))
+
+        use missing = new LibraryDatabaseFixture()
+        use created =
+            LibraryDatabase.recreate missing.connectionString missing.backupsFolder (fun () -> failwith "a missing library needs no backup time")
+            |> expectDatabaseOk
+        Assert.Equal<LibraryDatabaseOrigin>(CreatedLibraryDatabase, created.origin)
+        assertLibraryStamp created
+        Assert.False(Directory.Exists(missing.backupsFolder.value))
+
+        use blocked = new LibraryDatabaseFixture()
+        let obstruction = blocked.fileNamed "blocked"
+        File.WriteAllText(obstruction.value, "preserved")
+        let blockedFile = blocked.fileNamed (Path.Combine("blocked", "nested", "library.db"))
+        let blockedString = blocked.connectionStringFor blockedFile
+
+        match LibraryDatabase.recreate blockedString blocked.backupsFolder now with
+        | Error (FileIoExn _) -> ()
+        | Error error -> Assert.Fail($"expected FileIoExn for the blocked parent, got {error.describe}")
+        | Ok unexpected ->
+            use unexpected = unexpected
+            Assert.Fail("recreation accepted a file as the database's parent directory")
+
+        Assert.Equal("preserved", File.ReadAllText(obstruction.value))
+        Assert.False(File.Exists(blockedFile.value))
+        Assert.False(Directory.Exists(blocked.backupsFolder.value))
+
+    [<Fact>]
+    let ``recreate of an in-memory library creates a new one and copies nothing`` () : unit =
+        use fixture = new LibraryDatabaseFixture()
+        let memoryString = ConnectionString "Data Source=:memory:"
+        let namedMemoryString = ConnectionString "Data Source=library-recreate-memory;Mode=Memory"
+
+        for connectionString in [ memoryString; namedMemoryString ] do
+            use database =
+                LibraryDatabase.recreate connectionString fixture.backupsFolder (fun () -> failwith "an in-memory library needs no backup time")
+                |> expectDatabaseOk
+            Assert.Equal<LibraryDatabaseOrigin>(CreatedLibraryDatabase, database.origin)
+            assertLibraryStamp database
+            database.run (fun context -> Assert.Empty(context.EntryVersions)) |> expectDatabaseOk
+            Assert.False(Directory.Exists(fixture.backupsFolder.value))
 
     [<Fact>]
     let ``vacuumInto writes a stamped copy of the library and refuses a target that exists`` () : unit =
