@@ -2,6 +2,7 @@ namespace OpticalConstructor.Tests
 
 open System
 open System.IO
+open System.Security.Cryptography
 open System.Text
 open System.Text.Json.Nodes
 open Xunit
@@ -285,6 +286,88 @@ type KitProxyContract () =
         Assert.False(folder.paths () |> List.exists (fun path -> path.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)))
         Assert.Equal<Result<KitFileText, KitError>>(Ok replacement, (folder.openProxy ()).readKindFile SetupKitFile stem)
 
+    [<Fact>]
+    member this.``a lab file is read by its kit-relative path with the SHA-256 of its bytes`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let otherProxy = folder.openProxy ()
+        let clock = steppingClock ()
+        let kit = newKitFile clock
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+
+        let assertDataFile (path : KitRelativePath) (storedText : KitFileText) (expectedText : KitFileText) : unit =
+            let before = folder.paths ()
+            let expectedHash = ContentHash (Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes storedText.value)))
+            for reader in [ proxy; otherProxy; folder.openProxy () ] do
+                match reader.readDataFile path with
+                | Ok data ->
+                    Assert.Equal<KitRelativePath>(path, data.path)
+                    Assert.Equal<KitFileText>(expectedText, data.text)
+                    Assert.Equal<ContentHash>(expectedHash, data.contentHash)
+                | Error error -> Assert.Fail($"Expected lab data for '{path.value}', got {error.describe}")
+                Assert.Equal<string list>(before, folder.paths ())
+
+        let assertLabFile (path : KitRelativePath) (storedText : KitFileText) (expectedText : KitFileText) : unit =
+            folder.placeLabFile path.value storedText.value
+            assertDataFile path storedText expectedText
+
+        let assertKitMetadata (expectedKit : KitFile) : unit =
+            let path = KitRelativePath ".kit-json"
+            let expectedText = expectedKit.fileText |> Result.defaultWith (fun error -> failwith error.describe)
+            assertDataFile path expectedText expectedText
+            for reader in [ proxy; otherProxy; folder.openProxy () ] do
+                Assert.Equal<Result<KitFile, KitError>>(Ok expectedKit, reader.readKitFile ())
+
+        assertKitMetadata kit
+
+        let runPath = KitRelativePath "data/raw/run 1.csv"
+        let runText = KitFileText "phi,I\n0,0.5\n"
+        assertLabFile runPath runText runText
+
+        let notesPath = KitRelativePath "notes.txt"
+        let rawPath = KitRelativePath "raw/run 2.csv"
+        let unicodeText = KitFileText "λ,I\r\n600,0.5\r\n"
+        assertLabFile notesPath unicodeText unicodeText
+        assertLabFile rawPath unicodeText unicodeText
+
+        let emptyPath = KitRelativePath "data/empty.csv"
+        let emptyText = KitFileText ""
+        assertLabFile emptyPath emptyText emptyText
+
+        let bomPath = KitRelativePath "data/bom.csv"
+        let bomText = KitFileText $"\uFEFF{unicodeText.value}"
+        assertLabFile bomPath bomText unicodeText
+
+        let embeddedBomPath = KitRelativePath "data/embedded-bom.csv"
+        let embeddedBomText = KitFileText "a,\uFEFFb\n"
+        assertLabFile embeddedBomPath embeddedBomText embeddedBomText
+
+        let replacementText = KitFileText "phi,I\n0,0.75\n"
+        assertLabFile runPath replacementText replacementText
+
+        let before = folder.paths ()
+        for missingPath in [ KitRelativePath "data/raw/none.csv"; KitRelativePath "absent/raw/none.csv" ] do
+            match proxy.readDataFile missingPath with
+            | Error (MissingKitFileErr reason) -> Assert.Contains(missingPath.value, reason)
+            | Error error -> Assert.Fail($"Expected MissingKitFileErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("Reading a missing lab file must fail.")
+            Assert.Equal<string list>(before, folder.paths ())
+
+        Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxy.readKitFile ())
+
+        let replacement =
+            {
+                kit with
+                    name = KitName "Reviewed QZ/LR"
+                    modified = clock.now ()
+                    notes = KitNotes "Metadata: μ, λ\nReviewed"
+                    sendExclude = [ SendExcludeGlob "**/*.dng" ]
+            }
+        let beforeReplacement = folder.paths ()
+        Assert.Equal<Result<unit, KitError>>(Ok (), otherProxy.writeKitFile replacement)
+        Assert.Equal<string list>(beforeReplacement, folder.paths ())
+        assertKitMetadata replacement
+
 /// Runs the shared kit-file contract over one in-memory folder per fact (spec 0050 S4.1).
 type KitProxyTests () =
     inherit KitProxyContract ()
@@ -417,4 +500,65 @@ type KitProxyFolderTests () =
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile SetupKitFile stem replacement)
         Assert.Equal<byte>(Encoding.UTF8.GetBytes replacement.value, File.ReadAllBytes file.value)
         Assert.Equal<Result<KitFileText, KitError>>(Ok replacement, proxy.readKindFile SetupKitFile stem)
+        Assert.Equal<string list>(before, folder.paths ())
+
+    [<Fact>]
+    member _.``a lab file with a byte-order mark reads without it and hashes its bytes as stored`` () : unit =
+        let path = freshKitFolderPath ()
+        let folder = kitFolderAdapter path
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let relativePath = KitRelativePath "data/run.csv"
+        let text = KitFileText "a,b\n"
+        let file = FileName (Path.GetFullPath(Path.Combine(path.value, relativePath.value)))
+        let bytes = Array.append [| 0xEFuy; 0xBBuy; 0xBFuy |] (Encoding.UTF8.GetBytes text.value)
+        let expectedHash = ContentHash (Convert.ToHexStringLower(SHA256.HashData bytes))
+        let textHash = ContentHash (Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes text.value)))
+        File.WriteAllBytes(file.value, bytes)
+        let before = folder.paths ()
+
+        match proxy.readDataFile relativePath with
+        | Ok data ->
+            Assert.Equal<KitRelativePath>(relativePath, data.path)
+            Assert.Equal<KitFileText>(text, data.text)
+            Assert.Equal<ContentHash>(expectedHash, data.contentHash)
+            Assert.NotEqual<ContentHash>(textHash, data.contentHash)
+        | Error error -> Assert.Fail($"Expected BOM-prefixed lab data, got {error.describe}")
+
+        Assert.Equal<byte>(bytes, File.ReadAllBytes file.value)
+        Assert.Equal<string list>(before, folder.paths ())
+
+    [<Fact>]
+    member _.``a lab file another process holds open is KitIoErr, never a throw`` () : unit =
+        let path = freshKitFolderPath ()
+        let folder = kitFolderAdapter path
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let relativePath = KitRelativePath "data/run.csv"
+        let text = KitFileText "angle,intensity\n45,0.25\n"
+        folder.placeLabFile relativePath.value text.value
+        let file = FileName (Path.GetFullPath(Path.Combine(path.value, relativePath.value)))
+        let bytes = File.ReadAllBytes file.value
+        let expectedHash = ContentHash (Convert.ToHexStringLower(SHA256.HashData bytes))
+        let before = folder.paths ()
+
+        do
+            use lockedFile = new FileStream(file.value, FileMode.Open, FileAccess.Read, FileShare.None)
+            match proxy.readDataFile relativePath with
+            | Error (KitIoErr reason) ->
+                Assert.Contains(file.value, reason)
+                Assert.Contains(path.value, reason)
+            | Error error -> Assert.Fail($"Expected KitIoErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("Reading an exclusively held lab file must fail.")
+            Assert.Equal<string list>(before, folder.paths ())
+
+        Assert.Equal<byte>(bytes, File.ReadAllBytes file.value)
+        match proxy.readDataFile relativePath with
+        | Ok data ->
+            Assert.Equal<KitRelativePath>(relativePath, data.path)
+            Assert.Equal<KitFileText>(text, data.text)
+            Assert.Equal<ContentHash>(expectedHash, data.contentHash)
+        | Error error -> Assert.Fail($"Expected lab data after releasing the handle, got {error.describe}")
         Assert.Equal<string list>(before, folder.paths ())

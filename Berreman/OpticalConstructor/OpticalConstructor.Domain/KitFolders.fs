@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Domain
 
 open System
+open System.Text
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -8,7 +9,7 @@ open OpticalConstructor.Domain.LibraryEntryFiles
 /// The kit-folder seam and its shared in-memory double (spec 0050 S4.1).
 module KitFolders =
 
-    /// One folder's kit files via Storage's KitProxy.create or the createInMemory double; only initialisation makes it a kit (spec 0050 S4.1).
+    /// One folder's kit files via Storage's KitProxy.create or createInMemory; only initialisation makes it a kit (spec 0050 S4.1).
     [<ReferenceEquality>]
     type KitProxy =
         {
@@ -26,6 +27,8 @@ module KitFolders =
             writeKindFile : KitFileKind -> FileStem -> KitFileText -> Result<unit, KitError>
             /// Deletes a named kind file, or returns MissingKitFileErr without changes (spec 0050 S4.1).
             deleteKindFile : KitFileKind -> FileStem -> Result<unit, KitError>
+            /// Reads the kit-relative file's text and ContentHash.ofBytes of its stored bytes, or MissingKitFileErr naming the path (spec 0050 S4.1).
+            readDataFile : KitRelativePath -> Result<KitDataFile, KitError>
         }
 
     type FileName with
@@ -93,27 +96,28 @@ module KitFolders =
         /// Lists every file and folder by its kit-relative path in ordinal order (spec 0050 S4.1).
         member _.paths () : KitRelativePath list =
             let filePaths = texts |> Map.keys |> Set.ofSeq
-            let paths = Set.union folders filePaths
-            let pathsWithKit =
-                match kitFileOpt with
-                | Some _ -> Set.add kitFilePath paths
-                | None -> paths
-            pathsWithKit
+            Set.union folders filePaths
             |> Set.toList
             |> List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value))
 
-        /// Captures this folder's state in a fresh proxy without exposing its mutable contents (spec 0050 S4.1).
-        member internal this.createKitProxy () : KitProxy =
+        /// Opens shared folder state with the supplied metadata serializer, retaining its text for any-file reads (spec 0050 S4.1).
+        member this.createKitProxy (serializeMetadata : KitFile -> Result<KitFileText, KitError>) : KitProxy =
+            let writeMetadata (kit : KitFile) : Result<unit, KitError> =
+                serializeMetadata kit
+                |> Result.map (fun text ->
+                    texts <- Map.add kitFilePath text texts
+                    kitFileOpt <- Some kit)
+
             {
                 initialiseKit =
                     fun kit ->
                         match kitFileOpt with
                         | Some _ -> Error (KitAlreadyExistsErr "in-memory kit folder")
                         | None ->
-                            let contentFolders = Set.ofList [ KitRelativePath "data"; KitRelativePath "library" ]
-                            folders <- Set.union folders contentFolders
-                            kitFileOpt <- Some kit
-                            Ok ()
+                            writeMetadata kit
+                            |> Result.map (fun () ->
+                                let contentFolders = Set.ofList [ KitRelativePath "data"; KitRelativePath "library" ]
+                                folders <- Set.union folders contentFolders)
                 readKitFile =
                     fun () ->
                         match kitFileOpt with
@@ -122,9 +126,7 @@ module KitFolders =
                 writeKitFile =
                     fun kit ->
                         match kitFileOpt with
-                        | Some _ ->
-                            kitFileOpt <- Some kit
-                            Ok ()
+                        | Some _ -> writeMetadata kit
                         | None -> Error (NotAKitFolderErr "in-memory kit folder")
                 listKindFiles =
                     fun kind -> texts |> Map.keys |> Seq.toList |> kind.stemsAtKitRoot |> Ok
@@ -148,9 +150,17 @@ module KitFolders =
                             texts <- Map.remove held texts
                             Ok ()
                         | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
+                readDataFile =
+                    fun path ->
+                        match this.tryFindTextPath path |> Option.bind (fun held -> Map.tryFind held texts) with
+                        | Some text ->
+                            let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
+                            Ok
+                                {
+                                    path = path
+                                    text = text.withoutByteOrderMark
+                                    contentHash = ContentHash.ofBytes bytes
+                                }
+                        | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
             }
 
-    type KitProxy with
-
-        /// Opens a new proxy over the same folder state as every other proxy naming it (spec 0050 S4.1).
-        static member createInMemory (folder : InMemoryKitFolder) : KitProxy = folder.createKitProxy ()

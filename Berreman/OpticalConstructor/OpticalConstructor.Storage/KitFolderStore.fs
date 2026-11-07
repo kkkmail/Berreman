@@ -30,17 +30,30 @@ module KitFolderStore =
         try io ()
         with error -> Error (KitIoErr $"kit folder '{folder.value.value}': {error.Message}")
 
-    let private kitFileRejectedErr (folder : KitFolder) (error : StorageError) : KitError =
-        KitFileRejectedErr $"kit folder '{folder.value.value}': the file '{KitFile.fileName.value}' is rejected: {error.describe}"
+    let private kitFileRejectedErr (folder : FolderName) (error : StorageError) : KitError =
+        KitFileRejectedErr $"kit folder '{folder.value}': the file '{KitFile.fileName.value}' is rejected: {error.describe}"
+
+    let private serializeKitMetadata (folder : FolderName) (kitFile : KitFile) : Result<KitFileText, KitError> =
+        kitFile.fileText |> Result.mapError (kitFileRejectedErr folder)
+
+    type FileByteContent with
+
+        member private this.kitFileText : KitFileText =
+            let text = KitFileText (Encoding.UTF8.GetString this.value)
+            text.withoutByteOrderMark
 
     type FileName with
 
         member private this.readKitText () : KitFileText =
-            let bytes = File.ReadAllBytes this.value
-            let text = KitFileText (Encoding.UTF8.GetString bytes)
-            text.withoutByteOrderMark
+            let bytes = File.ReadAllBytes this.value |> FileByteContent
+            bytes.kitFileText
 
     type KitProxy with
+
+        /// Opens shared in-memory folder state with the same metadata serialization as the filesystem proxy (spec 0050 S4.1).
+        static member createInMemory (folder : InMemoryKitFolder) : KitProxy =
+            let folderName = FolderName "in-memory kit folder"
+            folder.createKitProxy (serializeKitMetadata folderName)
 
         /// Opens a folder without IO; only initialisation creates the kit and its content folders (spec 0050 S4.1).
         static member create (folder : KitFolder) : KitProxy =
@@ -51,8 +64,7 @@ module KitFolderStore =
                     KitIoErr $"kit folder '{folder.value.value}': the file '{file.value}' is not written: {error.describe}")
 
             let writeMetadata (file : FileName) (kitFile : KitFile) : Result<unit, KitError> =
-                kitFile.fileText
-                |> Result.mapError (kitFileRejectedErr folder)
+                serializeKitMetadata folder.value kitFile
                 |> Result.bind (writeText file)
 
             {
@@ -74,7 +86,7 @@ module KitFolderStore =
                         tryKitFolderIo folder (fun () ->
                             let file = KitFile.fileName.combine folder.value
                             if File.Exists file.value then
-                                (file.readKitText ()).parseKitFile |> Result.mapError (kitFileRejectedErr folder)
+                                (file.readKitText ()).parseKitFile |> Result.mapError (kitFileRejectedErr folder.value)
                             else
                                 Error (NotAKitFolderErr $"kit folder '{folder.value.value}'"))
                 writeKitFile =
@@ -113,4 +125,20 @@ module KitFolderStore =
                                 Ok ()
                             else
                                 Error (MissingKitFileErr $"kit folder '{folder.value.value}': '{file.value}'"))
+                readDataFile =
+                    fun (path : KitRelativePath) ->
+                        tryKitFolderIo folder (fun () ->
+                            let file = FileName (Path.Combine(folder.value.value, path.value.Replace('/', Path.DirectorySeparatorChar)))
+                            try
+                                let bytes = File.ReadAllBytes file.value |> FileByteContent
+                                Ok
+                                    {
+                                        path = path
+                                        text = bytes.kitFileText
+                                        contentHash = ContentHash.ofBytes bytes
+                                    }
+                            with
+                            | :? FileNotFoundException
+                            | :? DirectoryNotFoundException ->
+                                Error (MissingKitFileErr $"kit folder '{folder.value.value}': '{path.value}'"))
             }
