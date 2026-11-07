@@ -288,6 +288,26 @@ module CatalogueImport =
             forgetImport : CatalogueId -> Result<unit, CatalogueImportError>
         }
 
+        /// Credits distinct held entries in input order using their latest provenance (spec 0050 S3.3).
+        /// Unheld or unlicensed entries add nothing; the first read error stops the read without writes.
+        member this.attributionLinesOf (ids : LibraryEntryId list) : Result<EntryAttributionLine list, CatalogueImportError> =
+            ids
+            |> List.distinct
+            |> List.fold (fun result id ->
+                result |> Result.bind (fun lines ->
+                    this.tryHeldEntry id
+                    |> Result.map (function
+                        | Some held ->
+                            match held.provenance.attributionOpt with
+                            | Some attribution ->
+                                {
+                                    entryName = held.name
+                                    attribution = attribution
+                                } :: lines
+                            | None -> lines
+                        | None -> lines))) (Ok [])
+            |> Result.map List.rev
+
         /// Lists registered extra folders in log order, excluding the shipped catalogue (spec 0050 S3.1).
         member this.registeredFolders () : Result<CatalogueImportLogEntry list, CatalogueImportError> =
             this.loggedImports ()

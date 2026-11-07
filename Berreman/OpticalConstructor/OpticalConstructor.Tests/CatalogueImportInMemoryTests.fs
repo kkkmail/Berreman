@@ -293,6 +293,92 @@ type CatalogueImportContract () =
     abstract freshImport : unit -> ImportStoreSet
 
     [<Fact>]
+    member this.``attributionLinesOf names each held entry whose provenance carries a licence, in the order asked`` () : unit =
+        let context = (this.freshImport ()).context
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let ptbId = MaterialId (Guid.Parse "31801b01-444f-43c8-8440-000000000114")
+        let riiId = MaterialId (Guid.Parse "31801b02-444f-43c8-8440-000000000114")
+        let labId = MaterialId (Guid.Parse "31801b03-444f-43c8-8440-000000000114")
+        let forkId = LibraryEntryId (Guid.Parse "31801b04-444f-43c8-8440-000000000114")
+        let missingId = LibraryEntryId (Guid.Parse "31801b05-444f-43c8-8440-000000000114")
+        let ptbName = EntryName "PTB glass"
+        let riiName = EntryName "RII glass"
+        let labName = EntryName "Lab glass"
+        let ccBy = EntryLicence "CC-BY-4.0"
+        let cc0 = EntryLicence "CC0-1.0"
+        let citation = EntryCitation "A. Author, Test optical constants (2026), doi:10.0000/test"
+        let ptb = BuiltinCatalogue.licensedMaterialContent ptbId ptbName ccBy citation
+        let rii = BuiltinCatalogue.licensedMaterialContent riiId riiName cc0 citation
+        let fork =
+            {
+                ptb with
+                    id = forkId
+                    name = EntryName "PTB glass (fork)"
+                    provenance =
+                        ForkProvenance
+                            {
+                                originalId = ptb.id
+                                originalVersion = ptb.version
+                                originalProvenance = ptb.provenance
+                            }
+            }
+        let lab = BuiltinCatalogue.userMaterialContent labId labName
+        BuiltinCatalogue.putSealedEntries context [ ptb; rii; fork; lab ]
+        let ids = [ lab.id; MaterialIds.silicon.toLibraryEntryId; ptb.id; rii.id; fork.id; missingId; ptb.id ]
+        let before = importRowSnapshot context ids
+        let observed = observeStartupImport context
+        let reads = ResizeArray<LibraryEntryId>()
+        let proxy =
+            {
+                observed.context.proxy with
+                    tryHeldEntry = fun id ->
+                        reads.Add id
+                        context.proxy.tryHeldEntry id
+                    tryHeldEnvelope = fun _ _ -> failwith "Attribution reads the latest metadata, not version envelopes."
+                    forgetImport = fun _ -> failwith "Attribution must not change catalogue registrations."
+            }
+        Assert.Empty(proxy.attributionLinesOf [] |> expectImportOk)
+        Assert.Empty reads
+        let lines = proxy.attributionLinesOf ids |> expectImportOk
+        Assert.Equal<string list>(
+            [
+                "PTB glass: Licence CC-BY-4.0 — cite: A. Author, Test optical constants (2026), doi:10.0000/test"
+                "RII glass: Licence CC0-1.0"
+                "PTB glass (fork): Licence CC-BY-4.0 — cite: A. Author, Test optical constants (2026), doi:10.0000/test"
+            ], lines |> List.map _.text)
+        Assert.Equal<LibraryEntryId list>(
+            [ lab.id; MaterialIds.silicon.toLibraryEntryId; ptb.id; rii.id; fork.id; missingId ], List.ofSeq reads)
+        Assert.Equal<(LibraryEntryId * HeldEntry option) list>(before, importRowSnapshot context ids)
+        assertNoStartupWrites observed
+
+        let updated =
+            {
+                ptb with
+                    version = ptb.version.next
+                    provenance = rii.provenance
+            }
+        BuiltinCatalogue.putSealedEntries context [ updated ]
+        let latest = proxy.attributionLinesOf [ ptb.id ] |> expectImportOk |> Assert.Single
+        Assert.Equal(ptb.name, latest.entryName)
+        Assert.Equal<EntryAttribution>(LicenceNameOnly cc0, latest.attribution)
+
+        let failure = ImportStoreUnavailableErr "attribution lookup failed"
+        let failedReads = ResizeArray<LibraryEntryId>()
+        let failingProxy =
+            {
+                proxy with
+                    tryHeldEntry = fun id ->
+                        failedReads.Add id
+                        if id = missingId then Error failure
+                        else context.proxy.tryHeldEntry id
+            }
+        Assert.Equal<Result<EntryAttributionLine list, CatalogueImportError>>(
+            Error failure, failingProxy.attributionLinesOf [ ptb.id; missingId; rii.id ])
+        Assert.Equal<LibraryEntryId list>([ ptb.id; missingId ], List.ofSeq failedReads)
+        assertNoStartupWrites observed
+
+    [<Fact>]
     member this.``tryHeldEnvelope answers every held version's envelope and nothing for a version not held`` () : unit =
         let context = (this.freshImport ()).context
         context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
