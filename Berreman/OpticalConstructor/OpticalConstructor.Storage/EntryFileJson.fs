@@ -31,6 +31,8 @@ module EntryFileJson =
 
         member this.value : string = let (LibraryFileText t) = this in t
 
+        member private this.toJsonText : JsonText = JsonText this.value
+
         /// `read` over the root of the document this text parses to (`MalformedJsonErr` when it does not).
         /// The document ends with the call, so `read` keeps nothing of the root.
         member private this.readRoot<'Value> (read : JsonElement -> Result<'Value, StorageError>) : Result<'Value, StorageError> =
@@ -70,13 +72,7 @@ module EntryFileJson =
         /// current one, judged before anything binds (`UnsupportedSchemaVersionErr`); and it binds
         /// (`MalformedJsonErr`).
         member this.parseCatalogueManifest : Result<CatalogueManifest, StorageError> =
-            this.readRoot (fun (root : JsonElement) ->
-                let versionKey = nameof Unchecked.defaultof<CatalogueManifest>.schemaVersion
-
-                SchemaValidation.validateCatalogueManifest root
-                |> Result.bind (fun () -> tryRead (fun () -> root.GetProperty(versionKey).Deserialize<FileSchemaVersion> options))
-                |> Result.bind (checkSchemaVersion CatalogueManifest.extension CatalogueManifest.currentSchemaVersion)
-                |> Result.bind (fun () -> tryRead (fun () -> root.Deserialize<CatalogueManifest> options)))
+            parseVersionedText SchemaValidation.validateCatalogueManifest CatalogueManifest.extension CatalogueManifest.currentSchemaVersion this.toJsonText
 
     type LibraryEntryContent with
 
@@ -98,7 +94,7 @@ module EntryFileJson =
                 match contentNode with
                 | :? JsonObject as entry ->
                     entry[nameof this.contentHash] <- hashNode
-                    Ok (LibraryFileText $"{entry.indentedCanonicalText}\n")
+                    entry.canonicalFileText |> LibraryFileText |> Ok
                 | _ -> Error (MalformedJsonErr "an entry's content is not a JSON object")
 
         /// Compares the held file with this incoming file, preserving rendering failures (spec 0050 S3.2).
@@ -121,7 +117,7 @@ module EntryFileJson =
         /// The catalogue folder's `.catalogue-json`: the manifest's canonical node, indented and ending with one
         /// `\n` (spec 0050 001 §A, §B).
         member this.fileText : Result<LibraryFileText, StorageError> =
-            nodeOf this |> Result.map (fun node -> LibraryFileText $"{node.indentedCanonicalText}\n")
+            nodeOf this |> Result.map (fun node -> node.canonicalFileText |> LibraryFileText)
 
         /// The hash S3's start-up import compares with the one it recorded (spec 0050 001 §B "Import on every
         /// start"). It is computed, never stored in the manifest.

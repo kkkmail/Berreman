@@ -1,0 +1,138 @@
+namespace OpticalConstructor.Tests
+
+open System
+open System.Text.Json.Nodes
+open Xunit
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.CanonicalJson
+open OpticalConstructor.Storage.KitFolderStore
+
+module KitFileJsonTests =
+
+    let private kitJsonValue (result : Result<'Value, StorageError>) : 'Value =
+        match result with
+        | Ok value -> value
+        | Error error -> failwith error.describe
+
+    let private kitFile : KitFile =
+        let id = KitId (Guid.Parse "6f1c2a9e-3b7d-4e25-9a41-0c8d5e7f2b16")
+        let name = KitName "Optics: QZ/LR — µ"
+        let author = KitAuthor "Test author"
+        let created = ClockTime (DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc).AddTicks 1234567L)
+        let modified = ClockTime (created.value.AddDays 1.0)
+        {
+            KitFile.create id name author created with
+                modified = modified
+                notes = KitNotes "Two lines\nof notes"
+                sendExclude = [ SendExcludeGlob "**/*.dng"; SendExcludeGlob "data/raw/big/**" ]
+        }
+
+    let private editedKitFile (edit : JsonObject -> unit) : KitFileText =
+        let text = kitFile.fileText |> kitJsonValue
+        let node = (JsonNode.Parse text.value).AsObject()
+        edit node
+        node.canonicalFileText |> KitFileText
+
+    [<Fact>]
+    let ``a kit file round-trips through its canonical text`` () : unit =
+        let text = kitFile.fileText |> kitJsonValue
+        let readBack = text.parseKitFile |> kitJsonValue
+
+        Assert.Equal<KitFile>(kitFile, readBack)
+        Assert.DoesNotContain("\r", text.value)
+        Assert.StartsWith("{\n  \"author\":", text.value)
+        Assert.EndsWith("}\n", text.value)
+        Assert.False(text.value.EndsWith "\n\n", "the file ends with exactly one line end")
+        Assert.Contains("Optics: QZ/LR — µ", text.value)
+        Assert.Contains("\"created\": \"2026-11-03T12:00:00.1234567Z\"", text.value)
+        Assert.Contains("\"modified\": \"2026-11-04T12:00:00.1234567Z\"", text.value)
+        Assert.Equal<DateTimeKind>(DateTimeKind.Utc, readBack.created.value.Kind)
+        Assert.Equal<DateTimeKind>(DateTimeKind.Utc, readBack.modified.value.Kind)
+
+        let node = (JsonNode.Parse text.value).AsObject()
+        let keys = [ for KeyValue (key, _) in node -> key ]
+        Assert.Equal<string list>([ "author"; "created"; "id"; "modified"; "name"; "notes"; "schemaVersion"; "sendExclude" ], keys)
+        Assert.Equal<KitFileText>(text, readBack.fileText |> kitJsonValue)
+
+        let emptyMetadata =
+            {
+                kitFile with
+                    author = KitAuthor ""
+                    notes = KitNotes ""
+                    sendExclude = []
+            }
+        let emptyText = emptyMetadata.fileText |> kitJsonValue
+        Assert.Equal<KitFile>(emptyMetadata, emptyText.parseKitFile |> kitJsonValue)
+
+    [<Fact>]
+    let ``a kit file of another schema version is UnsupportedSchemaVersionErr`` () : unit =
+        let intact = editedKitFile (fun node -> node["schemaVersion"] <- JsonValue.Create 2)
+        let versionOnly = KitFileText "{ \"schemaVersion\": 2 }"
+        let invalidBody =
+            editedKitFile (fun node ->
+                node["schemaVersion"] <- JsonValue.Create 2
+                node["created"] <- JsonValue.Create "not-an-instant"
+                node["id"] <- JsonValue.Create "not-a-guid")
+        let expectedFound = FileSchemaVersion 2
+        let expectedVersion = FileSchemaVersion 1
+
+        for text in [ intact; versionOnly; invalidBody ] do
+            match text.parseKitFile with
+            | Error (UnsupportedSchemaVersionErr info) ->
+                Assert.Equal(KitFile.extension, info.fileExtension)
+                Assert.Equal<FileSchemaVersion>(expectedFound, info.found)
+                Assert.Equal<FileSchemaVersion>(expectedVersion, info.expected)
+            | Error error -> Assert.Fail($"expected UnsupportedSchemaVersionErr: {error.describe}")
+            | Ok _ -> Assert.Fail "accepted a kit file of another schema version"
+
+    [<Fact>]
+    let ``a schema-invalid or malformed kit file is refused before it binds`` () : unit =
+        let assertSchemaInvalid (text : KitFileText) : unit =
+            match text.parseKitFile with
+            | Error (SchemaValidationErr messages) ->
+                Assert.NotEmpty messages
+                for message in messages do
+                    Assert.False(String.IsNullOrWhiteSpace message)
+            | Error error -> Assert.Fail($"expected SchemaValidationErr: {error.describe}")
+            | Ok _ -> Assert.Fail($"accepted a schema-invalid kit file: {text.value}")
+
+        for key in [ "schemaVersion"; "id"; "name"; "author"; "created"; "modified"; "notes"; "sendExclude" ] do
+            editedKitFile (fun node -> node.Remove key |> ignore) |> assertSchemaInvalid
+
+        let invalidEdits : (JsonObject -> unit) list =
+            [
+                (fun node -> node["colour"] <- JsonValue.Create "blue")
+                (fun node -> node["name"] <- JsonValue.Create "   ")
+                (fun node -> node["name"] <- JsonValue.Create "")
+                (fun node -> node["name"] <- JsonValue.Create "\t\r\n")
+                (fun node -> node["id"] <- JsonValue.Create "not-a-guid")
+                (fun node -> node["schemaVersion"] <- JsonValue.Create 0)
+                (fun node -> node["schemaVersion"] <- JsonValue.Create (-1))
+                (fun node -> node["schemaVersion"] <- JsonValue.Create 1.5)
+                (fun node -> node["schemaVersion"] <- JsonValue.Create "1")
+                (fun node -> node["schemaVersion"] <- null)
+                (fun node -> node["author"] <- JsonValue.Create 1)
+                (fun node -> node["notes"] <- null)
+                (fun node -> node["created"] <- JsonValue.Create 1)
+                (fun node -> node["modified"] <- JsonValue.Create 1)
+                (fun node -> node["sendExclude"] <- JsonValue.Create "**/*.dng")
+                (fun node -> node["sendExclude"] <- JsonNode.Parse "[\"\"]")
+                (fun node -> node["sendExclude"] <- JsonNode.Parse "[1]")
+            ]
+
+        for edit in invalidEdits do
+            editedKitFile edit |> assertSchemaInvalid
+
+        for text in [ KitFileText "null"; KitFileText "[]"; KitFileText "1" ] do
+            assertSchemaInvalid text
+
+        let malformed = KitFileText "{"
+        let invalidInstant = editedKitFile (fun node -> node["created"] <- JsonValue.Create "not-an-instant")
+        let oversizedVersion = KitFileText "{ \"schemaVersion\": 3000000000 }"
+        for text in [ malformed; invalidInstant; oversizedVersion ] do
+            match text.parseKitFile with
+            | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail($"expected MalformedJsonErr: {error.describe}")
+            | Ok _ -> Assert.Fail($"accepted malformed kit file text: {text.value}")

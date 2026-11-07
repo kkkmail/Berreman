@@ -31,6 +31,7 @@
         <Compile Include="PresetDatabaseStore.fs" />
         <Compile Include="LibraryBackupStore.fs" />
         <Compile Include="CatalogueImportStore.fs" />
+        <Compile Include="KitFolderStore.fs" />
         <Compile Include="ProjectJson.fs" />
         <Compile Include="ProjectFile.fs" />
         <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-
@@ -96,6 +97,9 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="schema\library-catalogue.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\kit.schema.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="..\Catalogue\Builtin\**" Link="Catalogue\Builtin\%(RecursiveDir)%(Filename)%(Extension)">

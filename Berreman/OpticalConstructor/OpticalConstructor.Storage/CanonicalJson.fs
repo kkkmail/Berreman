@@ -10,6 +10,7 @@ open System.Text.Json.Nodes
 open System.Text.Json.Serialization
 open MathNet.Numerics.LinearAlgebra
 open Berreman.Dispersion
+open Softellect.Sys
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.Errors
@@ -210,6 +211,33 @@ module CanonicalJson =
         try Ok(JsonSerializer.SerializeToNode<'Value>(value, options))
         with e -> Error(MalformedJsonErr e.Message)
 
+    /// Validates a versioned file before comparing its top-level schemaVersion and binding its value.
+    /// Parse and binding failures are MalformedJsonErr; unsupported versions never bind (spec 0050 S4.1).
+    [<ElevationBoundary(nameof StorageBoundary, "a versioned file's text, parsed, validated and bound at the storage seam (spec 0050 S4.1)")>]
+    let parseVersionedText<'Value>
+        (validate : JsonElement -> Result<unit, StorageError>)
+        (extension : FileExtension)
+        (expected : FileSchemaVersion)
+        (text : JsonText)
+        : Result<'Value, StorageError> =
+        try
+            use document = JsonDocument.Parse text.value
+            let root = document.RootElement
+            validate root
+            |> Result.bind (fun () ->
+                let found = root.GetProperty("schemaVersion").Deserialize<FileSchemaVersion> options
+                if found = expected then
+                    Ok (root.Deserialize<'Value> options)
+                else
+                    let mismatch : SchemaVersionMismatchInfo =
+                        {
+                            fileExtension = extension
+                            found = found
+                            expected = expected
+                        }
+                    Error (UnsupportedSchemaVersionErr mismatch))
+        with e -> Error (MalformedJsonErr e.Message)
+
     /// Every object's keys in ordinal order; arrays keep theirs, and a value its serializer's text, so a number
     /// stays the invariant shortest round-trip form (spec 0050 001 §B).
     let rec private writeCanonical (writer : Utf8JsonWriter) (node : JsonNode) : unit =
@@ -247,6 +275,9 @@ module CanonicalJson =
 
         /// The file form: two-space indents and `\n` line ends, with no final line end.
         member this.indentedCanonicalText : string = this.canonicalTextWith indentedWriterOptions
+
+        /// The complete file form: indented canonical JSON followed by exactly one `\n` (spec 0050 S4.1).
+        member this.canonicalFileText : string = $"{this.indentedCanonicalText}\n"
 
         /// The hashed form: no whitespace at all.
         member this.compactCanonicalText : string = this.canonicalTextWith compactWriterOptions

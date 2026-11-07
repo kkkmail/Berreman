@@ -129,3 +129,10 @@ module SchemaValidation =
     /// Validate `element` against the catalogue manifest's schema through `validateWith` (spec 0050 001 §B);
     /// the caller MUST NOT bind a manifest on `Error`.
     let validateCatalogueManifest (element : JsonElement) : Result<unit, StorageError> = validateWith catalogueManifestSchema element
+
+    let private kitFileSchemaFile : FileName = FileName (Path.Combine("schema", "kit.schema.json"))
+
+    let private kitFileSchema : Result<JsonSchema, StorageError> Lazy = lazy (kitFileSchemaFile.tryLoadLibrarySchema ())
+
+    /// Validates a kit file before its version is compared and its metadata binds (spec 0050 S4.1).
+    let validateKitFile (element : JsonElement) : Result<unit, StorageError> = validateWith kitFileSchema element
