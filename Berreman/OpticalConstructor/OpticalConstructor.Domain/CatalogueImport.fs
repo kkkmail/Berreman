@@ -59,6 +59,13 @@ module CatalogueImport =
     type ImportOrigin =
         /// The catalogue's identity and display name (spec 0050 001 §B).
         | CatalogueImportOrigin of id : CatalogueId * name : CatalogueName
+        /// An entry file dropped onto Library or Materials, held as FileName.leafName (spec 0050 001 §H).
+        | DroppedFileOrigin of file : FileName
+
+        member this.describe : string =
+            match this with
+            | CatalogueImportOrigin (_, name) -> name.value
+            | DroppedFileOrigin file -> file.value
 
     /// Whether adding a version moves the library's latest pointer (spec 0050 001 §B).
     type LatestMove =
@@ -123,6 +130,7 @@ module CatalogueImport =
 
     type ImportDecision with
 
+        /// A dropped file's unheld version preserves the library's latest pointer (spec 0050 001 §B, §H).
         static member decide (origin : ImportOrigin) (incoming : LibraryEntryEnvelope) (heldOpt : HeldEntry option) (sameName : HeldEntry list) : ImportDecision =
             let status, defaultAction, alternatives =
                 match heldOpt with
@@ -190,8 +198,7 @@ module CatalogueImport =
         member this.rowName : EntryName =
             match this.status with
             | NameCollision (incoming, _) ->
-                let (CatalogueImportOrigin (_, name)) = this.origin
-                EntryName $"{incoming.content.name.value} — from {name.value}"
+                EntryName $"{incoming.content.name.value} — from {this.origin.describe}"
             | EntryIdNotHeld incoming | SameContentHash (incoming, _) | VersionNotHeld (incoming, _)
             | DivergentContent (incoming, _) -> incoming.content.name
             | EntryUnlisted held -> held.name
@@ -280,19 +287,19 @@ module CatalogueImport =
             this.loggedImports ()
             |> Result.map (List.filter (fun entry -> entry.catalogueId <> CatalogueIds.builtInCatalogue))
 
+        member this.decideEntry (origin : ImportOrigin) (incoming : LibraryEntryEnvelope) : Result<ImportDecision, CatalogueImportError> =
+            this.tryHeldEntry incoming.content.id
+            |> Result.bind (function
+                | Some held -> Ok (ImportDecision.decide origin incoming (Some held) [])
+                | None ->
+                    this.heldEntriesNamed incoming.content.schema.kind incoming.content.name
+                    |> Result.map (ImportDecision.decide origin incoming None))
+
         member this.decideCatalogue (catalogue : CatalogueData) : Result<ImportDecision list, CatalogueImportError> =
             let origin = CatalogueImportOrigin (catalogue.manifest.id, catalogue.manifest.name)
-            let decideEnvelope (envelope : LibraryEntryEnvelope) : Result<ImportDecision, CatalogueImportError> =
-                this.tryHeldEntry envelope.content.id
-                |> Result.bind (function
-                    | Some held -> Ok (ImportDecision.decide origin envelope (Some held) [])
-                    | None ->
-                        this.heldEntriesNamed envelope.content.schema.kind envelope.content.name
-                        |> Result.map (ImportDecision.decide origin envelope None))
-
             catalogue.envelopes
             |> List.fold (fun result envelope ->
-                result |> Result.bind (fun rows -> decideEnvelope envelope |> Result.map (fun row -> row :: rows))) (Ok [])
+                result |> Result.bind (fun rows -> this.decideEntry origin envelope |> Result.map (fun row -> row :: rows))) (Ok [])
             |> Result.bind (fun reversed ->
                 this.heldEntriesOf catalogue.manifest.id
                 |> Result.map (fun heldEntries ->

@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Tests
 
 open System
+open Softellect.Sys.Primitives
 open Xunit
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
@@ -116,6 +117,37 @@ module ImportDecisionTests =
             { heldOf versionThree with
                 versions = [ heldVersionOf original; heldVersionOf versionThree ] }
         assertMove builtInOrigin versionTwo heldWithLater KeepLatestVersion
+
+    [<Fact>]
+    let ``a dropped file keeps the latest and names itself in a collision`` () : unit =
+        let original = siliconEnvelope ()
+        let held = heldOf original
+        let versionTwoContent =
+            { original.content with version = original.content.version.next }
+        let versionTwo = sealContent versionTwoContent
+        let siliconOrigin = DroppedFileOrigin (FileName "Silicon.material-json")
+        let versionDecision = ImportDecision.decide siliconOrigin versionTwo (Some held) []
+
+        Assert.Equal<ImportOrigin>(siliconOrigin, versionDecision.origin)
+        Assert.Equal<ImportStatus>(VersionNotHeld (versionTwo, held), versionDecision.status)
+        Assert.Equal<ImportAction>(AddIncomingVersion KeepLatestVersion, versionDecision.defaultAction)
+        Assert.Equal<ImportAction list>([ SkipIncomingEntry ], versionDecision.alternatives)
+
+        let userContent =
+            { original.content with
+                id = LibraryEntryId (Guid.Parse "a2653a53-fd68-4411-91d0-e4c1f70e5df4")
+                provenance = UserProvenance }
+        let userMaterial = sealContent userContent
+        let labFileOrigin = DroppedFileOrigin (FileName "lab-silicon.material-json")
+        let collision = ImportDecision.decide labFileOrigin userMaterial None [ held ]
+
+        Assert.Equal<ImportOrigin>(labFileOrigin, collision.origin)
+        Assert.Equal<ImportStatus>(NameCollision (userMaterial, [ held ]), collision.status)
+        Assert.Equal<ImportAction>(AddIncomingEntry, collision.defaultAction)
+        Assert.Equal<ImportAction list>([ RebindToHeldEntry held.id; SkipIncomingEntry ], collision.alternatives)
+        Assert.Equal<EntryName>(EntryName "Silicon — from lab-silicon.material-json", collision.rowName)
+        Assert.Equal("Built-in", builtInOrigin.describe)
+        Assert.Equal("lab-silicon.material-json", labFileOrigin.describe)
 
     [<Fact>]
     let ``the same id and version with another hash, or an id held as another kind, is a divergence forked by default`` () : unit =
