@@ -49,6 +49,105 @@ module private CatalogueImportContractData =
         Assert.Equal<Result<Sample list, SampleError>>(Ok [], stores.samples.listSamples IncludeInactive)
         Assert.Empty(presetEntries stores)
 
+    type ImportRowEntries =
+        {
+            builtInName : CatalogueName
+            category : LibraryEntryEnvelope
+            silicon : LibraryEntryEnvelope
+            source : LibraryEntryEnvelope
+        }
+
+    let labCatalogueId = CatalogueId (Guid.Parse "31801b01-444f-43c8-8440-000000000096")
+    let labCatalogueName = CatalogueName "Lab"
+    let forkEntryId = LibraryEntryId (Guid.Parse "31801b02-444f-43c8-8440-000000000096")
+    let labMaterialId = LibraryEntryId (Guid.Parse "31801b03-444f-43c8-8440-000000000096")
+
+    let readImportRowEntries () : ImportRowEntries =
+        let catalogue = readImportCatalogue ()
+        let silicon = catalogue.envelopes |> List.find (fun envelope -> envelope.content.id = MaterialIds.silicon.toLibraryEntryId)
+        {
+            builtInName = catalogue.manifest.name
+            category = catalogue.envelopes |> List.find (fun envelope -> Set.contains envelope.content.id silicon.content.referencedEntryIds)
+            silicon = silicon
+            source = catalogue.envelopes |> List.find (fun envelope -> envelope.content.schema.kind = SourceEntryKind)
+        }
+
+    let rowCatalogue (id : CatalogueId) (name : CatalogueName) (envelopes : LibraryEntryEnvelope list) : CatalogueData =
+        CatalogueData.tryCreate id name VersionNumber.first envelopes
+        |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let userImportMaterial (silicon : LibraryEntryEnvelope) : LibraryEntryEnvelope =
+        let content =
+            {
+                silicon.content with
+                    id = labMaterialId
+                    name = EntryName "Lab material"
+                    provenance = UserProvenance
+            }
+        content.``sealed`` |> expectImportDatabaseOk
+
+    let nextImportEnvelope (envelope : LibraryEntryEnvelope) : LibraryEntryEnvelope =
+        let content =
+            {
+                envelope.content with
+                    version = envelope.content.version.next
+                    descriptionOpt = Some (EntryDescription "Updated catalogue description")
+            }
+        content.``sealed`` |> expectImportDatabaseOk
+
+    let seedImportRows (context : CatalogueImportContext) (envelopes : LibraryEntryEnvelope list) : unit =
+        for envelope in envelopes do
+            let put =
+                {
+                    envelope = envelope
+                    latest = MoveLatestVersion
+                }
+            context.proxy.putEntryVersion put |> expectImportOk
+
+    let observeImportRows (context : CatalogueImportContext) : CatalogueImportContext * ResizeArray<EntryVersionPut> * ResizeArray<LibraryEntryId> =
+        let puts = ResizeArray<EntryVersionPut>()
+        let retirements = ResizeArray<LibraryEntryId>()
+        let proxy =
+            {
+                context.proxy with
+                    putEntryVersion = fun put ->
+                        puts.Add put
+                        context.proxy.putEntryVersion put
+                    retireEntry = fun id ->
+                        retirements.Add id
+                        context.proxy.retireEntry id
+            }
+        let observed =
+            {
+                context with
+                    proxy = proxy
+                    newEntryId = fun () -> forkEntryId
+            }
+        observed, puts, retirements
+
+    let importRowSnapshot (context : CatalogueImportContext) (ids : LibraryEntryId list) : (LibraryEntryId * HeldEntry option) list =
+        ids |> List.distinct |> List.map (fun id -> id, context.proxy.tryHeldEntry id |> expectImportOk)
+
+    let assertImportRowsPending (context : CatalogueImportContext) (puts : ResizeArray<EntryVersionPut>)
+        (retirements : ResizeArray<LibraryEntryId>) (before : (LibraryEntryId * HeldEntry option) list)
+        (rows : ImportDecision list) : unit =
+        Assert.Equal<ImportDecision list>(rows, (ImportDecision.split rows).awaiting)
+        Assert.Empty puts
+        Assert.Empty retirements
+        Assert.Equal<(LibraryEntryId * HeldEntry option) list>(before, importRowSnapshot context (before |> List.map fst))
+
+    let heldImportRow (context : CatalogueImportContext) (id : LibraryEntryId) : HeldEntry =
+        match context.proxy.tryHeldEntry id |> expectImportOk with
+        | Some held -> held
+        | None -> failwith $"Expected held import entry {id.value}."
+
+    let importVersions (envelopes : LibraryEntryEnvelope list) : HeldEntryVersion list =
+        envelopes |> List.map (fun envelope ->
+            {
+                version = envelope.content.version
+                contentHash = envelope.contentHash
+            })
+
 open CatalogueImportContractData
 
 /// The same import contract runs over empty in-memory and SQLite stores (spec 0050 S3.1).
@@ -202,6 +301,344 @@ type CatalogueImportContract () =
         | Ok () -> Assert.Fail("An entry id must not be reused as another kind.")
         Assert.Equal<HeldEntry option>(before, context.proxy.tryHeldEntry material.content.id |> expectImportOk)
 
+    [<Fact>]
+    member this.``a new id is imported after confirmation as its own latest version`` () : unit =
+        let entries = readImportRowEntries ()
+        let incoming = userImportMaterial entries.silicon
+        let stores = this.freshImport ()
+        seedImportRows stores.context [ entries.category ]
+        let context, puts, retirements = observeImportRows stores.context
+        let catalogue = rowCatalogue labCatalogueId labCatalogueName [ incoming ]
+        let before = importRowSnapshot context [ entries.category.content.id; incoming.content.id; forkEntryId ]
+        let rows = context.importCatalogue catalogue |> expectImportOk
+        let row = Assert.Single rows
+        Assert.Equal(EntryIdNotHeld incoming, row.status)
+        Assert.Equal(AddIncomingEntry, row.defaultAction)
+        assertImportRowsPending context puts retirements before rows
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.proxy.tryHeldEntry incoming.content.id)
+
+        let outcome = context.apply [ row.byDefault ] |> expectImportOk
+        let held = heldImportRow context incoming.content.id
+        Assert.Equal(incoming.content.id, held.id)
+        Assert.Equal(incoming.content.schema.kind, held.kind)
+        Assert.Equal(incoming.content.name, held.name)
+        Assert.Equal(incoming.content.version, held.latest)
+        Assert.Equal(incoming.content.provenance, held.provenance)
+        Assert.Equal(ActiveEntry, held.lifecycle)
+        Assert.Equal<HeldEntryVersion list>(importVersions [ incoming ], held.versions)
+        Assert.Equal(incoming, (Assert.Single puts).envelope)
+        Assert.Empty retirements
+        Assert.Empty outcome.rebindings
+        Assert.Empty outcome.forks
+
+    [<Fact>]
+    member this.``the same id with the same hash is reused and nothing is written`` () : unit =
+        let entries = readImportRowEntries ()
+        let stores = this.freshImport ()
+        seedImportRows stores.context [ entries.category; entries.silicon ]
+        let context, puts, retirements = observeImportRows stores.context
+        let catalogue = rowCatalogue labCatalogueId labCatalogueName [ entries.silicon ]
+        let before = importRowSnapshot context [ entries.category.content.id; entries.silicon.content.id; forkEntryId ]
+        let held = heldImportRow context entries.silicon.content.id
+        let rows = context.importCatalogue catalogue |> expectImportOk
+        let row = Assert.Single rows
+        Assert.Equal(SameContentHash (entries.silicon, held), row.status)
+        Assert.Equal(ReuseHeldEntry, row.defaultAction)
+        assertImportRowsPending context puts retirements before rows
+
+        let outcome = context.apply [ row.byDefault ] |> expectImportOk
+        Assert.Equal<(LibraryEntryId * HeldEntry option) list>(before, importRowSnapshot context (before |> List.map fst))
+        Assert.Equal<HeldEntryVersion list>(importVersions [ entries.silicon ], (heldImportRow context held.id).versions)
+        Assert.Empty puts
+        Assert.Empty retirements
+        Assert.Empty outcome.rebindings
+        Assert.Empty outcome.forks
+
+    [<Fact>]
+    member this.``a version not held is added after confirmation, and the latest moves only for a protected built-in from its own catalogue`` () : unit =
+        let entries = readImportRowEntries ()
+        let scenarios =
+            [
+                CatalogueIds.builtInCatalogue, entries.silicon, MoveLatestVersion
+                labCatalogueId, userImportMaterial entries.silicon, KeepLatestVersion
+                labCatalogueId, entries.silicon, KeepLatestVersion
+            ]
+        for catalogueId, original, latestMove in scenarios do
+            let stores = this.freshImport ()
+            seedImportRows stores.context [ entries.category; original ]
+            let context, puts, retirements = observeImportRows stores.context
+            let incoming = nextImportEnvelope original
+            let catalogueName = if catalogueId = labCatalogueId then labCatalogueName else entries.builtInName
+            let catalogue = rowCatalogue catalogueId catalogueName [ entries.category; incoming ]
+            let before = importRowSnapshot context [ entries.category.content.id; original.content.id; forkEntryId ]
+            let held = heldImportRow context original.content.id
+            let rows = context.importCatalogue catalogue |> expectImportOk
+            Assert.Equal(2, rows.Length)
+            let row = rows |> List.find (fun row -> row.entryId = original.content.id)
+            Assert.Equal(VersionNotHeld (incoming, held), row.status)
+            Assert.Equal(AddIncomingVersion latestMove, row.defaultAction)
+            assertImportRowsPending context puts retirements before rows
+
+            rows |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+            let latest = match latestMove with MoveLatestVersion -> incoming.content.version | KeepLatestVersion -> original.content.version
+            let expected =
+                {
+                    held with
+                        latest = latest
+                        versions = importVersions [ original; incoming ]
+                }
+            Assert.Equal(expected, heldImportRow context original.content.id)
+            let put = Assert.Single puts
+            Assert.Equal(incoming, put.envelope)
+            Assert.Equal(latestMove, put.latest)
+            Assert.Empty retirements
+
+    [<Fact>]
+    member this.``the same id and version with another hash awaits a choice, and forking imports it under a new id that keeps the original`` () : unit =
+        let entries = readImportRowEntries ()
+        let changedContent =
+            {
+                entries.silicon.content with
+                    descriptionOpt = Some (EntryDescription "Divergent Silicon description")
+            }
+        let incoming = changedContent.``sealed`` |> expectImportDatabaseOk
+        let catalogue = rowCatalogue labCatalogueId labCatalogueName [ incoming ]
+        for action in [ ForkIncomingEntry; SkipIncomingEntry ] do
+            let stores = this.freshImport ()
+            seedImportRows stores.context [ entries.category; entries.silicon ]
+            let context, puts, retirements = observeImportRows stores.context
+            let originalIds = [ entries.category.content.id; entries.silicon.content.id ]
+            let originals = importRowSnapshot context originalIds
+            let before = importRowSnapshot context (forkEntryId :: originalIds)
+            let held = heldImportRow context entries.silicon.content.id
+            let rows = context.importCatalogue catalogue |> expectImportOk
+            let row = Assert.Single rows
+            Assert.Equal(DivergentContent (incoming, held), row.status)
+            Assert.Equal(ForkIncomingEntry, row.defaultAction)
+            Assert.Contains(SkipIncomingEntry, row.alternatives)
+            assertImportRowsPending context puts retirements before rows
+
+            let choice =
+                match action with
+                | ForkIncomingEntry -> row.byDefault
+                | _ ->
+                    {
+                        decision = row
+                        action = action
+                    }
+            let outcome = context.apply [ choice ] |> expectImportOk
+            Assert.Equal<(LibraryEntryId * HeldEntry option) list>(originals, importRowSnapshot context originalIds)
+            Assert.Empty retirements
+            Assert.Empty outcome.rebindings
+            match action with
+            | ForkIncomingEntry ->
+                let ancestry =
+                    {
+                        originalId = entries.silicon.content.id
+                        originalVersion = entries.silicon.content.version
+                        originalProvenance = entries.silicon.content.provenance
+                    }
+                let forkContent =
+                    {
+                        incoming.content with
+                            id = forkEntryId
+                            version = VersionNumber.first
+                            provenance = ForkProvenance ancestry
+                    }
+                let forkEnvelope = forkContent.``sealed`` |> expectImportDatabaseOk
+                let fork = heldImportRow context forkEntryId
+                Assert.Equal(ForkProvenance ancestry, fork.provenance)
+                Assert.Equal(VersionNumber.first, fork.latest)
+                Assert.Equal(incoming.content.name, fork.name)
+                Assert.Equal<HeldEntryVersion list>(importVersions [ forkEnvelope ], fork.versions)
+                Assert.Equal(forkEnvelope, (Assert.Single puts).envelope)
+                let binding = Assert.Single outcome.forks
+                Assert.Equal(entries.silicon.content.id, binding.original)
+                Assert.Equal(forkEntryId, binding.fork)
+            | _ ->
+                Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.proxy.tryHeldEntry forkEntryId)
+                Assert.Empty puts
+                Assert.Empty outcome.forks
+
+    [<Fact>]
+    member this.``a new id with a held entry's name awaits a choice; side by side keeps both and a re-binding writes nothing`` () : unit =
+        let entries = readImportRowEntries ()
+        let content =
+            {
+                (userImportMaterial entries.silicon).content with
+                    name = entries.silicon.content.name
+            }
+        let incoming = content.``sealed`` |> expectImportDatabaseOk
+        let catalogue = rowCatalogue labCatalogueId labCatalogueName [ incoming ]
+        for action in [ AddIncomingEntry; RebindToHeldEntry entries.silicon.content.id ] do
+            let stores = this.freshImport ()
+            seedImportRows stores.context [ entries.category; entries.silicon ]
+            let context, puts, retirements = observeImportRows stores.context
+            let before = importRowSnapshot context [ entries.category.content.id; entries.silicon.content.id; incoming.content.id; forkEntryId ]
+            let original = heldImportRow context entries.silicon.content.id
+            let named () = context.proxy.heldEntriesNamed MaterialEntryKind incoming.content.name |> expectImportOk |> List.sortBy _.id
+            Assert.Equal<HeldEntry list>([ original ], named ())
+            let rows = context.importCatalogue catalogue |> expectImportOk
+            let row = Assert.Single rows
+            Assert.Equal(NameCollision (incoming, [ original ]), row.status)
+            Assert.Equal(AddIncomingEntry, row.defaultAction)
+            Assert.Contains(RebindToHeldEntry original.id, row.alternatives)
+            assertImportRowsPending context puts retirements before rows
+            Assert.Equal<HeldEntry list>([ original ], named ())
+
+            let choice =
+                match action with
+                | AddIncomingEntry -> row.byDefault
+                | _ ->
+                    {
+                        decision = row
+                        action = action
+                    }
+            let outcome = context.apply [ choice ] |> expectImportOk
+            Assert.Equal(original, heldImportRow context original.id)
+            Assert.Empty retirements
+            Assert.Empty outcome.forks
+            match action with
+            | AddIncomingEntry ->
+                let added = heldImportRow context incoming.content.id
+                Assert.Equal(incoming.content.name, added.name)
+                Assert.Equal(incoming.content.version, added.latest)
+                Assert.Equal<HeldEntryVersion list>(importVersions [ incoming ], added.versions)
+                Assert.Equal<HeldEntry list>([ original; added ] |> List.sortBy _.id, named ())
+                Assert.Equal(incoming, (Assert.Single puts).envelope)
+                Assert.Empty outcome.rebindings
+            | _ ->
+                Assert.Equal<(LibraryEntryId * HeldEntry option) list>(before, importRowSnapshot context (before |> List.map fst))
+                Assert.Equal<HeldEntry list>([ original ], named ())
+                Assert.Empty puts
+                let binding = Assert.Single outcome.rebindings
+                Assert.Equal(incoming.content.id, binding.incoming)
+                Assert.Equal(original.id, binding.held)
+
+    [<Fact>]
+    member this.``an active built-in its catalogue no longer lists is retired after confirmation and stays held`` () : unit =
+        let entries = readImportRowEntries ()
+        let newer = nextImportEnvelope entries.silicon
+        let stores = this.freshImport ()
+        seedImportRows stores.context [ entries.category; entries.silicon; newer ]
+        let context, puts, retirements = observeImportRows stores.context
+        let catalogue = rowCatalogue CatalogueIds.builtInCatalogue entries.builtInName [ entries.category ]
+        let before = importRowSnapshot context [ entries.category.content.id; entries.silicon.content.id; forkEntryId ]
+        let original = heldImportRow context entries.silicon.content.id
+        let rows = context.importCatalogue catalogue |> expectImportOk
+        Assert.Equal(2, rows.Length)
+        let retiredRow = rows |> List.find (fun row -> row.entryId = original.id)
+        Assert.Equal(EntryUnlisted original, retiredRow.status)
+        Assert.Equal(RetireHeldEntry, retiredRow.defaultAction)
+        assertImportRowsPending context puts retirements before rows
+        Assert.Equal(ActiveEntry, (heldImportRow context original.id).lifecycle)
+
+        rows |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let retired =
+            {
+                original with
+                    lifecycle = InactiveEntry
+            }
+        Assert.Equal(retired, heldImportRow context original.id)
+        Assert.Equal<HeldEntryVersion list>(importVersions [ entries.silicon; newer ], retired.versions)
+        Assert.Contains(retired, context.proxy.heldEntriesNamed MaterialEntryKind original.name |> expectImportOk)
+        Assert.Empty puts
+        Assert.Equal(original.id, Assert.Single retirements)
+
+    [<Fact>]
+    member this.``a user entry is never touched by a catalogue import`` () : unit =
+        let entries = readImportRowEntries ()
+        let user = userImportMaterial entries.silicon
+        let stores = this.freshImport ()
+        seedImportRows stores.context [ entries.category; user ]
+        let context, puts, retirements = observeImportRows stores.context
+        let before = importRowSnapshot context [ entries.category.content.id; user.content.id; forkEntryId ]
+        let original = heldImportRow context user.content.id
+        let builtIn = rowCatalogue CatalogueIds.builtInCatalogue entries.builtInName [ entries.category ]
+        let rows = context.importCatalogue builtIn |> expectImportOk
+        let categoryRow = Assert.Single rows
+        Assert.Equal(entries.category.content.id, categoryRow.entryId)
+        Assert.Equal(ReuseHeldEntry, categoryRow.defaultAction)
+        assertImportRowsPending context puts retirements before rows
+        rows |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        Assert.Equal<(LibraryEntryId * HeldEntry option) list>(before, importRowSnapshot context (before |> List.map fst))
+        Assert.Empty puts
+        Assert.Empty retirements
+
+        let incoming = nextImportEnvelope user
+        let lab = rowCatalogue labCatalogueId labCatalogueName [ incoming ]
+        let labRows = context.importCatalogue lab |> expectImportOk
+        let row = Assert.Single labRows
+        Assert.Equal(VersionNotHeld (incoming, original), row.status)
+        Assert.Equal(AddIncomingVersion KeepLatestVersion, row.defaultAction)
+        assertImportRowsPending context puts retirements before labRows
+        context.apply [ row.byDefault ] |> expectImportOk |> ignore
+        let expected =
+            {
+                original with
+                    versions = importVersions [ user; incoming ]
+            }
+        Assert.Equal(expected, heldImportRow context user.content.id)
+        Assert.Equal(VersionNumber.first, (heldImportRow context user.content.id).latest)
+        Assert.Equal(incoming, (Assert.Single puts).envelope)
+        Assert.Empty retirements
+
+    [<Fact>]
+    member this.``a row that names an entry awaiting a choice waits with it and nothing of either is written`` () : unit =
+        let entries = readImportRowEntries ()
+        let categoryId = CategoryId (Guid.Parse "31801b04-444f-43c8-8440-000000000096")
+        let categoryContent =
+            {
+                entries.category.content with
+                    id = categoryId.toLibraryEntryId
+                    provenance = UserProvenance
+            }
+        let category = categoryContent.``sealed`` |> expectImportDatabaseOk
+        let materialContent =
+            {
+                (userImportMaterial entries.silicon).content with
+                    categoryOpt = Some categoryId
+            }
+        let material = materialContent.``sealed`` |> expectImportDatabaseOk
+        let sourceId = LibraryEntryId (Guid.Parse "31801b05-444f-43c8-8440-000000000096")
+        let sourceContent =
+            {
+                entries.source.content with
+                    id = sourceId
+                    name = EntryName "Lab source"
+                    provenance = UserProvenance
+            }
+        let source = sourceContent.``sealed`` |> expectImportDatabaseOk
+        let stores = this.freshImport ()
+        seedImportRows stores.context [ entries.category ]
+        let context, puts, retirements = observeImportRows stores.context
+        let catalogue = rowCatalogue labCatalogueId labCatalogueName [ category; material; source ]
+        let before = importRowSnapshot context [ entries.category.content.id; category.content.id; material.content.id; sourceId; forkEntryId ]
+        let original = heldImportRow context entries.category.content.id
+        let rows = context.importCatalogue catalogue |> expectImportOk
+        Assert.Equal(3, rows.Length)
+        let categoryRow = rows |> List.find (fun row -> row.entryId = category.content.id)
+        let materialRow = rows |> List.find (fun row -> row.entryId = material.content.id)
+        let sourceRow = rows |> List.find (fun row -> row.entryId = sourceId)
+        Assert.Equal(NameCollision (category, [ original ]), categoryRow.status)
+        Assert.Equal(EntryIdNotHeld material, materialRow.status)
+        Assert.Equal(EntryIdNotHeld source, sourceRow.status)
+        Assert.Equal<Set<LibraryEntryId>>(Set.singleton category.content.id, material.content.referencedEntryIds)
+        assertImportRowsPending context puts retirements before rows
+        for envelope in catalogue.envelopes do
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.proxy.tryHeldEntry envelope.content.id)
+
+        rows |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        for envelope in catalogue.envelopes do
+            let held = heldImportRow context envelope.content.id
+            Assert.Equal(envelope.content.version, held.latest)
+            Assert.Equal<HeldEntryVersion list>(importVersions [ envelope ], held.versions)
+        Assert.Equal(original, heldImportRow context original.id)
+        let named = context.proxy.heldEntriesNamed CategoryEntryKind category.content.name |> expectImportOk
+        Assert.Equal<Set<LibraryEntryId>>(Set.ofList [ original.id; category.content.id ], named |> List.map _.id |> Set.ofList)
+        Assert.Equal<LibraryEntryEnvelope list>([ category; material; source ], puts |> Seq.map _.envelope |> Seq.toList)
+        Assert.Empty retirements
+
 type CatalogueImportInMemoryTests () =
     inherit CatalogueImportContract ()
 
@@ -271,6 +708,65 @@ type CatalogueImportSqliteTests () =
             samples = SampleProxy.createInDatabase database
             presets = LibraryProxy.createInDatabase database
         }
+
+    [<Fact>]
+    member this.``an imported version is what the database stores answer, and a retired built-in stays resolvable`` () : unit =
+        let entries = readImportRowEntries ()
+        let incoming = nextImportEnvelope entries.silicon
+        let first = entries.silicon.content.toMaterialEntry |> decodeImportEntry
+        let second = incoming.content.toMaterialEntry |> decodeImportEntry
+        let stores = this.freshImport ()
+        seedImportRows stores.context [ entries.category; entries.silicon ]
+        let context, puts, retirements = observeImportRows stores.context
+        let catalogue = rowCatalogue CatalogueIds.builtInCatalogue entries.builtInName [ entries.category; incoming ]
+        let before = importRowSnapshot context [ entries.category.content.id; entries.silicon.content.id; forkEntryId ]
+        let original = heldImportRow context entries.silicon.content.id
+        let firstVersion = MaterialVersionId.firstOf MaterialIds.silicon
+        let secondVersion =
+            {
+                firstVersion with
+                    version = incoming.content.version
+            }
+        let rows = context.importCatalogue catalogue |> expectImportOk
+        Assert.Equal(2, rows.Length)
+        let updateRow = rows |> List.find (fun row -> row.entryId = original.id)
+        Assert.Equal(VersionNotHeld (incoming, original), updateRow.status)
+        Assert.Equal(AddIncomingVersion MoveLatestVersion, updateRow.defaultAction)
+        assertImportRowsPending context puts retirements before rows
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some first), stores.materials.tryGetMaterial MaterialIds.silicon)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok None, stores.materials.resolveVersion secondVersion)
+
+        rows |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some second), stores.materials.tryGetMaterial MaterialIds.silicon)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some first), stores.materials.resolveVersion firstVersion)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some second), stores.materials.resolveVersion secondVersion)
+        Assert.Equal(incoming, (Assert.Single puts).envelope)
+        Assert.Empty retirements
+
+        let retirementContext, retirementPuts, retirementCalls = observeImportRows stores.context
+        let withoutSilicon = rowCatalogue CatalogueIds.builtInCatalogue entries.builtInName [ entries.category ]
+        let beforeRetirement = importRowSnapshot retirementContext (before |> List.map fst)
+        let latest = heldImportRow retirementContext original.id
+        let retirementRows = retirementContext.importCatalogue withoutSilicon |> expectImportOk
+        Assert.Equal(2, retirementRows.Length)
+        let retirementRow = retirementRows |> List.find (fun row -> row.entryId = original.id)
+        Assert.Equal(EntryUnlisted latest, retirementRow.status)
+        Assert.Equal(RetireHeldEntry, retirementRow.defaultAction)
+        assertImportRowsPending retirementContext retirementPuts retirementCalls beforeRetirement retirementRows
+        Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [ second ], stores.materials.listMaterials ActiveOnly)
+
+        retirementRows |> List.map _.byDefault |> retirementContext.apply |> expectImportOk |> ignore
+        let retired =
+            {
+                latest with
+                    lifecycle = InactiveEntry
+            }
+        Assert.Equal(retired, heldImportRow retirementContext original.id)
+        Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [], stores.materials.listMaterials ActiveOnly)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some first), stores.materials.resolveVersion firstVersion)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some second), stores.materials.resolveVersion secondVersion)
+        Assert.Empty retirementPuts
+        Assert.Equal(original.id, Assert.Single retirementCalls)
 
     [<Fact>]
     member this.``the database import holds every Built-in envelope byte for byte under its own provenance`` () : unit =
