@@ -7,6 +7,7 @@ open System.Text
 open System.Text.Json
 open System.Threading
 open Softellect.Sys.Primitives
+open Softellect.Sys.Retry
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
@@ -15,6 +16,57 @@ open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.CatalogueFolderStore
 
 module KitFolderStore =
+
+    type KitLockGuardError =
+        | KitGuardIoExn of file : FileName * cause : exn
+
+        member this.toKitError : KitError =
+            match this with
+            | KitGuardIoExn (file, cause) ->
+                KitIoErr $"kit guard '{file.value}': {cause.GetType().Name} (HRESULT 0x{uint32 cause.HResult:X8}): {cause.Message}"
+
+    /// The guard's IO seam; tests substitute failures without changing ownership logic (0050 .manual/009).
+    type KitLockGuardProxy =
+        {
+            tryOpenGuard : unit -> Result<FileStream, KitLockGuardError>
+            waitForGuardRetry : unit -> Result<unit, KitLockGuardError>
+        }
+
+        /// Opens exclusively with at most 100 retries; permanent failures retain their diagnostics (0050 .manual/009).
+        member this.acquireGuard () : Result<FileStream, KitError> =
+            let rec tryAcquire (remaining : RetryLimit) : Result<FileStream, KitError> =
+                match this.tryOpenGuard () with
+                | Ok stream -> Ok stream
+                | Error (KitGuardIoExn (_, cause) as failure) ->
+                    let retryable =
+                        match cause with
+                        | :? UnauthorizedAccessException -> (cause.HResult &&& 0xFFFF) = 5
+                        | :? IOException -> (cause.HResult &&& 0xFFFF) = 32 || (cause.HResult &&& 0xFFFF) = 33
+                        | _ -> false
+                    if retryable && remaining.value > 0 then
+                        this.waitForGuardRetry ()
+                        |> Result.mapError (fun error -> error.toKitError)
+                        |> Result.bind (fun () ->
+                            let next = RetryLimit (remaining.value - 1)
+                            tryAcquire next)
+                    else
+                        Error failure.toKitError
+            let retries = RetryLimit 100
+            tryAcquire retries
+
+        /// Binds a delete-on-close file guard and its ten-millisecond retry delay (0050 .manual/009).
+        static member create (file : FileName) : KitLockGuardProxy =
+            let tryGuardIo (operation : unit -> 'Value) : Result<'Value, KitLockGuardError> =
+                try Ok (operation ())
+                with error -> Error (KitGuardIoExn (file, error))
+            let delay = RetryWait 10<millisecond>
+            {
+                tryOpenGuard =
+                    fun () ->
+                        tryGuardIo (fun () ->
+                            new FileStream(file.value, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose))
+                waitForGuardRetry = fun () -> tryGuardIo (fun () -> Thread.Sleep(int delay.value))
+            }
 
     type KitLockHolder with
 
@@ -27,7 +79,7 @@ module KitFolderStore =
                 Some this
             else
                 try
-                    use process = Process.GetProcessById this.owner.processId.value
+                    use ownerProcess = Process.GetProcessById this.owner.processId.value
                     Some this
                 with :? ArgumentException -> None
 
@@ -95,21 +147,6 @@ module KitFolderStore =
             | :? FileNotFoundException
             | :? DirectoryNotFoundException -> None
 
-        member private this.openKitLockGuard () : FileStream =
-            let mutable spinner = SpinWait ()
-            let rec tryOpen () : FileStream =
-                let streamOpt =
-                    try
-                        Some (new FileStream(this.value, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose))
-                    with :? IOException as error when (error.HResult &&& 0xFFFF) = 32 || (error.HResult &&& 0xFFFF) = 33 ->
-                        None
-                match streamOpt with
-                | Some stream -> stream
-                | None ->
-                    spinner.SpinOnce ()
-                    tryOpen ()
-            tryOpen ()
-
     type KitProxy with
 
         /// Opens shared in-memory folder state with the same metadata serialization as the filesystem proxy (spec 0050 S4.1).
@@ -135,6 +172,7 @@ module KitFolderStore =
             let lockFile = FileName (Path.Combine(folder.value.value, KitRelativePath.kitLockPath.value.Replace('/', Path.DirectorySeparatorChar)))
             let guardName = FileName "lock-guard.tmp"
             let guardFile = guardName.combine cacheFolder
+            let guardProxy = KitLockGuardProxy.create guardFile
 
             let rootFilePaths () : KitRelativePath list =
                 Directory.GetFiles(folder.value.value, "*", SearchOption.TopDirectoryOnly)
@@ -270,42 +308,46 @@ module KitFolderStore =
                                     |> Result.bind (fun text ->
                                         Directory.CreateDirectory cacheFolder.value |> ignore
                                         // Serialize stale removal with acquisition and release across openers (spec 0050 step 0129).
-                                        use guard = guardFile.openKitLockGuard ()
-                                        match tryExistingLock () with
-                                        | Some result -> result
-                                        | None ->
-                                            let temporaryName = FileName $"lock-{Guid.NewGuid():N}.tmp"
-                                            let temporaryFile = temporaryName.combine cacheFolder
-                                            try
-                                                let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
-                                                File.WriteAllBytes(temporaryFile.value, bytes.value)
-                                                File.Delete lockFile.value
+                                        guardProxy.acquireGuard ()
+                                        |> Result.bind (fun guard ->
+                                            use heldGuard = guard
+                                            match tryExistingLock () with
+                                            | Some result -> result
+                                            | None ->
+                                                let temporaryName = FileName $"lock-{Guid.NewGuid():N}.tmp"
+                                                let temporaryFile = temporaryName.combine cacheFolder
                                                 try
-                                                    File.Move(temporaryFile.value, lockFile.value, false)
-                                                    heldLockOpt <- Some holder
-                                                    Ok holder
-                                                with :? IOException as error ->
-                                                    File.Delete temporaryFile.value
-                                                    match lockFile.tryReadKitLock () with
-                                                    | Some (Ok winner) -> Error (KitLockedErr winner)
-                                                    | Some (Error invalid) -> Error (kitLockIoErr folder.value invalid)
-                                                    | None -> Error (KitIoErr $"kit folder '{folder.value.value}': '{lockFile.value}': {error.Message}")
-                                            finally
-                                                File.Delete temporaryFile.value)))
+                                                    let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
+                                                    File.WriteAllBytes(temporaryFile.value, bytes.value)
+                                                    File.Delete lockFile.value
+                                                    try
+                                                        File.Move(temporaryFile.value, lockFile.value, false)
+                                                        heldLockOpt <- Some holder
+                                                        Ok holder
+                                                    with :? IOException as error ->
+                                                        File.Delete temporaryFile.value
+                                                        match lockFile.tryReadKitLock () with
+                                                        | Some (Ok winner) -> Error (KitLockedErr winner)
+                                                        | Some (Error invalid) -> Error (kitLockIoErr folder.value invalid)
+                                                        | None -> Error (KitIoErr $"kit folder '{folder.value.value}': '{lockFile.value}': {error.Message}")
+                                                finally
+                                                    File.Delete temporaryFile.value))))
                 releaseLock =
                     fun () ->
                         lock proxySync (fun () ->
                             tryKitFolderIo folder (fun () ->
-                                match heldLockOpt with
-                                | Some held ->
-                                    match lockFile.tryReadKitLock () with
-                                    | Some (Ok stored) when stored = held ->
-                                        use guard = guardFile.openKitLockGuard ()
+                                let released =
+                                    match heldLockOpt with
+                                    | Some held ->
                                         match lockFile.tryReadKitLock () with
-                                        | Some (Ok current) when current = held -> File.Delete lockFile.value
-                                        | _ -> ()
-                                    | _ -> ()
-                                    heldLockOpt <- None
-                                | None -> ()
-                                Ok ()))
+                                        | Some (Ok stored) when stored = held ->
+                                            guardProxy.acquireGuard ()
+                                            |> Result.map (fun guard ->
+                                                use heldGuard = guard
+                                                match lockFile.tryReadKitLock () with
+                                                | Some (Ok current) when current = held -> File.Delete lockFile.value
+                                                | _ -> ())
+                                        | _ -> Ok ()
+                                    | None -> Ok ()
+                                released |> Result.map (fun () -> heldLockOpt <- None)))
             }

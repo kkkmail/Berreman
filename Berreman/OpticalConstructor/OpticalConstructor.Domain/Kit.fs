@@ -50,8 +50,8 @@ module Kit =
 
         member this.describe : string =
             let instant = this.acquiredAt.value.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
-            let process = this.owner.processId.value.ToString(CultureInfo.InvariantCulture)
-            $"{this.owner.user.value} on {this.owner.machine.value} (process {process}) since {instant} UTC"
+            let processText = this.owner.processId.value.ToString(CultureInfo.InvariantCulture)
+            $"{this.owner.user.value} on {this.owner.machine.value} (process {processText}) since {instant} UTC"
 
     /// Why a kit operation failed, with the affected folder, file or name in the reason (spec 0050 S4.1).
     type KitError =

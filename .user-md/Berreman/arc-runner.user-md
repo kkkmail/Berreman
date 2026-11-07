@@ -219,6 +219,14 @@ method-versus-case retirement arithmetic without changing test effects or
 gates. Its explicit 0059 recovery exception requires a normal profile-1 resume
 to record the measured checkpoint, without `--accept-current-slice`.
 
+At step 0132, every role also reads
+`specs/0050/.manual/009-step-0132-lock-guard-recovery.md`. It authorizes the
+shared storage-guard repair and existing-test extensions outside the original
+attachment slice's effects. Its explicit recovery exception requires a normal
+profile-1 resume after the operator's commit to record checkpoint 131, without
+`--accept-current-slice`. Later edits to the shared guard preserve that repaired
+contract, including steps 0133, 0138, 0196, 0204, 0307 and 0484.
+
 The repository's own walls, from AGENTS.md:
 
 - **Never bump a version ring**, Berreman's or STL's.

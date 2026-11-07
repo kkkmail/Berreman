@@ -1,5 +1,43 @@
 # Implementation log — 0132
 
+## Operator-authorized recovery — 2026-11-07
+
+This section supersedes the unresolved authority conflict and testing status
+in the historical worker entries below. The operator approved the four-step
+secondary-review plan; `.manual/009-step-0132-lock-guard-recovery.md` records
+the expanded scope and the required normal-resume procedure. Entry HEAD was
+`90b0649`, containing the failed attempt and its reports.
+
+- Reproduced native errors 32 and 5 using the original exclusive delete-on-close
+  guard. Replaced its unbounded spin with a shared IO proxy allowing at most
+  101 opens and 100 ten-millisecond waits. Other errors return immediately;
+  exhausted retries retain the path, exception type and HRESULT in `KitIoErr`.
+- Preserved the exclusive guard, ownership recheck, non-overwriting publication
+  and temporary-file cleanup. Both acquisition and release use the same retry
+  policy; failed release retains ownership for another release attempt.
+- Strengthened existing lock facts with deterministic retry-limit checks,
+  permanent guard failures and release recovery, and 25 synchronized contention
+  rounds for each filesystem initial state. All old assertion lines and fact
+  identities remain. `KitTests.fs` is unchanged.
+- Renamed reserved `process` locals in Domain and Storage to clear measured
+  FS0046 warnings. Domain's attachment behavior is otherwise unchanged.
+- The operator repair ran 58 focused kit tests, three independent-process
+  contention scenarios, and all 14 unchanged slice gates successfully. The
+  final build has zero warnings/errors; elevation passed seven projects; all
+  1,076 constructor cases passed with exact census and zero skips; all eleven
+  invariants passed. These are new operator-repair measurements, separate from
+  the earlier IMPLEMENT worker's restricted execution role.
+- Validated all 494 steps and refreshed the profile-1 receipt for the project
+  prompt. All 988 compiled artifacts, published contracts, oracle, supervisor
+  state, checkpoints, expected-red records and accepted baselines are unchanged.
+
+Evidence: `.artifacts/0132-operator-repair/final-review.md`. The repair is ready
+for the operator to commit; the arc remains escalated at 0132. No commit or
+restart was performed. After the commit and explicit relaunch instruction,
+use the recovery `operator-reply.md` with `--executability-profile 1` and normal
+resume. Do not use `--accept-current-slice`: the supervisor must measure the
+new 1,076-case floor and publish checkpoint 131 itself. ASG is unchanged.
+
 ## Attempt 02 progress
 
 - Read the attempt-02 task, worker protocols, project prompt, slice and compiled gates; inspected the inherited implementation and the reported failing test without running a gate.

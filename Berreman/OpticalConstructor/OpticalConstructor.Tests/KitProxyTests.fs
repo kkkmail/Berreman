@@ -130,7 +130,9 @@ module private KitProxyTestData =
                         start.SignalAndWait () |> ignore
                         proxy.acquireLock time),
                     CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default))
-        let results = (Task.WhenAll tasks).GetAwaiter().GetResult() |> Array.toList
+        let completed = Task.WhenAll tasks
+        Assert.True(completed.Wait(TimeSpan.FromSeconds 10.0), "Kit lock contention must finish within its bounded retry budget.")
+        let results = completed.GetAwaiter().GetResult() |> Array.toList
         let outcomes = List.zip proxies results
         let winners = outcomes |> List.choose (fun (proxy, result) -> result |> Result.toOption |> Option.map (fun holder -> proxy, holder))
         let winner, holder = Assert.Single winners
@@ -147,6 +149,117 @@ module private KitProxyTestData =
         Assert.Equal<string list>([ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ], folder.paths ())
         Assert.Equal<Result<unit, KitError>>(Ok (), winner.releaseLock ())
         Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
+
+    let assertKitGuardFailure (file : FileName) (cause : exn) (result : Result<'Value, KitError>) : unit =
+        match result with
+        | Error (KitIoErr reason) ->
+            Assert.Contains(file.value, reason)
+            Assert.Contains(cause.GetType().Name, reason)
+            Assert.Contains($"0x{uint32 cause.HResult:X8}", reason)
+            Assert.Contains(cause.Message, reason)
+        | Error error -> Assert.Fail($"Expected a guard IO failure, got {error.describe}")
+        | Ok _ -> Assert.Fail("An unavailable guard must report its original IO failure.")
+
+    type FolderName with
+
+        member this.assertKitGuardRetryPolicy () : unit =
+            let file = FileName (Path.Combine(this.value, "policy-guard.tmp"))
+            let actual = KitLockGuardProxy.create file
+            let transientFailures : exn list =
+                [
+                    IOException("sharing", int 0x80070020u)
+                    IOException("locked", int 0x80070021u)
+                    UnauthorizedAccessException("pending deletion")
+                ]
+            for failures in [ []; transientFailures; List.replicate 100 (UnauthorizedAccessException("pending deletion") :> exn) ] do
+                let pending = System.Collections.Generic.Queue<exn>(failures)
+                let mutable openings = 0
+                let mutable waits = 0
+                let scripted =
+                    {
+                        actual with
+                            tryOpenGuard =
+                                fun () ->
+                                    openings <- openings + 1
+                                    if pending.Count = 0 then actual.tryOpenGuard ()
+                                    else Error (KitGuardIoExn (file, pending.Dequeue ()))
+                            waitForGuardRetry = fun () -> waits <- waits + 1; Ok ()
+                    }
+                do
+                    use guard = scripted.acquireGuard () |> Result.defaultWith (fun error -> failwith error.describe)
+                    Assert.True guard.CanWrite
+                    Assert.Equal(failures.Length + 1, openings)
+                    Assert.Equal(failures.Length, waits)
+                Assert.False(File.Exists file.value)
+
+            for failure in transientFailures do
+                let mutable openings = 0
+                let mutable waits = 0
+                let permanent =
+                    {
+                        tryOpenGuard = fun () -> openings <- openings + 1; Error (KitGuardIoExn (file, failure))
+                        waitForGuardRetry = fun () -> waits <- waits + 1; Ok ()
+                    }
+                permanent.acquireGuard () |> assertKitGuardFailure file failure
+                Assert.Equal(101, openings)
+                Assert.Equal(100, waits)
+
+            let fatal = FileNotFoundException "guard parent missing"
+            let mutable openings = 0
+            let nonRetryable =
+                {
+                    tryOpenGuard = fun () -> openings <- openings + 1; Error (KitGuardIoExn (file, fatal))
+                    waitForGuardRetry = fun () -> Assert.Fail("A non-retryable IO failure must not wait."); Ok ()
+                }
+            nonRetryable.acquireGuard () |> assertKitGuardFailure file fatal
+            Assert.Equal(1, openings)
+
+            let interrupted = ThreadInterruptedException "retry interrupted"
+            let waitingFails =
+                {
+                    nonRetryable with
+                        tryOpenGuard = fun () -> Error (KitGuardIoExn (file, UnauthorizedAccessException "pending deletion"))
+                        waitForGuardRetry = fun () -> Error (KitGuardIoExn (file, interrupted))
+                }
+            waitingFails.acquireGuard () |> assertKitGuardFailure file interrupted
+            Assert.False(File.Exists file.value)
+
+    let assertBlockedKitGuard (folderPath : FolderName) (proxy : KitProxy) (clock : ClockProvider) : unit =
+        let guard = FileName (Path.Combine(folderPath.value, ".oc", "lock-guard.tmp"))
+        let folder = kitFolderAdapter folderPath
+        let blockers : (string * ((unit -> unit) -> unit)) list =
+            [
+                "0x80070020", (fun action ->
+                    use held = new FileStream(guard.value, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose)
+                    action ())
+                "0x80070005", (fun action ->
+                    File.WriteAllText(guard.value, "outside guard")
+                    File.SetAttributes(guard.value, FileAttributes.ReadOnly)
+                    try action ()
+                    finally
+                        File.SetAttributes(guard.value, FileAttributes.Normal)
+                        Assert.Equal("outside guard", File.ReadAllText guard.value)
+                        File.Delete guard.value)
+            ]
+        for nativeError, block in blockers do
+            let checkFailure (operation : unit -> Result<'Value, KitError>) : unit =
+                let running = Task.Run<Result<'Value, KitError>>(fun () -> operation ())
+                Assert.True(running.Wait(TimeSpan.FromSeconds 10.0), "A permanently unavailable guard must finish.")
+                match running.GetAwaiter().GetResult() with
+                | Error (KitIoErr reason) ->
+                    Assert.Contains(guard.value, reason)
+                    Assert.Contains(nativeError, reason)
+                | Error error -> Assert.Fail($"Expected guard IO failure, got {error.describe}")
+                | Ok _ -> Assert.Fail("A blocked guard must not complete acquisition or release.")
+            block (fun () -> checkFailure (fun () -> proxy.acquireLock (clock.now ())))
+            Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
+            let holder = takeKitLock proxy (clock.now ())
+            block (fun () -> checkFailure proxy.releaseLock)
+            Assert.Equal<KitLockHolder>(holder, storedKitLock proxy)
+            Assert.Equal<Result<KitLockHolder, KitError>>(Ok holder, proxy.acquireLock (clock.now ()))
+            Assert.Equal<Result<KitLockHolder, KitError>>(Error (KitLockedErr holder), (folder.openProxy ()).acquireLock (clock.now ()))
+            Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
+            Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
 
 open KitProxyTestData
 
@@ -594,7 +707,8 @@ type KitProxyContract () =
         Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
         Assert.Equal<KitLockHolder>(holderB, storedKitLock proxyC)
         Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.releaseLock ())
-        contendForKitLock folder clock
+        for _ in 1 .. 25 do
+            contendForKitLock folder clock
 
     [<Fact>]
     member this.``a proxy that holds the lock keeps it when it asks again, and another proxy's release leaves it`` () : unit =
@@ -980,8 +1094,9 @@ type KitProxyFolderTests () =
         Assert.NotEqual<KitLockHolder>(stale, holder)
         Assert.Equal<string list>([ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ], folder.paths ())
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
-        placeKitLock folder stale
-        contendForKitLock folder clock
+        for _ in 1 .. 25 do
+            placeKitLock folder stale
+            contendForKitLock folder clock
 
     [<Fact>]
     member this.``a lock taken on another machine is live`` () : unit =
@@ -1039,7 +1154,9 @@ type KitProxyFolderTests () =
             | Error error -> Assert.Fail($"Expected KitIoErr for inaccessible text, got {error.describe}")
             | Ok _ -> Assert.Fail("An IO failure must not be treated as malformed lock text.")
         Assert.Equal<byte>(originalBytes, File.ReadAllBytes file.value)
-        contendForKitLock folder clock
+        for _ in 1 .. 25 do
+            folder.placeLabFile ".oc/lock" "not a lock"
+            contendForKitLock folder clock
 
         let holder = takeKitLock proxy (clock.now ())
         do
@@ -1052,6 +1169,9 @@ type KitProxyFolderTests () =
         Assert.Equal<Result<KitLockHolder, KitError>>(Ok holder, proxy.acquireLock (clock.now ()))
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
         Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
+
+        folderPath.assertKitGuardRetryPolicy ()
+        assertBlockedKitGuard folderPath proxy clock
 
     [<Fact>]
     member _.``a folder that does not exist is not created by its proxy, and initialising it creates it`` () : unit =
