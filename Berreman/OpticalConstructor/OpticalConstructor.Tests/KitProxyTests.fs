@@ -1,10 +1,15 @@
 namespace OpticalConstructor.Tests
 
 open System
+open System.IO
+open System.Text
+open System.Text.Json.Nodes
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Storage.KitFolderStore
 
 /// One folder viewed through fresh proxies and an outside writer (spec 0050 S4.1).
 type KitTestFolder =
@@ -33,6 +38,26 @@ module private KitProxyTestData =
         let name = KitName "Optics: QZ/LR"
         let author = KitAuthor "Test author"
         KitFile.create id name author (clock.now ())
+
+    let freshKitFolderPath () : FolderName =
+        FolderName (Path.Combine(AppContext.BaseDirectory, "KitProxyFolderTests", Guid.NewGuid().ToString("N")))
+
+    let kitFolderAdapter (folder : FolderName) : KitTestFolder =
+        let kitFolder = KitFolder folder
+        {
+            openProxy = fun () -> KitProxy.create kitFolder
+            placeLabFile =
+                fun path text ->
+                    let file = FileName (Path.Combine(folder.value, path))
+                    Directory.CreateDirectory(Path.GetDirectoryName file.value) |> ignore
+                    File.WriteAllText(file.value, text, UTF8Encoding false)
+            paths =
+                fun () ->
+                    Directory.GetFileSystemEntries(folder.value, "*", SearchOption.AllDirectories)
+                    |> Array.map (fun path -> Path.GetRelativePath(folder.value, path).Replace('\\', '/'))
+                    |> Array.sortWith (fun first second -> String.CompareOrdinal(first, second))
+                    |> Array.toList
+        }
 
 open KitProxyTestData
 
@@ -163,3 +188,84 @@ type KitProxyTests () =
                     |> Result.defaultWith (fun error -> failwith error.describe)
             paths = fun () -> folder.paths () |> List.map (fun path -> path.value)
         }
+
+/// Runs the shared kit-file contract over real folders under the test output (spec 0050 S4.1).
+type KitProxyFolderTests () =
+    inherit KitProxyContract ()
+
+    override _.freshFolder () : KitTestFolder =
+        let folder = freshKitFolderPath ()
+        Directory.CreateDirectory folder.value |> ignore
+        kitFolderAdapter folder
+
+    [<Fact>]
+    member _.``a folder that does not exist is not created by its proxy, and initialising it creates it`` () : unit =
+        let path = freshKitFolderPath ()
+        let folder = kitFolderAdapter path
+        Assert.False(Directory.Exists path.value)
+        let proxy = folder.openProxy ()
+        Assert.False(Directory.Exists path.value)
+        let kit = newKitFile (steppingClock ())
+
+        match proxy.readKitFile () with
+        | Error (NotAKitFolderErr reason) -> Assert.Contains(path.value, reason)
+        | Error error -> Assert.Fail($"Expected NotAKitFolderErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("Reading a missing folder must not create a kit.")
+
+        Assert.False(Directory.Exists path.value)
+
+        match proxy.writeKitFile kit with
+        | Error (NotAKitFolderErr reason) -> Assert.Contains(path.value, reason)
+        | Error error -> Assert.Fail($"Expected NotAKitFolderErr, got {error.describe}")
+        | Ok () -> Assert.Fail("Replacing metadata must not create the missing folder.")
+
+        Assert.False(Directory.Exists path.value)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        Assert.True(Directory.Exists path.value)
+        Assert.Equal<string list>([ ".kit-json"; "data"; "library" ], folder.paths ())
+        Assert.Equal<Result<KitFile, KitError>>(Ok kit, (folder.openProxy ()).readKitFile ())
+
+    [<Fact>]
+    member _.``a kit file of another schema version or of broken text is refused, naming the kit file`` () : unit =
+        let path = freshKitFolderPath ()
+        let folder = kitFolderAdapter path
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let file = KitFile.fileName.combine path
+        let originalBytes = File.ReadAllBytes file.value
+        let originalText = Encoding.UTF8.GetString originalBytes
+        Assert.False(originalText.StartsWith('\uFEFF'))
+
+        File.WriteAllText(file.value, originalText, UTF8Encoding true)
+        let withBom = File.ReadAllBytes file.value
+        Assert.True((Encoding.UTF8.GetString withBom).StartsWith('\uFEFF'))
+        Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxy.readKitFile ())
+        Assert.Equal<byte>(withBom, File.ReadAllBytes file.value)
+
+        let unsupported = JsonNode.Parse originalText
+        unsupported["schemaVersion"] <- JsonValue.Create 2
+        let unsupportedText = unsupported.ToJsonString()
+        folder.placeLabFile KitFile.fileName.value unsupportedText
+
+        match proxy.readKitFile () with
+        | Error (KitFileRejectedErr reason) ->
+            Assert.Contains(KitFile.fileName.value, reason)
+            Assert.Contains(path.value, reason)
+            Assert.Contains("schema version 2", reason)
+            Assert.Contains("reads version 1", reason)
+        | Error error -> Assert.Fail($"Expected KitFileRejectedErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("An unsupported kit schema version must be refused.")
+
+        Assert.Equal<byte>(Encoding.UTF8.GetBytes unsupportedText, File.ReadAllBytes file.value)
+        folder.placeLabFile KitFile.fileName.value "{"
+
+        match proxy.readKitFile () with
+        | Error (KitFileRejectedErr reason) ->
+            Assert.Contains(KitFile.fileName.value, reason)
+            Assert.Contains(path.value, reason)
+        | Error error -> Assert.Fail($"Expected KitFileRejectedErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("Malformed kit JSON must be refused.")
+
+        Assert.Equal<byte>(Encoding.UTF8.GetBytes "{", File.ReadAllBytes file.value)
+        Assert.Equal<string list>([ ".kit-json"; "data"; "library" ], folder.paths ())

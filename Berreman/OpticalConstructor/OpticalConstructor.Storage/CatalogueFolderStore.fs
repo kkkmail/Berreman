@@ -3,6 +3,7 @@ namespace OpticalConstructor.Storage
 open System
 open System.IO
 open System.Text
+open Softellect.Sys
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
@@ -13,6 +14,25 @@ open OpticalConstructor.Storage.EntryFileJson
 /// The folder implementation of `CatalogueProxy`: one `.catalogue-json` beside one file per entry (spec 0050 001 §A;
 /// .spec-md §3.5, §5). Every .NET IO call is caught here and mapped to a typed error (.spec-md §4).
 module CatalogueFolderStore =
+
+    type FileName with
+
+        /// Writes through a sibling `.tmp` and replaces the whole file; failures clean up and return FileIoExn (spec 0050 §4; S4.1).
+        [<ElevationBoundary(nameof IoBoundary, "the filesystem writer consumes bytes at the IO boundary")>]
+        member this.writeBytesAtomically (bytes : FileByteContent) : Result<unit, StorageError> =
+            let tmp = FileName $"{this.value}.tmp"
+
+            try
+                File.WriteAllBytes(tmp.value, bytes.value)
+                File.Move(tmp.value, this.value, true)
+                Ok ()
+            with e ->
+                // Keep the write's failure when cleanup also fails (spec 0050 S4.1).
+                try
+                    File.Delete tmp.value
+                with _ -> ()
+
+                Error (FileIoExn e)
 
     type LibraryFileText with
 
@@ -25,22 +45,12 @@ module CatalogueFolderStore =
 
             text |> Result.bind (fun entryText -> entryText.parseEntry kind)
 
-        /// The text at `file` as UTF-8 without a BOM, written to a `.tmp` beside it and then moved over it, so a reader
-        /// never meets a file that is not whole (spec 0050 .spec-md §4). A failure deletes the `.tmp` and is `FileIoExn`.
+        /// Writes UTF-8 without a BOM through the shared atomic writer (spec 0050 §4; S4.1).
         member this.writeAtomically (file : FileName) : Result<unit, StorageError> =
-            let tmp = FileName $"{file.value}.tmp"
-
             try
-                File.WriteAllText(tmp.value, this.value, UTF8Encoding false)
-                File.Move(tmp.value, file.value, true)
-                Ok ()
-            with e ->
-                // The write's failure is the one to report, so a delete that also fails stays silent.
-                try
-                    File.Delete tmp.value
-                with _ -> ()
-
-                Error (FileIoExn e)
+                let bytes = Encoding.UTF8.GetBytes this.value |> FileByteContent
+                file.writeBytesAtomically bytes
+            with error -> Error (FileIoExn error)
 
     /// An IO call as a value: its failure is `CatalogueIoErr` naming the folder.
     let private tryFolderIo (folder : FolderName) (io : unit -> 'Value) : Result<'Value, CatalogueError> =

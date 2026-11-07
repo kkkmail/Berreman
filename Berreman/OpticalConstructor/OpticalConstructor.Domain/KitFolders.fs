@@ -8,7 +8,7 @@ open OpticalConstructor.Domain.LibraryEntryFiles
 /// The kit-folder seam and its shared in-memory double (spec 0050 S4.1).
 module KitFolders =
 
-    /// One opened folder's kit metadata; only initialisation makes it a kit (spec 0050 S4.1).
+    /// One folder's kit metadata via Storage's KitProxy.create or the createInMemory double; only initialisation makes it a kit (spec 0050 S4.1).
     [<ReferenceEquality>]
     type KitProxy =
         {
