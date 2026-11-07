@@ -1,5 +1,7 @@
 namespace OpticalConstructor.Ui.Tests
 
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueImportStore
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
@@ -180,6 +182,7 @@ module MaterialsWindowTests =
             {
                 materials = materials
                 categories = categories
+                catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
                 openMaterialEditor =
                     fun intent ->
@@ -696,7 +699,7 @@ module MaterialsWindowTests =
         window
 
     let private mountMaterialsWindow (materials : MaterialProxy) (categories : CategoryProxy) : MaterialsWindow =
-        let window = MaterialsWindow(materials, categories)
+        let window = MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         // The tree opens collapsed (spec 0040 step 002); expand the entries group so the leaf-
@@ -1038,7 +1041,7 @@ module MaterialsWindowTests =
     // ============================ step 016 — Select mode (headless) ============================
 
     let private mountSelectMaterialsWindow (materials : MaterialProxy) (categories : CategoryProxy) (selectCtx : SelectionContext<MaterialEntry>) : MaterialsWindow =
-        let window = MaterialsWindow(materials, categories, mode = Select selectCtx)
+        let window = MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, mode = Select selectCtx)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         // The tree opens collapsed (spec 0040 step 002); expand entries so the Select proofs reach

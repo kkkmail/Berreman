@@ -100,7 +100,7 @@ module MainWorkbenchTests =
         let calls = ResizeArray<string>()
         let launchers : EditorLaunchers =
             {
-                openMaterialsWindow = fun _ _ -> calls.Add "materials-window"
+                openMaterialsWindow = fun _ _ _ -> calls.Add "materials-window"
                 openLibraryWindow = fun _ _ _ _ _ _ _ -> calls.Add "library-window"
                 // Spec 0038 (017): the Choose… Select-state open — recorded, never a real
                 // window; the returned handle records the staleness close like the real one.

@@ -78,7 +78,7 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
                             | SampleEditorView.NewBlankSample mintedId
                             | SampleEditorView.NewSeededMultilayer mintedId -> WindowLauncher.SampleEditorKey mintedId
                             | SampleEditorView.EditSample sample -> WindowLauncher.SampleEditorKey sample.id
-                        openBrowse key (fun () -> SampleEditorWindow(materials, samples, categories, intent) :> Window)
+                        openBrowse key (fun () -> SampleEditorWindow(materials, samples, categories, catalogueImports, intent) :> Window)
                 // Spec 0046: the light-source editor, keyed by the source's entry id (a new source's id
                 // was minted by the Add source dispatch), Browse-mode over the same registry.
                 sources = sources

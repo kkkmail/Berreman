@@ -1,5 +1,7 @@
 namespace OpticalConstructor.Ui.Tests
 
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueImportStore
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
@@ -225,7 +227,7 @@ module EmbeddedChartTests =
     /// embedded n/k chart host renders its AvaPlot.
     let private assertViewPanelChart (search : string) (entryId : MaterialId) (label : string) : unit =
         let materials, categories = freshStores ()
-        let window = MaterialsWindow(materials, categories)
+        let window = MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         commitFilter window search

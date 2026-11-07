@@ -145,7 +145,7 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                 surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun context -> InverseConstructorWindow(context).Show())
             let materialsButton =
                 surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun context ->
-                    launchers.openMaterialsWindow context.materials context.categories)
+                    launchers.openMaterialsWindow context.materials context.categories context.catalogueImports)
             let libraryButton =
                 surfaceButton ConstructorUiId.openLibraryButton "Library" (fun context ->
                     launchers.openLibraryWindow context.library context.samples context.sources context.materials context.categories context.libraryBackups context.catalogueImports)

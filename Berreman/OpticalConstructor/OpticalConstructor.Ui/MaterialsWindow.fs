@@ -6,6 +6,7 @@ open Avalonia.Controls
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
+open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -13,7 +14,7 @@ open OpticalConstructor.Domain.WorkbenchSettings
 /// Spec 0038 Part E (step 013) — the Materials window (UICOMP_XDUO_0009): a FuncUI `HostWindow`
 /// mounting the pure `MaterialsWindowView` MVU loop — the step-012 `FacetedTreeControls` over
 /// the step-011 material facets, a view panel, and the Add / Edit / Remove / Categories… verbs
-/// — over the injected app-scope material + category stores. The composition root: the
+/// — over app-scope material/category stores and import seam. The composition root: the
 /// context's launchers open the Material / Category editors through the step-008 SVC_XDUO_0001
 /// `WindowLauncher` under the editor keys (`MaterialEditorKey` — an Add-minted or edited
 /// entity id — and the single-instance `CategoryEditorKey`), Browse-mode over the ONE
@@ -26,7 +27,7 @@ open OpticalConstructor.Domain.WorkbenchSettings
 /// seam (a Select-state open of the LIVE instance re-points its session), and the `Closed`
 /// hook cancels a still-pending session exactly once (the title-bar X and a staleness
 /// `Close()` from the requesting surface both land there).
-type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, ?mode : LibraryWindowMode<MaterialEntry>, ?treeAutoBuildThreshold : TreeAutoBuildThreshold) as this =
+type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, catalogueImports : CatalogueImportContext, ?mode : LibraryWindowMode<MaterialEntry>, ?treeAutoBuildThreshold : TreeAutoBuildThreshold) as this =
     inherit HostWindow()
 
     // The Elmish dispatch, captured by the init Cmd the moment the loop starts (Program.run is
@@ -58,6 +59,7 @@ type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, ?mod
             {
                 materials = materials
                 categories = categories
+                catalogueImports = catalogueImports
                 // The Domain default unless a caller threads the app-configured value in (the
                 // step-008 defaults precedent — step 47 owns the composition acceptance).
                 treeAutoBuildThreshold = defaultArg treeAutoBuildThreshold TreeAutoBuildThreshold.defaultValue

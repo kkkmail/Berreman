@@ -27,6 +27,7 @@ open Avalonia.Media
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
@@ -146,7 +147,7 @@ let offeredRepresentations : MaterialsRepresentation list =
 // The window's IO seam (the functional-proxy Context convention).
 // ---------------------------------------------------------------------------
 
-/// The window's context: the app-scope material + category stores, the Domain tree-gating
+/// The window's context: app-scope stores, import seam, Domain tree-gating
 /// threshold, and the editor launchers (the composition root — `MaterialsWindow` — bakes the
 /// step-008 `WindowLauncher` editor keys into these; tests substitute recording stubs).
 /// Function-valued fields have no structural equality, so the record compares by reference.
@@ -155,6 +156,8 @@ type MaterialsWindowContext =
     {
         materials : MaterialProxy
         categories : CategoryProxy
+        /// The import seam through which dropped entry files are decided and applied.
+        catalogueImports : CatalogueImportContext
         treeAutoBuildThreshold : TreeAutoBuildThreshold
         /// Open the Material editor by intent: `NewMaterial mintedId` (the Add verb mints the
         /// id AT dispatch — spec 0038 step 008) or `EditMaterial entry`.

@@ -20,6 +20,8 @@
 /// sort are proven by the per-window suites; this file proves they COMPOSE at the App root.
 namespace OpticalConstructor.Ui.Tests
 
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueImportStore
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
@@ -307,7 +309,7 @@ module WireUi0040CompositionTests =
             let ctx = TestAppScope.freshAppContext owner
             let window =
                 OpticalConstructor.Ui.SampleEditorWindow(
-                    ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample (filmlessPlate ()))
+                    ctx.materials, ctx.samples, ctx.categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, SampleEditorView.EditSample (filmlessPlate ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // R/T checkboxes for a Plate (step 010): both render, both checked (EmitBoth), T enabled.
@@ -353,7 +355,7 @@ module WireUi0040CompositionTests =
             // (spec 0046: only mirrors are observed in reflection alone).
             let window =
                 OpticalConstructor.Ui.SampleEditorWindow(
-                    ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample (BuiltinCatalogue.sample SampleIds.euvMoSiId))
+                    ctx.materials, ctx.samples, ctx.categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, SampleEditorView.EditSample (BuiltinCatalogue.sample SampleIds.euvMoSiId))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(isPresent window ConstructorUiId.sampleEmitReflectedCheck.value, "the R checkbox must render for a Mirror")

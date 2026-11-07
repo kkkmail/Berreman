@@ -20,6 +20,8 @@
 /// couple tests.
 namespace OpticalConstructor.Ui.Tests
 
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueImportStore
 open Avalonia
 open OpticalConstructor.Controls
 open Avalonia.Controls
@@ -447,7 +449,7 @@ module WindowLauncherTests =
             let materials, _, categories = Stores.create ()
             // The REAL step-013 Materials window: its context launchers bake the step-008
             // editor keys over the shared registry — the rewired Edit path under test.
-            let materialsWindow = MaterialsWindow(materials, categories)
+            let materialsWindow = MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy)
             materialsWindow.Show()
             Dispatcher.UIThread.RunJobs()
             commitFilter materialsWindow "1.52"
@@ -482,7 +484,7 @@ module WindowLauncherTests =
                 match materials.listMaterials MaterialLibrary.ActiveOnly with
                 | Ok entries -> entries |> List.map (fun e -> e.id) |> Set.ofList
                 | Error e -> failwith $"listMaterials failed: %A{e}"
-            let materialsWindow = MaterialsWindow(materials, categories)
+            let materialsWindow = MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy)
             materialsWindow.Show()
             Dispatcher.UIThread.RunJobs()
             let opened = ResizeArray<Window>()
@@ -539,7 +541,7 @@ module WindowLauncherTests =
             // upfront-minted id (spec 0038 step 008).
             let launcher =
                 WindowLauncher.create
-                    (fun (_ : WindowKey) -> SampleEditorWindow(materials, samples, categories, SampleEditorView.NewBlankSample minted) :> Window |> Ok)
+                    (fun (_ : WindowKey) -> SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, SampleEditorView.NewBlankSample minted) :> Window |> Ok)
                     SelectWindowModality.defaultValue
                     BrowseOpen
             launcher.openOrActivate (SampleEditorKey minted) |> ignore

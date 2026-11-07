@@ -144,7 +144,7 @@ module ScrollExtentTests =
     let ``Library and Materials windows: the facet rows wrap, nothing is clipped`` () =
         let materials, samples, categories, library = stores ()
         assertReachable "Library" (fun () -> LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, LibraryBackupProxy.createInMemory (), CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy))
-        assertReachable "Materials" (fun () -> MaterialsWindow(materials, categories))
+        assertReachable "Materials" (fun () -> MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy))
 
     [<Fact>]
     let ``the import dialog leaves everything reachable`` () : unit =
@@ -195,7 +195,7 @@ module ScrollExtentTests =
     let ``Material, Sample, Category and Source editors leave everything reachable`` () =
         let materials, samples, categories, _ = stores ()
         assertReachable "MaterialEditor" (fun () -> MaterialEditorWindow(materials, MaterialEditorView.NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> [])))
-        assertReachable "SampleEditor" (fun () -> SampleEditorWindow(materials, samples, categories, SampleEditorView.NewSeededMultilayer (newSampleId ())))
+        assertReachable "SampleEditor" (fun () -> SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, SampleEditorView.NewSeededMultilayer (newSampleId ())))
         assertReachable "CategoryEditor" (fun () -> CategoryEditorWindow(categories))
         assertReachable "SourceEditor" (fun () -> LightSourceEditorWindow(SourceProxy.createInMemory (), LightSourceEditorView.NewSource (Placement.ElementValueId "src-x")))
 

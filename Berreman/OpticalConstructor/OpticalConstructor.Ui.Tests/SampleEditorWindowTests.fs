@@ -1,5 +1,7 @@
 namespace OpticalConstructor.Ui.Tests
 
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueImportStore
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
@@ -678,7 +680,7 @@ module SampleEditorWindowTests =
     let ``the window mounts with every slice-mandated UiId present`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, NewBlankSample (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(matchesId ConstructorUiId.sampleEditorWindow.value window, "the window itself carries the SampleEditorWindow id")
@@ -691,7 +693,7 @@ module SampleEditorWindowTests =
     let ``acceptance: repeating a 2-layer selection K times expands the structure to 2K films`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, NewBlankSample (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Build a 2-layer stack by UiIds (Add layer takes the first listed material now
@@ -750,7 +752,7 @@ module SampleEditorWindowTests =
                 match samples.listSamples ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, NewBlankSample (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window ConstructorUiId.sampleNameBox.value "Headless stack"
@@ -778,7 +780,7 @@ module SampleEditorWindowTests =
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
             // The distinct Make-multilayer path: a NEW sample seeded with the foldable starter period.
-            let window = SampleEditorWindow(materials, samples, categories, NewSeededMultilayer (newSampleId ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, NewSeededMultilayer (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The seeded 2-layer period renders as ONE collapsible super-row with two cell layers
@@ -812,7 +814,7 @@ module SampleEditorWindowTests =
                 match samples.listSamples ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = SampleEditorWindow(materials, samples, categories, EditSample existing)
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample existing)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window ConstructorUiId.sampleNameBox.value "Renamed film"
@@ -832,7 +834,7 @@ module SampleEditorWindowTests =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
             let existing = BuiltinCatalogue.sample SampleIds.glassFilm200Id
-            let window = SampleEditorWindow(materials, samples, categories, EditSample existing)
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample existing)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window ConstructorUiId.sampleNameBox.value "Should not persist"
@@ -854,7 +856,7 @@ module SampleEditorWindowTests =
     let ``spec 0038 (033): a pristine editor's Cancel closes immediately`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, NewBlankSample (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.False(isPresent window ConstructorUiId.sampleEditorExitConfirm.value, "no confirm surface before any edit")
@@ -866,7 +868,7 @@ module SampleEditorWindowTests =
     let ``spec 0038 (033): a dirty Cancel confirm — Keep editing returns, then Discard closes`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, NewBlankSample (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window ConstructorUiId.sampleNameBox.value "Unsaved sample"
@@ -891,7 +893,7 @@ module SampleEditorWindowTests =
     let ``spec 0038 (033): the window chrome (OnClosing) is equally gated`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, NewBlankSample (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The OS title-bar X routes through ChromeCloseIntercepted — the OnClosing override
@@ -933,7 +935,7 @@ module SampleEditorWindowTests =
                     description = EntryDescription "uniaxial over glass"
                     supportedEmission = ThinFilm.defaultSupportedEmission
                 }
-            let window = SampleEditorWindow(materials, samples, categories, EditSample sample)
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample sample)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(isPresent window (ConstructorUiId.sampleLayerOrientation (ConstructorUiPosition 0)).value, "the anisotropic layer must carry its orientation editor")
@@ -947,7 +949,7 @@ module SampleEditorWindowTests =
     let ``acceptance (010): a Plate editor renders both emission checkboxes; a T click clears T, leaves R, and dirties the editor`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmPlate ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample (threeFilmPlate ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Both R and T checkboxes render for a Plate, both checked (EmitBoth), both enabled.
@@ -972,7 +974,7 @@ module SampleEditorWindowTests =
     let ``acceptance (010): a Mirror editor shows the R emission checkbox fixed on and disabled, with no T control`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmMirror ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample (threeFilmMirror ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(isPresent window ConstructorUiId.sampleEmitReflectedCheck.value, "the R checkbox must render for a Mirror")
@@ -982,7 +984,7 @@ module SampleEditorWindowTests =
             Assert.False(isPresent window ConstructorUiId.sampleEmitTransmittedCheck.value, "a Mirror shows no T control")
             window.Close()
             // Spec 0046: a ThinFilm offers BOTH boxes, enabled.
-            let thinWindow = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmSample ()))
+            let thinWindow = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample (threeFilmSample ()))
             thinWindow.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True((checkBox thinWindow ConstructorUiId.sampleEmitReflectedCheck.value).IsEnabled, "a ThinFilm's R box is switchable")
@@ -1027,7 +1029,7 @@ module SampleEditorWindowTests =
     let ``acceptance (019): Choose material… opens the Materials window in Select state targeted at the row — the return binds it and becomes the chosen material`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmSample ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample (threeFilmSample ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let opened, subscription = observeOpenedWindows ()
@@ -1064,7 +1066,7 @@ module SampleEditorWindowTests =
     let ``acceptance (019): a second Choose material… RE-TARGETS the live Materials window at the new row`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmSample ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample (threeFilmSample ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let opened, subscription = observeOpenedWindows ()
@@ -1095,7 +1097,7 @@ module SampleEditorWindowTests =
     let ``acceptance (019): deleting the target row first makes the Select return a NO-OP plus the status line`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmSample ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample (threeFilmSample ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let opened, subscription = observeOpenedWindows ()
@@ -1142,7 +1144,7 @@ module SampleEditorWindowTests =
                     description = EntryDescription "step-019 activation re-query"
                     supportedEmission = ThinFilm.defaultSupportedEmission
                 }
-            let window = SampleEditorWindow(materials, samples, categories, EditSample sample)
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample sample)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The material does not exist yet: the row shows the unresolved-id readout.
@@ -1168,7 +1170,7 @@ module SampleEditorWindowTests =
     let ``acceptance (019): a material added while the editor is open appears through the SELECT-RETURN re-query`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmSample ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample (threeFilmSample ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // A material lands in the SHARED store while the editor is open (any other
@@ -1273,7 +1275,7 @@ module SampleEditorWindowTests =
     let ``acceptance (011): a film-less Plate sets its substrate through the Materials Select window`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, EditSample (filmlessPlate ()))
+            let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, EditSample (filmlessPlate ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // A film-less Plate: no substrate plate yet, and no film rows to pick a material from.

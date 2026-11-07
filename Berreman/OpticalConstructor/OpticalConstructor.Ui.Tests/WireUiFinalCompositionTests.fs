@@ -47,7 +47,7 @@ module WireUiFinalCompositionTests =
     let private rootWindowFactory (ctx : AppContext) (key : WindowKey) : Result<Window, WindowLauncherError> =
         match key with
         | MaterialsWindowKey ->
-            MaterialsWindow(ctx.materials, ctx.categories) :> Window |> Ok
+            MaterialsWindow(ctx.materials, ctx.categories, ctx.catalogueImports) :> Window |> Ok
         | LibraryWindowKey ->
             LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups, ctx.catalogueImports) :> Window |> Ok
         | SolverHandoffWindowKey ->
@@ -57,7 +57,7 @@ module WireUiFinalCompositionTests =
         | MaterialEditorKey mintedId ->
             MaterialEditorWindow(ctx.materials, MaterialEditorView.NewMaterial mintedId, categories = ctx.categories) :> Window |> Ok
         | SampleEditorKey mintedId ->
-            SampleEditorWindow(ctx.materials, ctx.samples, ctx.categories, SampleEditorView.NewBlankSample mintedId) :> Window |> Ok
+            SampleEditorWindow(ctx.materials, ctx.samples, ctx.categories, ctx.catalogueImports, SampleEditorView.NewBlankSample mintedId) :> Window |> Ok
         | SourceEditorKey mintedId ->
             LightSourceEditorWindow(ctx.sources, LightSourceEditorView.NewSource mintedId) :> Window |> Ok
 
@@ -149,6 +149,6 @@ module WireUiFinalCompositionTests =
             // (the step-016 mode) over the app scope — the second of the "both modes" the acceptance
             // enumerates. The modeless-default modality means an ordinary Show (no modal block).
             let materialSelect : SelectionContext<MaterialLibrary.MaterialEntry> = selectContext Placement.Sample
-            showAssertClose (MaterialsWindow(ctx.materials, ctx.categories, mode = Select materialSelect))
+            showAssertClose (MaterialsWindow(ctx.materials, ctx.categories, ctx.catalogueImports, mode = Select materialSelect))
             let librarySelect : SelectionContext<Library.LibraryEntry> = selectContext Placement.Sample
             showAssertClose (LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups, ctx.catalogueImports, mode = Select librarySelect)))

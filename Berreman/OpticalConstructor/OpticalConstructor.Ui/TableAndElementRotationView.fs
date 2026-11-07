@@ -145,11 +145,11 @@ type DragState =
 type EditorLaunchers =
     {
         /// Open the SINGLE-INSTANCE Materials window (spec 0038 step 013, UICOMP_XDUO_0009) over
-        /// the app-scope material + category stores — the ribbon strip's `Materials…` button
+        /// app-scope stores and import seam — the ribbon strip's `Materials…` button
         /// reaches it through this seam, so a headless test substitutes a recording launcher and
         /// observes the request. The Material / Category editor launchers the retired Materials
         /// bay carried here moved INTO that window's own composition (`MaterialsWindow`).
-        openMaterialsWindow : MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> unit
+        openMaterialsWindow : MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> CatalogueImportContext -> unit
         /// Open the SINGLE-INSTANCE Library window (spec 0038 step 015, UICOMP_XDUO_0010) over
         /// the Library seam, app-scope stores and catalogue imports
         /// (categories thread through to the Sample editor's step-019 Choose
@@ -191,8 +191,8 @@ type EditorLaunchers =
             launcher.openOrActivate key |> ignore
         {
             openMaterialsWindow =
-                fun materials categories ->
-                    openBrowse WindowLauncher.MaterialsWindowKey (fun () -> MaterialsWindow(materials, categories) :> Window)
+                fun materials categories catalogueImports ->
+                    openBrowse WindowLauncher.MaterialsWindowKey (fun () -> MaterialsWindow(materials, categories, catalogueImports) :> Window)
             openLibraryWindow =
                 fun library samples sources materials categories libraryBackups catalogueImports ->
                     openBrowse WindowLauncher.LibraryWindowKey (fun () -> LibraryWindow(library, samples, sources, materials, categories, libraryBackups, catalogueImports) :> Window)
@@ -1825,10 +1825,10 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         | None -> model
     | OpenMaterialsWindow ->
         // Spec 0038 step 013: a pure launch of the single-instance Materials window
-        // (UICOMP_XDUO_0009) over the app-scope material + category stores — the launcher seam's
+        // (UICOMP_XDUO_0009) over app-scope stores and import seam — the launcher seam's
         // shared registry keys it under `MaterialsWindowKey`, so a second click ACTIVATES the
         // live window. No model change: the window runs its own MVU loop over the same stores.
-        model.launchers.openMaterialsWindow model.materials model.categories
+        model.launchers.openMaterialsWindow model.materials model.categories model.catalogueImports
         model
     | OpenLibraryWindow ->
         // Spec 0038 step 015: a pure launch of the single-instance Library window
