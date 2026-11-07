@@ -550,6 +550,8 @@ type ConstructorUiId =
     static member materialsRemoveConfirmButton : ConstructorUiId = ConstructorUiId "MaterialsRemoveConfirmButton"
     static member materialsRemoveCancelButton : ConstructorUiId = ConstructorUiId "MaterialsRemoveCancelButton"
     static member materialsWindowMessage : ConstructorUiId = ConstructorUiId "MaterialsWindowMessage"
+    // Spec 0050 S3.2: dropped-entry import completion or refusal.
+    static member materialsImportStatusText : ConstructorUiId = ConstructorUiId "MaterialsImportStatusText"
     /// The lifecycle surface (spec 0038 step 023).
     static member materialsShowInactiveToggle : ConstructorUiId = ConstructorUiId "MaterialsShowInactiveToggle"
     static member materialsMarkInactiveButton : ConstructorUiId = ConstructorUiId "MaterialsMarkInactiveButton"

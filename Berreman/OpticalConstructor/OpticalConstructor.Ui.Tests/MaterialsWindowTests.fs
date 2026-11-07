@@ -1,7 +1,14 @@
 namespace OpticalConstructor.Ui.Tests
 
+open System
+open System.IO
+open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.EntryFileJson
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
@@ -191,6 +198,7 @@ module MaterialsWindowTests =
                             | MaterialEditorView.NewMaterial mintedId -> $"material-add:{mintedId.value}"
                             | MaterialEditorView.EditMaterial entry -> "material-edit:" + entry.name.value)
                 openCategoryEditor = fun () -> calls.Add "categories-open"
+                openImportDialog = fun _ -> calls.Add "import-open"
                 requestClose = fun () -> calls.Add "close-requested"
             }
         calls, context
@@ -199,6 +207,27 @@ module MaterialsWindowTests =
         let materials, _, categories = freshStores ()
         let calls, context = stubContext materials categories
         calls, MW.initMaterialsWindow context Browse
+
+    let private freshDropFolder () : FolderName =
+        let folder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "MaterialsWindowTests", Guid.NewGuid().ToString("N")))
+        Directory.CreateDirectory folder.value |> ignore
+        folder
+
+    let private writeDroppedMaterial () : FileName * MaterialEntry =
+        let material =
+            {
+                BuiltinCatalogue.material MaterialIds.silicon with
+                    id = newMaterialId ()
+                    name = EntryName "Dropped Materials-window material"
+            }
+        let content = LibraryEntryContent.ofMaterialEntry VersionNumber.first UserProvenance material
+        let envelope = content.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+        let text = envelope.fileText |> Result.defaultWith (fun error -> failwith error.describe)
+        let folder = freshDropFolder ()
+        let leaf = FileName "dropped.material-json"
+        let file = leaf.combine folder
+        File.WriteAllText(file.value, text.value)
+        file, material
 
     /// A recording Select-session context (spec 0038 step 016): `onSelected` tags the chosen
     /// material id, `onCancelled` tags the cancel — the window guarantees exactly one fires.
@@ -1433,3 +1462,161 @@ module MaterialsWindowTests =
             // The library still edits the LATEST — the Edit verb is unchanged by viewing an older version.
             Assert.True(isPresent window ConstructorUiId.materialsEditButton.value, "the Edit verb still targets the latest version")
             window.Close())
+
+    [<Fact>]
+    let ``dropping entry files on the Materials window decides them and opens the import dialog, applying nothing`` () : unit =
+        let file, material = writeDroppedMaterial ()
+        let materials, _, categories = freshStores ()
+        let calls, context = stubContext materials categories
+        context.catalogueImports.importFrom (CatalogueProxy.createBuiltIn ())
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        |> List.map _.byDefault
+        |> context.catalogueImports.apply
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        |> ignore
+        let opened = ResizeArray<ImportDecision list>()
+        let context =
+            {
+                context with
+                    openImportDialog = opened.Add
+            }
+        let initial = MW.initMaterialsWindow context Browse
+        Assert.Equal<ControlCaption option>(None, initial.importStatus)
+        Assert.Equal<CatalogueImportError option>(None, initial.importError)
+        let before =
+            {
+                initial with
+                    removeGate = MW.PendingRemove MaterialIds.glass200
+                    importStatus = Some (ControlCaption "Previous import")
+                    importError = Some (DroppedFileRefusedErr "Previous refusal")
+            }
+        Assert.Same(before, MW.updateMaterialsWindow (MW.DropMaterialEntryFiles []) before)
+        Assert.Empty opened
+        let dropped = MW.updateMaterialsWindow (MW.DropMaterialEntryFiles [ file ]) before
+        let row = Assert.Single(Assert.Single opened)
+        Assert.Equal(material.id.toLibraryEntryId, row.entryId)
+        Assert.Equal(DroppedFileOrigin file.leafName, row.origin)
+        match row.status with
+        | EntryIdNotHeld incoming -> Assert.Equal(material.id.toLibraryEntryId, incoming.content.id)
+        | _ -> Assert.Fail("A new material must be offered as an unheld entry.")
+        Assert.Equal<ControlCaption option>(None, dropped.importStatus)
+        Assert.Equal<CatalogueImportError option>(None, dropped.importError)
+        Assert.Equal(before.removeGate, dropped.removeGate)
+        Assert.Equal(before.lifecycleGate, dropped.lifecycleGate)
+        match dropped.mode with
+        | Browse -> ()
+        | Select _ -> Assert.Fail("Dropping files must preserve Browse mode.")
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.catalogueImports.proxy.tryHeldEntry material.id.toLibraryEntryId)
+        Assert.Empty calls
+
+    [<Fact>]
+    let ``a refused drop on the Materials window shows its reason and opens no dialog`` () : unit =
+        let folder = freshDropFolder ()
+        let leaf = FileName "notes.txt"
+        let file = leaf.combine folder
+        File.WriteAllText(file.value, "Not a library entry")
+        let calls, initial = freshModel ()
+        let before =
+            {
+                initial with
+                    lifecycleGate = MW.PendingLifecycle (MaterialIds.glass200, MW.MarkInactiveAction)
+                    importStatus = Some (ControlCaption "Previous import")
+            }
+        let refused = MW.updateMaterialsWindow (MW.DropMaterialEntryFiles [ file ]) before
+        let error =
+            match refused.importError with
+            | Some (DroppedFileRefusedErr reason as error) ->
+                Assert.Contains("notes.txt", reason)
+                error
+            | _ -> failwith "The unsupported file must produce DroppedFileRefusedErr."
+        Assert.Equal<ControlCaption option>(None, refused.importStatus)
+        Assert.Equal(before.removeGate, refused.removeGate)
+        Assert.Equal(before.lifecycleGate, refused.lifecycleGate)
+        Assert.Empty calls
+        HeadlessSession.run (fun () ->
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                Program.mkSimple (fun () -> refused) MW.updateMaterialsWindow MW.materialsWindowView
+                |> Program.withHost window
+                |> Program.run
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                Assert.Equal(error.caption.value, textOf window ConstructorUiId.materialsImportStatusText.value)
+                match tryFindControl window ConstructorUiId.materialsImportStatusText.value with
+                | Some (:? TextBlock as status) -> Assert.Equal(TextWrapping.Wrap, status.TextWrapping)
+                | _ -> Assert.Fail("The refusal must render in a wrapping status TextBlock.")
+            finally window.Close())
+
+    [<Fact>]
+    let ``an applied import of dropped files is the Materials window status`` () : unit =
+        let calls, initial = freshModel ()
+        let events, selection = selectContext Sample (SampleLayerTarget (AtSingleLayer (FilmItemIndex 0)))
+        let before =
+            {
+                initial with
+                    mode = Select selection
+                    selectedId = Some MaterialIds.glass200
+                    lifecycleGate = MW.PendingLifecycle (MaterialIds.glass200, MW.MarkInactiveAction)
+                    importError = Some (DroppedFileRefusedErr "Previous refusal")
+            }
+        let summary = ControlCaption "Imported the dropped material."
+        let applied = MW.updateMaterialsWindow (MW.MaterialsImportApplied summary) before
+        Assert.Equal<ControlCaption option>(Some summary, applied.importStatus)
+        Assert.Equal<CatalogueImportError option>(None, applied.importError)
+        Assert.Equal(before.removeGate, applied.removeGate)
+        Assert.Equal(before.lifecycleGate, applied.lifecycleGate)
+        Assert.Equal(before.selectedId, applied.selectedId)
+        match applied.mode with
+        | Select actual -> Assert.Same(selection, actual)
+        | Browse -> Assert.Fail("Import completion must preserve the Select session.")
+        Assert.Empty calls
+        Assert.Empty events
+
+    [<Fact>]
+    let ``the Materials window accepts dropped files`` () : unit =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let window = mountMaterialsWindow materials categories
+            try Assert.True(DragDrop.GetAllowDrop window)
+            finally window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: a material file dropped on the Materials window opens the import dialog, and Apply adds it to the app library`` () : unit =
+        HeadlessSession.run (fun () ->
+            let owner = FolderName "MaterialsWindowTests"
+            let context =
+                AppContext.create (TestAppScope.fileLocations owner) WorkbenchSettings.defaults
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            TestAppScope.settlePendingImports context
+            let file, material = writeDroppedMaterial ()
+            let window = MaterialsWindow(context.materials, context.categories, context.catalogueImports)
+            let opened = ResizeArray<ImportDialogWindow>()
+            use _subscription =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _)) ->
+                    match sender with
+                    | :? ImportDialogWindow as dialog -> opened.Add dialog
+                    | _ -> ())
+            try
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                commitFilter window material.name.value
+                Assert.False(isPresent window ConstructorUiId.materialsImportStatusText.value)
+                window.DropEntryFiles [ file ]
+                Dispatcher.UIThread.RunJobs()
+                let dialog = Assert.Single opened
+                Assert.True(dialog.IsVisible)
+                Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok None, context.materials.tryGetMaterial material.id)
+                Assert.False(isPresent window ConstructorUiId.materialsImportStatusText.value)
+                clickOn dialog ConstructorUiId.importApplyButton.value
+                Assert.False(dialog.IsVisible)
+                Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some material), context.materials.tryGetMaterial material.id)
+                Assert.Equal("Imported the dropped entry files (decisions applied: 1).", textOf window ConstructorUiId.materialsImportStatusText.value)
+                expandEntries window
+                Assert.True(isPresent window (ConstructorUiId.materialsEntryNode material.id).value,
+                            "Apply must refresh the Materials tree without reopening the window.")
+            finally
+                for dialog in opened do dialog.Close()
+                window.Close()
+                Dispatcher.UIThread.RunJobs())

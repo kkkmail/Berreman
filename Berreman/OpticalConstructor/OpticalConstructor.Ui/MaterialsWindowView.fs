@@ -21,11 +21,14 @@
 module OpticalConstructor.Ui.MaterialsWindowView
 
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Units
@@ -158,6 +161,8 @@ type MaterialsWindowContext =
         categories : CategoryProxy
         /// The import seam through which dropped entry files are decided and applied.
         catalogueImports : CatalogueImportContext
+        /// Open the import dialog over dropped-entry rows; the host supplies the window, tests record calls.
+        openImportDialog : ImportDecision list -> unit
         treeAutoBuildThreshold : TreeAutoBuildThreshold
         /// Open the Material editor by intent: `NewMaterial mintedId` (the Add verb mints the
         /// id AT dispatch — spec 0038 step 008) or `EditMaterial entry`.
@@ -229,6 +234,10 @@ type MaterialsWindowModel =
         /// The last store refusal, surfaced as the inline message — `MaterialStillReferenced`
         /// NAMES the referencing samples; never a cascade, never a dialog.
         lastError : MaterialError option
+        /// The last applied import's completion summary.
+        importStatus : ControlCaption option
+        /// The last refusal while deciding dropped entry files.
+        importError : CatalogueImportError option
     }
 
     /// The scope the corpus projection lists at (spec 0038 step 023): `ActiveOnly` in Select mode (a
@@ -331,9 +340,15 @@ let initMaterialsWindow (context : MaterialsWindowContext) (mode : LibraryWindow
         lifecycleGate = NoPendingLifecycle
         viewedVersion = None
         lastError = None
+        importStatus = None
+        importError = None
     }
 
 type MaterialsWindowMsg =
+    /// Decide dropped entry files and open their pending import choices.
+    | DropMaterialEntryFiles of FileName list
+    /// Publish the import dialog's completion summary and refresh live projections.
+    | MaterialsImportApplied of summary : ControlCaption
     /// Apply the offered value as this facet's (single-key) constraint — an offered-value
     /// click; re-applying a constrained facet REPLACES its selection.
     | ApplyFacetValue of AttributeKey * DiscreteKey
@@ -473,6 +488,28 @@ let private requestLifecycle (action : LifecycleAction) (m : MaterialsWindowMode
 
 let updateMaterialsWindow (msg : MaterialsWindowMsg) (m : MaterialsWindowModel) : MaterialsWindowModel =
     match msg with
+    | DropMaterialEntryFiles files ->
+        match m.context.catalogueImports.decideDroppedFiles files with
+        | Ok [] -> m
+        | Ok decisions ->
+            m.context.openImportDialog decisions
+            {
+                m with
+                    importStatus = None
+                    importError = None
+            }
+        | Error error ->
+            {
+                m with
+                    importStatus = None
+                    importError = Some error
+            }
+    | MaterialsImportApplied summary ->
+        {
+            m with
+                importStatus = Some summary
+                importError = None
+        }
     | ApplyFacetValue (key, value) ->
         // Single-key selection per facet: re-applying a constrained facet REPLACES its chip
         // (removed from its old breadcrumb position, re-applied at the end).
@@ -1039,6 +1076,26 @@ let private messageRow (m : MaterialsWindowModel) : IView list =
               TextBlock.text err.caption.value
           ] :> IView ]
 
+type MaterialsWindowModel with
+
+    member internal this.materialsImportStatusRow : IView list =
+        let captionOpt =
+            match this.importError with
+            | Some error -> Some error.caption
+            | None -> this.importStatus
+        match captionOpt with
+        | None -> []
+        | Some caption ->
+            [ TextBlock.create [
+                  ConstructorUiId.materialsImportStatusText.automationAttribute<TextBlock> ()
+                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
+                  TextBlock.text caption.value
+                  TextBlock.textWrapping TextWrapping.Wrap
+                  match this.importError with
+                  | Some _ -> TextBlock.foreground (brush messageColor)
+                  | None -> ()
+              ] :> IView ]
+
 /// The version list (spec 0038 step 023): one clickable row per stored version, the latest marked
 /// `(latest)` and the currently-viewed one marked `▸`. Clicking a row shows THAT version in the
 /// panel — the latest editable through the Edit verb, an older one view-only. Absent when the
@@ -1151,6 +1208,7 @@ let materialsWindowView (m : MaterialsWindowModel) (dispatch : MaterialsWindowMs
                                     @ confirmRow m dispatch
                                     @ lifecycleConfirmRow m dispatch
                                     @ messageRow m
+                                    @ m.materialsImportStatusRow
                                     @ viewPanel m dispatch)
                             ])
                     ])

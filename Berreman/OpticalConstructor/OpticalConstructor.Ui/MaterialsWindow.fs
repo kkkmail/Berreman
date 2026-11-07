@@ -6,27 +6,16 @@ open Avalonia.Controls
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Ui.ImportDialogView
 
-/// Spec 0038 Part E (step 013) — the Materials window (UICOMP_XDUO_0009): a FuncUI `HostWindow`
-/// mounting the pure `MaterialsWindowView` MVU loop — the step-012 `FacetedTreeControls` over
-/// the step-011 material facets, a view panel, and the Add / Edit / Remove / Categories… verbs
-/// — over app-scope material/category stores and import seam. The composition root: the
-/// context's launchers open the Material / Category editors through the step-008 SVC_XDUO_0001
-/// `WindowLauncher` under the editor keys (`MaterialEditorKey` — an Add-minted or edited
-/// entity id — and the single-instance `CategoryEditorKey`), Browse-mode over the ONE
-/// host-layer `WindowRegistry`, so an editor opened from THIS window and the same editor
-/// opened from anywhere else meet in one open-or-activate space. The window itself is opened
-/// single-instance under `MaterialsWindowKey` by ITS callers (the workbench's `Materials…`
-/// strip button through `EditorLaunchers.defaults`; the launcher-form button lands in step 45).
-/// Step 016: `mode` opens the window Browse (the default) or Select — the SAME window with the
-/// Select/Close pair and the fixed-constraint banner; `Retarget` is the launcher's re-target
-/// seam (a Select-state open of the LIVE instance re-points its session), and the `Closed`
-/// hook cancels a still-pending session exactly once (the title-bar X and a staleness
-/// `Close()` from the requesting surface both land there).
+/// Browses or selects live materials, launches editors, and previews dropped entry files for import.
+/// Retarget replaces the Select session; closing cancels a pending session exactly once.
+/// Spec 0038 steps 013/016 (UICOMP_XDUO_0009); spec 0050 S3.2.
 type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, catalogueImports : CatalogueImportContext, ?mode : LibraryWindowMode<MaterialEntry>, ?treeAutoBuildThreshold : TreeAutoBuildThreshold) as this =
     inherit HostWindow()
 
@@ -60,6 +49,10 @@ type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, cata
                 materials = materials
                 categories = categories
                 catalogueImports = catalogueImports
+                openImportDialog =
+                    fun decisions ->
+                        ImportDialogWindow(catalogueImports, ApplyDroppedEntries decisions,
+                            fun applied -> dispatch (MaterialsWindowView.MaterialsImportApplied applied.summary)).Show()
                 // The Domain default unless a caller threads the app-configured value in (the
                 // step-008 defaults precedent — step 47 owns the composition acceptance).
                 treeAutoBuildThreshold = defaultArg treeAutoBuildThreshold TreeAutoBuildThreshold.defaultValue
@@ -81,6 +74,7 @@ type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, cata
             MaterialsWindowView.materialsWindowView
         |> Program.withHost this
         |> Program.run
+        EntryFileDrop.acceptEntryFiles this (fun files -> dispatch (MaterialsWindowView.DropMaterialEntryFiles files))
         // ANY close path funnels here (title-bar X, a staleness Close(), the Select/Close
         // verbs' requestClose): a still-pending Select session cancels exactly once — the
         // verbs flip the mode to Browse in the same update that fires their callback, so the
@@ -92,3 +86,7 @@ type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, cata
     /// the pure update; the window instance stays (single-instance semantics).
     member _.Retarget (context : SelectionContext<MaterialEntry>) : unit =
         dispatch (MaterialsWindowView.RetargetSelect context)
+
+    /// Decide dropped entry files and open their import choices without applying them.
+    member _.DropEntryFiles (files : FileName list) : unit =
+        dispatch (MaterialsWindowView.DropMaterialEntryFiles files)
