@@ -29,6 +29,10 @@ module KitFolders =
             deleteKindFile : KitFileKind -> FileStem -> Result<unit, KitError>
             /// Reads the kit-relative file's text and ContentHash.ofBytes of its stored bytes, or MissingKitFileErr naming the path (spec 0050 S4.1).
             readDataFile : KitRelativePath -> Result<KitDataFile, KitError>
+            /// Locates an absolute name inside the kit without requiring the file to exist (spec 0050 S4.2).
+            tryKitPathOf : FileName -> KitRelativePath option
+            /// Copies bytes into data under a free name, creating parents and never replacing a lab file (spec 0050 S4.2).
+            copyInFile : KitDataFolder -> FileName -> FileByteContent -> Result<KitDataFile, KitError>
             /// Replaces this proxy's in-memory record of all current kit-file stamps without writing (spec 0050 S4.1).
             recordStamps : unit -> Result<unit, KitError>
             /// Lists added, changed or removed kit files in ordinal order, excluding this proxy's own writes (spec 0050 S4.1).
@@ -117,6 +121,21 @@ module KitFolders =
         | InMemoryKitMetadataStamp of KitFile
         | InMemoryKitTextStamp of KitFileText
 
+    type FileByteContent with
+
+        /// Decodes UTF-8 text and removes only a leading byte-order mark (spec 0050 S4.1; S4.2).
+        member this.kitFileText : KitFileText =
+            let text = KitFileText (Encoding.UTF8.GetString this.value)
+            text.withoutByteOrderMark
+
+        /// Describes a kit file with the hash of its stored bytes (spec 0050 S4.1; S4.2).
+        member this.kitDataFile (path : KitRelativePath) : KitDataFile =
+            {
+                path = path
+                text = this.kitFileText
+                contentHash = ContentHash.ofBytes this
+            }
+
     /// One folder's private contents, shared by every proxy opened over it (spec 0050 S4.1).
     type InMemoryKitFolder private () =
         let kitFilePath = KitFile.fileName.toKitRelativePath
@@ -129,10 +148,22 @@ module KitFolders =
         /// Creates an existing, empty folder (spec 0050 S4.1).
         static member create () : InMemoryKitFolder = InMemoryKitFolder ()
 
+        /// The absolute folder represented by this in-memory store (spec 0050 S4.2).
+        member _.kitFolder : KitFolder =
+            let folder = FolderName "C:/in-memory-kit"
+            KitFolder folder
+
         member private _.tryFindTextPath (path : KitRelativePath) : KitRelativePath option =
             texts
             |> Map.keys
             |> Seq.tryFind (fun held -> String.Equals(held.value, path.value, StringComparison.OrdinalIgnoreCase))
+
+        member private this.readInMemoryKitDataFile (path : KitRelativePath) : Result<KitDataFile, KitError> =
+            match this.tryFindTextPath path |> Option.bind (fun held -> Map.tryFind held texts) with
+            | Some text ->
+                let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
+                Ok (bytes.kitDataFile path)
+            | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
 
         /// Places an outside writer's text and its parents, refusing the reserved kit filename (spec 0050 S4.1).
         member this.placeLabFile (path : KitRelativePath) (text : KitFileText) : Result<unit, KitError> =
@@ -143,6 +174,17 @@ module KitFolders =
                 texts <- Map.add heldPath text texts
                 folders <- Set.union folders (Set.ofList path.parentFolders)
                 Ok ()
+
+        /// Removes an outside writer's file, refusing metadata and reporting missing paths (spec 0050 S4.2).
+        member this.removeLabFile (path : KitRelativePath) : Result<unit, KitError> =
+            if String.Equals(path.value, kitFilePath.value, StringComparison.OrdinalIgnoreCase) then
+                Error (InvalidKitPathErr $"in-memory kit folder: '{path.value}' is reserved for kit metadata")
+            else
+                match this.tryFindTextPath path with
+                | Some held ->
+                    texts <- Map.remove held texts
+                    Ok ()
+                | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
 
         /// Lists every file and folder by its kit-relative path in ordinal order (spec 0050 S4.1).
         member _.paths () : KitRelativePath list =
@@ -242,18 +284,15 @@ module KitFolders =
                             recordedStamps <- updateKitFileStamp (kind.fileNameOf stem) None recordedStamps
                             Ok ()
                         | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
-                readDataFile =
-                    fun path ->
-                        match this.tryFindTextPath path |> Option.bind (fun held -> Map.tryFind held texts) with
-                        | Some text ->
-                            let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
-                            Ok
-                                {
-                                    path = path
-                                    text = text.withoutByteOrderMark
-                                    contentHash = ContentHash.ofBytes bytes
-                                }
-                        | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
+                readDataFile = this.readInMemoryKitDataFile
+                tryKitPathOf = this.kitFolder.tryKitPathOf
+                copyInFile =
+                    fun destination file bytes ->
+                        lock folderSync (fun () ->
+                            destination.copyTargetFor file.leafName (this.paths ())
+                            |> Result.bind (fun path ->
+                                this.placeLabFile path bytes.kitFileText
+                                |> Result.bind (fun () -> this.readInMemoryKitDataFile path)))
                 recordStamps =
                     fun () ->
                         recordedStamps <- currentStamps ()
@@ -309,6 +348,8 @@ module KitFolders =
                 writeKindFile = fun _ _ _ -> Error (KitReadOnlyErr "writeKindFile")
                 deleteKindFile = fun _ _ -> Error (KitReadOnlyErr "deleteKindFile")
                 readDataFile = this.readDataFile
+                tryKitPathOf = this.tryKitPathOf
+                copyInFile = fun _ _ _ -> Error (KitReadOnlyErr "copyInFile")
                 recordStamps = this.recordStamps
                 changedKitFiles = this.changedKitFiles
                 acquireLock = fun _ -> Error (KitReadOnlyErr "acquireLock")

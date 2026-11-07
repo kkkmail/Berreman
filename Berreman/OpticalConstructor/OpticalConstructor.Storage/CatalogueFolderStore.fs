@@ -17,22 +17,44 @@ module CatalogueFolderStore =
 
     type FileName with
 
-        /// Writes through a sibling `.tmp` and replaces the whole file; failures clean up and return FileIoExn (spec 0050 §4; S4.1).
         [<ElevationBoundary(nameof IoBoundary, "the filesystem writer consumes bytes at the IO boundary")>]
-        member this.writeBytesAtomically (bytes : FileByteContent) : Result<unit, StorageError> =
+        member private this.writeBytesWithPolicy (policy : ExistingFilePolicy) (bytes : FileByteContent) : Result<unit, StorageError> =
             let tmp = FileName $"{this.value}.tmp"
+            let mutable cleanupRequired = false
 
             try
-                File.WriteAllBytes(tmp.value, bytes.value)
-                File.Move(tmp.value, this.value, true)
+                match policy with
+                | OverwriteExistingFile ->
+                    cleanupRequired <- true
+                    File.WriteAllBytes(tmp.value, bytes.value)
+                | RefuseExistingFile ->
+                    // A sibling .tmp can itself be a lab file (spec 0050 S4.2).
+                    use stream = new FileStream(tmp.value, FileMode.CreateNew, FileAccess.Write, FileShare.None)
+                    cleanupRequired <- true
+                    stream.Write(bytes.value, 0, bytes.value.Length)
+
+                match policy with
+                | OverwriteExistingFile -> File.Move(tmp.value, this.value, true)
+                | RefuseExistingFile -> File.Move(tmp.value, this.value, false)
                 Ok ()
             with e ->
                 // Keep the write's failure when cleanup also fails (spec 0050 S4.1).
-                try
-                    File.Delete tmp.value
-                with _ -> ()
+                if cleanupRequired then
+                    try
+                        File.Delete tmp.value
+                    with _ -> ()
 
                 Error (FileIoExn e)
+
+        /// Writes through a sibling `.tmp` and replaces the whole file; failures clean up and return FileIoExn (spec 0050 §4; S4.1).
+        [<ElevationBoundary(nameof IoBoundary, "the filesystem writer consumes bytes at the IO boundary")>]
+        member this.writeBytesAtomically (bytes : FileByteContent) : Result<unit, StorageError> =
+            this.writeBytesWithPolicy OverwriteExistingFile bytes
+
+        /// Creates a sibling `.tmp` exclusively, refuses replacement and cleans up only its own staging file (spec 0050 S4.2).
+        [<ElevationBoundary(nameof IoBoundary, "the filesystem writer consumes bytes at the IO boundary")>]
+        member this.writeNewBytesAtomically (bytes : FileByteContent) : Result<unit, StorageError> =
+            this.writeBytesWithPolicy RefuseExistingFile bytes
 
     type LibraryFileText with
 

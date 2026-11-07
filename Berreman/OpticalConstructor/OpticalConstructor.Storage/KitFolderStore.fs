@@ -124,12 +124,6 @@ module KitFolderStore =
     let private serializeKitLock (folder : FolderName) (holder : KitLockHolder) : Result<KitFileText, KitError> =
         holder.lockFileText |> Result.mapError (kitLockIoErr folder)
 
-    type FileByteContent with
-
-        member private this.kitFileText : KitFileText =
-            let text = KitFileText (Encoding.UTF8.GetString this.value)
-            text.withoutByteOrderMark
-
     type FileName with
 
         member private this.readKitText () : KitFileText =
@@ -273,16 +267,31 @@ module KitFolderStore =
                             let file = FileName (Path.Combine(folder.value.value, path.value.Replace('/', Path.DirectorySeparatorChar)))
                             try
                                 let bytes = File.ReadAllBytes file.value |> FileByteContent
-                                Ok
-                                    {
-                                        path = path
-                                        text = bytes.kitFileText
-                                        contentHash = ContentHash.ofBytes bytes
-                                    }
+                                Ok (bytes.kitDataFile path)
                             with
                             | :? FileNotFoundException
                             | :? DirectoryNotFoundException ->
                                 Error (MissingKitFileErr $"kit folder '{folder.value.value}': '{path.value}'"))
+                tryKitPathOf = folder.tryKitPathOf
+                copyInFile =
+                    fun (destination : KitDataFolder) (source : FileName) (bytes : FileByteContent) ->
+                        try
+                            let directory = FolderName (Path.Combine(folder.value.value, destination.value.value.Replace('/', Path.DirectorySeparatorChar)))
+                            Directory.CreateDirectory directory.value |> ignore
+                            let taken =
+                                Directory.GetFileSystemEntries(directory.value, "*", SearchOption.TopDirectoryOnly)
+                                |> Array.map (fun entry -> FileName entry)
+                                |> Array.choose folder.tryKitPathOf
+                                |> Array.toList
+                            destination.copyTargetFor source.leafName taken
+                            |> Result.bind (fun path ->
+                                let file = FileName (Path.Combine(folder.value.value, path.value.Replace('/', Path.DirectorySeparatorChar)))
+                                file.writeNewBytesAtomically bytes
+                                |> Result.mapError (fun error ->
+                                    KitIoErr $"kit folder '{folder.value.value}': the file '{file.value}' is not written: {error.describe}")
+                                |> Result.map (fun () -> bytes.kitDataFile path))
+                        with error ->
+                            Error (KitIoErr $"kit folder '{folder.value.value}': cannot copy '{source.value}' into '{destination.value.value}': {error.Message}")
                 recordStamps =
                     fun () ->
                         tryKitFolderIo folder (fun () ->

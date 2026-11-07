@@ -12,6 +12,8 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.KitFolderStore
 
 /// One folder viewed through fresh proxies and an outside writer (spec 0050 S4.1).
@@ -20,6 +22,12 @@ type KitTestFolder =
         openProxy : unit -> KitProxy
         placeLabFile : string -> string -> unit
         paths : unit -> string list
+        /// Resolves a kit-relative path to its absolute name (spec 0050 S4.2).
+        absoluteName : string -> FileName
+        /// Names a file outside this kit without creating its folder (spec 0050 S4.2).
+        outsideName : string -> FileName
+        /// Deletes a file as an outside writer (spec 0050 S4.2).
+        removeLabFile : string -> unit
     }
 
 module private KitProxyTestData =
@@ -47,6 +55,7 @@ module private KitProxyTestData =
 
     let kitFolderAdapter (folder : FolderName) : KitTestFolder =
         let kitFolder = KitFolder folder
+        let outside = FolderName (Path.Combine(Path.GetDirectoryName folder.value, $"outside-{Guid.NewGuid():N}"))
         {
             openProxy = fun () -> KitProxy.create kitFolder
             placeLabFile =
@@ -60,6 +69,9 @@ module private KitProxyTestData =
                     |> Array.map (fun path -> Path.GetRelativePath(folder.value, path).Replace('\\', '/'))
                     |> Array.sortWith (fun first second -> String.CompareOrdinal(first, second))
                     |> Array.toList
+            absoluteName = fun path -> FileName (Path.Combine(folder.value, path))
+            outsideName = fun path -> FileName (Path.Combine(outside.value, path))
+            removeLabFile = fun path -> File.Delete(Path.Combine(folder.value, path))
         }
 
     let takeKitLock (proxy : KitProxy) (time : ClockTime) : KitLockHolder =
@@ -269,6 +281,119 @@ type KitProxyContract () =
 
     /// Returns an existing folder that holds no files or subfolders (spec 0050 S4.1).
     abstract freshFolder : unit -> KitTestFolder
+
+    [<Fact>]
+    member this.``a copied-in file keeps its name and bytes, and a taken name gets the next free suffix`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let leaf = FileName "run 1.csv"
+        let firstText = KitFileText "phi,I\n0,0.5\n"
+        let otherText = KitFileText "phi,I\n0,0.75\n"
+        let firstBytes = Encoding.UTF8.GetBytes firstText.value |> FileByteContent
+        let otherBytes = Encoding.UTF8.GetBytes otherText.value |> FileByteContent
+        let firstPath = KitRelativePath "data/run 1.csv"
+        let secondPath = KitRelativePath "data/run 1 (2).csv"
+        let thirdPath = KitRelativePath "data/run 1 (3).csv"
+        let assertCopy (name : FileName) (bytes : FileByteContent) (path : KitRelativePath) (text : KitFileText) : KitDataFile =
+            let copied =
+                proxy.copyInFile KitDataFolder.root name bytes
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let expected : KitDataFile =
+                {
+                    path = path
+                    text = text
+                    contentHash = ContentHash.ofBytes bytes
+                }
+            Assert.Equal<KitDataFile>(expected, copied)
+            for reader in [ proxy; folder.openProxy () ] do
+                Assert.Equal<Result<KitDataFile, KitError>>(Ok copied, reader.readDataFile path)
+            copied
+        let first = assertCopy leaf firstBytes firstPath firstText
+        assertCopy leaf otherBytes secondPath otherText |> ignore
+        assertCopy leaf otherBytes thirdPath otherText |> ignore
+        Assert.Equal<Result<KitDataFile, KitError>>(Ok first, proxy.readDataFile firstPath)
+        Assert.Equal<string list>(
+            [ ".kit-json"; "data"; "data/run 1 (2).csv"; "data/run 1 (3).csv"; "data/run 1.csv"; "library" ],
+            folder.paths ())
+
+        folder.placeLabFile "data/RUN 1 (4).csv/held.txt" "A folder also occupies a name"
+        let outside = folder.outsideName "run 1.csv"
+        let fifthPath = KitRelativePath "data/run 1 (5).csv"
+        assertCopy outside otherBytes fifthPath otherText |> ignore
+        Assert.Contains("data/RUN 1 (4).csv/held.txt", folder.paths ())
+        Assert.Equal<Result<KitDataFile, KitError>>(Ok first, proxy.readDataFile firstPath)
+        folder.removeLabFile secondPath.value
+        assertCopy leaf firstBytes secondPath firstText |> ignore
+        Assert.False(folder.paths () |> List.exists (fun name -> name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)))
+
+    [<Fact>]
+    member this.``copying into a new folder inside data creates it`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let relativeFolder = KitRelativePath "data/raw/2026-11-03"
+        let destination = KitDataFolder.tryCreate relativeFolder |> Result.defaultWith (fun error -> failwith error.describe)
+        let leaf = FileName "run.csv"
+        let text = KitFileText "phi,I\n0,0.5\n"
+        let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
+        let expectedPath = KitRelativePath "data/raw/2026-11-03/run.csv"
+        let copied = proxy.copyInFile destination leaf bytes |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<KitRelativePath>(expectedPath, copied.path)
+        Assert.Equal<KitFileText>(text, copied.text)
+        Assert.Equal<ContentHash>(ContentHash.ofBytes bytes, copied.contentHash)
+        Assert.Equal<Result<KitDataFile, KitError>>(Ok copied, (folder.openProxy ()).readDataFile expectedPath)
+        Assert.Equal<string list>(
+            [ ".kit-json"; "data"; "data/raw"; "data/raw/2026-11-03"; "data/raw/2026-11-03/run.csv"; "library" ],
+            folder.paths ())
+
+    [<Fact>]
+    member this.``a file inside the kit is located by its absolute name, and one outside it is not`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let path = KitRelativePath "data/run 1.csv"
+        let inside = folder.absoluteName path.value
+        let outside = folder.outsideName "run 1.csv"
+        let before = folder.paths ()
+        for reader in [ proxy; proxy.readOnlyView; folder.openProxy () ] do
+            Assert.Equal<KitRelativePath option>(Some path, reader.tryKitPathOf inside)
+            Assert.Equal<KitRelativePath option>(None, reader.tryKitPathOf outside)
+        Assert.Equal<string list>(before, folder.paths ())
+        folder.placeLabFile path.value "phi,I\n0,0.5\n"
+        Assert.Equal<KitRelativePath option>(Some path, proxy.tryKitPathOf inside)
+        folder.removeLabFile path.value
+        Assert.Equal<KitRelativePath option>(Some path, proxy.tryKitPathOf inside)
+        match proxy.readDataFile path with
+        | Error (MissingKitFileErr reason) -> Assert.Contains(path.value, reason)
+        | Error error -> Assert.Fail($"Expected MissingKitFileErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("An outside deletion must be visible to the kit proxy.")
+        Assert.Equal<string list>(before, folder.paths ())
+
+    [<Fact>]
+    member this.``a read-only kit refuses a copy-in and writes nothing`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let path = KitRelativePath "data/run 1.csv"
+        folder.placeLabFile path.value "Keep this lab file\n"
+        let original = proxy.readDataFile path
+        let before = folder.paths ()
+        let reader = proxy.readOnlyView
+        let leaf = FileName "run 1.csv"
+        let bytes = Encoding.UTF8.GetBytes "Refused copy\n" |> FileByteContent
+        let missingPath = KitRelativePath "data/new/raw"
+        let missingFolder = KitDataFolder.tryCreate missingPath |> Result.defaultWith (fun error -> failwith error.describe)
+        for destination in [ KitDataFolder.root; missingFolder ] do
+            Assert.Equal<Result<KitDataFile, KitError>>(
+                Error (KitReadOnlyErr "copyInFile"), reader.copyInFile destination leaf bytes)
+            Assert.Equal<string list>(before, folder.paths ())
+            Assert.Equal<Result<KitDataFile, KitError>>(original, proxy.readDataFile path)
+        Assert.Equal<KitRelativePath option>(Some path, reader.tryKitPathOf (folder.absoluteName path.value))
 
     /// Reading or replacing metadata cannot turn an empty folder into a kit (spec 0050 S4.1).
     [<Fact>]
@@ -1038,6 +1163,13 @@ type KitProxyTests () =
                     |> Result.bind (fun relativePath -> folder.placeLabFile relativePath fileText)
                     |> Result.defaultWith (fun error -> failwith error.describe)
             paths = fun () -> folder.paths () |> List.map (fun path -> path.value)
+            absoluteName = fun path -> FileName $"{folder.kitFolder.value.value}/{path}"
+            outsideName = fun path -> FileName $"C:/outside/{path}"
+            removeLabFile =
+                fun path ->
+                    KitRelativePath.tryCreate path
+                    |> Result.bind folder.removeLabFile
+                    |> Result.defaultWith (fun error -> failwith error.describe)
         }
 
 /// Runs the shared kit-file contract over real folders under the test output (spec 0050 S4.1).
@@ -1048,6 +1180,69 @@ type KitProxyFolderTests () =
         let folder = freshKitFolderPath ()
         Directory.CreateDirectory folder.value |> ignore
         kitFolderAdapter folder
+
+    [<Fact>]
+    member this.``a copied-in file holds exactly the bytes given, a byte-order mark included`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let leaf = FileName "bom.csv"
+        let text = KitFileText "a,b\n"
+        let bytes = Array.append [| 0xEFuy; 0xBBuy; 0xBFuy |] (Encoding.UTF8.GetBytes text.value) |> FileByteContent
+        let expectedHash = ContentHash (Convert.ToHexStringLower(SHA256.HashData bytes.value))
+        let textBytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
+        let copied = proxy.copyInFile KitDataFolder.root leaf bytes |> Result.defaultWith (fun error -> failwith error.describe)
+        let expectedPath = KitRelativePath "data/bom.csv"
+        Assert.Equal<KitRelativePath>(expectedPath, copied.path)
+        Assert.Equal<KitFileText>(text, copied.text)
+        Assert.Equal<ContentHash>(expectedHash, copied.contentHash)
+        Assert.NotEqual<ContentHash>(ContentHash.ofBytes textBytes, copied.contentHash)
+        let file = folder.absoluteName expectedPath.value
+        Assert.Equal<byte>(bytes.value, File.ReadAllBytes file.value)
+        Assert.Equal<Result<KitDataFile, KitError>>(Ok copied, (folder.openProxy ()).readDataFile expectedPath)
+        Assert.Equal<string list>([ ".kit-json"; "data"; "data/bom.csv"; "library" ], folder.paths ())
+
+    [<Fact>]
+    member this.``the new-file writer refuses a file that exists, keeps it whole and leaves no temporary file`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let file = folder.absoluteName "x.csv"
+        let original = Encoding.UTF8.GetBytes "Keep these bytes: μ\r\n" |> FileByteContent
+        let replacement = Encoding.UTF8.GetBytes "Refused replacement\n" |> FileByteContent
+        File.WriteAllBytes(file.value, original.value)
+        let before = folder.paths ()
+        match file.writeNewBytesAtomically replacement with
+        | Error (FileIoExn error) -> Assert.False(String.IsNullOrWhiteSpace error.Message)
+        | Error error -> Assert.Fail($"Expected FileIoExn, got {error.describe}")
+        | Ok () -> Assert.Fail("The new-file writer must never replace an existing file.")
+        Assert.Equal<byte>(original.value, File.ReadAllBytes file.value)
+        Assert.Equal<string list>(before, folder.paths ())
+        Assert.False(folder.paths () |> List.exists (fun name -> name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)))
+
+        let destination = folder.absoluteName (Path.Combine("data", "run.csv"))
+        let staging = folder.absoluteName (Path.Combine("data", "run.csv.tmp"))
+        File.WriteAllBytes(staging.value, original.value)
+        let occupiedPaths = folder.paths ()
+        Assert.False(File.Exists destination.value)
+        match destination.writeNewBytesAtomically replacement with
+        | Error (FileIoExn error) -> Assert.False(String.IsNullOrWhiteSpace error.Message)
+        | Error error -> Assert.Fail($"Expected FileIoExn, got {error.describe}")
+        | Ok () -> Assert.Fail("The new-file writer must refuse an occupied staging path.")
+        Assert.Equal<byte>(original.value, File.ReadAllBytes staging.value)
+        Assert.False(File.Exists destination.value)
+        Assert.Equal<string list>(occupiedPaths, folder.paths ())
+
+        let leaf = FileName "run.csv"
+        match proxy.copyInFile KitDataFolder.root leaf replacement with
+        | Error (KitIoErr reason) -> Assert.Contains(destination.value, reason)
+        | Error error -> Assert.Fail($"Expected KitIoErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("Copy-in must refuse an occupied staging path without retrying.")
+        Assert.Equal<byte>(original.value, File.ReadAllBytes staging.value)
+        Assert.False(File.Exists destination.value)
+        Assert.Equal<string list>(occupiedPaths, folder.paths ())
 
     [<Fact>]
     member this.``the folder lock names this machine, this user and this process`` () : unit =
