@@ -209,6 +209,57 @@ module LibraryEntryFiles =
             originalProvenance : EntryProvenance
         }
 
+    /// The licence credit shown for an entry, including its citation when required (spec 0050 S3.3).
+    type EntryAttribution =
+        | LicenceAndCitation of licence : EntryLicence * citation : EntryCitation
+        | LicenceNameOnly of licence : EntryLicence
+
+        member this.text : string =
+            match this with
+            | LicenceAndCitation (licence, citation) -> $"Licence {licence.value} — cite: {citation.value}"
+            | LicenceNameOnly licence -> $"Licence {licence.value}"
+
+    type EntryLicence with
+
+        /// CC-BY licences require the source citation; all others show their name alone (spec 0050 S3.3).
+        member this.attributionWith (citation : EntryCitation) : EntryAttribution =
+            if this.value.StartsWith("CC-BY", StringComparison.OrdinalIgnoreCase) then
+                LicenceAndCitation (this, citation)
+            else
+                LicenceNameOnly this
+
+    type EntryProvenance with
+
+        /// Pulled entries retain their licence credit through every fork (spec 0050 S3.3).
+        member this.attributionOpt : EntryAttribution option =
+            match this with
+            | SourcePullProvenance info -> Some (info.licence.attributionWith info.citation)
+            | ForkProvenance fork -> fork.originalProvenance.attributionOpt
+            | BuiltInProvenance _ | UserProvenance | KitImportProvenance _ -> None
+
+    /// One named entry's licence credit in a surface's attribution list (spec 0050 S3.3).
+    type EntryAttributionLine =
+        {
+            entryName : EntryName
+            attribution : EntryAttribution
+        }
+
+        member this.text : string = $"{this.entryName.value}: {this.attribution.text}"
+
+    type LibraryEntry with
+
+        /// Credits the entry's GUID, when present, then a sample's materials in set order (spec 0050 S3.3).
+        member this.attributedEntryIds : LibraryEntryId list =
+            let ownIds = this.entryId.tryToLibraryEntryId |> Option.toList
+            let materialIds =
+                match this with
+                | SampleItem sample ->
+                    sample.structure.referencedMaterials
+                    |> Set.toList
+                    |> List.map (fun material -> material.toLibraryEntryId)
+                | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
+            ownIds @ materialIds
+
     /// The lowercase hex SHA-256 of an entry's canonical content (spec 0050 001 §B); Storage computes it.
     type ContentHash =
         | ContentHash of string

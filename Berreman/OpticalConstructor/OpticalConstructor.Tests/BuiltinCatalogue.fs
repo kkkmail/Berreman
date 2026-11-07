@@ -1,6 +1,8 @@
 namespace OpticalConstructor.Tests
 
 open System
+open Berreman.Constants
+open Berreman.Media
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
@@ -192,3 +194,77 @@ module BuiltinCatalogue =
         match presets () |> List.tryFind (fun entry -> entry.entryId = id) with
         | Some entry -> entry
         | None -> failwith $"The Built-in catalogue has no preset with id '{id.value}'."
+
+    let private materialContentWithProvenance (id : MaterialId) (name : EntryName) (provenance : EntryProvenance) : LibraryEntryContent =
+        let silicon = material MaterialIds.silicon
+        let entry =
+            {
+                silicon with
+                    id = id
+                    name = name
+            }
+        LibraryEntryContent.ofMaterialEntry VersionNumber.first provenance entry
+
+    /// Returns catalogue Silicon under the supplied identity and source licence (spec 0050 S3.3).
+    let licensedMaterialContent (id : MaterialId) (name : EntryName) (licence : EntryLicence) (citation : EntryCitation) : LibraryEntryContent =
+        let provenance =
+            SourcePullProvenance
+                {
+                    source = MaterialSourceName "Test optical constants"
+                    record = MaterialSourceRecordId $"test/{name.value}"
+                    sourceVersion = MaterialSourceVersion "2026-11-01"
+                    licence = licence
+                    citation = citation
+                }
+        materialContentWithProvenance id name provenance
+
+    /// Returns catalogue Silicon under the supplied user identity (spec 0050 S3.3).
+    let userMaterialContent (id : MaterialId) (name : EntryName) : LibraryEntryContent =
+        materialContentWithProvenance id name UserProvenance
+
+    /// Returns the catalogue Glass category under the supplied user identity (spec 0050 S3.3).
+    let userCategoryContent (id : CategoryId) (name : CategoryName) : LibraryEntryContent =
+        let glass = category CategoryIds.glass
+        let entry =
+            {
+                glass with
+                    id = id
+                    name = name
+                    origin = UserCategory
+            }
+        LibraryEntryContent.ofMaterialCategory VersionNumber.first UserProvenance entry |> decode
+
+    /// Returns a user sample with one 100 nm film of the supplied material's first version (spec 0050 S3.3).
+    let sampleContentOver (id : SampleId) (material : MaterialId) (name : EntryName) : LibraryEntryContent =
+        let multilayer = sample SampleIds.multilayerQwId
+        let layer : SampleLayer =
+            {
+                materialId = MaterialVersionId.firstOf material
+                thickness = Thickness.nm 100.0<nm>
+                orientation = PrimaryAxes
+            }
+        let entry =
+            {
+                multilayer with
+                    id = id
+                    name = name
+                    structure =
+                        {
+                            multilayer.structure with
+                                films = [ SingleLayer layer ]
+                        }
+            }
+        LibraryEntryContent.ofSample VersionNumber.first UserProvenance entry
+
+    /// Seals and puts entries in order, moving latest and failing with any seam error's description (spec 0050 S3.3).
+    let putSealedEntries (context : CatalogueImportContext) (contents : LibraryEntryContent list) : unit =
+        for content in contents do
+            context.sealEntry content
+            |> Result.bind (fun envelope ->
+                let put : EntryVersionPut =
+                    {
+                        envelope = envelope
+                        latest = MoveLatestVersion
+                    }
+                context.proxy.putEntryVersion put)
+            |> Result.defaultWith (fun error -> failwith error.describe)

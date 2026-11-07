@@ -16,6 +16,98 @@ open OpticalConstructor.Domain.CatalogueFiles
 module LibraryEntryFilesTests =
 
     [<Fact>]
+    let ``a CC-BY licence attributes with its citation and any other licence by its name alone`` () : unit =
+        let citation = EntryCitation "PTB optical constants, 2026"
+        let creditLicences = [ EntryLicence "CC-BY-4.0"; EntryLicence "cc-by-sa-4.0"; EntryLicence "CC-BY-NC-4.0" ]
+        let nameLicences = [ EntryLicence "CC0-1.0"; EntryLicence "MIT" ]
+
+        for licence in creditLicences do
+            Assert.Equal<EntryAttribution>(LicenceAndCitation (licence, citation), licence.attributionWith citation)
+
+        for licence in nameLicences do
+            Assert.Equal<EntryAttribution>(LicenceNameOnly licence, licence.attributionWith citation)
+
+        let ccBy = EntryLicence "CC-BY-4.0"
+        let cc0 = EntryLicence "CC0-1.0"
+        Assert.Equal<string>("Licence CC-BY-4.0 — cite: PTB optical constants, 2026", (ccBy.attributionWith citation).text)
+        Assert.Equal<string>("Licence CC0-1.0", (cc0.attributionWith citation).text)
+
+    [<Fact>]
+    let ``a pulled entry and its forks carry its licence's attribution, and every other provenance none`` () : unit =
+        let materialId = MaterialId (Guid.Parse "c31a053b-bce8-40b9-852d-bd3d1c6e542f")
+        let entryName = EntryName "PTB glass"
+        let licence = EntryLicence "CC-BY-4.0"
+        let citation = EntryCitation "PTB optical constants, 2026"
+        let content = BuiltinCatalogue.licensedMaterialContent materialId entryName licence citation
+        let fork : EntryForkInfo =
+            {
+                originalId = content.id
+                originalVersion = content.version
+                originalProvenance = content.provenance
+            }
+        let forkId = LibraryEntryId (Guid.Parse "39db9f9d-7275-4e64-95f0-9180518864e2")
+        let forkAgain : EntryForkInfo =
+            {
+                fork with
+                    originalId = forkId
+                    originalProvenance = ForkProvenance fork
+            }
+        let attribution = LicenceAndCitation (licence, citation)
+
+        for provenance in [ content.provenance; ForkProvenance fork; ForkProvenance forkAgain ] do
+            Assert.Equal<EntryAttribution option>(Some attribution, provenance.attributionOpt)
+
+        let cc0 = EntryLicence "CC0-1.0"
+        let publicDomain = BuiltinCatalogue.licensedMaterialContent materialId entryName cc0 citation
+        Assert.Equal<EntryAttribution option>(Some (LicenceNameOnly cc0), publicDomain.provenance.attributionOpt)
+
+        let userContent = BuiltinCatalogue.userMaterialContent materialId entryName
+        let kitId = KitId (Guid.Parse "f36ee953-dce4-4779-a448-dc0a4cfb286f")
+        let unlicensed = [ BuiltInProvenance CatalogueIds.builtInCatalogue; userContent.provenance; KitImportProvenance kitId ]
+
+        for provenance in unlicensed do
+            Assert.Equal<EntryAttribution option>(None, provenance.attributionOpt)
+            let unlicensedFork =
+                ForkProvenance
+                    {
+                        fork with
+                            originalProvenance = provenance
+                    }
+            Assert.Equal<EntryAttribution option>(None, unlicensedFork.attributionOpt)
+
+        let line : EntryAttributionLine =
+            {
+                entryName = entryName
+                attribution = attribution
+            }
+        Assert.Equal<string>($"PTB glass: {attribution.text}", line.text)
+
+    [<Fact>]
+    let ``an entry's attributed ids are its own and its sample's materials`` () : unit =
+        let source = BuiltinCatalogue.source PresetIds.source600
+        let sourceEntry = SourceItem source
+        let sourceId =
+            match source.id.tryToLibraryEntryId with
+            | Some id -> id
+            | None -> failwith "The shipped source must have a canonical GUID identity."
+        Assert.Equal<LibraryEntryId list>([ sourceId ], sourceEntry.attributedEntryIds)
+
+        let sample = BuiltinCatalogue.sample SampleIds.multilayerQwId
+        let expectedMaterials = Set.ofList [ MaterialIds.glass152; MaterialIds.vacuumMaterial ]
+        Assert.Equal<Set<MaterialId>>(expectedMaterials, sample.structure.referencedMaterials)
+        let expectedIds = sample.id.toLibraryEntryId :: (expectedMaterials |> Set.toList |> List.map (fun material -> material.toLibraryEntryId))
+        let sampleEntry = SampleItem sample
+        Assert.Equal<LibraryEntryId list>(expectedIds, sampleEntry.attributedEntryIds)
+
+        let nonGuidSource =
+            SourceItem
+                {
+                    source with
+                        id = ElementValueId "source-without-guid"
+                }
+        Assert.Empty(nonGuidSource.attributedEntryIds)
+
+    [<Fact>]
     let ``an entry's references are its category and its materials`` () : unit =
         let envelopes = (BuiltinCatalogue.catalogueData ()).envelopes
         let silicon = envelopes |> List.find (fun envelope -> envelope.content.id = MaterialIds.silicon.toLibraryEntryId)
