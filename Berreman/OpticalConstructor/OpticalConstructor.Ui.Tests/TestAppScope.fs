@@ -39,11 +39,12 @@ module TestAppScope =
                 libraryConnection = ConnectionString $"Data Source={databaseFile.value}"
         }
 
-    /// Compose a fresh database app scope, failing the calling fact on an open error (spec 0050 S2.4).
+    /// Compose a fresh database app scope and explicitly confirm every startup choice (spec 0050 S2.4; S3.1).
     let freshAppContext (owner : FolderName) : AppContext =
         let context =
             AppContext.create (testLocations owner) WorkbenchSettings.defaults
             |> Result.defaultWith (fun error -> failwith error.describe)
-        context.catalogueDecisions |> List.map _.byDefault |> context.catalogueImport.apply
+        let choices = context.catalogueDecisions |> List.map _.byDefault
+        context.catalogueImport.apply choices
         |> Result.defaultWith (fun error -> failwith error.describe) |> ignore
         context

@@ -117,11 +117,7 @@ type LibraryBackupProxySqliteTests () =
     static member private importLibrary (database : LibraryDatabase) : SampleProxy =
         let samples = SampleProxy.createInDatabase database
         let importer =
-            CatalogueImportProxy.ofStores
-                (CategoryProxy.createInDatabase database)
-                (MaterialProxy.createInDatabase database)
-                samples
-                (LibraryEntryStore.createInDatabase database)
+            CatalogueImportProxy.createInDatabase database
         let context = CatalogueImportContext.create importer
         let rows = context.importFrom (CatalogueProxy.createBuiltIn ()) |> Result.defaultWith (fun error -> failwith error.describe)
         Assert.Equal<Result<Sample list, SampleError>>(Ok [], samples.listSamples IncludeInactive)

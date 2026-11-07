@@ -287,5 +287,9 @@
   "93": {
     "constructor_unit_tests": 924,
     "ui_smoke_tests": 210
+  },
+  "94": {
+    "constructor_unit_tests": 931,
+    "ui_smoke_tests": 210
   }
 }

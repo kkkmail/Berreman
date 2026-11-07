@@ -115,6 +115,7 @@ module CatalogueImportProxyTests =
     let ``every import error renders its condition and its payload`` () : unit =
         let entryError = MissingEntryFieldErr "Silicon has no category"
         let catalogueError = CatalogueIoErr "the catalogue folder is unavailable"
+        Assert.Equal("the import store is unavailable: database was disposed", (ImportStoreUnavailableErr "database was disposed").describe)
         Assert.Equal("a catalogue entry was rejected: store refused Silicon", (ImportRejectedErr "store refused Silicon").describe)
         Assert.Equal($"a catalogue entry could not be decoded: {entryError.describe}", (UndecodableEntryErr entryError).describe)
         Assert.Equal($"the catalogue could not be read: {catalogueError.describe}", (CatalogueUnreadableErr catalogueError).describe)

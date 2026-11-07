@@ -74,7 +74,7 @@ type AppContext =
         let sources = SourceProxy.createInDatabase database
         let categories = CategoryProxy.createInDatabase database
         let importer =
-            CatalogueImportProxy.ofStores categories materials samples (LibraryEntryStore.createInDatabase database)
+            CatalogueImportProxy.createInDatabase database
             |> CatalogueImportContext.create
         let decisions =
             match database.origin with

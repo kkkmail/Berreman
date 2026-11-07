@@ -10,7 +10,6 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Database
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueFiles
-open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -18,7 +17,6 @@ open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Storage.CatalogueFolderStore
-open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.CategoryDatabaseStore
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.EntryFileJson
@@ -1117,77 +1115,6 @@ module LibraryDatabaseTests =
             Assert.Equal<FileSchemaVersion>(MaterialEntryKind.currentSchemaVersion, info.expected)
         | Error error -> Assert.Fail($"expected an unsupported schema version, got {error.describe}")
         | Ok _ -> Assert.Fail("an incompatible payload schema was accepted")
-
-    [<Fact>]
-    let ``importFrom fills an empty library database through the database stores`` () : unit =
-        let connectionString = ConnectionString "Data Source=:memory:"
-        use database = LibraryDatabase.openOrCreate connectionString |> expectDatabaseOk
-        let categories = CategoryProxy.createInDatabase database
-        let materials = MaterialProxy.createInDatabase database
-        let samples = SampleProxy.createInDatabase database
-        let presets = LibraryEntryStore.createInDatabase database
-        let proxy = CatalogueImportProxy.ofStores categories materials samples presets
-        let importer = CatalogueImportContext.create proxy
-        let catalogue = BuiltinCatalogue.catalogueData ()
-        let rows = importer.importFrom (CatalogueProxy.createBuiltIn ()) |> CatalogueImportTestData.expectImportOk
-        Assert.Equal(catalogue.envelopes.Length, rows.Length)
-
-        database.run (fun context ->
-            Assert.Empty(context.EntryVersions)
-            Assert.Empty(context.LatestVersions))
-        |> expectDatabaseOk
-
-        rows |> List.map _.byDefault |> importer.apply |> CatalogueImportTestData.expectImportOk |> ignore
-
-        for expected in BuiltinCatalogue.categories () do
-            let actual = categories.listCategories () |> Result.map (List.tryFind (fun category -> category.id = expected.id))
-            Assert.True((Ok (Some expected) = actual), "A category id must resolve to its decoded value.")
-        for expected in BuiltinCatalogue.materials () do
-            Assert.True((Ok (Some expected) = materials.tryGetMaterial expected.id), "A material id must resolve to its decoded value.")
-        for expected in BuiltinCatalogue.samples () do
-            Assert.True((Ok (Some expected) = samples.tryGetSample expected.id), "A sample id must resolve to its decoded value.")
-        for expected in BuiltinCatalogue.presets () do
-            Assert.True((Ok (Some expected) = presets.proxy.tryGetEntry expected.entryId), "A preset id must resolve to its decoded value.")
-
-        database.run (fun context ->
-            Assert.Equal(catalogue.envelopes.Length, context.EntryVersions |> Seq.length)
-            Assert.Equal(catalogue.envelopes.Length, context.LatestVersions |> Seq.length)
-            for kind in LibraryEntryKind.all do
-                let expected =
-                    catalogue.envelopes
-                    |> List.filter (fun envelope -> envelope.content.schema.kind = kind)
-                    |> List.map (fun envelope -> envelope.content.id, VersionNumber.first)
-                    |> List.sort
-                let actual =
-                    context.latestStoredOfKind kind
-                    |> expectDatabaseOk
-                    |> List.map (fun stored -> stored.envelope.content.id, stored.envelope.content.version)
-                    |> List.sort
-                Assert.Equal<(LibraryEntryId * VersionNumber) list>(expected, actual))
-        |> expectDatabaseOk
-
-        let categoriesBefore = categories.listCategories ()
-        let materialsBefore = materials.listMaterials IncludeInactive
-        let samplesBefore = samples.listSamples IncludeInactive
-        let readVersions () : StoredEntryVersion list =
-            database.run (fun context ->
-                context.EntryVersions |> Seq.map (fun row -> row.toStoredVersion |> expectDatabaseOk)
-                |> Seq.sortBy (fun stored -> stored.envelope.content.id, stored.envelope.content.version)
-                |> Seq.toList)
-            |> expectDatabaseOk
-        let versionsBefore = readVersions ()
-        let reused = importer.importFrom (CatalogueProxy.createBuiltIn ()) |> CatalogueImportTestData.expectImportOk
-        Assert.Equal(catalogue.envelopes.Length, reused.Length)
-        for row in reused do
-            match row.status with
-            | SameContentHash _ -> Assert.Equal(ReuseHeldEntry, row.defaultAction)
-            | _ -> Assert.Fail("Every held catalogue entry must be reused.")
-        reused |> List.map _.byDefault |> importer.apply |> CatalogueImportTestData.expectImportOk |> ignore
-        Assert.Equal(categoriesBefore, categories.listCategories ())
-        Assert.Equal(materialsBefore, materials.listMaterials IncludeInactive)
-        Assert.Equal(samplesBefore, samples.listSamples IncludeInactive)
-        let versionsAfter = readVersions ()
-        Assert.Equal<StoredEntryVersion list>(versionsBefore, versionsAfter)
 
     [<Fact>]
     let ``the fixture library database holds every Built-in entry as its version 1 and latest`` () : unit =

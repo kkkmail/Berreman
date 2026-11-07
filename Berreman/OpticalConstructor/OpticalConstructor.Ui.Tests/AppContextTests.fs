@@ -74,7 +74,7 @@ module AppContextTests =
         | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
         | None -> Assert.Fail($"%s{id} was not found")
 
-    /// One fresh app scope — exactly what `Startup.context` is in the product app.
+    /// Population fixtures explicitly confirm startup choices before opening their surfaces (spec 0050 S3.1).
     let private freshContext () : AppContext = TestAppScope.freshAppContext owner
 
     /// A workbench surface composed FROM the app scope — what `MainConstructorWindow` runs (the two
@@ -101,8 +101,11 @@ module AppContextTests =
             |> Result.defaultWith (fun error -> failwith error.describe)
         let expected = BuiltinCatalogue.samples () |> List.sortBy _.id
         Assert.Equal<Result<Sample list, SampleError>>(Ok [], first.samples.listSamples IncludeInactive)
+        Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [], first.materials.listMaterials IncludeInactive)
+        Assert.Equal<Result<MaterialCategory list, CategoryError>>(Ok [], first.categories.listCategories ())
         Assert.Equal((BuiltinCatalogue.catalogueData ()).envelopes.Length, first.catalogueDecisions.Length)
-        first.catalogueDecisions |> List.map _.byDefault |> first.catalogueImport.apply
+        let choices = first.catalogueDecisions |> List.map _.byDefault
+        first.catalogueImport.apply choices
         |> Result.defaultWith (fun error -> failwith error.describe) |> ignore
         Assert.Equal<Result<Sample list, SampleError>>(
             Ok expected,

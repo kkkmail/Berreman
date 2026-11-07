@@ -15,6 +15,7 @@ module CatalogueImport =
     /// Import read, validation, sealing or write failures with diagnostic payloads (spec 0050 §3.4; S3.1).
     type CatalogueImportError =
         | ImportRejectedErr of reason : string
+        | ImportStoreUnavailableErr of reason : string
         | UndecodableEntryErr of LibraryEntryError
         | CatalogueUnreadableErr of CatalogueError
         | InvalidImportChoiceErr of reason : string
@@ -23,6 +24,7 @@ module CatalogueImport =
 
         member this.describe : string =
             match this with
+            | ImportStoreUnavailableErr reason -> $"the import store is unavailable: {reason}"
             | ImportRejectedErr reason -> $"a catalogue entry was rejected: {reason}"
             | UndecodableEntryErr error -> $"a catalogue entry could not be decoded: {error.describe}"
             | CatalogueUnreadableErr error -> $"the catalogue could not be read: {error.describe}"
@@ -410,9 +412,14 @@ module CatalogueImport =
 
     type CatalogueImportProxy with
 
-        /// Keeps import history in memory, writing each new id through the supplied stores (spec 0050 S2.3; S3.1).
+        /// Keeps import history in memory, writing each new id through its empty stores (spec 0050 S2.3; S3.1).
         /// Later versions and retirement belong to this seam; failed decodes or store writes leave its map unchanged.
-        static member ofStores (categories : CategoryProxy) (materials : MaterialProxy) (samples : SampleProxy) (presets : LibraryEntryStore) : CatalogueImportProxy =
+        static member createInMemory () : InMemoryCatalogueStores =
+            let samples = SampleProxy.createInMemory ()
+            let materials = MaterialProxy.createInMemory (samplesReferencing samples)
+            let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+            let presets = Library.createInMemory ()
+
             let categoryReason (e : CategoryError) : string =
                 match e with
                 | UnknownCategoryIdErr r | DuplicateCategoryIdErr r | CategoryStillReferencedErr r | BuiltInNotRemovableErr r | InvalidCategoryErr r | CategoryStoreUnavailableErr r -> r
@@ -443,67 +450,60 @@ module CatalogueImport =
                 | PolarizerEntryKind -> content.toPolarizerPreset |> Result.map PolarizerItem |> pushDecoded savePreset
                 | DetectorEntryKind -> content.toDetectorPreset |> Result.map DetectorItem |> pushDecoded savePreset
 
-            {
-                tryHeldEntry = fun id -> Ok (entries.Value |> Map.tryFind id |> Option.map _.heldEntry)
-                heldEntriesNamed = fun kind name ->
-                    entries.Value |> Map.toList |> List.map (fun (_, state) -> state.heldEntry)
-                    |> List.filter (fun held -> held.kind = kind && held.name = name) |> Ok
-                heldEntriesOf = fun catalogueId ->
-                    entries.Value |> Map.toList |> List.map (fun (_, state) -> state.heldEntry)
-                    |> List.filter (fun held -> held.provenance = BuiltInProvenance catalogueId) |> Ok
-                putEntryVersion = fun put ->
-                    let envelope = put.envelope
-                    let content = envelope.content
-                    let next =
-                        match entries.Value |> Map.tryFind content.id with
-                        | Some state when state.latestEnvelope.content.schema.kind <> content.schema.kind ->
-                            Error (ImportRejectedErr $"entry '{content.name.value}' ({content.id.value}) is held as another kind")
-                        | Some state when state.envelopes |> List.exists (fun held -> held.content.version = content.version) ->
-                            Error (ImportRejectedErr $"entry '{content.name.value}' ({content.id.value}) already holds version {content.version.value}")
+            let proxy : CatalogueImportProxy =
+                {
+                    tryHeldEntry = fun id -> Ok (entries.Value |> Map.tryFind id |> Option.map _.heldEntry)
+                    heldEntriesNamed = fun kind name ->
+                        entries.Value |> Map.toList |> List.map (fun (_, state) -> state.heldEntry)
+                        |> List.filter (fun held -> held.kind = kind && held.name = name) |> Ok
+                    heldEntriesOf = fun catalogueId ->
+                        entries.Value |> Map.toList |> List.map (fun (_, state) -> state.heldEntry)
+                        |> List.filter (fun held -> held.provenance = BuiltInProvenance catalogueId) |> Ok
+                    putEntryVersion = fun put ->
+                        let envelope = put.envelope
+                        let content = envelope.content
+                        let next =
+                            match entries.Value |> Map.tryFind content.id with
+                            | Some state when state.latestEnvelope.content.schema.kind <> content.schema.kind ->
+                                Error (ImportRejectedErr $"entry '{content.name.value}' ({content.id.value}) is held as {state.latestEnvelope.content.schema.kind.extension.value}, not {content.schema.kind.extension.value}")
+                            | Some state when state.envelopes |> List.exists (fun held -> held.content.version = content.version) ->
+                                Error (ImportRejectedErr $"entry '{content.name.value}' ({content.id.value}) already holds version {content.version.value}")
+                            | Some state ->
+                                let latestEnvelope, lifecycle =
+                                    match put.latest with
+                                    | MoveLatestVersion -> envelope, ActiveEntry
+                                    | KeepLatestVersion -> state.latestEnvelope, state.lifecycle
+                                Ok
+                                    {
+                                        envelopes = envelope :: state.envelopes |> List.sortBy _.content.version
+                                        latestEnvelope = latestEnvelope
+                                        lifecycle = lifecycle
+                                    }
+                            | None ->
+                                pushFirst envelope |> Result.map (fun () ->
+                                    {
+                                        envelopes = [ envelope ]
+                                        latestEnvelope = envelope
+                                        lifecycle = ActiveEntry
+                                    })
+                        next |> Result.map (fun state -> entries.Value <- Map.add content.id state entries.Value)
+                    retireEntry = fun id ->
+                        match entries.Value |> Map.tryFind id with
+                        | None -> Error (ImportRejectedErr $"entry {id.value} is not held and cannot be retired")
                         | Some state ->
-                            let latestEnvelope, lifecycle =
-                                match put.latest with
-                                | MoveLatestVersion -> envelope, ActiveEntry
-                                | KeepLatestVersion -> state.latestEnvelope, state.lifecycle
-                            Ok
+                            let retired =
                                 {
-                                    envelopes = envelope :: state.envelopes |> List.sortBy _.content.version
-                                    latestEnvelope = latestEnvelope
-                                    lifecycle = lifecycle
+                                    state with
+                                        lifecycle = InactiveEntry
                                 }
-                        | None ->
-                            pushFirst envelope |> Result.map (fun () ->
-                                {
-                                    envelopes = [ envelope ]
-                                    latestEnvelope = envelope
-                                    lifecycle = ActiveEntry
-                                })
-                    next |> Result.map (fun state -> entries.Value <- Map.add content.id state entries.Value)
-                retireEntry = fun id ->
-                    match entries.Value |> Map.tryFind id with
-                    | None -> Error (ImportRejectedErr $"entry {id.value} is not held and cannot be retired")
-                    | Some state ->
-                        let retired =
-                            {
-                                state with
-                                    lifecycle = InactiveEntry
-                            }
-                        entries.Value <- Map.add id retired entries.Value
-                        Ok ()
-            }
-
-        /// Builds a CatalogueImportProxy over empty in-memory stores, mapping refusals to ImportRejectedErr (spec 0050 §3.4).
-        /// Returns InMemoryCatalogueStores with live reference lookups and no database or file IO.
-        static member createInMemory () : InMemoryCatalogueStores =
-            let samples = SampleProxy.createInMemory ()
-            let materials = MaterialProxy.createInMemory (samplesReferencing samples)
-            let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-            let libraryEntries = Library.createInMemory ()
+                            entries.Value <- Map.add id retired entries.Value
+                            Ok ()
+                }
 
             {
-                proxy = CatalogueImportProxy.ofStores categories materials samples libraryEntries
+                proxy = proxy
                 categories = categories
                 materials = materials
                 samples = samples
-                libraryEntries = libraryEntries.proxy
+                libraryEntries = presets.proxy
             }
