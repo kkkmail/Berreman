@@ -20,6 +20,72 @@ open OpticalConstructor.Domain.Units
 [<AutoOpen>]
 module ConstructorUiIdOfDomain =
 
+    type LibraryEntryId with
+
+        /// The entry's GUID text as its import-row key.
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey (string this.value)
+
+    type LibraryEntryKind with
+
+        /// The entry kind shown in an import row.
+        member this.caption : ControlCaption =
+            match this with
+            | MaterialEntryKind -> ControlCaption "Material"
+            | SampleEntryKind -> ControlCaption "Sample"
+            | SourceEntryKind -> ControlCaption "Source"
+            | PolarizerEntryKind -> ControlCaption "Polarizer"
+            | DetectorEntryKind -> ControlCaption "Detector"
+            | CategoryEntryKind -> ControlCaption "Category"
+
+    type ImportStatus with
+
+        /// The decision-table status shown before an import is confirmed.
+        member this.caption : ControlCaption =
+            match this with
+            | EntryIdNotHeld _ -> ControlCaption "New entry"
+            | SameContentHash _ -> ControlCaption "Already in the library"
+            | VersionNotHeld _ -> ControlCaption "New version of a held entry"
+            | DivergentContent _ -> ControlCaption "Differs from the held version"
+            | NameCollision _ -> ControlCaption "Same name as a held entry"
+            | EntryUnlisted _ -> ControlCaption "No longer in its catalogue"
+
+    type ImportAction with
+
+        /// The action's stable import-option key, including a rebind target's identity.
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | AddIncomingEntry -> ConstructorUiKey "add"
+            | ReuseHeldEntry -> ConstructorUiKey "reuse"
+            | AddIncomingVersion MoveLatestVersion -> ConstructorUiKey "version-latest"
+            | AddIncomingVersion KeepLatestVersion -> ConstructorUiKey "version-kept"
+            | ForkIncomingEntry -> ConstructorUiKey "fork"
+            | RebindToHeldEntry id -> ConstructorUiKey $"rebind-{id.value}"
+            | SkipIncomingEntry -> ConstructorUiKey "skip"
+            | RetireHeldEntry -> ConstructorUiKey "retire"
+
+    type ImportDecision with
+
+        /// Names an offered action in its row's context, including the held name for rebinding (001 §B).
+        member this.actionCaption (action : ImportAction) : ControlCaption =
+            match action with
+            | AddIncomingEntry ->
+                match this.status with
+                | NameCollision _ -> ControlCaption "Side by side"
+                | _ -> ControlCaption "Add"
+            | ReuseHeldEntry -> ControlCaption "Reuse the held entry"
+            | AddIncomingVersion MoveLatestVersion -> ControlCaption "Add version, made latest"
+            | AddIncomingVersion KeepLatestVersion -> ControlCaption "Add version, latest kept"
+            | ForkIncomingEntry -> ControlCaption "Fork as a new entry"
+            | RebindToHeldEntry id ->
+                match this.status with
+                | NameCollision (_, sameName) ->
+                    match sameName |> List.tryFind (fun held -> held.id = id) with
+                    | Some held -> ControlCaption $"Use my {held.name.value} instead"
+                    | None -> ControlCaption "Use the held entry instead"
+                | _ -> ControlCaption "Use the held entry instead"
+            | SkipIncomingEntry -> ControlCaption "Skip"
+            | RetireHeldEntry -> ControlCaption "Mark inactive"
+
     type CatalogueId with
 
         /// The catalogue's identity as its Library-window row key.

@@ -850,19 +850,19 @@ let facetedHandlers (dispatch : MaterialsWindowMsg -> unit) : FacetedTreeControl
 // The view: the faceted tree beside the verbs + view panel.
 // ---------------------------------------------------------------------------
 
-let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
+/// The Materials and import-dialog brush adapter (spec 0050 S3.2).
+let brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
 let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
 let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
-let private messageColor = Color.FromRgb(178uy, 34uy, 34uy)
-// The positive/negative action pair backgrounds (the Save/Cancel precedent, SampleEditorView).
-let private positiveBackground = Color.FromRgb(186uy, 224uy, 186uy)
-let private negativeBackground = Color.FromRgb(236uy, 202uy, 202uy)
+/// The Materials and import-dialog refusal colour (spec 0050 S3.2).
+let messageColor : Color = Color.FromRgb(178uy, 34uy, 34uy)
+/// The Materials and import-dialog positive action fill (spec 0050 S3.2).
+let positiveBackground : Color = Color.FromRgb(186uy, 224uy, 186uy)
+/// The Materials and import-dialog negative action fill (spec 0050 S3.2).
+let negativeBackground : Color = Color.FromRgb(236uy, 202uy, 202uy)
 
-/// A clickable verb box (the shared workbench button look), KEYED by its id so membership
-/// changes recreate a shifted box; `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble
-/// pass. The verbs, confirm row, message and panel all have variable membership, so every id is
-/// an AutomationId, never `StyledElement.Name` (the `FacetedTreeControls` discipline).
-let private verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
+/// A keyed verb box shared with the import dialog; handled presses prevent duplicate Tunnel/Bubble dispatch (spec 0050 S3.2).
+let verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
     let keyedBox =
         Border.create [
             id.automationAttribute<Border> ()
@@ -879,10 +879,8 @@ let private verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick 
         |> Avalonia.FuncUI.DSL.View.withKey id.value
     keyedBox :> IView
 
-/// A positive/negative ACTION box (the Save/Cancel styling precedent) — same look as
-/// `verbButton` but colour-coded and wider-padded; keyed, AutomationId'd (variable
-/// membership: the pair exists only in Select state).
-let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
+/// A keyed, colour-coded action box shared by Materials and the import dialog (spec 0050 S3.2).
+let actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
     let keyedBox =
         Border.create [
             id.automationAttribute<Border> ()

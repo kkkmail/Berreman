@@ -564,6 +564,18 @@ type ConstructorUiId =
     static member materialsSelectCloseButton : ConstructorUiId = ConstructorUiId "MaterialsSelectCloseButton"
     static member materialsSelectConstraint : ConstructorUiId = ConstructorUiId "MaterialsSelectConstraint"
 
+    // The import decision dialog (spec 0050 S3.2).
+    static member importDialogWindow : ConstructorUiId = ConstructorUiId "ImportDialogWindow"
+    static member importDialogHeading : ConstructorUiId = ConstructorUiId "ImportDialogHeading"
+    static member importDecisionList : ConstructorUiId = ConstructorUiId "ImportDecisionList"
+    static member importDecisionRow (entry : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ImportDecisionRow_{entry.value}"
+    static member importActionOption (entry : ConstructorUiKey) (action : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ImportActionOption_{entry.value}_{action.value}"
+    static member importDiffToggle (entry : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ImportDiffToggle_{entry.value}"
+    static member importDiffPreview (entry : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ImportDiffPreview_{entry.value}"
+    static member importDialogMessage : ConstructorUiId = ConstructorUiId "ImportDialogMessage"
+    static member importApplyButton : ConstructorUiId = ConstructorUiId "ImportApplyButton"
+    static member importCancelButton : ConstructorUiId = ConstructorUiId "ImportCancelButton"
+
     // --- The renderer test scene (`RendererTestView`). ---
     static member rendererTestCanvas : ConstructorUiId = ConstructorUiId "RendererTestCanvas"
 
