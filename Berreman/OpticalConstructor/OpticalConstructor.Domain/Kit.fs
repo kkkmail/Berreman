@@ -64,6 +64,7 @@ module Kit =
         | InvalidKitPathErr of reason : string
         | KitLockedErr of holder : KitLockHolder
         | KitReadOnlyErr of reason : string
+        | SnapshotExistsErr of reason : string
 
         member this.describe : string =
             match this with
@@ -76,6 +77,7 @@ module Kit =
             | InvalidKitPathErr reason -> $"the path is not inside the kit: {reason}"
             | KitLockedErr holder -> $"the kit is open elsewhere: {holder.describe}"
             | KitReadOnlyErr reason -> $"the kit is open read-only: {reason}"
+            | SnapshotExistsErr reason -> $"the kit already holds this library snapshot: {reason}"
 
     /// The display name, preserved as given; its file stem follows the shared name rule (spec 0050 S4.1).
     type KitName =
@@ -172,6 +174,16 @@ module Kit =
                     Error (InvalidKitPathErr $"'{text}': a kit-relative path must not contain empty, '.' or '..' segments")
                 else
                     Ok (KitRelativePath path)
+
+    type LibraryEntryEnvelope with
+
+        /// Names a snapshot by its entry id, version and kind extension (spec 0050 001 §A).
+        member this.snapshotFileName : FileName =
+            let version = this.content.version.value.ToString(CultureInfo.InvariantCulture)
+            FileName $"{this.content.id.value:D}@v{version}{this.content.schema.kind.extension.value}"
+
+        /// Places the immutable entry snapshot under the kit's library folder (spec 0050 001 §A).
+        member this.snapshotPath : KitRelativePath = KitRelativePath $"library/{this.snapshotFileName.value}"
 
     /// The files that occur once per item, setup, experiment, study or fit run, named by extension (spec 0050 001 §A).
     type KitFileKind =

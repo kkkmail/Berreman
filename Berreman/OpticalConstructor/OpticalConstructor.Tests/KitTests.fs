@@ -4,6 +4,7 @@ open System
 open System.Globalization
 open Xunit
 open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
 
@@ -73,6 +74,16 @@ module KitTests =
         let expectedFileName = FileName ".kit-json"
         Assert.Equal<FileExtension>(expectedExtension, KitFile.extension)
         Assert.Equal<FileName>(expectedFileName, KitFile.fileName)
+
+    [<Fact>]
+    let ``a snapshot is named by its entry id and version and its kind's extension, under library`` () : unit =
+        let silicon =
+            (BuiltinCatalogue.catalogueData ()).envelopes
+            |> List.find (fun envelope -> envelope.content.id = MaterialIds.silicon.toLibraryEntryId)
+        let expectedName = FileName $"{MaterialIds.silicon.value:D}@v1.material-json"
+        let expectedPath = KitRelativePath $"library/{expectedName.value}"
+        Assert.Equal<FileName>(expectedName, silicon.snapshotFileName)
+        Assert.Equal<KitRelativePath>(expectedPath, silicon.snapshotPath)
 
     [<Fact>]
     let ``a kit-relative path keeps forward slashes and refuses an absolute or escaping path`` () : unit =
@@ -166,13 +177,14 @@ module KitTests =
                 InvalidKitPathErr "../outside.csv", "the path is not inside the kit: ../outside.csv"
                 KitLockedErr exampleLockHolder, "the kit is open elsewhere: lab on BENCH-1 (process 4242) since 2026-11-03 12:00:00 UTC"
                 KitReadOnlyErr "writeKitFile", "the kit is open read-only: writeKitFile"
+                SnapshotExistsErr "library/entry@v1.material-json", "the kit already holds this library snapshot: library/entry@v1.material-json"
             ]
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
-        Assert.Equal(9, descriptions |> List.distinct |> List.length)
+        Assert.Equal(10, descriptions |> List.distinct |> List.length)
 
     [<Fact>]
     let ``a data folder is the kit's data folder or a folder inside it`` () : unit =

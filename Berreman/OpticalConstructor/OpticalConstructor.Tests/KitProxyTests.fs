@@ -9,11 +9,14 @@ open System.Threading
 open System.Threading.Tasks
 open Xunit
 open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.KitFolderStore
 
 /// One folder viewed through fresh proxies and an outside writer (spec 0050 S4.1).
@@ -31,6 +34,10 @@ type KitTestFolder =
     }
 
 module private KitProxyTestData =
+
+    let snapshotEnvelope (id : LibraryEntryId) : LibraryEntryEnvelope =
+        (BuiltinCatalogue.catalogueData ()).envelopes
+        |> List.find (fun envelope -> envelope.content.id = id)
 
     /// Starts at the fixed UTC instant and advances one second per call (spec 0050 S4.1).
     let steppingClock () : ClockProvider =
@@ -281,6 +288,126 @@ type KitProxyContract () =
 
     /// Returns an existing folder that holds no files or subfolders (spec 0050 S4.1).
     abstract freshFolder : unit -> KitTestFolder
+
+    [<Fact>]
+    member this.``a snapshot is written once under its id and version and listed back`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok [], proxy.listSnapshots ())
+        Assert.Empty(folder.paths ())
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let silicon = snapshotEnvelope MaterialIds.silicon.toLibraryEntryId
+        let sample = snapshotEnvelope SampleIds.multilayerQwId.toLibraryEntryId
+        let expected =
+            [ silicon; sample ]
+            |> List.sortWith (fun first second -> String.CompareOrdinal(first.snapshotFileName.value, second.snapshotFileName.value))
+        for envelope in List.rev expected do
+            Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeSnapshot envelope)
+        let paths = [ ".kit-json"; "data"; "library" ] @ (expected |> List.map (fun envelope -> envelope.snapshotPath.value))
+        Assert.Equal<string list>(paths, folder.paths ())
+        for reader in [ proxy; folder.openProxy (); proxy.readOnlyView ] do
+            Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok expected, reader.listSnapshots ())
+            Assert.Equal<string list>(paths, folder.paths ())
+
+        let versions = [ VersionNumber 2; VersionNumber 10 ]
+        let later =
+            versions
+            |> List.map (fun version ->
+                let content =
+                    {
+                        silicon.content with version = version
+                    }
+                content.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe))
+        for envelope in later do
+            Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeSnapshot envelope)
+        let allVersions =
+            expected @ later
+            |> List.sortWith (fun first second -> String.CompareOrdinal(first.snapshotFileName.value, second.snapshotFileName.value))
+        Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok allVersions, (folder.openProxy ()).listSnapshots ())
+
+        let unsupportedContent =
+            {
+                silicon.content with
+                    schema =
+                        {
+                            silicon.content.schema with version = FileSchemaVersion 999
+                        }
+            }
+        let wrongKindContent =
+            {
+                silicon.content with
+                    schema =
+                        {
+                            silicon.content.schema with kind = SampleEntryKind
+                        }
+            }
+        let invalidEnvelopes =
+            [
+                {
+                    silicon with contentHash = ContentHash (String.replicate 64 "0")
+                }
+                {
+                    silicon with content = unsupportedContent
+                }
+                {
+                    silicon with content = wrongKindContent
+                }
+            ]
+        for envelope in invalidEnvelopes do
+            let invalidFolder = this.freshFolder ()
+            let invalidProxy = invalidFolder.openProxy ()
+            Assert.Equal<Result<unit, KitError>>(Ok (), invalidProxy.initialiseKit kit)
+            Assert.Equal<Result<unit, KitError>>(Ok (), invalidProxy.writeSnapshot envelope)
+            let before = invalidFolder.paths ()
+            match (invalidFolder.openProxy ()).listSnapshots () with
+            | Error (KitFileRejectedErr reason) -> Assert.Contains(envelope.snapshotPath.value, reason)
+            | Error error -> Assert.Fail($"Expected KitFileRejectedErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("Both snapshot stores must validate schema, version and hash on read.")
+            Assert.Equal<string list>(before, invalidFolder.paths ())
+
+    [<Fact>]
+    member this.``a second snapshot of one version is refused and changes nothing`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let silicon = snapshotEnvelope MaterialIds.silicon.toLibraryEntryId
+        let changedContent =
+            {
+                silicon.content with descriptionOpt = Some (EntryDescription "A different snapshot description")
+            }
+        let changed = changedContent.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.NotEqual<ContentHash>(silicon.contentHash, changed.contentHash)
+        Assert.Equal<VersionNumber>(VersionNumber.first, changed.content.version)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeSnapshot silicon)
+        let before = folder.paths ()
+        for writer in [ proxy; folder.openProxy () ] do
+            for envelope in [ silicon; changed ] do
+                match writer.writeSnapshot envelope with
+                | Error (SnapshotExistsErr reason) -> Assert.Contains(silicon.snapshotPath.value, reason)
+                | Error error -> Assert.Fail($"Expected SnapshotExistsErr, got {error.describe}")
+                | Ok () -> Assert.Fail("A snapshot version must never be replaced.")
+                Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok [ silicon ], proxy.listSnapshots ())
+                Assert.Equal<string list>(before, folder.paths ())
+
+    [<Fact>]
+    member this.``a read-only kit refuses a snapshot and writes nothing`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let silicon = snapshotEnvelope MaterialIds.silicon.toLibraryEntryId
+        let readOnly = proxy.readOnlyView
+        let before = folder.paths ()
+        Assert.Equal<Result<unit, KitError>>(Error (KitReadOnlyErr "writeSnapshot"), readOnly.writeSnapshot silicon)
+        Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok [], readOnly.listSnapshots ())
+        Assert.Equal<string list>(before, folder.paths ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeSnapshot silicon)
+        let withSnapshot = folder.paths ()
+        Assert.Equal<Result<unit, KitError>>(Error (KitReadOnlyErr "writeSnapshot"), readOnly.writeSnapshot silicon)
+        Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok [ silicon ], readOnly.listSnapshots ())
+        Assert.Equal<string list>(withSnapshot, folder.paths ())
 
     [<Fact>]
     member this.``attaching a file inside the kit records it in place and writes nothing`` () : unit =
@@ -1310,6 +1437,92 @@ type KitProxyFolderTests () =
         let folder = freshKitFolderPath ()
         Directory.CreateDirectory folder.value |> ignore
         kitFolderAdapter folder
+
+    [<Fact>]
+    member this.``a snapshot file is byte for byte its catalogue entry file`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let library = folder.absoluteName "library"
+        Directory.Delete library.value
+        let before = folder.paths ()
+        Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok [], proxy.listSnapshots ())
+        Assert.Equal<string list>(before, folder.paths ())
+        let silicon = snapshotEnvelope MaterialIds.silicon.toLibraryEntryId
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeSnapshot silicon)
+        let file = folder.absoluteName silicon.snapshotPath.value
+        let catalogueFile = FileName (Path.Combine(AppContext.BaseDirectory, "Catalogue", "Builtin", "Silicon.material-json"))
+        let expected = File.ReadAllBytes catalogueFile.value |> FileByteContent
+        Assert.Equal<byte>(expected.value, File.ReadAllBytes file.value)
+        Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok [ silicon ], proxy.listSnapshots ())
+        let upperName = FileName (silicon.snapshotFileName.value.ToUpperInvariant())
+        let upperFile = folder.absoluteName $"library/{upperName.value}"
+        File.Delete file.value
+        let withBom = Array.append [| 0xEFuy; 0xBBuy; 0xBFuy |] expected.value |> FileByteContent
+        File.WriteAllBytes(upperFile.value, withBom.value)
+        Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok [ silicon ], (folder.openProxy ()).listSnapshots ())
+        match proxy.writeSnapshot silicon with
+        | Error (SnapshotExistsErr reason) -> Assert.Contains(silicon.snapshotPath.value, reason)
+        | Error error -> Assert.Fail($"Expected SnapshotExistsErr, got {error.describe}")
+        | Ok () -> Assert.Fail("Snapshot names must compare ignoring case.")
+        Assert.Equal<byte>(withBom.value, File.ReadAllBytes upperFile.value)
+
+    [<Fact>]
+    member this.``a snapshot that does not read, or is not named for its own id and version, is refused naming the file`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let silicon = snapshotEnvelope MaterialIds.silicon.toLibraryEntryId
+        let text = silicon.fileText |> Result.defaultWith (fun error -> failwith error.describe)
+        let withoutName = JsonNode.Parse text.value
+        withoutName.AsObject().Remove "name" |> ignore
+        let unsupported = JsonNode.Parse text.value
+        unsupported["schema"]["version"] <- JsonValue.Create 999
+        let wrongHash = JsonNode.Parse text.value
+        wrongHash["contentHash"] <- JsonValue.Create (String.replicate 64 "0")
+        let otherId = LibraryEntryId (Guid.Parse "8d16b93a-5e40-4e62-a8cc-f0e78b7a3812")
+        let otherPath = KitRelativePath $"library/{otherId.value:D}@v1.material-json"
+        let otherVersionPath = KitRelativePath $"library/{silicon.content.id.value:D}@v2.material-json"
+        let wrongKindPath = KitRelativePath $"library/{silicon.content.id.value:D}@v1.sample-json"
+        let refusals =
+            [
+                silicon.snapshotPath, KitFileText "{"
+                silicon.snapshotPath, KitFileText (withoutName.ToJsonString ())
+                silicon.snapshotPath, KitFileText (unsupported.ToJsonString ())
+                silicon.snapshotPath, KitFileText (wrongHash.ToJsonString ())
+                otherPath, KitFileText text.value
+                otherVersionPath, KitFileText text.value
+                wrongKindPath, KitFileText text.value
+            ]
+        for path, invalidText in refusals do
+            folder.placeLabFile path.value invalidText.value
+            let before = folder.paths ()
+            for reader in [ proxy; proxy.readOnlyView; folder.openProxy () ] do
+                match reader.listSnapshots () with
+                | Error (KitFileRejectedErr reason) ->
+                    Assert.Contains(path.value, reason)
+                    Assert.True(reason.Length > path.value.Length)
+                | Error error -> Assert.Fail($"Expected KitFileRejectedErr, got {error.describe}")
+                | Ok _ -> Assert.Fail("An invalid or misnamed snapshot must be refused.")
+                Assert.Equal<string list>(before, folder.paths ())
+            folder.removeLabFile path.value
+
+    [<Fact>]
+    member this.``files under library that are not entry files are not snapshots`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let silicon = snapshotEnvelope MaterialIds.silicon.toLibraryEntryId
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeSnapshot silicon)
+        folder.placeLabFile "library/notes.txt" "Keep these notes"
+        folder.placeLabFile "library/x.material-json.tmp" "{"
+        folder.placeLabFile "library/nested/broken.material-json" "{"
+        let before = folder.paths ()
+        Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok [ silicon ], proxy.listSnapshots ())
+        Assert.Equal<string list>(before, folder.paths ())
 
     [<Fact>]
     member this.``a copied-in file holds exactly the bytes given, a byte-order mark included`` () : unit =

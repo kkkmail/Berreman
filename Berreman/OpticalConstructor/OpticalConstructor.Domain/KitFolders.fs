@@ -33,6 +33,10 @@ module KitFolders =
             tryKitPathOf : FileName -> KitRelativePath option
             /// Copies bytes into data under a free name, creating parents and never replacing a lab file (spec 0050 S4.2).
             copyInFile : KitDataFolder -> FileName -> FileByteContent -> Result<KitDataFile, KitError>
+            /// Lists snapshots in ordinal filename order through their schema, version and hash checks (spec 0050 001 §A).
+            listSnapshots : unit -> Result<LibraryEntryEnvelope list, KitError>
+            /// Writes a version once under library, refusing an existing snapshot without changes (spec 0050 001 §A).
+            writeSnapshot : LibraryEntryEnvelope -> Result<unit, KitError>
             /// Replaces this proxy's in-memory record of all current kit-file stamps without writing (spec 0050 S4.1).
             recordStamps : unit -> Result<unit, KitError>
             /// Lists added, changed or removed kit files in ordinal order, excluding this proxy's own writes (spec 0050 S4.1).
@@ -142,6 +146,7 @@ module KitFolders =
         let folderSync = obj ()
         let mutable kitFileOpt : KitFile option = None
         let mutable texts : Map<KitRelativePath, KitFileText> = Map.empty
+        let mutable snapshots : Map<FileName, LibraryEntryEnvelope> = Map.empty
         let mutable folders : Set<KitRelativePath> = Set.empty
         let mutable nextProxyProcessId = ProcessId 1
 
@@ -189,7 +194,8 @@ module KitFolders =
         /// Lists every file and folder by its kit-relative path in ordinal order (spec 0050 S4.1).
         member _.paths () : KitRelativePath list =
             let filePaths = texts |> Map.keys |> Set.ofSeq
-            Set.union folders filePaths
+            let snapshotPaths = snapshots |> Map.values |> Seq.map (fun envelope -> envelope.snapshotPath) |> Set.ofSeq
+            Set.unionMany [ folders; filePaths; snapshotPaths ]
             |> Set.toList
             |> List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value))
 
@@ -198,6 +204,7 @@ module KitFolders =
             (serializeMetadata : KitFile -> Result<KitFileText, KitError>)
             (serializeLock : KitLockHolder -> Result<KitFileText, KitError>)
             (parseLock : KitFileText -> Result<KitLockHolder, KitError>)
+            (readSnapshot : LibraryEntryEnvelope -> Result<LibraryEntryEnvelope, KitError>)
             : KitProxy =
             let owner : KitLockOwner =
                 lock folderSync (fun () ->
@@ -293,6 +300,27 @@ module KitFolders =
                             |> Result.bind (fun path ->
                                 this.placeLabFile path bytes.kitFileText
                                 |> Result.bind (fun () -> this.readInMemoryKitDataFile path)))
+                listSnapshots =
+                    fun () ->
+                        lock folderSync (fun () ->
+                            snapshots
+                            |> Map.toList
+                            |> List.sortWith (fun (first, _) (second, _) -> String.CompareOrdinal(first.value, second.value))
+                            |> List.fold (fun result (_, envelope) ->
+                                result |> Result.bind (fun entries ->
+                                    readSnapshot envelope |> Result.map (fun entry -> entry :: entries))) (Ok [])
+                            |> Result.map List.rev)
+                writeSnapshot =
+                    fun envelope ->
+                        lock folderSync (fun () ->
+                            let name = envelope.snapshotFileName
+                            if Map.containsKey name snapshots then
+                                Error (SnapshotExistsErr $"in-memory kit folder: '{envelope.snapshotPath.value}'")
+                            else
+                                snapshots <- Map.add name envelope snapshots
+                                let library = KitRelativePath "library"
+                                folders <- Set.add library folders
+                                Ok ())
                 recordStamps =
                     fun () ->
                         recordedStamps <- currentStamps ()
@@ -350,6 +378,8 @@ module KitFolders =
                 readDataFile = this.readDataFile
                 tryKitPathOf = this.tryKitPathOf
                 copyInFile = fun _ _ _ -> Error (KitReadOnlyErr "copyInFile")
+                listSnapshots = this.listSnapshots
+                writeSnapshot = fun _ -> Error (KitReadOnlyErr "writeSnapshot")
                 recordStamps = this.recordStamps
                 changedKitFiles = this.changedKitFiles
                 acquireLock = fun _ -> Error (KitReadOnlyErr "acquireLock")

@@ -12,6 +12,7 @@ open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.CatalogueFolderStore
 
@@ -93,6 +94,8 @@ module KitFolderStore =
 
         member private this.toJsonText : JsonText = JsonText this.value
 
+        member private this.toLibraryFileText : LibraryFileText = LibraryFileText this.value
+
         /// Binds cache text through the shared JSON options, reporting invalid text as MalformedJsonErr (spec 0050 S4.1).
         member this.parseLockHolder : Result<KitLockHolder, StorageError> =
             try
@@ -124,6 +127,19 @@ module KitFolderStore =
     let private serializeKitLock (folder : FolderName) (holder : KitLockHolder) : Result<KitFileText, KitError> =
         holder.lockFileText |> Result.mapError (kitLockIoErr folder)
 
+    let private snapshotFileRejectedErr (path : KitRelativePath) (error : StorageError) : KitError =
+        KitFileRejectedErr $"the snapshot '{path.value}' is rejected: {error.describe}"
+
+    let private parseKitSnapshot (name : FileName) (kind : LibraryEntryKind) (text : LibraryFileText) : Result<LibraryEntryEnvelope, KitError> =
+        let path = KitRelativePath $"library/{name.value}"
+        text.parseEntry kind
+        |> Result.mapError (snapshotFileRejectedErr path)
+        |> Result.bind (fun envelope ->
+            if String.Equals(envelope.snapshotFileName.value, name.value, StringComparison.OrdinalIgnoreCase) then
+                Ok envelope
+            else
+                Error (KitFileRejectedErr $"the snapshot '{path.value}' must be named '{envelope.snapshotFileName.value}' for its entry id and version"))
+
     type FileName with
 
         member private this.readKitText () : KitFileText =
@@ -150,6 +166,10 @@ module KitFolderStore =
                 (serializeKitMetadata folderName)
                 (serializeKitLock folderName)
                 (fun text -> text.parseLockHolder |> Result.mapError (kitLockIoErr folderName))
+                (fun envelope ->
+                    envelope.fileText
+                    |> Result.mapError (snapshotFileRejectedErr envelope.snapshotPath)
+                    |> Result.bind (parseKitSnapshot envelope.snapshotFileName envelope.content.schema.kind))
 
         /// Opens a folder without writing; initialisation adds the kit and the first lock adds its cache (spec 0050 S4.1).
         static member create (folder : KitFolder) : KitProxy =
@@ -292,6 +312,44 @@ module KitFolderStore =
                                 |> Result.map (fun () -> bytes.kitDataFile path))
                         with error ->
                             Error (KitIoErr $"kit folder '{folder.value.value}': cannot copy '{source.value}' into '{destination.value.value}': {error.Message}")
+                listSnapshots =
+                    fun () ->
+                        tryKitFolderIo folder (fun () ->
+                            let library = FolderName (Path.Combine(folder.value.value, "library"))
+                            if not (Directory.Exists library.value) then
+                                Ok []
+                            else
+                                Directory.GetFiles(library.value, "*", SearchOption.TopDirectoryOnly)
+                                |> Array.map (fun path -> FileName (Path.GetFileName path))
+                                |> Array.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value))
+                                |> Array.fold (fun result name ->
+                                    result |> Result.bind (fun entries ->
+                                        match LibraryEntryKind.tryOfFileName name with
+                                        | None -> Ok entries
+                                        | Some kind ->
+                                            let file = name.combine library
+                                            let text = (file.readKitText ()).toLibraryFileText
+                                            parseKitSnapshot name kind text
+                                            |> Result.map (fun envelope -> envelope :: entries))) (Ok [])
+                                |> Result.map List.rev)
+                writeSnapshot =
+                    fun envelope ->
+                        tryKitFolderIo folder (fun () ->
+                            let library = FolderName (Path.Combine(folder.value.value, "library"))
+                            let file = envelope.snapshotFileName.combine library
+                            let existsError = SnapshotExistsErr $"kit folder '{folder.value.value}': '{envelope.snapshotPath.value}'"
+                            if File.Exists file.value then
+                                Error existsError
+                            else
+                                envelope.fileText
+                                |> Result.mapError (snapshotFileRejectedErr envelope.snapshotPath)
+                                |> Result.bind (fun text ->
+                                    let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
+                                    Directory.CreateDirectory library.value |> ignore
+                                    file.writeNewBytesAtomically bytes
+                                    |> Result.mapError (fun error ->
+                                        if File.Exists file.value then existsError
+                                        else KitIoErr $"kit folder '{folder.value.value}': the snapshot '{envelope.snapshotPath.value}' is not written: {error.describe}")))
                 recordStamps =
                     fun () ->
                         tryKitFolderIo folder (fun () ->
