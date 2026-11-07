@@ -122,6 +122,7 @@ module CatalogueImportProxyTests =
         Assert.Equal("a catalogue entry was rejected: store refused Silicon", (ImportRejectedErr "store refused Silicon").describe)
         Assert.Equal($"a catalogue entry could not be decoded: {entryError.describe}", (UndecodableEntryErr entryError).describe)
         Assert.Equal($"the catalogue could not be read: {catalogueError.describe}", (CatalogueUnreadableErr catalogueError).describe)
+        Assert.Equal("the catalogue is already registered: Lab is registered under the shared folder", (CatalogueAlreadyRegisteredErr "Lab is registered under the shared folder").describe)
         Assert.Equal("an import choice is invalid: Silicon cannot be reused", (InvalidImportChoiceErr "Silicon cannot be reused").describe)
         Assert.Equal("an import would leave a dangling reference: Plate references skipped Silicon", (DanglingReferenceErr "Plate references skipped Silicon").describe)
         Assert.Equal("a catalogue entry could not be hashed: Silicon cannot be sealed", (EntryHashingErr "Silicon cannot be sealed").describe)

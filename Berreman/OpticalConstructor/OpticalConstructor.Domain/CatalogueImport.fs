@@ -20,6 +20,7 @@ module CatalogueImport =
         | ImportStoreUnavailableErr of reason : string
         | UndecodableEntryErr of LibraryEntryError
         | CatalogueUnreadableErr of CatalogueError
+        | CatalogueAlreadyRegisteredErr of reason : string
         | InvalidImportChoiceErr of reason : string
         | DanglingReferenceErr of reason : string
         | EntryHashingErr of reason : string
@@ -30,6 +31,7 @@ module CatalogueImport =
             | ImportRejectedErr reason -> $"a catalogue entry was rejected: {reason}"
             | UndecodableEntryErr error -> $"a catalogue entry could not be decoded: {error.describe}"
             | CatalogueUnreadableErr error -> $"the catalogue could not be read: {error.describe}"
+            | CatalogueAlreadyRegisteredErr reason -> $"the catalogue is already registered: {reason}"
             | InvalidImportChoiceErr reason -> $"an import choice is invalid: {reason}"
             | DanglingReferenceErr reason -> $"an import would leave a dangling reference: {reason}"
             | EntryHashingErr reason -> $"a catalogue entry could not be hashed: {reason}"
@@ -273,6 +275,11 @@ module CatalogueImport =
             forgetImport : CatalogueId -> Result<unit, CatalogueImportError>
         }
 
+        /// Lists registered extra folders in log order, excluding the shipped catalogue (spec 0050 S3.1).
+        member this.registeredFolders () : Result<CatalogueImportLogEntry list, CatalogueImportError> =
+            this.loggedImports ()
+            |> Result.map (List.filter (fun entry -> entry.catalogueId <> CatalogueIds.builtInCatalogue))
+
         member this.decideCatalogue (catalogue : CatalogueData) : Result<ImportDecision list, CatalogueImportError> =
             let origin = CatalogueImportOrigin (catalogue.manifest.id, catalogue.manifest.name)
             let decideEnvelope (envelope : LibraryEntryEnvelope) : Result<ImportDecision, CatalogueImportError> =
@@ -427,6 +434,35 @@ module CatalogueImport =
                         forks = List.rev outcome.forks
                     }))
 
+        /// Requires exactly one choice per pending row, applies its offered action and logs only after success (spec 0050 S3.1).
+        member this.settle (pending : PendingCatalogueImport) (choices : ImportChoice list) : Result<ImportOutcome, CatalogueImportError> =
+            let pendingIds = pending.decisions |> List.map _.entryId |> Set.ofList
+            let choicesById = choices |> List.groupBy (fun choice -> choice.decision.entryId) |> Map.ofList
+            match choices |> List.tryFind (fun choice -> not (Set.contains choice.decision.entryId pendingIds)) with
+            | Some choice -> Error (InvalidImportChoiceErr $"entry {choice.decision.entryId.value} is not pending for catalogue {pending.entry.catalogueId.value}")
+            | None ->
+                pending.decisions
+                |> List.fold (fun result decision ->
+                    result |> Result.bind (fun confirmed ->
+                        match Map.tryFind decision.entryId choicesById with
+                        | Some [ choice ] ->
+                            let canonical =
+                                {
+                                    decision = decision
+                                    action = choice.action
+                                }
+                            Ok (canonical :: confirmed)
+                        | Some _ -> Error (InvalidImportChoiceErr $"entry {decision.entryId.value} has multiple choices for catalogue {pending.entry.catalogueId.value}")
+                        | None -> Error (InvalidImportChoiceErr $"entry {decision.entryId.value} has no choice for catalogue {pending.entry.catalogueId.value}"))) (Ok [])
+                |> Result.bind (List.rev >> this.apply)
+                |> Result.bind (fun outcome ->
+                    let entry =
+                        {
+                            pending.entry with
+                                importedAt = this.now ()
+                        }
+                    this.proxy.logImport entry |> Result.map (fun () -> outcome))
+
         /// Returns every decision without writes; the caller must confirm the complete list before apply (spec 0050 §3.7).
         member this.importCatalogue (catalogue : CatalogueData) : Result<ImportDecision list, CatalogueImportError> =
             this.proxy.decideCatalogue catalogue
@@ -465,6 +501,20 @@ module CatalogueImport =
         member this.importFolder (folder : FolderName) : Result<FolderImportResult, CatalogueImportError> =
             this.proxy.loggedImports ()
             |> Result.bind (fun imports -> this.inspectImportFolder imports folder)
+
+        /// Refuses reserved or registered identities; every new folder row awaits settlement without writes (spec 0050 S3.1).
+        member this.registerFolder (folder : FolderName) : Result<FolderImportResult, CatalogueImportError> =
+            (this.openCatalogue folder).readManifest ()
+            |> Result.mapError CatalogueUnreadableErr
+            |> Result.bind (fun manifest ->
+                this.proxy.loggedImports ()
+                |> Result.bind (fun imports ->
+                    match imports |> List.tryFind (fun entry -> entry.catalogueId = manifest.id) with
+                    | Some entry ->
+                        Error (CatalogueAlreadyRegisteredErr $"folder '{folder.value}' contains catalogue '{manifest.name.value}' ({manifest.id.value}), already registered under '{entry.folder.value}'")
+                    | None when manifest.id = CatalogueIds.builtInCatalogue ->
+                        Error (CatalogueAlreadyRegisteredErr $"folder '{folder.value}' contains catalogue '{manifest.name.value}' ({manifest.id.value}), reserved for the shipped Built-in catalogue")
+                    | None -> this.importFolder folder))
 
         /// Inspects the shipped folder first, then each logged non-built-in folder; folder failures remain local (spec 0050 S3.1).
         member this.importOnStart (builtInFolder : FolderName) : Result<StartupImportReport, CatalogueImportError> =

@@ -228,16 +228,54 @@ module private CatalogueImportContractData =
         Assert.Empty observed.retirements
         Assert.Empty observed.logs
 
-    // Spec 0050 step 0098: step 0099 replaces this fixture sequence with settle.
     let confirmImportDefaults (context : CatalogueImportContext) (pending : PendingCatalogueImport) : CatalogueImportLogEntry =
-        pending.decisions |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
-        let entry =
+        pending.decisions |> List.map _.byDefault |> context.settle pending |> expectImportOk |> ignore
+        context.proxy.loggedImports () |> expectImportOk
+        |> List.find (fun entry -> entry.catalogueId = pending.entry.catalogueId)
+
+    type LabImportFixture =
+        {
+            entries : ImportRowEntries
+            user : LibraryEntryEnvelope
+            collision : LibraryEntryEnvelope
+            shipped : FolderName
+            lab : CatalogueData
+            labFolder : FolderName
+        }
+
+    let prepareLabImport (context : CatalogueImportContext) : LabImportFixture =
+        let entries = readImportRowEntries ()
+        let userContent =
             {
-                pending.entry with
-                    importedAt = context.now ()
+                (userImportMaterial entries.silicon).content with
+                    name = EntryName "Lab glass"
             }
-        context.proxy.logImport entry |> expectImportOk
-        entry
+        let user = userContent.``sealed`` |> expectImportDatabaseOk
+        let collisionContent =
+            {
+                user.content with
+                    id = forkEntryId
+            }
+        let collision = collisionContent.``sealed`` |> expectImportDatabaseOk
+        let builtIn = rowCatalogue CatalogueIds.builtInCatalogue entries.builtInName [ entries.category ]
+        let shipped = writtenImportFolder builtIn
+        let lab = rowCatalogue labCatalogueId labCatalogueName [ entries.category; user ]
+        let first = context.importOnStart shipped |> expectImportOk
+        confirmImportDefaults context (Assert.Single first.pending) |> ignore
+        {
+            entries = entries
+            user = user
+            collision = collision
+            shipped = shipped
+            lab = lab
+            labFolder = writtenImportFolder lab
+        }
+
+    let changeLabImport (fixture : LabImportFixture) : CatalogueData =
+        File.Delete((fixture.user.content.fileName.combine fixture.labFolder).value)
+        let changed = rowCatalogue labCatalogueId labCatalogueName [ fixture.entries.category; fixture.collision; fixture.entries.source ]
+        writeImportFolder fixture.labFolder changed
+        changed
 
 open CatalogueImportContractData
 
@@ -321,30 +359,16 @@ type CatalogueImportContract () =
 
     [<Fact>]
     member this.``a changed catalogue holds every row without writes or logging until confirmation`` () : unit =
-        let entries = readImportRowEntries ()
-        let userContent =
-            {
-                (userImportMaterial entries.silicon).content with
-                    name = EntryName "Lab glass"
-            }
-        let user = userContent.``sealed`` |> expectImportDatabaseOk
-        let collisionContent =
-            {
-                user.content with
-                    id = forkEntryId
-            }
-        let collision = collisionContent.``sealed`` |> expectImportDatabaseOk
-        let builtIn = rowCatalogue CatalogueIds.builtInCatalogue entries.builtInName [ entries.category ]
-        let shipped = writtenImportFolder builtIn
-        let lab = rowCatalogue labCatalogueId labCatalogueName [ entries.category; user ]
-        let labFolder = writtenImportFolder lab
         let stores = this.freshImport ()
-        stores.context.importFolder shipped |> pendingImport |> confirmImportDefaults stores.context |> ignore
-        stores.context.importFolder labFolder |> pendingImport |> confirmImportDefaults stores.context |> ignore
+        let fixture = prepareLabImport stores.context
+        let entries = fixture.entries
+        let user = fixture.user
+        let collision = fixture.collision
+        let shipped = fixture.shipped
+        let labFolder = fixture.labFolder
+        stores.context.registerFolder labFolder |> pendingImport |> confirmImportDefaults stores.context |> ignore
         let priorLog = stores.context.proxy.loggedImports () |> expectImportOk
-        File.Delete((user.content.fileName.combine labFolder).value)
-        let changed = rowCatalogue labCatalogueId labCatalogueName [ entries.category; collision; entries.source ]
-        writeImportFolder labFolder changed
+        let changed = changeLabImport fixture
         let observed = observeStartupImport stores.context
         let before = importRowSnapshot observed.context [ entries.category.content.id; user.content.id; collision.content.id; entries.source.content.id ]
         let startAndAssertPending () : PendingCatalogueImport =
@@ -366,6 +390,219 @@ type CatalogueImportContract () =
         let retried = startAndAssertPending ()
         Assert.Equal(cancelled, retried)
         Assert.Equal<FolderName list>([ labFolder; labFolder ], observed.cataloguesRead |> Seq.toList)
+
+    [<Fact>]
+    member this.``registering a catalogue folder imports and logs it, and lists it as the one registered folder`` () : unit =
+        let stores = this.freshImport ()
+        let fixture = prepareLabImport stores.context
+        let observed = observeStartupImport stores.context
+        let context = observed.context
+        let before = importRowSnapshot context (fixture.lab.envelopes |> List.map _.content.id)
+        let priorLog = context.proxy.loggedImports () |> expectImportOk
+        Assert.Empty(context.proxy.registeredFolders () |> expectImportOk)
+
+        let register : FolderName -> Result<FolderImportResult, CatalogueImportError> = context.registerFolder
+        let pending = register fixture.labFolder |> pendingImport
+        Assert.Equal<LibraryEntryId list>(fixture.lab.manifest.entries |> List.map _.id, pending.decisions |> List.map _.entryId)
+        Assert.Contains(pending.decisions, fun row -> row.defaultAction = ReuseHeldEntry)
+        Assert.Contains(pending.decisions, fun row -> row.defaultAction = AddIncomingEntry)
+        assertImportRowsPending context observed.puts observed.retirements before pending.decisions
+        assertNoStartupWrites observed
+        Assert.Equal<CatalogueImportLogEntry list>(priorLog, context.proxy.loggedImports () |> expectImportOk)
+        Assert.Empty(context.proxy.registeredFolders () |> expectImportOk)
+
+        let logged = confirmImportDefaults context pending
+        Assert.Equal(labCatalogueId, logged.catalogueId)
+        Assert.Equal(fixture.labFolder, logged.folder)
+        Assert.Equal(CatalogueEntryCount fixture.lab.envelopes.Length, logged.entryCount)
+        Assert.Equal(fixture.lab.manifest.manifestHash |> expectImportDatabaseOk, logged.manifestHash)
+        Assert.Equal(logged, Assert.Single observed.logs)
+        let registered : unit -> Result<CatalogueImportLogEntry list, CatalogueImportError> = context.proxy.registeredFolders
+        Assert.Equal<CatalogueImportLogEntry list>([ logged ], registered () |> expectImportOk)
+        for envelope in fixture.lab.envelopes do
+            Assert.Equal<HeldEntryVersion list>(importVersions [ envelope ], (heldImportRow context envelope.content.id).versions)
+        Assert.Equal(fixture.user, (Assert.Single observed.puts).envelope)
+        Assert.Empty observed.retirements
+        Assert.Equal(Ok fixture.lab, (CatalogueProxy.create fixture.labFolder).readCatalogue ())
+
+    [<Fact>]
+    member this.``registering the Built-in catalogue or a registered catalogue again is refused`` () : unit =
+        let stores = this.freshImport ()
+        let fixture = prepareLabImport stores.context
+        let labPending = stores.context.registerFolder fixture.labFolder |> pendingImport
+        confirmImportDefaults stores.context labPending |> ignore
+        let observed = observeStartupImport stores.context
+        let context = observed.context
+        let before = importRowSnapshot context (fixture.lab.envelopes |> List.map _.content.id)
+        let priorLog = context.proxy.loggedImports () |> expectImportOk
+        let builtIn = rowCatalogue CatalogueIds.builtInCatalogue fixture.entries.builtInName [ fixture.entries.category ]
+        let copiedBuiltIn = writtenImportFolder builtIn
+        let copiedLab = writtenImportFolder fixture.lab
+        let assertRefused (folder : FolderName) (catalogue : CatalogueData) (registeredFolder : FolderName) : unit =
+            match context.registerFolder folder with
+            | Error (CatalogueAlreadyRegisteredErr reason) ->
+                Assert.Contains(folder.value, reason)
+                Assert.Contains(catalogue.manifest.name.value, reason)
+                Assert.Contains(catalogue.manifest.id.value.ToString(), reason)
+                Assert.Contains(registeredFolder.value, reason)
+            | _ -> Assert.Fail("An already registered or Built-in catalogue must be refused by identity.")
+            assertNoStartupWrites observed
+            Assert.Equal<(LibraryEntryId * HeldEntry option) list>(before, importRowSnapshot context (before |> List.map fst))
+            Assert.Equal<CatalogueImportLogEntry list>(priorLog, context.proxy.loggedImports () |> expectImportOk)
+        assertRefused copiedBuiltIn builtIn fixture.shipped
+        assertRefused fixture.labFolder fixture.lab fixture.labFolder
+        assertRefused copiedLab fixture.lab fixture.labFolder
+        Assert.Empty observed.cataloguesRead
+
+        let empty = this.freshImport ()
+        match empty.context.registerFolder copiedBuiltIn with
+        | Error (CatalogueAlreadyRegisteredErr reason) ->
+            Assert.Contains(copiedBuiltIn.value, reason)
+            Assert.Contains(CatalogueIds.builtInCatalogue.value.ToString(), reason)
+        | _ -> Assert.Fail("The Built-in identity is reserved even before the shipped import.")
+        assertEmptyStores empty
+        Assert.Empty(empty.context.proxy.loggedImports () |> expectImportOk)
+
+        let missing = freshImportFolder ()
+        match context.registerFolder missing with
+        | Error (CatalogueUnreadableErr (CatalogueIoErr reason)) -> Assert.Contains(missing.value, reason)
+        | _ -> Assert.Fail("Registration must retain a manifest read failure.")
+        let unavailable = ImportStoreUnavailableErr "registration log unavailable"
+        let failedProxy =
+            {
+                context.proxy with
+                    loggedImports = fun () -> Error unavailable
+            }
+        let failed =
+            {
+                context with
+                    proxy = failedProxy
+            }
+        Assert.Equal<Result<FolderImportResult, CatalogueImportError>>(Error unavailable, failed.registerFolder fixture.labFolder)
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Error unavailable, failedProxy.registeredFolders ())
+        assertNoStartupWrites observed
+
+    [<Fact>]
+    member this.``unregistering a folder forgets it and keeps its entries, and the next start no longer reads it`` () : unit =
+        let stores = this.freshImport ()
+        let fixture = prepareLabImport stores.context
+        let context = stores.context
+        context.registerFolder fixture.labFolder |> pendingImport |> confirmImportDefaults context |> ignore
+        let before = importRowSnapshot context (fixture.lab.envelopes |> List.map _.content.id)
+        let material = fixture.user.content.toMaterialEntry |> decodeImportEntry
+        let beforeLog = context.proxy.loggedImports () |> expectImportOk
+        let shippedLog = beforeLog |> List.find (fun entry -> entry.catalogueId = CatalogueIds.builtInCatalogue)
+        context.proxy.forgetImport labCatalogueId |> expectImportOk
+        Assert.Empty(context.proxy.registeredFolders () |> expectImportOk)
+        Assert.Equal<CatalogueImportLogEntry list>([ shippedLog ], context.proxy.loggedImports () |> expectImportOk)
+        Assert.Equal<(LibraryEntryId * HeldEntry option) list>(before, importRowSnapshot context (before |> List.map fst))
+        Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [ material ], stores.materials.listMaterials IncludeInactive)
+
+        let observed = observeStartupImport context
+        let report = observed.context.importOnStart fixture.shipped |> expectImportOk
+        let folderReport = Assert.Single report.folders
+        Assert.Equal(fixture.shipped, folderReport.folder)
+        Assert.Equal(Ok (CatalogueUnchanged shippedLog), folderReport.outcome)
+        Assert.Equal<FolderName list>([ fixture.shipped ], observed.opened |> Seq.toList)
+        Assert.Equal<FolderName list>([ fixture.shipped ], observed.manifestsRead |> Seq.toList)
+        Assert.Empty observed.cataloguesRead
+        Assert.Empty report.pending
+        assertNoStartupWrites observed
+        Assert.Equal<(LibraryEntryId * HeldEntry option) list>(before, importRowSnapshot context (before |> List.map fst))
+
+    [<Fact>]
+    member this.``settling a pending import applies the chosen rows and logs the catalogue, and an incomplete choice is refused`` () : unit =
+        let stores = this.freshImport ()
+        let fixture = prepareLabImport stores.context
+        stores.context.registerFolder fixture.labFolder |> pendingImport |> confirmImportDefaults stores.context |> ignore
+        let changed = changeLabImport fixture
+        let observed = observeStartupImport stores.context
+        let context = observed.context
+        let report = context.importOnStart fixture.shipped |> expectImportOk
+        let pending = Assert.Single report.pending
+        Assert.Equal<LibraryEntryId list>(changed.manifest.entries |> List.map _.id, pending.decisions |> List.map _.entryId)
+        let before = importRowSnapshot context (fixture.user.content.id :: (pending.decisions |> List.map _.entryId))
+        let priorLog = context.proxy.loggedImports () |> expectImportOk
+        let defaults = pending.decisions |> List.map _.byDefault
+        let collision = pending.decisions |> List.find (fun row -> row.entryId = fixture.collision.content.id)
+        let reused = pending.decisions |> List.find (fun row -> row.defaultAction = ReuseHeldEntry)
+        let origin = CatalogueImportOrigin (labCatalogueId, labCatalogueName)
+        let foreign = ImportDecision.decide origin fixture.entries.silicon None []
+        let invalidSelections =
+            [
+                []
+                [ collision.byDefault ]
+                defaults |> List.filter (fun choice -> choice.decision.entryId <> reused.entryId)
+                collision.byDefault :: defaults
+                defaults |> List.map (fun choice -> if choice.decision.entryId = reused.entryId then collision.byDefault else choice)
+                foreign.byDefault :: defaults
+                defaults |> List.map (fun choice -> if choice.decision.entryId = reused.entryId then foreign.byDefault else choice)
+            ]
+        let settle : PendingCatalogueImport -> ImportChoice list -> Result<ImportOutcome, CatalogueImportError> = context.settle
+        for choices in invalidSelections do
+            match settle pending choices with
+            | Error (InvalidImportChoiceErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | _ -> Assert.Fail("Settlement must require exactly one choice for every pending row, including reuse.")
+            assertNoStartupWrites observed
+            Assert.Equal<(LibraryEntryId * HeldEntry option) list>(before, importRowSnapshot context (before |> List.map fst))
+            Assert.Equal<CatalogueImportLogEntry list>(priorLog, context.proxy.loggedImports () |> expectImportOk)
+
+        let forged =
+            {
+                collision with
+                    defaultAction = ReuseHeldEntry
+            }
+        let invalidAction = defaults |> List.map (fun choice -> if choice.decision.entryId = collision.entryId then forged.byDefault else choice)
+        match settle pending invalidAction with
+        | Error (InvalidImportChoiceErr reason) -> Assert.Contains(collision.entryId.value.ToString(), reason)
+        | _ -> Assert.Fail("A supplied decision must not change the pending row's offered actions.")
+        assertNoStartupWrites observed
+
+        let rejected = ImportRejectedErr "settlement write refused"
+        let failing =
+            {
+                context with
+                    proxy =
+                        {
+                            context.proxy with
+                                putEntryVersion = fun _ -> Error rejected
+                        }
+            }
+        Assert.Equal<Result<ImportOutcome, CatalogueImportError>>(Error rejected, failing.settle pending defaults)
+        assertNoStartupWrites observed
+        Assert.Equal<CatalogueImportLogEntry list>(priorLog, context.proxy.loggedImports () |> expectImportOk)
+
+        let settledAt = CatalogueImportTime (DateTime(2026, 11, 6, 16, 45, 0, DateTimeKind.Utc))
+        let later =
+            {
+                context with
+                    now = fun () -> settledAt
+            }
+        let outcome = later.settle pending (List.rev defaults) |> expectImportOk
+        Assert.Empty outcome.forks
+        Assert.Empty outcome.rebindings
+        let expectedLog =
+            {
+                pending.entry with
+                    importedAt = settledAt
+            }
+        Assert.Equal(expectedLog, Assert.Single observed.logs)
+        Assert.Equal<CatalogueImportLogEntry list>([ expectedLog ], context.proxy.registeredFolders () |> expectImportOk)
+        Assert.Equal<Set<LibraryEntryId>>(
+            Set.ofList [ fixture.user.content.id; fixture.collision.content.id ],
+            context.proxy.heldEntriesNamed MaterialEntryKind fixture.user.content.name |> expectImportOk |> List.map _.id |> Set.ofList)
+        for envelope in [ fixture.user; fixture.collision; fixture.entries.source ] do
+            Assert.Equal<HeldEntryVersion list>(importVersions [ envelope ], (heldImportRow context envelope.content.id).versions)
+        Assert.Equal<LibraryEntryEnvelope list>([ fixture.collision; fixture.entries.source ], observed.puts |> Seq.map _.envelope |> Seq.toList)
+        Assert.Empty observed.retirements
+
+        let next = observeStartupImport stores.context
+        let unchanged = next.context.importOnStart fixture.shipped |> expectImportOk
+        let labReport = unchanged.folders |> List.find (fun folder -> folder.folder = fixture.labFolder)
+        Assert.Equal(Ok (CatalogueUnchanged expectedLog), labReport.outcome)
+        Assert.Empty unchanged.pending
+        Assert.Empty next.cataloguesRead
+        assertNoStartupWrites next
 
     [<Fact>]
     member this.``every logged folder is re-checked on start, and a failing one is reported without stopping the others`` () : unit =
