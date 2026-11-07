@@ -10,6 +10,7 @@ open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Storage.EntryFileJson
 
 /// The pure per-entry import decision table and explicit confirmation rule (spec 0050 S3.1, 001 §B).
@@ -18,6 +19,7 @@ module ImportDecisionTests =
     let private builtInOrigin : ImportOrigin = CatalogueImportOrigin (CatalogueIds.builtInCatalogue, CatalogueName "Built-in")
     let private labCatalogueId : CatalogueId = CatalogueId (Guid.Parse "24f7a423-0632-45db-9469-b908eb523a7d")
     let private labOrigin : ImportOrigin = CatalogueImportOrigin (labCatalogueId, CatalogueName "Lab")
+    let private kitOrigin : ImportOrigin = KitSnapshotOrigin (KitName "Optics kit")
 
     let private envelopeById (id : LibraryEntryId) : LibraryEntryEnvelope =
         (BuiltinCatalogue.catalogueData ()).envelopes |> List.find (fun envelope -> envelope.content.id = id)
@@ -148,6 +150,108 @@ module ImportDecisionTests =
         Assert.Equal<EntryName>(EntryName "Silicon — from lab-silicon.material-json", collision.rowName)
         Assert.Equal("Built-in", builtInOrigin.describe)
         Assert.Equal("lab-silicon.material-json", labFileOrigin.describe)
+
+    [<Fact>]
+    let ``a kit snapshot keeps the kit's copy by default and offers to add it to the library`` () : unit =
+        let original = siliconEnvelope ()
+        let held = heldOf original
+        let newEntry = ImportDecision.decide kitOrigin original None []
+
+        Assert.Equal<ImportStatus>(EntryIdNotHeld original, newEntry.status)
+        Assert.Equal<ImportAction list>([ AddIncomingEntry ], newEntry.alternatives)
+
+        let reused = ImportDecision.decide kitOrigin original (Some held) [ held ]
+
+        Assert.Equal<ImportStatus>(SameContentHash (original, held), reused.status)
+        Assert.Equal<ImportAction>(ReuseHeldEntry, reused.defaultAction)
+        Assert.Equal<ImportAction>(ReuseHeldEntry, reused.byDefault.action)
+        Assert.Empty(reused.alternatives)
+
+        let versionTwoContent =
+            { original.content with version = original.content.version.next }
+        let versionTwo = sealContent versionTwoContent
+        let newVersion = ImportDecision.decide kitOrigin versionTwo (Some held) [ held ]
+
+        Assert.Equal<EntryProvenance>(BuiltInProvenance CatalogueIds.builtInCatalogue, versionTwo.content.provenance)
+        Assert.Equal<ImportStatus>(VersionNotHeld (versionTwo, held), newVersion.status)
+        Assert.Equal<ImportAction list>([ AddIncomingVersion KeepLatestVersion ], newVersion.alternatives)
+
+        let changedContent =
+            { original.content with descriptionOpt = Some (EntryDescription "The kit's Silicon description") }
+        let changed = sealContent changedContent
+        let divergent = ImportDecision.decide kitOrigin changed (Some held) [ held ]
+
+        Assert.NotEqual<ContentHash>(original.contentHash, changed.contentHash)
+        Assert.Equal<ImportStatus>(DivergentContent (changed, held), divergent.status)
+        Assert.Equal<ImportAction list>([ ForkIncomingEntry ], divergent.alternatives)
+
+        let otherKind =
+            { held with kind = SampleEntryKind }
+        let kindDivergence = ImportDecision.decide kitOrigin original (Some otherKind) [ held ]
+
+        Assert.Equal<ImportStatus>(DivergentContent (original, otherKind), kindDivergence.status)
+        Assert.Equal<ImportAction list>([ ForkIncomingEntry ], kindDivergence.alternatives)
+
+        let kept = [ newEntry; newVersion; divergent; kindDivergence ]
+        for decision in kept do
+            Assert.Equal<ImportAction>(SkipIncomingEntry, decision.defaultAction)
+            Assert.Equal<ImportAction>(SkipIncomingEntry, decision.byDefault.action)
+
+        let decisions = reused :: kept
+        for decision in decisions do
+            Assert.Equal<ImportOrigin>(kitOrigin, decision.origin)
+            Assert.Equal<ImportDecision>(decision, decision.byDefault.decision)
+
+        Assert.Equal<ImportDecision list>(decisions, (ImportDecision.split decisions).awaiting)
+        Assert.Equal("Optics kit", kitOrigin.describe)
+
+    [<Fact>]
+    let ``a kit snapshot named like a held entry sits side by side, re-binding an entry but never a category`` () : unit =
+        let original = siliconEnvelope ()
+        let incomingContent =
+            { original.content with
+                id = LibraryEntryId (Guid.Parse "dfa3b5a2-f404-47c6-ae73-1b7027600c89")
+                provenance = UserProvenance }
+        let incoming = sealContent incomingContent
+        let secondContent =
+            { original.content with
+                id = LibraryEntryId (Guid.Parse "2daa8771-2ac0-414e-9e7e-641804a5561e")
+                provenance = UserProvenance }
+        let second = sealContent secondContent |> heldOf
+        let first = heldOf original
+        let sameName = [ second; first ]
+        let collision = ImportDecision.decide kitOrigin incoming None sameName
+
+        Assert.Equal<ImportStatus>(NameCollision (incoming, sameName), collision.status)
+        Assert.Equal<ImportAction list>([ AddIncomingEntry; RebindToHeldEntry second.id; RebindToHeldEntry first.id ], collision.alternatives)
+        Assert.Equal<EntryName>(EntryName "Silicon — from Optics kit", collision.rowName)
+        Assert.Equal<EntryName>(original.content.name, incoming.content.name)
+
+        let category =
+            match original.content.categoryOpt with
+            | Some id -> envelopeById id.toLibraryEntryId
+            | None -> failwith "The shipped Silicon material must name its category."
+        let categoryId = CategoryId (Guid.Parse "04fc09dc-a5b5-4ab1-bbeb-2ccbb6bd3d03")
+        let categoryContent =
+            { category.content with
+                id = categoryId.toLibraryEntryId
+                provenance = UserProvenance }
+        let incomingCategory = sealContent categoryContent
+        let heldCategory = heldOf category
+        let categoryCollision = ImportDecision.decide kitOrigin incomingCategory None [ heldCategory ]
+
+        Assert.Equal<ImportStatus>(NameCollision (incomingCategory, [ heldCategory ]), categoryCollision.status)
+        Assert.Equal<LibraryEntryKind>(CategoryEntryKind, categoryCollision.kind)
+        Assert.Equal<ImportAction list>([ AddIncomingEntry ], categoryCollision.alternatives)
+
+        let decisions = [ collision; categoryCollision ]
+        for decision in decisions do
+            Assert.Equal<ImportOrigin>(kitOrigin, decision.origin)
+            Assert.Equal<ImportAction>(SkipIncomingEntry, decision.defaultAction)
+            Assert.Equal<ImportAction>(SkipIncomingEntry, decision.byDefault.action)
+            Assert.Equal<ImportDecision>(decision, decision.byDefault.decision)
+
+        Assert.Equal<ImportDecision list>(decisions, (ImportDecision.split decisions).awaiting)
 
     [<Fact>]
     let ``the same id and version with another hash, or an id held as another kind, is a divergence forked by default`` () : unit =

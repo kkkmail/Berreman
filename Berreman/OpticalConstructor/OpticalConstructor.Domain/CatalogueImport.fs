@@ -9,6 +9,7 @@ open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.Kit
 
 /// The library-import seam, in-memory stores and pure per-entry decision table (spec 0050 §3.4; S3.1, 001 §B).
 /// Identifies every row before confirmed choices write through the version seam.
@@ -65,11 +66,14 @@ module CatalogueImport =
         | CatalogueImportOrigin of id : CatalogueId * name : CatalogueName
         /// An entry file dropped onto Library or Materials, held as FileName.leafName (spec 0050 001 §H).
         | DroppedFileOrigin of file : FileName
+        /// The library snapshot of the named kit (spec 0050 001 §E).
+        | KitSnapshotOrigin of kit : KitName
 
         member this.describe : string =
             match this with
             | CatalogueImportOrigin (_, name) -> name.value
             | DroppedFileOrigin file -> file.value
+            | KitSnapshotOrigin kit -> kit.value
 
     /// Whether adding a version moves the library's latest pointer (spec 0050 001 §B).
     type LatestMove =
@@ -134,7 +138,8 @@ module CatalogueImport =
 
     type ImportDecision with
 
-        /// A dropped file's unheld version preserves the library's latest pointer (spec 0050 001 §B, §H).
+        /// A dropped file's or kit snapshot's unheld version preserves latest (spec 0050 001 §B, §H, §E).
+        /// Kit snapshots default to reuse or skip; imports and non-category rebindings require an explicit choice.
         static member decide (origin : ImportOrigin) (incoming : LibraryEntryEnvelope) (heldOpt : HeldEntry option) (sameName : HeldEntry list) : ImportDecision =
             let status, defaultAction, alternatives =
                 match heldOpt with
@@ -159,6 +164,18 @@ module CatalogueImport =
                     | _ ->
                         let alternatives = (sameName |> List.map (fun held -> RebindToHeldEntry held.id)) @ [ SkipIncomingEntry ]
                         NameCollision (incoming, sameName), AddIncomingEntry, alternatives
+
+            let defaultAction, alternatives =
+                match origin, status with
+                | KitSnapshotOrigin _, SameContentHash _ -> defaultAction, alternatives
+                | KitSnapshotOrigin _, NameCollision (incoming, _) ->
+                    let rebindings =
+                        match incoming.content.schema.kind with
+                        | CategoryEntryKind -> []
+                        | _ -> alternatives |> List.filter (fun action -> action <> SkipIncomingEntry)
+                    SkipIncomingEntry, defaultAction :: rebindings
+                | KitSnapshotOrigin _, _ -> SkipIncomingEntry, [ defaultAction ]
+                | CatalogueImportOrigin _, _ | DroppedFileOrigin _, _ -> defaultAction, alternatives
 
             {
                 origin = origin
