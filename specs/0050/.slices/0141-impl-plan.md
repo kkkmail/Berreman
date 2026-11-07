@@ -1,0 +1,9 @@
+# Implementation plan — 0141
+
+Add `KitLibraryContext.resolveSnapshots` to the existing Domain context. Read the kit's snapshot list once, preserve its order, and pass every envelope to `CatalogueImportProxy.decideEntry` with `KitSnapshotOrigin kit.kitFile.name`. Map kit and import failures to the existing `KitLibraryError` cases. No writes, access restriction, cache, option or additional member is needed. Document the opener's obligation to show every row, including an all-Reuse list; only an empty snapshot list bypasses the dialog.
+
+Add exactly the five authorized facts in `KitLibraryTests.fs`, reusing the existing kit fixture, Built-in catalogue and sealing helpers. Cover identical Silicon, a missing user material, divergent Silicon, a same-name user material, and ordered resolution through read-write and read-only contexts without mutation. Within those facts cover empty snapshots and typed read failures without adding test identities. Preserve all existing assertions.
+
+Only `OpticalConstructor.Domain/KitLibrary.fs`, `OpticalConstructor.Tests/KitLibraryTests.fs` and the three prescribed worker documents are edited. Main risks are accidentally applying decisions, filtering Reuse rows, reversing listing order, or losing error payloads. The IMPLEMENT act-only protocol assigns build, elevation, constructor-unit-tests and the eleven S16 invariants to the supervisor after exit; no local gate results will be claimed. Preserve the pre-existing supervisor manifest edit and use LF for edited files.
+
+Attempt 02 repairs the supervisor-reported F# strict-indentation failure in the nested `failingKitContext` record update. Put `kit =` on its own field line beneath `context with`, following the surrounding record-update style. Preserve the production member, all five authorized test identities and every assertion. Review the changed fixture and refresh the handoff documents; gate execution remains with the supervisor.

@@ -6,6 +6,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
@@ -110,6 +111,16 @@ module KitLibraryTests =
             expected
             |> List.sortWith (fun first second -> String.CompareOrdinal(first.snapshotFileName.value, second.snapshotFileName.value))
         Assert.Equal<LibraryEntryEnvelope list>(ordered, fixture.context.kit.proxy.listSnapshots () |> expectKitOk)
+
+    let private missingResolutionContent () : LibraryEntryContent =
+        let id = MaterialId (Guid.Parse "14100000-0000-4000-8000-000000000001")
+        let name = EntryName "Kit resolution material"
+        BuiltinCatalogue.userMaterialContent id name
+
+    let private collidingResolutionContent () : LibraryEntryContent =
+        let id = MaterialId (Guid.Parse "14100000-0000-4000-8000-000000000002")
+        let name = (catalogueEnvelope MaterialIds.silicon.toLibraryEntryId).content.name
+        BuiltinCatalogue.userMaterialContent id name
 
     [<Fact>]
     let ``referencing a sample snapshots it with its materials and their categories, each once, and pins each`` () : unit =
@@ -435,6 +446,215 @@ module KitLibraryTests =
                         if Set.contains envelope.libraryVersionRef writtenVersions then VersionPinned else VersionUnpinned
                     Assert.Equal<PinState>(expectedPin, stored.state.pin)
                     Assert.Equal<LibraryEntryEnvelope>(envelope, stored.envelope))
+        |> Result.defaultWith (fun error -> failwith error.describe)
+
+    [<Fact>]
+    let ``a snapshot the library holds byte for byte is reused`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        let silicon = catalogueEnvelope MaterialIds.silicon.toLibraryEntryId
+        fixture.context.kit.proxy.writeSnapshot silicon |> expectKitOk
+        let rows = fixture.context.resolveSnapshots () |> expectSnapshotOk
+        let row = Assert.Single rows
+        let origin = KitSnapshotOrigin fixture.context.kit.kitFile.name
+        let held =
+            fixture.context.imports.proxy.tryHeldEntry silicon.content.id
+            |> expectImportOk
+            |> Option.defaultWith (fun () -> failwith "The Built-in library must hold Silicon.")
+        Assert.Equal<ImportOrigin>(origin, row.origin)
+        Assert.Equal<ImportStatus>(SameContentHash (silicon, held), row.status)
+        Assert.Equal<ImportAction>(ReuseHeldEntry, row.defaultAction)
+        Assert.Empty row.alternatives
+        Assert.Equal<ImportDecision list>(rows, (ImportDecision.split rows).awaiting)
+        assertSnapshots [ silicon ] fixture
+
+    [<Fact>]
+    let ``a snapshot the library lacks stays in the kit read-only, with Add to my library offered`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        let incoming = fixture.context.imports.sealEntry (missingResolutionContent ()) |> expectImportOk
+        fixture.context.kit.proxy.writeSnapshot incoming |> expectKitOk
+        let row = fixture.context.resolveSnapshots () |> expectSnapshotOk |> Assert.Single
+        let origin = KitSnapshotOrigin fixture.context.kit.kitFile.name
+        Assert.Equal<ImportOrigin>(origin, row.origin)
+        Assert.Equal<ImportStatus>(EntryIdNotHeld incoming, row.status)
+        Assert.Equal<ImportAction>(SkipIncomingEntry, row.defaultAction)
+        Assert.Equal<ImportAction list>([ AddIncomingEntry ], row.alternatives)
+        Assert.Equal<HeldEntry option>(None, fixture.context.imports.proxy.tryHeldEntry incoming.content.id |> expectImportOk)
+        assertSnapshots [ incoming ] fixture
+
+    [<Fact>]
+    let ``a divergent snapshot is reported and the kit keeps it`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        let silicon = catalogueEnvelope MaterialIds.silicon.toLibraryEntryId
+        let content =
+            {
+                silicon.content with
+                    descriptionOpt = Some (EntryDescription "Silicon measured for this kit")
+            }
+        let incoming = fixture.context.imports.sealEntry content |> expectImportOk
+        fixture.context.kit.proxy.writeSnapshot incoming |> expectKitOk
+        let row = fixture.context.resolveSnapshots () |> expectSnapshotOk |> Assert.Single
+        let origin = KitSnapshotOrigin fixture.context.kit.kitFile.name
+        let held =
+            fixture.context.imports.proxy.tryHeldEntry silicon.content.id
+            |> expectImportOk
+            |> Option.defaultWith (fun () -> failwith "The Built-in library must hold Silicon.")
+        Assert.Equal<VersionNumber>(VersionNumber.first, incoming.content.version)
+        Assert.NotEqual<ContentHash>(silicon.contentHash, incoming.contentHash)
+        Assert.Equal<ImportOrigin>(origin, row.origin)
+        Assert.Equal<ImportStatus>(DivergentContent (incoming, held), row.status)
+        Assert.Equal<ImportAction>(SkipIncomingEntry, row.defaultAction)
+        Assert.Equal<ImportAction list>([ ForkIncomingEntry ], row.alternatives)
+        Assert.Equal<LibraryEntryEnvelope option>(
+            Some silicon, fixture.context.imports.proxy.tryHeldEnvelope silicon.content.id silicon.content.version |> expectImportOk)
+        assertSnapshots [ incoming ] fixture
+
+    [<Fact>]
+    let ``a snapshot named like a held entry offers side by side and an explicit re-binding`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        let silicon = catalogueEnvelope MaterialIds.silicon.toLibraryEntryId
+        let incoming = fixture.context.imports.sealEntry (collidingResolutionContent ()) |> expectImportOk
+        fixture.context.kit.proxy.writeSnapshot incoming |> expectKitOk
+        let row = fixture.context.resolveSnapshots () |> expectSnapshotOk |> Assert.Single
+        let origin = KitSnapshotOrigin fixture.context.kit.kitFile.name
+        let sameName =
+            fixture.context.imports.proxy.heldEntriesNamed incoming.content.schema.kind incoming.content.name |> expectImportOk
+        let expectedName = EntryName $"Silicon — from {fixture.context.kit.kitFile.name.value}"
+        Assert.NotEqual<LibraryEntryId>(silicon.content.id, incoming.content.id)
+        Assert.Equal<ImportOrigin>(origin, row.origin)
+        Assert.Equal<ImportStatus>(NameCollision (incoming, sameName), row.status)
+        Assert.Equal<ImportAction>(SkipIncomingEntry, row.defaultAction)
+        Assert.Equal<ImportAction list>([ AddIncomingEntry; RebindToHeldEntry silicon.content.id ], row.alternatives)
+        Assert.Equal<EntryName>(expectedName, row.rowName)
+        Assert.Equal<HeldEntry option>(None, fixture.context.imports.proxy.tryHeldEntry incoming.content.id |> expectImportOk)
+        assertSnapshots [ incoming ] fixture
+
+    [<Fact>]
+    let ``resolving the snapshots writes nothing, through a read-only kit too`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let proxy = CatalogueImportProxy.createInDatabase database
+        let fixture = snapshotFixture proxy ReadWriteKitAccess
+        let silicon = catalogueEnvelope MaterialIds.silicon.toLibraryEntryId
+        let missing = fixture.context.imports.sealEntry (missingResolutionContent ()) |> expectImportOk
+        let colliding = fixture.context.imports.sealEntry (collidingResolutionContent ()) |> expectImportOk
+        for envelope in [ silicon; missing; colliding ] do
+            fixture.context.kit.proxy.writeSnapshot envelope |> expectKitOk
+        fixture.operations.Clear()
+        let snapshots = fixture.context.kit.proxy.listSnapshots () |> expectKitOk
+        let origin = KitSnapshotOrigin fixture.context.kit.kitFile.name
+        let expected = snapshots |> List.map (fun envelope -> proxy.decideEntry origin envelope |> expectImportOk)
+        let heldBefore = proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> expectImportOk
+        let logBefore = proxy.loggedImports () |> expectImportOk
+        let paths = fixture.folder.paths ()
+        let metadata = fixture.context.kit.proxy.readKitFile () |> expectKitOk
+        let reads = ResizeArray<LibraryEntryId>()
+        let listings = ResizeArray<KitName>()
+        let refuseWrite () = failwith "Snapshot resolution must not call a write seam."
+        let guardedProxy =
+            {
+                proxy with
+                    tryHeldEntry = fun id ->
+                        reads.Add id
+                        proxy.tryHeldEntry id
+                    pinEntryVersion = fun _ _ -> refuseWrite ()
+                    putEntryVersion = fun _ -> refuseWrite ()
+                    retireEntry = fun _ -> refuseWrite ()
+                    logImport = fun _ -> refuseWrite ()
+                    forgetImport = fun _ -> refuseWrite ()
+            }
+        for access in [ ReadWriteKitAccess; ReadOnlyKitAccess ] do
+            let opened =
+                match access with
+                | ReadWriteKitAccess -> fixture.context.kit
+                | ReadOnlyKitAccess ->
+                    KitContext.openKit (KitProxy.createInMemory fixture.folder) access fixture.context.kit.clock |> expectKitOk
+            let kitProxy =
+                {
+                    opened.proxy with
+                        listSnapshots = fun () ->
+                            listings.Add opened.kitFile.name
+                            opened.proxy.listSnapshots ()
+                        initialiseKit = fun _ -> refuseWrite ()
+                        writeKitFile = fun _ -> refuseWrite ()
+                        writeKindFile = fun _ _ _ -> refuseWrite ()
+                        deleteKindFile = fun _ _ -> refuseWrite ()
+                        copyInFile = fun _ _ _ -> refuseWrite ()
+                        writeSnapshot = fun _ -> refuseWrite ()
+                        acquireLock = fun _ -> refuseWrite ()
+                        releaseLock = refuseWrite
+                }
+            let context =
+                {
+                    kit =
+                        {
+                            opened with proxy = kitProxy
+                        }
+                    imports = CatalogueImportContext.create guardedProxy
+                }
+            reads.Clear()
+            listings.Clear()
+            let rows = context.resolveSnapshots () |> expectSnapshotOk
+            Assert.Equal<ImportDecision list>(expected, rows)
+            Assert.Equal<ImportDecision list>(rows, (ImportDecision.split rows).awaiting)
+            Assert.Equal<LibraryEntryId list>(snapshots |> List.map (fun envelope -> envelope.content.id), List.ofSeq reads)
+            Assert.Equal<KitName>(opened.kitFile.name, Assert.Single listings)
+            Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+            Assert.Equal<KitFile>(metadata, fixture.context.kit.proxy.readKitFile () |> expectKitOk)
+            Assert.Equal<LibraryEntryEnvelope list>(snapshots, fixture.context.kit.proxy.listSnapshots () |> expectKitOk)
+            Assert.Equal<HeldEntry list>(heldBefore, proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> expectImportOk)
+            Assert.Empty(proxy.heldUserEntries () |> expectImportOk)
+            Assert.Equal<CatalogueImportLogEntry list>(logBefore, proxy.loggedImports () |> expectImportOk)
+            Assert.Empty fixture.pins
+            Assert.Empty fixture.operations
+
+            let emptyFixture = snapshotFixture guardedProxy access
+            let emptyPaths = emptyFixture.folder.paths ()
+            reads.Clear()
+            Assert.Equal<Result<ImportDecision list, KitLibraryError>>(Ok [], emptyFixture.context.resolveSnapshots ())
+            Assert.Empty reads
+            Assert.Equal<KitRelativePath list>(emptyPaths, emptyFixture.folder.paths ())
+
+            let readError = KitIoErr "snapshot resolution listing failed"
+            let failingKitProxy =
+                {
+                    kitProxy with listSnapshots = fun () -> Error readError
+                }
+            let failingKitContext =
+                {
+                    context with
+                        kit =
+                            {
+                                context.kit with proxy = failingKitProxy
+                            }
+                }
+            Assert.Equal<Result<ImportDecision list, KitLibraryError>>(
+                Error (KitLibraryKitErr readError), failingKitContext.resolveSnapshots ())
+            Assert.Empty reads
+
+            let importError = ImportStoreUnavailableErr "snapshot resolution lookup failed"
+            let failingImportProxy =
+                {
+                    guardedProxy with
+                        tryHeldEntry = fun id ->
+                            reads.Add id
+                            Error importError
+                }
+            let failingImportContext =
+                {
+                    context with imports = CatalogueImportContext.create failingImportProxy
+                }
+            Assert.Equal<Result<ImportDecision list, KitLibraryError>>(
+                Error (KitLibraryImportErr importError), failingImportContext.resolveSnapshots ())
+            Assert.Equal<LibraryEntryId list>([ (List.head snapshots).content.id ], List.ofSeq reads)
+
+        database.run (fun context ->
+            for envelope in (BuiltinCatalogue.catalogueData ()).envelopes do
+                match context.tryStoredVersion envelope.content.id envelope.content.version with
+                | Error error -> Assert.Fail(error.describe)
+                | Ok None -> Assert.Fail($"Resolution removed {envelope.content.describe} from the library.")
+                | Ok (Some stored) ->
+                    Assert.Equal<LibraryEntryEnvelope>(envelope, stored.envelope)
+                    Assert.Equal<PinState>(VersionUnpinned, stored.state.pin)
+                    Assert.Equal<EntryLifecycle>(ActiveEntry, stored.state.lifecycle))
         |> Result.defaultWith (fun error -> failwith error.describe)
 
     [<Fact>]

@@ -29,6 +29,22 @@ module KitLibrary =
             imports : CatalogueImportContext
         }
 
+        /// Reads snapshot decisions in listing order without writes, including with read-only access (spec 0050 S4.2).
+        /// After KitContext.openKit, the opener must call this and show every row in the import dialog, even an all-Reuse list.
+        /// Only a kit with no snapshot rows may open without that dialog.
+        member this.resolveSnapshots () : Result<ImportDecision list, KitLibraryError> =
+            this.kit.proxy.listSnapshots ()
+            |> Result.mapError KitLibraryKitErr
+            |> Result.bind (fun snapshots ->
+                let origin = KitSnapshotOrigin this.kit.kitFile.name
+                snapshots
+                |> List.fold (fun result envelope ->
+                    result |> Result.bind (fun rows ->
+                        this.imports.proxy.decideEntry origin envelope
+                        |> Result.mapError KitLibraryImportErr
+                        |> Result.map (fun row -> row :: rows))) (Ok [])
+                |> Result.map List.rev)
+
         /// Pins and writes missing versions depth first, retaining held snapshots and returning writes in visit order (spec 0050 S4.2).
         /// Read-only access performs no IO; the first failure stops traversal and keeps earlier writes for the next call.
         member this.snapshotReferences (references : EntryReference list) : Result<LibraryVersionRef list, KitLibraryError> =
