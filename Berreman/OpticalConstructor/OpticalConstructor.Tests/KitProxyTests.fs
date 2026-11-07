@@ -81,6 +81,43 @@ module private KitProxyTestData =
             processId = ProcessId.getCurrentProcessId ()
         }
 
+    let externallyChangedKit (folder : KitTestFolder) : KitProxy =
+        let proxyA = folder.openProxy ()
+        let proxyB = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        let experiment = FileStem.ofText "X"
+        let added = FileStem.ofText "Y"
+        let own = FileStem.ofText "own"
+        let original = KitFileText "Original experiment: μ\n"
+        let changed = KitFileText "Changed experiment: λ\n"
+        let setup = KitFileText "Setup\n"
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxyA.changedKitFiles ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.initialiseKit kit)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxyA.changedKitFiles ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.writeKindFile ExperimentKitFile experiment original)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxyA.changedKitFiles ())
+        let before = folder.paths ()
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.recordStamps ())
+        Assert.Equal<string list>(before, folder.paths ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.writeKindFile SetupKitFile own setup)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxyA.changedKitFiles ())
+        let initiallyPresent = [ KitFile.fileName; ExperimentKitFile.fileNameOf experiment; SetupKitFile.fileNameOf own ]
+        Assert.Equal<Result<FileName list, KitError>>(Ok initiallyPresent, proxyB.changedKitFiles ())
+
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.writeKindFile SetupKitFile added setup)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.writeKindFile ExperimentKitFile experiment changed)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.deleteKindFile SetupKitFile own)
+        let reviewed =
+            {
+                kit with notes = KitNotes "Reviewed by another writer"
+            }
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.writeKitFile reviewed)
+        let expected = [ KitFile.fileName; ExperimentKitFile.fileNameOf experiment; SetupKitFile.fileNameOf added; SetupKitFile.fileNameOf own ]
+        for _ in 1 .. 2 do
+            Assert.Equal<Result<FileName list, KitError>>(Ok expected, proxyA.changedKitFiles ())
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxyB.changedKitFiles ())
+        proxyA
+
     let contendForKitLock (folder : KitTestFolder) (clock : ClockProvider) : unit =
         let proxies = [ folder.openProxy (); folder.openProxy (); folder.openProxy () ]
         let time = clock.now ()
@@ -291,6 +328,101 @@ type KitProxyContract () =
             Assert.Contains($"data/hidden{kind.extension.value}", folder.paths ())
 
         Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxy.readKitFile ())
+
+    [<Fact>]
+    member this.``kit files another writer adds, changes or removes are reported, and this proxy's own writes are not`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = externallyChangedKit folder
+        let experiment = FileStem.ofText "X"
+        let added = FileStem.ofText "Y"
+        let own = FileStem.ofText "own"
+        let metadata = proxy.readKitFile () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKitFile metadata)
+        let remaining = [ ExperimentKitFile.fileNameOf experiment; SetupKitFile.fileNameOf added; SetupKitFile.fileNameOf own ]
+        Assert.Equal<Result<FileName list, KitError>>(Ok remaining, proxy.changedKitFiles ())
+        let replacement = KitFileText "Own replacement\n"
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile ExperimentKitFile experiment replacement)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.deleteKindFile SetupKitFile added)
+        match proxy.deleteKindFile SetupKitFile own with
+        | Error (MissingKitFileErr _) -> ()
+        | Error error -> Assert.Fail($"Expected MissingKitFileErr, got {error.describe}")
+        | Ok () -> Assert.Fail("Deleting an already removed file must fail.")
+        Assert.Equal<Result<FileName list, KitError>>(Ok [ SetupKitFile.fileNameOf own ], proxy.changedKitFiles ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile SetupKitFile own replacement)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxy.changedKitFiles ())
+
+        let observer = folder.openProxy ()
+        Assert.Equal<Result<unit, KitError>>(Ok (), observer.recordStamps ())
+        let stem = FileStem.ofText "Every kind"
+        let expected = KitFileKind.all |> List.map (fun kind -> kind.fileNameOf stem) |> List.sortWith (fun a b -> String.CompareOrdinal(a.value, b.value))
+        for text in [ KitFileText "First\n"; KitFileText "Changed\n" ] do
+            for kind in KitFileKind.all do
+                Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile kind stem text)
+            Assert.Equal<Result<FileName list, KitError>>(Ok [], proxy.changedKitFiles ())
+            Assert.Equal<Result<FileName list, KitError>>(Ok expected, observer.changedKitFiles ())
+            Assert.Equal<Result<unit, KitError>>(Ok (), observer.recordStamps ())
+        for kind in KitFileKind.all do
+            Assert.Equal<Result<unit, KitError>>(Ok (), proxy.deleteKindFile kind stem)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxy.changedKitFiles ())
+        Assert.Equal<Result<FileName list, KitError>>(Ok expected, observer.changedKitFiles ())
+
+    [<Fact>]
+    member this.``recording the stamps again clears the report, and lab files are never reported`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = externallyChangedKit folder
+        let before = folder.paths ()
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.recordStamps ())
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxy.changedKitFiles ())
+        Assert.Equal<string list>(before, folder.paths ())
+        let ignored =
+            [ "data/new.csv"; "notes.txt"; ".oc/lock"; ".kit-json.tmp"; "library/.kit-json" ]
+            @ [ for kind in KitFileKind.all do
+                    $"data/hidden{kind.extension.value}"
+                    $".oc/hidden{kind.extension.value}"
+                    $"library/hidden{kind.extension.value}"
+                    $"pending{kind.extension.value}.tmp" ]
+        for text in [ "Lab content"; "Changed lab content" ] do
+            for path in ignored do folder.placeLabFile path text
+            Assert.Equal<Result<FileName list, KitError>>(Ok [], proxy.changedKitFiles ())
+        let present = [ FileName ".kit-json"; FileName "X.experiment-json"; FileName "Y.setup-json" ]
+        let beforeOpen = folder.paths ()
+        let fresh = folder.openProxy ()
+        Assert.Equal<Result<FileName list, KitError>>(Ok present, fresh.changedKitFiles ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), fresh.recordStamps ())
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], fresh.changedKitFiles ())
+        Assert.Equal<string list>(beforeOpen, folder.paths ())
+
+        let other = folder.openProxy ()
+        let metadata = proxy.readKitFile () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<unit, KitError>>(Ok (), other.writeKitFile metadata)
+        let experiment = FileStem.ofText "X"
+        let text = proxy.readKindFile ExperimentKitFile experiment |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<unit, KitError>>(Ok (), other.writeKindFile ExperimentKitFile experiment text)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxy.changedKitFiles ())
+
+        let stems = [ FileStem.ofText "Z"; FileStem.ofText "a"; FileStem.ofText "Å" ]
+        let uppercaseFiles =
+            [ for stem in stems do
+                for kind in KitFileKind.all do
+                    FileName $"{stem.value}{kind.extension.value.ToUpperInvariant()}" ]
+            |> List.sortWith (fun a b -> String.CompareOrdinal(a.value, b.value))
+        for file in uppercaseFiles do folder.placeLabFile file.value "Unicode: μ\n"
+        Assert.Equal<Result<FileName list, KitError>>(Ok uppercaseFiles, proxy.changedKitFiles ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.recordStamps ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), other.recordStamps ())
+        let sameText = KitFileText "Unicode: μ\n"
+        for stem in stems do
+            for kind in KitFileKind.all do
+                Assert.Equal<Result<unit, KitError>>(Ok (), other.writeKindFile kind stem sameText)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxy.changedKitFiles ())
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], other.changedKitFiles ())
+
+        let bom = KitFileText $"\uFEFF{text.value}"
+        folder.placeLabFile (ExperimentKitFile.fileNameOf experiment).value bom.value
+        Assert.Equal<Result<FileName list, KitError>>(Ok [ ExperimentKitFile.fileNameOf experiment ], proxy.changedKitFiles ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.recordStamps ())
+        folder.placeLabFile (ExperimentKitFile.fileNameOf experiment).value bom.value
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxy.changedKitFiles ())
 
     [<Fact>]
     member this.``reading or deleting a missing kit file is MissingKitFileErr and changes nothing`` () : unit =

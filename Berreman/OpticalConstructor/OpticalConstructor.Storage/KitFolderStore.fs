@@ -129,11 +129,26 @@ module KitFolderStore =
                     processId = ProcessId.getCurrentProcessId ()
                 }
             let mutable heldLockOpt : KitLockHolder option = None
+            let mutable recordedStamps : Map<FileName, ContentHash> = Map.empty
             let proxySync = obj ()
             let cacheFolder = FolderName (Path.Combine(folder.value.value, KitRelativePath.kitCachePath.value))
             let lockFile = FileName (Path.Combine(folder.value.value, KitRelativePath.kitLockPath.value.Replace('/', Path.DirectorySeparatorChar)))
             let guardName = FileName "lock-guard.tmp"
             let guardFile = guardName.combine cacheFolder
+
+            let rootFilePaths () : KitRelativePath list =
+                Directory.GetFiles(folder.value.value, "*", SearchOption.TopDirectoryOnly)
+                |> Array.map (fun path -> Path.GetFileName path |> KitRelativePath)
+                |> Array.toList
+
+            let currentStamps () : Map<FileName, ContentHash> =
+                rootFilePaths ()
+                |> List.choose (fun path -> path.tryKitFileName)
+                |> List.map (fun name ->
+                    let file = name.combine folder.value
+                    let bytes = File.ReadAllBytes file.value |> FileByteContent
+                    name, ContentHash.ofBytes bytes)
+                |> Map.ofList
 
             let tryExistingLock () : Result<KitLockHolder, KitError> option =
                 match lockFile.tryReadKitLock (), heldLockOpt with
@@ -148,6 +163,10 @@ module KitFolderStore =
                 file.writeBytesAtomically bytes
                 |> Result.mapError (fun (error : StorageError) ->
                     KitIoErr $"kit folder '{folder.value.value}': the file '{file.value}' is not written: {error.describe}")
+                |> Result.map (fun () ->
+                    // Stamp the bytes we wrote; a later outside replacement must still be reported (spec 0050 step 0130).
+                    let stamp = ContentHash.ofBytes bytes
+                    recordedStamps <- updateKitFileStamp file.leafName (Some stamp) recordedStamps)
 
             let writeMetadata (file : FileName) (kitFile : KitFile) : Result<unit, KitError> =
                 serializeKitMetadata folder.value kitFile
@@ -184,9 +203,7 @@ module KitFolderStore =
                 listKindFiles =
                     fun (kind : KitFileKind) ->
                         tryKitFolderIo folder (fun () ->
-                            Directory.GetFiles(folder.value.value, "*", SearchOption.TopDirectoryOnly)
-                            |> Array.map (fun path -> Path.GetFileName path |> KitRelativePath)
-                            |> Array.toList
+                            rootFilePaths ()
                             |> kind.stemsAtKitRoot
                             |> Ok)
                 readKindFile =
@@ -208,6 +225,7 @@ module KitFolderStore =
                             let file = (kind.fileNameOf stem).combine folder.value
                             if File.Exists file.value then
                                 File.Delete file.value
+                                recordedStamps <- updateKitFileStamp file.leafName None recordedStamps
                                 Ok ()
                             else
                                 Error (MissingKitFileErr $"kit folder '{folder.value.value}': '{file.value}'"))
@@ -227,6 +245,15 @@ module KitFolderStore =
                             | :? FileNotFoundException
                             | :? DirectoryNotFoundException ->
                                 Error (MissingKitFileErr $"kit folder '{folder.value.value}': '{path.value}'"))
+                recordStamps =
+                    fun () ->
+                        tryKitFolderIo folder (fun () ->
+                            recordedStamps <- currentStamps ()
+                            Ok ())
+                changedKitFiles =
+                    fun () ->
+                        tryKitFolderIo folder (fun () ->
+                            currentStamps () |> changedKitFileNames recordedStamps |> Ok)
                 acquireLock =
                     fun time ->
                         lock proxySync (fun () ->

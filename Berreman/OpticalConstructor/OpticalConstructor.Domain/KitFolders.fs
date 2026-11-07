@@ -29,6 +29,10 @@ module KitFolders =
             deleteKindFile : KitFileKind -> FileStem -> Result<unit, KitError>
             /// Reads the kit-relative file's text and ContentHash.ofBytes of its stored bytes, or MissingKitFileErr naming the path (spec 0050 S4.1).
             readDataFile : KitRelativePath -> Result<KitDataFile, KitError>
+            /// Replaces this proxy's in-memory record of all current kit-file stamps without writing (spec 0050 S4.1).
+            recordStamps : unit -> Result<unit, KitError>
+            /// Lists added, changed or removed kit files in ordinal order, excluding this proxy's own writes (spec 0050 S4.1).
+            changedKitFiles : unit -> Result<FileName list, KitError>
             /// Takes this proxy's lock at the supplied instant, or identifies the foreign holder (spec 0050 S4.1).
             acquireLock : ClockTime -> Result<KitLockHolder, KitError>
             /// Releases only this proxy's unchanged lock, retaining the cache folder (spec 0050 S4.1).
@@ -40,7 +44,43 @@ module KitFolders =
         /// A root filename used as a path within its kit (spec 0050 S4.1).
         member private this.toKitRelativePath : KitRelativePath = KitRelativePath this.value
 
+        member private this.kitStampIdentity : FileName = FileName (this.value.ToUpperInvariant())
+
+    let updateKitFileStamp<'Stamp>
+        (file : FileName)
+        (stampOpt : 'Stamp option)
+        (stamps : Map<FileName, 'Stamp>)
+        : Map<FileName, 'Stamp> =
+        let others = stamps |> Map.filter (fun name _ -> name.kitStampIdentity <> file.kitStampIdentity)
+        match stampOpt with
+        | Some stamp -> Map.add file stamp others
+        | None -> others
+
+    let changedKitFileNames<'Stamp when 'Stamp : equality>
+        (recorded : Map<FileName, 'Stamp>)
+        (current : Map<FileName, 'Stamp>)
+        : FileName list =
+        let previous = recorded |> Map.toList |> List.map (fun (name, stamp) -> name.kitStampIdentity, stamp) |> Map.ofList
+        let present = current |> Map.keys |> Seq.map (fun name -> name.kitStampIdentity) |> Set.ofSeq
+        let changed =
+            current
+            |> Map.toList
+            |> List.choose (fun (name, stamp) ->
+                if Map.tryFind name.kitStampIdentity previous = Some stamp then None else Some name)
+        let removed = recorded |> Map.keys |> Seq.filter (fun name -> not (Set.contains name.kitStampIdentity present)) |> Seq.toList
+        changed @ removed |> List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value))
+
     type KitRelativePath with
+
+        /// Selects metadata and known kind files at the root, preserving their spelling (spec 0050 S4.1).
+        member this.tryKitFileName : FileName option =
+            if this.value.Contains('/') || this.value.Contains('\\') then
+                None
+            elif String.Equals(this.value, KitFile.fileName.value, StringComparison.OrdinalIgnoreCase)
+                 || (KitFileKind.all |> List.exists (fun kind -> this.value.EndsWith(kind.extension.value, StringComparison.OrdinalIgnoreCase))) then
+                Some (FileName this.value)
+            else
+                None
 
         /// The parent folders an outside writer needs for this path (spec 0050 S4.1).
         member private this.parentFolders : KitRelativePath list =
@@ -58,11 +98,12 @@ module KitFolders =
             let extension = this.extension
             paths
             |> List.choose (fun path ->
-                if not (path.value.Contains('/') || path.value.Contains('\\'))
-                   && path.value.EndsWith(extension.value, StringComparison.OrdinalIgnoreCase) then
-                    path.value.Substring(0, path.value.Length - extension.value.Length) |> FileStem.ofText |> Some
-                else
-                    None)
+                path.tryKitFileName
+                |> Option.bind (fun name ->
+                    if name.value.EndsWith(extension.value, StringComparison.OrdinalIgnoreCase) then
+                        name.value.Substring(0, name.value.Length - extension.value.Length) |> FileStem.ofText |> Some
+                    else
+                        None))
             |> List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value))
 
     type KitFileText with
@@ -71,6 +112,10 @@ module KitFolders =
         member this.withoutByteOrderMark : KitFileText =
             if this.value.StartsWith('\uFEFF') then KitFileText (this.value.Substring 1)
             else this
+
+    type private InMemoryKitFileStamp =
+        | InMemoryKitMetadataStamp of KitFile
+        | InMemoryKitTextStamp of KitFileText
 
     /// One folder's private contents, shared by every proxy opened over it (spec 0050 S4.1).
     type InMemoryKitFolder private () =
@@ -122,7 +167,20 @@ module KitFolders =
                         processId = processId
                     })
             let mutable heldLockOpt : KitLockHolder option = None
+            let mutable recordedStamps : Map<FileName, InMemoryKitFileStamp> = Map.empty
             let lockPath = KitRelativePath.kitLockPath
+
+            let currentStamps () : Map<FileName, InMemoryKitFileStamp> =
+                texts
+                |> Map.toList
+                |> List.choose (fun (path, text) ->
+                    path.tryKitFileName
+                    |> Option.bind (fun name ->
+                        if path = kitFilePath then
+                            kitFileOpt |> Option.map (fun kit -> name, InMemoryKitMetadataStamp kit)
+                        else
+                            Some (name, InMemoryKitTextStamp text)))
+                |> Map.ofList
 
             let tryReadLock () : KitLockHolder option =
                 this.tryFindTextPath lockPath
@@ -133,7 +191,9 @@ module KitFolders =
                 serializeMetadata kit
                 |> Result.map (fun text ->
                     texts <- Map.add kitFilePath text texts
-                    kitFileOpt <- Some kit)
+                    kitFileOpt <- Some kit
+                    let stamp = InMemoryKitMetadataStamp kit
+                    recordedStamps <- updateKitFileStamp KitFile.fileName (Some stamp) recordedStamps)
 
             {
                 initialiseKit =
@@ -168,6 +228,10 @@ module KitFolders =
                         let path = (kind.fileNameOf stem).toKitRelativePath
                         let heldPath = this.tryFindTextPath path |> Option.defaultValue path
                         texts <- Map.add heldPath text texts
+                        let stamp = InMemoryKitTextStamp text
+                        match heldPath.tryKitFileName with
+                        | Some name -> recordedStamps <- updateKitFileStamp name (Some stamp) recordedStamps
+                        | None -> ()
                         Ok ()
                 deleteKindFile =
                     fun kind stem ->
@@ -175,6 +239,7 @@ module KitFolders =
                         match this.tryFindTextPath path with
                         | Some held ->
                             texts <- Map.remove held texts
+                            recordedStamps <- updateKitFileStamp (kind.fileNameOf stem) None recordedStamps
                             Ok ()
                         | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
                 readDataFile =
@@ -189,6 +254,12 @@ module KitFolders =
                                     contentHash = ContentHash.ofBytes bytes
                                 }
                         | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
+                recordStamps =
+                    fun () ->
+                        recordedStamps <- currentStamps ()
+                        Ok ()
+                changedKitFiles =
+                    fun () -> currentStamps () |> changedKitFileNames recordedStamps |> Ok
                 acquireLock =
                     fun time ->
                         lock folderSync (fun () ->
