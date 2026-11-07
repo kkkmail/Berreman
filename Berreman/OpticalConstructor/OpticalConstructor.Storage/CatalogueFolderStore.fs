@@ -77,6 +77,11 @@ module CatalogueFolderStore =
             let path = file.combine this
             tryFolderIo this (fun () -> LibraryFileText (File.ReadAllText path.value))
 
+        /// Reads and checks this folder's manifest without opening an entry file (spec 0050 S3.1).
+        member private this.readCatalogueManifestFolder () : Result<CatalogueManifest, CatalogueError> =
+            this.readText CatalogueManifest.fileName
+            |> Result.bind (fun (text : LibraryFileText) -> text.parseCatalogueManifest |> Result.mapError (fileRejectedErr this CatalogueManifest.fileName))
+
         /// The catalogue this folder holds, checked in order (spec 0050 001 §A): the manifest reads and parses; no row
         /// lacks its file; no entry file lacks its row; every file parses with its schema, version and hash; and the
         /// result passes `validate`. A row's name must match the listing, so a row cannot reach outside the folder.
@@ -98,8 +103,7 @@ module CatalogueFolderStore =
                         let catalogue : CatalogueData = { manifest = manifest; envelopes = envelopes }
                         catalogue.validate |> Result.map (fun () -> catalogue))
 
-            this.readText CatalogueManifest.fileName
-            |> Result.bind (fun (text : LibraryFileText) -> text.parseCatalogueManifest |> Result.mapError (fileRejectedErr this CatalogueManifest.fileName))
+            this.readCatalogueManifestFolder ()
             |> Result.bind (fun (manifest : CatalogueManifest) ->
                 tryFolderIo this (fun () -> this.listEntryFiles ())
                 |> Result.bind (readEntries manifest))
@@ -146,14 +150,19 @@ module CatalogueFolderStore =
         /// The proxy over one catalogue folder (spec 0050 .spec-md §5): the Domain record, with its real `create` here.
         static member create (folder : FolderName) : CatalogueProxy =
             {
+                readManifest = fun () -> folder.readCatalogueManifestFolder ()
                 readCatalogue = fun () -> folder.readCatalogueFolder ()
                 writeCatalogue = fun (catalogue : CatalogueData) -> folder.writeCatalogueFolder catalogue
             }
 
-        /// The proxy over the given shipped-catalogue folder's Builtin subfolder (spec 0050 S2.4).
-        static member createBuiltInUnder (shipped : FolderName) : CatalogueProxy =
+        /// The Builtin subfolder of the given shipped-catalogue folder (spec 0050 S3.1).
+        static member builtInFolderUnder (shipped : FolderName) : FolderName =
             let builtIn = FolderName "Builtin"
-            CatalogueProxy.create (shipped.combine builtIn)
+            shipped.combine builtIn
+
+        /// The proxy over the given shipped-catalogue folder's Builtin subfolder (spec 0050 S2.4; S3.1).
+        static member createBuiltInUnder (shipped : FolderName) : CatalogueProxy =
+            CatalogueProxy.create (CatalogueProxy.builtInFolderUnder shipped)
 
         /// The shipped catalogue proxy at the default location beside the assembly (spec 0050 §3.5; S2.4).
         static member createBuiltIn () : CatalogueProxy =

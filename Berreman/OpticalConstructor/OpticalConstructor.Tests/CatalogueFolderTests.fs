@@ -110,6 +110,7 @@ module CatalogueFolderTests =
         let expected = (CatalogueProxy.create builtInFolder).readCatalogue () |> okOf
         let actual = (CatalogueProxy.createBuiltInUnder shipped).readCatalogue () |> okOf
 
+        Assert.Equal<FolderName>(builtInFolder, CatalogueProxy.builtInFolderUnder shipped)
         Assert.Equal<CatalogueData>(expected, actual)
 
         let emptyFolder = freshFolder "empty-shipped-catalogue"
@@ -142,6 +143,35 @@ module CatalogueFolderTests =
 
         Assert.Equal<string list>(expectedFiles, textsIn folder |> List.map fst)
         Assert.Equal<CatalogueData>(second, proxy.readCatalogue () |> okOf)
+
+    [<Fact>]
+    let ``readManifest reads the manifest without opening an entry file`` () : unit =
+        let catalogue = catalogueOf (tunableSource ())
+        let folder, proxy = writtenFolder "manifest-alone" catalogue
+        let readBack = proxy.readCatalogue () |> okOf
+
+        Assert.Equal<CatalogueManifest>(readBack.manifest, proxy.readManifest () |> okOf)
+
+        let source = sourceEnvelopeIn catalogue
+        File.Delete(entryPath folder source)
+
+        match proxy.readCatalogue () with
+        | Error (MissingEntryFileErr reason) -> Assert.Contains(source.content.fileName.value, reason)
+        | other -> Assert.Fail($"expected MissingEntryFileErr, got %A{other}")
+
+        Assert.Equal<CatalogueManifest>(readBack.manifest, proxy.readManifest () |> okOf)
+
+        File.WriteAllText(manifestPath folder, "{ this is not JSON")
+
+        match proxy.readManifest () with
+        | Error (CatalogueFileRejectedErr reason) -> Assert.Contains(CatalogueManifest.fileName.value, reason)
+        | other -> Assert.Fail($"expected CatalogueFileRejectedErr for an invalid manifest, got %A{other}")
+
+        File.Delete(manifestPath folder)
+
+        match proxy.readManifest () with
+        | Error (CatalogueIoErr reason) -> Assert.Contains(folder.value, reason)
+        | other -> Assert.Fail($"expected CatalogueIoErr for a missing manifest, got %A{other}")
 
     [<Fact>]
     let ``a manifest row with no file is MissingEntryFileErr`` () =

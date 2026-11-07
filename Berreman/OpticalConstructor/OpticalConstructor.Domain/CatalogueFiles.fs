@@ -72,6 +72,8 @@ module CatalogueFiles =
     [<ReferenceEquality>]
     type CatalogueProxy =
         {
+            /// Reads and checks the manifest without opening an entry file (spec 0050 S3.1).
+            readManifest : unit -> Result<CatalogueManifest, CatalogueError>
             readCatalogue : unit -> Result<CatalogueData, CatalogueError>
             writeCatalogue : CatalogueData -> Result<unit, CatalogueError>
         }
@@ -80,12 +82,15 @@ module CatalogueFiles =
         /// then replaces what it holds; read answers what it holds, or `CatalogueIoErr` while nothing has been written.
         static member createInMemory () : CatalogueProxy =
             let store = ref (None : CatalogueData option)
+
+            let readCatalogue () : Result<CatalogueData, CatalogueError> =
+                match store.Value with
+                | Some catalogue -> Ok catalogue
+                | None -> Error (CatalogueIoErr "the in-memory store holds no catalogue: nothing has been written")
+
             {
-                readCatalogue =
-                    fun () ->
-                        match store.Value with
-                        | Some catalogue -> Ok catalogue
-                        | None -> Error (CatalogueIoErr "the in-memory store holds no catalogue: nothing has been written")
+                readManifest = fun () -> readCatalogue () |> Result.map (fun (catalogue : CatalogueData) -> catalogue.manifest)
+                readCatalogue = readCatalogue
                 writeCatalogue =
                     fun catalogue ->
                         catalogue.validate

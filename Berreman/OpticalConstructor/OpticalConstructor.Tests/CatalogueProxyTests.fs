@@ -117,6 +117,18 @@ module CatalogueProxyTests =
         assertHoldsNothing (CatalogueProxy.createInMemory ())
 
     [<Fact>]
+    let ``the in-memory catalogue reads its manifest alone`` () : unit =
+        let proxy = CatalogueProxy.createInMemory ()
+
+        match proxy.readManifest () with
+        | Error (CatalogueIoErr _) -> ()
+        | other -> Assert.Fail($"expected CatalogueIoErr before a write, got %A{other}")
+
+        proxy.writeCatalogue threeKinds |> okOf
+
+        Assert.Equal<CatalogueManifest>(threeKinds.manifest, proxy.readManifest () |> okOf)
+
+    [<Fact>]
     let ``a catalogue whose manifest its entries do not make is refused and not written`` () =
         let proxy = CatalogueProxy.createInMemory ()
 
