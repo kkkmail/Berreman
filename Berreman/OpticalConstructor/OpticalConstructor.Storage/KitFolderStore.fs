@@ -1,7 +1,11 @@
 namespace OpticalConstructor.Storage
 
+open System
+open System.Diagnostics
 open System.IO
 open System.Text
+open System.Text.Json
+open System.Threading
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
@@ -12,6 +16,21 @@ open OpticalConstructor.Storage.CatalogueFolderStore
 
 module KitFolderStore =
 
+    type KitLockHolder with
+
+        /// Canonical cache text for the holder, without a versioned schema (spec 0050 S4.1).
+        member this.lockFileText : Result<KitFileText, StorageError> =
+            nodeOf this |> Result.map (fun node -> node.canonicalFileText |> KitFileText)
+
+        member private this.tryFindLiveKitLockOn (machine : MachineName) : KitLockHolder option =
+            if not (String.Equals(this.owner.machine.value, machine.value, StringComparison.OrdinalIgnoreCase)) then
+                Some this
+            else
+                try
+                    use process = Process.GetProcessById this.owner.processId.value
+                    Some this
+                with :? ArgumentException -> None
+
     type KitFile with
 
         /// Canonical kit metadata with LF line ends and one final newline (spec 0050 S4.1).
@@ -21,6 +40,17 @@ module KitFolderStore =
     type KitFileText with
 
         member private this.toJsonText : JsonText = JsonText this.value
+
+        /// Binds cache text through the shared JSON options, reporting invalid text as MalformedJsonErr (spec 0050 S4.1).
+        member this.parseLockHolder : Result<KitLockHolder, StorageError> =
+            try
+                let holder = JsonSerializer.Deserialize<KitLockHolder>(this.withoutByteOrderMark.value, options)
+                if Unchecked.equals holder Unchecked.defaultof<KitLockHolder>
+                   || Unchecked.equals holder.owner Unchecked.defaultof<KitLockOwner> then
+                    Error (MalformedJsonErr "a kit lock must contain a holder and its owner")
+                else
+                    Ok holder
+            with error -> Error (MalformedJsonErr error.Message)
 
         /// Validates the kit schema and rejects unsupported versions before binding (spec 0050 S4.1).
         member this.parseKitFile : Result<KitFile, StorageError> =
@@ -36,6 +66,12 @@ module KitFolderStore =
     let private serializeKitMetadata (folder : FolderName) (kitFile : KitFile) : Result<KitFileText, KitError> =
         kitFile.fileText |> Result.mapError (kitFileRejectedErr folder)
 
+    let private kitLockIoErr (folder : FolderName) (error : StorageError) : KitError =
+        KitIoErr $"kit folder '{folder.value}': '{KitRelativePath.kitLockPath.value}': {error.describe}"
+
+    let private serializeKitLock (folder : FolderName) (holder : KitLockHolder) : Result<KitFileText, KitError> =
+        holder.lockFileText |> Result.mapError (kitLockIoErr folder)
+
     type FileByteContent with
 
         member private this.kitFileText : KitFileText =
@@ -48,15 +84,65 @@ module KitFolderStore =
             let bytes = File.ReadAllBytes this.value |> FileByteContent
             bytes.kitFileText
 
+        member private this.tryReadKitLock () : Result<KitLockHolder, StorageError> option =
+            try
+                // A reader must not block another opener's atomic move or release (spec 0050 step 0129).
+                use stream = new FileStream(this.value, FileMode.Open, FileAccess.Read, FileShare.Read ||| FileShare.Delete)
+                use reader = new StreamReader(stream, Encoding.UTF8, true)
+                let text = KitFileText (reader.ReadToEnd ())
+                Some text.parseLockHolder
+            with
+            | :? FileNotFoundException
+            | :? DirectoryNotFoundException -> None
+
+        member private this.openKitLockGuard () : FileStream =
+            let mutable spinner = SpinWait ()
+            let rec tryOpen () : FileStream =
+                let streamOpt =
+                    try
+                        Some (new FileStream(this.value, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose))
+                    with :? IOException as error when (error.HResult &&& 0xFFFF) = 32 || (error.HResult &&& 0xFFFF) = 33 ->
+                        None
+                match streamOpt with
+                | Some stream -> stream
+                | None ->
+                    spinner.SpinOnce ()
+                    tryOpen ()
+            tryOpen ()
+
     type KitProxy with
 
         /// Opens shared in-memory folder state with the same metadata serialization as the filesystem proxy (spec 0050 S4.1).
         static member createInMemory (folder : InMemoryKitFolder) : KitProxy =
             let folderName = FolderName "in-memory kit folder"
-            folder.createKitProxy (serializeKitMetadata folderName)
+            folder.createKitProxy
+                (serializeKitMetadata folderName)
+                (serializeKitLock folderName)
+                (fun text -> text.parseLockHolder |> Result.mapError (kitLockIoErr folderName))
 
-        /// Opens a folder without IO; only initialisation creates the kit and its content folders (spec 0050 S4.1).
+        /// Opens a folder without writing; initialisation adds the kit and the first lock adds its cache (spec 0050 S4.1).
         static member create (folder : KitFolder) : KitProxy =
+            let owner : KitLockOwner =
+                {
+                    machine = MachineName Environment.MachineName
+                    user = UserName Environment.UserName
+                    processId = ProcessId.getCurrentProcessId ()
+                }
+            let mutable heldLockOpt : KitLockHolder option = None
+            let proxySync = obj ()
+            let cacheFolder = FolderName (Path.Combine(folder.value.value, KitRelativePath.kitCachePath.value))
+            let lockFile = FileName (Path.Combine(folder.value.value, KitRelativePath.kitLockPath.value.Replace('/', Path.DirectorySeparatorChar)))
+            let guardName = FileName "lock-guard.tmp"
+            let guardFile = guardName.combine cacheFolder
+
+            let tryExistingLock () : Result<KitLockHolder, KitError> option =
+                match lockFile.tryReadKitLock (), heldLockOpt with
+                | Some (Ok stored), Some held when stored = held -> Some (Ok held)
+                | Some (Ok stored), _ ->
+                    stored.tryFindLiveKitLockOn owner.machine
+                    |> Option.map (fun holder -> Error (KitLockedErr holder))
+                | _ -> None
+
             let writeText (file : FileName) (text : KitFileText) : Result<unit, KitError> =
                 let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
                 file.writeBytesAtomically bytes
@@ -141,4 +227,58 @@ module KitFolderStore =
                             | :? FileNotFoundException
                             | :? DirectoryNotFoundException ->
                                 Error (MissingKitFileErr $"kit folder '{folder.value.value}': '{path.value}'"))
+                acquireLock =
+                    fun time ->
+                        lock proxySync (fun () ->
+                            tryKitFolderIo folder (fun () ->
+                                match tryExistingLock () with
+                                | Some result -> result
+                                | None ->
+                                    let holder : KitLockHolder =
+                                        {
+                                            owner = owner
+                                            acquiredAt = time
+                                        }
+                                    serializeKitLock folder.value holder
+                                    |> Result.bind (fun text ->
+                                        Directory.CreateDirectory cacheFolder.value |> ignore
+                                        // Serialize stale removal with acquisition and release across openers (spec 0050 step 0129).
+                                        use guard = guardFile.openKitLockGuard ()
+                                        match tryExistingLock () with
+                                        | Some result -> result
+                                        | None ->
+                                            let temporaryName = FileName $"lock-{Guid.NewGuid():N}.tmp"
+                                            let temporaryFile = temporaryName.combine cacheFolder
+                                            try
+                                                let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
+                                                File.WriteAllBytes(temporaryFile.value, bytes.value)
+                                                File.Delete lockFile.value
+                                                try
+                                                    File.Move(temporaryFile.value, lockFile.value, false)
+                                                    heldLockOpt <- Some holder
+                                                    Ok holder
+                                                with :? IOException as error ->
+                                                    File.Delete temporaryFile.value
+                                                    match lockFile.tryReadKitLock () with
+                                                    | Some (Ok winner) -> Error (KitLockedErr winner)
+                                                    | Some (Error invalid) -> Error (kitLockIoErr folder.value invalid)
+                                                    | None -> Error (KitIoErr $"kit folder '{folder.value.value}': '{lockFile.value}': {error.Message}")
+                                            finally
+                                                File.Delete temporaryFile.value)))
+                releaseLock =
+                    fun () ->
+                        lock proxySync (fun () ->
+                            tryKitFolderIo folder (fun () ->
+                                match heldLockOpt with
+                                | Some held ->
+                                    match lockFile.tryReadKitLock () with
+                                    | Some (Ok stored) when stored = held ->
+                                        use guard = guardFile.openKitLockGuard ()
+                                        match lockFile.tryReadKitLock () with
+                                        | Some (Ok current) when current = held -> File.Delete lockFile.value
+                                        | _ -> ()
+                                    | _ -> ()
+                                    heldLockOpt <- None
+                                | None -> ()
+                                Ok ()))
             }

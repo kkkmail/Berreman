@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Domain
 
 open System
+open System.Globalization
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 
@@ -20,6 +21,38 @@ module Kit =
             now : unit -> ClockTime
         }
 
+    /// The machine on which a kit was opened (spec 0050 S4.1).
+    type MachineName =
+        | MachineName of string
+
+        member this.value : string = let (MachineName name) = this in name
+
+    /// The user who opened a kit (spec 0050 S4.1).
+    type UserName =
+        | UserName of string
+
+        member this.value : string = let (UserName name) = this in name
+
+    /// Identifies the user, machine and process that opened a kit (spec 0050 S4.1).
+    type KitLockOwner =
+        {
+            machine : MachineName
+            user : UserName
+            processId : ProcessId
+        }
+
+    /// Identifies a kit lock's owner and its acquisition instant (spec 0050 S4.1).
+    type KitLockHolder =
+        {
+            owner : KitLockOwner
+            acquiredAt : ClockTime
+        }
+
+        member this.describe : string =
+            let instant = this.acquiredAt.value.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+            let process = this.owner.processId.value.ToString(CultureInfo.InvariantCulture)
+            $"{this.owner.user.value} on {this.owner.machine.value} (process {process}) since {instant} UTC"
+
     /// Why a kit operation failed, with the affected folder, file or name in the reason (spec 0050 S4.1).
     type KitError =
         | KitIoErr of reason : string
@@ -29,6 +62,7 @@ module Kit =
         | InvalidKitNameErr of reason : string
         | MissingKitFileErr of reason : string
         | InvalidKitPathErr of reason : string
+        | KitLockedErr of holder : KitLockHolder
 
         member this.describe : string =
             match this with
@@ -39,6 +73,7 @@ module Kit =
             | InvalidKitNameErr reason -> $"the kit name is not valid: {reason}"
             | MissingKitFileErr reason -> $"the kit holds no such file: {reason}"
             | InvalidKitPathErr reason -> $"the path is not inside the kit: {reason}"
+            | KitLockedErr holder -> $"the kit is open elsewhere: {holder.describe}"
 
     /// The display name, preserved as given; its file stem follows the shared name rule (spec 0050 S4.1).
     type KitName =
@@ -119,6 +154,10 @@ module Kit =
         | KitRelativePath of string
 
         member this.value : string = let (KitRelativePath path) = this in path
+
+        static member kitCachePath : KitRelativePath = KitRelativePath ".oc"
+
+        static member kitLockPath : KitRelativePath = KitRelativePath $"{KitRelativePath.kitCachePath.value}/lock"
 
         static member tryCreate (text : string) : Result<KitRelativePath, KitError> =
             if String.IsNullOrWhiteSpace text then

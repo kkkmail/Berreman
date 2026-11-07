@@ -1,12 +1,24 @@
 namespace OpticalConstructor.Tests
 
 open System
+open System.Globalization
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
 
 module KitTests =
+
+    let private exampleLockHolder : KitLockHolder =
+        {
+            owner =
+                {
+                    machine = MachineName "BENCH-1"
+                    user = UserName "lab"
+                    processId = ProcessId 4242
+                }
+            acquiredAt = ClockTime (DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc))
+        }
 
     [<Fact>]
     let ``a kit name keeps its text, refuses a blank one and takes its file stem from the shared name rule`` () : unit =
@@ -132,6 +144,16 @@ module KitTests =
         Assert.Equal<FileName>(experimentFileName, ExperimentKitFile.fileNameOf stem)
 
     [<Fact>]
+    let ``a lock holder renders who holds the lock, on which machine and since when`` () : unit =
+        let originalCulture = CultureInfo.CurrentCulture
+        try
+            CultureInfo.CurrentCulture <- CultureInfo.GetCultureInfo "ar-SA"
+            Assert.Equal<string>(
+                "lab on BENCH-1 (process 4242) since 2026-11-03 12:00:00 UTC", exampleLockHolder.describe)
+        finally
+            CultureInfo.CurrentCulture <- originalCulture
+
+    [<Fact>]
     let ``every kit error renders its condition and its payload`` () : unit =
         let cases : (KitError * string) list =
             [
@@ -142,10 +164,11 @@ module KitTests =
                 InvalidKitNameErr "blank name", "the kit name is not valid: blank name"
                 MissingKitFileErr "data/missing.csv", "the kit holds no such file: data/missing.csv"
                 InvalidKitPathErr "../outside.csv", "the path is not inside the kit: ../outside.csv"
+                KitLockedErr exampleLockHolder, "the kit is open elsewhere: lab on BENCH-1 (process 4242) since 2026-11-03 12:00:00 UTC"
             ]
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
-        Assert.Equal(7, descriptions |> List.distinct |> List.length)
+        Assert.Equal(8, descriptions |> List.distinct |> List.length)

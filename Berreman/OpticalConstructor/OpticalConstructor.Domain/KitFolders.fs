@@ -29,6 +29,10 @@ module KitFolders =
             deleteKindFile : KitFileKind -> FileStem -> Result<unit, KitError>
             /// Reads the kit-relative file's text and ContentHash.ofBytes of its stored bytes, or MissingKitFileErr naming the path (spec 0050 S4.1).
             readDataFile : KitRelativePath -> Result<KitDataFile, KitError>
+            /// Takes this proxy's lock at the supplied instant, or identifies the foreign holder (spec 0050 S4.1).
+            acquireLock : ClockTime -> Result<KitLockHolder, KitError>
+            /// Releases only this proxy's unchanged lock, retaining the cache folder (spec 0050 S4.1).
+            releaseLock : unit -> Result<unit, KitError>
         }
 
     type FileName with
@@ -71,9 +75,11 @@ module KitFolders =
     /// One folder's private contents, shared by every proxy opened over it (spec 0050 S4.1).
     type InMemoryKitFolder private () =
         let kitFilePath = KitFile.fileName.toKitRelativePath
+        let folderSync = obj ()
         let mutable kitFileOpt : KitFile option = None
         let mutable texts : Map<KitRelativePath, KitFileText> = Map.empty
         let mutable folders : Set<KitRelativePath> = Set.empty
+        let mutable nextProxyProcessId = ProcessId 1
 
         /// Creates an existing, empty folder (spec 0050 S4.1).
         static member create () : InMemoryKitFolder = InMemoryKitFolder ()
@@ -100,8 +106,29 @@ module KitFolders =
             |> Set.toList
             |> List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value))
 
-        /// Opens shared folder state with the supplied metadata serializer, retaining its text for any-file reads (spec 0050 S4.1).
-        member this.createKitProxy (serializeMetadata : KitFile -> Result<KitFileText, KitError>) : KitProxy =
+        /// Opens shared folder state with supplied serializers, retaining stored text for any-file reads (spec 0050 S4.1).
+        member this.createKitProxy
+            (serializeMetadata : KitFile -> Result<KitFileText, KitError>)
+            (serializeLock : KitLockHolder -> Result<KitFileText, KitError>)
+            (parseLock : KitFileText -> Result<KitLockHolder, KitError>)
+            : KitProxy =
+            let owner : KitLockOwner =
+                lock folderSync (fun () ->
+                    let processId = nextProxyProcessId
+                    nextProxyProcessId <- ProcessId (processId.value + 1)
+                    {
+                        machine = MachineName "in-memory"
+                        user = UserName "in-memory"
+                        processId = processId
+                    })
+            let mutable heldLockOpt : KitLockHolder option = None
+            let lockPath = KitRelativePath.kitLockPath
+
+            let tryReadLock () : KitLockHolder option =
+                this.tryFindTextPath lockPath
+                |> Option.bind (fun path -> Map.tryFind path texts)
+                |> Option.bind (fun text -> parseLock text |> Result.toOption)
+
             let writeMetadata (kit : KitFile) : Result<unit, KitError> =
                 serializeMetadata kit
                 |> Result.map (fun text ->
@@ -162,5 +189,39 @@ module KitFolders =
                                     contentHash = ContentHash.ofBytes bytes
                                 }
                         | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
+                acquireLock =
+                    fun time ->
+                        lock folderSync (fun () ->
+                            match tryReadLock () with
+                            | Some stored ->
+                                match heldLockOpt with
+                                | Some held when stored = held -> Ok held
+                                | _ -> Error (KitLockedErr stored)
+                            | None ->
+                                let holder =
+                                    {
+                                        owner = owner
+                                        acquiredAt = time
+                                    }
+                                serializeLock holder
+                                |> Result.map (fun text ->
+                                    let heldPath = this.tryFindTextPath lockPath |> Option.defaultValue lockPath
+                                    texts <- Map.add heldPath text texts
+                                    folders <- Set.add KitRelativePath.kitCachePath folders
+                                    heldLockOpt <- Some holder
+                                    holder))
+                releaseLock =
+                    fun () ->
+                        lock folderSync (fun () ->
+                            match heldLockOpt with
+                            | Some held ->
+                                match tryReadLock () with
+                                | Some stored when stored = held ->
+                                    let heldPath = this.tryFindTextPath lockPath |> Option.defaultValue lockPath
+                                    texts <- Map.remove heldPath texts
+                                | _ -> ()
+                                heldLockOpt <- None
+                            | None -> ()
+                            Ok ())
             }
 

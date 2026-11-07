@@ -5,6 +5,8 @@ open System.IO
 open System.Security.Cryptography
 open System.Text
 open System.Text.Json.Nodes
+open System.Threading
+open System.Threading.Tasks
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -59,6 +61,55 @@ module private KitProxyTestData =
                     |> Array.sortWith (fun first second -> String.CompareOrdinal(first, second))
                     |> Array.toList
         }
+
+    let takeKitLock (proxy : KitProxy) (time : ClockTime) : KitLockHolder =
+        proxy.acquireLock time |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let storedKitLock (proxy : KitProxy) : KitLockHolder =
+        let path = KitRelativePath ".oc/lock"
+        let data = proxy.readDataFile path |> Result.defaultWith (fun error -> failwith error.describe)
+        data.text.parseLockHolder |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let placeKitLock (folder : KitTestFolder) (holder : KitLockHolder) : unit =
+        let text = holder.lockFileText |> Result.defaultWith (fun error -> failwith error.describe)
+        folder.placeLabFile ".oc/lock" text.value
+
+    let currentKitLockOwner () : KitLockOwner =
+        {
+            machine = MachineName Environment.MachineName
+            user = UserName Environment.UserName
+            processId = ProcessId.getCurrentProcessId ()
+        }
+
+    let contendForKitLock (folder : KitTestFolder) (clock : ClockProvider) : unit =
+        let proxies = [ folder.openProxy (); folder.openProxy (); folder.openProxy () ]
+        let time = clock.now ()
+        use start = new Barrier(proxies.Length)
+        let tasks =
+            proxies
+            |> List.map (fun proxy ->
+                Task.Factory.StartNew<Result<KitLockHolder, KitError>>(
+                    (fun () ->
+                        start.SignalAndWait () |> ignore
+                        proxy.acquireLock time),
+                    CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default))
+        let results = (Task.WhenAll tasks).GetAwaiter().GetResult() |> Array.toList
+        let outcomes = List.zip proxies results
+        let winners = outcomes |> List.choose (fun (proxy, result) -> result |> Result.toOption |> Option.map (fun holder -> proxy, holder))
+        let winner, holder = Assert.Single winners
+        Assert.Equal<ClockTime>(time, holder.acquiredAt)
+        for proxy, result in outcomes do
+            match result with
+            | Ok acquired -> Assert.Equal<KitLockHolder>(holder, acquired)
+            | Error (KitLockedErr held) ->
+                Assert.Equal<KitLockHolder>(holder, held)
+                Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
+            | Error error -> Assert.Fail($"A competing opener must report the winner: {error.describe}")
+        Assert.Equal<KitLockHolder>(holder, storedKitLock winner)
+        Assert.Equal<Result<KitLockHolder, KitError>>(Ok holder, winner.acquireLock (clock.now ()))
+        Assert.Equal<string list>([ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ], folder.paths ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), winner.releaseLock ())
+        Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
 
 open KitProxyTestData
 
@@ -368,6 +419,110 @@ type KitProxyContract () =
         Assert.Equal<string list>(beforeReplacement, folder.paths ())
         assertKitMetadata replacement
 
+    [<Fact>]
+    member this.``a second proxy cannot take a held lock and is told who holds it, until it is released`` () : unit =
+        let folder = this.freshFolder ()
+        let proxyA = folder.openProxy ()
+        let proxyB = folder.openProxy ()
+        let proxyC = folder.openProxy ()
+        let clock = steppingClock ()
+        let kit = newKitFile clock
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.initialiseKit kit)
+        let timeA = clock.now ()
+        let holderA = takeKitLock proxyA timeA
+        Assert.Equal<ClockTime>(timeA, holderA.acquiredAt)
+        Assert.Equal<KitLockHolder>(holderA, storedKitLock proxyC)
+        let before = folder.paths ()
+        Assert.Equal<Result<KitLockHolder, KitError>>(Error (KitLockedErr holderA), proxyB.acquireLock (clock.now ()))
+        Assert.Equal<string list>(before, folder.paths ())
+        Assert.Equal<KitLockHolder>(holderA, storedKitLock proxyC)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
+
+        let timeB = clock.now ()
+        let holderB = takeKitLock proxyB timeB
+        if holderA.owner.machine.value = "in-memory" then
+            let expectedOwnerA : KitLockOwner =
+                {
+                    machine = MachineName "in-memory"
+                    user = UserName "in-memory"
+                    processId = ProcessId 1
+                }
+            let expectedOwnerB =
+                {
+                    expectedOwnerA with processId = ProcessId 2
+                }
+            Assert.Equal<KitLockOwner>(expectedOwnerA, holderA.owner)
+            Assert.Equal<KitLockOwner>(expectedOwnerB, holderB.owner)
+        else
+            Assert.Equal<KitLockOwner>(currentKitLockOwner (), holderA.owner)
+            Assert.Equal<KitLockOwner>(currentKitLockOwner (), holderB.owner)
+        Assert.Equal<ClockTime>(timeB, holderB.acquiredAt)
+        Assert.Equal<KitLockHolder>(holderB, storedKitLock proxyA)
+        Assert.Equal<Result<KitLockHolder, KitError>>(Error (KitLockedErr holderB), proxyC.acquireLock (clock.now ()))
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
+        Assert.Equal<KitLockHolder>(holderB, storedKitLock proxyC)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.releaseLock ())
+        contendForKitLock folder clock
+
+    [<Fact>]
+    member this.``a proxy that holds the lock keeps it when it asks again, and another proxy's release leaves it`` () : unit =
+        let folder = this.freshFolder ()
+        let proxyA = folder.openProxy ()
+        let proxyB = folder.openProxy ()
+        let proxyC = folder.openProxy ()
+        let clock = steppingClock ()
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.initialiseKit (newKitFile clock))
+        let timeA = clock.now ()
+        let holderA = takeKitLock proxyA timeA
+        let before = folder.paths ()
+        let lockPath = KitRelativePath ".oc/lock"
+        let original = proxyC.readDataFile lockPath
+        Assert.Equal<Result<KitLockHolder, KitError>>(Ok holderA, proxyA.acquireLock (clock.now ()))
+        Assert.Equal<Result<KitDataFile, KitError>>(original, proxyC.readDataFile lockPath)
+        // Equal process and timestamp do not transfer ownership to a different proxy (spec 0050 step 0129).
+        Assert.Equal<Result<KitLockHolder, KitError>>(Error (KitLockedErr holderA), proxyB.acquireLock timeA)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.releaseLock ())
+        Assert.Equal<Result<KitLockHolder, KitError>>(Error (KitLockedErr holderA), proxyC.acquireLock (clock.now ()))
+        Assert.Equal<Result<KitDataFile, KitError>>(original, proxyC.readDataFile lockPath)
+        Assert.Equal<string list>(before, folder.paths ())
+
+        let replacement =
+            {
+                owner =
+                    {
+                        holderA.owner with machine = MachineName "another-machine"
+                    }
+                acquiredAt = clock.now ()
+            }
+        placeKitLock folder replacement
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
+        Assert.Equal<KitLockHolder>(replacement, storedKitLock proxyC)
+        Assert.Equal<Result<KitLockHolder, KitError>>(Error (KitLockedErr replacement), proxyA.acquireLock (clock.now ()))
+
+    [<Fact>]
+    member this.``the lock is written in the cache folder only when it is first taken, and its release keeps the folder`` () : unit =
+        let folder = this.freshFolder ()
+        let proxyA = folder.openProxy ()
+        let proxyB = folder.openProxy ()
+        let proxyC = folder.openProxy ()
+        let clock = steppingClock ()
+        let kit = newKitFile clock
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.initialiseKit kit)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.releaseLock ())
+        Assert.Equal<string list>([ ".kit-json"; "data"; "library" ], folder.paths ())
+        let holder = takeKitLock proxyA (clock.now ())
+        Assert.Equal<string list>([ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ], folder.paths ())
+        Assert.Equal<KitLockHolder>(holder, storedKitLock proxyC)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
+        Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
+        let nextTime = clock.now ()
+        let next = takeKitLock proxyA nextTime
+        Assert.Equal<ClockTime>(nextTime, next.acquiredAt)
+        Assert.Equal<KitLockOwner>(holder.owner, next.owner)
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
+        Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxyC.readKitFile ())
+
 /// Runs the shared kit-file contract over one in-memory folder per fact (spec 0050 S4.1).
 type KitProxyTests () =
     inherit KitProxyContract ()
@@ -393,6 +548,124 @@ type KitProxyFolderTests () =
         let folder = freshKitFolderPath ()
         Directory.CreateDirectory folder.value |> ignore
         kitFolderAdapter folder
+
+    [<Fact>]
+    member this.``the folder lock names this machine, this user and this process`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let clock = steppingClock ()
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit (newKitFile clock))
+        let time = clock.now ()
+        let holder = takeKitLock proxy time
+        Assert.Equal<KitLockOwner>(currentKitLockOwner (), holder.owner)
+        Assert.Equal<ClockTime>(time, holder.acquiredAt)
+        Assert.Equal<KitLockHolder>(holder, storedKitLock (folder.openProxy ()))
+        let path = KitRelativePath ".oc/lock"
+        let data = proxy.readDataFile path |> Result.defaultWith (fun error -> failwith error.describe)
+        let text = holder.lockFileText |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<KitFileText>(text, data.text)
+        Assert.DoesNotContain("\r", text.value)
+        Assert.EndsWith("\n", text.value)
+        Assert.False(text.value.EndsWith("\n\n", StringComparison.Ordinal))
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
+
+    [<Fact>]
+    member this.``a lock left on this machine by a process that has ended is taken over`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let clock = steppingClock ()
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit (newKitFile clock))
+        let stale =
+            {
+                owner =
+                    {
+                        machine = MachineName (Environment.MachineName.ToLowerInvariant())
+                        user = UserName "previous-user"
+                        processId = ProcessId Int32.MaxValue
+                    }
+                acquiredAt = clock.now ()
+            }
+        placeKitLock folder stale
+        let time = clock.now ()
+        let holder = takeKitLock proxy time
+        Assert.Equal<KitLockOwner>(currentKitLockOwner (), holder.owner)
+        Assert.Equal<ClockTime>(time, holder.acquiredAt)
+        Assert.Equal<KitLockHolder>(holder, storedKitLock proxy)
+        Assert.NotEqual<KitLockHolder>(stale, holder)
+        Assert.Equal<string list>([ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ], folder.paths ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
+        placeKitLock folder stale
+        contendForKitLock folder clock
+
+    [<Fact>]
+    member this.``a lock taken on another machine is live`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let clock = steppingClock ()
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit (newKitFile clock))
+        let foreign =
+            {
+                owner =
+                    {
+                        currentKitLockOwner () with machine = MachineName "another-machine"
+                    }
+                acquiredAt = clock.now ()
+            }
+        placeKitLock folder foreign
+        let before = folder.paths ()
+        let lockPath = KitRelativePath ".oc/lock"
+        let original = proxy.readDataFile lockPath
+        Assert.Equal<Result<KitLockHolder, KitError>>(Error (KitLockedErr foreign), proxy.acquireLock (clock.now ()))
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
+        Assert.Equal<KitLockHolder>(foreign, storedKitLock proxy)
+        Assert.Equal<Result<KitDataFile, KitError>>(original, proxy.readDataFile lockPath)
+        Assert.Equal<string list>(before, folder.paths ())
+
+    [<Fact>]
+    member _.``an unreadable lock is taken over`` () : unit =
+        let folderPath = freshKitFolderPath ()
+        let folder = kitFolderAdapter folderPath
+        let proxy = folder.openProxy ()
+        let clock = steppingClock ()
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit (newKitFile clock))
+        for unreadable in [ "not a lock"; "null"; "{}"; "{\"owner\":null,\"acquiredAt\":\"2026-11-03T12:00:00Z\"}" ] do
+            let text = KitFileText unreadable
+            match text.parseLockHolder with
+            | Error (OpticalConstructor.Storage.Errors.MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail($"Expected MalformedJsonErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("An unreadable lock must not bind to a holder.")
+            folder.placeLabFile ".oc/lock" text.value
+            let time = clock.now ()
+            let holder = takeKitLock proxy time
+            Assert.Equal<KitLockOwner>(currentKitLockOwner (), holder.owner)
+            Assert.Equal<ClockTime>(time, holder.acquiredAt)
+            Assert.Equal<KitLockHolder>(holder, storedKitLock proxy)
+            Assert.Equal<string list>([ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ], folder.paths ())
+            Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
+
+        folder.placeLabFile ".oc/lock" "not a lock"
+        let file = FileName (Path.Combine(folderPath.value, ".oc", "lock"))
+        let originalBytes = File.ReadAllBytes file.value
+        do
+            use inaccessible = new FileStream(file.value, FileMode.Open, FileAccess.Read, FileShare.None)
+            match proxy.acquireLock (clock.now ()) with
+            | Error (KitIoErr reason) -> Assert.Contains(folderPath.value, reason)
+            | Error error -> Assert.Fail($"Expected KitIoErr for inaccessible text, got {error.describe}")
+            | Ok _ -> Assert.Fail("An IO failure must not be treated as malformed lock text.")
+        Assert.Equal<byte>(originalBytes, File.ReadAllBytes file.value)
+        contendForKitLock folder clock
+
+        let holder = takeKitLock proxy (clock.now ())
+        do
+            use inaccessible = new FileStream(file.value, FileMode.Open, FileAccess.Read, FileShare.None)
+            match proxy.releaseLock () with
+            | Error (KitIoErr reason) -> Assert.Contains(folderPath.value, reason)
+            | Error error -> Assert.Fail($"Expected KitIoErr for an inaccessible held lock, got {error.describe}")
+            | Ok () -> Assert.Fail("An inaccessible held lock must report its IO failure.")
+        Assert.Equal<KitLockHolder>(holder, storedKitLock proxy)
+        Assert.Equal<Result<KitLockHolder, KitError>>(Ok holder, proxy.acquireLock (clock.now ()))
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
+        Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
 
     [<Fact>]
     member _.``a folder that does not exist is not created by its proxy, and initialising it creates it`` () : unit =
