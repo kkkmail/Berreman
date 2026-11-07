@@ -24,6 +24,7 @@ module LibraryBackup =
 
     /// The Library window's backup and restore seam (spec 0050 001 §C; .spec-md §10.5).
     /// A successful restore preserves the current library as a backup that can undo it.
+    /// Use createInDatabase for SQLite storage or createInMemory for the name-only double.
     [<ReferenceEquality>]
     type LibraryBackupProxy =
         {

@@ -29,6 +29,7 @@
         <Compile Include="SampleDatabaseStore.fs" />
         <Compile Include="SourceDatabaseStore.fs" />
         <Compile Include="PresetDatabaseStore.fs" />
+        <Compile Include="LibraryBackupStore.fs" />
         <Compile Include="ProjectJson.fs" />
         <Compile Include="ProjectFile.fs" />
         <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-
