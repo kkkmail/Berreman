@@ -3,6 +3,7 @@ namespace OpticalConstructor.Storage
 open System
 open Softellect.Sys.Primitives
 open OpticalConstructor.Database
+open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -113,6 +114,25 @@ module CatalogueImportStore =
                                 select latest.EntryId
                             }
                         |> Seq.map LibraryEntryId |> Seq.toList |> collectHeld context)
+                heldUserEntries = fun () ->
+                    runImport (fun context ->
+                        query
+                            {
+                                for latest in context.LatestVersions do
+                                join row in context.EntryVersions on (latest.EntryId = row.EntryId)
+                                where (row.Version = latest.Version && row.Protection = UserManaged.value)
+                                select latest.EntryId
+                            }
+                        |> Seq.map LibraryEntryId |> Seq.toList |> collectHeld context)
+                pinEntryVersion = fun id version ->
+                    runImport (fun context ->
+                        context.stagePin id version
+                        |> storageResult
+                        |> Result.bind (function
+                            | None -> Error (ImportRejectedErr $"entry {id.value} version {version.value} is not held and cannot be pinned")
+                            | Some _ ->
+                                context.SaveChanges() |> ignore
+                                Ok ()))
                 putEntryVersion = fun put ->
                     runImport (fun context ->
                         let content = put.envelope.content

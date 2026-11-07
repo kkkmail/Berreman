@@ -293,6 +293,99 @@ type CatalogueImportContract () =
     abstract freshImport : unit -> ImportStoreSet
 
     [<Fact>]
+    member this.``heldUserEntries answers every entry whose latest version is not a built-in`` () : unit =
+        let context = (this.freshImport ()).context
+        Assert.Empty(context.proxy.heldUserEntries () |> expectImportOk)
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        Assert.Empty(context.proxy.heldUserEntries () |> expectImportOk)
+        let labId = MaterialId (Guid.Parse "31801b01-444f-43c8-8440-000000000115")
+        let ptbId = MaterialId (Guid.Parse "31801b02-444f-43c8-8440-000000000115")
+        let forkId = LibraryEntryId (Guid.Parse "31801b03-444f-43c8-8440-000000000115")
+        let labName = EntryName "Lab glass"
+        let ptbName = EntryName "PTB glass"
+        let licence = EntryLicence "CC-BY-4.0"
+        let citation = EntryCitation "A. Author, Test optical constants (2026), doi:10.0000/test"
+        let lab = BuiltinCatalogue.userMaterialContent labId labName
+        let ptb = BuiltinCatalogue.licensedMaterialContent ptbId ptbName licence citation
+        let fork =
+            {
+                ptb with
+                    id = forkId
+                    name = EntryName "PTB glass (fork)"
+                    provenance =
+                        ForkProvenance
+                            {
+                                originalId = ptb.id
+                                originalVersion = ptb.version
+                                originalProvenance = ptb.provenance
+                            }
+            }
+        let contents = [ lab; ptb; fork ]
+        BuiltinCatalogue.putSealedEntries context contents
+        context.proxy.retireEntry lab.id |> expectImportOk
+        let held = context.proxy.heldUserEntries () |> expectImportOk
+        Assert.Equal<Set<LibraryEntryId>>(contents |> List.map _.id |> Set.ofList, held |> List.map _.id |> Set.ofList)
+        for content in contents do
+            let entry = held |> List.find (fun entry -> entry.id = content.id)
+            Assert.Equal(content.name, entry.name)
+            Assert.Equal<HeldEntry option>(Some entry, context.proxy.tryHeldEntry content.id |> expectImportOk)
+        Assert.Equal(InactiveEntry, (held |> List.find (fun entry -> entry.id = lab.id)).lifecycle)
+
+    [<Fact>]
+    member this.``pinEntryVersion pins a held version so that its next physics edit mints a version, and refuses a version not held`` () : unit =
+        let stores = this.freshImport ()
+        let context = stores.context
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let labId = MaterialId (Guid.Parse "31801b04-444f-43c8-8440-000000000115")
+        let sampleId = SampleId (Guid.Parse "31801b05-444f-43c8-8440-000000000115")
+        let missingId = LibraryEntryId (Guid.Parse "31801b06-444f-43c8-8440-000000000115")
+        let labName = EntryName "Lab glass"
+        let sampleName = EntryName "Lab stack"
+        let lab = BuiltinCatalogue.userMaterialContent labId labName
+        BuiltinCatalogue.putSealedEntries context [ lab ]
+        Assert.Equal<Result<unit, CatalogueImportError>>(Ok (), context.proxy.pinEntryVersion lab.id lab.version)
+        Assert.Equal<Result<unit, CatalogueImportError>>(Ok (), context.proxy.pinEntryVersion lab.id lab.version)
+        let material = lab.toMaterialEntry |> decodeImportEntry
+        let langasite = BuiltinCatalogue.material MaterialIds.langasite
+        let edited =
+            {
+                material with
+                    complexity = langasite.complexity
+            }
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
+        let first = MaterialVersionId.firstOf labId
+        let second : MaterialVersionId =
+            {
+                first with
+                    version = first.version.next
+            }
+        match stores.materials.resolveVersion first with
+        | Ok (Some original) -> Assert.Equal((BuiltinCatalogue.material MaterialIds.silicon).complexity, original.complexity)
+        | _ -> Assert.Fail("Pinned version 1 must remain resolvable with Silicon's physics.")
+        match stores.materials.resolveVersion second with
+        | Ok (Some minted) -> Assert.Equal(langasite.complexity, minted.complexity)
+        | _ -> Assert.Fail("Editing the pinned material must mint version 2 with Langasite's physics.")
+
+        let sample = BuiltinCatalogue.sampleContentOver sampleId labId sampleName
+        BuiltinCatalogue.putSealedEntries context [ sample ]
+        Assert.Equal<Result<unit, CatalogueImportError>>(Ok (), context.proxy.pinEntryVersion sample.id sample.version)
+        match stores.samples.removeSample sampleId with
+        | Error (SampleVersionPinnedErr reason) ->
+            Assert.Contains(sample.name.value, reason)
+            Assert.Contains("v1", reason)
+        | _ -> Assert.Fail("Pinning a sample through the import seam must prevent its removal.")
+
+        let third = second.version.next
+        for id, version in [ lab.id, third; missingId, VersionNumber.first ] do
+            match context.proxy.pinEntryVersion id version with
+            | Error (ImportRejectedErr reason) ->
+                Assert.Contains(id.value.ToString(), reason)
+                Assert.Contains($"version {version.value}", reason)
+            | _ -> Assert.Fail("A version not held must be rejected with its id and version.")
+
+    [<Fact>]
     member this.``attributionLinesOf names each held entry whose provenance carries a licence, in the order asked`` () : unit =
         let context = (this.freshImport ()).context
         context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
@@ -1642,6 +1735,33 @@ type CatalogueImportSqliteTests () =
         }
 
     [<Fact>]
+    member this.``pinEntryVersion pins the version row of every kind, keeping its lifecycle`` () : unit =
+        let database = this.openDatabase ()
+        let context = deterministicImportContext (CatalogueImportProxy.createInDatabase database)
+        let catalogue = readImportCatalogue ()
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let selected =
+            LibraryEntryKind.all |> List.map (fun kind ->
+                catalogue.envelopes |> List.find (fun envelope -> envelope.content.schema.kind = kind))
+        let source = selected |> List.find (fun envelope -> envelope.content.schema.kind = SourceEntryKind)
+        context.proxy.retireEntry source.content.id |> expectImportOk
+        for envelope in selected do
+            context.proxy.pinEntryVersion envelope.content.id VersionNumber.first |> expectImportOk
+        let selectedIds = selected |> List.map _.content.id |> Set.ofList
+        database.run (fun stored ->
+            for envelope in catalogue.envelopes do
+                match stored.tryStoredVersion envelope.content.id VersionNumber.first |> expectImportDatabaseOk with
+                | Some version ->
+                    let expectedPin = if selectedIds |> Set.contains envelope.content.id then VersionPinned else VersionUnpinned
+                    let expectedLifecycle = if envelope.content.id = source.content.id then InactiveEntry else ActiveEntry
+                    Assert.Equal(expectedPin, version.state.pin)
+                    Assert.Equal(expectedLifecycle, version.state.lifecycle)
+                    Assert.Equal(envelope, version.envelope)
+                | None -> Assert.Fail($"Imported entry {envelope.content.id.value} must retain version 1."))
+        |> expectImportDatabaseOk
+
+    [<Fact>]
     member this.``an imported version is what the database stores answer, and a retired built-in stays resolvable`` () : unit =
         let entries = readImportRowEntries ()
         let incoming = nextImportEnvelope entries.silicon
@@ -1780,6 +1900,8 @@ type CatalogueImportSqliteTests () =
         proxy.tryHeldEnvelope envelope.content.id envelope.content.version |> assertUnavailable
         proxy.heldEntriesNamed envelope.content.schema.kind envelope.content.name |> assertUnavailable
         proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> assertUnavailable
+        proxy.heldUserEntries () |> assertUnavailable
+        proxy.pinEntryVersion envelope.content.id envelope.content.version |> assertUnavailable
         proxy.putEntryVersion put |> assertUnavailable
         proxy.retireEntry envelope.content.id |> assertUnavailable
         proxy.loggedImports () |> assertUnavailable

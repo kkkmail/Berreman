@@ -150,16 +150,10 @@ module MaterialDatabaseStore =
                             |> Result.bind (fun storedOpt ->
                                 match storedOpt with
                                 | None -> Error (MaterialError.unknownMaterialVersion version)
-                                | Some stored ->
-                                    let updated =
-                                        {
-                                            stored with
-                                                state =
-                                                    {
-                                                        stored.state with pin = VersionPinned
-                                                    }
-                                        }
-                                    context.stageVersion updated |> commitMaterial context))
+                                | Some _ ->
+                                    context.stagePin version.materialId.toLibraryEntryId version.version
+                                    |> Result.map ignore
+                                    |> commitMaterial context))
                 removeMaterial =
                     fun materialId ->
                         runMaterial (fun context ->

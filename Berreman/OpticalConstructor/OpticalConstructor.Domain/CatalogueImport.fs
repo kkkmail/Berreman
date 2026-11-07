@@ -270,7 +270,7 @@ module CatalogueImport =
                 | Ok (CatalogueAwaitsChoices pending) -> Some pending
                 | Ok (CatalogueUnchanged _ | CatalogueImported _) | Error _ -> None)
 
-    /// Reads held versions and puts active, unpinned envelopes without overwriting (spec 0050 S3.1).
+    /// Reads held/user entries, pins versions and puts active, unpinned envelopes (spec 0050 S3.1; S3.3).
     /// A first put or MoveLatestVersion sets latest; duplicate versions and kind conflicts are refused.
     /// Retires held entries and maintains the catalogue import log; equality is by reference.
     [<ReferenceEquality>]
@@ -281,6 +281,10 @@ module CatalogueImport =
             tryHeldEnvelope : LibraryEntryId -> VersionNumber -> Result<LibraryEntryEnvelope option, CatalogueImportError>
             heldEntriesNamed : LibraryEntryKind -> EntryName -> Result<HeldEntry list, CatalogueImportError>
             heldEntriesOf : CatalogueId -> Result<HeldEntry list, CatalogueImportError>
+            /// Returns every entry whose latest provenance is user-managed, regardless of lifecycle (spec 0050 S3.3).
+            heldUserEntries : unit -> Result<HeldEntry list, CatalogueImportError>
+            /// Pins a held version permanently; accepts existing pins and rejects unheld versions (spec 0050 001 §C).
+            pinEntryVersion : LibraryEntryId -> VersionNumber -> Result<unit, CatalogueImportError>
             putEntryVersion : EntryVersionPut -> Result<unit, CatalogueImportError>
             retireEntry : LibraryEntryId -> Result<unit, CatalogueImportError>
             loggedImports : unit -> Result<CatalogueImportLogEntry list, CatalogueImportError>
@@ -711,6 +715,34 @@ module CatalogueImport =
                     heldEntriesOf = fun catalogueId ->
                         entries.Value |> Map.toList |> List.map (fun (_, state) -> state.heldEntry)
                         |> List.filter (fun held -> held.provenance = BuiltInProvenance catalogueId) |> Ok
+                    heldUserEntries = fun () ->
+                        entries.Value |> Map.toList |> List.map (fun (_, state) -> state.heldEntry)
+                        |> List.filter (fun held -> held.provenance.protection = UserManaged) |> Ok
+                    pinEntryVersion = fun id version ->
+                        let envelopeOpt =
+                            entries.Value |> Map.tryFind id
+                            |> Option.bind (fun state -> state.envelopes |> List.tryFind (fun envelope -> envelope.content.version = version))
+                        match envelopeOpt with
+                        | None -> Error (ImportRejectedErr $"entry {id.value} version {version.value} is not held and cannot be pinned")
+                        | Some envelope ->
+                            match envelope.content.schema.kind with
+                            | MaterialEntryKind ->
+                                envelope.content.toMaterialEntry |> pushDecoded (fun entry ->
+                                    let materialVersion : MaterialVersionId =
+                                        {
+                                            materialId = entry.id
+                                            version = version
+                                        }
+                                    materials.pinMaterialVersion materialVersion |> Result.mapError (materialReason >> ImportRejectedErr))
+                            | SampleEntryKind ->
+                                envelope.content.toSample |> pushDecoded (fun entry ->
+                                    let sampleVersion : SampleVersionId =
+                                        {
+                                            sampleId = entry.id
+                                            version = version
+                                        }
+                                    samples.pinSampleVersion sampleVersion |> Result.mapError (sampleReason >> ImportRejectedErr))
+                            | CategoryEntryKind | SourceEntryKind | PolarizerEntryKind | DetectorEntryKind -> Ok ()
                     putEntryVersion = fun put ->
                         let envelope = put.envelope
                         let content = envelope.content

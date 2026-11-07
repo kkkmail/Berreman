@@ -416,6 +416,23 @@ module LibraryDatabaseStore =
                 Ok ()
 
         [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
+        member this.stagePin (id : LibraryEntryId) (version : VersionNumber) : Result<StoredEntryVersion option, StorageError> =
+            this.tryStoredVersion id version
+            |> Result.bind (function
+                | None -> Ok None
+                | Some stored ->
+                    let pinned =
+                        {
+                            stored with
+                                state =
+                                    {
+                                        stored.state with
+                                            pin = VersionPinned
+                                    }
+                        }
+                    this.stageVersion pinned |> Result.map (fun () -> Some stored))
+
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
         member this.stageLatest (id : LibraryEntryId) (version : VersionNumber) : unit =
             match this.LatestVersions.Find(id.value) with
             | null -> this.LatestVersions.Add(LibraryLatestVersionRow(EntryId = id.value, Version = version.value)) |> ignore

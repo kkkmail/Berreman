@@ -119,16 +119,10 @@ module SampleDatabaseStore =
                             |> Result.bind (fun storedOpt ->
                                 match storedOpt with
                                 | None -> Error (SampleError.unknownSampleVersion version)
-                                | Some stored ->
-                                    let updated =
-                                        {
-                                            stored with
-                                                state =
-                                                    {
-                                                        stored.state with pin = VersionPinned
-                                                    }
-                                        }
-                                    context.stageVersion updated |> commitSample context))
+                                | Some _ ->
+                                    context.stagePin version.sampleId.toLibraryEntryId version.version
+                                    |> Result.map ignore
+                                    |> commitSample context))
                 removeSample =
                     fun sampleId ->
                         runSample (fun context ->

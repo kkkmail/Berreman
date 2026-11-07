@@ -38,6 +38,8 @@ module CatalogueImportProxyTests =
             tryHeldEnvelope = fun _ _ -> Ok None
             heldEntriesNamed = fun _ _ -> Ok []
             heldEntriesOf = fun _ -> Ok []
+            heldUserEntries = fun () -> Ok []
+            pinEntryVersion = fun _ _ -> Ok ()
             putEntryVersion = fun put ->
                 if refuse put then Error (ImportRejectedErr "the stub rejects every material")
                 else
