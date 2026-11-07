@@ -138,6 +138,97 @@ module LibraryEntryFilesTests =
                 Assert.Empty(envelope.content.referencedEntryIds)
 
     [<Fact>]
+    let ``an entry's references name a material's category at its latest and a sample's material versions`` () : unit =
+        let envelopes = (BuiltinCatalogue.catalogueData ()).envelopes
+        let silicon = envelopes |> List.find (fun envelope -> envelope.content.id = MaterialIds.silicon.toLibraryEntryId)
+        let categoryId =
+            match silicon.content.categoryOpt with
+            | Some category -> category.toLibraryEntryId
+            | None -> failwith "The shipped Silicon material must name its category."
+        let categoryReference = EntryLatestReference categoryId
+        Assert.Equal<EntryReference list>([ categoryReference ], silicon.content.references)
+        Assert.Equal<LibraryEntryId>(categoryId, categoryReference.entryId)
+        Assert.Equal<string>($"{categoryId.value} (latest)", categoryReference.describe)
+        let uncategorized =
+            {
+                silicon.content with categoryOpt = None
+            }
+        Assert.Empty(uncategorized.references)
+
+        let sample = envelopes |> List.find (fun envelope -> envelope.content.id = SampleIds.multilayerQwId.toLibraryEntryId)
+        let glassVersion : LibraryVersionRef =
+            {
+                entryId = MaterialIds.glass152.toLibraryEntryId
+                version = VersionNumber.first
+            }
+        let vacuumVersion : LibraryVersionRef =
+            {
+                entryId = MaterialIds.vacuumMaterial.toLibraryEntryId
+                version = VersionNumber.first
+            }
+        let glassReference = EntryVersionReference glassVersion
+        let vacuumReference = EntryVersionReference vacuumVersion
+        Assert.Equal<EntryReference list>([ vacuumReference; glassReference ], sample.content.references)
+        Assert.Equal<LibraryEntryId>(glassVersion.entryId, glassReference.entryId)
+        Assert.Equal<string>($"{MaterialIds.glass152.value} v1", glassVersion.describe)
+        Assert.Equal<string>(glassVersion.describe, glassReference.describe)
+
+        let glassNextVersion : MaterialVersionId =
+            {
+                materialId = MaterialIds.glass152
+                version = VersionNumber.first.next
+            }
+        let glassNextReference =
+            EntryVersionReference
+                {
+                    glassVersion with version = glassNextVersion.version
+                }
+        let sampleWithNextMaterial =
+            match sample.content.payload with
+            | SamplePayload payload ->
+                {
+                    sample.content with
+                        payload =
+                            SamplePayload
+                                {
+                                    payload with
+                                        structure =
+                                            {
+                                                payload.structure with lower = Some glassNextVersion
+                                            }
+                                }
+                }
+            | _ -> failwith "The shipped quarter-wave sample must have a sample payload."
+        Assert.Equal<EntryReference list>([ vacuumReference; glassReference; glassNextReference ], sampleWithNextMaterial.references)
+        Assert.Equal<Set<LibraryEntryId>>(sample.content.referencedEntryIds, sampleWithNextMaterial.referencedEntryIds)
+
+        let expectedSampleVersion : LibraryVersionRef =
+            {
+                entryId = SampleIds.multilayerQwId.toLibraryEntryId
+                version = VersionNumber.first
+            }
+        Assert.Equal<LibraryVersionRef>(expectedSampleVersion, sample.libraryVersionRef)
+        let nextSample =
+            {
+                sample with
+                    content =
+                        {
+                            sample.content with version = VersionNumber.first.next
+                        }
+            }
+        let expectedNextSampleVersion =
+            {
+                expectedSampleVersion with version = VersionNumber.first.next
+            }
+        Assert.Equal<LibraryVersionRef>(expectedNextSampleVersion, nextSample.libraryVersionRef)
+
+        for envelope in envelopes do
+            match envelope.content.schema.kind with
+            | MaterialEntryKind | SampleEntryKind -> ()
+            | CategoryEntryKind | SourceEntryKind | PolarizerEntryKind | DetectorEntryKind ->
+                Assert.Empty(envelope.content.references)
+
+    [<Fact>]
     let ``every library entry error renders its condition and its reason`` () : unit =
         let cases : (LibraryEntryError * string) list =
             [

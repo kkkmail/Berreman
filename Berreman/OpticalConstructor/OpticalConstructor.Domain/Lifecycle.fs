@@ -2,6 +2,7 @@ namespace OpticalConstructor.Domain
 
 open OpticalConstructor.Domain.MaterialLibrary   // MaterialId (spec 0033 step 002)
 open OpticalConstructor.Domain.Library           // SampleId (spec 0033 step 002)
+open OpticalConstructor.Domain.LibraryEntryFiles
 
 /// Shared lifecycle, version references and pin-based version decisions for both stores
 /// (spec 0038 Part H; spec 0050 S2.2).
@@ -52,6 +53,22 @@ module Lifecycle =
     type VersionRef =
         | MaterialVersionRef of MaterialVersionId
         | SampleVersionRef of SampleVersionId
+
+        /// The exact material or sample version a kit snapshots (spec 0050 S4.2).
+        member this.entryReference : EntryReference =
+            match this with
+            | MaterialVersionRef materialVersion ->
+                EntryVersionReference
+                    {
+                        entryId = materialVersion.materialId.toLibraryEntryId
+                        version = materialVersion.version
+                    }
+            | SampleVersionRef sampleVersion ->
+                EntryVersionReference
+                    {
+                        entryId = sampleVersion.sampleId.toLibraryEntryId
+                        version = sampleVersion.version
+                    }
 
     /// Identical saves keep the version; metadata edits and unpinned physics edits mutate it.
     /// Pinned physics edits mint a successor (spec 0038 Part H; spec 0050 S2.2).

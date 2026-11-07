@@ -362,6 +362,33 @@ module LibraryEntryFiles =
         /// The name a category's entry file is filed under (spec 0050 001 §B).
         member this.toEntryName : EntryName = EntryName this.value
 
+    /// One exact library entry version referenced by a kit (spec 0050 S4.2).
+    type LibraryVersionRef =
+        {
+            entryId : LibraryEntryId
+            version : VersionNumber
+        }
+
+        /// The entry GUID and exact version for diagnostics (spec 0050 S4.2).
+        member this.describe : string = $"{this.entryId.value} v{this.version.value}"
+
+    /// A kit reference to an exact version or an entry's latest version (spec 0050 S4.2).
+    type EntryReference =
+        | EntryVersionReference of LibraryVersionRef
+        | EntryLatestReference of LibraryEntryId
+
+        /// The referenced entry's identity, regardless of version selection (spec 0050 S4.2).
+        member this.entryId : LibraryEntryId =
+            match this with
+            | EntryVersionReference reference -> reference.entryId
+            | EntryLatestReference entryId -> entryId
+
+        /// The entry GUID with its exact version or latest-version selection (spec 0050 S4.2).
+        member this.describe : string =
+            match this with
+            | EntryVersionReference reference -> reference.describe
+            | EntryLatestReference entryId -> $"{entryId.value} (latest)"
+
     /// An entry file without its `contentHash`: exactly what the hash covers (spec 0050 001 §B).
     /// `categoryOpt` holds a material's category and is `None` for every other kind; a preset's
     /// protection and a category's origin are not stored, because they derive from the provenance.
@@ -383,14 +410,27 @@ module LibraryEntryFiles =
         /// The entry as an error names it: its name, id and version.
         member this.describe : string = $"'{this.name.value}' ({this.id.value} v{this.version.value})"
 
-        /// The entries this one names, so an import never leaves a reference dangling (spec 0050 001 §B).
-        member this.referencedEntryIds : Set<LibraryEntryId> =
+        /// The material's latest category or the sample's exact material versions in set order (spec 0050 S4.2).
+        member this.references : EntryReference list =
             match this.payload with
             | MaterialPayload _ ->
-                this.categoryOpt |> Option.toList |> List.map (fun category -> category.toLibraryEntryId) |> Set.ofList
+                this.categoryOpt
+                |> Option.toList
+                |> List.map (fun category -> EntryLatestReference category.toLibraryEntryId)
             | SamplePayload sample ->
-                sample.structure.referencedMaterials |> Set.map (fun material -> material.toLibraryEntryId)
-            | SourcePayload _ | PolarizerPayload _ | DetectorPayload _ | CategoryPayload _ -> Set.empty
+                sample.structure.referencedMaterialVersions
+                |> Set.toList
+                |> List.map (fun materialVersion ->
+                    EntryVersionReference
+                        {
+                            entryId = materialVersion.materialId.toLibraryEntryId
+                            version = materialVersion.version
+                        })
+            | SourcePayload _ | PolarizerPayload _ | DetectorPayload _ | CategoryPayload _ -> []
+
+        /// The referenced identities, so an import never leaves a dangling reference (spec 0050 001 §B; S4.2).
+        member this.referencedEntryIds : Set<LibraryEntryId> =
+            this.references |> List.map (fun reference -> reference.entryId) |> Set.ofList
 
         static member private ofPayload (version : VersionNumber) (provenance : EntryProvenance) (id : LibraryEntryId) (name : EntryName) (payload : LibraryEntryPayload) : LibraryEntryContent =
             {
@@ -561,6 +601,15 @@ module LibraryEntryFiles =
                 version = this.content.version
                 fileName = this.content.fileName
                 contentHash = this.contentHash
+            }
+
+    type LibraryEntryEnvelope with
+
+        /// The envelope's exact library identity and version (spec 0050 S4.2).
+        member this.libraryVersionRef : LibraryVersionRef =
+            {
+                entryId = this.content.id
+                version = this.content.version
             }
 
     /// A catalogue folder's `.catalogue-json`: its identity and one row per entry file (spec 0050 001 §A).

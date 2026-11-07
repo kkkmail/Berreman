@@ -5,6 +5,7 @@ open Berreman.Geometry                              // Angle (the placement/orie
 open Berreman.Fields                                // WaveLength (a tunable source's set wavelength, spec 0046)
 open OpticalConstructor.Domain.Placement           // CatalogueKind / Emission / ElementPlacement / TablePoint
 open OpticalConstructor.Domain.Library              // ElementId / DetectorKind / SampleVersionId / SampleId
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Lifecycle           // VersionRef (step 020)
 open OpticalConstructor.Domain.Propagation         // SweptValue / CurvePointCount (a range's ends and points)
 
@@ -152,6 +153,13 @@ module Experiments =
             | BoundByVersion versionRef -> Some versionRef
             | BoundByEntryId _ | Unbound -> None
 
+        /// The bound exact version or latest GUID entry a kit snapshots, when present (spec 0050 S4.2).
+        member this.entryReferenceOpt : EntryReference option =
+            match this with
+            | BoundByVersion versionRef -> Some versionRef.entryReference
+            | BoundByEntryId entryId -> entryId.tryToLibraryEntryId |> Option.map EntryLatestReference
+            | Unbound -> None
+
     /// A serializable snapshot of an element's placement / orientation captured on commit (spec 0038
     /// Part I): the table position and the three rotation angles. Elevated fields only (`TablePoint`,
     /// engine `Angle`), so the descriptor survives the live element's removal and a save-load without
@@ -252,6 +260,10 @@ module Experiments =
         /// binding projected to its `VersionRef` (preset / unbound descriptors contribute none).
         member this.versionRefs : VersionRef list =
             this.setup |> List.choose (fun d -> d.binding.versionRefOpt)
+
+        /// The library references a kit snapshots, once each in setup order (spec 0050 S4.2).
+        member this.libraryReferences : EntryReference list =
+            this.setup |> List.choose (fun descriptor -> descriptor.binding.entryReferenceOpt) |> List.distinct
 
     /// The in-progress experiment being built or edited (spec 028, the multi-step editor). `elementId` /
     /// `variable` are `None` until chosen; the interactive add needs both. When `editingId` is `Some` the

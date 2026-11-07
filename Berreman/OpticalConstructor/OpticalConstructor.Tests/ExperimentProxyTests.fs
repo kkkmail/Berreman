@@ -280,6 +280,92 @@ module ExperimentProxyTests =
         Assert.Empty(e3.versionRefs)
 
     [<Fact>]
+    let ``an experiment references the library versions its setup binds, each once`` () : unit =
+        let sampleVersion : LibraryVersionRef =
+            {
+                entryId = SampleIds.glassPlate1mmId.toLibraryEntryId
+                version = VersionNumber.first
+            }
+        let sampleReference = EntryVersionReference sampleVersion
+        let sourceId =
+            match PresetIds.source600.tryToLibraryEntryId with
+            | Some id -> id
+            | None -> failwith "The shipped source must have a canonical GUID identity."
+        let sourceReference = EntryLatestReference sourceId
+        let sourceBinding = BoundByEntryId PresetIds.source600
+        let experiment =
+            {
+                e3 with
+                    setup =
+                        [
+                            desc "sample" "Sample #1" Sample glassPlateBinding
+                            desc "source-one" "Light source #2" LightSource sourceBinding
+                            desc "source-two" "Light source #3" LightSource sourceBinding
+                            desc "unbound" "Lens #4" Lens Unbound
+                        ]
+            }
+        Assert.Equal<EntryReference list>([ sampleReference; sourceReference ], experiment.libraryReferences)
+        Assert.Equal<EntryReference option>(Some sampleReference, glassPlateBinding.entryReferenceOpt)
+        Assert.Equal<EntryReference option>(Some sourceReference, sourceBinding.entryReferenceOpt)
+        Assert.Equal<EntryReference option>(None, Unbound.entryReferenceOpt)
+        Assert.Empty(e3.libraryReferences)
+
+        let nonGuidId = ElementValueId "not-a-library-guid"
+        let nonGuidBinding = BoundByEntryId nonGuidId
+        Assert.Equal<EntryReference option>(None, nonGuidBinding.entryReferenceOpt)
+
+        let nextSampleVersion : SampleVersionId =
+            {
+                sampleId = SampleIds.glassPlate1mmId
+                version = VersionNumber.first.next
+            }
+        let nextSampleBinding = BoundByVersion (SampleVersionRef nextSampleVersion)
+        let nextSampleReference =
+            EntryVersionReference
+                {
+                    sampleVersion with version = nextSampleVersion.version
+                }
+        let materialVersion : MaterialVersionId =
+            {
+                materialId = MaterialIds.glass152
+                version = VersionNumber.first.next
+            }
+        let materialBinding = BoundByVersion (MaterialVersionRef materialVersion)
+        let materialReference =
+            EntryVersionReference
+                {
+                    entryId = MaterialIds.glass152.toLibraryEntryId
+                    version = VersionNumber.first.next
+                }
+        let latestSampleId = SampleIds.glassPlate1mmId.toElementValueId
+        let latestSampleBinding = BoundByEntryId latestSampleId
+        let latestSampleReference = EntryLatestReference sampleVersion.entryId
+        let expanded =
+            {
+                experiment with
+                    setup =
+                        experiment.setup @
+                            [
+                                desc "sample-again" "Sample #5" Sample glassPlateBinding
+                                desc "sample-next" "Sample #6" Sample nextSampleBinding
+                                desc "material" "Sample #7" Sample materialBinding
+                                desc "material-again" "Sample #8" Sample materialBinding
+                                desc "sample-latest" "Sample #9" Sample latestSampleBinding
+                                desc "non-guid" "Light source #10" LightSource nonGuidBinding
+                            ]
+            }
+        Assert.Equal<EntryReference list>(
+            [ sampleReference; sourceReference; nextSampleReference; materialReference; latestSampleReference ],
+            expanded.libraryReferences)
+        let reversed =
+            {
+                expanded with setup = List.rev expanded.setup
+            }
+        Assert.Equal<EntryReference list>(
+            [ latestSampleReference; materialReference; nextSampleReference; sampleReference; sourceReference ],
+            reversed.libraryReferences)
+
+    [<Fact>]
     let ``pinning an experiment's bound sample version BLOCKS removal of that sample`` () =
         let bound = BuiltinCatalogue.sampleStore ()
         for reference in e1.versionRefs do
