@@ -699,7 +699,7 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
             match applied.request with
             | SettlePendingCatalogue pending ->
                 m.pendingImports |> List.filter (fun candidate -> candidate.entry.catalogueId <> pending.entry.catalogueId)
-            | ApplyDroppedEntries _ -> m.pendingImports
+            | ApplyDroppedEntries _ | ResolveKitSnapshot _ -> m.pendingImports
         {
             m with
                 pendingImports = pendingImports

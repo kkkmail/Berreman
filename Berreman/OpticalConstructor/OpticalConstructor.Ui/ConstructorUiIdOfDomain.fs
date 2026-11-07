@@ -67,26 +67,33 @@ module ConstructorUiIdOfDomain =
 
     type ImportDecision with
 
-        /// Names an offered action in its row's context, including the held name for rebinding (001 §B).
+        /// Names an offered action by origin, including the held name for rebinding (001 §B, §E).
         member this.actionCaption (action : ImportAction) : ControlCaption =
-            match action with
-            | AddIncomingEntry ->
+            match this.origin, action with
+            | KitSnapshotOrigin _, SkipIncomingEntry -> ControlCaption "Keep the kit's copy (read-only)"
+            | KitSnapshotOrigin _, AddIncomingEntry ->
+                match this.status with
+                | NameCollision _ -> ControlCaption "Add to my library, side by side"
+                | _ -> ControlCaption "Add to my library"
+            | KitSnapshotOrigin _, AddIncomingVersion _ -> ControlCaption "Add this version to my library"
+            | KitSnapshotOrigin _, ForkIncomingEntry -> ControlCaption "Add to my library as a fork"
+            | _, AddIncomingEntry ->
                 match this.status with
                 | NameCollision _ -> ControlCaption "Side by side"
                 | _ -> ControlCaption "Add"
-            | ReuseHeldEntry -> ControlCaption "Reuse the held entry"
-            | AddIncomingVersion MoveLatestVersion -> ControlCaption "Add version, made latest"
-            | AddIncomingVersion KeepLatestVersion -> ControlCaption "Add version, latest kept"
-            | ForkIncomingEntry -> ControlCaption "Fork as a new entry"
-            | RebindToHeldEntry id ->
+            | _, ReuseHeldEntry -> ControlCaption "Reuse the held entry"
+            | _, AddIncomingVersion MoveLatestVersion -> ControlCaption "Add version, made latest"
+            | _, AddIncomingVersion KeepLatestVersion -> ControlCaption "Add version, latest kept"
+            | _, ForkIncomingEntry -> ControlCaption "Fork as a new entry"
+            | _, RebindToHeldEntry id ->
                 match this.status with
                 | NameCollision (_, sameName) ->
                     match sameName |> List.tryFind (fun held -> held.id = id) with
                     | Some held -> ControlCaption $"Use my {held.name.value} instead"
                     | None -> ControlCaption "Use the held entry instead"
                 | _ -> ControlCaption "Use the held entry instead"
-            | SkipIncomingEntry -> ControlCaption "Skip"
-            | RetireHeldEntry -> ControlCaption "Mark inactive"
+            | _, SkipIncomingEntry -> ControlCaption "Skip"
+            | _, RetireHeldEntry -> ControlCaption "Mark inactive"
 
     type CatalogueId with
 

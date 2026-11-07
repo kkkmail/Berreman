@@ -240,7 +240,7 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                     | SettlePendingCatalogue pending ->
                         pendingImports <- pendingImports |> List.filter (fun waiting -> waiting.entry.catalogueId <> pending.entry.catalogueId)
                         this.Content <- launcherContent (Ok context)
-                    | ApplyDroppedEntries _ -> ()
+                    | ApplyDroppedEntries _ | ResolveKitSnapshot _ -> ()
                 ImportDialogWindow(context.catalogueImports, SettlePendingCatalogue head, onApplied).Show(this)
 
         this.Content <- launcherContent opened

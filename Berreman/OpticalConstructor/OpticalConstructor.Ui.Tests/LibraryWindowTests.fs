@@ -675,7 +675,7 @@ module LibraryWindowTests =
         let decisions =
             match request with
             | ApplyDroppedEntries decisions -> decisions
-            | SettlePendingCatalogue _ -> failwith "Dropped files must open their own decision rows."
+            | SettlePendingCatalogue _ | ResolveKitSnapshot _ -> failwith "Dropped files must open their own decision rows."
         let row = Assert.Single decisions
         Assert.Equal(entryId, row.entryId)
         Assert.Equal(DroppedFileOrigin file.leafName, row.origin)

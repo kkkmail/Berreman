@@ -1,4 +1,4 @@
-/// The import decision dialog's MVU and projection (spec 0050 S3.2; 001 §B).
+/// The import decision dialog's MVU and projection (spec 0050 S3.2, S4.2; 001 §B, §E).
 /// Choices remain pending until Apply confirms the complete request.
 module OpticalConstructor.Ui.ImportDialogView
 
@@ -12,6 +12,7 @@ open Avalonia.FuncUI.Types
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.EntryTextDiff
+open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Storage.EntryFileJson
@@ -23,12 +24,15 @@ type ImportDialogRequest =
     | SettlePendingCatalogue of PendingCatalogueImport
     /// Entry files identified by the drop seam without writing them.
     | ApplyDroppedEntries of decisions : ImportDecision list
+    /// A kit's snapshot rows awaiting confirmation before its library is opened (spec 0050 S4.2).
+    | ResolveKitSnapshot of kit : KitLibraryContext * decisions : ImportDecision list
 
     /// The decision rows in the request's original order.
     member this.decisions : ImportDecision list =
         match this with
         | SettlePendingCatalogue pending -> pending.decisions
         | ApplyDroppedEntries decisions -> decisions
+        | ResolveKitSnapshot (_, decisions) -> decisions
 
     /// The request's origin and number of rows awaiting confirmation.
     member this.heading : ControlCaption =
@@ -36,6 +40,8 @@ type ImportDialogRequest =
         | SettlePendingCatalogue pending ->
             ControlCaption $"Import from {pending.entry.folder.value}: {pending.decisions.Length} entries need a decision."
         | ApplyDroppedEntries decisions -> ControlCaption $"Import {decisions.Length} dropped entry files."
+        | ResolveKitSnapshot (kit, decisions) ->
+            ControlCaption $"Open kit {kit.kit.kitFile.name.value}: {decisions.Length} library entries need a decision."
 
 /// A completed Apply, returned to the opener before the dialog closes.
 type ImportDialogApplied =
@@ -55,6 +61,8 @@ type ImportDialogApplied =
             ControlCaption $"Imported {pending.entry.folder.value} (decisions applied: {this.choices.Length})."
         | ApplyDroppedEntries _ ->
             ControlCaption $"Imported the dropped entry files (decisions applied: {this.choices.Length})."
+        | ResolveKitSnapshot (kit, _) ->
+            ControlCaption $"Opened the library of kit {kit.kit.kitFile.name.value} (decisions applied: {this.choices.Length})."
 
 /// The composition root supplies import behavior and the opener's callbacks.
 [<ReferenceEquality>]
@@ -144,6 +152,7 @@ let updateImportDialog (msg : ImportDialogMsg) (m : ImportDialogModel) : ImportD
             match m.context.request with
             | SettlePendingCatalogue pending -> m.context.imports.settle pending m.choices
             | ApplyDroppedEntries _ -> m.context.imports.apply m.choices
+            | ResolveKitSnapshot (kit, _) -> kit.confirm m.choices
         match result with
         | Ok outcome ->
             m.context.onApplied

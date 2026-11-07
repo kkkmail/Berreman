@@ -20,6 +20,9 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
@@ -28,11 +31,12 @@ open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ImportDialogView
 
-/// Spec 0050 S3.2: import choices stay pending until Apply, including in the mounted MVU view.
+/// Spec 0050 S3.2, S4.2: import choices stay pending until Apply, including in the mounted MVU view.
 module ImportDialogTests =
 
     type private DialogFixture =
@@ -150,6 +154,81 @@ module ImportDialogTests =
             closes = closes
             events = events
         }
+
+    type private KitDialogFixture =
+        {
+            context : KitLibraryContext
+            snapshots : LibraryEntryEnvelope list
+            decisions : ImportDecision list
+            writes : ResizeArray<EntryVersionPut>
+            pins : ResizeArray<LibraryVersionRef>
+        }
+
+    let private kitOk (result : Result<'Outcome, KitError>) : 'Outcome =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let private kitLibraryOk (result : Result<'Outcome, KitLibraryError>) : 'Outcome =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let private freshKitDialog () : KitDialogFixture =
+        let folder = InMemoryKitFolder.create ()
+        let proxy = KitProxy.createInMemory folder
+        let instant = ClockTime (DateTime(2026, 11, 7, 12, 0, 0, DateTimeKind.Utc))
+        let clock : ClockProvider =
+            {
+                now = fun () -> instant
+            }
+        let id = KitId (Guid.NewGuid())
+        let name = KitName "Multilayer import kit"
+        let author = KitAuthor "Import dialog tests"
+        let kitFile = KitFile.create id name author instant
+        proxy.initialiseKit kitFile |> kitOk
+        let original : KitLibraryContext =
+            {
+                kit = KitContext.openKit proxy ReadWriteKitAccess clock |> kitOk
+                imports = CatalogueImportContext.create (BuiltinCatalogue.freshStores ()).proxy
+            }
+        let reference = EntryLatestReference SampleIds.multilayerQwId.toLibraryEntryId
+        original.snapshotReferences [ reference ] |> kitLibraryOk |> ignore
+        let receiving = (CatalogueImportProxy.createInMemory ()).proxy
+        let writes = ResizeArray<EntryVersionPut>()
+        let pins = ResizeArray<LibraryVersionRef>()
+        let recording =
+            {
+                receiving with
+                    putEntryVersion = fun put ->
+                        writes.Add put
+                        receiving.putEntryVersion put
+                    pinEntryVersion = fun entryId version ->
+                        let reference : LibraryVersionRef =
+                            {
+                                entryId = entryId
+                                version = version
+                            }
+                        pins.Add reference
+                        receiving.pinEntryVersion entryId version
+            }
+        let context : KitLibraryContext =
+            {
+                kit = KitContext.openKit (KitProxy.createInMemory folder) ReadOnlyKitAccess clock |> kitOk
+                imports = CatalogueImportContext.create recording
+            }
+        {
+            context = context
+            snapshots = context.kit.proxy.listSnapshots () |> kitOk
+            decisions = context.resolveSnapshots () |> kitLibraryOk
+            writes = writes
+            pins = pins
+        }
+
+    let private assertKitDialogPending (fixture : KitDialogFixture) (observed : DialogObservation) : unit =
+        Assert.Empty fixture.writes
+        Assert.Empty fixture.pins
+        Assert.Empty observed.applied
+        Assert.Empty observed.closes
+        Assert.Empty (fixture.context.imports.proxy.loggedImports () |> importOk)
+        for snapshot in fixture.snapshots do
+            Assert.Equal<HeldEntry option>(None, fixture.context.imports.proxy.tryHeldEntry snapshot.content.id |> importOk)
 
     let private heldEntry (imports : CatalogueImportContext) (id : LibraryEntryId) : HeldEntry =
         match imports.proxy.tryHeldEntry id |> importOk with
@@ -588,6 +667,159 @@ module ImportDialogTests =
                 Assert.Empty fixture.writes
                 Assert.Empty observed.applied
                 Assert.Empty observed.closes
+            finally window.Close())
+
+    [<Fact>]
+    let ``a kit snapshot request names the kit and opens every row on the kit's default`` () : unit =
+        let fixture = freshKitDialog ()
+        let request = ResolveKitSnapshot (fixture.context, fixture.decisions)
+        let observed = observeDialog fixture.context.imports request
+        let model = observed.context.initImportDialog
+        Assert.Equal(ReadOnlyKitAccess, fixture.context.kit.access)
+        Assert.NotEmpty fixture.snapshots
+        Assert.Equal<LibraryEntryId list>(fixture.snapshots |> List.map (fun snapshot -> snapshot.content.id), request.decisions |> List.map _.entryId)
+        Assert.Equal<ImportChoice list>(fixture.decisions |> List.map _.byDefault, model.choices)
+        for choice in model.choices do
+            Assert.Equal(SkipIncomingEntry, choice.action)
+        Assert.Equal(NoImportDiffShown, model.diff)
+        Assert.Equal<CatalogueImportError option>(None, model.lastError)
+        Assert.Equal($"Open kit {fixture.context.kit.kitFile.name.value}: {fixture.snapshots.Length} library entries need a decision.", request.heading.value)
+        assertKitDialogPending fixture observed
+        HeadlessSession.run (fun () ->
+            let window = mountDialog observed.context
+            try
+                let heading = controlOf window ConstructorUiId.importDialogHeading :?> TextBlock
+                Assert.Contains(request.heading.value, heading.Text)
+                Assert.Equal(fixture.snapshots.Length, (controlOf window ConstructorUiId.importDecisionList :?> StackPanel).Children.Count)
+                for decision in fixture.decisions do
+                    controlOf window (ConstructorUiId.importDecisionRow decision.entryId.uiKey) |> ignore
+                assertKitDialogPending fixture observed
+            finally window.Close())
+        let changed = updateImportDialog (OverrideImportRow (SampleIds.multilayerQwId.toLibraryEntryId, AddIncomingEntry)) model
+        assertKitDialogPending fixture observed
+        let cancelled = updateImportDialog CancelImportDialog changed
+        Assert.Equal<ImportChoice list>(changed.choices, cancelled.choices)
+        Assert.Single observed.closes |> ignore
+        Assert.Empty observed.applied
+        Assert.Empty fixture.writes
+        Assert.Empty fixture.pins
+        Assert.Empty (fixture.context.imports.proxy.loggedImports () |> importOk)
+        for snapshot in fixture.snapshots do
+            Assert.Equal<HeldEntry option>(None, fixture.context.imports.proxy.tryHeldEntry snapshot.content.id |> importOk)
+        let defaults = observeDialog fixture.context.imports request
+        let appliedDefaults = updateImportDialog ApplyImportChoices defaults.context.initImportDialog
+        Assert.Equal<CatalogueImportError option>(None, appliedDefaults.lastError)
+        Assert.Single defaults.applied |> ignore
+        Assert.Single defaults.closes |> ignore
+        Assert.Empty fixture.writes
+        Assert.Empty fixture.pins
+
+    [<Fact>]
+    let ``applying a kit snapshot request confirms through the kit library and closes`` () : unit =
+        let fixture = freshKitDialog ()
+        let request = ResolveKitSnapshot (fixture.context, fixture.decisions)
+        let observed = observeDialog fixture.context.imports request
+        let sampleOnly =
+            observed.context.initImportDialog
+            |> updateImportDialog (OverrideImportRow (SampleIds.multilayerQwId.toLibraryEntryId, AddIncomingEntry))
+        assertKitDialogPending fixture observed
+        let refused = updateImportDialog ApplyImportChoices sampleOnly
+        match refused.lastError with
+        | Some (DanglingReferenceErr _) -> ()
+        | _ -> Assert.Fail("Adding only the sample must refuse its skipped material references.")
+        Assert.Equal<ImportChoice list>(sampleOnly.choices, refused.choices)
+        assertKitDialogPending fixture observed
+        let chosen =
+            fixture.decisions
+            |> List.fold (fun model decision -> updateImportDialog (OverrideImportRow (decision.entryId, AddIncomingEntry)) model) refused
+        Assert.Equal<CatalogueImportError option>(None, chosen.lastError)
+        assertKitDialogPending fixture observed
+        let after = updateImportDialog ApplyImportChoices chosen
+        Assert.Equal<CatalogueImportError option>(None, after.lastError)
+        let applied = Assert.Single observed.applied
+        Assert.Equal(request, applied.request)
+        Assert.Equal<ImportChoice list>(chosen.choices, applied.choices)
+        Assert.Empty applied.outcome.rebindings
+        Assert.Empty applied.outcome.forks
+        Assert.Equal($"Opened the library of kit {fixture.context.kit.kitFile.name.value} (decisions applied: {fixture.decisions.Length}).", applied.summary.value)
+        Assert.Single observed.closes |> ignore
+        Assert.Equal<string list>([ "applied"; "closed" ], List.ofSeq observed.events)
+        Assert.Equal(fixture.snapshots.Length, fixture.writes.Count)
+        Assert.Equal<LibraryVersionRef list>(fixture.snapshots |> List.map _.libraryVersionRef, List.ofSeq fixture.pins)
+        for snapshot in fixture.snapshots do
+            Assert.Equal<LibraryEntryEnvelope option>(
+                Some snapshot, fixture.context.imports.proxy.tryHeldEnvelope snapshot.content.id snapshot.content.version |> importOk)
+        Assert.Empty (fixture.context.imports.proxy.loggedImports () |> importOk)
+        Assert.Equal<LibraryEntryEnvelope list>(fixture.snapshots, fixture.context.kit.proxy.listSnapshots () |> kitOk)
+        Assert.Equal(fixture.context.kit.kitFile, fixture.context.kit.proxy.readKitFile () |> kitOk)
+        let reused = fixture.context.resolveSnapshots () |> kitLibraryOk
+        for decision in reused do
+            match decision.status with
+            | SameContentHash _ -> Assert.Equal(ReuseHeldEntry, decision.defaultAction)
+            | _ -> Assert.Fail("Each confirmed snapshot must resolve to a reuse row.")
+        let reuseRequest = ResolveKitSnapshot (fixture.context, reused)
+        let reuseObserved = observeDialog fixture.context.imports reuseRequest
+        let reuseModel = reuseObserved.context.initImportDialog
+        Assert.Equal<ImportChoice list>(reused |> List.map _.byDefault, reuseModel.choices)
+        Assert.Equal(request.heading, reuseRequest.heading)
+        HeadlessSession.run (fun () ->
+            let window = mountDialog reuseObserved.context
+            try
+                Assert.Equal(fixture.snapshots.Length, (controlOf window ConstructorUiId.importDecisionList :?> StackPanel).Children.Count)
+                Assert.Empty reuseObserved.applied
+                Assert.Empty reuseObserved.closes
+            finally window.Close())
+        Assert.Equal(fixture.snapshots.Length, fixture.writes.Count)
+        Assert.Equal(fixture.snapshots.Length, fixture.pins.Count)
+        updateImportDialog ApplyImportChoices reuseModel |> ignore
+        Assert.Single reuseObserved.applied |> ignore
+        Assert.Single reuseObserved.closes |> ignore
+        Assert.Equal(fixture.snapshots.Length, fixture.writes.Count)
+        Assert.Equal(fixture.snapshots.Length, fixture.pins.Count)
+        Assert.Empty (fixture.context.imports.proxy.loggedImports () |> importOk)
+
+    [<Fact>]
+    let ``a kit snapshot row offers to keep the kit's copy or to add it to my library`` () : unit =
+        let fixture = freshKitDialog ()
+        let request = ResolveKitSnapshot (fixture.context, fixture.decisions)
+        let observed = observeDialog fixture.context.imports request
+        let sample = fixture.decisions |> List.find (fun row -> row.entryId = SampleIds.multilayerQwId.toLibraryEntryId)
+        Assert.Equal("Keep the kit's copy (read-only)", (sample.actionCaption sample.defaultAction).value)
+        Assert.Equal("Add to my library", (sample.actionCaption AddIncomingEntry).value)
+        for move in [ MoveLatestVersion; KeepLatestVersion ] do
+            let action = AddIncomingVersion move
+            Assert.Equal("Add this version to my library", (sample.actionCaption action).value)
+        Assert.Equal("Add to my library as a fork", (sample.actionCaption ForkIncomingEntry).value)
+        Assert.Equal("Reuse the held entry", (sample.actionCaption ReuseHeldEntry).value)
+        Assert.Equal("Mark inactive", (sample.actionCaption RetireHeldEntry).value)
+        let catalogue = freshDialog ()
+        let kitOrigin = KitSnapshotOrigin fixture.context.kit.kitFile.name
+        let collision = catalogue.imports.proxy.decideEntry kitOrigin catalogue.collision |> importOk
+        match collision.status with
+        | NameCollision _ -> ()
+        | _ -> Assert.Fail("The fixture must offer a same-name collision.")
+        Assert.Equal("Add to my library, side by side", (collision.actionCaption AddIncomingEntry).value)
+        let rebind = RebindToHeldEntry catalogue.heldSilicon.content.id
+        Assert.Equal($"Use my {catalogue.heldSilicon.content.name.value} instead", (collision.actionCaption rebind).value)
+        let catalogueId = CatalogueId (Guid.NewGuid())
+        let catalogueName = CatalogueName "Lab"
+        let catalogueOrigin = CatalogueImportOrigin (catalogueId, catalogueName)
+        let catalogueRow = catalogue.imports.proxy.decideEntry catalogueOrigin catalogue.collision |> importOk
+        for row in [ catalogueRow; catalogue.decisions[1] ] do
+            Assert.Equal("Skip", (row.actionCaption SkipIncomingEntry).value)
+            Assert.Equal("Side by side", (row.actionCaption AddIncomingEntry).value)
+            Assert.Equal("Fork as a new entry", (row.actionCaption ForkIncomingEntry).value)
+            let makeLatest = AddIncomingVersion MoveLatestVersion
+            let keepLatest = AddIncomingVersion KeepLatestVersion
+            Assert.Equal("Add version, made latest", (row.actionCaption makeLatest).value)
+            Assert.Equal("Add version, latest kept", (row.actionCaption keepLatest).value)
+        HeadlessSession.run (fun () ->
+            let window = mountDialog observed.context
+            try
+                for action in sample.defaultAction :: sample.alternatives do
+                    let control = controlOf window (ConstructorUiId.importActionOption sample.entryId.uiKey action.uiKey)
+                    Assert.Contains((sample.actionCaption action).value, textsUnder control)
+                assertKitDialogPending fixture observed
             finally window.Close())
 
     [<Fact>]
