@@ -218,6 +218,7 @@
         <Compile Include="CatalogueFolderTests.fs" />
         <Compile Include="BuiltInCatalogueIntegrityTests.fs" />
         <Compile Include="LibraryDatabaseTests.fs" />
+        <Compile Include="LibraryBackupProxyTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
