@@ -119,7 +119,7 @@ module WireUiFinalCompositionTests =
             let ctx = TestAppScope.freshAppContext owner
             // The three windows the composition root hands the context to (Program.fs): the launcher is
             // the startup window, Main / Inverse are its forward / inverse constructor scenes.
-            showAssertClose (LauncherWindow(ctx))
+            showAssertClose (LauncherWindow(Ok ctx))
             showAssertClose (MainConstructorWindow(ctx))
             showAssertClose (InverseConstructorWindow(ctx)))
 

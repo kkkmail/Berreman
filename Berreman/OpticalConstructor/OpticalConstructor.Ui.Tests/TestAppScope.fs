@@ -27,6 +27,19 @@ module TestAppScope =
             shippedCatalogueFolder = install.combine DataLocations.shippedCatalogueDefault
         }
 
-    /// Compose a fresh app scope over the owner's test locations (spec 0050 .spec-md §3.9).
+    /// Isolate writable locations and a file library beneath a fresh owner folder (spec 0050 S2.4).
+    let fileLocations (owner : FolderName) : DataLocations =
+        let instance = FolderName (System.Guid.NewGuid().ToString("N"))
+        let locations = testLocations (owner.combine instance)
+        let root = Path.GetDirectoryName locations.backupsFolder.value
+        let databaseFile = FileName (Path.Combine(root, "library.db"))
+
+        {
+            locations with
+                libraryConnection = ConnectionString $"Data Source={databaseFile.value}"
+        }
+
+    /// Compose a fresh database app scope, failing the calling fact on an open error (spec 0050 S2.4).
     let freshAppContext (owner : FolderName) : AppContext =
         AppContext.create (testLocations owner) WorkbenchSettings.defaults
+        |> Result.defaultWith (fun error -> failwith error.describe)

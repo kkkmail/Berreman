@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui.Tests
 
 open System.IO
+open Microsoft.Data.Sqlite
 open Softellect.Sys.Primitives
 open Avalonia
 open Avalonia.Controls
@@ -13,21 +14,14 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
-/// Spec 0038 Part C (step 006) — the app-scope composition context (`AppContext`). The five
-/// domain proxies hoisted out of `MainConstructorWindow`'s constructor into ONE record built at
-/// startup and injected into every window, so launcher-opened and constructor-opened windows
-/// share the same in-memory stores. Two layers: pure contract pins on `AppContext.create`
-/// (settings carried verbatim, the materials→samples remove-block coupling, one scope = one
-/// store / two scopes = two stores — gate `ui-tests`), and the slice's headless acceptance
-/// (gate `ui-smoke`): TWO real Main windows composed from ONE app scope observe the same store
-/// — a sample added through one window's real editor is listed by the other window's surface.
-/// (The proof rode the workbench bays until spec 0038 steps 013/015 moved them into the
-/// single-instance Materials / Library windows; each Main window's `Library…` strip button now
-/// carries the same two-surface argument through the Library window.)
+/// Pins shared database stores, startup errors and catalogue import across app scopes
+/// and real windows (spec 0038 Part C; spec 0050 S2.4).
 module AppContextTests =
 
     let private owner = FolderName "AppContextTests"
@@ -94,8 +88,64 @@ module AppContextTests =
 
     [<Fact>]
     let ``create carries the settings record it was given, verbatim`` () =
-        let context = AppContext.create (TestAppScope.testLocations owner) WorkbenchSettings.defaults
+        let context =
+            AppContext.create (TestAppScope.testLocations owner) WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
         Assert.Equal(WorkbenchSettings.defaults, context.settings)
+
+    [<Fact>]
+    let ``create imports the Built-in catalogue into a new library database file and a reopen does not import again`` () : unit =
+        let locations = TestAppScope.fileLocations owner
+        let first =
+            AppContext.create locations WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let expected = BuiltinCatalogue.samples () |> List.sortBy _.id
+        Assert.Equal<Result<Sample list, SampleError>>(
+            Ok expected,
+            first.samples.listSamples IncludeInactive |> Result.map (List.sortBy _.id))
+        Assert.Equal<Result<unit, SampleError>>(Ok (), first.samples.removeSample SampleIds.glassFilm600Id)
+
+        let reopened =
+            AppContext.create locations WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<Sample list, SampleError>>(
+            Ok (expected |> List.filter (fun sample -> sample.id <> SampleIds.glassFilm600Id)),
+            reopened.samples.listSamples IncludeInactive |> Result.map (List.sortBy _.id))
+
+    [<Fact>]
+    let ``create answers LibrarySchemaMismatchErr for a library of another schema and leaves the file as it was`` () : unit =
+        let locations = TestAppScope.fileLocations owner
+        do
+            use database =
+                LibraryDatabase.openOrCreate locations.libraryConnection
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            Assert.Equal(CreatedLibraryDatabase, database.origin)
+
+        let incompatible = LibrarySchemaVersion 2
+        let builder = SqliteConnectionStringBuilder(locations.libraryConnection.value)
+        builder.Pooling <- false
+        do
+            use connection = new SqliteConnection(builder.ConnectionString)
+            connection.Open()
+            use command = connection.CreateCommand()
+            command.CommandText <- "UPDATE SchemaStamp SET SchemaVersion = $version WHERE Id = 1;"
+            command.Parameters.AddWithValue("$version", incompatible.value) |> ignore
+            Assert.Equal(1, command.ExecuteNonQuery())
+
+        let before = File.ReadAllBytes builder.DataSource
+        match AppContext.create locations WorkbenchSettings.defaults with
+        | Error (LibrarySchemaMismatchErr mismatch) ->
+            Assert.Equal(Some incompatible, mismatch.foundOpt)
+            Assert.Equal(LibrarySchemaVersion.current, mismatch.expected)
+        | Error error -> Assert.Fail(error.describe)
+        | Ok _ -> Assert.Fail("an incompatible library must not open")
+        Assert.Equal<byte>(before, File.ReadAllBytes builder.DataSource)
+
+        use inspected = new SqliteConnection(builder.ConnectionString)
+        inspected.Open()
+        use stamp = inspected.CreateCommand()
+        stamp.CommandText <- "SELECT SchemaVersion FROM SchemaStamp WHERE Id = 1;"
+        Assert.Equal(int64 incompatible.value, unbox<int64> (stamp.ExecuteScalar()))
 
     [<Fact>]
     let ``create writes experiment exports into the configured exports folder`` () : unit =

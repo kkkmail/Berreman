@@ -22,6 +22,7 @@ open Avalonia.VisualTree
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
+open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Ui
 open OpticalConstructor.App
 
@@ -49,7 +50,7 @@ module LauncherTests =
     /// Open a fresh launcher on the shared headless session and run `check` over it.
     let private withLauncher (check : LauncherWindow -> unit) : unit =
         HeadlessSession.run (fun () ->
-            let launcher = LauncherWindow(freshContext ())
+            let launcher = LauncherWindow(Ok (freshContext ()))
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
             try check launcher
@@ -125,6 +126,47 @@ module LauncherTests =
                     Assert.Equal(id, AutomationProperties.GetAutomationId button)
                     Assert.Equal(label, string button.Content)
                 | None -> Assert.Fail($"launcher button '%s{id}' was not found"))
+
+    [<Fact>]
+    let ``a library that fails to open is shown on the launcher and the four buttons are disabled`` () : unit =
+        HeadlessSession.run (fun () ->
+            let mismatch : LibrarySchemaMismatchInfo =
+                {
+                    foundOpt = Some (LibrarySchemaVersion 2)
+                    expected = LibrarySchemaVersion.current
+                }
+            let error = LibrarySchemaMismatchErr mismatch
+            let launcher = LauncherWindow(Error error)
+            launcher.Show()
+            Dispatcher.UIThread.RunJobs()
+            try
+                let errorText =
+                    launcher.GetVisualDescendants()
+                    |> Seq.tryPick (function
+                        | :? TextBlock as text when text.Name = ConstructorUiId.launcherLibraryErrorText.value -> Some text
+                        | _ -> None)
+                match errorText with
+                | Some text ->
+                    Assert.Equal($"The library could not be opened: {error.describe}", text.Text)
+                    Assert.Contains("schema version 2", text.Text)
+                    Assert.Contains($"expected schema version {LibrarySchemaVersion.current.value}", text.Text)
+                    Assert.Equal(ConstructorUiId.launcherLibraryErrorText.value, AutomationProperties.GetAutomationId text)
+                    Assert.Equal(text.Text, AutomationProperties.GetName text)
+                    Assert.Equal(Avalonia.Media.TextWrapping.Wrap, text.TextWrapping)
+                    Assert.True(text.IsEffectivelyVisible)
+                | None -> Assert.Fail("the library open error must be shown on the launcher")
+
+                for id in
+                    [ ConstructorUiId.openMainButton; ConstructorUiId.openInverseButton
+                      ConstructorUiId.openMaterialsButton; ConstructorUiId.openLibraryButton ] do
+                    match tryFindButton id.value launcher with
+                    | Some button -> Assert.False(button.IsEnabled)
+                    | None -> Assert.Fail($"launcher button '{id.value}' was not found")
+                    let opened = clickAndObserve launcher id.value
+                    try Assert.Empty opened
+                    finally
+                        for window in opened do window.Close()
+            finally launcher.Close())
 
     [<Fact>]
     let ``the launcher footer shows the app version from BuildInfo, below the buttons`` () =
@@ -211,7 +253,7 @@ module LauncherTests =
         // meet in ONE window (the second open ACTIVATES, it does not stack a copy).
         HeadlessSession.run (fun () ->
             let context = freshContext ()
-            let launcher = LauncherWindow(context)
+            let launcher = LauncherWindow(Ok context)
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
             let constructorWindow = MainConstructorWindow(context)

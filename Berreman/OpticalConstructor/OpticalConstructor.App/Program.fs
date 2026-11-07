@@ -25,6 +25,7 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 
 open OpticalConstructor.Controls
+open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.AppShell
 
@@ -101,21 +102,9 @@ type InverseConstructorWindow(context : AppContext) as this =
                 experimentData = context.experimentData
                 experimentCollections = context.experimentCollections })
 
-/// The product launcher form (Spec 0027 / step 045): FOUR buttons — Main / Inverse / Materials /
-/// Library, in that order — over the ONE injected app scope. This is the app's startup window.
-///
-/// - **Main** opens the forward constructor (`MainConstructorWindow`); opening it twice yields two
-///   views over one set of stores (the step-006 app scope).
-/// - **Inverse** opens the inverse-problem constructor (`InverseConstructorWindow`, step 037).
-/// - **Materials / Library** open the single-instance step-013/015 windows through the SAME
-///   `EditorLaunchers.defaults` launcher seam the constructor strip uses, so a window opened from the
-///   launcher and the same window opened from the constructor strip meet in ONE open-or-activate space
-///   (the shared host-layer `WindowRegistry` keyed by `MaterialsWindowKey` / `LibraryWindowKey`).
-///
-/// The seven diagnostic test buttons live in the standalone `OpticalConstructor.TestWindows.App`
-/// executable's `TestLauncherWindow` (spec 0038 Part C, step 004), so test code stays out of the
-/// product dependency graph.
-type LauncherWindow(context : AppContext) as this =
+/// Opens Main, Inverse, Materials and Library over one app scope, sharing editor-window launchers.
+/// A library-open failure is displayed with all surface actions disabled (spec 0038 step 045; spec 0050 S2.4).
+type LauncherWindow(opened : Result<AppContext, StorageError>) as this =
     inherit Window()
 
     do
@@ -130,10 +119,7 @@ type LauncherWindow(context : AppContext) as this =
                 FontSize = 18.0,
                 FontWeight = FontWeight.SemiBold,
                 Margin = Thickness(0.0, 0.0, 0.0, 14.0))
-        // Every surface button carries its stable id as BOTH its `Name` and its
-        // `AutomationProperties.AutomationId` (meaning-based automation, not pixels), plus the human
-        // label as its accessible name.
-        let surfaceButton (id : ConstructorUiId) (label : string) (onClick : unit -> unit) : Button =
+        let surfaceButton (id : ConstructorUiId) (label : string) (onClick : AppContext -> unit) : Button =
             let button =
                 Button(
                     Name = id.value,
@@ -141,21 +127,23 @@ type LauncherWindow(context : AppContext) as this =
                     HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
             AutomationProperties.SetAutomationId(button, id.value)
             AutomationProperties.SetName(button, label)
-            button.Click.Add(fun _ -> onClick ())
+            match opened with
+            | Ok context -> button.Click.Add(fun _ -> onClick context)
+            | Error _ -> button.IsEnabled <- false
             button
         // Materials / Library go through the SAME launcher seam as the constructor strip
         // (`EditorLaunchers.defaults`) over the ONE shared `WindowRegistry`, so both callers share one
         // single-instance window.
         let launchers = TableAndElementRotationView.EditorLaunchers.defaults
         let mainButton =
-            surfaceButton ConstructorUiId.openMainButton "Main" (fun () -> MainConstructorWindow(context).Show())
+            surfaceButton ConstructorUiId.openMainButton "Main" (fun context -> MainConstructorWindow(context).Show())
         let inverseButton =
-            surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun () -> InverseConstructorWindow(context).Show())
+            surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun context -> InverseConstructorWindow(context).Show())
         let materialsButton =
-            surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun () ->
+            surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun context ->
                 launchers.openMaterialsWindow context.materials context.categories)
         let libraryButton =
-            surfaceButton ConstructorUiId.openLibraryButton "Library" (fun () ->
+            surfaceButton ConstructorUiId.openLibraryButton "Library" (fun context ->
                 launchers.openLibraryWindow context.library context.samples context.sources context.materials context.categories)
         // Spec 0046: the app version (the STL slow-ring scheme, one ring for the whole app) as a footer
         // line at the bottom of the form, read from the ONE F# source of it (`Berreman.BuildInfo`).
@@ -173,13 +161,29 @@ type LauncherWindow(context : AppContext) as this =
         DockPanel.SetDock(version, Dock.Bottom)
         let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
         panel.Children.Add title
+        match opened with
+        | Ok _ -> ()
+        | Error error ->
+            let message = $"The library could not be opened: {error.describe}"
+            let errorText =
+                TextBlock(
+                    Name = ConstructorUiId.launcherLibraryErrorText.value,
+                    Text = message,
+                    TextWrapping = TextWrapping.Wrap)
+            AutomationProperties.SetAutomationId(errorText, ConstructorUiId.launcherLibraryErrorText.value)
+            AutomationProperties.SetName(errorText, message)
+            panel.Children.Add errorText
         panel.Children.Add mainButton
         panel.Children.Add inverseButton
         panel.Children.Add materialsButton
         panel.Children.Add libraryButton
         let form = DockPanel()
         form.Children.Add version
-        form.Children.Add panel
+        // Spec 0046; spec 0050 S2.4: a wrapped open error must not push the buttons out of reach.
+        form.Children.Add(ScrollViewer(
+            Content = panel,
+            HorizontalScrollBarVisibility = Primitives.ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = Primitives.ScrollBarVisibility.Auto))
         this.Content <- form
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant

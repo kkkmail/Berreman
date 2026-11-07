@@ -592,6 +592,8 @@ type ConstructorUiId =
     static member openLibraryButton : ConstructorUiId = ConstructorUiId "OpenLibraryButton"
     /// The footer line showing the app version (spec 0046).
     static member launcherVersionText : ConstructorUiId = ConstructorUiId "LauncherVersionText"
+    /// The library-open failure shown on the launcher (spec 0050 S2.4).
+    static member launcherLibraryErrorText : ConstructorUiId = ConstructorUiId "LauncherLibraryErrorText"
 
     // --- The diagnostic test launcher window (`TestLauncherWindow`, project TestWindows.App). ---
     static member openTableRotationTestButton : ConstructorUiId = ConstructorUiId "OpenTableRotationTestButton"

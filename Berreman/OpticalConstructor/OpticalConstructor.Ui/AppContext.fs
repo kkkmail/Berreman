@@ -1,45 +1,37 @@
-/// Spec 0038 Part C (step 006): the ONE app-scope composition value. The five domain
-/// proxies used to be created INSIDE `MainConstructorWindow`'s constructor
-/// (`…App/Program.fs`), so a second window could never share the stores; now they are
-/// built once at startup — before any window opens — bundled with the step-005
-/// `WorkbenchSettings`, and injected into the launcher, the Main workbench window,
-/// and every window opened later, so launcher-opened and constructor-opened windows
-/// observe the SAME in-memory stores. The parameterless `DefaultStores` composition
-/// (`TableAndElementRotationView.fs`) stays the test-scene default; this record is
-/// the product composition.
 namespace OpticalConstructor.Ui
 
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.CategoryDatabaseStore
+open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.MaterialDatabaseStore
+open OpticalConstructor.Storage.PresetDatabaseStore
+open OpticalConstructor.Storage.SampleDatabaseStore
+open OpticalConstructor.Storage.SourceDatabaseStore
 open Softellect.Sys.Logging
 
-/// The app-scope composition context (the `*Context` convention: the IO-boundary
-/// proxies plus the app-configuration data, constructed once at the composition
-/// root). The proxy fields are `[<ReferenceEquality>]` function records, and ONE
-/// context IS the app scope, so the context itself compares by reference — two
-/// structurally-similar contexts are two different scopes with independent stores.
+/// Shares the configured library database stores and session proxies across product windows.
+/// Context identity is by reference; database identity comes from its configured connection.
 [<ReferenceEquality>]
 type AppContext =
     {
-        /// The Select bay's live library (spec 0027; spec 0046; spec 0050 §3.4) composes
-        /// imported presets with the samples and user-sources stores, so
-        /// an entry created in the Library window binds and resolves on the table.
+        /// The live database library combines presets, samples and user sources for selection and binding.
         library : Library.LibraryProxy
         /// The read-only experiment-template seam behind the Experiments bay.
         experiments : Experiments.ExperimentProxy
-        /// The materials WRITE store (STORE_XDUO_0001) — its remove-block consults
-        /// the LIVE `samples` store below through `samplesReferencing`.
+        /// The materials database store refuses removal while samples reference the material.
         materials : MaterialLibrary.MaterialProxy
-        /// The samples WRITE store (STORE_XDUO_0002).
+        /// The samples database store.
         samples : Library.SampleProxy
-        /// Spec 0046: the USER light-source WRITE store behind the Library window's source editor.
+        /// The user light-source database store behind the Library window's source editor.
         sources : Library.SourceProxy
-        /// The category WRITE store (STORE_XDUO_0003) — its remove-block consults
-        /// the LIVE `materials` store above through `materialsReferencingCategory`.
+        /// The category database store refuses removal while materials reference the category.
         categories : MaterialLibrary.CategoryProxy
         /// Spec 0038 Part L (037): the measured-data LOAD seam (STORE_XDUO_0006) —
         /// the real file-backed adapter (step 036, the one file-read seam §0.3c
@@ -67,34 +59,36 @@ type AppContext =
         settings : WorkbenchSettings
     }
 
-    /// Build one app scope over empty in-memory stores filled from the Built-in catalogue
-    /// (spec 0038 §0.2; spec 0050 §3.4). Import failures are logged; entries already imported remain available.
-    static member create (locations : DataLocations) (settings : WorkbenchSettings) : AppContext =
-        let stores = CatalogueImportProxy.createInMemory ()
-        match stores.proxy.importFrom (CatalogueProxy.createBuiltIn ()) with
-        | Ok () -> ()
-        | Error e -> Logger.logError $"AppContext.create: could not import the Built-in catalogue: {e.describe}"
-        let sources = Library.SourceProxy.createInMemory ()
-        {
-            library = Library.liveLibrary stores.libraryEntries stores.samples sources
-            experiments = Experiments.createInMemoryExperiments ()
-            materials = stores.materials
-            samples = stores.samples
-            sources = sources
-            categories = stores.categories
-            // Spec 0038 Part L (037): the measured-data load seam is the real file-backed adapter
-            // (step 036 — read a picked file's text and hand it to the step-34 parsers, the one
-            // file-read seam §0.3c permits); the experiment-collection store is the step-029
-            // in-memory `createInMemory`. Both thread into `initMainWith` / `initInverse`.
-            experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked ()
-            experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
-            // Spec 0038 (027): the scene store — the in-memory `SceneProxy.createInMemory` (a fresh
-            // session starts with no saved scenes, §0.2), the last of the STORE_XDUO_000x proxies to
-            // be composed at the root (step 047 "every proxy built once at the root").
-            scenes = Scene.SceneProxy.createInMemory ()
-            experimentExport =
-                OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
-                    locations.exportsFolder
-                    (fun () -> OpticalConstructor.Storage.ExperimentExportFile.ExportTime System.DateTime.Now)
-            settings = settings
-        }
+    /// Opens or creates the configured library database and imports the Built-in catalogue into a new one.
+    /// Answers open failures unchanged; import failures are logged, retaining prior imports (001 §C; spec 0050 S2.4).
+    static member create (locations : DataLocations) (settings : WorkbenchSettings) : Result<AppContext, StorageError> =
+        LibraryDatabase.openOrCreate locations.libraryConnection
+        |> Result.map (fun database ->
+            let materials = MaterialProxy.createInDatabase database
+            let samples = SampleProxy.createInDatabase database
+            let sources = SourceProxy.createInDatabase database
+            let categories = CategoryProxy.createInDatabase database
+            match database.origin with
+            | CreatedLibraryDatabase ->
+                let importer = CatalogueImportProxy.ofStores categories materials samples (LibraryEntryStore.createInDatabase database)
+                match importer.importFrom (CatalogueProxy.createBuiltInUnder locations.shippedCatalogueFolder) with
+                | Ok () -> ()
+                | Error e -> Logger.logError $"AppContext.create: could not import the Built-in catalogue: {e.describe}"
+            | OpenedLibraryDatabase -> ()
+
+            {
+                library = LibraryProxy.createInDatabase database
+                experiments = Experiments.createInMemoryExperiments ()
+                materials = materials
+                samples = samples
+                sources = sources
+                categories = categories
+                experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked ()
+                experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
+                scenes = Scene.SceneProxy.createInMemory ()
+                experimentExport =
+                    OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
+                        locations.exportsFolder
+                        (fun () -> OpticalConstructor.Storage.ExperimentExportFile.ExportTime System.DateTime.Now)
+                settings = settings
+            })
