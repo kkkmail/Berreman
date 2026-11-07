@@ -42,13 +42,15 @@ module LibraryDatabaseStore =
             | UserProvenance -> 2
             | KitImportProvenance _ -> 3
             | SourcePullProvenance _ -> 4
+            | ForkProvenance _ -> 5
 
         member this.catalogueIdOpt : CatalogueId option =
             match this with
             | BuiltInProvenance catalogueId -> Some catalogueId
             | UserProvenance
             | KitImportProvenance _
-            | SourcePullProvenance _ -> None
+            | SourcePullProvenance _
+            | ForkProvenance _ -> None
 
     type StoredEntryVersion with
 

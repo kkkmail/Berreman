@@ -81,14 +81,41 @@
         }
       }
     },
+    "forkProvenance": {
+      "type": "object",
+      "required": ["Case", "Fields"],
+      "additionalProperties": false,
+      "properties": {
+        "Case": { "const": "ForkProvenance" },
+        "Fields": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "object",
+              "required": ["originalId", "originalVersion", "originalProvenance"],
+              "additionalProperties": false,
+              "properties": {
+                "originalId": { "$ref": "#/$defs/guid" },
+                "originalVersion": { "$ref": "#/$defs/positiveVersion" },
+                "originalProvenance": { "$ref": "#/$defs/provenance" }
+              }
+            }
+          ],
+          "minItems": 1,
+          "items": false,
+          "description": "The original entry, version and provenance of a user-managed fork (spec 0050 S3.1)."
+        }
+      }
+    },
     "provenance": {
       "oneOf": [
         { "$ref": "#/$defs/builtInProvenance" },
         { "$ref": "#/$defs/userProvenance" },
         { "$ref": "#/$defs/kitImportProvenance" },
-        { "$ref": "#/$defs/sourcePullProvenance" }
+        { "$ref": "#/$defs/sourcePullProvenance" },
+        { "$ref": "#/$defs/forkProvenance" }
       ],
-      "description": "Where the entry comes from: built-in, user, imported from a kit, or pulled from an online source."
+      "description": "Where the entry comes from: built-in, user, imported from a kit, pulled from an online source, or forked from another entry."
     }
   }
 }

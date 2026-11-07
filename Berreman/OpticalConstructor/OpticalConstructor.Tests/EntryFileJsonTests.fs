@@ -261,6 +261,38 @@ module EntryFileJsonTests =
         for provenance in allProvenances do
             assertMaterialRoundTrips provenance silica
 
+        let forkInfo : EntryForkInfo =
+            {
+                originalId = silica.id.toLibraryEntryId
+                originalVersion = VersionNumber.first
+                originalProvenance = SourcePullProvenance pulledFromSource
+            }
+
+        let forkProvenance = ForkProvenance forkInfo
+        let forkedSilica : MaterialEntry =
+            {
+                silica with
+                    id = MaterialId (Guid.Parse "973bf1c6-84ed-483a-b520-e12f78079d63")
+            }
+
+        assertMaterialRoundTrips forkProvenance forkedSilica
+
+        let nestedForkInfo : EntryForkInfo =
+            {
+                originalId = forkedSilica.id.toLibraryEntryId
+                originalVersion = VersionNumber.first
+                originalProvenance = forkProvenance
+            }
+
+        let nestedForkProvenance = ForkProvenance nestedForkInfo
+        let nestedForkedSilica : MaterialEntry =
+            {
+                silica with
+                    id = MaterialId (Guid.Parse "da827831-4e65-4fd8-952f-391e240f7eac")
+            }
+
+        assertMaterialRoundTrips nestedForkProvenance nestedForkedSilica
+
     /// A constant material with one distinctive number, the one a tampering test changes.
     let private tamperable : MaterialEntry =
         materialWith "7e2c4a9b-5d13-4f68-9a0e-3c1f7d2b8e64" "Transparent test glass" (epsOnly (EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.5234))))

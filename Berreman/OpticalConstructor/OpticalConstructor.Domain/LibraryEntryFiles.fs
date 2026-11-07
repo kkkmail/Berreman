@@ -169,25 +169,37 @@ module LibraryEntryFiles =
         }
 
     /// An entry file's `provenance` (spec 0050 001 §B); a built-in's protection derives from it.
+    /// A fork preserves its ancestry but belongs to the user (spec 0050 S3.1).
     type EntryProvenance =
         | BuiltInProvenance of CatalogueId
         | UserProvenance
         | KitImportProvenance of KitId
         | SourcePullProvenance of SourcePullInfo
+        | ForkProvenance of EntryForkInfo
 
         member this.protection : EntryProtection =
             match this with
             | BuiltInProvenance _ -> ProtectedBuiltIn
             | UserProvenance
             | KitImportProvenance _
-            | SourcePullProvenance _ -> UserManaged
+            | SourcePullProvenance _
+            | ForkProvenance _ -> UserManaged
 
         member this.categoryOrigin : CategoryOrigin =
             match this with
             | BuiltInProvenance _ -> BuiltInCategory
             | UserProvenance
             | KitImportProvenance _
-            | SourcePullProvenance _ -> UserCategory
+            | SourcePullProvenance _
+            | ForkProvenance _ -> UserCategory
+
+    /// The entry version a fork came from, retaining its provenance, licence and citation (spec 0050 S3.1).
+    and EntryForkInfo =
+        {
+            originalId : LibraryEntryId
+            originalVersion : VersionNumber
+            originalProvenance : EntryProvenance
+        }
 
     /// The lowercase hex SHA-256 of an entry's canonical content (spec 0050 001 §B); Storage computes it.
     type ContentHash =

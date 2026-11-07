@@ -9,6 +9,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueFiles
 
 /// The kinds, provenance, ids, name rule and content of the library-entry files, with the builders
 /// and decoders that join the content to the domain values (spec 0050 001 §A, §B; .spec-md §3.11, §5).
@@ -77,16 +78,24 @@ module LibraryEntryFilesTests =
                 citation = EntryCitation "D. E. Aspnes and A. A. Studna, Phys. Rev. B 27, 985 (1983)"
             }
 
+        let forkInfo : EntryForkInfo =
+            {
+                originalId = MaterialIds.silicon.toLibraryEntryId
+                originalVersion = VersionNumber.first
+                originalProvenance = BuiltInProvenance CatalogueIds.builtInCatalogue
+            }
+
         let provenances =
             [
                 BuiltInProvenance (CatalogueId (Guid.Parse "3f0c2d1e-7a4b-4c5d-9e8f-0a1b2c3d4e5f"))
                 UserProvenance
                 KitImportProvenance (KitId (Guid.Parse "b2e4f6a8-1c3d-4e5f-8a9b-c0d1e2f3a4b5"))
                 SourcePullProvenance pulled
+                ForkProvenance forkInfo
             ]
 
-        Assert.Equal<EntryProtection list>([ ProtectedBuiltIn; UserManaged; UserManaged; UserManaged ], provenances |> List.map (fun p -> p.protection))
-        Assert.Equal<CategoryOrigin list>([ BuiltInCategory; UserCategory; UserCategory; UserCategory ], provenances |> List.map (fun p -> p.categoryOrigin))
+        Assert.Equal<EntryProtection list>([ ProtectedBuiltIn; UserManaged; UserManaged; UserManaged; UserManaged ], provenances |> List.map (fun p -> p.protection))
+        Assert.Equal<CategoryOrigin list>([ BuiltInCategory; UserCategory; UserCategory; UserCategory; UserCategory ], provenances |> List.map (fun p -> p.categoryOrigin))
 
     [<Fact>]
     let ``a library entry id keeps the GUID of the kind's own id`` () =
