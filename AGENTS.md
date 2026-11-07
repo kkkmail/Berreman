@@ -572,8 +572,9 @@ This is a spec-driven, gated repository.
   rotation test windows keep the single-row `view`, because their headless tests click fixed
   window coordinates.
 - **The Main scene's Library is LIVE** (`Library.liveLibrary`: the preset store over the samples
-  and user-sources stores). `AppContext.create` fills the presets from `Catalogue/Builtin/` through
-  `CatalogueImportProxy.importFrom`, so a sample or source created in the Library window binds AND
+  and user-sources stores). `AppContext.create` checks `Catalogue/Builtin/` and every registered
+  catalogue folder on every start through `CatalogueImportContext.importOnStart`, holding changed
+  rows for confirmation before import; a sample or source created in the Library window binds AND
   resolves on the table. User light sources live in `SourceProxy` (edited by `LightSourceEditorView` /
   `LightSourceEditorWindow`); the built-in lasers and UV / EUV lithography sources named by `PresetIds`
   are protected presets. A source is its wavelength.

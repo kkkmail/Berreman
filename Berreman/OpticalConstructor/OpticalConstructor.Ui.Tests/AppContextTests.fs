@@ -9,12 +9,17 @@ open Avalonia.Headless
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.ExperimentExport
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
@@ -77,6 +82,37 @@ module AppContextTests =
     /// Population fixtures explicitly confirm startup choices before opening their surfaces (spec 0050 S3.1).
     let private freshContext () : AppContext = TestAppScope.freshAppContext owner
 
+    let private isolatedShippedLocations () : DataLocations =
+        let locations = TestAppScope.fileLocations owner
+        let shipped = FolderName (Path.Combine(Path.GetDirectoryName locations.backupsFolder.value, "ShippedCatalogue"))
+        {
+            locations with
+                shippedCatalogueFolder = shipped
+        }
+
+    let private writeShippedCatalogue (locations : DataLocations) (catalogue : CatalogueData) : unit =
+        let folder = CatalogueProxy.builtInFolderUnder locations.shippedCatalogueFolder
+        (CatalogueProxy.create folder).writeCatalogue catalogue
+        |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let private assertEmptyStartup (context : AppContext) : unit =
+        Assert.Equal<Result<Sample list, SampleError>>(Ok [], context.samples.listSamples IncludeInactive)
+        Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [], context.materials.listMaterials IncludeInactive)
+        Assert.Equal<Result<MaterialCategory list, CategoryError>>(Ok [], context.categories.listCategories ())
+        Assert.Equal<Result<HeldEntry list, CatalogueImportError>>(
+            Ok [], context.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue)
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(
+            Ok [], context.catalogueImports.proxy.loggedImports ())
+
+    let private assertPendingCatalogue (context : AppContext) (catalogue : CatalogueData) : PendingCatalogueImport =
+        let pending = Assert.Single context.pendingImports
+        Assert.Equal(catalogue.manifest.id, pending.entry.catalogueId)
+        Assert.Equal(catalogue.envelopes.Length, pending.decisions.Length)
+        Assert.Equal<LibraryEntryId list>(
+            catalogue.envelopes |> List.map (fun envelope -> envelope.content.id) |> List.sort,
+            pending.decisions |> List.map _.entryId |> List.sort)
+        pending
+
     /// A workbench surface composed FROM the app scope — what `MainConstructorWindow` runs (the two
     /// experiment proxies thread by record update, spec 0038 Part L step 037).
     let private surfaceOf (context : AppContext) : TableAndElementRotationModel =
@@ -100,25 +136,174 @@ module AppContextTests =
             AppContext.create locations WorkbenchSettings.defaults
             |> Result.defaultWith (fun error -> failwith error.describe)
         let expected = BuiltinCatalogue.samples () |> List.sortBy _.id
-        Assert.Equal<Result<Sample list, SampleError>>(Ok [], first.samples.listSamples IncludeInactive)
-        Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [], first.materials.listMaterials IncludeInactive)
-        Assert.Equal<Result<MaterialCategory list, CategoryError>>(Ok [], first.categories.listCategories ())
-        Assert.Equal((BuiltinCatalogue.catalogueData ()).envelopes.Length, first.catalogueDecisions.Length)
-        let choices = first.catalogueDecisions |> List.map _.byDefault
-        first.catalogueImport.apply choices
-        |> Result.defaultWith (fun error -> failwith error.describe) |> ignore
+        assertEmptyStartup first
+        assertPendingCatalogue first (BuiltinCatalogue.catalogueData ()) |> ignore
+        TestAppScope.settlePendingImports first
         Assert.Equal<Result<Sample list, SampleError>>(
             Ok expected,
             first.samples.listSamples IncludeInactive |> Result.map (List.sortBy _.id))
         Assert.Equal<Result<unit, SampleError>>(Ok (), first.samples.removeSample SampleIds.glassFilm600Id)
+        let imports = first.catalogueImports.proxy.loggedImports () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Single imports |> ignore
+        let held = first.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue
 
         let reopened =
             AppContext.create locations WorkbenchSettings.defaults
             |> Result.defaultWith (fun error -> failwith error.describe)
-        Assert.Empty reopened.catalogueDecisions
+        Assert.Empty reopened.pendingImports
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok imports, reopened.catalogueImports.proxy.loggedImports ())
+        Assert.Equal<Result<HeldEntry list, CatalogueImportError>>(held, reopened.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue)
+        TestAppScope.settlePendingImports reopened
         Assert.Equal<Result<Sample list, SampleError>>(
             Ok (expected |> List.filter (fun sample -> sample.id <> SampleIds.glassFilm600Id)),
             reopened.samples.listSamples IncludeInactive |> Result.map (List.sortBy _.id))
+
+    [<Fact>]
+    let ``create imports a changed shipped catalogue on the next start and skips an unchanged one`` () : unit =
+        let locations = isolatedShippedLocations ()
+        let catalogue = BuiltinCatalogue.catalogueData ()
+        writeShippedCatalogue locations catalogue
+        let first =
+            AppContext.create locations WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        assertEmptyStartup first
+        assertPendingCatalogue first catalogue |> ignore
+        TestAppScope.settlePendingImports first
+        let silicon = BuiltinCatalogue.material MaterialIds.silicon
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some silicon), first.materials.tryGetMaterial silicon.id)
+        let importsBefore = first.catalogueImports.proxy.loggedImports () |> Result.defaultWith (fun error -> failwith error.describe)
+        let heldBefore = first.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue
+        let original = catalogue.envelopes |> List.find (fun envelope -> envelope.content.id = silicon.id.toLibraryEntryId)
+        let description = EntryDescription "Silicon description from the next shipped catalogue"
+        let content =
+            {
+                original.content with
+                    version = VersionNumber.first.next
+                    descriptionOpt = Some description
+            }
+        let updated = content.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(original.content.name, updated.content.name)
+        Assert.Equal(original.content.fileName, updated.content.fileName)
+        let changed =
+            catalogue.envelopes
+            |> List.map (fun envelope -> if envelope.content.id = updated.content.id then updated else envelope)
+            |> CatalogueData.tryCreate catalogue.manifest.id catalogue.manifest.name catalogue.manifest.version.next
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        writeShippedCatalogue locations changed
+
+        let second =
+            AppContext.create locations WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let pending = assertPendingCatalogue second changed
+        Assert.Equal(CatalogueProxy.builtInFolderUnder locations.shippedCatalogueFolder, pending.entry.folder)
+        Assert.Equal<Result<HeldEntry list, CatalogueImportError>>(heldBefore, second.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue)
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok importsBefore, second.catalogueImports.proxy.loggedImports ())
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some silicon), second.materials.tryGetMaterial silicon.id)
+        let nextVersion =
+            {
+                materialId = silicon.id
+                version = content.version
+            }
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok None, second.materials.resolveVersion nextVersion)
+        TestAppScope.settlePendingImports second
+        let expected =
+            {
+                silicon with
+                    description = Some description
+            }
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some expected), second.materials.tryGetMaterial silicon.id)
+        let firstVersion = MaterialVersionId.firstOf silicon.id
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some silicon), second.materials.resolveVersion firstVersion)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some expected), second.materials.resolveVersion nextVersion)
+        let importsAfter = second.catalogueImports.proxy.loggedImports () |> Result.defaultWith (fun error -> failwith error.describe)
+        let logged = Assert.Single importsAfter
+        Assert.Equal(CatalogueIds.builtInCatalogue, logged.catalogueId)
+        Assert.Equal(pending.entry.manifestHash, logged.manifestHash)
+        Assert.NotEqual((Assert.Single importsBefore).manifestHash, logged.manifestHash)
+        Assert.Equal(pending.entry.entryCount, logged.entryCount)
+        let heldAfter = second.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue
+
+        let third =
+            AppContext.create locations WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Empty third.pendingImports
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok importsAfter, third.catalogueImports.proxy.loggedImports ())
+        Assert.Equal<Result<HeldEntry list, CatalogueImportError>>(heldAfter, third.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue)
+        TestAppScope.settlePendingImports third
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some expected), third.materials.tryGetMaterial silicon.id)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some silicon), third.materials.resolveVersion firstVersion)
+
+    [<Fact>]
+    let ``create holds every changed-catalogue row pending and writes nothing before confirmation`` () : unit =
+        let locations = isolatedShippedLocations ()
+        let catalogue = BuiltinCatalogue.catalogueData ()
+        writeShippedCatalogue locations catalogue
+        let first =
+            AppContext.create locations WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        assertEmptyStartup first
+        assertPendingCatalogue first catalogue |> ignore
+        TestAppScope.settlePendingImports first
+        let userMaterial =
+            {
+                BuiltinCatalogue.material MaterialIds.glass152 with
+                    id = newMaterialId ()
+                    name = EntryName "Lab glass"
+            }
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), first.materials.saveMaterial userMaterial)
+        let incomingMaterialId = newMaterialId ()
+        let glass = catalogue.envelopes |> List.find (fun envelope -> envelope.content.id = MaterialIds.glass152.toLibraryEntryId)
+        let incomingContent =
+            {
+                glass.content with
+                    id = incomingMaterialId.toLibraryEntryId
+                    name = userMaterial.name
+                    provenance = BuiltInProvenance CatalogueIds.builtInCatalogue
+            }
+        let incomingMaterial = incomingContent.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+        let source = catalogue.envelopes |> List.find (fun envelope -> envelope.content.schema.kind = SourceEntryKind)
+        let sourceContent =
+            {
+                source.content with
+                    id = LibraryEntryId (System.Guid.NewGuid())
+                    name = EntryName "New shipped catalogue source"
+                    provenance = BuiltInProvenance CatalogueIds.builtInCatalogue
+            }
+        let incomingSource = sourceContent.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+        let sourcePreset = sourceContent.toSourcePreset |> Result.defaultWith (fun error -> failwith error.describe)
+        let changed =
+            CatalogueData.tryCreate catalogue.manifest.id catalogue.manifest.name catalogue.manifest.version.next
+                (catalogue.envelopes @ [ incomingMaterial; incomingSource ])
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        writeShippedCatalogue locations changed
+        let importsBefore = first.catalogueImports.proxy.loggedImports () |> Result.defaultWith (fun error -> failwith error.describe)
+        let heldBefore = first.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue
+        let userBefore = first.catalogueImports.proxy.tryHeldEntry userMaterial.id.toLibraryEntryId
+
+        let second =
+            AppContext.create locations WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let pending = assertPendingCatalogue second changed
+        let collision = pending.decisions |> List.find (fun decision -> decision.entryId = incomingMaterial.content.id)
+        match collision.status with
+        | NameCollision (incoming, sameName) ->
+            Assert.Equal(incomingMaterial, incoming)
+            Assert.Equal<LibraryEntryId list>([ userMaterial.id.toLibraryEntryId ], sameName |> List.map _.id)
+        | _ -> Assert.Fail("Lab glass must be presented as a same-name material collision")
+        Assert.Equal(catalogue.envelopes.Length, pending.decisions |> List.filter (fun decision -> decision.defaultAction = ReuseHeldEntry) |> List.length)
+        let newSource = pending.decisions |> List.find (fun decision -> decision.entryId = incomingSource.content.id)
+        match newSource.status with
+        | EntryIdNotHeld incoming -> Assert.Equal(incomingSource, incoming)
+        | _ -> Assert.Fail("the new source must be presented as an unheld entry")
+        Assert.Equal(AddIncomingEntry, newSource.defaultAction)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok None, second.materials.tryGetMaterial incomingMaterialId)
+        Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok None, second.library.tryGetEntry sourcePreset.id)
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, second.catalogueImports.proxy.tryHeldEntry incomingMaterial.content.id)
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, second.catalogueImports.proxy.tryHeldEntry incomingSource.content.id)
+        Assert.Equal<Result<HeldEntry list, CatalogueImportError>>(heldBefore, second.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue)
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(userBefore, second.catalogueImports.proxy.tryHeldEntry userMaterial.id.toLibraryEntryId)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some userMaterial), second.materials.tryGetMaterial userMaterial.id)
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok importsBefore, second.catalogueImports.proxy.loggedImports ())
 
     [<Fact>]
     let ``create answers LibrarySchemaMismatchErr for a library of another schema and leaves the file as it was`` () : unit =
@@ -190,7 +375,12 @@ module AppContextTests =
 
     [<Fact>]
     let ``create imports the Built-in catalogue into empty stores`` () : unit =
-        let context = freshContext ()
+        let context =
+            AppContext.create (TestAppScope.testLocations owner) WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        assertEmptyStartup context
+        assertPendingCatalogue context (BuiltinCatalogue.catalogueData ()) |> ignore
+        TestAppScope.settlePendingImports context
         Assert.Equal<Result<Sample list, SampleError>>(
             Ok (BuiltinCatalogue.samples () |> List.sortBy _.id),
             context.samples.listSamples IncludeInactive |> Result.map (List.sortBy _.id))

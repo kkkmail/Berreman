@@ -39,12 +39,17 @@ module TestAppScope =
                 libraryConnection = ConnectionString $"Data Source={databaseFile.value}"
         }
 
+    /// Explicitly confirms every pending catalogue's complete default choice list in populated fixtures (spec 0050 S3.1).
+    let settlePendingImports (context : AppContext) : unit =
+        for pending in context.pendingImports do
+            let choices = pending.decisions |> List.map _.byDefault
+            context.catalogueImports.settle pending choices
+            |> Result.defaultWith (fun error -> failwith error.describe) |> ignore
+
     /// Compose a fresh database app scope and explicitly confirm every startup choice (spec 0050 S2.4; S3.1).
     let freshAppContext (owner : FolderName) : AppContext =
         let context =
             AppContext.create (testLocations owner) WorkbenchSettings.defaults
             |> Result.defaultWith (fun error -> failwith error.describe)
-        let choices = context.catalogueDecisions |> List.map _.byDefault
-        context.catalogueImport.apply choices
-        |> Result.defaultWith (fun error -> failwith error.describe) |> ignore
+        settlePendingImports context
         context

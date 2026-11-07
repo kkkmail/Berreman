@@ -38,10 +38,10 @@ type AppContext =
         categories : MaterialLibrary.CategoryProxy
         /// The library's backup store, Backups beside the database (spec 0050 001 §G).
         libraryBackups : LibraryBackupProxy
-        /// The write context for explicitly confirmed catalogue decisions (spec 0050 S3.1).
-        catalogueImport : CatalogueImportContext
-        /// Every startup row remains pending until confirmed (spec 0050 §3.7).
-        catalogueDecisions : ImportDecision list
+        /// The database import seam through which the Library window registers catalogue folders (spec 0050 S3.1).
+        catalogueImports : CatalogueImportContext
+        /// Startup catalogues whose complete row lists await confirmation (spec 0050 §3.7).
+        pendingImports : PendingCatalogueImport list
         /// Spec 0038 Part L (037): the measured-data LOAD seam (STORE_XDUO_0006) —
         /// the real file-backed adapter (step 036, the one file-read seam §0.3c
         /// permits) behind the inverse flow's per-experiment data-file attach.
@@ -73,18 +73,18 @@ type AppContext =
         let samples = SampleProxy.createInDatabase database
         let sources = SourceProxy.createInDatabase database
         let categories = CategoryProxy.createInDatabase database
-        let importer =
-            CatalogueImportProxy.createInDatabase database
-            |> CatalogueImportContext.create
-        let decisions =
-            match database.origin with
-            | CreatedLibraryDatabase ->
-                match importer.importFrom (CatalogueProxy.createBuiltInUnder locations.shippedCatalogueFolder) with
-                | Ok rows -> rows
-                | Error e ->
-                    Logger.logError $"AppContext.compose: could not import the Built-in catalogue: {e.describe}"
-                    []
-            | OpenedLibraryDatabase -> []
+        let catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database)
+        let pendingImports =
+            match catalogueImports.importOnStart (CatalogueProxy.builtInFolderUnder locations.shippedCatalogueFolder) with
+            | Error e ->
+                Logger.logError $"AppContext.compose: could not import catalogues on start: {e.describe}"
+                []
+            | Ok report ->
+                for folder in report.folders do
+                    match folder.outcome with
+                    | Error e -> Logger.logError $"AppContext.compose: could not import catalogue folder '{folder.folder.value}': {e.describe}"
+                    | Ok _ -> ()
+                report.pending
 
         {
             library = LibraryProxy.createInDatabase database
@@ -94,8 +94,8 @@ type AppContext =
             sources = sources
             categories = categories
             libraryBackups = LibraryBackupProxy.createInDatabase database locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
-            catalogueImport = importer
-            catalogueDecisions = decisions
+            catalogueImports = catalogueImports
+            pendingImports = pendingImports
             experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked ()
             experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
             scenes = Scene.SceneProxy.createInMemory ()
@@ -106,13 +106,12 @@ type AppContext =
             settings = settings
         }
 
-    /// Opens the library and retains Built-in import decisions for confirmation on creation (spec 0050 S2.4; S3.1).
-    /// Answers open failures unchanged and logs catalogue read failures without writing entries.
+    /// Every start imports the shipped catalogue and registered folders by manifest hash, pending confirmation (spec 0050 S2.4; S3.1).
     static member create (locations : DataLocations) (settings : WorkbenchSettings) : Result<AppContext, StorageError> =
         LibraryDatabase.openOrCreate locations.libraryConnection
         |> Result.map (AppContext.compose locations settings)
 
-    /// Preserves the old library in Backups, then composes a new library with the Built-in catalogue (spec 0050 001 §C).
+    /// Backs up and recreates; every start imports shipped and registered catalogues by manifest hash, pending confirmation (spec 0050 001 §C; S3.1).
     static member recreateLibrary (locations : DataLocations) (settings : WorkbenchSettings) : Result<AppContext, StorageError> =
         LibraryDatabase.recreate locations.libraryConnection locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
         |> Result.map (AppContext.compose locations settings)

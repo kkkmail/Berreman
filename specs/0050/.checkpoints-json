@@ -303,5 +303,8 @@
   },
   "98": {
     "constructor_unit_tests": 968
+  },
+  "99": {
+    "ui_smoke_tests": 210
   }
 }
