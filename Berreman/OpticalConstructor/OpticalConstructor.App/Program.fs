@@ -82,6 +82,7 @@ type MainConstructorWindow(context : AppContext) as this =
             { TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories with
                 sources = context.sources
                 libraryBackups = context.libraryBackups
+                catalogueImports = context.catalogueImports
                 experimentExport = context.experimentExport
                 experimentData = context.experimentData
                 experimentCollections = context.experimentCollections })
@@ -101,6 +102,7 @@ type InverseConstructorWindow(context : AppContext) as this =
             { TableAndElementRotationView.initInverse context.library context.experiments context.materials context.samples context.categories with
                 sources = context.sources
                 libraryBackups = context.libraryBackups
+                catalogueImports = context.catalogueImports
                 experimentExport = context.experimentExport
                 experimentData = context.experimentData
                 experimentCollections = context.experimentCollections })
@@ -146,7 +148,7 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                     launchers.openMaterialsWindow context.materials context.categories)
             let libraryButton =
                 surfaceButton ConstructorUiId.openLibraryButton "Library" (fun context ->
-                    launchers.openLibraryWindow context.library context.samples context.sources context.materials context.categories context.libraryBackups)
+                    launchers.openLibraryWindow context.library context.samples context.sources context.materials context.categories context.libraryBackups context.catalogueImports)
             let versionText = $"Version {Berreman.BuildInfo.version.value}"
             let version =
                 TextBlock(

@@ -531,6 +531,13 @@ type ConstructorUiId =
     static member libraryRestoreCancelButton : ConstructorUiId = ConstructorUiId "LibraryRestoreCancelButton"
     static member libraryBackupStatusText : ConstructorUiId = ConstructorUiId "LibraryBackupStatusText"
 
+    // Spec 0050 S3.1: registered catalogue folders and import status.
+    static member libraryRegisterCatalogueFolderButton : ConstructorUiId = ConstructorUiId "LibraryRegisterCatalogueFolderButton"
+    static member libraryCatalogueFoldersPanel : ConstructorUiId = ConstructorUiId "LibraryCatalogueFoldersPanel"
+    static member libraryCatalogueFolderRow (catalogue : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"LibraryCatalogueFolderRow_{catalogue.value}"
+    static member libraryUnregisterCatalogueButton (catalogue : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"LibraryUnregisterCatalogueButton_{catalogue.value}"
+    static member libraryImportStatusText : ConstructorUiId = ConstructorUiId "LibraryImportStatusText"
+
     // --- The single-instance Materials window (`MaterialsWindowView`). ---
     static member materialsWindow : ConstructorUiId = ConstructorUiId "MaterialsWindow"
     static member materialsFacetTreeHost : ConstructorUiId = ConstructorUiId "MaterialsFacetTreeHost"

@@ -18,6 +18,12 @@ open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryBackup
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -171,6 +177,7 @@ module LibraryWindowTests =
                 materials = materials
                 categories = BuiltinCatalogue.categoryStore (fun _ -> [])
                 libraryBackups = LibraryBackupProxy.createInMemory ()
+                catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
                 thicknessBucketCap = ThicknessBucketCap.defaultValue
                 openSampleEditor =
@@ -234,6 +241,135 @@ module LibraryWindowTests =
     /// The kind-facet constraint helper (a single discrete key).
     let private kindConstraint (kind : string) : LW.LibraryWindowMsg =
         LW.ApplyFacetConstraint (entryKindFacetKey, DiscreteSelection (Set.singleton (DiscreteKey kind)))
+
+    let private catalogueFolderFixture () : FolderName * CatalogueData =
+        let folder = FolderName (System.IO.Path.Combine(System.AppContext.BaseDirectory, "LibraryWindowTests", System.Guid.NewGuid().ToString("N")))
+        let source =
+            {
+                BuiltinCatalogue.source PresetIds.source600 with
+                    id = newSourceId ()
+                    name = EntryName "Registered catalogue source"
+                    protection = UserManaged
+            }
+        let content =
+            LibraryEntryContent.ofSourcePreset VersionNumber.first UserProvenance source
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let envelope = content.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+        let id = CatalogueId (System.Guid.NewGuid())
+        let name = CatalogueName "Library window catalogue"
+        let catalogue =
+            CatalogueData.tryCreate id name VersionNumber.first [ envelope ]
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        (CatalogueProxy.create folder).writeCatalogue catalogue
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        folder, catalogue
+
+    let private confirmCatalogueRegistration (context : CatalogueImportContext) (pending : PendingCatalogueImport) : unit =
+        pending.decisions |> List.map _.byDefault |> context.settle pending
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        |> ignore
+
+    let private registeredCatalogueFixture (model : LW.LibraryWindowModel) (folder : FolderName) : LW.LibraryWindowModel =
+        let pendingModel = LW.updateLibraryWindow (LW.RegisterCatalogueFolder folder) model
+        let pending = Assert.Single pendingModel.pendingImports
+        confirmCatalogueRegistration model.context.catalogueImports pending
+        pendingModel
+
+    [<Fact>]
+    let ``the catalogue-folder UiIds are the stable intent-named ids`` () : unit =
+        let catalogue = CatalogueId (System.Guid.Parse "7dd43058-04cf-448d-bf13-3e4e8e833942")
+        Assert.Equal("LibraryRegisterCatalogueFolderButton", ConstructorUiId.libraryRegisterCatalogueFolderButton.value)
+        Assert.Equal("LibraryCatalogueFoldersPanel", ConstructorUiId.libraryCatalogueFoldersPanel.value)
+        Assert.Equal($"LibraryCatalogueFolderRow_{catalogue.value}", (ConstructorUiId.libraryCatalogueFolderRow catalogue.uiKey).value)
+        Assert.Equal($"LibraryUnregisterCatalogueButton_{catalogue.value}", (ConstructorUiId.libraryUnregisterCatalogueButton catalogue.uiKey).value)
+        Assert.Equal("LibraryImportStatusText", ConstructorUiId.libraryImportStatusText.value)
+
+    [<Fact>]
+    let ``RegisterCatalogueFolder holds every row for confirmation and names it in the status`` () : unit =
+        let _, initial = freshModel ()
+        Assert.Equal<ControlCaption option>(None, initial.importStatus)
+        Assert.Empty initial.pendingImports
+        let folder, catalogue = catalogueFolderFixture ()
+        let model = LW.updateLibraryWindow (LW.RegisterCatalogueFolder folder) initial
+        let pending = Assert.Single model.pendingImports
+        Assert.Equal(catalogue.manifest.id, pending.entry.catalogueId)
+        Assert.Equal<LibraryEntryId list>(catalogue.envelopes |> List.map _.content.id, pending.decisions |> List.map _.entryId)
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok [], model.context.catalogueImports.proxy.registeredFolders ())
+        for envelope in catalogue.envelopes do
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, model.context.catalogueImports.proxy.tryHeldEntry envelope.content.id)
+        Assert.Equal(Some (ControlCaption $"Review {folder.value}; 1 entries await confirmation. Nothing has been imported or registered."), model.importStatus)
+        Assert.Equal<LW.LibraryWindowError option>(None, model.lastError)
+        let nextFolder, nextCatalogue = catalogueFolderFixture ()
+        let next = LW.updateLibraryWindow (LW.RegisterCatalogueFolder nextFolder) model
+        Assert.Equal<CatalogueId list>([ catalogue.manifest.id; nextCatalogue.manifest.id ], next.pendingImports |> List.map _.entry.catalogueId)
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok [], next.context.catalogueImports.proxy.registeredFolders ())
+
+    [<Fact>]
+    let ``a folder is held for the import dialog without imports or registration before confirmation`` () : unit =
+        let _, initial = freshModel ()
+        let folder, catalogue = catalogueFolderFixture ()
+        let incoming = Assert.Single catalogue.envelopes
+        let heldContent =
+            {
+                incoming.content with
+                    id = LibraryEntryId (System.Guid.NewGuid())
+            }
+        let heldEnvelope = heldContent.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+        let put =
+            {
+                envelope = heldEnvelope
+                latest = MoveLatestVersion
+            }
+        initial.context.catalogueImports.proxy.putEntryVersion put
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        let before = initial.context.catalogueImports.proxy.tryHeldEntry heldContent.id
+        let model = LW.updateLibraryWindow (LW.RegisterCatalogueFolder folder) initial
+        let pending = Assert.Single model.pendingImports
+        let decision = Assert.Single pending.decisions
+        match decision.status with
+        | NameCollision (entry, held) ->
+            Assert.Equal(incoming, entry)
+            Assert.Equal(heldContent.id, (Assert.Single held).id)
+        | _ -> Assert.Fail "The same-name source must remain a pending collision."
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok [], model.context.catalogueImports.proxy.registeredFolders ())
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, model.context.catalogueImports.proxy.tryHeldEntry incoming.content.id)
+        Assert.Equal(before, model.context.catalogueImports.proxy.tryHeldEntry heldContent.id)
+        Assert.Equal(Some (ControlCaption $"Review {folder.value}; 1 entries await confirmation. Nothing has been imported or registered."), model.importStatus)
+
+    [<Fact>]
+    let ``a refused registration shows its reason as the window message`` () : unit =
+        let _, initial = freshModel ()
+        let folder, _ = catalogueFolderFixture ()
+        let registered = registeredCatalogueFixture initial folder
+        let model = LW.updateLibraryWindow (LW.RegisterCatalogueFolder folder) registered
+        match model.lastError with
+        | Some (LW.CatalogueImportRefusedErr (CatalogueAlreadyRegisteredErr reason as error)) ->
+            Assert.Contains(folder.value, reason)
+            Assert.Equal(error.caption, (LW.CatalogueImportRefusedErr error).caption)
+        | _ -> Assert.Fail "The second registration must surface CatalogueAlreadyRegisteredErr."
+        Assert.Equal<ControlCaption option>(None, model.importStatus)
+        Assert.Equal<PendingCatalogueImport list>(registered.pendingImports, model.pendingImports)
+
+    [<Fact>]
+    let ``UnregisterCatalogueFolder forgets the folder and keeps its entries`` () : unit =
+        let _, initial = freshModel ()
+        let folder, catalogue = catalogueFolderFixture ()
+        let registered = registeredCatalogueFixture initial folder
+        let source = Assert.Single catalogue.envelopes
+        let before = registered.context.catalogueImports.proxy.tryHeldEntry source.content.id
+        match before with
+        | Ok (Some _) -> ()
+        | _ -> Assert.Fail "The fixture must explicitly settle its pending source."
+        let model = LW.updateLibraryWindow (LW.UnregisterCatalogueFolder catalogue.manifest.id) registered
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok [], model.context.catalogueImports.proxy.registeredFolders ())
+        Assert.Equal(before, model.context.catalogueImports.proxy.tryHeldEntry source.content.id)
+        Assert.Equal(Some (ControlCaption $"Unregistered {folder.value}. Its entries stay in the library."), model.importStatus)
+        Assert.Equal<LW.LibraryWindowError option>(None, model.lastError)
+        let again = LW.updateLibraryWindow (LW.RegisterCatalogueFolder folder) model
+        let pending = List.last again.pendingImports
+        Assert.Equal(ReuseHeldEntry, (Assert.Single pending.decisions).defaultAction)
+        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok [], again.context.catalogueImports.proxy.registeredFolders ())
+        Assert.Equal(before, again.context.catalogueImports.proxy.tryHeldEntry source.content.id)
 
     // ============================ pure: ids contract ============================
 
@@ -768,9 +904,10 @@ module LibraryWindowTests =
 
     let private mountLibraryWindow (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) : LibraryWindow =
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
-        let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, LibraryBackupProxy.createInMemory ())
+        let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, LibraryBackupProxy.createInMemory (), CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy)
         window.Show()
         Dispatcher.UIThread.RunJobs()
+        Assert.True(isPresent window ConstructorUiId.libraryRegisterCatalogueFolderButton.value)
         // The tree opens collapsed (spec 0040 step 002); expand the entries group so the leaf-
         // clicking proofs below find their rows (expansion persists across the window's lifetime).
         expandEntries window
@@ -1155,9 +1292,10 @@ module LibraryWindowTests =
 
     let private mountSelectLibraryWindow (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) (selectCtx : SelectionContext<LibraryEntry>) : LibraryWindow =
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
-        let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, LibraryBackupProxy.createInMemory (), mode = Select selectCtx)
+        let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, LibraryBackupProxy.createInMemory (), CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, mode = Select selectCtx)
         window.Show()
         Dispatcher.UIThread.RunJobs()
+        Assert.True(isPresent window ConstructorUiId.libraryRegisterCatalogueFolderButton.value)
         // The tree opens collapsed (spec 0040 step 002); expand entries so the Select proofs reach
         // their leaves (expansion persists across the window's lifetime).
         expandEntries window
@@ -1873,6 +2011,54 @@ module LibraryWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the Library window lists a registered catalogue folder, and Unregister removes it and keeps its entries`` () : unit =
+        HeadlessSession.run (fun () ->
+            let owner = FolderName "LibraryWindowCatalogueTests"
+            let locations = TestAppScope.fileLocations owner
+            let ctx =
+                AppContext.create locations WorkbenchSettings.defaults
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            TestAppScope.settlePendingImports ctx
+            let folder, catalogue = catalogueFolderFixture ()
+            let pending =
+                match ctx.catalogueImports.registerFolder folder with
+                | Ok (CatalogueAwaitsChoices pending) -> pending
+                | Ok _ -> failwith "Every new catalogue row must await confirmation."
+                | Error error -> failwith error.describe
+            confirmCatalogueRegistration ctx.catalogueImports pending
+            let source =
+                (Assert.Single catalogue.envelopes).content.toSourcePreset
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let registered =
+                ctx.catalogueImports.proxy.registeredFolders ()
+                |> Result.defaultWith (fun error -> failwith error.describe)
+                |> Assert.Single
+            let rowId = ConstructorUiId.libraryCatalogueFolderRow catalogue.manifest.id.uiKey
+            let window = LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups, ctx.catalogueImports)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            try
+                Assert.True(isPresent window ConstructorUiId.libraryRegisterCatalogueFolderButton.value)
+                Assert.True(isPresent window ConstructorUiId.libraryCatalogueFoldersPanel.value)
+                Assert.True(isPresent window rowId.value)
+                Assert.Equal(folder.value, textOf window rowId.value)
+                let importedAt = registered.importedAt.value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)
+                let texts = window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None) |> Seq.toList
+                Assert.Contains($"imported {importedAt} UTC", texts)
+                Assert.Contains("1 entries", texts)
+                Assert.Equal<Result<SourcePreset option, SourceError>>(Ok (Some source), ctx.sources.tryGetSource source.id)
+                clickOn window (ConstructorUiId.libraryUnregisterCatalogueButton catalogue.manifest.id.uiKey).value
+                Assert.False(isPresent window rowId.value)
+                Assert.False(isPresent window ConstructorUiId.libraryCatalogueFoldersPanel.value)
+                Assert.Equal($"Unregistered {folder.value}. Its entries stay in the library.", textOf window ConstructorUiId.libraryImportStatusText.value)
+                Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(Ok [], ctx.catalogueImports.proxy.registeredFolders ())
+                Assert.Equal<Result<SourcePreset option, SourceError>>(Ok (Some source), ctx.sources.tryGetSource source.id)
+            finally
+                window.Close()
+                Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
     let ``acceptance: the Library window backs up and restores the app-scope library through its buttons`` () : unit =
         HeadlessSession.run (fun () ->
             let owner = FolderName "LibraryWindowBackupTests"
@@ -1881,7 +2067,7 @@ module LibraryWindowTests =
                 AppContext.create locations WorkbenchSettings.defaults
                 |> Result.defaultWith (fun error -> failwith error.describe)
             TestAppScope.settlePendingImports ctx
-            let window = LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups)
+            let window = LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups, ctx.catalogueImports)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             try

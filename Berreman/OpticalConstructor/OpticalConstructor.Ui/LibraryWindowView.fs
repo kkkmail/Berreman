@@ -26,6 +26,7 @@ open System
 open Avalonia
 open Avalonia.Automation
 open Avalonia.Controls
+open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.FuncUI.DSL
@@ -37,6 +38,9 @@ open OpticalConstructor.Domain.FacetBuckets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryBackup
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.LibraryEntryFiles
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
@@ -93,6 +97,8 @@ type LibraryWindowError =
     | SampleLifecycleRefusedErr of SampleError
     /// The backup store refused a backup, listing or restore request.
     | LibraryBackupRefusedErr of LibraryBackupError
+    /// The catalogue import store refused registration or unregistering.
+    | CatalogueImportRefusedErr of CatalogueImportError
 
     /// The refusal's reason as the inline message shows it.
     member this.caption : ControlCaption =
@@ -103,6 +109,7 @@ type LibraryWindowError =
         | SampleLifecycleRefusedErr sampleError -> sampleError.caption
         | SourceRemoveRefusedErr sourceError -> sourceError.caption
         | LibraryBackupRefusedErr backupError -> backupError.caption
+        | CatalogueImportRefusedErr importError -> importError.caption
 
 /// One named tree-shaping representation the window offers (spec 0038 §D.0: search order ≠
 /// representation order): a stable `code` the control dispatches back, the picker label, and
@@ -154,8 +161,7 @@ let private libraryEntriesCode : ConstructorUiKey = ConstructorUiKey "entries"
 // ---------------------------------------------------------------------------
 
 /// The window's context: the read-only Library seam (the preset entries), the app-scope
-/// samples WRITE store (the live sample corpus AND the Remove verb's target), the materials
-/// and backup stores, the Domain
+/// samples write store, materials, backups and catalogue import seam, the Domain
 /// tree-gating threshold and bucket cap, and the Sample-editor launcher (the composition root —
 /// `LibraryWindow` — bakes the step-008 `WindowLauncher` `SampleEditorKey` into it; tests
 /// substitute recording stubs). Function-valued fields have no structural equality, so the
@@ -170,6 +176,8 @@ type LibraryWindowContext =
         categories : CategoryProxy
         /// The app-scope library backup and restore store.
         libraryBackups : LibraryBackupProxy
+        /// The app-scope catalogue import seam.
+        catalogueImports : CatalogueImportContext
         treeAutoBuildThreshold : TreeAutoBuildThreshold
         thicknessBucketCap : ThicknessBucketCap
         /// Open the Sample editor by intent: `NewBlankSample` / `NewSeededMultilayer` (the Add /
@@ -283,6 +291,10 @@ type LibraryWindowModel =
         restoreGate : LibraryRestoreGate
         /// The most recent successful backup or restore, naming its backups.
         backupStatus : ControlCaption option
+        /// The latest catalogue-folder registration or unregister status.
+        importStatus : ControlCaption option
+        /// Registrations whose complete row lists await the import dialog.
+        pendingImports : PendingCatalogueImport list
         /// Which OLDER version of the selected SAMPLE the view panel is showing read-only
         /// (`None` = the latest, the editable default; `Some v` = version `v` view-only — spec
         /// 0038 step 023). Reset to `None` on every selection change.
@@ -432,6 +444,8 @@ let private initModel (context : LibraryWindowContext) (mode : LibraryWindowMode
         lifecycleGate = NoPendingSampleLifecycle
         restoreGate = NoPendingLibraryRestore
         backupStatus = None
+        importStatus = None
+        pendingImports = []
         viewedVersion = None
         lastError = None
     }
@@ -479,6 +493,10 @@ type LibraryWindowMsg =
     | ConfirmLibraryRestore
     /// Close the restore panel without restoring anything.
     | CancelLibraryRestore
+    /// Inspect a catalogue folder and hold every import row for confirmation.
+    | RegisterCatalogueFolder of FolderName
+    /// Forget a registered folder while keeping all its library entries.
+    | UnregisterCatalogueFolder of CatalogueId
     /// The show-inactive/superseded toggle (spec 0038 step 023): flip the sample scope between
     /// `ActiveOnly` and `IncludeInactive`.
     | ToggleShowInactiveEntries
@@ -583,6 +601,55 @@ let private requestLifecycle (action : MaterialsWindowView.LifecycleAction) (m :
 
 let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : LibraryWindowModel =
     match msg with
+    | RegisterCatalogueFolder folder ->
+        match m.context.catalogueImports.registerFolder folder with
+        | Ok (CatalogueImported entry) ->
+            {
+                m with
+                    importStatus = Some (ControlCaption $"Registered catalogue folder {folder.value} ({entry.entryCount.value} entries).")
+                    lastError = None
+            }
+        | Ok (CatalogueAwaitsChoices pending) ->
+            {
+                m with
+                    pendingImports = m.pendingImports @ [ pending ]
+                    importStatus = Some (ControlCaption $"Review {folder.value}; {pending.decisions.Length} entries await confirmation. Nothing has been imported or registered.")
+                    lastError = None
+            }
+        | Ok (CatalogueUnchanged _) ->
+            {
+                m with
+                    importStatus = Some (ControlCaption $"Catalogue folder {folder.value} is unchanged.")
+                    lastError = None
+            }
+        | Error error ->
+            {
+                m with
+                    lastError = Some (CatalogueImportRefusedErr error)
+                    importStatus = None
+            }
+    | UnregisterCatalogueFolder id ->
+        let forgotten =
+            m.context.catalogueImports.proxy.registeredFolders ()
+            |> Result.bind (fun entries ->
+                match entries |> List.tryFind (fun entry -> entry.catalogueId = id) with
+                | Some entry ->
+                    m.context.catalogueImports.proxy.forgetImport id
+                    |> Result.map (fun () -> entry.folder)
+                | None -> Error (ImportRejectedErr $"catalogue {id.value} is not a registered folder"))
+        match forgotten with
+        | Ok folder ->
+            {
+                m with
+                    importStatus = Some (ControlCaption $"Unregistered {folder.value}. Its entries stay in the library.")
+                    lastError = None
+            }
+        | Error error ->
+            {
+                m with
+                    lastError = Some (CatalogueImportRefusedErr error)
+                    importStatus = None
+            }
     | ApplyFacetConstraint (key, selection) ->
         // Single selection per facet: re-applying a constrained facet REPLACES its chip
         // (removed from its old breadcrumb position, re-applied at the end).
@@ -1129,7 +1196,7 @@ let private negativeBackground = Color.FromRgb(236uy, 202uy, 202uy)
 /// changes recreate a shifted box; `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble
 /// pass. The verbs, confirm row, message and panel all have variable membership, so every id is
 /// an AutomationId, never `StyledElement.Name` (the `FacetedTreeControls` discipline).
-let private libraryVerbButtonWithBackground (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
+let private libraryVerbButtonWithBackground (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onPressed : PointerPressedEventArgs -> unit) : IView =
     let keyedBox =
         Border.create [
             id.automationAttribute<Border> ()
@@ -1142,13 +1209,31 @@ let private libraryVerbButtonWithBackground (id : ConstructorUiId) (label : Cont
             Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
             Border.verticalAlignment VerticalAlignment.Center
             Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onPressed e), SubPatchOptions.OnChangeOf (box id.value))
         ]
         |> Avalonia.FuncUI.DSL.View.withKey id.value
     keyedBox :> IView
 
+let private verbButtonOn (id : ConstructorUiId) (label : ControlCaption) (onPressed : PointerPressedEventArgs -> unit) : IView =
+    libraryVerbButtonWithBackground id label idleBackground onPressed
+
 let private verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
-    libraryVerbButtonWithBackground id label idleBackground onClick
+    verbButtonOn id label (fun _ -> onClick ())
+
+let private pickCatalogueFolder (owner : Window) (onPicked : FolderName -> unit) : unit =
+    let pick =
+        async {
+            try
+                let options = Avalonia.Platform.Storage.FolderPickerOpenOptions(Title = "Register catalogue folder", AllowMultiple = false)
+                let! folders = owner.StorageProvider.OpenFolderPickerAsync options |> Async.AwaitTask
+                match List.ofSeq folders with
+                | folder :: _ ->
+                    let picked = FolderName folder.Path.LocalPath
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> onPicked picked)
+                | [] -> ()
+            with _ -> ()
+        }
+    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
 
 /// A positive/negative ACTION box (the Save/Cancel styling precedent) — same look as
 /// `verbButton` but colour-coded and wider-padded; keyed, AutomationId'd (variable
@@ -1235,10 +1320,45 @@ let private verbsRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> un
                | None -> [])
             @ (m.offeredLifecycleActions |> List.map (lifecycleButton dispatch))
             @ [
+                verbButtonOn ConstructorUiId.libraryRegisterCatalogueFolderButton (ControlCaption "Register catalogue folder…") (fun e ->
+                    match e.Source with
+                    | :? Visual as source ->
+                        match TopLevel.GetTopLevel source with
+                        | :? Window as owner -> pickCatalogueFolder owner (RegisterCatalogueFolder >> dispatch)
+                        | _ -> ()
+                    | _ -> ())
                 verbButton ConstructorUiId.libraryBackUpNowButton (ControlCaption "Back up library now…") (fun () -> dispatch BackUpLibraryNow)
                 verbButton ConstructorUiId.libraryRestoreButton (ControlCaption "Restore library…") (fun () -> dispatch RequestLibraryRestore)
             ])
     ] :> IView
+
+let private catalogueFolderRows (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
+    match m.context.catalogueImports.proxy.registeredFolders () with
+    | Error _ | Ok [] -> []
+    | Ok entries ->
+        [ StackPanel.create [
+              ConstructorUiId.libraryCatalogueFoldersPanel.automationAttribute<StackPanel> ()
+              AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Catalogue folders", ValueNone)
+              StackPanel.spacing 6.0
+              StackPanel.children (
+                  [ TextBlock.create [ TextBlock.text "Catalogue folders"; TextBlock.fontWeight FontWeight.SemiBold ] :> IView ]
+                  @ (entries |> List.map (fun entry ->
+                      let id = ConstructorUiId.libraryCatalogueFolderRow entry.catalogueId.uiKey
+                      let importedAt = entry.importedAt.value.ToString("yyyy-MM-dd HH:mm", Globalization.CultureInfo.InvariantCulture)
+                      StackPanel.create [
+                          id.automationAttribute<StackPanel> ()
+                          AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, entry.folder.value, ValueNone)
+                          StackPanel.spacing 4.0
+                          StackPanel.children [
+                              TextBlock.create [ TextBlock.text entry.folder.value; TextBlock.textWrapping TextWrapping.Wrap ]
+                              TextBlock.create [ TextBlock.text $"imported {importedAt} UTC" ]
+                              TextBlock.create [ TextBlock.text $"{entry.entryCount.value} entries" ]
+                              verbButton (ConstructorUiId.libraryUnregisterCatalogueButton entry.catalogueId.uiKey) (ControlCaption "Unregister") (fun () -> dispatch (UnregisterCatalogueFolder entry.catalogueId))
+                          ]
+                      ]
+                      |> Avalonia.FuncUI.DSL.View.withKey id.value
+                      :> IView)))
+          ] :> IView ]
 
 let private libraryRestoreRows (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
     match m.restoreGate with
@@ -1259,7 +1379,7 @@ let private libraryRestoreRows (m : LibraryWindowModel) (dispatch : LibraryWindo
                      | names ->
                          names |> List.map (fun name ->
                              let background = if pickedOpt = Some name then positiveBackground else idleBackground
-                             libraryVerbButtonWithBackground (ConstructorUiId.libraryBackupRow name.uiKey) name.caption background (fun () -> dispatch (PickLibraryBackup name))))
+                             libraryVerbButtonWithBackground (ConstructorUiId.libraryBackupRow name.uiKey) name.caption background (fun _ -> dispatch (PickLibraryBackup name))))
                   @ [ WrapPanel.create [
                           WrapPanel.orientation Orientation.Horizontal
                           WrapPanel.children [
@@ -1270,6 +1390,17 @@ let private libraryRestoreRows (m : LibraryWindowModel) (dispatch : LibraryWindo
           ] :> IView ]
 
 type LibraryWindowModel with
+
+    member internal this.libraryImportStatusRow : IView list =
+        match this.importStatus with
+        | None -> []
+        | Some status ->
+            [ TextBlock.create [
+                  ConstructorUiId.libraryImportStatusText.automationAttribute<TextBlock> ()
+                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, status.value, ValueNone)
+                  TextBlock.text status.value
+                  TextBlock.textWrapping TextWrapping.Wrap
+              ] :> IView ]
 
     member internal this.libraryBackupStatusRow : IView list =
         match this.backupStatus with
@@ -1482,6 +1613,8 @@ let libraryWindowView (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
                                     selectModeRows m dispatch
                                     @ toggleRow m dispatch
                                     @ [ verbsRow m dispatch ]
+                                    @ catalogueFolderRows m dispatch
+                                    @ m.libraryImportStatusRow
                                     @ confirmRow m dispatch
                                     @ lifecycleConfirmRow m dispatch
                                     @ libraryRestoreRows m dispatch

@@ -7,6 +7,8 @@ open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.FacetBuckets
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryBackup
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.DispersionModels
@@ -17,6 +19,16 @@ open OpticalConstructor.Domain.Units
 /// the lowest project that sees both.
 [<AutoOpen>]
 module ConstructorUiIdOfDomain =
+
+    type CatalogueId with
+
+        /// The catalogue's identity as its Library-window row key.
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey (string this.value)
+
+    type CatalogueImportError with
+
+        /// The import refusal as the Library-window message.
+        member this.caption : ControlCaption = ControlCaption this.describe
 
     type LibraryBackupName with
 

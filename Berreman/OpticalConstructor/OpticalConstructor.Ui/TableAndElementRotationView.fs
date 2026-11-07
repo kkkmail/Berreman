@@ -23,6 +23,8 @@ open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Fields
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
@@ -149,13 +151,13 @@ type EditorLaunchers =
         /// bay carried here moved INTO that window's own composition (`MaterialsWindow`).
         openMaterialsWindow : MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> unit
         /// Open the SINGLE-INSTANCE Library window (spec 0038 step 015, UICOMP_XDUO_0010) over
-        /// the read-only Library seam plus the app-scope samples + materials + categories + backups
-        /// stores (the categories thread through to the Sample editor's step-019 Choose
+        /// the Library seam, app-scope stores and catalogue imports
+        /// (categories thread through to the Sample editor's step-019 Choose
         /// material… composition) — the ribbon strip's `Library…` button reaches it through
         /// this seam. The Sample-editor launcher the retired Library bay carried here
         /// (`openSampleEditor`) moved INTO that window's own composition (`LibraryWindow`),
         /// the step-013 Materials precedent.
-        openLibraryWindow : Library.LibraryProxy -> Library.SampleProxy -> Library.SourceProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> LibraryBackup.LibraryBackupProxy -> unit
+        openLibraryWindow : Library.LibraryProxy -> Library.SampleProxy -> Library.SourceProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> LibraryBackup.LibraryBackupProxy -> CatalogueImportContext -> unit
         /// Spec 0038 (017): open the SAME single-instance Library window in SELECT state over
         /// the session context (the Select bay's Choose… verb). A missing window opens fresh
         /// in Select mode; a LIVE one is RE-TARGETED at the new context (a second Choose…
@@ -164,7 +166,7 @@ type EditorLaunchers =
         /// the opened session's cancel-and-close handle — the `SelectSession` staleness lever —
         /// or None when the open failed (the typed error is dropped at this unit seam: a failed
         /// open leaves no window, exactly the user-visible outcome).
-        openLibrarySelectWindow : Library.LibraryProxy -> Library.SampleProxy -> Library.SourceProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> LibraryBackup.LibraryBackupProxy -> WorkbenchSettings.SelectWindowModality -> Window -> WindowMode.SelectionContext<Library.LibraryEntry> -> (unit -> unit) option
+        openLibrarySelectWindow : Library.LibraryProxy -> Library.SampleProxy -> Library.SourceProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> LibraryBackup.LibraryBackupProxy -> CatalogueImportContext -> WorkbenchSettings.SelectWindowModality -> Window -> WindowMode.SelectionContext<Library.LibraryEntry> -> (unit -> unit) option
     }
 
     /// The real launchers — spec 0038 step 008: every verb-opened window goes THROUGH the
@@ -192,10 +194,10 @@ type EditorLaunchers =
                 fun materials categories ->
                     openBrowse WindowLauncher.MaterialsWindowKey (fun () -> MaterialsWindow(materials, categories) :> Window)
             openLibraryWindow =
-                fun library samples sources materials categories libraryBackups ->
-                    openBrowse WindowLauncher.LibraryWindowKey (fun () -> LibraryWindow(library, samples, sources, materials, categories, libraryBackups) :> Window)
+                fun library samples sources materials categories libraryBackups catalogueImports ->
+                    openBrowse WindowLauncher.LibraryWindowKey (fun () -> LibraryWindow(library, samples, sources, materials, categories, libraryBackups, catalogueImports) :> Window)
             openLibrarySelectWindow =
-                fun library samples sources materials categories libraryBackups modality requestingWindow selectCtx ->
+                fun library samples sources materials categories libraryBackups catalogueImports modality requestingWindow selectCtx ->
                     // Spec 0038 (017): the Select-state open — the SAME registry key as the
                     // Browse opens above, so Choose… and the Library… strip button meet in one
                     // open-or-activate space. A LIVE window is re-pointed through the step-016
@@ -208,7 +210,7 @@ type EditorLaunchers =
                         | _ -> ()
                     let launcher =
                         WindowLauncher.WindowLauncher.create
-                            (fun (_ : WindowLauncher.WindowKey) -> LibraryWindow(library, samples, sources, materials, categories, libraryBackups, mode = WindowMode.Select selectCtx) :> Window |> Ok)
+                            (fun (_ : WindowLauncher.WindowKey) -> LibraryWindow(library, samples, sources, materials, categories, libraryBackups, catalogueImports, mode = WindowMode.Select selectCtx) :> Window |> Ok)
                             modality
                             (WindowLauncher.SelectOpen (requestingWindow, retargetWindow))
                     match launcher.openOrActivate WindowLauncher.LibraryWindowKey with
@@ -329,6 +331,8 @@ type TableAndElementRotationModel =
         sources : Library.SourceProxy
         /// The app-scope library backup store; test scenes use a name-only in-memory double.
         libraryBackups : LibraryBackup.LibraryBackupProxy
+        /// The app-scope catalogue import seam.
+        catalogueImports : CatalogueImportContext
         /// Spec 0035 (009): the injected category WRITE seam (STORE_XDUO_0003) behind the material
         /// editor's create picker and — spec 0038 step 013 — the Materials window's category facet
         /// and its "Categories…" verb.
@@ -433,6 +437,7 @@ module private DefaultStores =
             categories : MaterialLibrary.CategoryProxy
             library : LibraryProxy
             sources : SourceProxy
+            catalogueImports : CatalogueImportContext
         }
 
     /// Imports fresh scene stores, logging any failure and retaining entries already imported.
@@ -452,6 +457,7 @@ module private DefaultStores =
             categories = stores.categories
             library = liveLibrary stores.libraryEntries stores.samples sources
             sources = sources
+            catalogueImports = context
         }
 
 /// Spec 0038 Part L (037): the default experiment-data + experiment-collection proxies for the
@@ -509,6 +515,7 @@ let initWith
         samples = samples
         sources = Library.SourceProxy.createInMemory ()
         libraryBackups = LibraryBackup.LibraryBackupProxy.createInMemory ()
+        catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
         categories = categories
         launchers = EditorLaunchers.defaults
         quickPickThreshold = QuickPickThreshold.defaultValue
@@ -536,8 +543,11 @@ let initTableAndElementRotation () : TableAndElementRotationModel =
         [ mkElement { x = -0.5<meter>; y = 0.0<meter> } LinearPolarizer
           mkElement { x = 0.0<meter>; y = 0.0<meter> } Sample
           mkElement { x = 0.5<meter>; y = 0.0<meter> } FlatMirror ]
-    { initWith stores.library (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories experimentData experimentCollections elements [] with
-        sources = stores.sources }
+    {
+        initWith stores.library (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories experimentData experimentCollections elements [] with
+            sources = stores.sources
+            catalogueImports = stores.catalogueImports
+    }
 
 /// The DYNAMIC Main scene: the same table/view/selection/rotation logic, seeded with a light source and
 /// a detector at the ends of the beam, plus the catalogue palette the user can add elements from (the
@@ -608,7 +618,11 @@ let initInverse
 /// root injects its own proxies via `initMainWith`).
 let initMain () : TableAndElementRotationModel =
     let stores = DefaultStores.create ()
-    { initMainWith stores.library (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories with sources = stores.sources }
+    {
+        initMainWith stores.library (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories with
+            sources = stores.sources
+            catalogueImports = stores.catalogueImports
+    }
 
 // ---------------------------------------------------------------------------
 // Scene capture / restore (spec 0038 step 027, IMPLEMENT_CONTRACT STORE_XDUO_0004).
@@ -1823,7 +1837,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         // `LibraryWindowKey`, so a second click ACTIVATES the live window. No model change: the
         // window runs its own MVU loop over the same stores (the retired samples-workbench bay's
         // query/selection/confirm state lives in the window's own model now).
-        model.launchers.openLibraryWindow model.library model.samples model.sources model.materials model.categories model.libraryBackups
+        model.launchers.openLibraryWindow model.library model.samples model.sources model.materials model.categories model.libraryBackups model.catalogueImports
         model
     | OpenElementMenuAt pt ->
         // Spec 0046: a right click selects the element under the point (the same nearest-within-radius
@@ -3253,7 +3267,7 @@ let private chooseFromLibrary (model : TableAndElementRotationModel) (dispatch :
             onSelected = fun (entry : Library.LibraryEntry) -> dispatch (BindValueIdTo (element.id, entry.entryId))
             onCancelled = fun () -> sessionRef.Value |> Option.iter (fun session -> dispatch (SelectSessionEnded session))
         }
-    match model.launchers.openLibrarySelectWindow model.library model.samples model.sources model.materials model.categories model.libraryBackups model.selectWindowModality owner selectCtx with
+    match model.launchers.openLibrarySelectWindow model.library model.samples model.sources model.materials model.categories model.libraryBackups model.catalogueImports model.selectWindowModality owner selectCtx with
     | Some cancelAndClose ->
         let session : SelectSession = { target = element.id; cancelAndClose = cancelAndClose }
         sessionRef.Value <- Some session
