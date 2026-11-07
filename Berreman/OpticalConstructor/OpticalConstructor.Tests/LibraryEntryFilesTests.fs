@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Tests
 
 open System
+open System.Text
 open Xunit
 open Berreman.Geometry
 open Softellect.Sys.Primitives
@@ -14,6 +15,16 @@ open OpticalConstructor.Domain.CatalogueFiles
 /// The kinds, provenance, ids, name rule and content of the library-entry files, with the builders
 /// and decoders that join the content to the domain values (spec 0050 001 §A, §B; .spec-md §3.11, §5).
 module LibraryEntryFilesTests =
+
+    [<Fact>]
+    let ``the content hash of bytes is their lowercase SHA-256`` () : unit =
+        let abcBytes = Encoding.UTF8.GetBytes "abc" |> FileByteContent
+        let emptyBytes = FileByteContent [||]
+        let abcHash = ContentHash "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        let emptyHash = ContentHash "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+        Assert.Equal<ContentHash>(abcHash, ContentHash.ofBytes abcBytes)
+        Assert.Equal<ContentHash>(emptyHash, ContentHash.ofBytes emptyBytes)
 
     [<Fact>]
     let ``a CC-BY licence attributes with its citation and any other licence by its name alone`` () : unit =

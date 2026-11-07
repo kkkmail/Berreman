@@ -3,7 +3,6 @@ namespace OpticalConstructor.Storage
 open System
 open System.Buffers
 open System.Numerics
-open System.Security.Cryptography
 open System.Text
 open System.Text.Encodings.Web
 open System.Text.Json
@@ -11,6 +10,7 @@ open System.Text.Json.Nodes
 open System.Text.Json.Serialization
 open MathNet.Numerics.LinearAlgebra
 open Berreman.Dispersion
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.Errors
 
@@ -255,4 +255,6 @@ module CanonicalJson =
     /// hash depends on neither whitespace, key order nor the current culture.
     let contentHashOf<'Value> (value : 'Value) : Result<ContentHash, StorageError> =
         nodeOf value
-        |> Result.map (fun node -> Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(node.compactCanonicalText))) |> ContentHash)
+        |> Result.map (fun node ->
+            let bytes = Encoding.UTF8.GetBytes(node.compactCanonicalText) |> FileByteContent
+            ContentHash.ofBytes bytes)

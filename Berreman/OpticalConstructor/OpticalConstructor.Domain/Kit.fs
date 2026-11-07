@@ -27,6 +27,8 @@ module Kit =
         | KitAlreadyExistsErr of reason : string
         | KitFileRejectedErr of reason : string
         | InvalidKitNameErr of reason : string
+        | MissingKitFileErr of reason : string
+        | InvalidKitPathErr of reason : string
 
         member this.describe : string =
             match this with
@@ -35,6 +37,8 @@ module Kit =
             | KitAlreadyExistsErr reason -> $"the folder is already a kit: {reason}"
             | KitFileRejectedErr reason -> $"a kit file was refused: {reason}"
             | InvalidKitNameErr reason -> $"the kit name is not valid: {reason}"
+            | MissingKitFileErr reason -> $"the kit holds no such file: {reason}"
+            | InvalidKitPathErr reason -> $"the path is not inside the kit: {reason}"
 
     /// The display name, preserved as given; its file stem follows the shared name rule (spec 0050 S4.1).
     type KitName =
@@ -109,3 +113,56 @@ module Kit =
     type KitAccess =
         | ReadWriteKitAccess
         | ReadOnlyKitAccess
+
+    /// A path inside a kit, with forward slashes and no rooted or traversal segments (spec 0050 001 §E).
+    type KitRelativePath =
+        | KitRelativePath of string
+
+        member this.value : string = let (KitRelativePath path) = this in path
+
+        static member tryCreate (text : string) : Result<KitRelativePath, KitError> =
+            if String.IsNullOrWhiteSpace text then
+                Error (InvalidKitPathErr $"'{text}': a kit-relative path must not be blank")
+            else
+                let path = text.Replace('\\', '/')
+                if path.StartsWith('/') || path.Contains(':') then
+                    Error (InvalidKitPathErr $"'{text}': a kit-relative path must not be rooted or contain a colon")
+                elif path.Split('/') |> Array.exists (fun segment -> segment = "" || segment = "." || segment = "..") then
+                    Error (InvalidKitPathErr $"'{text}': a kit-relative path must not contain empty, '.' or '..' segments")
+                else
+                    Ok (KitRelativePath path)
+
+    /// The files that occur once per item, setup, experiment, study or fit run, named by extension (spec 0050 001 §A).
+    type KitFileKind =
+        | ItemKitFile
+        | SetupKitFile
+        | ExperimentKitFile
+        | StudyKitFile
+        | FitRunKitFile
+
+        member this.extension : FileExtension =
+            match this with
+            | ItemKitFile -> FileExtension ".item-json"
+            | SetupKitFile -> FileExtension ".setup-json"
+            | ExperimentKitFile -> FileExtension ".experiment-json"
+            | StudyKitFile -> FileExtension ".study-json"
+            | FitRunKitFile -> FileExtension ".fitrun-json"
+
+        member this.fileNameOf (stem : FileStem) : FileName = stem.withExtension this.extension
+
+        static member all : KitFileKind list =
+            [ ItemKitFile; SetupKitFile; ExperimentKitFile; StudyKitFile; FitRunKitFile ]
+
+    /// UTF-8 text without a byte-order mark, shared by app-owned kit files and read-only lab files (spec 0050 001 §E).
+    type KitFileText =
+        | KitFileText of string
+
+        member this.value : string = let (KitFileText text) = this in text
+
+    /// A lab file as read, with the SHA-256 of its bytes as stored (spec 0050 001 §E).
+    type KitDataFile =
+        {
+            path : KitRelativePath
+            text : KitFileText
+            contentHash : ContentHash
+        }

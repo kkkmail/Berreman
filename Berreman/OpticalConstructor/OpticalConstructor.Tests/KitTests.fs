@@ -63,6 +63,75 @@ module KitTests =
         Assert.Equal<FileName>(expectedFileName, KitFile.fileName)
 
     [<Fact>]
+    let ``a kit-relative path keeps forward slashes and refuses an absolute or escaping path`` () : unit =
+        let validPaths : (string * KitRelativePath) list =
+            [
+                @"data\raw\run 1.csv", KitRelativePath "data/raw/run 1.csv"
+                "data/raw/run 1.csv", KitRelativePath "data/raw/run 1.csv"
+                ".kit-json", KitRelativePath ".kit-json"
+                @"data\raw/run 1.csv", KitRelativePath "data/raw/run 1.csv"
+                " data/Run 1.csv ", KitRelativePath " data/Run 1.csv "
+                "data/.hidden.csv", KitRelativePath "data/.hidden.csv"
+            ]
+
+        for text, expected in validPaths do
+            match KitRelativePath.tryCreate text with
+            | Ok path -> Assert.Equal<KitRelativePath>(expected, path)
+            | Error error -> Assert.Fail(error.describe)
+
+        let invalidPaths =
+            [
+                ""
+                "  "
+                "\t\r\n"
+                "/data/a.csv"
+                "C:/a.csv"
+                "C:a.csv"
+                "../a.csv"
+                "data/../../a.csv"
+                "data/./a.csv"
+                "data//a.csv"
+                @"\data\a.csv"
+                @"\\server\share\a.csv"
+                @"C:\a.csv"
+                @"data\..\a.csv"
+                "data/"
+                "."
+                ".."
+                "data/a.csv:stream"
+            ]
+
+        for text in invalidPaths do
+            match KitRelativePath.tryCreate text with
+            | Error (InvalidKitPathErr reason) ->
+                Assert.False(String.IsNullOrWhiteSpace reason)
+                Assert.Contains(text, reason)
+            | Error error -> Assert.Fail($"expected an invalid kit path: {error.describe}")
+            | Ok path -> Assert.Fail($"accepted an invalid kit path: '{path.value}'")
+
+    [<Fact>]
+    let ``every kit file kind renders its 001 extension and names its files`` () : unit =
+        let kinds = [ ItemKitFile; SetupKitFile; ExperimentKitFile; StudyKitFile; FitRunKitFile ]
+        let extensions =
+            [
+                FileExtension ".item-json"
+                FileExtension ".setup-json"
+                FileExtension ".experiment-json"
+                FileExtension ".study-json"
+                FileExtension ".fitrun-json"
+            ]
+        let stem = FileStem "CPL-(QZ#45-LR#45)-CPL"
+        let experimentFileName = FileName "CPL-(QZ#45-LR#45)-CPL.experiment-json"
+
+        Assert.Equal<KitFileKind list>(kinds, KitFileKind.all)
+        Assert.Equal<FileExtension list>(extensions, kinds |> List.map (fun kind -> kind.extension))
+
+        for kind, extension in List.zip kinds extensions do
+            Assert.Equal<FileName>(stem.withExtension extension, kind.fileNameOf stem)
+
+        Assert.Equal<FileName>(experimentFileName, ExperimentKitFile.fileNameOf stem)
+
+    [<Fact>]
     let ``every kit error renders its condition and its payload`` () : unit =
         let cases : (KitError * string) list =
             [
@@ -71,10 +140,12 @@ module KitTests =
                 KitAlreadyExistsErr "existing folder", "the folder is already a kit: existing folder"
                 KitFileRejectedErr "invalid file", "a kit file was refused: invalid file"
                 InvalidKitNameErr "blank name", "the kit name is not valid: blank name"
+                MissingKitFileErr "data/missing.csv", "the kit holds no such file: data/missing.csv"
+                InvalidKitPathErr "../outside.csv", "the path is not inside the kit: ../outside.csv"
             ]
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
-        Assert.Equal(5, descriptions |> List.distinct |> List.length)
+        Assert.Equal(7, descriptions |> List.distinct |> List.length)

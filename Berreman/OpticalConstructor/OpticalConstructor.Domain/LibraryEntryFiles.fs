@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Domain
 
 open System
+open System.Security.Cryptography
 open Berreman.Fields
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Placement
@@ -260,11 +261,15 @@ module LibraryEntryFiles =
                 | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
             ownIds @ materialIds
 
-    /// The lowercase hex SHA-256 of an entry's canonical content (spec 0050 001 §B); Storage computes it.
+    /// The lowercase hex SHA-256 of an entry's canonical content or a kit file's stored bytes (spec 0050 001 §B, §E).
     type ContentHash =
         | ContentHash of string
 
         member this.value : string = let (ContentHash s) = this in s
+
+        /// The app's one SHA-256 body, used for an entry's canonical content and a kit's files (spec 0050 001 §B, §E).
+        static member ofBytes (bytes : FileByteContent) : ContentHash =
+            Convert.ToHexStringLower(SHA256.HashData bytes.value) |> ContentHash
 
     /// A file name without its kind extension (spec 0050 001 §A; .spec-md §3.11).
     type FileStem =
