@@ -161,6 +161,62 @@ module KitOpeningTests =
                 Assert.Equal<Map<FileName, FileByteContent>>(unlocked, folderBytes folder))
             Assert.Equal<Map<FileName, FileByteContent>>(unlocked, folderBytes folder))
 
+    let private assertNotAKitFolder (folder : KitFolder) (imports : CatalogueImportContext) : unit =
+        match openExistingKitAt folder ClockProvider.system imports with
+        | Error (KitLibraryKitErr (NotAKitFolderErr _)) -> ()
+        | Error error -> Assert.Fail error.describe
+        | Ok opened ->
+            opened.library.kit.close () |> kitValue
+            Assert.Fail "opening an existing kit must never initialise a folder"
+
+    [<Fact>]
+    let ``opening an existing kit opens it read-write with its kit file and never initialises a folder`` () : unit =
+        withOpeningFolder (fun folder imports _ ->
+            let lockFile = FileName (Path.Combine(folder.value.value, ".oc", "lock"))
+            let created = openKitAt folder ReadWriteKitAccess ClockProvider.system openingAuthor imports |> openingValue
+            created.library.kit.close () |> kitValue
+            Assert.False(File.Exists lockFile.value)
+
+            let opened = openExistingKitAt folder ClockProvider.system imports |> openingValue
+            try
+                let context = opened.library.kit
+                Assert.Equal<KitAccess>(ReadWriteKitAccess, context.access)
+                Assert.Equal<KitFile>(created.library.kit.kitFile, context.kitFile)
+                Assert.Equal<KitFile>(context.kitFile, context.proxy.readKitFile () |> kitValue)
+                Assert.True(File.Exists lockFile.value)
+            finally opened.library.kit.close () |> kitValue
+            Assert.False(File.Exists lockFile.value))
+
+        withOpeningFolder (fun folder imports _ ->
+            let notes = FileName (Path.Combine(folder.value.value, "notes.txt"))
+            Directory.CreateDirectory folder.value.value |> ignore
+            File.WriteAllText(notes.value, "not a kit")
+            let before = folderBytes folder
+            assertNotAKitFolder folder imports
+            Assert.Equal<string list>([ notes.value ], Directory.GetFileSystemEntries(folder.value.value, "*", SearchOption.AllDirectories) |> List.ofArray)
+            Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
+
+        withOpeningFolder (fun folder imports _ ->
+            Assert.False(Directory.Exists folder.value.value)
+            assertNotAKitFolder folder imports
+            Assert.False(Directory.Exists folder.value.value))
+
+    [<Fact>]
+    let ``opening an existing kit open elsewhere is KitLockedErr and writes nothing`` () : unit =
+        withOpeningFolder (fun folder imports _ ->
+            withOpenedKit folder ReadWriteKitAccess imports (fun _ ->
+                let before = folderBytes folder
+                match openExistingKitAt folder ClockProvider.system imports with
+                | Error (KitLibraryKitErr (KitLockedErr holder)) ->
+                    Assert.Equal<ProcessId>(ProcessId.getCurrentProcessId (), holder.owner.processId)
+                    Assert.Equal(Environment.MachineName, holder.owner.machine.value)
+                    Assert.Equal(Environment.UserName, holder.owner.user.value)
+                | Error error -> Assert.Fail error.describe
+                | Ok opened ->
+                    opened.library.kit.close () |> kitValue
+                    Assert.Fail "opening a kit open elsewhere must be refused with the existing lock holder"
+                Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
+
     [<Fact>]
     let ``a kit whose experiment file does not read is refused and left unlocked`` () : unit =
         withOpeningFolder (fun folder imports _ ->

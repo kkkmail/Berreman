@@ -50,6 +50,41 @@ type OpenedKit =
                 this with overlay = overlay
             })
 
+/// Reads an opened kit's experiments, scenes and snapshot decisions and opens its overlay (spec 0050 S4.3, S5.2).
+/// Any failure closes the kit, logging a failed close, and answers the first error.
+let private openedOver (context : KitContext) (imports : CatalogueImportContext) : Result<OpenedKit, KitLibraryError> =
+    let library : KitLibraryContext =
+        {
+            kit = context
+            imports = imports
+        }
+    let result =
+        context.proxy.readExperiments ()
+        |> Result.mapError KitLibraryKitErr
+        |> Result.bind (fun experiments ->
+            context.proxy.readSceneNames ()
+            |> Result.mapError KitLibraryKitErr
+            |> Result.bind (fun scenes ->
+                library.resolveSnapshots ()
+                |> Result.bind (fun decisions ->
+                    library.openOverlay []
+                    |> Result.map (fun overlay ->
+                        {
+                            library = library
+                            experimentData = ExperimentDataStore.createFileBacked context.proxy
+                            experiments = experiments
+                            scenes = scenes
+                            decisions = decisions
+                            overlay = overlay
+                        }))))
+    match result with
+    | Ok kit -> Ok kit
+    | Error error ->
+        match context.close () with
+        | Ok () -> ()
+        | Error closeError -> Logger.logError $"KitOpening.openedOver: could not close the failed open: {closeError.describe}"
+        Error error
+
 /// Opens or initializes a picked kit, reads its content and resolves snapshots without importing (spec 0050 S4.3).
 /// Any failure after opening releases the kit and returns the original failure.
 let openKitAt
@@ -68,38 +103,18 @@ let openKitAt
         | ReadOnlyKitAccess -> KitContext.openKit proxy ReadOnlyKitAccess clock
     opened
     |> Result.mapError KitLibraryKitErr
-    |> Result.bind (fun context ->
-        let library : KitLibraryContext =
-            {
-                kit = context
-                imports = imports
-            }
-        let result =
-            context.proxy.readExperiments ()
-            |> Result.mapError KitLibraryKitErr
-            |> Result.bind (fun experiments ->
-                context.proxy.readSceneNames ()
-                |> Result.mapError KitLibraryKitErr
-                |> Result.bind (fun scenes ->
-                    library.resolveSnapshots ()
-                    |> Result.bind (fun decisions ->
-                        library.openOverlay []
-                        |> Result.map (fun overlay ->
-                            {
-                                library = library
-                                experimentData = ExperimentDataStore.createFileBacked context.proxy
-                                experiments = experiments
-                                scenes = scenes
-                                decisions = decisions
-                                overlay = overlay
-                            }))))
-        match result with
-        | Ok kit -> Ok kit
-        | Error error ->
-            match context.close () with
-            | Ok () -> ()
-            | Error closeError -> Logger.logError $"KitOpening.openKitAt: could not close the failed open: {closeError.describe}"
-            Error error)
+    |> Result.bind (fun context -> openedOver context imports)
+
+/// Opens a folder that is already a kit read-write and never initialises one, so Open kit… can offer Make this a kit (spec 0050 S5.2).
+/// A folder without .kit-json is NotAKitFolderErr and a kit open elsewhere KitLockedErr; neither writes anything.
+let openExistingKitAt
+    (folder : KitFolder)
+    (clock : ClockProvider)
+    (imports : CatalogueImportContext)
+    : Result<OpenedKit, KitLibraryError> =
+    KitContext.openKit (KitProxy.create folder) ReadWriteKitAccess clock
+    |> Result.mapError KitLibraryKitErr
+    |> Result.bind (fun context -> openedOver context imports)
 
 /// Adapts a window's storage provider to the kit-folder picker seam (spec 0050 S4.3).
 type KitFolderPicker with
