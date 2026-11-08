@@ -1,159 +1,239 @@
 namespace OpticalConstructor.Tests
 
+open System
+open System.IO
 open Xunit
 open Berreman.Constants
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Scene
+open OpticalConstructor.Storage.KitContentFiles
+open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.TableAndElementRotationView
 
-/// Spec 0038 step 027 (IMPLEMENT_CONTRACT STORE_XDUO_0004): the scene persistence seam is now
-/// implemented — a real in-memory `SceneProxy.createInMemory` (a `ref`-map store) plus the pure
-/// `captureScene` / `restoreScene` pair in the workbench host. This drives the full acceptance
-/// round-trip: capture the live model into a `SceneSnapshot`, `saveScene` it, `tryLoadScene` it
-/// back, and `restoreScene` it onto a DIFFERENT base model — reproducing element ids, kinds,
-/// placements, bindings, and view state over deterministic data, with no window present.
+module internal KitContentRoundTripFixture =
+
+    let kitContentValue<'Value> (result : Result<'Value, KitError>) : 'Value =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let createContentTestKit (classFolder : FolderName) : KitFolder * KitProxy =
+        let folderName = FolderName (Path.Combine(AppContext.BaseDirectory, classFolder.value, Guid.NewGuid().ToString("N")))
+        let folder = KitFolder folderName
+        let proxy = KitProxy.create folder
+        let id = KitId (Guid.NewGuid ())
+        let name = KitName "Content round-trip kit"
+        let author = KitAuthor "Test author"
+        let now = ClockTime (DateTime(2026, 11, 7, 12, 0, 0, DateTimeKind.Utc))
+        let kit = KitFile.create id name author now
+        proxy.initialiseKit kit |> kitContentValue
+        folder, proxy
+
+open KitContentRoundTripFixture
+
+/// Capture and restore scenes through initialized kit folders under the test output directory
+/// (spec 0038 step 027; spec 0050 S4.3), preserving all placement and view state without a window.
 module SceneRoundTripTests =
 
-    /// Build a `SceneName` through the validated `tryCreate` path (the test names are non-blank).
-    let private sceneName (s : string) : SceneName =
-        match SceneName.tryCreate s with
-        | Ok n -> n
-        | Error e -> failwith $"test scene name unexpectedly rejected: %A{e}"
+    let private classFolder = FolderName "SceneRoundTripTests"
 
-    // Deterministic scene elements: a source and a linear polarizer each bound to a Library entry,
-    // and an unbound detector — distinct kinds, placements, bindings, and draw zooms, so the
-    // round-trip proves each captured facet rather than coinciding on a shared default. The leading
-    // field label is qualified because `TestElement` and `Scene.SceneElement` share `{ id; placement;
-    // zoom }`.
+    let private sceneName (text : string) : SceneName =
+        match SceneName.tryCreate text with
+        | Ok name -> name
+        | Error (InvalidSceneErr reason) -> failwith $"Test scene name unexpectedly rejected: {reason}"
 
     let private sourceEl : TestElement =
-        { TestElement.id = Library.ElementId "src"
-          placement = { ElementPlacement.create LightSource { x = -0.75<meter>; y = 0.10<meter> } with valueId = Some Library.PresetIds.source600 }
-          zoom = BeamLayout.ElementZoom 1.5
-          beam = BeamLayout.OnMainBeam }
+        let position : TablePoint =
+            {
+                x = -0.75<meter>
+                y = 0.10<meter>
+            }
+        {
+            id = Library.ElementId "src"
+            placement =
+                {
+                    ElementPlacement.create LightSource position with
+                        valueId = Some Library.PresetIds.source600
+                }
+            zoom = BeamLayout.ElementZoom 1.5
+            beam = BeamLayout.OnMainBeam
+        }
 
     let private polarizerEl : TestElement =
-        { TestElement.id = Library.ElementId "pol"
-          placement = { ElementPlacement.create LinearPolarizer { x = 0.0<meter>; y = 0.0<meter> } with valueId = Some Library.PresetIds.polarizerLp }
-          zoom = BeamLayout.ElementZoom 3.25
-          beam = BeamLayout.OnMainBeam }
+        {
+            id = Library.ElementId "pol"
+            placement =
+                {
+                    ElementPlacement.create LinearPolarizer TablePoint.origin with
+                        valueId = Some Library.PresetIds.polarizerLp
+                }
+            zoom = BeamLayout.ElementZoom 3.25
+            beam = BeamLayout.OnMainBeam
+        }
 
     let private detectorEl : TestElement =
-        { TestElement.id = Library.ElementId "det"
-          placement = ElementPlacement.create Detector { x = 0.80<meter>; y = -0.20<meter> }
-          zoom = BeamLayout.ElementZoom 2.0
-          // Spec 0046: the detector sits on the polarizer's REFLECTED ray, so the round-trip proves the
-          // beam host survives save-load too.
-          beam = BeamLayout.OnReflectedBeamOf (Library.ElementId "pol") }
+        let position : TablePoint =
+            {
+                x = 0.80<meter>
+                y = -0.20<meter>
+            }
+        let reflectedHost = Library.ElementId "pol"
+        {
+            id = Library.ElementId "det"
+            placement = ElementPlacement.create Detector position
+            zoom = BeamLayout.ElementZoom 2.0
+            beam = BeamLayout.OnReflectedBeamOf reflectedHost
+        }
 
-    /// A NON-default table view (pan + zoom dialled off the straight top-down default), so the
-    /// captured / restored view state is distinguishable from a fresh model's.
     let private dialledView : Table.TableViewState =
-        { Table.defaultView with panX = Table.TablePan 12.5; panY = Table.TablePan -7.25; zoom = Table.TableZoom 1.875 }
+        {
+            Table.defaultView with
+                panX = Table.TablePan 12.5
+                panY = Table.TablePan -7.25
+                zoom = Table.TableZoom 1.875
+        }
 
-    /// The live workbench model under capture: deterministic elements, the dialled view, snap-to-beam
-    /// on. Built off `initMain ()` (windowless — the Main scene's pure model constructor) so every
-    /// injected proxy / palette field is present; only the scene-owned fields are overridden.
     let private sourceModel () : TableAndElementRotationModel =
-        { initMain () with
-            elements = [ sourceEl; polarizerEl; detectorEl ]
-            view = dialledView
-            snapChain = Scene.SnapToBeam
-            // Spec 0046: the non-default rotation pivot, so the round-trip proves it survives too.
-            rotationPivot = BeamLayout.PivotAtIncidentFace }
+        {
+            initMain () with
+                elements = [ sourceEl; polarizerEl; detectorEl ]
+                view = dialledView
+                snapChain = Scene.SnapToBeam
+                rotationPivot = BeamLayout.PivotAtIncidentFace
+        }
 
     [<Fact>]
-    let ``createInMemory round-trips capture-save-load-restore reproducing ids, kinds, placements, bindings, and view state`` () =
+    let ``a scene round-trips through its kit file, reproducing ids, kinds, placements, bindings and view state`` () : unit =
+        let folder, proxy = createContentTestKit classFolder
         let model = sourceModel ()
-        let proxy = SceneProxy.createInMemory ()
         let name = sceneName "Experiment A"
-
-        // capture -> save.
         let captured = model.captureScene
-        match proxy.saveScene name captured with
-        | Ok () -> ()
-        | Error e -> Assert.Fail($"saveScene failed: %A{e}")
+        proxy.writeScene name captured |> kitContentValue
 
-        // listScenes lists exactly the saved name.
-        match proxy.listScenes () with
-        | Ok names -> Assert.Equal<string list>([ "Experiment A" ], names |> List.map (fun n -> n.value))
-        | Error e -> Assert.Fail($"%A{e}")
-
-        // load -> the persisted snapshot equals the captured one (pure data survived the store).
-        let loaded =
-            match proxy.tryLoadScene name with
-            | Ok (Some s) -> s
-            | other -> failwith $"expected Ok (Some _) from tryLoadScene, got %A{other}"
+        let reader = KitProxy.create folder
+        Assert.Equal<SceneName list>([ name ], reader.readSceneNames () |> kitContentValue)
+        let loaded = reader.readScene name |> kitContentValue
         Assert.Equal<SceneSnapshot>(captured, loaded)
+        let file = FileName "Experiment A.setup-json"
+        Assert.True(File.Exists((file.combine folder.value).value))
 
-        // restore onto a DIFFERENT base model (the static test scene: other elements, free
-        // placement, empty palette) — proving the round-trip reproduces the source scene rather
-        // than leaving a no-op.
+        // Spec 0038 step 027: a different base model exposes a restore that leaves old state behind.
         let restored = restoreScene loaded (initTableAndElementRotation ())
-
-        // element ids ...
         Assert.Equal<string list>(
             [ "src"; "pol"; "det" ],
-            restored.elements |> List.map (fun e -> e.id.value))
-        // ... kinds ...
+            restored.elements |> List.map (fun element -> element.id.value))
         Assert.Equal<CatalogueKind list>(
             [ LightSource; LinearPolarizer; Detector ],
-            restored.elements |> List.map (fun e -> e.placement.catalogueKind))
-        // ... bindings (the Library `valueId`) ...
+            restored.elements |> List.map (fun element -> element.placement.catalogueKind))
         Assert.Equal<ElementValueId option list>(
             [ Some Library.PresetIds.source600; Some Library.PresetIds.polarizerLp; None ],
-            restored.elements |> List.map (fun e -> e.placement.valueId))
-        // ... full placements + draw zoom (the whole `TestElement`, in order) ...
+            restored.elements |> List.map (fun element -> element.placement.valueId))
         Assert.Equal<TestElement list>([ sourceEl; polarizerEl; detectorEl ], restored.elements)
-        // ... the beam each element sits on (spec 0046) ...
+        let reflectedHost = Library.ElementId "pol"
         Assert.Equal<BeamLayout.BeamHost list>(
-            [ BeamLayout.OnMainBeam; BeamLayout.OnMainBeam; BeamLayout.OnReflectedBeamOf (Library.ElementId "pol") ],
-            restored.elements |> List.map (fun e -> e.beam))
-        // ... and the table view state + snap flag.
+            [ BeamLayout.OnMainBeam; BeamLayout.OnMainBeam; BeamLayout.OnReflectedBeamOf reflectedHost ],
+            restored.elements |> List.map (fun element -> element.beam))
         Assert.Equal<Table.TableViewState>(dialledView, restored.view)
         Assert.Equal(Scene.SnapToBeam, restored.snapChain)
         Assert.Equal(BeamLayout.PivotAtIncidentFace, restored.rotationPivot)
 
     [<Fact>]
-    let ``saveScene overwrites a scene stored under the same name (upsert)`` () =
-        let proxy = SceneProxy.createInMemory ()
+    let ``writing a scene again under its name replaces its kit file`` () : unit =
+        let folder, proxy = createContentTestKit classFolder
         let name = sceneName "Bench"
         let first = (sourceModel ()).captureScene
-        let second = ({ sourceModel () with snapChain = Scene.FreePlacement; view = Table.defaultView }).captureScene
+        let changedModel =
+            {
+                sourceModel () with
+                    snapChain = Scene.FreePlacement
+                    view = Table.defaultView
+            }
+        let second = changedModel.captureScene
+        proxy.writeScene name first |> kitContentValue
+        proxy.writeScene name second |> kitContentValue
 
-        match proxy.saveScene name first with
-        | Ok () -> ()
-        | Error e -> Assert.Fail($"first saveScene failed: %A{e}")
-        match proxy.saveScene name second with
-        | Ok () -> ()
-        | Error e -> Assert.Fail($"second saveScene failed: %A{e}")
+        let reader = KitProxy.create folder
+        Assert.Equal<SceneName list>([ name ], reader.readSceneNames () |> kitContentValue)
+        Assert.Equal<SceneSnapshot>(second, reader.readScene name |> kitContentValue)
+        Assert.Single(reader.listKindFiles SetupKitFile |> kitContentValue) |> ignore
 
-        // The name is stored once (overwrite, not a duplicate key) ...
-        match proxy.listScenes () with
-        | Ok names -> Assert.Equal<string list>([ "Bench" ], names |> List.map (fun n -> n.value))
-        | Error e -> Assert.Fail($"%A{e}")
-        // ... and the latest write wins.
-        match proxy.tryLoadScene name with
-        | Ok (Some loaded) -> Assert.Equal<SceneSnapshot>(second, loaded)
-        | other -> Assert.Fail($"expected Ok (Some _), got %A{other}")
+        let invalidView =
+            {
+                second.view with zoom = Table.TableZoom Double.NaN
+            }
+        let invalidScene =
+            {
+                second with view = invalidView
+            }
+        let storedText = reader.readKindFile SetupKitFile name.fileStem |> kitContentValue
+        match proxy.writeScene name invalidScene with
+        | Error (KitFileRejectedErr reason) -> Assert.Contains("Bench.setup-json", reason)
+        | Error error -> Assert.Fail($"Expected KitFileRejectedErr, got {error.describe}")
+        | Ok () -> Assert.Fail("A scene that cannot be rendered must refuse the write.")
+        Assert.Equal<KitFileText>(storedText, reader.readKindFile SetupKitFile name.fileStem |> kitContentValue)
+
+        let firstAlias = sceneName "Bench:aux"
+        let secondAlias = sceneName "Bench/aux"
+        Assert.Equal<FileStem>(firstAlias.fileStem, secondAlias.fileStem)
+        proxy.writeScene firstAlias first |> kitContentValue
+        proxy.writeScene secondAlias second |> kitContentValue
+        for alias in [ firstAlias; secondAlias ] do
+            Assert.Equal<SceneSnapshot>(second, reader.readScene alias |> kitContentValue)
+        Assert.Equal<SceneName list>([ name; secondAlias ], reader.readSceneNames () |> kitContentValue)
+        Assert.Equal(2, (reader.listKindFiles SetupKitFile |> kitContentValue).Length)
+
+        // Spec 0050 S4.3: sort the original names ordinally, independently of sanitized filename order.
+        let afterAlias = sceneName "BenchZ"
+        let upperName = sceneName "Zulu"
+        let lowerName = sceneName "alpha"
+        for extraName in [ lowerName; upperName; afterAlias ] do
+            proxy.writeScene extraName first |> kitContentValue
+        Assert.Equal<SceneName list>(
+            [ name; secondAlias; afterAlias; upperName; lowerName ],
+            reader.readSceneNames () |> kitContentValue)
 
     [<Fact>]
-    let ``tryLoadScene returns None for a name that was never saved`` () =
-        let proxy = SceneProxy.createInMemory ()
-        match proxy.tryLoadScene (sceneName "missing") with
-        | Ok None -> ()
-        | other -> Assert.Fail($"expected Ok None for an unsaved name, got %A{other}")
+    let ``reading a scene the kit never held is MissingKitFileErr`` () : unit =
+        let _, proxy = createContentTestKit classFolder
+        let name = sceneName "missing"
+        match proxy.readScene name with
+        | Error (MissingKitFileErr reason) -> Assert.Contains("missing.setup-json", reason)
+        | Error error -> Assert.Fail($"Expected MissingKitFileErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("An unsaved scene must be reported as missing.")
+        Assert.Empty(proxy.readSceneNames () |> kitContentValue)
 
     [<Fact>]
-    let ``saveScene rejects a directly-constructed blank name as InvalidScene`` () =
-        // A `SceneName` constructed OUTSIDE `tryCreate` can carry a blank; the store re-validates
-        // and rejects it rather than storing an unaddressable key.
-        let proxy = SceneProxy.createInMemory ()
-        match proxy.saveScene (SceneName "   ") ((sourceModel ()).captureScene) with
-        | Error (InvalidSceneErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (InvalidSceneErr _), got %A{other}")
-        // ... and nothing was stored.
-        match proxy.listScenes () with
-        | Ok names -> Assert.Equal<string list>([], names |> List.map (fun n -> n.value))
-        | Error e -> Assert.Fail($"%A{e}")
+    let ``a setup file that does not read refuses the scene list, naming the file`` () : unit =
+        let folder, proxy = createContentTestKit classFolder
+        let validName = sceneName "A valid scene"
+        let scene = (sourceModel ()).captureScene
+        proxy.writeScene validName scene |> kitContentValue
+        let brokenName = sceneName "Broken"
+        let brokenFile = FileName "Broken.setup-json"
+        File.WriteAllText((brokenFile.combine folder.value).value, "{")
+
+        match proxy.readSceneNames () with
+        | Error (KitFileRejectedErr reason) -> Assert.Contains(brokenFile.value, reason)
+        | Error error -> Assert.Fail($"Expected KitFileRejectedErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("A malformed setup must refuse the whole scene list.")
+        match proxy.readScene brokenName with
+        | Error (KitFileRejectedErr reason) -> Assert.Contains(brokenFile.value, reason)
+        | Error error -> Assert.Fail($"Expected KitFileRejectedErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("A malformed setup must refuse an individual scene read.")
+        Assert.Equal<SceneSnapshot>(scene, proxy.readScene validName |> kitContentValue)
+
+        proxy.writeScene brokenName scene |> kitContentValue
+        do
+            use _held = File.Open((brokenFile.combine folder.value).value, FileMode.Open, FileAccess.ReadWrite, FileShare.None)
+            match proxy.readSceneNames () with
+            | Error (KitFileRejectedErr reason) -> Assert.Contains(brokenFile.value, reason)
+            | Error error -> Assert.Fail($"Expected KitFileRejectedErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("A setup that cannot be opened must refuse the whole scene list.")
+            match proxy.readScene brokenName with
+            | Error (KitFileRejectedErr reason) -> Assert.Contains(brokenFile.value, reason)
+            | Error error -> Assert.Fail($"Expected KitFileRejectedErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("A setup that cannot be opened must refuse an individual read.")
+        Assert.Equal<SceneName list>([ validName; brokenName ], proxy.readSceneNames () |> kitContentValue)

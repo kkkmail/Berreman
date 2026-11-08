@@ -1,8 +1,10 @@
 namespace OpticalConstructor.Storage
 
+open System
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.Scene
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
@@ -33,3 +35,82 @@ module KitContentFiles =
         /// Validates the setup schema and rejects unsupported versions before binding (spec 0050 S4.3).
         member this.parseSceneFile : Result<SceneFile, StorageError> =
             parseVersionedText SchemaValidation.validateSceneFile SetupKitFile.extension SceneFile.currentSchemaVersion this.toContentJsonText
+
+    let private contentStorageRejectedErr (file : FileName) (error : StorageError) : KitError =
+        KitFileRejectedErr $"the file '{file.value}': {error.describe}"
+
+    let private contentReadRejectedErr (file : FileName) (error : KitError) : KitError =
+        KitFileRejectedErr $"reading the file '{file.value}': {error.describe}"
+
+    type KitProxy with
+
+        /// Replaces the experiment's kit file whole, naming any rendering refusal (spec 0050 S4.3).
+        member this.writeExperiment (experiment : Experiment) : Result<unit, KitError> =
+            let stem = experiment.id.fileStem
+            let file = ExperimentKitFile.fileNameOf stem
+            experiment.experimentFile.fileText
+            |> Result.mapError (contentStorageRejectedErr file)
+            |> Result.bind (this.writeKindFile ExperimentKitFile stem)
+
+        /// Deletes the experiment's kit file, or reports it missing (spec 0050 S4.3).
+        member this.deleteExperiment (id : ExperimentId) : Result<unit, KitError> =
+            this.deleteKindFile ExperimentKitFile id.fileStem
+
+        /// Reads every experiment in id order; an unreadable or misnamed file refuses the whole read (spec 0050 S4.3).
+        member this.readExperiments () : Result<Experiment list, KitError> =
+            this.listKindFiles ExperimentKitFile
+            |> Result.bind (fun stems ->
+                stems
+                |> List.fold (fun result stem ->
+                    result |> Result.bind (fun experiments ->
+                        let file = ExperimentKitFile.fileNameOf stem
+                        this.readKindFile ExperimentKitFile stem
+                        |> Result.mapError (contentReadRejectedErr file)
+                        |> Result.bind (fun text -> text.parseExperimentFile |> Result.mapError (contentStorageRejectedErr file))
+                        |> Result.bind (fun parsed ->
+                            let experiment = parsed.experiment
+                            if String.Equals(experiment.id.fileStem.value, stem.value, StringComparison.OrdinalIgnoreCase) then
+                                Ok (experiment :: experiments)
+                            else
+                                Error (KitFileRejectedErr $"the file '{file.value}' holds experiment '{experiment.id.fileStem.value}' instead of '{stem.value}'")))) (Ok []))
+            |> Result.map (List.sortBy (fun experiment -> experiment.id))
+
+        /// Replaces the setup file at the name's safe stem, preserving its original name (spec 0050 S4.3).
+        member this.writeScene (name : SceneName) (scene : SceneSnapshot) : Result<unit, KitError> =
+            let stem = name.fileStem
+            let file = SetupKitFile.fileNameOf stem
+            let sceneFile : SceneFile =
+                {
+                    schemaVersion = SceneFile.currentSchemaVersion
+                    name = name
+                    scene = scene
+                }
+            sceneFile.fileText
+            |> Result.mapError (contentStorageRejectedErr file)
+            |> Result.bind (this.writeKindFile SetupKitFile stem)
+
+        /// Reads the named setup's scene, reporting a missing or refused file by name (spec 0050 S4.3).
+        member this.readScene (name : SceneName) : Result<SceneSnapshot, KitError> =
+            let stem = name.fileStem
+            let file = SetupKitFile.fileNameOf stem
+            this.readKindFile SetupKitFile stem
+            |> Result.mapError (fun error ->
+                match error with
+                | MissingKitFileErr _ -> error
+                | _ -> contentReadRejectedErr file error)
+            |> Result.bind (fun text -> text.parseSceneFile |> Result.mapError (contentStorageRejectedErr file))
+            |> Result.map (fun parsed -> parsed.scene)
+
+        /// Reads original setup names in ordinal order; any refused file refuses the list (spec 0050 S4.3).
+        member this.readSceneNames () : Result<SceneName list, KitError> =
+            this.listKindFiles SetupKitFile
+            |> Result.bind (fun stems ->
+                stems
+                |> List.fold (fun result stem ->
+                    result |> Result.bind (fun names ->
+                        let file = SetupKitFile.fileNameOf stem
+                        this.readKindFile SetupKitFile stem
+                        |> Result.mapError (contentReadRejectedErr file)
+                        |> Result.bind (fun text -> text.parseSceneFile |> Result.mapError (contentStorageRejectedErr file))
+                        |> Result.map (fun parsed -> parsed.name :: names))) (Ok []))
+            |> Result.map (List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value)))
