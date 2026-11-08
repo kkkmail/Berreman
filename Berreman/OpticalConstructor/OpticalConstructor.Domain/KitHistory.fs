@@ -116,7 +116,7 @@ module KitHistory =
             match this with
             | KitHistoryWriteErr reason -> $"the kit history could not be written: {reason}"
 
-    /// The kit history's seam over the per-user preferences, built once at the composition root (spec 0050 S5.1).
+    /// The kit history's seam: Storage's `KitHistoryProxy.create` at the composition root, `createInMemory` the double (spec 0050 S5.1).
     [<ReferenceEquality>]
     type KitHistoryProxy =
         {
