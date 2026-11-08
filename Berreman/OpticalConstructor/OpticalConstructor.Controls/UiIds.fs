@@ -653,6 +653,34 @@ type ConstructorUiId =
     /// Reopens the next pending startup catalogue's import decisions (spec 0050 S3.2).
     static member launcherReviewImportsButton : ConstructorUiId = ConstructorUiId "LauncherReviewImportsButton"
 
+    // --- The kit start screen (KitStartView, KitStartWindow). ---
+    /// New kit…: picks a folder and opens or initialises its kit (spec 0050 S5.2).
+    static member newKitButton : ConstructorUiId = ConstructorUiId "NewKitButton"
+    /// Open kit…: picks a folder and opens only a kit (spec 0050 S5.2).
+    static member openKitButton : ConstructorUiId = ConstructorUiId "OpenKitButton"
+    /// The last failure the start screen tells (spec 0050 S5.2).
+    static member kitStartStatusText : ConstructorUiId = ConstructorUiId "KitStartStatusText"
+    /// The pending offer's question (spec 0050 S5.2).
+    static member kitStartOfferText : ConstructorUiId = ConstructorUiId "KitStartOfferText"
+    /// Make this a kit: initialises the offered folder, keeping its files (spec 0050 S5.2).
+    static member makeThisAKitButton : ConstructorUiId = ConstructorUiId "MakeThisAKitButton"
+    /// Open read-only: opens the kit held elsewhere without writing to it (spec 0050 S5.2).
+    static member openKitReadOnlyButton : ConstructorUiId = ConstructorUiId "OpenKitReadOnlyButton"
+    /// Either offer's Cancel (spec 0050 S5.2).
+    static member cancelKitStartOfferButton : ConstructorUiId = ConstructorUiId "CancelKitStartOfferButton"
+    /// The box that narrows the history list by name or folder (spec 0050 S5.2).
+    static member kitHistoryFilter : ConstructorUiId = ConstructorUiId "KitHistoryFilter"
+    /// The history list, one row per listed kit (spec 0050 S5.2).
+    static member kitHistoryList : ConstructorUiId = ConstructorUiId "KitHistoryList"
+    /// The history row at this place in the list, 0 first; a present row opens its kit (spec 0050 S5.2).
+    static member kitHistoryRow (row : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"KitHistoryRow_{row.value}"
+    /// The star of the history row at this place (spec 0050 S5.2).
+    static member kitHistoryStarToggle (row : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"KitHistoryStarToggle_{row.value}"
+    /// Locate… of the missing kit at this place (spec 0050 S5.2).
+    static member kitHistoryLocateButton (row : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"KitHistoryLocateButton_{row.value}"
+    /// Remove from history of the missing kit at this place (spec 0050 S5.2).
+    static member kitHistoryRemoveButton (row : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"KitHistoryRemoveButton_{row.value}"
+
     // --- The diagnostic test launcher window (`TestLauncherWindow`, project TestWindows.App). ---
     static member openTableRotationTestButton : ConstructorUiId = ConstructorUiId "OpenTableRotationTestButton"
     static member openElementRotationTestButton : ConstructorUiId = ConstructorUiId "OpenElementRotationTestButton"

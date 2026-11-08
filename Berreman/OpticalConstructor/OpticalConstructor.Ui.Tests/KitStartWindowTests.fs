@@ -1,0 +1,430 @@
+namespace OpticalConstructor.Ui.Tests
+
+open System
+open System.IO
+open Avalonia
+open Avalonia.Automation
+open Avalonia.Controls
+open Avalonia.Headless
+open Avalonia.Input
+open Avalonia.Threading
+open Avalonia.VisualTree
+open Avalonia.FuncUI.Hosts
+open Avalonia.FuncUI.Elmish
+open Elmish
+open Xunit
+open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitHistory
+open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Controls
+open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Ui
+open OpticalConstructor.Ui.ConstructorUiIdOfDomain
+open OpticalConstructor.Ui.KitOpening
+open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.KitStartView
+
+module KitStartWindowTests =
+
+    let private firstOpen : DateTime = DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc)
+
+    let private folderOf (kit : string) : KitFolder = KitFolder (FolderName $"C:/kits/{kit}")
+
+    let private entryOf (kit : string) (id : string) (minutes : float) (star : KitStar) : KitHistoryEntry =
+        {
+            folder = folderOf kit
+            kitId = KitId (Guid.Parse id)
+            name = KitName $"Kit {kit}"
+            lastOpened = ClockTime (firstOpen.AddMinutes minutes)
+            star = star
+        }
+
+    // KitStartTests' five entries (step 176): that fixture is private to OpticalConstructor.Tests.
+    let private kitA : KitHistoryEntry = entryOf "a" "6f1c2b8e-4d37-4a95-8e02-b7d4c9a13f56" 5.0 UnstarredKit
+    let private kitB : KitHistoryEntry = entryOf "b" "a03d7e94-1b6c-4f28-9d5a-3c8e0f2b7a41" 1.0 StarredKit
+    let private kitC : KitHistoryEntry = entryOf "c" "c58b1f06-7e29-4d43-b1a7-e6f9d204c83b" 9.0 UnstarredKit
+    let private kitD : KitHistoryEntry = entryOf "d" "2e9a4c71-d085-4b6f-a3e8-81c5f7d0b924" 7.0 StarredKit
+    let private kitE : KitHistoryEntry = entryOf "e" "d7f30a5b-96c2-4e81-8f4d-0b2a6e9c15d7" 5.0 UnstarredKit
+
+    let private stored : KitHistory = { KitHistory.empty with entries = [ kitA; kitB; kitC; kitD; kitE ] }
+
+    let private presentFolders : KitFolder list = [ folderOf "a"; folderOf "c"; folderOf "d" ]
+
+    /// Step 173's holder of a kit open elsewhere.
+    let private lockHolder : KitLockHolder =
+        {
+            owner =
+                {
+                    machine = MachineName "BENCH-1"
+                    user = UserName "lab"
+                    processId = ProcessId 4242
+                }
+            acquiredAt = ClockTime firstOpen
+        }
+
+    /// An in-memory store holding `seeded` that sees only `folders` on disk.
+    let private historyOver (folders : KitFolder list) (seeded : KitHistory) : KitHistoryProxy =
+        let store = KitHistoryProxy.createInMemory folders
+
+        match store.writeHistory seeded with
+        | Ok () -> store
+        | Error error -> failwith error.describe
+
+    /// An in-memory store holding the five entries, over the present folders `a`, `c` and `d`.
+    let private storedHistory () : KitHistoryProxy = historyOver presentFolders stored
+
+    /// A day after every stored open, on every reading.
+    let private kitStartClock : ClockProvider =
+        {
+            now = fun () -> ClockTime (firstOpen.AddDays 1.0)
+        }
+
+    let private kitStartAuthor : KitAuthor = KitAuthor "test"
+
+    /// A picker the user always cancels.
+    let private cancellingPicker : KitFolderPicker =
+        {
+            pickKitFolder = fun () -> async { return None }
+        }
+
+    /// The screen's seams over `kitHistory` and `picker`; `showKit` records every kit it is given into `shown`.
+    let private contextOver (kitHistory : KitHistoryProxy) (picker : KitFolderPicker) (shown : ResizeArray<OpenedKit>) : KitStartContext =
+        {
+            kitHistory = kitHistory
+            limit = KitHistoryLimit.defaultValue
+            clock = kitStartClock
+            author = kitStartAuthor
+            imports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
+            picker = picker
+            showKit = shown.Add
+        }
+
+    /// Runs a fact over its own root under the test output. At its end every kit `shown` recorded is closed, then the
+    /// root is deleted; a failed close fails the fact.
+    let private withKitStartRoot (run : FolderName -> ResizeArray<OpenedKit> -> unit) : unit =
+        let root = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitStartWindowTests", Guid.NewGuid().ToString("N")))
+        let shown = ResizeArray<OpenedKit> ()
+
+        try
+            run root shown
+        finally
+            let closes = shown |> Seq.map (fun kit -> kit.library.kit.close ()) |> List.ofSeq
+            if Directory.Exists root.value then Directory.Delete(root.value, true)
+            closes |> List.iter (Result.defaultWith (fun (error : KitError) -> failwith error.describe))
+
+    let private kitIn (root : FolderName) (name : string) : KitFolder = KitFolder (FolderName (Path.Combine(root.value, name)))
+
+    /// Makes a kit in `folder` through `openKitAt` and closes it, answering its kit file.
+    let private madeKitAt (folder : KitFolder) (imports : CatalogueImportContext) : KitFile =
+        match openKitAt folder ReadWriteKitAccess kitStartClock kitStartAuthor imports with
+        | Ok made ->
+            match made.library.kit.close () with
+            | Ok () -> made.library.kit.kitFile
+            | Error error -> failwith error.describe
+        | Error error -> failwith error.describe
+
+    /// Mounts the screen over `model0` as `ScrollExtentTests` mounts a view, shown headless at 900 × 700, and closes it
+    /// after `check`. Call it on the headless UI thread.
+    let private withKitStartScreen (model0 : KitStartModel) (check : Window -> unit) : unit =
+        let host = HostWindow()
+        Program.mkSimple (fun () -> model0) updateKitStart kitStartView |> Program.withHost host |> Program.run
+        let window = host :> Window
+        window.Width <- 900.0
+        window.Height <- 700.0
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+
+        try
+            check window
+        finally
+            window.Close()
+
+    /// The control carrying `id` as its AutomationId.
+    let private tryFindControl (window : Window) (id : ConstructorUiId) : Control option =
+        window.GetVisualDescendants()
+        |> Seq.tryPick (function
+            | :? Control as control when AutomationProperties.GetAutomationId control = id.value -> Some control
+            | _ -> None)
+
+    let private controlOf (window : Window) (id : ConstructorUiId) : Control =
+        tryFindControl window id |> Option.defaultWith (fun () -> failwith $"Missing control {id.value}.")
+
+    let private assertAbsent (window : Window) (id : ConstructorUiId) : unit =
+        match tryFindControl window id with
+        | Some _ -> Assert.Fail $"{id.value} must not be shown."
+        | None -> ()
+
+    /// Every text under `control`, in visual-tree order.
+    let private textsUnder (control : Control) : string list =
+        control.GetVisualDescendants()
+        |> Seq.choose (function
+            | :? TextBlock as text -> Option.ofObj text.Text
+            | _ -> None)
+        |> List.ofSeq
+
+    /// The text of the TextBlock carrying `id`.
+    let private textOf (window : Window) (id : ConstructorUiId) : string =
+        match controlOf window id with
+        | :? TextBlock as text -> Option.ofObj text.Text |> Option.defaultValue ""
+        | other -> failwith $"{id.value} is a {other.GetType().Name}, not a TextBlock."
+
+    /// The listed rows' kit names, position 0 first.
+    let private listedKitNames (window : Window) : string list =
+        [ 0 .. 5 ]
+        |> List.choose (fun index ->
+            let position = ConstructorUiPosition index
+            tryFindControl window (ConstructorUiId.kitHistoryRow position)
+            |> Option.map (fun row -> textsUnder row |> List.tryHead |> Option.defaultValue ""))
+
+    /// `control`'s box in window coordinates.
+    let private boundsIn (window : Window) (control : Control) : Rect =
+        match control.TranslatePoint(Point(0.0, 0.0), window) |> Option.ofNullable with
+        | Some topLeft -> Rect(topLeft, control.Bounds.Size)
+        | None -> failwith "The control has no on-screen position."
+
+    /// Presses the box carrying `id` at its centre, as `LibraryWindowTests.clickOn` does.
+    let private pressAt (window : Window) (id : ConstructorUiId) : unit =
+        let target = controlOf window id
+        target.BringIntoView() |> ignore
+        Dispatcher.UIThread.RunJobs()
+
+        match target.TranslatePoint(Point(target.Bounds.Width / 2.0, target.Bounds.Height / 2.0), window) |> Option.ofNullable with
+        | Some centre ->
+            window.MouseDown(centre, MouseButton.Left, RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+            if window.IsVisible then
+                window.MouseUp(centre, MouseButton.Left, RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+        | None -> Assert.Fail $"{id.value} has no on-screen position."
+
+    /// Types `text` into the filter box.
+    let private setFilter (window : Window) (text : string) : unit =
+        match controlOf window ConstructorUiId.kitHistoryFilter with
+        | :? TextBox as filterBox ->
+            filterBox.Text <- text
+            Dispatcher.UIThread.RunJobs()
+        | other -> Assert.Fail $"The filter is a {other.GetType().Name}, not a TextBox."
+
+    /// The offer's accepting box and Cancel share a row, Cancel to the right of the accepting box.
+    let private assertPairOnOneRow (window : Window) (accept : ConstructorUiId) : unit =
+        let accepting = boundsIn window (controlOf window accept)
+        let cancelling = boundsIn window (controlOf window ConstructorUiId.cancelKitStartOfferButton)
+        Assert.Equal(accepting.Top, cancelling.Top)
+        Assert.True(cancelling.Left > accepting.Right, $"Cancel starts at {cancelling.Left}, inside {accept.value}, which ends at {accepting.Right}.")
+
+    [<Fact>]
+    let ``the kit start screen UiIds are the stable intent-named ids`` () : unit =
+        let first = ConstructorUiPosition 0
+        let fourth = ConstructorUiPosition 3
+
+        Assert.Equal("NewKitButton", ConstructorUiId.newKitButton.value)
+        Assert.Equal("OpenKitButton", ConstructorUiId.openKitButton.value)
+        Assert.Equal("KitStartStatusText", ConstructorUiId.kitStartStatusText.value)
+        Assert.Equal("KitStartOfferText", ConstructorUiId.kitStartOfferText.value)
+        Assert.Equal("MakeThisAKitButton", ConstructorUiId.makeThisAKitButton.value)
+        Assert.Equal("OpenKitReadOnlyButton", ConstructorUiId.openKitReadOnlyButton.value)
+        Assert.Equal("CancelKitStartOfferButton", ConstructorUiId.cancelKitStartOfferButton.value)
+        Assert.Equal("KitHistoryFilter", ConstructorUiId.kitHistoryFilter.value)
+        Assert.Equal("KitHistoryList", ConstructorUiId.kitHistoryList.value)
+
+        Assert.Equal("KitHistoryRow_0", (ConstructorUiId.kitHistoryRow first).value)
+        Assert.Equal("KitHistoryRow_3", (ConstructorUiId.kitHistoryRow fourth).value)
+        Assert.Equal("KitHistoryStarToggle_0", (ConstructorUiId.kitHistoryStarToggle first).value)
+        Assert.Equal("KitHistoryStarToggle_3", (ConstructorUiId.kitHistoryStarToggle fourth).value)
+        Assert.Equal("KitHistoryLocateButton_0", (ConstructorUiId.kitHistoryLocateButton first).value)
+        Assert.Equal("KitHistoryLocateButton_3", (ConstructorUiId.kitHistoryLocateButton fourth).value)
+        Assert.Equal("KitHistoryRemoveButton_0", (ConstructorUiId.kitHistoryRemoveButton first).value)
+        Assert.Equal("KitHistoryRemoveButton_3", (ConstructorUiId.kitHistoryRemoveButton fourth).value)
+
+    [<Fact>]
+    let ``the history rows show name, folder and last open in display order, each with its star`` () : unit =
+        HeadlessSession.run (fun () ->
+            let shown = ResizeArray<OpenedKit> ()
+            let opened = initKitStart (contextOver (storedHistory ()) cancellingPicker shown) ForwardConstructor
+
+            withKitStartScreen opened (fun window ->
+                Assert.Equal<string list>([ "New kit…" ], textsUnder (controlOf window ConstructorUiId.newKitButton))
+                Assert.Equal<string list>([ "Open kit…" ], textsUnder (controlOf window ConstructorUiId.openKitButton))
+
+                match controlOf window ConstructorUiId.kitHistoryFilter with
+                | :? TextBox as filter -> Assert.Equal("Filter kits by name or folder", filter.PlaceholderText)
+                | other -> Assert.Fail $"The filter is a {other.GetType().Name}, not a TextBox."
+
+                assertAbsent window ConstructorUiId.kitStartStatusText
+                assertAbsent window ConstructorUiId.kitStartOfferText
+                controlOf window ConstructorUiId.kitHistoryList |> ignore
+
+                let expected : (string list * string) list =
+                    [
+                        ([ "Kit d"; "C:/kits/d"; "Last opened 2026-11-03 12:07 UTC" ], "★")
+                        ([ "Kit b"; "C:/kits/b"; "Last opened 2026-11-03 12:01 UTC" ], "★")
+                        ([ "Kit c"; "C:/kits/c"; "Last opened 2026-11-03 12:09 UTC" ], "☆")
+                        ([ "Kit a"; "C:/kits/a"; "Last opened 2026-11-03 12:05 UTC" ], "☆")
+                        ([ "Kit e"; "C:/kits/e"; "Last opened 2026-11-03 12:05 UTC" ], "☆")
+                    ]
+
+                expected
+                |> List.iteri (fun index (texts, star) ->
+                    let position = ConstructorUiPosition index
+                    Assert.Equal<string list>(texts, textsUnder (controlOf window (ConstructorUiId.kitHistoryRow position)))
+                    Assert.Equal<string list>([ star ], textsUnder (controlOf window (ConstructorUiId.kitHistoryStarToggle position))))
+
+                Assert.Equal("Last opened 2026-11-03 12:07 UTC", kitD.lastOpenedCaption.value)
+                Assert.Equal<string list>([ "Kit d"; "Kit b"; "Kit c"; "Kit a"; "Kit e" ], listedKitNames window))
+
+            let refused = (KitHistoryWriteErr "C:/prefs: the disk is full").notSavedCaption
+
+            withKitStartScreen { opened with status = Some refused } (fun window ->
+                Assert.Equal(refused.value, textOf window ConstructorUiId.kitStartStatusText)
+                Assert.Equal<string list>([ "Kit d"; "Kit b"; "Kit c"; "Kit a"; "Kit e" ], listedKitNames window))
+
+            Assert.Empty shown)
+
+    [<Fact>]
+    let ``a missing folder's row is greyed with Locate and Remove from history, and a present row offers neither`` () : unit =
+        HeadlessSession.run (fun () ->
+            let shown = ResizeArray<OpenedKit> ()
+            let opened = initKitStart (contextOver (storedHistory ()) cancellingPicker shown) ForwardConstructor
+
+            withKitStartScreen opened (fun window ->
+                for index in [ 1; 4 ] do
+                    let position = ConstructorUiPosition index
+                    let row = controlOf window (ConstructorUiId.kitHistoryRow position)
+                    Assert.Equal(0.5, row.Opacity)
+
+                    let verbs = [ (ConstructorUiId.kitHistoryLocateButton position, "Locate…"); (ConstructorUiId.kitHistoryRemoveButton position, "Remove from history") ]
+
+                    for (verb, caption) in verbs do
+                        let button = controlOf window verb
+                        Assert.Equal<string list>([ caption ], textsUnder button)
+                        Assert.Equal(1.0, button.Opacity)
+                        let insideRow = row.GetVisualDescendants() |> Seq.exists (fun visual -> obj.ReferenceEquals(visual, button))
+                        Assert.False(insideRow, $"{verb.value} sits inside the greyed row.")
+
+                for index in [ 0; 2; 3 ] do
+                    let position = ConstructorUiPosition index
+                    Assert.Equal(1.0, (controlOf window (ConstructorUiId.kitHistoryRow position)).Opacity)
+                    assertAbsent window (ConstructorUiId.kitHistoryLocateButton position)
+                    assertAbsent window (ConstructorUiId.kitHistoryRemoveButton position))
+
+            Assert.Empty shown)
+
+    [<Fact>]
+    let ``each offer shows its text with its two buttons on one row, Cancel to the right`` () : unit =
+        HeadlessSession.run (fun () ->
+            let shown = ResizeArray<OpenedKit> ()
+            let opened = initKitStart (contextOver (storedHistory ()) cancellingPicker shown) ForwardConstructor
+            let notes = KitFolder (FolderName "C:/kits/notes")
+
+            withKitStartScreen { opened with offer = MakeKitOffer notes } (fun window ->
+                Assert.Equal("C:/kits/notes holds no kit.", notes.notAKitCaption.value)
+                Assert.Equal(notes.notAKitCaption.value, textOf window ConstructorUiId.kitStartOfferText)
+                Assert.Equal<string list>([ "Make this a kit" ], textsUnder (controlOf window ConstructorUiId.makeThisAKitButton))
+                Assert.Equal<string list>([ "Cancel" ], textsUnder (controlOf window ConstructorUiId.cancelKitStartOfferButton))
+                assertAbsent window ConstructorUiId.openKitReadOnlyButton
+                assertPairOnOneRow window ConstructorUiId.makeThisAKitButton)
+
+            withKitStartScreen { opened with offer = ReadOnlyKitOffer (notes, lockHolder) } (fun window ->
+                Assert.Equal(lockHolder.openElsewhereCaption.value, textOf window ConstructorUiId.kitStartOfferText)
+                Assert.Equal<string list>([ "Open read-only" ], textsUnder (controlOf window ConstructorUiId.openKitReadOnlyButton))
+                Assert.Equal<string list>([ "Cancel" ], textsUnder (controlOf window ConstructorUiId.cancelKitStartOfferButton))
+                assertAbsent window ConstructorUiId.makeThisAKitButton
+                assertPairOnOneRow window ConstructorUiId.openKitReadOnlyButton)
+
+            Assert.Empty shown)
+
+    [<Fact>]
+    let ``typing into the filter box narrows the list`` () : unit =
+        HeadlessSession.run (fun () ->
+            let shown = ResizeArray<OpenedKit> ()
+            let store = storedHistory ()
+            let opened = initKitStart (contextOver store cancellingPicker shown) ForwardConstructor
+
+            withKitStartScreen opened (fun window ->
+                setFilter window "kit c"
+                Assert.Equal<string list>([ "Kit c" ], listedKitNames window)
+
+                setFilter window ""
+                Assert.Equal<string list>([ "Kit d"; "Kit b"; "Kit c"; "Kit a"; "Kit e" ], listedKitNames window))
+
+            Assert.Equal<KitHistory>(stored, store.readHistory ())
+            Assert.Empty shown)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing a row's star, its Remove from history and a present row sends StarKit, ForgetKit and OpenKit`` () : unit =
+        HeadlessSession.run (fun () ->
+            withKitStartRoot (fun root shown ->
+                let store = storedHistory ()
+                let opened = initKitStart (contextOver store cancellingPicker shown) ForwardConstructor
+                let starredA = { kitA with star = StarredKit }
+
+                withKitStartScreen opened (fun window ->
+                    let fourth = ConstructorUiPosition 3
+                    Assert.Equal("Kit a", listedKitNames window |> List.item fourth.value)
+                    pressAt window (ConstructorUiId.kitHistoryStarToggle fourth)
+                    Assert.Equal<KitHistoryEntry list>([ starredA; kitB; kitC; kitD; kitE ], (store.readHistory ()).entries)
+
+                    let fifth = ConstructorUiPosition 4
+                    Assert.Equal<string list>([ "Kit d"; "Kit a"; "Kit b"; "Kit c"; "Kit e" ], listedKitNames window)
+                    pressAt window (ConstructorUiId.kitHistoryRemoveButton fifth)
+                    Assert.Equal<KitHistoryEntry list>([ starredA; kitB; kitC; kitD ], (store.readHistory ()).entries)
+                    Assert.Equal<string list>([ "Kit d"; "Kit a"; "Kit b"; "Kit c" ], listedKitNames window))
+
+                Assert.Empty shown
+
+                let folder = kitIn root "Bench A"
+                let context = contextOver (historyOver [ folder ] KitHistory.empty) cancellingPicker shown
+                let made = madeKitAt folder context.imports
+                let entry : KitHistoryEntry =
+                    {
+                        folder = folder
+                        kitId = made.id
+                        name = made.name
+                        lastOpened = ClockTime firstOpen
+                        star = UnstarredKit
+                    }
+
+                match context.kitHistory.writeHistory { KitHistory.empty with entries = [ entry ] } with
+                | Ok () -> ()
+                | Error error -> failwith error.describe
+
+                withKitStartScreen (initKitStart context ForwardConstructor) (fun window ->
+                    let first = ConstructorUiPosition 0
+                    pressAt window (ConstructorUiId.kitHistoryRow first)
+                    let kit = Assert.Single<OpenedKit>(shown)
+                    Assert.Equal<KitId>(made.id, kit.library.kit.kitFile.id)
+                    Assert.Equal<KitAccess>(ReadWriteKitAccess, kit.library.kit.access))))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``New kit and Open kit open the folder the picker answers`` () : unit =
+        HeadlessSession.run (fun () ->
+            withKitStartRoot (fun root shown ->
+                let fresh = kitIn root "Optics QZ"
+                let creating = contextOver (historyOver [ fresh ] KitHistory.empty) (TestAppScope.kitPickerOf fresh) shown
+
+                withKitStartScreen (initKitStart creating ForwardConstructor) (fun window ->
+                    pressAt window ConstructorUiId.newKitButton
+                    let kit = Assert.Single<OpenedKit>(shown)
+                    Assert.Equal<KitName>(KitName "Optics QZ", kit.library.kit.kitFile.name)
+                    Assert.Equal<KitAccess>(ReadWriteKitAccess, kit.library.kit.access)
+                    Assert.True(File.Exists(Path.Combine(fresh.value.value, ".kit-json"))))
+
+                let notes = kitIn root "Lab notes"
+                let notesFile = Path.Combine(notes.value.value, "notes.txt")
+                Directory.CreateDirectory(notes.value.value) |> ignore
+                File.WriteAllText(notesFile, "not a kit")
+                let opening = contextOver (historyOver [ notes ] KitHistory.empty) (TestAppScope.kitPickerOf notes) shown
+
+                withKitStartScreen (initKitStart opening ForwardConstructor) (fun window ->
+                    assertAbsent window ConstructorUiId.kitStartOfferText
+                    pressAt window ConstructorUiId.openKitButton
+                    Assert.Single<OpenedKit>(shown) |> ignore
+                    Assert.Equal(notes.notAKitCaption.value, textOf window ConstructorUiId.kitStartOfferText)
+                    controlOf window ConstructorUiId.makeThisAKitButton |> ignore
+                    Assert.Equal<string list>([ notesFile ], Directory.GetFileSystemEntries(notes.value.value) |> List.ofArray))))

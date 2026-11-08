@@ -1,7 +1,14 @@
 /// The kit start screen's state, its history messages and its open messages: an update that reaches the kit history,
-/// the kit folders and the window only through its injected context (spec 0050 S5.2).
+/// the kit folders and the window only through its injected context, and the view projecting it (spec 0050 S5.2).
 module OpticalConstructor.Ui.KitStartView
 
+open Avalonia
+open Avalonia.Controls
+open Avalonia.Controls.Primitives
+open Avalonia.Layout
+open Avalonia.Media
+open Avalonia.FuncUI.DSL
+open Avalonia.FuncUI.Types
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
@@ -186,3 +193,204 @@ let updateKitStart (msg : KitStartMsg) (m : KitStartModel) : KitStartModel =
         m |> kitStartOpened folder (openKitAt folder ReadOnlyKitAccess m.context.clock m.context.author m.context.imports)
     | DismissKitStartOffer -> { m with offer = NoKitStartOffer }
     | KitOpenFailed error -> m |> kitStartFailed error
+
+/// The screen lays out at least this wide and scrolls sideways below it, as the material editor does (spec 0050 S5.2).
+let private kitStartMinWidth : PanelMinWidth = PanelMinWidth 520.0
+
+/// New kit… and Open kit…: each asks the picker for a folder and sends its open (spec 0050 S5.2).
+let private kitStartActionsRow (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.children [
+            MaterialsWindowView.verbButton ConstructorUiId.newKitButton (ControlCaption "New kit…") (fun () ->
+                m.context.picker.pickThen (CreateKit >> dispatch))
+            MaterialsWindowView.verbButton ConstructorUiId.openKitButton (ControlCaption "Open kit…") (fun () ->
+                m.context.picker.pickThen (OpenKit >> dispatch))
+        ]
+    ] :> IView
+
+/// An offer's question over its opposing pair on one row, Cancel to the right after the accepting box's margin
+/// (.spec-md §10.5). It is keyed by `offerKey`, so another folder's offer recreates the pair: an `actionButton`
+/// subscribes its press once per id (spec 0050 S5.2).
+let private kitStartOfferBlock (offerKey : ConstructorUiKey) (question : ControlCaption) (accept : IView) (dispatch : KitStartMsg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.children [
+            TextBlock.create [
+                ConstructorUiId.kitStartOfferText.automationAttribute<TextBlock> ()
+                TextBlock.textWrapping TextWrapping.Wrap
+                TextBlock.margin (Thickness(0.0, 0.0, 0.0, 4.0))
+                TextBlock.text question.value
+            ]
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.children [
+                    accept
+                    MaterialsWindowView.actionButton
+                        ConstructorUiId.cancelKitStartOfferButton
+                        (ControlCaption "Cancel")
+                        MaterialsWindowView.negativeBackground
+                        (fun () -> dispatch DismissKitStartOffer)
+                ]
+            ]
+        ]
+    ]
+    |> Avalonia.FuncUI.DSL.View.withKey offerKey.value
+    :> IView
+
+/// Make this a kit for a folder without a kit, Open read-only for a kit held elsewhere; nothing without a question
+/// (spec 0050 S5.2).
+let private kitStartOfferRows (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView list =
+    match m.offer with
+    | NoKitStartOffer -> []
+    | MakeKitOffer folder ->
+        let offerKey = ConstructorUiKey $"MakeKitOffer_{folder.value.value}"
+        let accept =
+            MaterialsWindowView.actionButton
+                ConstructorUiId.makeThisAKitButton
+                (ControlCaption "Make this a kit")
+                MaterialsWindowView.positiveBackground
+                (fun () -> dispatch (CreateKit folder))
+        [ kitStartOfferBlock offerKey folder.notAKitCaption accept dispatch ]
+    | ReadOnlyKitOffer (folder, holder) ->
+        let offerKey = ConstructorUiKey $"ReadOnlyKitOffer_{folder.value.value}"
+        let accept =
+            MaterialsWindowView.actionButton
+                ConstructorUiId.openKitReadOnlyButton
+                (ControlCaption "Open read-only")
+                MaterialsWindowView.positiveBackground
+                (fun () -> dispatch (OpenKitReadOnly folder))
+        [ kitStartOfferBlock offerKey holder.openElsewhereCaption accept dispatch ]
+
+/// The filter box: every change re-lists the rows. A null text (a box not yet given one) is no filter, because
+/// `entriesMatching` trims the text (spec 0050 S5.2).
+let private kitHistoryFilterBox (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView =
+    TextBox.create [
+        ConstructorUiId.kitHistoryFilter.automationAttribute<TextBox> ()
+        TextBox.placeHolderText "Filter kits by name or folder"
+        TextBox.text m.filter.value
+        TextBox.onTextChanged (Option.ofObj >> Option.map KitHistoryFilter >> Option.iter (FilterKitHistory >> dispatch))
+    ] :> IView
+
+/// One listed kit at `position`: its star, and Locate… / Remove from history for a missing folder only, on the right;
+/// its name, folder and last open in the fill. A present row opens its kit when pressed; a missing row is greyed and
+/// inert, its buttons at full opacity (spec 0050 S5.2).
+let private kitHistoryRowView (m : KitStartModel) (dispatch : KitStartMsg -> unit) (position : ConstructorUiPosition) (row : KitHistoryRow) : IView =
+    let folder = row.entry.folder
+    let starToggle = ConstructorUiId.kitHistoryStarToggle position
+
+    let star =
+        match row.entry.star with
+        | StarredKit -> MaterialsWindowView.verbButton starToggle (ControlCaption "★") (fun () -> dispatch (UnstarKit folder))
+        | UnstarredKit -> MaterialsWindowView.verbButton starToggle (ControlCaption "☆") (fun () -> dispatch (StarKit folder))
+
+    let missingVerbs =
+        match row.presence with
+        | KitFolderPresent -> []
+        | KitFolderMissing ->
+            [
+                MaterialsWindowView.verbButton (ConstructorUiId.kitHistoryLocateButton position) (ControlCaption "Locate…") (fun () ->
+                    m.context.picker.pickThen (fun found -> dispatch (LocateKit { missing = folder; found = found })))
+                MaterialsWindowView.verbButton (ConstructorUiId.kitHistoryRemoveButton position) (ControlCaption "Remove from history") (fun () ->
+                    dispatch (ForgetKit folder))
+            ]
+
+    let rowOpacity =
+        match row.presence with
+        | KitFolderPresent -> 1.0
+        | KitFolderMissing -> 0.5
+
+    let rowId = ConstructorUiId.kitHistoryRow position
+
+    let rowBox =
+        Border.create [
+            rowId.automationAttribute<Border> ()
+            Border.background (MaterialsWindowView.brush Colors.Transparent)
+            Border.padding (Thickness(4.0, 2.0))
+            Border.opacity rowOpacity
+            Border.child (
+                StackPanel.create [
+                    StackPanel.orientation Orientation.Vertical
+                    StackPanel.children [
+                        TextBlock.create [
+                            TextBlock.fontWeight FontWeight.SemiBold
+                            TextBlock.text row.entry.name.value
+                        ]
+                        TextBlock.create [
+                            TextBlock.textWrapping TextWrapping.Wrap
+                            TextBlock.text folder.value.value
+                        ]
+                        TextBlock.create [ TextBlock.text row.entry.lastOpenedCaption.value ]
+                    ]
+                ])
+            Border.onPointerPressed (
+                (fun e ->
+                    e.Handled <- true
+                    match row.presence with
+                    | KitFolderPresent -> dispatch (OpenKit folder)
+                    | KitFolderMissing -> ()),
+                SubPatchOptions.Always)
+        ]
+        |> Avalonia.FuncUI.DSL.View.withKey rowId.value
+
+    DockPanel.create [
+        DockPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
+        DockPanel.children [
+            StackPanel.create [
+                StackPanel.dock Dock.Right
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.verticalAlignment VerticalAlignment.Center
+                StackPanel.children (missingVerbs @ [ star ])
+            ]
+            rowBox
+        ]
+    ] :> IView
+
+/// The listed kits in display order, each row's ids over its place in the list (spec 0050 S5.2).
+let private kitHistoryListView (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView =
+    StackPanel.create [
+        ConstructorUiId.kitHistoryList.automationAttribute<StackPanel> ()
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.children (
+            m.rows
+            |> List.mapi (fun index row ->
+                let position = ConstructorUiPosition index
+                kitHistoryRowView m dispatch position row))
+    ] :> IView
+
+/// The start screen as a pure projection of its model: New kit… and Open kit…, the status, the offer, the filter box
+/// and the history list, every control under its `ConstructorUiId` (spec 0050 S5.2).
+let kitStartView (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView =
+    // The last failure, in the library windows' refusal colour.
+    let statusRows : IView list =
+        match m.status with
+        | Some status ->
+            [
+                TextBlock.create [
+                    ConstructorUiId.kitStartStatusText.automationAttribute<TextBlock> ()
+                    TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
+                    TextBlock.textWrapping TextWrapping.Wrap
+                    TextBlock.text status.value
+                ] :> IView
+            ]
+        | None -> []
+
+    ScrollViewer.create [
+        ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
+        ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+        ScrollViewer.content (
+            MinWidthPanel.create [
+                kitStartMinWidth.minWidthPanelAttribute ()
+                MinWidthPanel.child (
+                    StackPanel.create [
+                        StackPanel.orientation Orientation.Vertical
+                        StackPanel.margin 12.0
+                        StackPanel.spacing 8.0
+                        StackPanel.children (
+                            [ kitStartActionsRow m dispatch ]
+                            @ statusRows
+                            @ kitStartOfferRows m dispatch
+                            @ [ kitHistoryFilterBox m dispatch; kitHistoryListView m dispatch ])
+                    ])
+            ])
+    ] :> IView

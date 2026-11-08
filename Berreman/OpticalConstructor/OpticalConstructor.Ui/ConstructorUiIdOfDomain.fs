@@ -461,6 +461,18 @@ module ConstructorUiIdOfDomain =
         /// The failed kit-history write as the start screen shows it (spec 0050 S5.2).
         member this.notSavedCaption : ControlCaption = ControlCaption $"The kit history was not saved — {this.describe}"
 
+    type OpticalConstructor.Domain.KitHistory.KitHistoryEntry with
+
+        /// The kit's last open as its history row shows it, in the invariant culture as `KitLockHolder.describe` (spec 0050 S5.2).
+        member this.lastOpenedCaption : ControlCaption =
+            let instant = this.lastOpened.value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)
+            ControlCaption $"Last opened {instant} UTC"
+
+    type OpticalConstructor.Domain.Kit.KitFolder with
+
+        /// Open kit…'s offer for a folder without `.kit-json` (spec 0050 S5.2).
+        member this.notAKitCaption : ControlCaption = ControlCaption $"{this.value.value} holds no kit."
+
     type OpticalConstructor.Domain.Kit.KitRelativePath with
 
         /// The kit-relative path as its data-file caption (spec 0050 S4.2).
