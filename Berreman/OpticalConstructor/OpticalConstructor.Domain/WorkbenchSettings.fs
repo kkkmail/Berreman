@@ -12,12 +12,13 @@ open Softellect.Sys.Primitives
 module WorkbenchSettings =
 
     /// The typed rejections of `tryCreate` (errors as values, each case carrying the
-    /// offending raw value — never a throw). All three thresholds are counts/caps, so
+    /// offending raw value — never a throw). Each setting is a count or a cap, so
     /// zero and negative values are meaningless and rejected at the parse boundary.
     type WorkbenchSettingsError =
         | NonPositiveQuickPickThresholdErr of value : int
         | NonPositiveTreeAutoBuildThresholdErr of value : int
         | NonPositiveThicknessBucketCapErr of value : int
+        | NonPositiveKitHistoryLimitErr of value : int
 
     /// Select-state window policy (§5.3): Select-state windows open modal
     /// (`ShowDialog`, owner = requesting window) under `ModalSelectWindows`,
@@ -81,6 +82,18 @@ module WorkbenchSettings =
         static member tryCreate (v : int) : Result<ThicknessBucketCap, WorkbenchSettingsError> =
             if v > 0 then ThicknessBucketCap v |> Ok
             else NonPositiveThicknessBucketCapErr v |> Error
+
+    /// The most kits the kit history keeps; over it the oldest unstarred kit is
+    /// dropped and a starred one never is (001 §F, spec 0050 S5.1). Default 100.
+    type KitHistoryLimit =
+        | KitHistoryLimit of int
+
+        member this.value = let (KitHistoryLimit v) = this in v
+        static member defaultValue : KitHistoryLimit = KitHistoryLimit 100
+
+        static member tryCreate (v : int) : Result<KitHistoryLimit, WorkbenchSettingsError> =
+            if v > 0 then KitHistoryLimit v |> Ok
+            else NonPositiveKitHistoryLimitErr v |> Error
 
     /// The workbench settings record: every field an elevated type — no naked bool,
     /// no raw int. `defaults` is the single source of the built-in values (the

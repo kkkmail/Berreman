@@ -116,6 +116,21 @@ module WorkbenchSettingsTests =
         | Ok v -> Assert.Fail($"expected rejection, got Ok %A{v}")
 
     [<Fact>]
+    let ``KitHistoryLimit accepts a positive count, defaults to 100 and refuses a non-positive count with the typed error carrying the value`` () : unit =
+        for raw in [ 1; 100; 5000 ] do
+            match KitHistoryLimit.tryCreate raw with
+            | Ok v -> Assert.Equal(raw, v.value)
+            | Error e -> Assert.Fail($"expected Ok for {raw}, got %A{e}")
+
+        Assert.Equal(100, KitHistoryLimit.defaultValue.value)
+
+        for raw in [ 0; -1 ] do
+            match KitHistoryLimit.tryCreate raw with
+            | Error (NonPositiveKitHistoryLimitErr v) -> Assert.Equal(raw, v)
+            | Error e -> Assert.Fail($"expected NonPositiveKitHistoryLimitErr for {raw}, got %A{e}")
+            | Ok v -> Assert.Fail($"expected rejection of {raw}, got Ok %A{v}")
+
+    [<Fact>]
     let ``a settings record assembled from validated values carries the validated thresholds`` () =
         // The inward-flow shape the composition root produces: every field elevated,
         // thresholds passing through tryCreate — constructed here with no provider
