@@ -1,0 +1,325 @@
+namespace OpticalConstructor.Tests
+
+open System
+open System.IO
+open Xunit
+open Softellect.Sys.Primitives
+open OpticalConstructor.Domain
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitLibrary
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Scene
+open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.KitContentFiles
+open OpticalConstructor.Ui.KitOpening
+
+module KitOpeningTests =
+
+    let private openingAuthor : KitAuthor = KitAuthor "test"
+
+    let private openingValue (result : Result<'Value, KitLibraryError>) : 'Value =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let private kitValue (result : Result<'Value, KitError>) : 'Value =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let private importValue (result : Result<'Value, CatalogueImportError>) : 'Value =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let private withOpeningFolder
+        (run : KitFolder -> CatalogueImportContext -> InMemoryCatalogueStores -> unit)
+        : unit =
+        let root = FolderName (Path.Combine(AppContext.BaseDirectory, "KitOpeningTests", Guid.NewGuid().ToString("N")))
+        let location = FolderName (Path.Combine(root.value, "Optics QZ"))
+        let folder = KitFolder location
+        let stores = BuiltinCatalogue.freshStores ()
+        let imports = CatalogueImportContext.create stores.proxy
+        try run folder imports stores
+        finally
+            if Directory.Exists root.value then Directory.Delete(root.value, true)
+
+    let private withOpenedKit
+        (folder : KitFolder)
+        (access : KitAccess)
+        (imports : CatalogueImportContext)
+        (run : OpenedKit -> unit)
+        : unit =
+        let opened = openKitAt folder access ClockProvider.system openingAuthor imports |> openingValue
+        try run opened
+        finally opened.library.kit.close () |> kitValue
+
+    let private folderBytes (folder : KitFolder) : Map<FileName, FileByteContent> =
+        Directory.GetFiles(folder.value.value, "*", SearchOption.AllDirectories)
+        |> Array.map (fun path ->
+            let name = FileName (Path.GetRelativePath(folder.value.value, path))
+            let content = FileByteContent (File.ReadAllBytes path)
+            name, content)
+        |> Map.ofArray
+
+    let private openingExperiment : Experiment =
+        {
+            id = ExperimentId 1
+            setup = []
+            varied = None
+            measurement = CaptureTransmitted
+            range = VariableRange.forVariable VaryR1
+            dataFileOpt = None
+            sourceWaveLengthOpt = None
+        }
+
+    [<Fact>]
+    let ``opening an empty folder initialises a kit named for it and opens it read-write`` () : unit =
+        withOpeningFolder (fun folder imports _ ->
+            Assert.False(Directory.Exists folder.value.value)
+            match openKitAt folder ReadOnlyKitAccess ClockProvider.system openingAuthor imports with
+            | Error (KitLibraryKitErr (NotAKitFolderErr _)) -> ()
+            | Error error -> Assert.Fail error.describe
+            | Ok opened ->
+                opened.library.kit.close () |> kitValue
+                Assert.Fail "a read-only open must not initialize a missing kit"
+            Assert.False(Directory.Exists folder.value.value)
+
+            withOpenedKit folder ReadWriteKitAccess imports (fun opened ->
+                let expectedName = KitName "Optics QZ"
+                let context = opened.library.kit
+                Assert.Equal<KitName>(expectedName, context.kitFile.name)
+                Assert.Equal<KitAuthor>(openingAuthor, context.kitFile.author)
+                Assert.Equal<KitAccess>(ReadWriteKitAccess, context.access)
+                Assert.Equal(DateTimeKind.Utc, context.kitFile.created.value.Kind)
+                Assert.Equal<KitFile>(context.kitFile, context.proxy.readKitFile () |> kitValue)
+                Assert.Empty opened.experiments
+                Assert.Empty opened.scenes
+                Assert.Empty opened.decisions
+                Assert.Empty opened.pendingDecisions
+                Assert.Empty opened.overlay.snapshots
+                Assert.Empty opened.overlay.replacements
+                Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
+                Assert.True(Directory.Exists(Path.Combine(folder.value.value, "data")))
+                Assert.True(Directory.Exists(Path.Combine(folder.value.value, "library")))
+                Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))
+
+            Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))
+
+    [<Fact>]
+    let ``opening a kit reads its experiments and scenes`` () : unit =
+        withOpeningFolder (fun folder imports _ ->
+            let name = SceneName "Bench"
+            let scene : SceneSnapshot =
+                {
+                    elements = []
+                    view = Table.defaultView
+                    snap = SnapToBeam
+                    pivot = BeamLayout.PivotAtCentre
+                }
+            withOpenedKit folder ReadWriteKitAccess imports (fun opened ->
+                opened.library.kit.proxy.writeExperiment openingExperiment |> kitValue
+                opened.library.kit.proxy.writeScene name scene |> kitValue)
+
+            withOpenedKit folder ReadWriteKitAccess imports (fun opened ->
+                Assert.Equal<Experiment list>([ openingExperiment ], opened.experiments)
+                Assert.Equal<SceneName list>([ name ], opened.scenes)
+                Assert.Equal<SceneSnapshot>(scene, opened.library.kit.proxy.readScene name |> kitValue)
+                Assert.Empty opened.pendingDecisions))
+
+    [<Fact>]
+    let ``a kit open elsewhere is KitLockedErr inside the open's error, and opening it read-only writes nothing`` () : unit =
+        withOpeningFolder (fun folder imports _ ->
+            withOpenedKit folder ReadWriteKitAccess imports (fun owner ->
+                owner.library.kit.proxy.writeExperiment openingExperiment |> kitValue
+                let before = folderBytes folder
+                match openKitAt folder ReadWriteKitAccess ClockProvider.system openingAuthor imports with
+                | Error (KitLibraryKitErr (KitLockedErr holder)) ->
+                    Assert.Equal<ProcessId>(ProcessId.getCurrentProcessId (), holder.owner.processId)
+                    Assert.Equal(Environment.MachineName, holder.owner.machine.value)
+                    Assert.Equal(Environment.UserName, holder.owner.user.value)
+                | Error error -> Assert.Fail error.describe
+                | Ok opened ->
+                    opened.library.kit.close () |> kitValue
+                    Assert.Fail "a second writer must be refused with the existing lock holder"
+                Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)
+
+                withOpenedKit folder ReadOnlyKitAccess imports (fun reader ->
+                    Assert.Equal<KitAccess>(ReadOnlyKitAccess, reader.library.kit.access)
+                    Assert.Equal<KitFile>(owner.library.kit.kitFile, reader.library.kit.kitFile)
+                    Assert.Equal<Experiment list>([ openingExperiment ], reader.experiments)
+                    Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)
+                    match reader.library.kit.proxy.writeExperiment openingExperiment with
+                    | Error (KitReadOnlyErr _) -> ()
+                    | Error error -> Assert.Fail error.describe
+                    | Ok () -> Assert.Fail "a read-only kit must refuse content writes")
+
+                Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
+
+            let unlocked = folderBytes folder
+            withOpenedKit folder ReadOnlyKitAccess imports (fun _ ->
+                Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                Assert.Equal<Map<FileName, FileByteContent>>(unlocked, folderBytes folder))
+            Assert.Equal<Map<FileName, FileByteContent>>(unlocked, folderBytes folder))
+
+    [<Fact>]
+    let ``a kit whose experiment file does not read is refused and left unlocked`` () : unit =
+        withOpeningFolder (fun folder imports _ ->
+            withOpenedKit folder ReadWriteKitAccess imports ignore
+            for name in [ FileName "E1.experiment-json"; FileName "Bench.setup-json" ] do
+                let file = FileName (Path.Combine(folder.value.value, name.value))
+                File.WriteAllText(file.value, "{")
+                match openKitAt folder ReadWriteKitAccess ClockProvider.system openingAuthor imports with
+                | Error (KitLibraryKitErr (KitFileRejectedErr reason)) -> Assert.Contains(name.value, reason)
+                | Error error -> Assert.Fail error.describe
+                | Ok opened ->
+                    opened.library.kit.close () |> kitValue
+                    Assert.Fail "a malformed content file must refuse the open"
+                Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                File.Delete file.value
+                withOpenedKit folder ReadWriteKitAccess imports (fun reopened ->
+                    Assert.Empty reopened.experiments
+                    Assert.Empty reopened.scenes))
+
+    [<Fact>]
+    let ``a kit holding a snapshot the library lacks opens with a pending row, and its overlay serves the entry`` () : unit =
+        withOpeningFolder (fun folder imports stores ->
+            let materialId = MaterialId (Guid.NewGuid ())
+            let materialName = EntryName "Kit-only opening material"
+            let envelope = BuiltinCatalogue.userMaterialContent materialId materialName |> imports.sealEntry |> importValue
+            let silicon =
+                (BuiltinCatalogue.catalogueData ()).envelopes
+                |> List.find (fun entry -> entry.content.id = MaterialIds.silicon.toLibraryEntryId)
+            let beforeLog = imports.proxy.loggedImports () |> importValue
+            let beforeUsers = imports.proxy.heldUserEntries () |> importValue
+            let beforeSilicon = imports.proxy.tryHeldEntry silicon.content.id |> importValue
+            let writes = ResizeArray<string>()
+            let watchedProxy =
+                {
+                    imports.proxy with
+                        putEntryVersion = fun put ->
+                            writes.Add "putEntryVersion"
+                            imports.proxy.putEntryVersion put
+                        pinEntryVersion = fun id version ->
+                            writes.Add "pinEntryVersion"
+                            imports.proxy.pinEntryVersion id version
+                        retireEntry = fun id ->
+                            writes.Add "retireEntry"
+                            imports.proxy.retireEntry id
+                        logImport = fun entry ->
+                            writes.Add "logImport"
+                            imports.proxy.logImport entry
+                        forgetImport = fun id ->
+                            writes.Add "forgetImport"
+                            imports.proxy.forgetImport id
+                }
+            let watchedImports =
+                {
+                    imports with proxy = watchedProxy
+                }
+            withOpenedKit folder ReadWriteKitAccess watchedImports (fun opened ->
+                opened.library.kit.proxy.writeSnapshot envelope |> kitValue)
+            withOpenedKit folder ReadWriteKitAccess watchedImports (fun opened ->
+                Assert.Equal<ImportDecision list>(opened.decisions, opened.pendingDecisions)
+                match opened.pendingDecisions with
+                | [ { status = EntryIdNotHeld incoming } ] -> Assert.Equal<LibraryEntryEnvelope>(envelope, incoming)
+                | _ -> Assert.Fail "the unheld snapshot must remain a pending import row"
+                Assert.Equal<LibraryEntryEnvelope list>([ envelope ], opened.overlay.snapshots)
+                let materials = stores.materials.overlaidWith opened.overlay
+                match materials.tryGetMaterial materialId with
+                | Ok (Some material) ->
+                    Assert.Equal<MaterialId>(materialId, material.id)
+                    Assert.Equal<EntryName>(materialName, material.name)
+                | Error (UnknownMaterialIdErr reason)
+                | Error (DuplicateMaterialIdErr reason)
+                | Error (MaterialStillReferencedErr reason)
+                | Error (InvalidMaterialErr reason)
+                | Error (MaterialVersionPinnedErr reason)
+                | Error (MaterialStoreUnavailableErr reason) -> Assert.Fail reason
+                | Ok None -> Assert.Fail "the overlay must resolve the kit-only material"
+
+                let rebinding : EntryRebinding =
+                    {
+                        incoming = envelope.content.id
+                        held = silicon.content.id
+                    }
+                let rebound = opened.withRebindings [ rebinding ] |> openingValue
+                let expectedReplacement : EntryReplacement =
+                    {
+                        incoming = envelope.content.id
+                        held = silicon
+                    }
+                Assert.Equal<EntryReplacement list>([ expectedReplacement ], rebound.overlay.replacements)
+                Assert.Empty opened.overlay.replacements
+                Assert.Equal<ImportDecision list>(opened.pendingDecisions, rebound.pendingDecisions)
+                Assert.Same(opened.library, rebound.library)
+                Assert.Same(opened.experimentData, rebound.experimentData)
+                Assert.Equal<LibraryEntryEnvelope list>(opened.overlay.snapshots, rebound.overlay.snapshots)
+                opened.library.kit.proxy.writeSnapshot silicon |> kitValue)
+
+            withOpenedKit folder ReadOnlyKitAccess watchedImports (fun opened ->
+                let snapshots = opened.library.kit.proxy.listSnapshots () |> kitValue
+                Assert.Equal<LibraryEntryId list>(snapshots |> List.map _.content.id, opened.pendingDecisions |> List.map _.entryId)
+                Assert.Equal<ImportDecision list>(opened.decisions, opened.pendingDecisions))
+
+            let missingFile = FileName (Path.Combine(folder.value.value, envelope.snapshotPath.value))
+            File.Delete missingFile.value
+            let before = folderBytes folder
+            withOpenedKit folder ReadOnlyKitAccess watchedImports (fun opened ->
+                match opened.pendingDecisions with
+                | [ { status = SameContentHash (incoming, _); defaultAction = ReuseHeldEntry } ] ->
+                    Assert.Equal<LibraryEntryEnvelope>(silicon, incoming)
+                | _ -> Assert.Fail "an all-Reuse kit must still require explicit confirmation"
+                Assert.Equal<ImportDecision list>(opened.decisions, opened.pendingDecisions)
+                Assert.Equal<LibraryEntryEnvelope list>([ silicon ], opened.overlay.snapshots))
+            Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)
+            Assert.Empty writes
+            Assert.Equal<CatalogueImportLogEntry list>(beforeLog, imports.proxy.loggedImports () |> importValue)
+            Assert.Equal<HeldEntry list>(beforeUsers, imports.proxy.heldUserEntries () |> importValue)
+            Assert.Equal(beforeSilicon, imports.proxy.tryHeldEntry silicon.content.id |> importValue)
+
+            let refusal = ImportStoreUnavailableErr "opening snapshot decisions failed"
+            let failingImports =
+                {
+                    imports with
+                        proxy =
+                            {
+                                imports.proxy with tryHeldEntry = fun _ -> Error refusal
+                            }
+                }
+            match openKitAt folder ReadWriteKitAccess ClockProvider.system openingAuthor failingImports with
+            | Error (KitLibraryImportErr error) -> Assert.Equal<CatalogueImportError>(refusal, error)
+            | Error error -> Assert.Fail error.describe
+            | Ok opened ->
+                opened.library.kit.close () |> kitValue
+                Assert.Fail "snapshot decision failure must refuse the open"
+            Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))
+
+    [<Fact>]
+    let ``the scratch kit is an empty in-memory kit opened read-write`` () : unit =
+        let first = scratchKit () |> kitValue
+        let second = scratchKit () |> kitValue
+        try
+            let expectedName = KitName "Scratch kit"
+            let expectedAuthor = KitAuthor ""
+            Assert.NotEqual<KitId>(first.kitFile.id, second.kitFile.id)
+            Assert.NotSame(first.proxy, second.proxy)
+            for context in [ first; second ] do
+                Assert.Equal<KitAccess>(ReadWriteKitAccess, context.access)
+                Assert.Equal<KitName>(expectedName, context.kitFile.name)
+                Assert.Equal<KitAuthor>(expectedAuthor, context.kitFile.author)
+                Assert.Equal(DateTimeKind.Utc, context.kitFile.created.value.Kind)
+                Assert.Equal<ClockTime>(context.kitFile.created, context.kitFile.modified)
+                Assert.Equal<KitFile>(context.kitFile, context.proxy.readKitFile () |> kitValue)
+                Assert.Empty(context.proxy.listKindFiles ExperimentKitFile |> kitValue)
+                Assert.Empty(context.proxy.listKindFiles SetupKitFile |> kitValue)
+                Assert.Empty(context.proxy.listSnapshots () |> kitValue)
+                match context.proxy.readDataFile KitRelativePath.kitLockPath with
+                | Error (MissingKitFileErr _) -> ()
+                | Error error -> Assert.Fail error.describe
+                | Ok _ -> Assert.Fail "scratch construction must not acquire a lock"
+            first.proxy.writeExperiment openingExperiment |> kitValue
+            Assert.Equal<Experiment list>([ openingExperiment ], first.proxy.readExperiments () |> kitValue)
+            Assert.Empty(second.proxy.readExperiments () |> kitValue)
+        finally
+            first.close () |> kitValue
+            second.close () |> kitValue
