@@ -3581,15 +3581,17 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
         | [] -> []
         | names ->
             [ sectionHeading "Saved scenes:"
-              WrapPanel.create [
-                  WrapPanel.name ConstructorUiId.savedScenes.value
+              (WrapPanel.create [
+                  // Spec 0050 S4.3: FuncUI conflates Name with AutomationProperties.Name;
+                  // initialize the write-once control name outside its property diff.
+                  WrapPanel.init (fun (panel : WrapPanel) -> panel.Name <- ConstructorUiId.savedScenes.value)
                   ConstructorUiId.savedScenes.automationAttribute<WrapPanel> ()
                   AttrBuilder<WrapPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Saved scenes", ValueNone)
                   WrapPanel.orientation Orientation.Horizontal
                   WrapPanel.children (
                       names |> List.map (fun name ->
                           workbenchButton (ConstructorUiId.savedScene name) name.caption (fun _ -> dispatch (SceneLoad name))))
-              ] :> IView ]
+               ] |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.savedScenes.value) :> IView ]
     // Spec 0046: measured-data files belong to the INVERSE problem alone — the forward (Main) constructor
     // shows no "Data files" section at all.
     let dataFileSection : IView list =

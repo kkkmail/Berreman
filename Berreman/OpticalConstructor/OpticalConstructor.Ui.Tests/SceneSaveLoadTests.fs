@@ -12,7 +12,7 @@ open Avalonia.Input
 open Avalonia.Interactivity
 open Avalonia.Threading
 open Avalonia.VisualTree
-open Elmish
+open global.Elmish
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
@@ -246,6 +246,7 @@ module SceneSaveLoadTests =
                     let mutable current = seed
                     let directMessages = ResizeArray<TableAndElementRotationMsg>()
                     let saveInputs = ResizeArray<TableAndElementRotationModel>()
+                    let renderErrors = ResizeArray<System.Exception>()
                     let reduce (message : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
                         directMessages.Add message
                         match message with
@@ -256,6 +257,7 @@ module SceneSaveLoadTests =
                     let liveWindow = HostWindow(Width = 1000.0, Height = 980.0)
                     Program.mkSimple (fun () -> seed) reduce mainView
                     |> Program.withHost liveWindow
+                    |> Program.withErrorHandler (fun (_, error) -> renderErrors.Add error)
                     |> Program.run
                     try
                         liveWindow.Show()
@@ -288,6 +290,10 @@ module SceneSaveLoadTests =
 
                             clickSceneControl ConstructorUiId.saveSceneButton liveWindow
 
+                            Assert.Empty renderErrors
+                            let savedScenes = findSceneControl ConstructorUiId.savedScenes liveWindow :?> WrapPanel
+                            Assert.Equal(ConstructorUiId.savedScenes.value, savedScenes.Name)
+                            Assert.Equal("Saved scenes", AutomationProperties.GetName savedScenes)
                             Assert.Equal<TableAndElementRotationMsg list>([ SceneSetName editedCaption; SceneSave ], List.ofSeq directMessages)
                             let saveInput = Assert.Single(saveInputs)
                             Assert.Equal(editedCaption, saveInput.sceneName)

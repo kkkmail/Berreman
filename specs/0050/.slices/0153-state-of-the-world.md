@@ -1,6 +1,30 @@
 # Where we are
 
-Slice 0153 implements the scene save/load workbench surface in spec 0050 S4.3, over the kit-backed model from 0152 and the existing scene/snapshot storage. Implementation and the four authorized test identities are written. Attempt 05 repairs Save activation so it commits the current name field before dispatching SceneSave, and extends the existing smoke fact with direct edit/click saves through a real Elmish host. Prior repairs and all original assertions remain intact. The arc-runner owns normal verification after this worker exits.
+The operator-approved recovery started from the committed partial attempt
+`d461ad3fca4cbfd5d98cae362029d7671b370e60`. Root-qualified `open global.Elmish`
+resolved FS0893. The first executable focused run then exposed a separate
+rendering failure: the saved-scenes panel declared both the control Name and
+AutomationProperties.Name, which FuncUI 2.0.0 matches by the same short name.
+On rerender it tried to reassign an already styled control's Name. Elmish caught
+the exception and retained the previous model, so the subsequent save received
+the old blank caption. A view key alone did not fix the collision.
+
+The panel now initializes its write-once Name through WrapPanel.init, retains
+its automation ID and accessible name, and carries its stable view key in the
+variable-membership section. The existing smoke fact captures Elmish errors
+and checks both names after each save. Every original assertion and all four
+declared identities remain. The regression passes two successive focused
+edit/click saves in each mode, with actual reducer input, persistence and
+previous-scene preservation; Enter/blur and refusal coverage remain intact.
+
+The repair is ready for the operator's commit. No commit or relaunch was
+performed. After that commit and an explicit relaunch request, use
+`--accept-current-slice --executability-profile 1`, as approved in the secondary
+review. The 0150-only normal-resume exception does not apply. Acceptance uses
+the existing expected-red backfill; numeric floors walk back to checkpoint 151.
+Do not fabricate checkpoint 152 or a selected-UI baseline. Step 0154 remeasures
+the two whole suites, but its different UI selection does not replace this
+completed 0153 verification.
 
 # What's working
 
@@ -13,15 +37,29 @@ Slice 0153 implements the scene save/load workbench surface in spec 0050 S4.3, o
 
 # Tests
 
-No build, test, analyzer, invariant or census execution was performed, per IMPLEMENT Invariant 6. No pass or measured post-change count is claimed. The supervisor must run build, elevation, constructor-unit-tests, ui-smoke, selected ui-tests and all eleven s17 invariants from 0153.gates.
+All sixteen unchanged 0153 gates passed: build, elevation, constructor-unit-tests,
+ui-smoke, the full 46-class selected ui-tests roster and eleven s17 invariants.
+Measured 1,149 constructor cases, 216 smoke cases and 617 selected UI cases
+(581 method identities), with zero failures/skips and exact census matches.
+The focused SceneSaveLoadTests run passed all four facts. The repaired Release
+build and full-roster build gate both reported zero warnings and zero errors.
+Supplemental elevation against accepted 0152 (`fc0d289`) passed over five
+product projects, including the committed Controls/Ui changes and dependents.
 
-Attempts 02 and 03 repaired historical supervisor-reported compilation errors. Attempt 04 addresses code-judge cycle 1's source-established runtime defect: plain RoutedEventArgs cannot satisfy the typed onLostFocus handler. The event now uses FocusChangedEventArgs(InputElement.LostFocusEvent), preserving the blur-commit assertion and subsequent Save/Load button checks. The judge supplied no executed test failure and listed gates as pending. No post-repair result is available; historical build diagnostics are not current verification results. Prior repairs remain intact; no MathNet source repair is claimed.
+Read-only validation passed for all 494 steps and the existing profile-1 receipt.
+All 988 compiled slice/gate artifacts remain byte-identical. Published spec,
+oracle, effects, supervisor state/counters, expected-red records, checkpoints,
+version files/lock, ASG/STL source and Git HEAD/index are unchanged. No checkpoint
+152 was created. The selected UI count is an observation, not a whole-suite floor.
+Inherited YAML floors remain 1,149 constructor / 215 smoke from checkpoint 151.
 
-The four exact SceneSaveLoadTests identities cover the sanitized setup filename, preset snapshot under library, restoration and reopen, blank-name refusal with no writes, missing-scene refusal preserving the table, and headless controls in both modes. Existing identities and assertions remain unchanged. Additional assertions within those identities cover repeat-save de-duplication, ordinal ordering, read-only refusal, name commits on Enter/blur and Save/Load button dispatch.
-
-Attempt 05 addresses code-judge cycle 2's source-established stale-name Save defect. The same smoke fact now also opens a real Elmish host in each mode, focuses and types into the name field, then clicks Save without synthesizing Enter or LostFocus. A second edit/save follows the first committed name in the same host. It asserts SceneSetName before SceneSave, the current name in the reducer's save input, successful status, stored names/content, preservation of all previous scenes and rendered saved-scene buttons. The original click implementation and assertions are reused through a private helper. No new identity was added and no prior assertion was removed; these extensions await supervisor execution.
-
-Checkpoint 151 supplies the inherited counts below. The expected smoke increase is one (215 to 216), and the selected non-smoke roster gains three facts, subject to supervisor measurement. The checkpoint supplies no whole-suite ui_tests baseline; none is authored here.
+Evidence is under [0153-operator-repair](../.artifacts/0153-operator-repair/):
+`verification-summary.json`, `gate-results.json`, `test-inventory.json`, the
+three full-gate TRX reports, `focused-results/scene-focused.trx`, build/analyzer
+logs, `contract-validation.json` and `final-scope-check.json`. The
+[rendering diagnosis](../.artifacts/0153-operator-repair/rendering-diagnosis.md)
+links the exact installed FuncUI source and preserved failing runs. The final
+scope audit confirms the verified product bytes and all original assertions.
 
 ```yaml
 gates:
@@ -41,10 +79,12 @@ Manual/010 overrides the scratch-then-load test recipe: initMainWithKit now owns
 
 # Deferred
 
-No implementation requirement is deferred. Verification is assigned to the supervisor. Empty gate results and commit_ready false indicate pending verification, not an unresolved implementation question.
+No implementation or verification work remains for this repair. Waiting for the operator to commit and then explicitly request relaunch. Historical worker handoffs remain historical; supervisor acceptance has not been published.
 
 # Gotchas
 
+- Root-qualify Elmish when Avalonia.FuncUI is open; its child module otherwise captures the bare import.
+- The saved-scenes panel initializes Name once, outside FuncUI's property diff; do not combine Name and AutomationProperties.Name as ordinary attributes.
 - Scene names preserve their original text in storage/UI; file stems sanitize forbidden characters, so Bench: A is stored as Bench_ A.setup-json.
 - Open Domain.Scene before calling SceneName.tryCreate: the module-qualified expression resolves through the same-named DU case, producing FS0039.
 - The removal message is RemoveSelectedElement, despite the slice prose's RemoveSelected shorthand. Visual descendants are selected with Seq.choose and a Control type pattern; Seq.ofType is unavailable.
@@ -62,3 +102,5 @@ No implementation requirement is deferred. Verification is assigned to the super
 - 2026-11-08 (attempt 03): Repaired the two supervisor-reported test compilation references; preserved all four identities, assertions and product behavior, with verification assigned to the supervisor.
 - 2026-11-08 (attempt 04): Repaired the smoke fact's lost-focus event arguments; preserved the blur-commit and all remaining assertions, all four identities, gate roster and acceptance authority, with normal verification assigned to the supervisor.
 - 2026-11-08 (attempt 05): Committed the current scene-name field before Save and extended the existing smoke identity with successive focused edit/click saves in both modes; preserved all prior assertions, semantic contracts, four identities and gate authority. Normal supervisor verification remains pending.
+
+- 2026-11-08 (approved operator recovery): Repaired the Elmish import and measured saved-scenes Name collision; preserved all prior assertions and strengthened the existing smoke fact. All sixteen gates, exact census, supplemental elevation and unchanged plan/receipt validation passed. Awaiting operator commit; no relaunch or acceptance performed.

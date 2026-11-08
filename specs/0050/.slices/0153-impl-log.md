@@ -1,6 +1,58 @@
 # Implementation log — 0153
 
-## Progress
+## Operator recovery — 2026-11-08
+
+The operator-approved recovery started from the committed partial attempt
+`d461ad3fca4cbfd5d98cae362029d7671b370e60`. Root-qualified `open global.Elmish`
+resolved FS0893. The first executable focused run then exposed a separate
+rendering failure: the saved-scenes panel declared both the control Name and
+AutomationProperties.Name, which FuncUI 2.0.0 matches by the same short name.
+On rerender it tried to reassign an already styled control's Name. Elmish caught
+the exception and retained the previous model, so the subsequent save received
+the old blank caption. A view key alone did not fix the collision.
+
+The panel now initializes its write-once Name through WrapPanel.init, retains
+its automation ID and accessible name, and carries its stable view key in the
+variable-membership section. The existing smoke fact captures Elmish errors
+and checks both names after each save. Every original assertion and all four
+declared identities remain. The regression passes two successive focused
+edit/click saves in each mode, with actual reducer input, persistence and
+previous-scene preservation; Enter/blur and refusal coverage remain intact.
+
+All sixteen unchanged 0153 gates passed: build, elevation, constructor-unit-tests,
+ui-smoke, the full 46-class selected ui-tests roster and eleven s17 invariants.
+Measured 1,149 constructor cases, 216 smoke cases and 617 selected UI cases
+(581 method identities), with zero failures/skips and exact census matches.
+The focused SceneSaveLoadTests run passed all four facts. The repaired Release
+build and full-roster build gate both reported zero warnings and zero errors.
+Supplemental elevation against accepted 0152 (`fc0d289`) passed over five
+product projects, including the committed Controls/Ui changes and dependents.
+
+Read-only validation passed for all 494 steps and the existing profile-1 receipt.
+All 988 compiled slice/gate artifacts remain byte-identical. Published spec,
+oracle, effects, supervisor state/counters, expected-red records, checkpoints,
+version files/lock, ASG/STL source and Git HEAD/index are unchanged. No checkpoint
+152 was created. The selected UI count is an observation, not a whole-suite floor.
+Inherited YAML floors remain 1,149 constructor / 215 smoke from checkpoint 151.
+
+The repair is ready for the operator's commit. No commit or relaunch was
+performed. After that commit and an explicit relaunch request, use
+`--accept-current-slice --executability-profile 1`, as approved in the secondary
+review. The 0150-only normal-resume exception does not apply. Acceptance uses
+the existing expected-red backfill; numeric floors walk back to checkpoint 151.
+Do not fabricate checkpoint 152 or a selected-UI baseline. Step 0154 remeasures
+the two whole suites, but its different UI selection does not replace this
+completed 0153 verification.
+
+Evidence is under [0153-operator-repair](../.artifacts/0153-operator-repair/):
+`verification-summary.json`, `gate-results.json`, `test-inventory.json`, the
+three full-gate TRX reports, `focused-results/scene-focused.trx`, build/analyzer
+logs, `contract-validation.json` and `final-scope-check.json`. The
+[rendering diagnosis](../.artifacts/0153-operator-repair/rendering-diagnosis.md)
+links the exact installed FuncUI source and preserved failing runs. The final
+scope audit confirms the verified product bytes and all original assertions.
+
+## Worker progress (historical)
 
 - Read AGENTS.md, the task, both worker prompts, the project prompt, slice/gate contract, naming conventions and manual/010.
 - Before implementation: traced scene snapshots, kit recording/opening and the workbench update/view seams. Existing storage owns canonical setup files and library snapshots.
@@ -36,7 +88,7 @@ Attempt 05, source review and handoff: confirmed the new fixture uses the existi
 - Berreman/OpticalConstructor/OpticalConstructor.Controls/UiIds.fs
 - specs/0050/.slices/0153-state-of-the-world.md
 
-## Testing state
+## Worker testing state (historical; superseded by operator verification above)
 
 No checks or gates run. IMPLEMENT Invariant 6 assigns execution and measured results to the arc-runner after worker exit. Build, elevation, constructor-unit-tests, ui-smoke, selected ui-tests and eleven s17 invariants remain for the supervisor.
 
@@ -46,7 +98,7 @@ Attempt 05 addresses code-judge cycle 2's source-established stale-name Save def
 
 Checkpoint 151 records constructor_unit_tests = 1149 and ui_smoke_tests = 215. These are inherited measurements, not new baselines. This slice adds exactly three ui-tests facts and one ui-smoke fact; the expected smoke count is 216, subject to supervisor measurement. The checkpoint has no whole-suite ui_tests value, so none is invented. commit_ready remains false pending supervisor verification, with no unresolved implementation blocker.
 
-## Artifacts
+## Worker artifacts (historical)
 
 No runtime artifacts generated. Any persistent artifacts belong only in specs/0050/.artifacts.
 
