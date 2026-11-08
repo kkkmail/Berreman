@@ -151,3 +151,26 @@ module AppConfigTests =
                     shippedCatalogueFolder = FolderName (Path.Combine(install.value, "Catalogue"))
                 }
             Assert.Equal<DataLocations>(expected, locations))
+
+    [<Fact>]
+    let ``the count doors read a positive whole number and refuse anything else, the kit history limit's included`` () : unit =
+        let configured = AppSettings.ConfigValue "250"
+        let zero = AppSettings.ConfigValue "0"
+        let ten = AppSettings.ConfigValue "ten"
+        let notPositive = "not a positive count: '0'"
+        let notWhole = "not a whole number: 'ten'"
+
+        match KitHistoryLimit.tryCreate configured with
+        | Ok limit ->
+            Assert.Equal(250, limit.value)
+            Assert.Equal<AppSettings.ConfigValue>(configured, limit.configValue)
+        | Error refusal -> Assert.Fail($"expected a kit history limit of 250, got '{refusal}'")
+
+        Assert.Equal<Result<KitHistoryLimit, string>>(Error notPositive, KitHistoryLimit.tryCreate zero)
+        Assert.Equal<Result<KitHistoryLimit, string>>(Error notWhole, KitHistoryLimit.tryCreate ten)
+        Assert.Equal<Result<QuickPickThreshold, string>>(Error notPositive, QuickPickThreshold.tryCreate zero)
+        Assert.Equal<Result<QuickPickThreshold, string>>(Error notWhole, QuickPickThreshold.tryCreate ten)
+        Assert.Equal<Result<TreeAutoBuildThreshold, string>>(Error notPositive, TreeAutoBuildThreshold.tryCreate zero)
+        Assert.Equal<Result<TreeAutoBuildThreshold, string>>(Error notWhole, TreeAutoBuildThreshold.tryCreate ten)
+        Assert.Equal<Result<ThicknessBucketCap, string>>(Error notPositive, ThicknessBucketCap.tryCreate zero)
+        Assert.Equal<Result<ThicknessBucketCap, string>>(Error notWhole, ThicknessBucketCap.tryCreate ten)

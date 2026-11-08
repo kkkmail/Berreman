@@ -98,13 +98,14 @@ module WorkbenchSettings =
     /// The workbench settings record: every field an elevated type — no naked bool,
     /// no raw int. `defaults` is the single source of the built-in values (the
     /// composition root reads each key with its field of `defaults` as the default, so
-    /// 5 / 100 / 8 / modeless appear exactly once, here).
+    /// 5 / 100 / 8 / modeless and the kit history limit's 100 appear exactly once, here).
     type WorkbenchSettings =
         {
             selectWindowModality : SelectWindowModality
             quickPickThreshold : QuickPickThreshold
             treeAutoBuildThreshold : TreeAutoBuildThreshold
             thicknessBucketCap : ThicknessBucketCap
+            kitHistoryLimit : KitHistoryLimit
         }
 
         static member defaults : WorkbenchSettings =
@@ -113,6 +114,7 @@ module WorkbenchSettings =
                 quickPickThreshold = QuickPickThreshold.defaultValue
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
                 thicknessBucketCap = ThicknessBucketCap.defaultValue
+                kitHistoryLimit = KitHistoryLimit.defaultValue
             }
 
     /// Every location of 001 §G, each an appsettings.json key read once at the composition root (spec 0050 S2.4).

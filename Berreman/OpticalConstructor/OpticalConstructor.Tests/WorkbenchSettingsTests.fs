@@ -48,8 +48,14 @@ module WorkbenchSettingsTests =
                 quickPickThreshold = QuickPickThreshold.defaultValue
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
                 thicknessBucketCap = ThicknessBucketCap.defaultValue
+                kitHistoryLimit = KitHistoryLimit.defaultValue
             }
         Assert.Equal(constructed, WorkbenchSettings.defaults)
+
+    [<Fact>]
+    let ``the default settings carry a kit history limit of 100`` () : unit =
+        Assert.Equal(KitHistoryLimit.defaultValue, WorkbenchSettings.defaults.kitHistoryLimit)
+        Assert.Equal(100, WorkbenchSettings.defaults.kitHistoryLimit.value)
 
     [<Fact>]
     let ``select-window modality round-trips its wire form: false is modeless, true is modal`` () =
@@ -146,8 +152,10 @@ module WorkbenchSettingsTests =
                 quickPickThreshold = QuickPickThreshold.tryCreate 7 |> okOr QuickPickThreshold.defaultValue
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.tryCreate 250 |> okOr TreeAutoBuildThreshold.defaultValue
                 thicknessBucketCap = ThicknessBucketCap.tryCreate 12 |> okOr ThicknessBucketCap.defaultValue
+                kitHistoryLimit = KitHistoryLimit.tryCreate 250 |> okOr KitHistoryLimit.defaultValue
             }
         Assert.Equal(ModalSelectWindows, assembled.selectWindowModality)
         Assert.Equal(7, assembled.quickPickThreshold.value)
         Assert.Equal(250, assembled.treeAutoBuildThreshold.value)
         Assert.Equal(12, assembled.thicknessBucketCap.value)
+        Assert.Equal(250, assembled.kitHistoryLimit.value)

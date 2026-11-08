@@ -36,6 +36,10 @@ module ConfigKey =
     [<Literal>]
     let thicknessBucketCap = "ThicknessBucketCap"
 
+    /// appSettings int (001 §F): the most kits the history keeps. Default 100 — `KitHistoryLimit.defaultValue`.
+    [<Literal>]
+    let kitHistoryLimit = "KitHistoryLimit"
+
     /// The library database's SQLite connection string, read through `AppSettingsProvider.tryGetConnectionString` (spec 0050 §3.18).
     [<Literal>]
     let sqliteConnectionString = "OpticalConstructorSqlite"
@@ -82,37 +86,31 @@ module WorkbenchSettingsDoors =
             | ModalSelectWindows -> AppSettings.ConfigValue "true"
             | ModelessSelectWindows -> AppSettings.ConfigValue "false"
 
-    type QuickPickThreshold with
-        static member tryCreate (v : AppSettings.ConfigValue) : Result<QuickPickThreshold, string> =
-            match System.Int32.TryParse(v.value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
+    type AppSettings.ConfigValue with
+        /// The one body of the count doors (spec 0050 step 163): an invariant-culture whole number the type's own `tryCreate` accepts.
+        /// Generic in the refusal it discards, so its int and string sit beside none of our types (ELEV010P).
+        member private this.tryPositiveCount (create : int -> Result<'Setting, 'Refusal>) : Result<'Setting, string> =
+            match System.Int32.TryParse(this.value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
             | true, count ->
-                match QuickPickThreshold.tryCreate count with
-                | Ok threshold -> Ok threshold
-                | Error _ -> Error $"not a positive count: '{v.value}'"
-            | false, _ -> Error $"not a whole number: '{v.value}'"
+                match create count with
+                | Ok setting -> Ok setting
+                | Error _ -> Error $"not a positive count: '{this.value}'"
+            | false, _ -> Error $"not a whole number: '{this.value}'"
 
+    type QuickPickThreshold with
+        static member tryCreate (v : AppSettings.ConfigValue) : Result<QuickPickThreshold, string> = v.tryPositiveCount QuickPickThreshold.tryCreate
         member this.configValue : AppSettings.ConfigValue = AppSettings.ConfigValue $"{this.value}"
 
     type TreeAutoBuildThreshold with
-        static member tryCreate (v : AppSettings.ConfigValue) : Result<TreeAutoBuildThreshold, string> =
-            match System.Int32.TryParse(v.value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
-            | true, count ->
-                match TreeAutoBuildThreshold.tryCreate count with
-                | Ok threshold -> Ok threshold
-                | Error _ -> Error $"not a positive count: '{v.value}'"
-            | false, _ -> Error $"not a whole number: '{v.value}'"
-
+        static member tryCreate (v : AppSettings.ConfigValue) : Result<TreeAutoBuildThreshold, string> = v.tryPositiveCount TreeAutoBuildThreshold.tryCreate
         member this.configValue : AppSettings.ConfigValue = AppSettings.ConfigValue $"{this.value}"
 
     type ThicknessBucketCap with
-        static member tryCreate (v : AppSettings.ConfigValue) : Result<ThicknessBucketCap, string> =
-            match System.Int32.TryParse(v.value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
-            | true, count ->
-                match ThicknessBucketCap.tryCreate count with
-                | Ok cap -> Ok cap
-                | Error _ -> Error $"not a positive count: '{v.value}'"
-            | false, _ -> Error $"not a whole number: '{v.value}'"
+        static member tryCreate (v : AppSettings.ConfigValue) : Result<ThicknessBucketCap, string> = v.tryPositiveCount ThicknessBucketCap.tryCreate
+        member this.configValue : AppSettings.ConfigValue = AppSettings.ConfigValue $"{this.value}"
 
+    type KitHistoryLimit with
+        static member tryCreate (v : AppSettings.ConfigValue) : Result<KitHistoryLimit, string> = v.tryPositiveCount KitHistoryLimit.tryCreate
         member this.configValue : AppSettings.ConfigValue = AppSettings.ConfigValue $"{this.value}"
 
 /// Read workbench settings and data locations once for Startup; downstream consumers receive elevated values.
@@ -198,6 +196,7 @@ module AppConfig =
                     quickPickThreshold = readSetting provider (AppSettings.ConfigKey ConfigKey.quickPickThreshold) defaults.quickPickThreshold QuickPickThreshold.tryCreate _.configValue
                     treeAutoBuildThreshold = readSetting provider (AppSettings.ConfigKey ConfigKey.treeAutoBuildThreshold) defaults.treeAutoBuildThreshold TreeAutoBuildThreshold.tryCreate _.configValue
                     thicknessBucketCap = readSetting provider (AppSettings.ConfigKey ConfigKey.thicknessBucketCap) defaults.thicknessBucketCap ThicknessBucketCap.tryCreate _.configValue
+                    kitHistoryLimit = readSetting provider (AppSettings.ConfigKey ConfigKey.kitHistoryLimit) defaults.kitHistoryLimit KitHistoryLimit.tryCreate _.configValue
                 }
             let locations = readDataLocations provider install documents
 
