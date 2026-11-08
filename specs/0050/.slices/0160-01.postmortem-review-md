@@ -1,0 +1,192 @@
+# Secondary review: 0160-01 — material schema extraction conflict
+
+This is the owning orchestrator's advisory review of the agent-written
+[primary postmortem](0160-01.postmortem-md). It is not a mechanical fallback or
+an operator ruling. Implementation awaits agreement.
+
+Incident: arc-watch `e3edc44ec818443d9f014d7fc6c7e7f4`, supervisor PID `214268`.
+The [event](../.artifacts/arc-watch/e3edc44ec818443d9f014d7fc6c7e7f4/event.json),
+ticket and launch record agree on event ID, PID and spec. Terminal escalation
+was recorded at `2026-11-08T14:15:51Z`; the watcher observed exit at `14:16:35Z`.
+The supervisor has exited. This event names the primary report above.
+
+## Conclusion
+
+The primary's diagnosis is correct: **0160 contains a stale specification
+instruction that contradicts accepted caller-owned category behavior**. The
+worker, judge and resolver stopped appropriately. This is not a quota failure,
+Git failure, exhausted repair loop or demonstrated ASG runtime defect.
+
+The slice requires extracting the original material schema definitions exactly,
+including a fixed category enum, and rejecting the string `NotACategory`. It
+also requires retaining every existing ExportImportTests assertion. One of
+those accepted assertions exports and directly validates `Glass from the
+caller`, which that enum excludes. The current effective schema deliberately
+removes the enum. Copying the original file literally would undo the accepted
+0046 repair.
+
+Preserve that effective schema, keep category membership in the caller-list
+checks, and use a non-string category for the new structural-error test. The
+rest of the retirement remains required. No ASG source change, budget increase,
+test weakening or gate waiver is indicated.
+
+I recommend a different commit sequence from the primary: complete and verify
+the whole repair, then let the operator commit once, as in this conversation's
+previous recoveries. A new, explicit **0160-only normal-resume exception** must
+accompany that plan because this slice needs a measured checkpoint. The prior
+0150 exception does not itself authorize this one.
+
+## Independent evidence
+
+- HEAD is accepted 0159, `8d82da6e42c50a356e3261809ecfc59bcf69478a`. State
+  records 159 completed slices and current index 159/0160 escalated, with zero
+  route-backs and one resolver invocation. Product source is unchanged; the
+  [review diff](../.artifacts/review/0160-epoch-01-cycle-01-tracked.diff) is empty.
+  The uncommitted files are supervisor state and the primary/worker reports.
+  The codec, aggregate, original schema and retiring tests still exist.
+- The 0153 repair held: 0154–0159 completed normally. Checkpoint 153 measured
+  1,149 constructor and 219 smoke cases after 0154's additions. Checkpoint 158
+  measures 1,142 constructor cases after subsequent authorized retirements.
+  This incident does not reopen the Elmish import or scene-panel repair.
+- The supervisor log records one successful preliminary build at `14:05:13Z`,
+  exit 0 in 68.3 seconds. It built the inherited tree; it cannot verify an
+  unimplemented retirement. The judge's pending-gate list is not evidence that
+  this earlier build never happened. No completed-0160 verification exists.
+- [0160.slice-md](0160.slice-md), implementation item 3, says to copy four
+  definitions exactly and load the new schema directly. Item 6 prescribes
+  `NotACategory`; acceptance retains all other ExportImportTests facts.
+  `OpticalConstructor.Storage/schema/optical-constructor-project.schema.json`
+  restricts category to Glass, Metal, Semiconductor, Crystal and Vacuum.
+- `OpticalConstructor.Tests/ExportImportTests.fs:146–179` supplies `Glass from
+  the caller`, checks that exact exported name, directly validates the element,
+  and checks imported identity, category and description. Its existing malformed
+  input coverage also rejects numeric category data. Its other retained checks
+  reject missing caller categories and preserve the destination on failed export.
+- `OpticalConstructor.Storage/Report.fs:55–59` removes only the obsolete enum
+  from the effective schema. Import resolves category names through the supplied
+  list; export resolves category IDs through that list before structural
+  validation. Git blame assigns the enum removal to accepted `3e274986`.
+  The [0046 failing run](../.artifacts/0046-retry-red.log) records this exact
+  export rejection before the fix. The accepted
+  [0046 judge](../.artifacts/code_judge/0046-01-code-judge.md) explicitly approves
+  the caller-list behavior and preserved structural checks.
+- The oracle's `S17-CATEGORY-LIST` requires caller-supplied categories.
+  `S44-PROJECT-CODEC` requires a standalone schema, shared validation and a
+  structural refusal; it does not prescribe the string `NotACategory` or require
+  restoring fixed membership. The proposed ruling reconciles the implementation
+  recipe while preserving both obligations and every existing assertion.
+- Source inspection confirms that `materialEntry`'s reference closure is exactly
+  `materialEntry`, `dispersionModel`, `thermoOptic` and `unitOfMeasure`.
+  `SchemaValidation.validateWith` already returns nonempty diagnostic messages
+  for failed evaluation. Keep every structural constraint other than the
+  obsolete category enum, including the other definitions' enums.
+- `CanonicalJson.fs:128` and `EntryFileJson.fs:87` contain the two stale comment
+  references. Their removal follows the explicit whole-tree absence requirement;
+  they are not another substantive blocker. Include documentation-only authority
+  for these two files in the ruling so the edit scope is unambiguous.
+
+Read-only full-plan validation passed for all 494 steps and the current profile-1
+receipt. This validates the declared effects and checks; it does not resolve
+the semantic contradiction. No build, test or gate was run in this review.
+
+## Proposed actions — subject to operator agreement
+
+1. **Record the bounded ruling and recovery exception.** Add
+   `.manual/012-step-0160-material-schema-recovery.md` and a pointer in
+   `.user-md/Berreman/arc-runner.user-md`. Authorize extracting the effective
+   structural schema without its obsolete category enum, using numeric category
+   `12` in the already-declared negative fact, and removing the two stale
+   documentation references. Retain caller-list membership and every accepted
+   export/import assertion. State that later edits, particularly 0354, preserve
+   this contract. Explicitly authorize normal resume after the operator commits
+   the complete repair, overriding the committed-green acceptance rule for
+   **0160 only**. Refresh the profile-1 receipt after validating all 494 steps,
+   preserving all 988 compiled slice/gate artifacts byte-for-byte. Do not edit
+   the published ledger, spec, oracle, gate contracts or test effects.
+
+2. **Complete the whole original 0160 retirement.** Move the four definitions
+   into `schema/material-metadata.schema.json`, with the specified draft, `$id`,
+   root reference and `PreserveNewest` project item. Remove only the category
+   enum from the moved definitions. Replace Report.fs's in-memory adaptation
+   and duplicate evaluation body with the existing lazy `tryLoadSchema` and
+   `validateWith` seams; retain import/export membership checks and the DTO.
+   Delete the old codec, project schema and Domain aggregate with their project
+   entries, and finish the specified reference/documentation cleanup. Move the
+   fresh-table fact unchanged to TableViewTests, delete exactly the seven
+   declared facts, and add the declared structural-error fact using a valid
+   GUID/name and numeric category. Require `SchemaValidationErr` with nonempty
+   messages. Preserve every other fact, identity and assertion. Do not restore
+   already-retired history/project-file code or add a compatibility path.
+
+3. **Verify the complete result.** Run all fifteen unchanged 0160 gates through
+   the normal evaluator/census context: build, elevation, the whole constructor
+   suite and twelve s18 invariants. Run the required whole-tree retirement
+   search and inspect all new files as well. Require exactly **1,136 constructor
+   cases**, the exact declared identity changes, zero failures/skips, no owned
+   code warnings and zero new elevation findings. Exercise all ExportImportTests
+   and the moved fresh-table fact, retaining caller-defined-name success,
+   membership refusal, destination preservation and structural diagnostics.
+   Include every affected product project and dependent in elevation; use
+   accepted `8d82da6` as the base if an intervening commit hides implementation
+   changes from ordinary selection. No new test identity or operator census row
+   is needed beyond the published effects.
+
+4. **Prepare the verified handoff, then wait for the operator's commit.** Store
+   evidence and the future operator reply under `.artifacts/0160-operator-repair/`.
+   Update the implementation log and state-of-world with measured results and
+   the ruling, retaining inherited YAML floors. Revalidate the full plan and
+   receipt and prove all 988 compiled files unchanged. Preserve supervisor
+   state, counters, expected-red records, checkpoints/case evidence, contract
+   registries, version files/lock and ASG/STL source. Leave the complete repair
+   for the operator to commit; do not commit or relaunch during these steps.
+
+## Eventual resume and checkpoint requirement
+
+After agreement, implementation, successful verification, the operator's commit
+and an explicit relaunch request, use:
+
+`--operator-reply <absolute-recovery-note> --executability-profile 1`
+
+Do **not** use `--accept-current-slice` for this recovery. Normal review and
+verification must publish **checkpoint 159 and its measured case evidence**
+before advancing. The reply should instruct the worker to preserve the verified
+implementation and return it for normal review and all fifteen gates, referring
+to manual 012; it must not claim local evidence is supervisor acceptance.
+
+The arithmetic and failure mode are independently checked. Checkpoint 158 holds
+1,142 cases. All seven declared deleted methods have one observed passing case;
+the migration changes no count and the new fact adds one: `1142 - 7 + 1 = 1136`.
+ASG currently computes seven authorized removal credits for 0160. Step 0161 has
+no deletion credit. Accepting 0160 without measurement would leave 0161 walking
+back to the old 1,142 floor, despite the valid 1,136-case suite. Do not manufacture
+a lower checkpoint or reuse a filtered report to hide this mismatch.
+
+This agrees with the primary about the need for normal resume. Its alternative
+is to commit authority files first, then leave the implementation uncommitted
+for supervisor finalization. That avoids a standing-rule exception but introduces
+a separate preparatory commit and changes the established operator workflow.
+The proposed explicit exception permits one complete reviewed commit, following
+the pattern used at 0132, 0145 and 0150. None of those earlier exceptions is
+silently extended here.
+
+## Recurrence and prevention
+
+The specific behavior was fixed at 0046; the downstream extraction recipe still
+points at the pre-adaptation schema. This is the same general stale downstream
+instruction pattern seen in earlier specification reconciliations, not evidence
+that the old runtime fix failed. Copying effective behavior and retaining its
+accepted regressions prevents the reintroduction.
+
+A fresh scan of all 494 steps finds the `NotACategory` prescription only at
+0160. The only later effects editing Report.fs or ExportImportTests.fs are at
+0354; the standing rule must apply there. There are 303 remaining whole-constructor
+observations from 0160 onward. Step 0267's historical reference to ProjectJson
+does not authorize restoring it. Preserve the accepted assertions through later
+work rather than adding fixture-specific exceptions or model-specific retries.
+
+## Review boundary
+
+Only this matching secondary report was written. The primary, source, worker
+handoffs, published requirements, supervisor records and Git state were left
+unchanged. No repair, gate execution, acceptance or restart was performed.
+The proposed actions await operator agreement.
