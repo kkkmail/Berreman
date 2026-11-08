@@ -335,7 +335,7 @@ ASALocalRun/
 
 # Optical Constructor (Spec 0022, Part I §I.4): derived/bulk .binz sidecars
 # (sweep tables, field maps, fit histories) are regenerable and excluded from
-# version control. Canonical `.ocproj` project files remain committable.
+# version control.
 *.binz
 
 # ASG arc-runner v7 (spec 0075 F.2/D.3): per-attempt console streams and

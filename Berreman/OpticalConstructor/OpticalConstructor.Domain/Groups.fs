@@ -179,7 +179,7 @@ module Groups =
 
     /// The reusable groups + collections library (G.3 / H.1): the value the separate per-user
     /// app-data JSON file holds. `OpticalConstructor.Storage/GroupsLibrary.fs` owns the load/save
-    /// and schema validation of this value; it is kept apart from any per-project `.ocproj`.
+    /// and schema validation of this value.
     type GroupsLibrary =
         {
             groups : ElementGroup list

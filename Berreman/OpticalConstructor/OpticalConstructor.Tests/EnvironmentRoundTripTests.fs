@@ -380,7 +380,7 @@ module EnvironmentRoundTripTests =
         // Take a valid serialized envelope and graft a legacy `recentFiles` array onto
         // it, simulating a file written before the field was dropped.
         let envelope = (JsonNode.Parse (sample.serialize |> okOr).value).AsObject()
-        envelope.["recentFiles"] <- JsonNode.Parse """[ "a.ocproj", "b.ocproj" ]"""
+        envelope.["recentFiles"] <- JsonNode.Parse """[ "C:/kits/a", "C:/kits/b" ]"""
         // The root schema is permissive (no additionalProperties:false), so the legacy
         // field still VALIDATES; STJ ignores the unmapped property on bind.
         let back = (EnvironmentJsonText (envelope.ToJsonString())).deserialize |> okOr
@@ -392,7 +392,7 @@ module EnvironmentRoundTripTests =
         let path = Path.Combine(Path.GetTempPath(), $"""oc-env-legacy-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
             let envelope = (JsonNode.Parse (sample.serialize |> okOr).value).AsObject()
-            envelope.["recentFiles"] <- JsonNode.Parse """[ "a.ocproj" ]"""
+            envelope.["recentFiles"] <- JsonNode.Parse """[ "C:/kits/a" ]"""
             File.WriteAllText(path, envelope.ToJsonString())
             // A genuine total load off disk: the legacy file loads to the real settings,
             // NOT the built-in defaults (which would signal a validation/migration miss).

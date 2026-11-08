@@ -10,16 +10,9 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.SchemaValidation
 
-/// The separate per-user groups + experiment-collections store (Spec 0026 Part G/H, slice
-/// 007 / R-3, R-4). Element groups (G.1) and experiment collections (H.1) are persisted in
-/// their OWN JSON file, kept apart from the per-project `.ocproj`, so reusable groups and
-/// sample-centred collections are available across projects (G.3.1). This module owns that
-/// file's load/save and validate-on-load. It REUSES the slice-003 shared `CanonicalJson.options`
-/// `JsonSerializerOptions` (§I.1 — never a second JSON stack) and the one schema evaluation body,
-/// `SchemaValidation.validateWith` (R-4 / G.3.1; spec 0050 step 29). Only the lazy `JsonSchema`
-/// itself is local, keyed by a distinct `$id`. No new serializer (G.4); no schema migration (a
-/// `schemaVersion` mismatch is a `SchemaValidationErr`, never a migration). The file lives at a fixed per-user app-data path
-/// outside the repository working tree (G.3.2), so it raises no `.gitignore` collision.
+/// The per-user groups + experiment-collections file (Spec 0026 Part G/H), read and written through
+/// the shared `CanonicalJson.options` and validated on load through `validateWith` (spec 0050 step 29);
+/// a `schemaVersion` mismatch is a `SchemaValidationErr`, never a migration.
 module GroupsLibrary =
 
     /// The single shipped groups-schema version, pinned with `const` in the schema. A differing
