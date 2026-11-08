@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://berreman/schema/kit-history.json",
+  "title": "KitHistory",
+  "description": "The kits the user has opened, kit-history.json (spec 0050 S5.1). Only version 1's body is validated so other positive schema versions reach the typed version check before binding.",
+  "type": "object",
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" }
+  },
+  "if": {
+    "required": ["schemaVersion"],
+    "properties": { "schemaVersion": { "const": 1 } }
+  },
+  "then": {
+    "required": ["schemaVersion", "entries"],
+    "additionalProperties": false,
+    "properties": {
+      "schemaVersion": true,
+      "entries": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["folder", "kitId", "name", "lastOpened", "star"],
+          "additionalProperties": false,
+          "properties": {
+            "folder": { "type": "string", "minLength": 1 },
+            "kitId": { "$ref": "https://berreman/schema/library-common.json#/$defs/guid" },
+            "name": { "type": "string", "pattern": "\\S" },
+            "lastOpened": { "type": "string" },
+            "star": { "type": "integer", "enum": [1, 2] }
+          }
+        }
+      }
+    }
+  }
+}

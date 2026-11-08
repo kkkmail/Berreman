@@ -29,6 +29,7 @@
         <Compile Include="CatalogueImportStore.fs" />
         <Compile Include="KitFolderStore.fs" />
         <Compile Include="KitContentFiles.fs" />
+        <Compile Include="KitHistoryStore.fs" />
         <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-
              collections store. Reuses CanonicalJson.options + the validate-on-load seam;
              compiles after CanonicalJson (its shared options). -->
@@ -93,6 +94,9 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="schema\kit.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\kit-history.schema.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="schema\experiment.schema.json">

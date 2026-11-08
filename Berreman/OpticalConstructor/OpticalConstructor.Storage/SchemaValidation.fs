@@ -137,3 +137,10 @@ module SchemaValidation =
 
     /// Validates a setup file before its version is compared and its scene binds (spec 0050 S4.3).
     let validateSceneFile (element : JsonElement) : Result<unit, StorageError> = validateWith sceneFileSchema element
+
+    let private kitHistorySchemaFile : FileName = FileName (Path.Combine("schema", "kit-history.schema.json"))
+
+    let private kitHistorySchema : Result<JsonSchema, StorageError> Lazy = lazy (kitHistorySchemaFile.tryLoadLibrarySchema ())
+
+    /// Validates the kit history file before its version is compared and its history binds (spec 0050 S5.1).
+    let validateKitHistory (element : JsonElement) : Result<unit, StorageError> = validateWith kitHistorySchema element
