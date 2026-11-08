@@ -253,6 +253,12 @@ preserve all accepted export/import assertions. Its explicit 0160 recovery
 exception requires normal profile-1 resume after the operator's commit to record
 checkpoint 159 and measured case evidence, without `--accept-current-slice`.
 
+For spec 0050 from step 0160 onward, also read
+`specs/0050/.manual/013-arc-origin-elevation-recovery.md`. Elevation covers all
+committed and uncommitted arc changes from the immutable `.arc-base-json`
+origin supplied by ASG. Operator commits never narrow that scope. Preserve the
+0160 normal-resume exception and its measured checkpoint requirement.
+
 The repository's own walls, from AGENTS.md:
 
 - **Never bump a version ring**, Berreman's or STL's.

@@ -46,7 +46,7 @@ cd Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests && dotnet test --no-b
 # One class, or one test with all its theory rows (xUnit v3 filters, never VSTest's --filter)
 dotnet test --no-build -c Release --filter-method "BerremanTests.SolverTests.*" --filter-method "BerremanTests.SolverTests"
 
-# The ELEV analyzers over what you changed (repo root, after the build)
+# The ELEV analyzers (repo root, after the build; all projects without a base)
 powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004
 ```
 
@@ -376,8 +376,11 @@ declaration with `[<ElevationBoundary(nameof IoBoundary, "<reason>")>]` (or
 bulk numbers on purpose with `[<NumericCarrier("<reason>")>]`. Both are
 `Softellect.Sys` types, matched by name.
 
-The gates are `elevation` (the projects a step touches, plus their dependents)
-and `elevation-full` (every project). **ELEV004 is excluded in the gate command,
+The gates are `elevation` (changes since ASG's immutable arc-start commit, plus
+uncommitted changes and dependents) and `elevation-full` (every project).
+Standalone elevation without `-Base` analyzes every project; ASG supplies its
+origin through `ASG_ARC_BASE_COMMIT` (spec 0050 `.manual/013`).
+**ELEV004 is excluded in the gate command,
 not in the rules**, as in STL. **The tree is ELEV-clean** (spec 0048 closed the
 cleanup): `Elevation/elevation-known-findings.json` lists no finding, so every
 finding fails the gate. **Never add an entry, never re-record the list, and never
