@@ -5,6 +5,7 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Scene
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
@@ -114,3 +115,17 @@ module KitContentFiles =
                         |> Result.bind (fun text -> text.parseSceneFile |> Result.mapError (contentStorageRejectedErr file))
                         |> Result.map (fun parsed -> parsed.name :: names))) (Ok []))
             |> Result.map (List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value)))
+
+    type KitLibraryContext with
+
+        /// Snapshots and pins the experiment's library closure before writing its file (spec 0050 S4.3).
+        /// A failure stops recording and retains snapshots already written.
+        member this.recordExperiment (experiment : Experiment) : Result<unit, KitLibraryError> =
+            this.snapshotReferences experiment.libraryReferences
+            |> Result.bind (fun _ -> this.kit.proxy.writeExperiment experiment |> Result.mapError KitLibraryKitErr)
+
+        /// Snapshots and pins the scene's bound entries before writing its named file (spec 0050 S4.3).
+        /// A failure stops recording and retains snapshots already written.
+        member this.recordScene (name : SceneName) (scene : SceneSnapshot) : Result<unit, KitLibraryError> =
+            this.snapshotReferences scene.libraryReferences
+            |> Result.bind (fun _ -> this.kit.proxy.writeScene name scene |> Result.mapError KitLibraryKitErr)

@@ -2,6 +2,8 @@ namespace OpticalConstructor.Tests
 
 open System
 open Xunit
+open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
@@ -12,7 +14,9 @@ open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
+open OpticalConstructor.Domain.Scene
 open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 
@@ -123,6 +127,88 @@ module KitLibraryTests =
             expected
             |> List.sortWith (fun first second -> String.CompareOrdinal(first.snapshotFileName.value, second.snapshotFileName.value))
         Assert.Equal<LibraryEntryEnvelope list>(ordered, fixture.context.kit.proxy.listSnapshots () |> expectKitOk)
+
+    let private recordingScene : SceneSnapshot =
+        let element (id : ElementId) (kind : CatalogueKind) (binding : ElementValueId option) : SceneElement =
+            {
+                id = id
+                placement =
+                    {
+                        ElementPlacement.create kind TablePoint.origin with valueId = binding
+                    }
+                zoom = BeamLayout.ElementZoom 1.0
+                beam = BeamLayout.OnMainBeam
+            }
+        let sourceId = ElementId "recorded-source"
+        let sampleId = ElementId "recorded-sample"
+        let detectorId = ElementId "recorded-detector"
+        {
+            elements =
+                [
+                    element sourceId LightSource (Some PresetIds.source600)
+                    element sampleId CatalogueKind.Sample (Some SampleIds.multilayerQwId.toElementValueId)
+                    element detectorId Detector None
+                ]
+            view = Table.defaultView
+            snap = SnapToBeam
+            pivot = BeamLayout.PivotAtCentre
+        }
+
+    let private recordingExperiment : Experiment =
+        let sampleVersion = SampleVersionId.firstOf SampleIds.multilayerQwId
+        {
+            id = ExperimentId 149
+            setup =
+                recordingScene.elements |> List.map (fun element ->
+                    {
+                        elementId = element.id
+                        label = ElementLabel "Recorded element"
+                        kind = element.placement.catalogueKind
+                        placement = PlacementSummary.ofPlacement element.placement
+                        binding =
+                            match element.placement.catalogueKind, element.placement.valueId with
+                            | CatalogueKind.Sample, _ -> BoundByVersion (SampleVersionRef sampleVersion)
+                            | _, Some valueId -> BoundByEntryId valueId
+                            | _, None -> Unbound
+                    })
+            varied = None
+            measurement = CaptureTransmitted
+            range = VariableRange.forVariable VaryR2
+            dataFileOpt = None
+            sourceWaveLengthOpt = None
+        }
+
+    let private recordingClosure () : LibraryEntryEnvelope list =
+        let sourceId = PresetIds.source600.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith "The source must have an entry id.")
+        catalogueEnvelope sourceId :: sampleClosure ()
+
+    let private observeContentWrites
+        (expected : LibraryEntryEnvelope list)
+        (fixture : KitLibraryFixture)
+        : KitLibraryContext * ResizeArray<KitFileKind> =
+        let writes = ResizeArray<KitFileKind>()
+        let proxy =
+            {
+                fixture.context.kit.proxy with
+                    writeKindFile = fun kind stem text ->
+                        assertSnapshots expected fixture
+                        let versions = expected |> List.map (fun envelope -> envelope.libraryVersionRef)
+                        Assert.Equal<LibraryVersionRef list>(versions, List.ofSeq fixture.pins)
+                        Assert.Equal<KitSnapshotOperation list>(
+                            versions |> List.collect (fun version -> [ PinSnapshotVersion version; WriteSnapshotVersion version ]),
+                            List.ofSeq fixture.operations)
+                        writes.Add kind
+                        fixture.context.kit.proxy.writeKindFile kind stem text
+            }
+        let context =
+            {
+                fixture.context with
+                    kit =
+                        {
+                            fixture.context.kit with proxy = proxy
+                        }
+            }
+        context, writes
 
     let private missingResolutionContent () : LibraryEntryContent =
         let id = MaterialId (Guid.Parse "14100000-0000-4000-8000-000000000001")
@@ -1429,6 +1515,192 @@ module KitLibraryTests =
             Assert.Equal<LibraryEntryEnvelope option>(
                 Some envelope, empty.proxy.tryHeldEnvelope envelope.content.id envelope.content.version |> expectImportOk)
         assertConfirmationKitUnchanged failedFixture
+
+    [<Fact>]
+    let ``recording an experiment snapshots the library versions it binds, then writes its file`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let fixture = snapshotFixture (CatalogueImportProxy.createInDatabase database) ReadWriteKitAccess
+        let newerSample =
+            {
+                (sampleEnvelope ()).content with version = VersionNumber 2
+            }
+        BuiltinCatalogue.putSealedEntries fixture.context.imports [ newerSample ]
+        let expected = recordingClosure ()
+        let context, writes = observeContentWrites expected fixture
+        context.recordExperiment recordingExperiment |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ ExperimentKitFile ], List.ofSeq writes)
+        assertSnapshots expected fixture
+        Assert.Equal<Experiment list>([ recordingExperiment ], context.kit.proxy.readExperiments () |> expectKitOk)
+
+        context.recordExperiment recordingExperiment |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ ExperimentKitFile; ExperimentKitFile ], List.ofSeq writes)
+        Assert.Equal<Experiment list>([ recordingExperiment ], context.kit.proxy.readExperiments () |> expectKitOk)
+
+        let refused = freshSnapshotFixture ()
+        let writeError = KitIoErr "experiment content cannot be written"
+        let failingProxy =
+            {
+                refused.context.kit.proxy with
+                    writeKindFile = fun _ _ _ ->
+                        assertSnapshots expected refused
+                        Error writeError
+            }
+        let failingContext =
+            {
+                refused.context with
+                    kit =
+                        {
+                            refused.context.kit with proxy = failingProxy
+                        }
+            }
+        Assert.Equal<Result<unit, KitLibraryError>>(
+            Error (KitLibraryKitErr writeError), failingContext.recordExperiment recordingExperiment)
+        assertSnapshots expected refused
+        Assert.Empty(refused.context.kit.proxy.readExperiments () |> expectKitOk)
+        refused.context.recordExperiment recordingExperiment |> expectSnapshotOk
+        Assert.Equal<LibraryVersionRef list>(expected |> List.map _.libraryVersionRef, List.ofSeq refused.pins)
+        Assert.Equal<Experiment list>([ recordingExperiment ], refused.context.kit.proxy.readExperiments () |> expectKitOk)
+
+    [<Fact>]
+    let ``recording a scene snapshots the entries its elements bind`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let fixture = snapshotFixture (CatalogueImportProxy.createInDatabase database) ReadWriteKitAccess
+        let newerSample =
+            {
+                (sampleEnvelope ()).content with version = VersionNumber 2
+            }
+        BuiltinCatalogue.putSealedEntries fixture.context.imports [ newerSample ]
+        let latest = fixture.context.imports.sealEntry newerSample |> expectImportOk
+        let expected =
+            recordingClosure ()
+            |> List.map (fun envelope -> if envelope.content.id = latest.content.id then latest else envelope)
+        let name = SceneName "Bench"
+        let context, writes = observeContentWrites expected fixture
+        context.recordScene name recordingScene |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ SetupKitFile ], List.ofSeq writes)
+        assertSnapshots expected fixture
+        Assert.Equal<SceneSnapshot>(recordingScene, context.kit.proxy.readScene name |> expectKitOk)
+        Assert.Equal<SceneName list>([ name ], context.kit.proxy.readSceneNames () |> expectKitOk)
+
+        context.recordScene name recordingScene |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ SetupKitFile; SetupKitFile ], List.ofSeq writes)
+        Assert.Equal<SceneSnapshot>(recordingScene, context.kit.proxy.readScene name |> expectKitOk)
+
+        let refused = freshSnapshotFixture ()
+        let writeError = KitIoErr "scene content cannot be written"
+        let failingProxy =
+            {
+                refused.context.kit.proxy with
+                    writeKindFile = fun _ _ _ ->
+                        assertSnapshots (recordingClosure ()) refused
+                        Error writeError
+            }
+        let failingContext =
+            {
+                refused.context with
+                    kit =
+                        {
+                            refused.context.kit with proxy = failingProxy
+                        }
+            }
+        Assert.Equal<Result<unit, KitLibraryError>>(
+            Error (KitLibraryKitErr writeError), failingContext.recordScene name recordingScene)
+        assertSnapshots (recordingClosure ()) refused
+        Assert.Empty(refused.context.kit.proxy.readSceneNames () |> expectKitOk)
+        refused.context.recordScene name recordingScene |> expectSnapshotOk
+        Assert.Equal<LibraryVersionRef list>(recordingClosure () |> List.map _.libraryVersionRef, List.ofSeq refused.pins)
+        Assert.Equal<SceneSnapshot>(recordingScene, refused.context.kit.proxy.readScene name |> expectKitOk)
+
+    [<Fact>]
+    let ``a reference the library and the kit cannot resolve records nothing`` () : unit =
+        let missingValue = ElementValueId "14900000-0000-4000-8000-000000000001"
+        let missingId = missingValue.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith "The test binding must be a GUID.")
+        let missingDescriptor =
+            {
+                List.head recordingExperiment.setup with binding = BoundByEntryId missingValue
+            }
+        let missingElement =
+            let source = List.head recordingScene.elements
+            {
+                source with
+                    placement =
+                        {
+                            source.placement with valueId = Some missingValue
+                        }
+            }
+        let experiment =
+            {
+                recordingExperiment with setup = [ missingDescriptor ]
+            }
+        let scene =
+            {
+                recordingScene with elements = [ missingElement ]
+            }
+        let name = SceneName "Bench"
+        let fixture = freshSnapshotFixture ()
+        let paths = fixture.folder.paths ()
+        for record in [ (fun () -> fixture.context.recordExperiment experiment); (fun () -> fixture.context.recordScene name scene) ] do
+            match record () with
+            | Error (UnheldEntryErr reason) -> Assert.Contains(missingId.value.ToString(), reason)
+            | Error error -> Assert.Fail(error.describe)
+            | Ok () -> Assert.Fail("An unresolved reference must prevent the content write.")
+            Assert.Empty(fixture.context.kit.proxy.readExperiments () |> expectKitOk)
+            Assert.Empty(fixture.context.kit.proxy.readSceneNames () |> expectKitOk)
+            assertSnapshots [] fixture
+            Assert.Empty fixture.pins
+            Assert.Empty fixture.operations
+            Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+
+        let partialExperiment =
+            {
+                recordingExperiment with setup = recordingExperiment.setup @ [ missingDescriptor ]
+            }
+        let partialScene =
+            {
+                recordingScene with elements = recordingScene.elements @ [ missingElement ]
+            }
+        for record in [ (fun (context : KitLibraryContext) -> context.recordExperiment partialExperiment); (fun context -> context.recordScene name partialScene) ] do
+            let partial = freshSnapshotFixture ()
+            match record partial.context with
+            | Error (UnheldEntryErr reason) -> Assert.Contains(missingId.value.ToString(), reason)
+            | Error error -> Assert.Fail(error.describe)
+            | Ok () -> Assert.Fail("An unresolved later reference must also prevent the content write.")
+            assertSnapshots (recordingClosure ()) partial
+            Assert.Equal<LibraryVersionRef list>(recordingClosure () |> List.map _.libraryVersionRef, List.ofSeq partial.pins)
+            Assert.Empty(partial.context.kit.proxy.readExperiments () |> expectKitOk)
+            Assert.Empty(partial.context.kit.proxy.readSceneNames () |> expectKitOk)
+
+    [<Fact>]
+    let ``a read-only kit records nothing`` () : unit =
+        let fixture = snapshotFixture (BuiltinCatalogue.freshStores ()).proxy ReadOnlyKitAccess
+        let paths = fixture.folder.paths ()
+        let name = SceneName "Bench"
+        let emptyExperiment =
+            {
+                recordingExperiment with setup = []
+            }
+        let emptyScene =
+            {
+                recordingScene with elements = []
+            }
+        let writes =
+            [
+                (fun () -> fixture.context.recordExperiment recordingExperiment)
+                (fun () -> fixture.context.recordExperiment emptyExperiment)
+                (fun () -> fixture.context.recordScene name recordingScene)
+                (fun () -> fixture.context.recordScene name emptyScene)
+            ]
+        for write in writes do
+            match write () with
+            | Error (KitLibraryKitErr (KitReadOnlyErr reason)) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail(error.describe)
+            | Ok () -> Assert.Fail("A read-only kit must refuse recording even without references.")
+            Assert.Empty fixture.pins
+            Assert.Empty fixture.operations
+            Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+            assertSnapshots [] fixture
+            Assert.Empty(fixture.context.kit.proxy.readExperiments () |> expectKitOk)
+            Assert.Empty(fixture.context.kit.proxy.readSceneNames () |> expectKitOk)
 
     [<Fact>]
     let ``every kit library error renders its condition and its payload`` () : unit =
