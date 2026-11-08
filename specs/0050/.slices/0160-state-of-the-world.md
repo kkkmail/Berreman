@@ -1,65 +1,86 @@
 # Where we are
 
-The operator-approved origin/coverage repair is implemented and verified under
-[manual 013](../.manual/013-arc-origin-elevation-recovery.md). The product repair
-under manual 012 is preserved. Awaiting the operator's commits and relaunch.
+Slice 0160 resumes at committed HEAD `37cb549` after the operator's material
+schema repair and arc-origin coverage repair. This worker preserved the complete
+implementation and refreshed the handoff under
+[manual 012](../.manual/012-step-0160-material-schema-recovery.md) and
+[manual 013](../.manual/013-arc-origin-elevation-recovery.md). Normal supervisor
+review and verification are next; checkpoint 159 is not yet recorded.
 
-# Implementation and tests
+# What's working
 
-ASG now persists the immutable arc origin in `.arc-base-json`, validates its
-history, exports it as `ASG_ARC_BASE_COMMIT` and supports `{arc_base}` in gate
-commands. Existing arcs without a record require an explicit verified origin;
-restarts never silently substitute HEAD. BRM's unchanged frozen command uses
-that context through the driver, including committed and uncommitted changes
-and dependent projects. Scope-only output never claims an analyzer verdict.
+- Preserved the completed project-codec, schema and aggregate retirement.
+- Preserved structural material validation, caller-owned category membership
+  and every retained assertion and declared test effect.
+- Preserved immutable arc-origin elevation coverage through the existing driver.
+- Refreshed the worker handoff for normal profile-1 review and measurement.
 
-BRM's verified origin is `f395597c071910aaa215518626563f6c784bfb62`. The existing
-reflog and first accepted commit's parent confirm the bootstrap. Existing
-supervisor state, counters, checkpoint/case-evidence and expected-red records
-were not rewritten. The committed material-schema repair and every product
-test remain unchanged.
+# Tests
 
-All **15 frozen gates passed**. Elevation actually analyzed **12 of 12 product
-projects**, with zero new findings, in **193.7 seconds** under the existing
-gate budget and ELEV004 exclusion. Constructor tests passed **1,136 cases / 1,111
-method identities**, exact census, zero failures/skips. The build has no owned-code
-warnings; two existing SYSLIB0051 warnings originate in vendored MathNet. All 494
-steps validate, the profile-1 receipt validates, and all 988 compiled artifacts
-are byte-identical.
+This IMPLEMENT worker ran no checks or gates, as required by Invariant 6.
+`gates_run: []` and `gate_results: {}` describe this round; there is no new
+worker verdict or supervisor acceptance.
 
-All **18 PowerShell scope regressions** pass. The focused ASG origin/deadline
-run passed 29 tests; the runtime/origin run passed 30. The subsequent broad run
-includes the added boot-refusal test and has **1,207 passed, 12 skipped and 14
-failures**. All 14 failures were independently reproduced with committed ASG
-source `94aa431`: twelve assert obsolete three-digit labels; two path-validation
-fixtures encounter ignored artifact paths. They are not introduced by this
-repair, and their assertions were not weakened. The new origin module also
-passes strict mypy. CLI parsing accepts the origin bootstrap and profile 1
-together without invoking the supervisor.
+The prior operator [verification summary](../.artifacts/0160-02-operator-repair/verification-summary.json)
+records all fifteen frozen gates passing, 1136 constructor cases / 1111 method
+identities with exact census and zero failures/skips, and actual analysis of all
+12 product projects with zero new findings under the existing ELEV004 exclusion.
+Its build records no owned-code warnings and two existing SYSLIB0051 warnings in
+vendored MathNet. The [scope-regression record](../.artifacts/0160-02-operator-repair/scope-tests-2/results.json)
+records 18 passing cases. These measurements precede this resumed worker round.
 
-Evidence is in `.artifacts/0160-02-operator-repair/`: verification-summary.json,
-gate-results.json, elevation-coverage.json, the archived TRX and per-gate logs,
-scope-tests-2/results.json, both broad ASG logs and asg-baseline-comparison.json.
-Final scope and Git checks are recorded in final-scope-check.json.
-
-The inherited floor below is unchanged; it is not a newly authored checkpoint.
+The supervisor must run build, elevation, the whole constructor suite and all
+twelve s18 invariants, then publish checkpoint 159 and measured case evidence
+before step 0161. Seven single-case deletions, one unchanged migration and one
+addition account for `1142 - 7 + 1 = 1136`. The YAML retains checkpoint 158's
+inherited floor; it is not a new measurement or an edited checkpoint.
 
 ```yaml
 gates:
   constructor_unit_tests: 1142
 ```
 
-# Required next action
+# Architecture
 
-Awaiting the operator's commits in ASG and BRM. The arc remains stopped;
-checkpoint 159 is still absent. No Git mutation, STL change or process restart
-was performed. ASG-ERRORS.md and ASG spec 0090 manual 032 record the fixed defect.
+Material metadata uses `schema/material-metadata.schema.json` through the
+existing lazy `FileName.tryLoadSchema` and shared `validateWith` seams. The
+schema checks structure; import/export resolves membership through the caller's
+category list. Manual 012 replaces the original fixed-category example with a
+numeric-category structural violation without changing the declared test identity.
 
-After both commits and an explicit relaunch request, verify the committed
-arc-origin scope, then resume with the operator reply and
-`--executability-profile 1`. Preserve manual 012's normal-resume exception:
-do not use `--accept-current-slice`. Normal supervisor review and all fifteen
-gates must publish measured checkpoint 159 and case evidence before 0161.
-The inherited floor stays at 1,142 until supervisor measurement; declared
-credits still account for seven deletions and one addition. Never manufacture
-the checkpoint, lower the floor or reset consumed budgets.
+Elevation consumes `.arc-base-json` origin
+`f395597c071910aaa215518626563f6c784bfb62` through ASG's `ASG_ARC_BASE_COMMIT`.
+The unchanged frozen command covers committed and uncommitted arc changes and
+dependents. Manual 013 supersedes using accepted 0159 or entry HEAD as the base.
+No architectural or production change was made in this worker round.
+
+# Deferred
+
+No slice implementation is deferred. Supervisor review, all fifteen gates and
+publication of checkpoint 159 with measured case evidence remain the required
+next protocol steps; the worker does not perform them or manufacture their output.
+
+# Gotchas
+
+- Retain `--executability-profile 1` and normal review. Manuals 012 and 013
+  expressly prohibit `--accept-current-slice` for this recovery.
+- Operator commits never narrow elevation to the latest accepted slice or HEAD.
+  Prior scope evidence is not a fresh analyzer verdict.
+- Leave frozen contracts, test floors, budgets, checkpoints, case evidence,
+  expected-red records, versions and compiled artifacts to their owners.
+- `.executability-json`, `.manifest.state.json` and `.supervisor-lock.diag`
+  were already dirty on entry; this worker did not edit them.
+- An unrelated `.specrc` agent-selection edit appeared during the round and
+  was left untouched.
+- ASG and STL remain read-only. The log retains historical seven-project and
+  pre-commit handoff statements under an explicit historical heading; this
+  current handoff and manual 013 supersede them.
+
+# Changelog
+
+- 2026-11-08: Operator material-schema recovery completed the declared retirement
+  and test effects; historical evidence remains in `.artifacts/0160-operator-repair/`.
+- 2026-11-08: Operator arc-origin recovery recorded twelve-project analysis and
+  all fifteen passing gates in `.artifacts/0160-02-operator-repair/`.
+- 2026-11-08: Resumed worker preserved the committed repairs, refreshed all three
+  handoff files and retained the inherited 1142 floor for supervisor measurement.

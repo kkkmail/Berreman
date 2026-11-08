@@ -1,5 +1,85 @@
 # Implementation log — slice 0160
 
+## Current normal worker resume — 2026-11-08, after manual 013
+
+Entry HEAD is `37cb549` (`0050-0160-manual`), following the committed material
+repair and arc-origin recovery. The task explicitly requests preservation and
+normal supervisor review. The pre-commit and earlier-resume statements below
+are historical; this section governs the current handoff. Manual 013 replaces
+the earlier accepted-0159 comparison base with the immutable arc origin
+`f395597c071910aaa215518626563f6c784bfb62`.
+
+### Progress
+
+- Read the task, shared worker protocol, IMPLEMENT delta, project prompt,
+  AGENTS.md, naming conventions, slice, frozen fifteen-gate snapshot and
+  manuals 012 and 013.
+- Inspected the committed material schema, Report.fs, SchemaValidation.fs and
+  ExportImportTests.fs. Structural validation and caller-list membership remain
+  separate; the declared numeric-category refusal and retained import/export
+  assertions are present. No additional product change is required.
+- Read `.arc-base-json` and the elevation driver: the recorded origin is
+  consumed through `ASG_ARC_BASE_COMMIT`, conflicting explicit bases are
+  rejected, and committed changes are combined with the working tree before
+  dependent expansion. The frozen command needs no alteration.
+- Read the operator's verification summary, twelve-project coverage record,
+  eighteen scope-regression results and final scope record from
+  `.artifacts/0160-02-operator-repair/`. These are historical evidence, not a
+  new worker verdict or supervisor acceptance.
+- Before handoff edits: preserve all implementation, assertions and test
+  effects; update only the three supplied worker outputs to describe this
+  resumed round and the remaining supervisor measurement.
+- Completed the handoff refresh: the plan names the immutable origin, this log
+  distinguishes the current resume from historical recoveries, and the
+  state-of-world restores all seven required headings and the inherited 1142
+  YAML floor. Read checkpoint 158's recorded floor; checkpoint 159 remains
+  absent. No production, test or supervisor-owned file was written.
+- Read the final document diff; ordinary and CR-insensitive diff counts agree
+  for the three worker files, with no line-ending churn. An unrelated `.specrc`
+  agent-selection edit appeared during this round and was left untouched.
+
+### Files modified
+
+Only `0160-impl-plan.md`, `0160-impl-log.md` and
+`0160-state-of-the-world.md` beside the slice were changed by this worker.
+
+### Testing state
+
+No checks or gates are run by this IMPLEMENT worker, per Invariant 6. This
+round reports `gates_run: []` and `gate_results: {}`. Prior measurements belong
+to the operator evidence: fifteen passing gates, actual analysis of all twelve
+product projects with zero new findings, 1136 constructor cases / 1111 method
+identities with exact census and no failures/skips, and eighteen scope
+regressions. No fresh result is asserted.
+
+Normal supervisor review and all fifteen frozen gates must measure and publish
+checkpoint 159 and case evidence before advancing. Keep profile 1, the immutable
+origin and checkpoint 158's inherited 1142 YAML floor. The declared effects
+account for `1142 - 7 + 1 = 1136`; the migrated fact changes no case count.
+Do not use `--accept-current-slice` or author supervisor measurements here.
+Implementation and worker outputs are complete and ready for the supervisor's
+normal review; readiness does not assert a new gate result or acceptance.
+
+### Artifacts
+
+Read the existing `.artifacts/0160-02-operator-repair/` evidence. The earlier
+`.artifacts/0160-operator-repair/` remains the material-retirement evidence.
+No new runtime artifact is produced by this handoff-only round.
+
+### Gotchas
+
+- `.executability-json`, `.manifest.state.json` and `.supervisor-lock.diag`
+  were already modified on entry and are supervisor-owned; leave them alone.
+- `.specrc` subsequently changed from `openai-codex` to `claude-code` outside
+  this worker's writes. Preserve that concurrent edit; it is not part of 0160.
+- Historical references below to seven analyzed projects and comparison with
+  accepted 0159 describe the earlier recovery. Manual 013 requires the
+  beginning-of-arc origin, and its evidence records twelve analyzed projects.
+- Operator evidence is not supervisor acceptance. Only the supervisor can
+  record checkpoint 159 after its normal review and verification.
+
+## Historical records — superseded handoff states follow
+
 ## Approved arc-origin recovery — manual 013
 
 ASG now persists the immutable arc origin in `.arc-base-json`, validates its

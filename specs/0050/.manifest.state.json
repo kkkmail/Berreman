@@ -2,8 +2,8 @@
   "manifest": "C:\\GitHub\\Berreman\\specs\\0050\\.manifest",
   "branch": "0050",
   "started_utc": "2026-11-05T11:30:30Z",
-  "last_updated_utc": "2026-11-08T15:16:22Z",
-  "cumulative_wall_seconds": 148439.9729265985,
+  "last_updated_utc": "2026-11-08T17:05:58Z",
+  "cumulative_wall_seconds": 148650.22023049882,
   "completed_slices": [
     {
       "index": 0,
@@ -1123,10 +1123,10 @@
     "index": 159,
     "path": "specs\\0050\\.slices\\0160.slice-md",
     "status": "escalated",
-    "reason": "code-judge escalated on cycle 1: The implementation and declared test effects satisfy slice 0160 as amended by manual 012, but S44-ELEVATION is uncovered by the selected execution command after the repair was committed as 4160378. The frozen elevation command has no -Base or {step_base}; the current working tree contains only hando",
+    "reason": "executability receipt is stale: semantic source, prompt or validator changed",
     "worker_logs": "C:\\GitHub\\Berreman\\specs\\0050\\.manifest-arc-runner.log",
     "escalation_md": "",
-    "conversation_seq": 3,
+    "conversation_seq": 5,
     "operator_reply": "",
     "total_route_backs": 0,
     "resolver_runs": 1,
@@ -1137,7 +1137,7 @@
       }
     ],
     "phase": "implement",
-    "tree_fingerprint": "87d70b2affb4cfc1b7c6b5de5033095d3f993fc335dab1ef258108332c22071c",
+    "tree_fingerprint": "fd1df0e4473936915804b9d188264a07469b39edc5ca4ed59fa5891fe4ad1568",
     "review_epoch": 0,
     "review_cycle": 1,
     "review_attestation": null,
