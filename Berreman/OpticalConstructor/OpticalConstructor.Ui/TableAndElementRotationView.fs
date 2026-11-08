@@ -15,6 +15,7 @@ open Avalonia.Controls.Shapes
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.VisualTree
 open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
@@ -33,6 +34,7 @@ open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.Scene
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 // Spec 0038 (017): opened for `QuickPickThreshold.defaultValue` — the single-case DU's case
@@ -364,6 +366,10 @@ type TableAndElementRotationModel =
         kit : KitContext
         /// The last kit read or write that needs telling (spec 0050 S4.3).
         kitStatus : ControlCaption option
+        /// The scene name being edited, validated when saved (spec 0050 S4.3).
+        sceneName : ControlCaption
+        /// The names of the scenes saved in this kit (spec 0050 S4.3).
+        savedScenes : Scene.SceneName list
         /// Measured-data attachments read through kit (spec 0050 S4.2/S4.3).
         experimentData : ExperimentData.ExperimentDataProxy
         /// Spec 0038 Part L (037): the typed per-experiment measured-data status, keyed by the
@@ -504,6 +510,8 @@ let initWith
         constructorMode = ForwardConstructor
         kit = kit
         kitStatus = None
+        sceneName = ControlCaption ""
+        savedScenes = []
         experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked kit.proxy
         experimentDataStatus = Map.empty
         elementMenu = None
@@ -541,6 +549,19 @@ let private mainSeedElements : TestElement list =
     [ { id = Library.ElementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
       { id = Library.ElementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
 
+/// Seeds a forward scene in its supplied kit without constructing a scratch kit (spec 0050 .manual/010).
+let initMainWithKit
+    (library : Library.LibraryProxy)
+    (experiments : Experiments.ExperimentProxy)
+    (materials : MaterialLibrary.MaterialProxy)
+    (samples : Library.SampleProxy)
+    (categories : MaterialLibrary.CategoryProxy)
+    (kit : KitContext) : TableAndElementRotationModel =
+    {
+        initWith library experiments materials samples categories kit mainSeedElements mainPalette with
+            snapChain = Scene.SnapToBeam
+    }
+
 /// Opens a forward scene in a fresh scratch kit, preserving initialization errors (spec 0050 .manual/010).
 let initMainWith
     (library : Library.LibraryProxy)
@@ -548,12 +569,7 @@ let initMainWith
     (materials : MaterialLibrary.MaterialProxy)
     (samples : Library.SampleProxy)
     (categories : MaterialLibrary.CategoryProxy) : Result<TableAndElementRotationModel, KitError> =
-    scratchKit ()
-    |> Result.map (fun kit ->
-        {
-            initWith library experiments materials samples categories kit mainSeedElements mainPalette with
-                snapChain = Scene.SnapToBeam
-        })
+    scratchKit () |> Result.map (initMainWithKit library experiments materials samples categories)
 
 /// Opens an inverse scene with an unbound sample in a fresh scratch kit (spec 0038 Part L; spec 0050 .manual/010).
 /// A bound hint restores the forward chart; initialization errors propagate to the caller.
@@ -723,6 +739,12 @@ type TableAndElementRotationMsg =
     | ViewExperiment of Experiments.ExperimentId
     /// Records a picked file through the kit, then loads and validates its attachment (spec 0050 S4.2).
     | AttachDataFileTo of Experiments.ExperimentId * FileName
+    /// Edits the name used for the next scene save (spec 0050 S4.3).
+    | SceneSetName of ControlCaption
+    /// Saves the table as a named scene in the kit (spec 0050 S4.3).
+    | SceneSave
+    /// Restores the kit's named scene onto the table (spec 0050 S4.3).
+    | SceneLoad of Scene.SceneName
     /// Spec 0038 (013) — the ribbon tab-strip row's right-aligned "Materials…" button: open the
     /// SINGLE-INSTANCE Materials window (UICOMP_XDUO_0009) over the app-scope material + category
     /// stores through the launcher seam (a second click ACTIVATES the live window — the shared
@@ -1550,6 +1572,7 @@ type TableAndElementRotationModel with
                     experimentData = opened.experimentData
                     experimentCollection = Experiments.ExperimentCollection.ofLoaded opened.experiments
                     kitStatus = None
+                    savedScenes = opened.scenes
             }
         let statuses =
             opened.experiments
@@ -1811,6 +1834,43 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                     }
             | None -> model
+    | SceneSetName name -> { model with sceneName = name }
+    | SceneSave ->
+        match SceneName.tryCreate model.sceneName.value with
+        | Error (Scene.InvalidSceneErr reason) ->
+            {
+                model with kitStatus = Some (ControlCaption $"Save failed — {reason}")
+            }
+        | Ok name ->
+            let library : KitLibraryContext =
+                {
+                    kit = model.kit
+                    imports = model.catalogueImports
+                }
+            match library.recordScene name model.captureScene with
+            | Ok () ->
+                {
+                    model with
+                        savedScenes =
+                            name :: model.savedScenes
+                            |> List.distinct
+                            |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.value, second.value))
+                        kitStatus = Some (ControlCaption $"Saved scene '{name.value}'.")
+                }
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                }
+    | SceneLoad name ->
+        match model.kit.proxy.readScene name with
+        | Ok scene ->
+            {
+                restoreScene scene model with kitStatus = Some (ControlCaption $"Loaded scene '{name.value}'.")
+            }
+        | Error error ->
+            {
+                model with kitStatus = Some (ControlCaption $"Load failed — {error.describe}")
+            }
     | OpenMaterialsWindow ->
         // Spec 0038 step 013: a pure launch of the single-instance Materials window
         // (UICOMP_XDUO_0009) over app-scope stores and import seam — the launcher seam's
@@ -3238,9 +3298,10 @@ type TableAndElementRotationModel with
 
 /// A small clickable verb box for the host-added strip buttons (the MaterialsControls button look). The
 /// strip buttons live in a variable-membership row, so they carry AutomationIds.
-let private workbenchButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
+let private workbenchButton (id : ConstructorUiId) (label : ControlCaption) (onClick : PointerPressedEventArgs -> unit) : IView =
     Border.create [
         id.automationAttribute<Border> ()
+        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
         Border.background (brush (Color.FromRgb(232uy, 232uy, 232uy)))
         Border.borderBrush (brush (Color.FromRgb(120uy, 120uy, 120uy)))
         Border.borderThickness 1.0
@@ -3249,7 +3310,7 @@ let private workbenchButton (id : ConstructorUiId) (label : ControlCaption) (onC
         Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
         Border.verticalAlignment VerticalAlignment.Center
         Border.child (TextBlock.create [ TextBlock.text label.value ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf id.value)
+        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf id.value)
     ] :> IView
 
 // ---------------------------------------------------------------------------
@@ -3463,10 +3524,47 @@ let private dataFileRow (model : TableAndElementRotationModel) (dispatch : Table
     |> Avalonia.FuncUI.DSL.View.withKey ("DataFileRow_" + experiment.id.uiKey.value)
     :> IView
 
-/// Experiments are kept in the kit; show its status and the inverse data-file attachments (spec 0050 S4.3).
+/// Saves and loads kit scenes, reports kit status and offers inverse data-file attachments (spec 0050 S4.3).
 let private collectionBuilderView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let sectionHeading (text : string) : IView =
         TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0)) ] :> IView
+    let commitName (source : obj) : unit =
+        match source with
+        | :? TextBox as field ->
+            let name = ControlCaption field.Text
+            dispatch (SceneSetName name)
+        | _ -> ()
+    let saveScene (event : PointerPressedEventArgs) : unit =
+        // Spec 0050 S4.3: the verb box does not blur the field; commit its live text before saving.
+        match event.Source with
+        | :? Visual as source ->
+            match TopLevel.GetTopLevel source with
+            | :? Window as owner ->
+                owner.GetVisualDescendants()
+                |> Seq.tryPick (function
+                    | :? TextBox as field when AutomationProperties.GetAutomationId field = ConstructorUiId.sceneNameField.value -> Some field
+                    | _ -> None)
+                |> Option.iter (fun field ->
+                    commitName field
+                    dispatch SceneSave)
+            | _ -> ()
+        | _ -> ()
+    let sceneRow : IView =
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.spacing 6.0
+            StackPanel.children [
+                TextBox.create [
+                    ConstructorUiId.sceneNameField.automationAttribute<TextBox> ()
+                    AttrBuilder<TextBox>.CreateProperty<string>(AutomationProperties.NameProperty, "Scene name", ValueNone)
+                    TextBox.width 180.0
+                    TextBox.text model.sceneName.value
+                    TextBox.onKeyDown (fun event -> if event.Key = Key.Enter then commitName event.Source)
+                    TextBox.onLostFocus (fun event -> commitName event.Source)
+                ]
+                workbenchButton ConstructorUiId.saveSceneButton (ControlCaption "Save scene") saveScene
+            ]
+        ] :> IView
     let statusRow : IView list =
         match model.kitStatus with
         | None -> []
@@ -3478,6 +3576,20 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
                   TextBlock.textWrapping TextWrapping.Wrap
                   TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0))
                ] |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.kitStatus.value) :> IView ]
+    let savedSceneSection : IView list =
+        match model.savedScenes with
+        | [] -> []
+        | names ->
+            [ sectionHeading "Saved scenes:"
+              WrapPanel.create [
+                  WrapPanel.name ConstructorUiId.savedScenes.value
+                  ConstructorUiId.savedScenes.automationAttribute<WrapPanel> ()
+                  AttrBuilder<WrapPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Saved scenes", ValueNone)
+                  WrapPanel.orientation Orientation.Horizontal
+                  WrapPanel.children (
+                      names |> List.map (fun name ->
+                          workbenchButton (ConstructorUiId.savedScene name) name.caption (fun _ -> dispatch (SceneLoad name))))
+              ] :> IView ]
     // Spec 0046: measured-data files belong to the INVERSE problem alone — the forward (Main) constructor
     // shows no "Data files" section at all.
     let dataFileSection : IView list =
@@ -3496,7 +3608,7 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
-        StackPanel.children (statusRow @ dataFileSection)
+        StackPanel.children ([ sectionHeading "Scene:"; sceneRow ] @ statusRow @ savedSceneSection @ dataFileSection)
     ] :> IView
 
 /// The Experiments bay content (spec 0038 Part L, 037): the (untouched) Controls-layer experiment
@@ -3508,7 +3620,7 @@ let private experimentsBayContent (model : TableAndElementRotationModel) (dispat
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 8.0
             StackPanel.children [
-                workbenchButton ConstructorUiId.experimentExportButton (ControlCaption "Export data") (fun () -> dispatch ExportExperimentData)
+                workbenchButton ConstructorUiId.experimentExportButton (ControlCaption "Export data") (fun _ -> dispatch ExportExperimentData)
                 TextBlock.create [
                     TextBlock.name ConstructorUiId.experimentExportStatus.value
                     TextBlock.verticalAlignment VerticalAlignment.Center
@@ -3583,13 +3695,13 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : TableAndElementRota
                             Border.dock Dock.Right
                             Border.verticalAlignment VerticalAlignment.Top
                             Border.margin (Thickness(0.0, 8.0, 8.0, 0.0))
-                            Border.child (workbenchButton ConstructorUiId.openMaterialsWindowButton (ControlCaption "Materials…") (fun () -> dispatch OpenMaterialsWindow))
+                            Border.child (workbenchButton ConstructorUiId.openMaterialsWindowButton (ControlCaption "Materials…") (fun _ -> dispatch OpenMaterialsWindow))
                         ]
                         Border.create [
                             Border.dock Dock.Right
                             Border.verticalAlignment VerticalAlignment.Top
                             Border.margin (Thickness(0.0, 8.0, 0.0, 0.0))
-                            Border.child (workbenchButton ConstructorUiId.openLibraryWindowButton (ControlCaption "Library…") (fun () -> dispatch OpenLibraryWindow))
+                            Border.child (workbenchButton ConstructorUiId.openLibraryWindowButton (ControlCaption "Library…") (fun _ -> dispatch OpenLibraryWindow))
                         ]
                         Ribbon.ribbonView { bays = bays; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
                     ]

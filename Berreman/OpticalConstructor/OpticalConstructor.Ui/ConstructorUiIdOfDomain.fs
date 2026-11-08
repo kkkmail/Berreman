@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui
 
 open Berreman.Dispersion
+open OpticalConstructor.Domain
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Controls
@@ -165,6 +166,9 @@ module ConstructorUiIdOfDomain =
             | _ -> ControlCaption labelled
 
     type ConstructorUiId with
+
+        /// Loads this named scene from the kit (spec 0050 S4.3).
+        static member savedScene (name : Scene.SceneName) : ConstructorUiId = ConstructorUiId $"SavedScene_{name.value}"
 
         /// An element's invisible hover target on the Main table, which carries its tooltip (spec 0046).
         static member elementHover (elementId : ElementId) : ConstructorUiId = ConstructorUiId $"ElementHover_{elementId.value}"
@@ -361,6 +365,10 @@ module ConstructorUiIdOfDomain =
         /// The experiment as the key of its Experiments-bay collection row (its number's text).
         member this.uiKey : ConstructorUiKey = ConstructorUiKey (string this.value)
 
+    type Scene.SceneName with
+
+        /// The scene name as its saved-scene button's caption (spec 0050 S4.3).
+        member this.caption : ControlCaption = ControlCaption this.value
 
     type EntryName with
 

@@ -163,6 +163,10 @@ type ConstructorUiId =
     static member selectorQuickPickStrip : ConstructorUiId = ConstructorUiId "SelectorQuickPickStrip"
     /// The kit status line and the inverse experiment data files (spec 0050 S4.3).
     static member kitStatus : ConstructorUiId = ConstructorUiId "KitStatus"
+    /// The scene row's name field, save action and saved scenes (spec 0050 S4.3).
+    static member sceneNameField : ConstructorUiId = ConstructorUiId "SceneNameField"
+    static member saveSceneButton : ConstructorUiId = ConstructorUiId "SaveSceneButton"
+    static member savedScenes : ConstructorUiId = ConstructorUiId "SavedScenes"
     static member experimentDataFiles : ConstructorUiId = ConstructorUiId "ExperimentDataFiles"
 
     // --- The materials workbench list surface (`MaterialsControls`). ---
