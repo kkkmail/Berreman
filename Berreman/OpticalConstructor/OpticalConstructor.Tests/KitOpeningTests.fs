@@ -16,6 +16,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Scene
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
+open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.KitOpening
 
 module KitOpeningTests =
@@ -379,3 +380,21 @@ module KitOpeningTests =
         finally
             first.close () |> kitValue
             second.close () |> kitValue
+
+    [<Fact>]
+    let ``the open captions name the error and the lock holder`` () : unit =
+        let error = KitLibraryKitErr (NotAKitFolderErr "C:/kits/x")
+        let holder : KitLockHolder =
+            {
+                owner =
+                    {
+                        machine = MachineName "BENCH-1"
+                        user = UserName "lab"
+                        processId = ProcessId 4242
+                    }
+                acquiredAt = ClockTime (DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc))
+            }
+        Assert.Equal($"The kit could not be opened: {error.describe}", error.openFailedCaption.value)
+        Assert.Equal(
+            "The kit is open elsewhere: lab on BENCH-1 (process 4242) since 2026-11-03 12:00:00 UTC.",
+            holder.openElsewhereCaption.value)

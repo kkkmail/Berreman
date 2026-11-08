@@ -446,6 +446,16 @@ module ConstructorUiIdOfDomain =
         /// The kit failure as the measured-data attachment status (spec 0050 S4.2).
         member this.caption : ControlCaption = ControlCaption this.describe
 
+    type OpticalConstructor.Domain.KitLibrary.KitLibraryError with
+
+        /// The failed kit open as the start screen and the launcher show it (spec 0050 S5.2).
+        member this.openFailedCaption : ControlCaption = ControlCaption $"The kit could not be opened: {this.describe}"
+
+    type OpticalConstructor.Domain.Kit.KitLockHolder with
+
+        /// The kit held by another session as the start screen and the launcher show it (spec 0050 S5.2).
+        member this.openElsewhereCaption : ControlCaption = ControlCaption $"The kit is open elsewhere: {this.describe}."
+
     type OpticalConstructor.Domain.Kit.KitRelativePath with
 
         /// The kit-relative path as its data-file caption (spec 0050 S4.2).

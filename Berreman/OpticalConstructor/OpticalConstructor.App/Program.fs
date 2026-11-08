@@ -168,13 +168,13 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                 | None -> ()
             let showKitError (error : KitLibraryError) : unit =
                 clearKitError ()
-                let message =
+                let caption =
                     match error with
-                    | KitLibraryKitErr (KitLockedErr holder) -> $"The kit is open elsewhere: {holder.describe}."
-                    | _ -> $"The kit could not be opened: {error.describe}"
-                let errorText = TextBlock(Name = ConstructorUiId.launcherKitErrorText.value, Text = message, TextWrapping = TextWrapping.Wrap)
+                    | KitLibraryKitErr (KitLockedErr holder) -> holder.openElsewhereCaption
+                    | _ -> error.openFailedCaption
+                let errorText = TextBlock(Name = ConstructorUiId.launcherKitErrorText.value, Text = caption.value, TextWrapping = TextWrapping.Wrap)
                 AutomationProperties.SetAutomationId(errorText, ConstructorUiId.launcherKitErrorText.value)
-                AutomationProperties.SetName(errorText, message)
+                AutomationProperties.SetName(errorText, caption.value)
                 kitErrorOpt <- Some errorText
                 panel.Children.Insert(1, errorText)
             let rec openConstructorKit (context : AppContext) (folder : KitFolder) (mode : TableAndElementRotationView.ConstructorMode) (access : KitAccess) : unit =
