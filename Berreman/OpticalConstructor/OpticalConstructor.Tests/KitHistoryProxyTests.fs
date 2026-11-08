@@ -66,6 +66,17 @@ type KitHistoryProxyContract () =
         Assert.Equal<KitFolderPresence>(KitFolderPresent, store.probeFolder this.presentFolder)
         Assert.Equal<KitFolderPresence>(KitFolderMissing, store.probeFolder this.missingFolder)
 
+    [<Fact>]
+    member this.``changing the history writes the change and answers what was written`` () : unit =
+        let store = this.freshHistory ()
+        Assert.Equal<Result<unit, KitHistoryError>>(Ok (), store.writeHistory twoEntries)
+
+        let unstarred : KitHistory = { twoEntries with entries = [ { kitA with star = UnstarredKit }; kitB ] }
+        let changed = store.changeHistory (fun (history : KitHistory) -> history.unstar (KitFolder (FolderName "C:/kits/a")))
+
+        Assert.Equal<Result<KitHistory, KitHistoryError>>(Ok unstarred, changed)
+        Assert.Equal<KitHistory>(unstarred, store.readHistory ())
+
 type KitHistoryProxyTests () =
     inherit KitHistoryProxyContract ()
 
@@ -171,3 +182,15 @@ type KitHistoryProxyFolderTests () =
         match store.writeHistory openedHistory with
         | Error (KitHistoryWriteErr reason) -> Assert.Contains(preferences.value, reason)
         | Ok () -> Assert.Fail "wrote a history where the preferences folder is a file"
+
+    [<Fact>]
+    member this.``a change the preferences folder cannot take is KitHistoryWriteErr, never a throw`` () : unit =
+        let bytes = Encoding.UTF8.GetBytes "a file where the preferences folder belongs"
+        File.WriteAllBytes(preferences.value, bytes)
+        let store = this.freshHistory ()
+
+        match store.changeHistory (fun (history : KitHistory) -> history.star (KitFolder (FolderName "C:/kits/a"))) with
+        | Error (KitHistoryWriteErr reason) -> Assert.Contains(preferences.value, reason)
+        | Ok _ -> Assert.Fail "changed a history where the preferences folder is a file"
+
+        Assert.Equal<byte>(bytes, File.ReadAllBytes preferences.value)

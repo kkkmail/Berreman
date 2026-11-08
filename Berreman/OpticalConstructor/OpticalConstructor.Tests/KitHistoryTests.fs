@@ -89,6 +89,30 @@ module KitHistoryTests =
         Assert.Equal<KitHistory>(mixed, mixed.forget (folderOf "C:/kits/zz"))
 
     [<Fact>]
+    let ``relocate moves a kit's entry to the found folder and keeps its star, name, time and place`` () : unit =
+        let found = folderOf "D:/moved/b"
+        let relocated = mixed.relocate (folderOf "C:/KITS/B") found
+        let moved = List.item 1 relocated.entries
+
+        Assert.Equal<KitFolder>(found, moved.folder)
+        Assert.Equal<KitId>(kitB.kitId, moved.kitId)
+        Assert.Equal<KitStar>(StarredKit, moved.star)
+        Assert.Equal<KitName>(KitName "Kit b", moved.name)
+        Assert.Equal<ClockTime>(ClockTime (DateTime(2026, 11, 3, 12, 1, 0, DateTimeKind.Utc)), moved.lastOpened)
+        Assert.Equal<KitHistory>(historyOf [ kitA; { kitB with folder = found }; kitC; kitD; kitE ], relocated)
+
+    [<Fact>]
+    let ``relocate onto a folder the history holds keeps one entry for that folder`` () : unit =
+        let held = folderOf "C:/kits/c"
+        let relocated = mixed.relocate (folderOf "C:/kits/a") held
+        let entriesOfHeld = relocated.entries |> List.filter (fun entry -> entry.folder = held)
+
+        Assert.Equal<KitHistory>(historyOf [ { kitA with folder = held }; kitB; kitD; kitE ], relocated)
+        Assert.Equal<KitHistoryEntry list>([ { kitA with folder = held } ], entriesOfHeld)
+        Assert.Equal<int>(4, relocated.entries.Length)
+        Assert.Equal<KitHistory>(mixed, mixed.relocate (folderOf "C:/kits/zz") held)
+
+    [<Fact>]
     let ``evict drops the oldest unstarred kits down to the limit`` () : unit =
         Assert.Equal<KitHistory>(historyOf [ kitA; kitB; kitC; kitD ], mixed.evict (KitHistoryLimit 4))
         Assert.Equal<KitHistory>(historyOf [ kitB; kitC; kitD ], mixed.evict (KitHistoryLimit 3))

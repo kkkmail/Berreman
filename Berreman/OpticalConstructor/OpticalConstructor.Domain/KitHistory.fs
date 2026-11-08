@@ -88,6 +88,29 @@ module KitHistory =
         member this.forget (folder : KitFolder) : KitHistory =
             this.changeEntry folder (fun _ -> None)
 
+        /// Locate…'s answer: the kit in `missing` takes `found` as its folder, keeping its id, name, time, star and place,
+        /// and any other entry of `found` is dropped, so a folder is listed once. Without a kit in `missing` the history is
+        /// unchanged; no disk is touched (spec 0050 S5.2).
+        member this.relocate (missing : KitFolder) (found : KitFolder) : KitHistory =
+            let indexed = List.indexed this.entries
+
+            let movedOpt =
+                indexed
+                |> List.tryPick (fun (index, entry) -> KitHistory.tryMatchFolder missing entry |> Option.map (fun moved -> index, moved))
+
+            match movedOpt with
+            | Some (movedIndex, moved) ->
+                let relocated =
+                    indexed
+                    |> List.choose (fun (index, entry) ->
+                        match index = movedIndex, KitHistory.tryMatchFolder found entry with
+                        | true, _ -> Some { moved with folder = found }
+                        | false, Some _ -> None
+                        | false, None -> Some entry)
+
+                { this with entries = relocated }
+            | None -> this
+
         /// Drops unstarred kits, the earliest open first and the later of equal times first, until at most `limit`
         /// remain; a starred kit is never dropped and the survivors keep their order (spec 0050 S5.1).
         member this.evict (limit : KitHistoryLimit) : KitHistory =
@@ -209,3 +232,9 @@ module KitHistory =
                         | true -> KitFolderPresent
                         | false -> KitFolderMissing
             }
+
+        /// Reads the stored history, applies `change`, writes the result and answers it, or the write's error: the one
+        /// read-change-write sequence behind every history verb's caller (spec 0050 S5.2).
+        member this.changeHistory (change : KitHistory -> KitHistory) : Result<KitHistory, KitHistoryError> =
+            let changed = change (this.readHistory ())
+            this.writeHistory changed |> Result.map (fun () -> changed)
