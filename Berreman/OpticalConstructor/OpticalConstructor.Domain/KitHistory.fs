@@ -35,6 +35,14 @@ module KitHistory =
             star : KitStar
         }
 
+    /// The text typed into the start screen's filter box; `none` is the empty box (spec 0050 S5.2).
+    type KitHistoryFilter =
+        | KitHistoryFilter of string
+
+        member this.value : string = let (KitHistoryFilter text) = this in text
+
+        static member none : KitHistoryFilter = KitHistoryFilter ""
+
     /// The whole history, `entries` held newest open first; a kit is identified by its folder (spec 0050 S5.1).
     type KitHistory =
         {
@@ -131,10 +139,36 @@ module KitHistory =
 
             newestFirst StarredKit @ newestFirst UnstarredKit
 
+        /// `displayOrder` keeping the kits whose name or folder holds the filter's trimmed text, ignoring case; a blank
+        /// filter trims to the empty text, which every kit holds, so it keeps them all (spec 0050 S5.2).
+        member this.entriesMatching (filter : KitHistoryFilter) : KitHistoryEntry list =
+            let text = filter.value.Trim()
+
+            this.displayOrder
+            |> List.filter (fun entry ->
+                entry.name.value.Contains(text, StringComparison.OrdinalIgnoreCase)
+                || entry.folder.value.value.Contains(text, StringComparison.OrdinalIgnoreCase))
+
     /// Whether a history entry's folder is on disk now; it is probed, never stored, so it has no tag (spec 0050 S5.1).
     type KitFolderPresence =
         | KitFolderPresent
         | KitFolderMissing
+
+    /// One row of the start screen's kit list: a history entry and whether its folder is on disk now (spec 0050 S5.2).
+    type KitHistoryRow =
+        {
+            entry : KitHistoryEntry
+            presence : KitFolderPresence
+        }
+
+    type KitHistory with
+
+        /// `entriesMatching filter`, in its order, each paired with `probe`'s answer for its folder. The caller supplies
+        /// the probe (`KitHistoryProxy.probeFolder`), so the history stays pure (spec 0050 S5.2).
+        member this.rowsMatching (filter : KitHistoryFilter) (probe : KitFolder -> KitFolderPresence) : KitHistoryRow list =
+            let rowOf (entry : KitHistoryEntry) : KitHistoryRow = { entry = entry; presence = probe entry.folder }
+
+            this.entriesMatching filter |> List.map rowOf
 
     /// Why the kit history failed; the reason names the file or folder and the cause (spec 0050 S5.1).
     type KitHistoryError =

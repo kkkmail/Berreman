@@ -178,6 +178,45 @@ module KitHistoryTests =
         Assert.Equal<KitHistory>(historyOf [ { starred1 with lastOpened = ClockTime reopenedAt }; starred3; starred2 ], withLast)
 
     [<Fact>]
+    let ``entriesMatching keeps the kits whose name or folder holds the filter, ignoring case`` () : unit =
+        Assert.Equal<KitHistoryEntry list>([ kitA ], mixed.entriesMatching (KitHistoryFilter "kit A"))
+        Assert.Equal<KitHistoryEntry list>([ kitC ], mixed.entriesMatching (KitHistoryFilter "/C"))
+        Assert.Equal<KitHistoryEntry list>([ kitD; kitB; kitC; kitA; kitE ], mixed.entriesMatching (KitHistoryFilter "  KITS/  "))
+        Assert.Empty(mixed.entriesMatching (KitHistoryFilter "zz"))
+
+    [<Fact>]
+    let ``a blank filter keeps the whole display order`` () : unit =
+        let displayed = [ kitD; kitB; kitC; kitA; kitE ]
+
+        Assert.Equal<KitHistoryFilter>(KitHistoryFilter "", KitHistoryFilter.none)
+        Assert.Equal<KitHistoryEntry list>(displayed, mixed.entriesMatching KitHistoryFilter.none)
+        Assert.Equal<KitHistoryEntry list>(displayed, mixed.entriesMatching (KitHistoryFilter "   "))
+        Assert.Empty(KitHistory.empty.entriesMatching KitHistoryFilter.none)
+
+    [<Fact>]
+    let ``rowsMatching pairs each listed kit with its folder's presence`` () : unit =
+        let missing = [ folderOf "C:/kits/b"; folderOf "C:/kits/e" ]
+
+        let probe (folder : KitFolder) : KitFolderPresence =
+            match missing |> List.contains folder with
+            | true -> KitFolderMissing
+            | false -> KitFolderPresent
+
+        let rowOf (entry : KitHistoryEntry) (presence : KitFolderPresence) : KitHistoryRow = { entry = entry; presence = presence }
+
+        let allRows =
+            [
+                rowOf kitD KitFolderPresent
+                rowOf kitB KitFolderMissing
+                rowOf kitC KitFolderPresent
+                rowOf kitA KitFolderPresent
+                rowOf kitE KitFolderMissing
+            ]
+
+        Assert.Equal<KitHistoryRow list>(allRows, mixed.rowsMatching KitHistoryFilter.none probe)
+        Assert.Equal<KitHistoryRow list>([ rowOf kitB KitFolderMissing ], mixed.rowsMatching (KitHistoryFilter "Kit b") probe)
+
+    [<Fact>]
     let ``a kit history error renders its condition and its reason`` () : unit =
         let reason = "C:/Users/someone/AppData/Roaming/kit-history.json is read-only"
         let description = (KitHistoryWriteErr reason).describe
