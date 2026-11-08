@@ -2,10 +2,11 @@
 
 Step 0145's S43-OPEN-SEAM implementation is complete under the operator-approved
 construction ruling in `.manual/010-step-0145-scratch-kit-construction.md`.
-The missing Storage-owned, Result-returning scratch-context constructor and its
-eighth declared identity are present. The partial attempt was committed as
-`d015bc2`; accepted 0144 remains `85aa190`. The arc stays stopped at 0145 pending
-the operator's commit and explicit relaunch instruction.
+The Storage-owned, Result-returning scratch-context constructor and its eighth
+declared identity are present in the approved repair committed at `c5beb60`;
+accepted 0144 remains `85aa190`. This normal-resume worker reviewed and preserved
+that complete implementation and updated the required handoff documents. The
+next action belongs to the supervisor: normal review and all fourteen gates.
 
 # What's working
 
@@ -16,8 +17,16 @@ the operator's commit and explicit relaunch instruction.
   returning initialization errors as values and capturing the supplied clock.
 - All eight declared concrete identities, with every earlier assertion and fact
   name preserved. The guard repair from manual 009 is unchanged.
+- Updated the normal-resume handoff without changing product code or protected
+  supervisor records.
 
 # Tests
+
+This resumed IMPLEMENT worker ran no checks or gates, as required by Invariant
+6. All fourteen gates remain for normal supervisor execution after this worker
+exits. The source review found all eight declared identities: one naming fact,
+three shared facts inherited by both proxy backends, and one scratch-context
+fact. This is source accounting, not a new discovery or execution result.
 
 The operator repair ran all fourteen unchanged 0145 gates successfully: build
 (zero warnings/errors), elevation (five working-tree-affected projects, zero new
@@ -42,8 +51,9 @@ construction is governed by manual 010 but is not implemented or tested here.
 
 The YAML preserves the inherited supervisor-owned baseline (resolved through
 checkpoint 143 from checkpoint 142). The operator's 1,137-case measurement does
-not publish a baseline. Checkpoint 144 remains absent until normal supervisor
-verification succeeds after the operator's commit and relaunch instruction.
+not publish a baseline. The supervisor alone publishes checkpoint index 144
+with the measured 1,137-case floor and completes expected-red bookkeeping after
+successful normal verification; this worker makes no such update.
 
 ```yaml
 gates:
@@ -66,11 +76,12 @@ serialization implementation, migration or retry policy changed.
 
 # Deferred
 
-No 0145 implementation remains deferred. The next action is the operator's
-commit, followed by an explicit relaunch instruction. Use the prepared recovery
-operator reply with `--executability-profile 1` for normal resume. Do not use
-`--accept-current-slice`: the supervisor must record checkpoint 144 and the new
-1,137-case floor and complete expected-red bookkeeping itself.
+No 0145 implementation remains deferred. The approved repair has been committed
+and this worker was dispatched with the recovery note. Return it to the current
+normal supervisor review and verification flow under `--executability-profile 1`.
+Do not use `--accept-current-slice`: the supervisor must record checkpoint
+144 and the measured 1,137-case floor and complete expected-red bookkeeping
+itself. This worker does not start another supervisor.
 
 Manual 010 settles the forward contract now. Future scratch/scene feature work
 remains at its declared steps: 0150 returns construction errors; 0152 passes a
@@ -80,13 +91,15 @@ first require creation of a disposable scratch kit.
 
 # Gotchas
 
-- Published contracts, oracle, gate snapshots, state, counters, checkpoints,
-  expected-red, baselines, test effects and contract registries are unchanged.
+- This worker did not edit published contracts, oracle, gate snapshots, state,
+  counters, checkpoints, expected-red, baselines, test effects, the receipt or
+  contract registries. Entry changes to `.executability-json`,
+  `.manifest.state.json` and `.supervisor-lock.diag` belong to the supervisor.
 - The primary and secondary postmortems retain the pre-repair evidence. Their
   construction proposals are now authorized by manual 010.
 - Initialization errors cannot be hidden by an infallible wrapper or a dummy
   proxy. Future callers must observe the revised typed error contract.
-- No version bump, commit, ASG change or arc restart was performed.
+- No version bump, commit, ASG change or arc restart was performed by this worker.
 
 # Changelog
 
@@ -95,3 +108,6 @@ first require creation of a disposable scratch kit.
 - 2026-11-07 (operator recovery): Recorded manual 010, completed the Storage
   extension and eighth identity, verified the full gate roster, refreshed the
   receipt and prepared the normal-resume handoff.
+- 2026-11-07 (normal resume): Reviewed and preserved committed repair `c5beb60`
+  and all eight identities; updated worker handoffs for supervisor verification
+  without running checks or changing product code or protected records.

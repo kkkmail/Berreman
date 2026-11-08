@@ -1,7 +1,26 @@
 # Implementation plan
 
-Implement S43-OPEN-SEAM within the four authorized source files. Add folder-leaf naming beside `tryKitPathOf`, the asynchronous folder-picker record after `KitContext`, and `openOrInitialise` as an extension that delegates to `openKit` and initializes only after `NotAKitFolderErr`. Extend the existing shared contract so both proxy backends exercise identical opening behavior; preserve all existing test identities and assertions.
+Resume step 0145 under the task's operator note and manual 010. The approved
+repair is committed at `c5beb60`; accepted 0144 remains `85aa190`. Preserve the
+existing S43-OPEN-SEAM implementation, all eight declared concrete test
+identities, every existing assertion and manual 009's shared guard.
 
-The requested `KitContext.createInMemory` has a concrete dependency conflict with the current implementation. `KitProxy.createInMemory` now lives in Storage/KitFolderStore.fs and supplies metadata serialization, lock serialization/parsing and snapshot validation to Domain's `InMemoryKitFolder.createKitProxy`. Domain cannot call that factory without a dependency cycle. The prescribed two-argument, infallible constructor supplies none of those dependencies, and the slice forbids another member, option or verb. Do not copy serializers, install global callbacks, introduce placeholder text, suppress initialization errors or weaken the existing proxy contract. Complete the independent effects and report the exact missing authority if this conflict cannot be reconciled within the prescribed surface.
+Read the current naming, picker, opening and scratch-construction code against
+the slice and amended construction contract. Keep `KitContext.createInMemory`
+in Storage with its two inputs and `Result<KitContext, KitError>` return. It
+must initialize one private folder through the canonical factory and propagate
+errors without opening, locking, reading the clock or scanning stamps. Review
+the existing tests and historical repair evidence; change product code only if
+this review identifies a requirement that is still unmet.
 
-Only Kit.fs, KitFolders.fs, KitTests.fs and KitProxyTests.fs are authorized source edits. Worker documentation uses the supplied 0145 paths. No build, test, analyzer or invariant gate will be run: IMPLEMENT Invariant 6 assigns those to the supervisor. Preserve the dirty supervisor manifest, all frozen acceptance metadata and the existing version ring.
+Update only the supplied implementation plan, implementation log and
+state-of-the-world if the committed repair already satisfies the step. Retain
+the inherited YAML constructor baseline of 1,129. Distinguish the operator
+repair's recorded 1,137 passing cases from this worker's execution: IMPLEMENT
+Invariant 6 assigns every build, test, analyzer and invariant gate to the
+supervisor after exit. Run no checks and report no new gate result.
+
+Do not edit supervisor state, counters, checkpoints, baselines, expected-red
+records, test effects, frozen contracts, compiled snapshots or the profile-1
+receipt. Do not relaunch the supervisor or accept the slice directly. Later
+scratch/scene consumers remain at their own steps under manual 010.

@@ -152,6 +152,9 @@
   "143": {
     "ui_smoke_tests": 215
   },
+  "144": {
+    "constructor_unit_tests": 1137
+  },
   "15": {
     "constructor_unit_tests": 736
   },

@@ -1,6 +1,85 @@
 # Implementation log
 
-## Operator-authorized recovery
+## Normal-resume progress (2026-11-07)
+
+- Before handoff review: read the task, both worker protocols, project prompt,
+  slice and gate snapshot, manual 010, manual 009 and the operator repair's
+  final review. Entry HEAD is `c5beb60`, containing the approved repair.
+- The entry working tree has supervisor-owned changes to `.executability-json`,
+  `.manifest.state.json` and `.supervisor-lock.diag`; leave them untouched.
+- Review the committed four contracts and eight declared identities against
+  S43-OPEN-SEAM and manual 010. Preserve product code and assertions unless a
+  concrete unmet requirement is found. Update the supplied handoff records to
+  reflect this active normal resume rather than the historical authority block.
+- No checks or gates will run under IMPLEMENT Invariant 6. The supervisor owns
+  all fourteen gates, exact census, checkpoint 144 and expected-red bookkeeping.
+- After source review: the four contracts satisfy S43-OPEN-SEAM as amended by
+  manual 010. `namedKitFile` normalizes folder separators and rejects a blank
+  leaf; `KitFolderPicker` is asynchronous; `openOrInitialise` initializes only
+  after `NotAKitFolderErr` and preserves every other result.
+- The Storage scratch extension creates one folder and its first canonical
+  proxy, then maps successful initialization to the context. Its error branch
+  passes through unchanged, the supplied clock is captured, and it makes no
+  open, lock or stamp-scan call. Initialization retains its existing own-write
+  metadata bookkeeping and creates `data` and `library`.
+- Source coverage consists of the naming fact, three shared facts inherited by
+  both concrete proxy classes, and the in-memory-only scratch fact: eight
+  declared identities. Their assertions cover preservation, errors, locks,
+  canonical metadata, isolated contexts and write/read behavior. No fact,
+  assertion, product file or guard implementation was changed this session.
+- Before final handoff: update the state-of-the-world for the active resume,
+  preserving the inherited YAML baseline and separating historical repair
+  measurements from pending supervisor verification.
+- After handoff: the three required worker documents now describe the complete
+  committed repair and normal verification path. No implementation requirement
+  remains blocked; no future slice's feature was implemented early.
+
+The sections below retain the earlier attempt and operator-repair history;
+their waiting/blocking statements describe those earlier phases, not this
+resumed worker.
+
+## Testing state
+
+This resumed IMPLEMENT worker ran no build, tests, analyzer, invariant or other
+gate. `gates_run` is empty and `gate_results` contains no worker results. The
+implementation is complete and ready for normal supervisor review and all
+fourteen gates; this statement does not accept the slice or green-light a gate.
+
+Historical operator-repair evidence in
+`.artifacts/0145-operator-repair/final-review.md` records 92 focused passing kit
+cases and all fourteen gates passing, including 1,137 constructor cases with
+exact census and zero failures/skips. Those are existing repair measurements,
+not executions or new measurements by this worker. Retain the inherited 1,129
+baseline; the supervisor must measure and publish checkpoint index 144 and
+complete expected-red bookkeeping through the normal profile-1 path.
+
+## Files modified this resume
+
+- `0145-impl-plan.md`: replaced the resolved authority conflict with the approved
+  preservation and handoff plan.
+- `0145-impl-log.md`: recorded the source review and current worker handoff while
+  retaining the earlier attempt and operator-repair history below.
+- `0145-state-of-the-world.md`: updated the current stage, verification ownership
+  and changelog; kept all required sections and the inherited YAML count.
+
+## Artifacts this resume
+
+No persistent run artifact was created. Existing repair evidence remains in
+`.artifacts/0145-operator-repair/`. Worker outputs use only their supplied paths.
+
+## Gotchas for the normal resume
+
+- Manual 010 overrides the original constructor location and infallible return
+  contract. Keep both inputs and the Storage-owned typed result.
+- Preserve manual 009's shared guard and all prior assertions. The source
+  review found no remaining conflict with either operator ruling.
+- Leave the entry supervisor changes and all protected records untouched. This
+  worker performs no git mutation, version bump, restart, direct acceptance,
+  receipt refresh or checkpoint publication.
+- Manual 010 governs future scratch/scene entry points at their declared steps;
+  an already-opened scene must receive its context directly.
+
+## Operator-authorized recovery (historical, before this resume)
 
 The operator approved the four-step plan in `0145-01.postmortem-review-md`.
 Entry HEAD `d015bc2` contains the partial attempt and its reports; accepted
@@ -44,7 +123,7 @@ all eleven s17 invariants passed. Supplemental elevation against accepted 0144
 passed all seven affected projects with zero new findings. The final protected-file
 check and complete evidence are documented in the final review cited above.
 
-## Progress
+## Original attempt progress (historical)
 
 - Read AGENTS.md, the task, both worker protocols, the project prompt, slice 0145, its resolved gates, naming conventions, manual 001 sections E/F, the S43-OPEN-SEAM oracle, and existing Domain/Storage/test implementations.
 - The only initial working-tree change is the supervisor-owned specs/0050/.manifest.state.json. Leave it untouched.
@@ -57,14 +136,14 @@ check and complete evidence are documented in the final review cited above.
 - Before handoff: write the required state-of-the-world with the precise unfinished contract, missing test identity and authority decision. Preserve the immutable census and baseline; do not claim the required eight-case increase or slice completion.
 - After handoff preparation: wrote the state-of-the-world at the supplied path, including all required sections, inherited checkpoint 142, the missing eighth identity and the construction-boundary authority question. The structured exit reports no gates and commit_ready false because the slice is blocked.
 
-## Files modified
+## Original attempt files modified (historical)
 
 - Created the supplied 0145 implementation plan and this log.
 - Updated OpticalConstructor.Domain/Kit.fs and KitFolders.fs with the three independent contracts.
 - Updated OpticalConstructor.Tests/KitTests.fs and KitProxyTests.fs with seven authorized concrete test identities.
 - Created the supplied 0145-state-of-the-world.md.
 
-## Testing state
+## Original attempt testing state (historical; superseded by manual 010)
 
 No checks or gates run, per IMPLEMENT Invariant 6. The supervisor owns build, elevation, all-discovered constructor-unit-tests and the eleven s17 invariants. No pass or measured count is claimed.
 
@@ -72,12 +151,12 @@ Blocked, not commit-ready. S43-OPEN-SEAM is incomplete: `OpticalConstructor.Doma
 
 The most recent recorded constructor count is 1129 at checkpoint 142. The state-of-world repeats that inherited count and does not author a new baseline.
 
-## Artifacts
+## Original attempt artifacts (historical)
 
 - Worker documents use only the supplied specs/0050/.slices/0145-* paths.
 - No persistent run artifacts created.
 
-## Gotchas
+## Original attempt gotchas (historical; resolved by manual 010)
 
 - S43-OPEN-SEAM's Domain-only, infallible `KitContext.createInMemory : KitFile -> ClockProvider -> KitContext` conflicts with the current serialized in-memory proxy. `KitProxy.createInMemory` is declared in Storage/KitFolderStore.fs; `InMemoryKitFolder.createKitProxy` requires four Storage-supplied functions. The factory must preserve canonical metadata text and snapshot validation, not replace those dependencies with stubs. A Domain-to-Storage reference would cycle with Storage's existing Domain reference.
 - The operator/supervisor must authorize a revised construction boundary or dependency-injection signature and its effects to resolve this conflict. No published spec, gate, census or oracle will be amended by this worker.
