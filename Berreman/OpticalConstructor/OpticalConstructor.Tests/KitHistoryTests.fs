@@ -84,3 +84,11 @@ module KitHistoryTests =
         Assert.Equal<KitHistory>(starsOnly, evicted)
         Assert.Equal<int>(2, evicted.entries.Length)
         Assert.Equal<KitHistory>(starsOnly, starsOnly.evict (KitHistoryLimit 1))
+
+    [<Fact>]
+    let ``a kit history error renders its condition and its reason`` () : unit =
+        let reason = "C:/Users/someone/AppData/Roaming/kit-history.json is read-only"
+        let description = (KitHistoryWriteErr reason).describe
+
+        Assert.Equal<string>($"the kit history could not be written: {reason}", description)
+        Assert.Contains(reason, description)

@@ -102,3 +102,48 @@ module KitHistory =
                 |> List.sortByDescending _.lastOpened
 
             newestFirst StarredKit @ newestFirst UnstarredKit
+
+    /// Whether a history entry's folder is on disk now; it is probed, never stored, so it has no tag (spec 0050 S5.1).
+    type KitFolderPresence =
+        | KitFolderPresent
+        | KitFolderMissing
+
+    /// Why the kit history failed; the reason names the file or folder and the cause (spec 0050 S5.1).
+    type KitHistoryError =
+        | KitHistoryWriteErr of reason : string
+
+        member this.describe : string =
+            match this with
+            | KitHistoryWriteErr reason -> $"the kit history could not be written: {reason}"
+
+    /// The kit history's seam over the per-user preferences, built once at the composition root (spec 0050 S5.1).
+    [<ReferenceEquality>]
+    type KitHistoryProxy =
+        {
+            /// Answers the stored history, and the empty history when none is stored or it cannot be read, so it never fails.
+            readHistory : unit -> KitHistory
+            /// Replaces the stored history whole.
+            writeHistory : KitHistory -> Result<unit, KitHistoryError>
+            /// Answers whether a folder exists now, which a history row shows as its missing state.
+            probeFolder : KitFolder -> KitFolderPresence
+        }
+
+    type KitHistoryProxy with
+
+        /// The double: it starts empty, keeps the last history written and sees only `presentFolders` on disk.
+        /// Its store is mutated only inside the closure, as `SourceProxy.createInMemory` keeps its own (spec 0050 S5.1).
+        static member createInMemory (presentFolders : KitFolder list) : KitHistoryProxy =
+            let store = ref KitHistory.empty
+
+            {
+                readHistory = fun () -> store.Value
+                writeHistory =
+                    fun history ->
+                        store.Value <- history
+                        Ok ()
+                probeFolder =
+                    fun folder ->
+                        match presentFolders |> List.contains folder with
+                        | true -> KitFolderPresent
+                        | false -> KitFolderMissing
+            }

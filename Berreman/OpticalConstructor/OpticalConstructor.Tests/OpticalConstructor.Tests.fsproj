@@ -205,6 +205,7 @@
         <Compile Include="KitContentFileJsonTests.fs" />
         <Compile Include="KitOpeningTests.fs" />
         <Compile Include="KitHistoryTests.fs" />
+        <Compile Include="KitHistoryProxyTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
