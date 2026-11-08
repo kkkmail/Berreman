@@ -287,6 +287,12 @@ module Kit =
             else
                 None
 
+        /// The folder's one spelling, `/`-separated, without a trailing `/` and upper-cased, touching no disk: a key that
+        /// names a kit, never a path to show or open (spec 0050 S5.3).
+        member this.canonical : KitFolder =
+            let folder = this.value.value.Replace('\\', '/').TrimEnd('/').ToUpperInvariant() |> FolderName
+            KitFolder folder
+
     /// A picked lab file's absolute name and original bytes (spec 0050 S4.2).
     type LabFileSource =
         {

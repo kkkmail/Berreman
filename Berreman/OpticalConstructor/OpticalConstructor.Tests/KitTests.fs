@@ -314,6 +314,26 @@ module KitTests =
                 Assert.Equal<KitRelativePath option>(None, kitFolder.tryKitPathOf file)
 
     [<Fact>]
+    let ``two spellings of one kit folder share one canonical form`` () : unit =
+        let expected = KitFolder (FolderName "C:/KITS/OPTICS QZ")
+        let spellings =
+            [
+                KitFolder (FolderName @"C:\kits\Optics QZ\")
+                KitFolder (FolderName "C:/kits/Optics QZ")
+                KitFolder (FolderName "c:/KITS/optics qz/")
+            ]
+
+        for folder in spellings do
+            Assert.Equal<KitFolder>(expected, folder.canonical)
+
+        let canonicals = spellings |> List.map _.canonical |> List.distinct
+        Assert.Equal<KitFolder list>([ expected ], canonicals)
+
+        let other = KitFolder (FolderName "C:/kits/Optics QY")
+        Assert.NotEqual<KitFolder>(expected, other.canonical)
+        Assert.Equal<KitFolder>(KitFolder (FolderName "C:/KITS/OPTICS QY"), other.canonical)
+
+    [<Fact>]
     let ``an attachment records its data file's path and hash, and its status compares that hash with the file now`` () : unit =
         let path = KitRelativePath "data/a.csv"
         let sourceName = FileName "D:/lab/a.csv"

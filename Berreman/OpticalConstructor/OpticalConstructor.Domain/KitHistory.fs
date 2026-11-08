@@ -58,10 +58,10 @@ module KitHistory =
                 entries = []
             }
 
-        /// The one folder comparison, ordinal ignoring case: `Some entry` when `entry` is the kit in `folder`. It
-        /// answers no `bool` so no primitive sits beside our types (spec 0050 S5.1).
+        /// The one folder comparison, of the two folders' `canonical`s: `Some entry` when `entry` is the kit in `folder`.
+        /// It answers no `bool` so no primitive sits beside our types (spec 0050 S5.1, S5.3).
         static member private tryMatchFolder (folder : KitFolder) (entry : KitHistoryEntry) : KitHistoryEntry option =
-            match String.Equals(entry.folder.value.value, folder.value.value, StringComparison.OrdinalIgnoreCase) with
+            match entry.folder.canonical = folder.canonical with
             | true -> Some entry
             | false -> None
 

@@ -89,6 +89,20 @@ module KitHistoryTests =
         Assert.Equal<KitHistory>(mixed, mixed.forget (folderOf "C:/kits/zz"))
 
     [<Fact>]
+    let ``a kit is matched by its folder in any spelling`` () : unit =
+        let timesOf (history : KitHistory) : ClockTime list = history.entries |> List.map _.lastOpened
+        let starred = mixed.star (folderOf @"C:\Kits\A\")
+
+        Assert.Equal<KitHistory>(historyOf [ { kitA with star = StarredKit }; kitB; kitC; kitD; kitE ], starred)
+        Assert.Equal<KitFolder list>(mixed.entries |> List.map _.folder, starred.entries |> List.map _.folder)
+        Assert.Equal<ClockTime list>(timesOf mixed, timesOf starred)
+
+        let withoutB = mixed.forget (folderOf "c:/kits/b/")
+
+        Assert.Equal<KitHistory>(historyOf [ kitA; kitC; kitD; kitE ], withoutB)
+        Assert.Equal<ClockTime list>(timesOf (historyOf [ kitA; kitC; kitD; kitE ]), timesOf withoutB)
+
+    [<Fact>]
     let ``relocate moves a kit's entry to the found folder and keeps its star, name, time and place`` () : unit =
         let found = folderOf "D:/moved/b"
         let relocated = mixed.relocate (folderOf "C:/KITS/B") found
