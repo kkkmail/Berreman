@@ -54,6 +54,7 @@
         <Compile Include="EntryTextDiff.fs" />
         <Compile Include="Kit.fs" />
         <Compile Include="KitFolders.fs" />
+        <Compile Include="KitHistory.fs" />
         <!-- Spec 0027 (024) Phase 3/4: the pure MM/SV propagation pipeline — ideal-polarizer Mueller
              matrices (constants), the sample's Mueller matrix from the EXISTING engine, SV propagation,
              the rotating-analyzer intensity curve (the Malus proof), and the ellipsometer Ψ/Δ readout.
