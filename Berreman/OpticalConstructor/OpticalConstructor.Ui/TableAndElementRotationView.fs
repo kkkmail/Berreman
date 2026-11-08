@@ -571,6 +571,46 @@ let initMainWith
     (categories : MaterialLibrary.CategoryProxy) : Result<TableAndElementRotationModel, KitError> =
     scratchKit () |> Result.map (initMainWithKit library experiments materials samples categories)
 
+/// Seeds an inverse scene with an unbound sample in its supplied kit (spec 0038 Part L; spec 0050 S4.3, .manual/010).
+let initInverseWithKit
+    (library : Library.LibraryProxy)
+    (experiments : Experiments.ExperimentProxy)
+    (materials : MaterialLibrary.MaterialProxy)
+    (samples : Library.SampleProxy)
+    (categories : MaterialLibrary.CategoryProxy)
+    (kit : KitContext) : TableAndElementRotationModel =
+    let elements =
+        [
+            {
+                id = Library.ElementId "src"
+                placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint
+                zoom = defaultElementZoom
+                beam = BeamLayout.OnMainBeam
+            }
+            {
+                id = Library.ElementId "sample"
+                placement =
+                    ElementPlacement.create Sample
+                        {
+                            x = 0.0<meter>
+                            y = 0.0<meter>
+                        }
+                zoom = defaultElementZoom
+                beam = BeamLayout.OnMainBeam
+            }
+            {
+                id = Library.ElementId "det"
+                placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint
+                zoom = defaultElementZoom
+                beam = BeamLayout.OnMainBeam
+            }
+        ]
+    {
+        initWith library experiments materials samples categories kit elements mainPalette with
+            snapChain = Scene.SnapToBeam
+            constructorMode = InverseConstructor
+    }
+
 /// Opens an inverse scene with an unbound sample in a fresh scratch kit (spec 0038 Part L; spec 0050 .manual/010).
 /// A bound hint restores the forward chart; initialization errors propagate to the caller.
 let initInverse
@@ -580,16 +620,7 @@ let initInverse
     (samples : Library.SampleProxy)
     (categories : MaterialLibrary.CategoryProxy) : Result<TableAndElementRotationModel, KitError> =
     scratchKit ()
-    |> Result.map (fun kit ->
-        let elements =
-            [ { id = Library.ElementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
-              { id = Library.ElementId "sample"; placement = ElementPlacement.create Sample { x = 0.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
-              { id = Library.ElementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
-        {
-            initWith library experiments materials samples categories kit elements mainPalette with
-                snapChain = Scene.SnapToBeam
-                constructorMode = InverseConstructor
-        })
+    |> Result.map (initInverseWithKit library experiments materials samples categories)
 
 /// Opens the default Main scene, preserving scratch-kit initialization errors (spec 0050 .manual/010).
 let initMain () : Result<TableAndElementRotationModel, KitError> =

@@ -9,12 +9,14 @@ open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Controls
+open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -69,14 +71,24 @@ module MainWorkbenchTests =
     let private freshStores () : InMemoryCatalogueStores =
         BuiltinCatalogue.freshStores ()
 
-    /// Composes Main from the Built-in catalogue and live stores as in the App (spec 0050 §3.4–3.5).
+    /// Composes Main over a picked kit and the supplied live stores (spec 0050 §3.4–3.5, S4.3).
     let private mainWith (stores : InMemoryCatalogueStores) : TableAndElementRotationModel =
-        SceneTestFixture.mainSceneWith
-            (liveLibrary stores.libraryEntries stores.samples (SourceProxy.createInMemory ()))
-            (Experiments.createInMemoryExperiments ())
-            stores.materials
-            stores.samples
-            stores.categories
+        let owner = FolderName "MainWorkbenchTests"
+        let imports = CatalogueImportContext.create stores.proxy
+        let opened = TestAppScope.openedKitIn owner imports
+        let sources = SourceProxy.createInMemory ()
+        let seed =
+            initMainWithKit
+                (liveLibrary stores.libraryEntries stores.samples sources)
+                (Experiments.createInMemoryExperiments ())
+                stores.materials stores.samples stores.categories opened.library.kit
+        let model =
+            {
+                seed with
+                    sources = sources
+                    catalogueImports = imports
+            }
+        model.loadKit opened
 
     let private freshMain () : TableAndElementRotationModel =
         freshStores () |> mainWith
@@ -86,6 +98,7 @@ module MainWorkbenchTests =
     /// `MainConstructorWindow` shape, with injectable stores / launchers).
     let private mountMain (model0 : TableAndElementRotationModel) : HostWindow =
         let window = HostWindow(Width = 980.0, Height = 1050.0)
+        window.Closed.Add(fun _ -> model0.kit.close () |> SceneTestFixture.kitSuccess)
         Program.mkSimple (fun () -> model0) updateTableAndElementRotation mainView
         |> Program.withHost window
         |> Program.run
@@ -123,10 +136,12 @@ module MainWorkbenchTests =
         Assert.Contains(BayNames.selector, BayNames.allBayNames)
         Assert.Equal(Some BayNames.details, List.tryLast BayNames.allBayNames)
         let m = freshMain ()
-        let bays = mainBays m ignore
-        Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
-        for bay in bays do
-            Assert.Equal(Ribbon.InRibbonPane, bay.mode)
+        try
+            let bays = mainBays m ignore
+            Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
+            for bay in bays do
+                Assert.Equal(Ribbon.InRibbonPane, bay.mode)
+        finally m.kit.close () |> SceneTestFixture.kitSuccess
 
     // ============================ pure: the create picker over the live catalogue ====
 
@@ -164,16 +179,15 @@ module MainWorkbenchTests =
     let ``the Materials and Library strip buttons reach their launchers as pure launches`` () =
         let calls, launchers = recordingLaunchers ()
         let m = { freshMain () with launchers = launchers }
-        // The Materials-window request (spec 0038 step 013): a pure launch over the model's stores.
-        let afterMaterials = updateTableAndElementRotation OpenMaterialsWindow m
-        Assert.Equal<string list>([ "materials-window" ], List.ofSeq calls)
-        Assert.Equal<TableAndElementRotationModel>(m, afterMaterials)
-        // The Library-window request (spec 0038 step 015): likewise pure — the retired samples
-        // workbench bay's verbs live in the window's own model now.
-        calls.Clear()
-        let afterLibrary = updateTableAndElementRotation OpenLibraryWindow m
-        Assert.Equal<string list>([ "library-window" ], List.ofSeq calls)
-        Assert.Equal<TableAndElementRotationModel>(m, afterLibrary)
+        try
+            let afterMaterials = updateTableAndElementRotation OpenMaterialsWindow m
+            Assert.Equal<string list>([ "materials-window" ], List.ofSeq calls)
+            Assert.Equal<TableAndElementRotationModel>(m, afterMaterials)
+            calls.Clear()
+            let afterLibrary = updateTableAndElementRotation OpenLibraryWindow m
+            Assert.Equal<string list>([ "library-window" ], List.ofSeq calls)
+            Assert.Equal<TableAndElementRotationModel>(m, afterLibrary)
+        finally m.kit.close () |> SceneTestFixture.kitSuccess
 
     // ============================ pure: the Details-bay band projection ============================
 
@@ -211,21 +225,18 @@ module MainWorkbenchTests =
         HeadlessSession.run (fun () ->
             let stores = freshStores ()
             let window = mountMain (mainWith stores)
-            // Spec 0038 steps 013/015: NO Materials and NO Library ribbon tab any more — the
-            // tab-strip row carries the two right-aligned window buttons instead.
-            Assert.False(isPresent window (ConstructorUiId.ribbonTab (ConstructorUiKey "Materials")).value,
-                         "the Materials bay tab must be gone from the ribbon")
-            Assert.False(isPresent window (ConstructorUiId.ribbonTab (ConstructorUiKey "Library")).value,
-                         "the Library bay tab must be gone from the ribbon")
-            Assert.True(isPresent window ConstructorUiId.openMaterialsWindowButton.value,
-                        "the ribbon strip row must carry the right-aligned Materials… button")
-            Assert.True(isPresent window ConstructorUiId.openLibraryWindowButton.value,
-                        "the ribbon strip row must carry the right-aligned Library… button")
-            // With no full-surface bay left, every bay keeps the shared table canvas below the
-            // strip — switching to the LAST bay (Details) and back never drops it.
-            Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "the default bay keeps the table canvas below the ribbon strip")
-            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.details.value)).value
-            Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "an in-pane bay keeps the table canvas below the strip")
-            clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.rotation.value)).value
-            Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "returning to a table bay keeps the table canvas")
-            window.Close())
+            try
+                Assert.False(isPresent window (ConstructorUiId.ribbonTab (ConstructorUiKey "Materials")).value,
+                             "the Materials bay tab must be gone from the ribbon")
+                Assert.False(isPresent window (ConstructorUiId.ribbonTab (ConstructorUiKey "Library")).value,
+                             "the Library bay tab must be gone from the ribbon")
+                Assert.True(isPresent window ConstructorUiId.openMaterialsWindowButton.value,
+                            "the ribbon strip row must carry the right-aligned Materials… button")
+                Assert.True(isPresent window ConstructorUiId.openLibraryWindowButton.value,
+                            "the ribbon strip row must carry the right-aligned Library… button")
+                Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "the default bay keeps the table canvas below the ribbon strip")
+                clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.details.value)).value
+                Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "an in-pane bay keeps the table canvas below the strip")
+                clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.rotation.value)).value
+                Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "returning to a table bay keeps the table canvas")
+            finally window.Close())

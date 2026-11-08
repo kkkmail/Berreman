@@ -65,6 +65,12 @@ module TestAppScope =
         let folder = (testLocations owner).kitsFolder.combine instance
         KitFolder folder
 
+    /// Answers the folder picker immediately with the supplied test kit (spec 0050 S4.3).
+    let kitPickerOf (folder : KitFolder) : KitFolderPicker =
+        {
+            pickKitFolder = fun () -> async { return Some folder }
+        }
+
     /// Opens a fresh read-write test kit, failing the calling fact with its error (spec 0050 .spec-md §3.10).
     let openedKitIn (owner : FolderName) (imports : CatalogueImportContext) : OpenedKit =
         let author = KitAuthor "test"

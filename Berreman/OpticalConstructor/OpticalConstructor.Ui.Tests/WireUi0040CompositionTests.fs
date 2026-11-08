@@ -173,11 +173,11 @@ module WireUi0040CompositionTests =
                 | _ -> ())
         opened, sub
 
-    /// Mount the REAL composition root headless over a FRESH app scope (test isolation — the stores
-    /// are mutable): the SAME `MainConstructorWindow(AppContext.create …)` the launcher's Main
-    /// button builds with `Startup.context` (spec 0038 step 006 / 045).
+    /// Mounts the real window over an isolated app scope and kit (spec 0038 steps 006/045; spec 0050 S4.3).
     let private mountRoot () : Window =
-        let window = (OpticalConstructor.App.MainConstructorWindow.tryCreate (TestAppScope.freshAppContext owner) |> SceneTestFixture.kitSuccess)
+        let context = TestAppScope.freshAppContext owner
+        let opened = TestAppScope.openedKitIn owner context.catalogueImports
+        let window = OpticalConstructor.App.MainConstructorWindow(context, opened)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window :> Window

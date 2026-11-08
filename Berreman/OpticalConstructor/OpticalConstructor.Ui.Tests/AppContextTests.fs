@@ -717,10 +717,10 @@ module AppContextTests =
             let context = freshContext ()
             // Two REAL Main windows over the SAME injected scope — the launcher's Main button
             // clicked twice (spec 0038 step 006: launcher-opened windows share the stores).
-            let first = (OpticalConstructor.App.MainConstructorWindow.tryCreate context |> SceneTestFixture.kitSuccess)
+            let first = OpticalConstructor.App.MainConstructorWindow(context, TestAppScope.openedKitIn owner context.catalogueImports)
             first.Show()
             Dispatcher.UIThread.RunJobs()
-            let second = (OpticalConstructor.App.MainConstructorWindow.tryCreate context |> SceneTestFixture.kitSuccess)
+            let second = OpticalConstructor.App.MainConstructorWindow(context, TestAppScope.openedKitIn owner context.catalogueImports)
             second.Show()
             Dispatcher.UIThread.RunJobs()
             // Observe the windows the REAL launcher seam opens (subscribed only after both Main

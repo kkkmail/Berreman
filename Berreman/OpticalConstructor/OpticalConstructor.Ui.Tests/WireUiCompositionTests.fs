@@ -95,12 +95,11 @@ module WireUiCompositionTests =
         | Some c -> Assert.Fail($"the filter box is a %s{c.GetType().Name}, not a TextBox")
         | None -> Assert.Fail("the filter box was not found")
 
-    /// Mount the REAL composition root headless: a FRESH app-scope context (test isolation —
-    /// the stores are mutable) injected into the real window, whose constructor runs the
-    /// Elmish loop over `initMainWith` — exactly what the launcher's Main button does with
-    /// `Startup.context` (spec 0038 step 006).
+    /// Mounts the real window over an isolated app scope and kit (spec 0038 step 006; spec 0050 S4.3).
     let private mountRoot () : Window =
-        let window = (OpticalConstructor.App.MainConstructorWindow.tryCreate (TestAppScope.freshAppContext owner) |> SceneTestFixture.kitSuccess)
+        let context = TestAppScope.freshAppContext owner
+        let opened = TestAppScope.openedKitIn owner context.catalogueImports
+        let window = OpticalConstructor.App.MainConstructorWindow(context, opened)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window :> Window

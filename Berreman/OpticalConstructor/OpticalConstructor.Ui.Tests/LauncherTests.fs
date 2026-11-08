@@ -26,6 +26,9 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -33,8 +36,10 @@ open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.App
 
 module LauncherTests =
@@ -75,14 +80,18 @@ module LauncherTests =
         tryFindLauncherControl window id
         |> Option.defaultWith (fun () -> failwith $"Missing control {id.value}.")
 
-    /// Open a fresh launcher on the shared headless session and run `check` over it.
-    let private withLauncher (check : LauncherWindow -> unit) : unit =
+    /// Exercises the real launcher with a substituted folder picker (spec 0050 S4.3).
+    let private withLauncherPicker (picker : KitFolderPicker) (check : LauncherWindow -> unit) : unit =
         HeadlessSession.run (fun () ->
-            let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok (freshContext ()))
+            let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok (freshContext ()), fun _ -> picker)
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
             try check launcher
             finally launcher.Close())
+
+    /// Open a fresh launcher with an isolated picked folder (spec 0050 S4.3).
+    let private withLauncher (check : LauncherWindow -> unit) : unit =
+        withLauncherPicker (TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner)) check
 
     /// Click the launcher button `id` and return every NEW window opened (via the public
     /// `Window.WindowOpenedEvent`), excluding the launcher itself.
@@ -176,7 +185,8 @@ module LauncherTests =
                     expected = LibrarySchemaVersion.current
                 }
             let error = LibrarySchemaMismatchErr mismatch
-            let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Error error)
+            let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Error error,
+                fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner))
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
             try
@@ -212,7 +222,8 @@ module LauncherTests =
                     expected = LibrarySchemaVersion.current
                 }
             for error in [ LibrarySchemaMismatchErr mismatch; LibraryDatabaseExn (System.Exception "disk full") ] do
-                let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Error error)
+                let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Error error,
+                    fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner))
                 launcher.Show()
                 Dispatcher.UIThread.RunJobs()
                 try
@@ -291,7 +302,8 @@ module LauncherTests =
                 let importsBefore = loggedImports context
                 let materialsBefore = materials context
                 let expectedCount = context.pendingImports |> List.sumBy (fun waiting -> waiting.decisions.Length)
-                let launcher = LauncherWindow(locations, WorkbenchSettings.defaults, Ok context)
+                let launcher = LauncherWindow(locations, WorkbenchSettings.defaults, Ok context,
+                    fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner))
                 let opened = ResizeArray<Window>()
                 use _subscription =
                     Window.WindowOpenedEvent.Raised
@@ -463,7 +475,8 @@ module LauncherTests =
             | Error error -> Assert.Fail(error.describe)
             | Ok _ -> Assert.Fail("the incompatible library must be refused before recreation")
 
-            let launcher = LauncherWindow(locations, WorkbenchSettings.defaults, opened)
+            let launcher = LauncherWindow(locations, WorkbenchSettings.defaults, opened,
+                fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner))
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
             try
@@ -525,24 +538,124 @@ module LauncherTests =
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the Main button opens the forward Main constructor scene`` () =
-        withLauncher (fun launcher ->
+        let folder = TestAppScope.freshKitFolder owner
+        withLauncherPicker (TestAppScope.kitPickerOf folder) (fun launcher ->
             match clickAndObserve launcher ConstructorUiId.openMainButton.value with
             | [ opened ] ->
-                Assert.True(opened :? MainConstructorWindow, $"'OpenMainButton' opened a {opened.GetType().Name}")
-                Assert.True(opened.IsVisible, "the opened scene window must be shown")
-                opened.Close()
+                try
+                    Assert.True(opened :? MainConstructorWindow, $"'OpenMainButton' opened a {opened.GetType().Name}")
+                    Assert.True(opened.IsVisible, "the opened scene window must be shown")
+                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
+                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                finally opened.Close()
+                Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
             | others -> Assert.Fail($"expected exactly one window, found {others.Length}"))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the Inverse button opens the inverse constructor scene`` () =
-        withLauncher (fun launcher ->
+        let folder = TestAppScope.freshKitFolder owner
+        withLauncherPicker (TestAppScope.kitPickerOf folder) (fun launcher ->
             match clickAndObserve launcher ConstructorUiId.openInverseButton.value with
             | [ opened ] ->
-                Assert.True(opened :? InverseConstructorWindow, $"'OpenInverseButton' opened a {opened.GetType().Name}")
-                Assert.True(opened.IsVisible, "the opened inverse scene window must be shown")
-                opened.Close()
+                try
+                    Assert.True(opened :? InverseConstructorWindow, $"'OpenInverseButton' opened a {opened.GetType().Name}")
+                    Assert.True(opened.IsVisible, "the opened inverse scene window must be shown")
+                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
+                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                finally opened.Close()
+                Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
             | others -> Assert.Fail($"expected exactly one window, found {others.Length}"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Main button opens the kit the picker answers, with its experiments`` () : unit =
+        let folder = TestAppScope.freshKitFolder owner
+        let context = freshContext ()
+        let author = KitAuthor "test"
+        let kit =
+            openKitAt folder ReadWriteKitAccess ClockProvider.system author context.catalogueImports
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let experiment : Experiment =
+            {
+                id = ExperimentId 1
+                setup = []
+                varied = None
+                measurement = CaptureTransmitted
+                range = VariableRange.forVariable VaryR1
+                dataFileOpt = None
+                sourceWaveLengthOpt = None
+            }
+        try kit.library.kit.proxy.writeExperiment experiment |> SceneTestFixture.kitSuccess
+        finally kit.library.kit.close () |> SceneTestFixture.kitSuccess
+
+        withLauncherPicker (TestAppScope.kitPickerOf folder) (fun launcher ->
+            let window = Assert.IsType<MainConstructorWindow>(Assert.Single(clickAndObserve launcher ConstructorUiId.openMainButton.value))
+            try
+                Assert.True(window.IsVisible)
+                Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                let experimentsTab = ConstructorUiId.ribbonTab (ConstructorUiKey TableAndElementRotationView.BayNames.experiments.value)
+                clickBorder window experimentsTab.value
+                let row = launcherControl window (ConstructorUiId.experimentEditButton experiment.id.uiKey)
+                Assert.True(row.IsEffectivelyVisible, "the picked kit's saved experiment must appear in the real constructor")
+                launcherControl window (ConstructorUiId.experimentViewButton experiment.id.uiKey) |> ignore
+            finally window.Close()
+            Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a cancelled pick opens nothing`` () : unit =
+        let kitsFolder = (TestAppScope.testLocations owner).kitsFolder
+        let kitFolders () : string[] =
+            if Directory.Exists kitsFolder.value then Directory.GetDirectories(kitsFolder.value) |> Array.sort
+            else [||]
+        let before = kitFolders ()
+        let calls = ResizeArray<unit>()
+        let picker : KitFolderPicker =
+            {
+                pickKitFolder = fun () ->
+                    async {
+                        calls.Add ()
+                        return None
+                    }
+            }
+        withLauncherPicker picker (fun launcher ->
+            for button in [ ConstructorUiId.openMainButton; ConstructorUiId.openInverseButton ] do
+                Assert.Empty(clickAndObserve launcher button.value)
+                Assert.Equal<string>(before, kitFolders ())
+                Assert.True(tryFindLauncherControl launcher ConstructorUiId.launcherKitErrorText |> Option.isNone)
+            Assert.Equal(2, calls.Count))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a kit that cannot be opened is shown on the launcher and opens no window`` () : unit =
+        let folder = TestAppScope.freshKitFolder owner
+        let context = freshContext ()
+        let author = KitAuthor "test"
+        let kit =
+            openKitAt folder ReadWriteKitAccess ClockProvider.system author context.catalogueImports
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        kit.library.kit.close () |> SceneTestFixture.kitSuccess
+        let experimentFile = FileName (Path.Combine(folder.value.value, "E1.experiment-json"))
+        File.WriteAllText(experimentFile.value, "{")
+        withLauncherPicker (TestAppScope.kitPickerOf folder) (fun launcher ->
+            for button in [ ConstructorUiId.openMainButton; ConstructorUiId.openInverseButton ] do
+                Assert.Empty(clickAndObserve launcher button.value)
+                let errorText = Assert.IsType<TextBlock>(launcherControl launcher ConstructorUiId.launcherKitErrorText)
+                Assert.Equal(ConstructorUiId.launcherKitErrorText.value, errorText.Name)
+                Assert.True(errorText.IsEffectivelyVisible)
+                Assert.Equal(Avalonia.Media.TextWrapping.Wrap, errorText.TextWrapping)
+                Assert.StartsWith("The kit could not be opened: ", errorText.Text)
+                Assert.Contains("E1.experiment-json", errorText.Text)
+                Assert.Equal(errorText.Text, AutomationProperties.GetName errorText)
+                Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+            File.Delete experimentFile.value
+            let window = Assert.IsType<MainConstructorWindow>(Assert.Single(clickAndObserve launcher ConstructorUiId.openMainButton.value))
+            try
+                Assert.True(window.IsVisible)
+                Assert.True(tryFindLauncherControl launcher ConstructorUiId.launcherKitErrorText |> Option.isNone)
+            finally window.Close()
+            Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -578,10 +691,11 @@ module LauncherTests =
         // meet in ONE window (the second open ACTIVATES, it does not stack a copy).
         HeadlessSession.run (fun () ->
             let context = freshContext ()
-            let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok context)
+            let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok context,
+                fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner))
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
-            let constructorWindow = (MainConstructorWindow.tryCreate context |> SceneTestFixture.kitSuccess)
+            let constructorWindow = MainConstructorWindow(context, TestAppScope.openedKitIn owner context.catalogueImports)
             constructorWindow.Show()
             Dispatcher.UIThread.RunJobs()
             try

@@ -94,9 +94,10 @@ module WireUiFinalCompositionTests =
             // The three windows the composition root hands the context to (Program.fs): the launcher is
             // the startup window, Main / Inverse are its forward / inverse constructor scenes.
             let settled = { ctx with pendingImports = [] }
-            showAssertClose (LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok settled))
-            showAssertClose ((MainConstructorWindow.tryCreate ctx |> SceneTestFixture.kitSuccess))
-            showAssertClose ((InverseConstructorWindow.tryCreate ctx |> SceneTestFixture.kitSuccess)))
+            showAssertClose (LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok settled,
+                fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner)))
+            showAssertClose (MainConstructorWindow(ctx, TestAppScope.openedKitIn owner ctx.catalogueImports))
+            showAssertClose (InverseConstructorWindow(ctx, TestAppScope.openedKitIn owner ctx.catalogueImports)))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

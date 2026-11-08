@@ -23,15 +23,20 @@ open Avalonia.Themes.Fluent
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
+open Softellect.Sys.Logging
 
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitLibrary
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.AppShell
 open OpticalConstructor.Ui.ImportDialogView
+open OpticalConstructor.Ui.KitOpening
 
 /// Load the persisted user environment once at startup (J.6). `load` is total and
 /// falls back to the built-in `defaults` on a missing/invalid settings file, so the
@@ -49,12 +54,26 @@ module private Startup =
 
 /// Mounts each constructor over its own kit and the shared app library (spec 0050 S4.3).
 module private ConstructorScene =
-    let mount (window : HostWindow) (seed : unit -> TableAndElementRotationView.TableAndElementRotationModel) : unit =
+    let storesOf (context : AppContext) (opened : OpenedKit) : KitLibraryStores =
+        let stores : KitLibraryStores =
+            {
+                library = context.library
+                materials = context.materials
+                samples = context.samples
+                categories = context.categories
+            }
+        stores.overlaidWith opened.overlay
+
+    let mount (window : HostWindow) (opened : OpenedKit) (seed : unit -> TableAndElementRotationView.TableAndElementRotationModel) : unit =
         window.Width <- TableAndElementRotationView.tableAndElementRotationCanvasWidth
         window.Height <- TableAndElementRotationView.tableAndElementRotationCanvasHeight + 210.0
         // Spec 0046: never larger than the screen it opens on — on a laptop the design height can exceed
         // the working area, which put the bottom of the scrolling page (the table) off-screen.
         OpticalConstructor.Controls.WindowFit.keepOnScreen window
+        window.Closed.Add(fun _ ->
+            match opened.library.kit.close () with
+            | Ok () -> ()
+            | Error error -> Logger.logError $"ConstructorScene: could not close the kit: {error.describe}")
         Program.mkSimple seed TableAndElementRotationView.updateTableAndElementRotation TableAndElementRotationView.mainView
         |> Program.withHost window
         |> Program.run
@@ -68,34 +87,32 @@ module private ConstructorScene =
                 experimentExport = context.experimentExport
         }
 
-/// The forward constructor works in its own initialized scratch kit (spec 0050 S4.3; .manual/010).
-type MainConstructorWindow private (model : TableAndElementRotationView.TableAndElementRotationModel) as this =
+/// Works in the opened kit with its snapshot overlay and releases it on close (spec 0050 S4.3).
+type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     do
         this.Title <- "Optical Constructor — Main"
-        ConstructorScene.mount this (fun () -> model)
+        let stores = ConstructorScene.storesOf context opened
+        let model =
+            TableAndElementRotationView.initMainWithKit stores.library context.experiments stores.materials stores.samples stores.categories opened.library.kit
+            |> ConstructorScene.withAppContext context
+        ConstructorScene.mount this opened (fun () -> model.loadKit opened)
 
-    /// Creates the window only after its kit initializes successfully (spec 0050 .manual/010).
-    static member tryCreate (context : AppContext) : Result<MainConstructorWindow, KitError> =
-        TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories
-        |> Result.map (fun model -> MainConstructorWindow(ConstructorScene.withAppContext context model))
-
-/// The inverse constructor opens an unbound sample in its own scratch kit (spec 0050 S4.3; .manual/010).
-type InverseConstructorWindow private (model : TableAndElementRotationView.TableAndElementRotationModel) as this =
+/// Opens the inverse seed in the supplied kit and releases it on close (spec 0050 S4.3).
+type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     do
         this.Title <- "Optical Constructor — Inverse"
-        ConstructorScene.mount this (fun () -> model)
-
-    /// Creates the window only after its kit initializes successfully (spec 0050 .manual/010).
-    static member tryCreate (context : AppContext) : Result<InverseConstructorWindow, KitError> =
-        TableAndElementRotationView.initInverse context.library context.experiments context.materials context.samples context.categories
-        |> Result.map (fun model -> InverseConstructorWindow(ConstructorScene.withAppContext context model))
+        let stores = ConstructorScene.storesOf context opened
+        let model =
+            TableAndElementRotationView.initInverseWithKit stores.library context.experiments stores.materials stores.samples stores.categories opened.library.kit
+            |> ConstructorScene.withAppContext context
+        ConstructorScene.mount this opened (fun () -> model.loadKit opened)
 
 /// Opens Main, Inverse, Materials and Library over one app scope, sharing editor-window launchers.
 /// A library-open failure is displayed with all surface actions disabled (spec 0038 step 045; spec 0050 S2.4).
-/// Startup catalogue decisions remain pending until their import dialog applies them (spec 0050 S3.2).
-type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, opened : Result<AppContext, StorageError>) as this =
+/// Picks a kit before opening a constructor; catalogue decisions remain pending (spec 0050 S3.2, S4.3).
+type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, opened : Result<AppContext, StorageError>, pickerFor : TopLevel -> KitFolderPicker) as this =
     inherit Window()
 
     let mutable pendingImports : PendingCatalogueImport list =
@@ -130,23 +147,47 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                 button
             // Spec 0038 step 045: share the constructor strip's single-instance window registry.
             let launchers = TableAndElementRotationView.EditorLaunchers.defaults
-            let kitStatus = TextBlock(TextWrapping = TextWrapping.Wrap, IsVisible = false)
-            AutomationProperties.SetAutomationId(kitStatus, ConstructorUiId.kitStatus.value)
-            AutomationProperties.SetName(kitStatus, "Kit status")
-            let openConstructor (created : Result<Window, KitError>) : unit =
-                match created with
-                | Ok window ->
-                    kitStatus.IsVisible <- false
+            let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
+            panel.Children.Add title
+            let mutable kitErrorOpt : TextBlock option = None
+            let clearKitError () : unit =
+                match kitErrorOpt with
+                | Some errorText ->
+                    panel.Children.Remove errorText |> ignore
+                    kitErrorOpt <- None
+                | None -> ()
+            let openConstructorKit (context : AppContext) (folder : KitFolder) (mode : TableAndElementRotationView.ConstructorMode) (access : KitAccess) : unit =
+                let author = KitAuthor Environment.UserName
+                match KitOpening.openKitAt folder access ClockProvider.system author context.catalogueImports with
+                | Ok kit ->
+                    clearKitError ()
+                    let window : Window =
+                        match mode with
+                        | TableAndElementRotationView.ForwardConstructor -> MainConstructorWindow(context, kit) :> Window
+                        | TableAndElementRotationView.InverseConstructor -> InverseConstructorWindow(context, kit) :> Window
                     window.Show()
                 | Error error ->
-                    kitStatus.Text <- $"The constructor could not be opened: {error.describe}"
-                    kitStatus.IsVisible <- true
+                    clearKitError ()
+                    let message = $"The kit could not be opened: {error.describe}"
+                    let errorText = TextBlock(Name = ConstructorUiId.launcherKitErrorText.value, Text = message, TextWrapping = TextWrapping.Wrap)
+                    AutomationProperties.SetAutomationId(errorText, ConstructorUiId.launcherKitErrorText.value)
+                    AutomationProperties.SetName(errorText, message)
+                    kitErrorOpt <- Some errorText
+                    panel.Children.Insert(1, errorText)
+            let pickConstructorKit (context : AppContext) (mode : TableAndElementRotationView.ConstructorMode) : unit =
+                async {
+                    let! folderOpt = (pickerFor this).pickKitFolder ()
+                    match folderOpt with
+                    | Some folder -> openConstructorKit context folder mode ReadWriteKitAccess
+                    | None -> ()
+                }
+                |> Async.StartImmediate
             let mainButton =
                 surfaceButton ConstructorUiId.openMainButton "Main" (fun context ->
-                    MainConstructorWindow.tryCreate context |> Result.map (fun window -> window :> Window) |> openConstructor)
+                    pickConstructorKit context TableAndElementRotationView.ForwardConstructor)
             let inverseButton =
                 surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun context ->
-                    InverseConstructorWindow.tryCreate context |> Result.map (fun window -> window :> Window) |> openConstructor)
+                    pickConstructorKit context TableAndElementRotationView.InverseConstructor)
             let materialsButton =
                 surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun context ->
                     launchers.openMaterialsWindow context.materials context.categories context.catalogueImports)
@@ -165,8 +206,6 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
             AutomationProperties.SetAutomationId(version, ConstructorUiId.launcherVersionText.value)
             AutomationProperties.SetName(version, versionText)
             DockPanel.SetDock(version, Dock.Bottom)
-            let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
-            panel.Children.Add title
             match outcome with
             | Ok _ ->
                 match pendingImports with
@@ -214,7 +253,6 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                         this.Content <- launcherContent recreated)
                     panel.Children.Add recreateButton
                 | _ -> ()
-            panel.Children.Add kitStatus
             panel.Children.Add mainButton
             panel.Children.Add inverseButton
             panel.Children.Add materialsButton
@@ -264,7 +302,9 @@ type App() =
             // The launcher is the startup window. Closing it after opening Main / a test
             // window must NOT quit the app, so shut down only when the last window closes.
             desktop.ShutdownMode <- ShutdownMode.OnLastWindowClose
-            desktop.MainWindow <- LauncherWindow(Startup.dataLocations, Startup.workbenchSettings, Startup.context)
+            desktop.MainWindow <-
+                LauncherWindow(Startup.dataLocations, Startup.workbenchSettings, Startup.context,
+                    fun owner -> KitFolderPicker.ofWindow owner Startup.dataLocations.kitsFolder)
         | _ -> ()
 
 module Program =
