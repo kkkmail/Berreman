@@ -640,12 +640,6 @@ type ConstructorUiId =
     static member launcherVersionText : ConstructorUiId = ConstructorUiId "LauncherVersionText"
     /// The library-open failure shown on the launcher (spec 0050 S2.4).
     static member launcherLibraryErrorText : ConstructorUiId = ConstructorUiId "LauncherLibraryErrorText"
-    /// The picked kit's opening failure on the launcher (spec 0050 S4.3).
-    static member launcherKitErrorText : ConstructorUiId = ConstructorUiId "LauncherKitErrorText"
-    /// Opens the locked picked kit read-only (spec 0050 S4.3).
-    static member launcherOpenKitReadOnlyButton : ConstructorUiId = ConstructorUiId "LauncherOpenKitReadOnlyButton"
-    /// Dismisses the locked-kit offer without opening a constructor (spec 0050 S4.3).
-    static member launcherCancelKitOpenButton : ConstructorUiId = ConstructorUiId "LauncherCancelKitOpenButton"
     /// Recreates an incompatible library from catalogues after preserving its backup (spec 0050 001 §C).
     static member launcherRecreateLibraryButton : ConstructorUiId = ConstructorUiId "LauncherRecreateLibraryButton"
     /// Counts every startup import row still awaiting confirmation (spec 0050 S3.2).

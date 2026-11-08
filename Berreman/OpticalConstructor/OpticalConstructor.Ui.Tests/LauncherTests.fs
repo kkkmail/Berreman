@@ -1,8 +1,8 @@
 /// Spec 0038 Part B.1 (step 002) / Part C (step 004) / step 045: the PRODUCT launcher contract.
 /// After the Elmish shell's retirement the launcher IS the app's startup window. Step 045 finalizes
 /// it to FOUR surface buttons — Main / Inverse / Materials / Library, in that order, each by a stable
-/// `Name` + `AutomationId`: Main opens the forward constructor, Inverse the step-037 inverse
-/// constructor, and Materials / Library the single-instance step-013/015 windows through the SAME
+/// `Name` + `AutomationId`: Main and Inverse open the kit start screen of the forward / inverse
+/// constructor (spec 0050 S5.2), and Materials / Library the single-instance step-013/015 windows through the SAME
 /// app-scoped launcher seam the constructor strip uses (`EditorLaunchers.defaults`), so a window
 /// opened from the launcher and the same window opened from the constructor strip meet in ONE
 /// open-or-activate space. Structure (gate `ui-tests`) pins the four buttons + their ids; behaviour
@@ -94,21 +94,27 @@ module LauncherTests =
     let private withLauncher (check : LauncherWindow -> unit) : unit =
         withLauncherPicker (TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner)) check
 
-    /// Click the launcher button `id` and return every NEW window opened (via the public
-    /// `Window.WindowOpenedEvent`), excluding the launcher itself.
-    let private clickAndObserve (launcher : LauncherWindow) (id : string) : Window list =
+    /// Every window `act` opens, observed through the public `Window.WindowOpenedEvent`.
+    let private windowsOpenedBy (act : unit -> unit) : Window list =
         let opened = ResizeArray<Window>()
         use _sub =
             Window.WindowOpenedEvent.Raised
             |> Observable.subscribe (fun (struct (sender, _args)) ->
                 match sender with
-                | :? Window as w when not (obj.ReferenceEquals(w, launcher)) -> opened.Add w
+                | :? Window as w -> opened.Add w
                 | _ -> ())
-        (match tryFindButton id launcher with
-         | Some button -> button.RaiseEvent(RoutedEventArgs(Button.ClickEvent))
-         | None -> Assert.Fail($"launcher button '%s{id}' was not found"))
+        act ()
         Dispatcher.UIThread.RunJobs()
         List.ofSeq opened
+
+    /// Click the launcher button `id` and return every NEW window opened (via the public
+    /// `Window.WindowOpenedEvent`), excluding the launcher itself.
+    let private clickAndObserve (launcher : LauncherWindow) (id : string) : Window list =
+        windowsOpenedBy (fun () ->
+            match tryFindButton id launcher with
+            | Some button -> button.RaiseEvent(RoutedEventArgs(Button.ClickEvent))
+            | None -> Assert.Fail($"launcher button '%s{id}' was not found"))
+        |> List.filter (fun w -> not (obj.ReferenceEquals(w, launcher)))
 
     /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId) — the
     /// constructor strip's Materials button is a Border, not a Button (the `WireUiCompositionTests`
@@ -129,11 +135,27 @@ module LauncherTests =
                     Dispatcher.UIThread.RunJobs()
             else Assert.Fail($"%s{id} has no on-screen position")
 
+    /// The one kit start screen a click of the launcher's Main or Inverse opens (spec 0050 S5.2).
+    let private startScreenOf (launcher : LauncherWindow) (button : ConstructorUiId) : KitStartWindow =
+        let start = Assert.IsType<KitStartWindow>(Assert.Single(clickAndObserve launcher button.value))
+        Assert.True(start.IsVisible, "the start screen must be shown")
+        start
+
+    /// Press the start screen's box `id` at its centre and return every window the press opens (spec 0050 S5.2).
+    let private pressAndObserve (start : KitStartWindow) (id : ConstructorUiId) : Window list =
+        windowsOpenedBy (fun () -> clickBorder start id.value)
+
+    /// Close the start screen unless the kit it opened already closed it.
+    let private closeStartScreen (start : KitStartWindow) : unit =
+        if start.IsVisible then start.Close()
+        Dispatcher.UIThread.RunJobs()
+
     type private SnapshotLauncherFixture =
         {
             context : AppContext
             folder : KitFolder
             launcher : LauncherWindow
+            start : KitStartWindow
             opened : ResizeArray<Window>
             assertLibraryUnchanged : unit -> unit
         }
@@ -211,11 +233,14 @@ module LauncherTests =
                 launcher.Show()
                 Dispatcher.UIThread.RunJobs()
                 Assert.Empty opened
+                let start = startScreenOf launcher ConstructorUiId.openMainButton
+                Assert.Same(start, Assert.Single(opened))
                 check
                     {
                         context = context
                         folder = folder
                         launcher = launcher
+                        start = start
                         opened = opened
                         assertLibraryUnchanged = assertLibraryUnchanged
                     }
@@ -226,8 +251,9 @@ module LauncherTests =
                 Dispatcher.UIThread.RunJobs())
 
     let private snapshotDialog (fixture : SnapshotLauncherFixture) (snapshot : LibraryEntryEnvelope) : ImportDialogWindow =
-        let dialog = Assert.IsType<ImportDialogWindow>(Assert.Single(clickAndObserve fixture.launcher ConstructorUiId.openMainButton.value))
+        let dialog = Assert.IsType<ImportDialogWindow>(Assert.Single(pressAndObserve fixture.start ConstructorUiId.openKitButton))
         Assert.True(dialog.IsVisible)
+        Assert.True(fixture.start.IsVisible, "the start screen must wait for the import decision")
         Assert.DoesNotContain(fixture.opened, fun window -> window :? MainConstructorWindow || window :? InverseConstructorWindow)
         let rows = Assert.IsType<StackPanel>(launcherControl dialog ConstructorUiId.importDecisionList)
         Assert.Single rows.Children |> ignore
@@ -257,20 +283,22 @@ module LauncherTests =
         withSnapshotLauncher snapshot (fun fixture ->
             let heldBefore = fixture.context.catalogueImports.proxy.tryHeldEntry snapshot.content.id
             let cancelled = snapshotDialog fixture snapshot
-            Assert.Single fixture.opened |> ignore
+            Assert.Equal(2, fixture.opened.Count)
             clickBorder cancelled ConstructorUiId.importCancelButton.value
             Assert.False(cancelled.IsVisible)
-            Assert.Single fixture.opened |> ignore
+            Assert.True(fixture.start.IsVisible, "Cancel on the import dialog must keep the start screen open")
+            Assert.Equal(2, fixture.opened.Count)
             Assert.False(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
             fixture.assertLibraryUnchanged ()
 
             let dialog = snapshotDialog fixture snapshot
-            Assert.Equal(2, fixture.opened.Count)
+            Assert.Equal(3, fixture.opened.Count)
             clickBorder dialog ConstructorUiId.importApplyButton.value
             Assert.False(dialog.IsVisible)
-            Assert.Equal(3, fixture.opened.Count)
-            let constructor = Assert.IsType<MainConstructorWindow>(fixture.opened[2])
+            Assert.Equal(4, fixture.opened.Count)
+            let constructor = Assert.IsType<MainConstructorWindow>(fixture.opened[3])
             Assert.True(constructor.IsVisible)
+            Assert.False(fixture.start.IsVisible, "the start screen must close once its kit opens")
             Assert.True(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
             Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(heldBefore, fixture.context.catalogueImports.proxy.tryHeldEntry snapshot.content.id)
             fixture.assertLibraryUnchanged ()
@@ -704,32 +732,42 @@ module LauncherTests =
     let ``the Main button opens the forward Main constructor scene`` () =
         let folder = TestAppScope.freshKitFolder owner
         withLauncherPicker (TestAppScope.kitPickerOf folder) (fun launcher ->
-            match clickAndObserve launcher ConstructorUiId.openMainButton.value with
-            | [ opened ] ->
-                try
-                    Assert.True(opened :? MainConstructorWindow, $"'OpenMainButton' opened a {opened.GetType().Name}")
-                    Assert.True(opened.IsVisible, "the opened scene window must be shown")
-                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
-                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
-                finally opened.Close()
-                Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
-            | others -> Assert.Fail($"expected exactly one window, found {others.Length}"))
+            let start = startScreenOf launcher ConstructorUiId.openMainButton
+            try
+                Assert.Equal("Open a kit — Main", start.Title)
+                match pressAndObserve start ConstructorUiId.newKitButton with
+                | [ opened ] ->
+                    try
+                        Assert.True(opened :? MainConstructorWindow, $"'NewKitButton' opened a {opened.GetType().Name}")
+                        Assert.True(opened.IsVisible, "the opened scene window must be shown")
+                        Assert.False(start.IsVisible, "the start screen must close once its kit opens")
+                        Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
+                        Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                    finally opened.Close()
+                    Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                | others -> Assert.Fail($"expected exactly one window, found {others.Length}")
+            finally closeStartScreen start)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the Inverse button opens the inverse constructor scene`` () =
         let folder = TestAppScope.freshKitFolder owner
         withLauncherPicker (TestAppScope.kitPickerOf folder) (fun launcher ->
-            match clickAndObserve launcher ConstructorUiId.openInverseButton.value with
-            | [ opened ] ->
-                try
-                    Assert.True(opened :? InverseConstructorWindow, $"'OpenInverseButton' opened a {opened.GetType().Name}")
-                    Assert.True(opened.IsVisible, "the opened inverse scene window must be shown")
-                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
-                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
-                finally opened.Close()
-                Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
-            | others -> Assert.Fail($"expected exactly one window, found {others.Length}"))
+            let start = startScreenOf launcher ConstructorUiId.openInverseButton
+            try
+                Assert.Equal("Open a kit — Inverse", start.Title)
+                match pressAndObserve start ConstructorUiId.newKitButton with
+                | [ opened ] ->
+                    try
+                        Assert.True(opened :? InverseConstructorWindow, $"'NewKitButton' opened a {opened.GetType().Name}")
+                        Assert.True(opened.IsVisible, "the opened inverse scene window must be shown")
+                        Assert.False(start.IsVisible, "the start screen must close once its kit opens")
+                        Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
+                        Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                    finally opened.Close()
+                    Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                | others -> Assert.Fail($"expected exactly one window, found {others.Length}")
+            finally closeStartScreen start)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -754,17 +792,21 @@ module LauncherTests =
         finally kit.library.kit.close () |> SceneTestFixture.kitSuccess
 
         withLauncherPicker (TestAppScope.kitPickerOf folder) (fun launcher ->
-            let window = Assert.IsType<MainConstructorWindow>(Assert.Single(clickAndObserve launcher ConstructorUiId.openMainButton.value))
+            let start = startScreenOf launcher ConstructorUiId.openMainButton
             try
-                Assert.True(window.IsVisible)
-                Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
-                let experimentsTab = ConstructorUiId.ribbonTab (ConstructorUiKey TableAndElementRotationView.BayNames.experiments.value)
-                clickBorder window experimentsTab.value
-                let row = launcherControl window (ConstructorUiId.experimentEditButton experiment.id.uiKey)
-                Assert.True(row.IsEffectivelyVisible, "the picked kit's saved experiment must appear in the real constructor")
-                launcherControl window (ConstructorUiId.experimentViewButton experiment.id.uiKey) |> ignore
-            finally window.Close()
-            Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))
+                let window = Assert.IsType<MainConstructorWindow>(Assert.Single(pressAndObserve start ConstructorUiId.openKitButton))
+                try
+                    Assert.True(window.IsVisible)
+                    Assert.False(start.IsVisible, "the start screen must close once its kit opens")
+                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                    let experimentsTab = ConstructorUiId.ribbonTab (ConstructorUiKey TableAndElementRotationView.BayNames.experiments.value)
+                    clickBorder window experimentsTab.value
+                    let row = launcherControl window (ConstructorUiId.experimentEditButton experiment.id.uiKey)
+                    Assert.True(row.IsEffectivelyVisible, "the picked kit's saved experiment must appear in the real constructor")
+                    launcherControl window (ConstructorUiId.experimentViewButton experiment.id.uiKey) |> ignore
+                finally window.Close()
+                Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+            finally closeStartScreen start)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -781,13 +823,15 @@ module LauncherTests =
             let dialog = snapshotDialog fixture snapshot
             clickBorder dialog ConstructorUiId.importCancelButton.value
             Assert.False(dialog.IsVisible)
-            Assert.Single fixture.opened |> ignore
+            Assert.True(fixture.start.IsVisible, "Cancel on the import dialog must keep the start screen open")
+            Assert.Equal(2, fixture.opened.Count)
             Assert.False(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
             fixture.assertLibraryUnchanged ()
             let reopened = snapshotDialog fixture snapshot
             reopened.Close()
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal(2, fixture.opened.Count)
+            Assert.True(fixture.start.IsVisible, "closing the import dialog must keep the start screen open")
+            Assert.Equal(3, fixture.opened.Count)
             Assert.False(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
             fixture.assertLibraryUnchanged ())
 
@@ -815,9 +859,13 @@ module LauncherTests =
             }
         withLauncherPicker picker (fun launcher ->
             for button in [ ConstructorUiId.openMainButton; ConstructorUiId.openInverseButton ] do
-                Assert.Empty(clickAndObserve launcher button.value)
-                Assert.Equal<string>(before, kitFolders ())
-                Assert.True(tryFindLauncherControl launcher ConstructorUiId.launcherKitErrorText |> Option.isNone)
+                let start = startScreenOf launcher button
+                try
+                    Assert.Empty(pressAndObserve start ConstructorUiId.newKitButton)
+                    Assert.True(start.IsVisible, "a cancelled pick must keep the start screen open")
+                    Assert.Equal<string>(before, kitFolders ())
+                    Assert.True(tryFindLauncherControl start ConstructorUiId.kitStartStatusText |> Option.isNone)
+                finally closeStartScreen start
             Assert.Equal(2, calls.Count))
 
     [<Fact>]
@@ -858,75 +906,78 @@ module LauncherTests =
                         }
                 }
             withLauncherPicker picker (fun launcher ->
-                Assert.Empty(clickAndObserve launcher ConstructorUiId.openMainButton.value)
-                let errorText = Assert.IsType<TextBlock>(launcherControl launcher ConstructorUiId.launcherKitErrorText)
-                Assert.Equal($"The kit is open elsewhere: {holder.describe}.", errorText.Text)
-                Assert.Contains($"process {System.Environment.ProcessId}", errorText.Text)
-                Assert.Equal(ConstructorUiId.launcherKitErrorText.value, errorText.Name)
-                Assert.Equal(errorText.Text, AutomationProperties.GetName errorText)
-                Assert.Equal(TextWrapping.Wrap, errorText.TextWrapping)
-                Assert.True(errorText.IsEffectivelyVisible)
-                let readOnly = Assert.IsType<Button>(launcherControl launcher ConstructorUiId.launcherOpenKitReadOnlyButton)
-                let cancel = Assert.IsType<Button>(launcherControl launcher ConstructorUiId.launcherCancelKitOpenButton)
-                for button, id, label in
-                    [ readOnly, ConstructorUiId.launcherOpenKitReadOnlyButton, "Open read-only"
-                      cancel, ConstructorUiId.launcherCancelKitOpenButton, "Cancel" ] do
-                    Assert.Equal(id.value, button.Name)
-                    Assert.Equal(label, Assert.IsType<string>(button.Content))
-                    Assert.Equal(label, AutomationProperties.GetName button)
-                    Assert.True(button.IsEffectivelyVisible)
-                    Assert.True(button.IsEnabled)
-                let row = Assert.IsType<StackPanel>(readOnly.Parent)
-                Assert.Same(row, cancel.Parent)
-                Assert.Same(errorText.Parent, row.Parent)
-                Assert.True(row.Bounds.Top >= errorText.Bounds.Bottom)
-                Assert.Equal(2, row.Children.Count)
-                Assert.Equal(Avalonia.Layout.Orientation.Horizontal, row.Orientation)
-                Assert.Equal(12.0, row.Spacing)
-                Assert.Equal(readOnly.Bounds.Top, cancel.Bounds.Top)
-                Assert.Equal(readOnly.Bounds.Right + 12.0, cancel.Bounds.Left)
-                Assert.Equal(MaterialsWindowView.positiveBackground, Assert.IsType<SolidColorBrush>(readOnly.Background).Color)
-                Assert.Equal(MaterialsWindowView.negativeBackground, Assert.IsType<SolidColorBrush>(cancel.Background).Color)
-                assertFilesUnchanged ()
-
-                let window = Assert.IsType<MainConstructorWindow>(Assert.Single(clickAndObserve launcher readOnly.Name))
+                let offerIds = [ ConstructorUiId.kitStartOfferText; ConstructorUiId.openKitReadOnlyButton; ConstructorUiId.cancelKitStartOfferButton ]
+                let start = startScreenOf launcher ConstructorUiId.openMainButton
                 try
-                    Assert.True(window.IsVisible)
-                    Assert.Single(picks) |> ignore
-                    for id in
-                        [ ConstructorUiId.launcherKitErrorText; ConstructorUiId.launcherOpenKitReadOnlyButton
-                          ConstructorUiId.launcherCancelKitOpenButton ] do
-                        Assert.True(tryFindLauncherControl launcher id |> Option.isNone)
-                    Assert.DoesNotContain<Visual>(row, launcher.GetVisualDescendants())
+                    Assert.Empty(pressAndObserve start ConstructorUiId.openKitButton)
+                    let offerText = Assert.IsType<TextBlock>(launcherControl start ConstructorUiId.kitStartOfferText)
+                    Assert.Equal($"The kit is open elsewhere: {holder.describe}.", offerText.Text)
+                    Assert.Contains($"process {System.Environment.ProcessId}", offerText.Text)
+                    Assert.Equal(ConstructorUiId.kitStartOfferText.value, AutomationProperties.GetAutomationId offerText)
+                    Assert.Equal(TextWrapping.Wrap, offerText.TextWrapping)
+                    Assert.True(offerText.IsEffectivelyVisible)
+                    let readOnly = Assert.IsType<Border>(launcherControl start ConstructorUiId.openKitReadOnlyButton)
+                    let cancel = Assert.IsType<Border>(launcherControl start ConstructorUiId.cancelKitStartOfferButton)
+                    for offerBox, id, label in
+                        [ readOnly, ConstructorUiId.openKitReadOnlyButton, "Open read-only"
+                          cancel, ConstructorUiId.cancelKitStartOfferButton, "Cancel" ] do
+                        Assert.Equal(id.value, AutomationProperties.GetAutomationId offerBox)
+                        Assert.Equal(label, Assert.IsType<TextBlock>(offerBox.Child).Text)
+                        Assert.True(offerBox.IsEffectivelyVisible)
+                        Assert.True(offerBox.IsEnabled)
+                    let row = Assert.IsType<StackPanel>(readOnly.Parent)
+                    Assert.Same(row, cancel.Parent)
+                    Assert.Same(offerText.Parent, row.Parent)
+                    Assert.True(row.Bounds.Top >= offerText.Bounds.Bottom)
+                    Assert.Equal(2, row.Children.Count)
+                    Assert.Equal(Avalonia.Layout.Orientation.Horizontal, row.Orientation)
+                    Assert.True(readOnly.Margin.Right > 0.0, "a visible gap must part Open read-only from Cancel")
+                    Assert.Equal(readOnly.Bounds.Top, cancel.Bounds.Top)
+                    Assert.Equal(readOnly.Bounds.Right + readOnly.Margin.Right, cancel.Bounds.Left)
+                    Assert.Equal(MaterialsWindowView.positiveBackground, Assert.IsType<SolidColorBrush>(readOnly.Background).Color)
+                    Assert.Equal(MaterialsWindowView.negativeBackground, Assert.IsType<SolidColorBrush>(cancel.Background).Color)
                     assertFilesUnchanged ()
 
-                    let experimentsTab = ConstructorUiId.ribbonTab (ConstructorUiKey TableAndElementRotationView.BayNames.experiments.value)
-                    clickBorder window experimentsTab.value
-                    let sceneName = Assert.IsType<TextBox>(launcherControl window ConstructorUiId.sceneNameField)
-                    sceneName.Text <- "Read-only scene"
-                    let save = launcherControl window ConstructorUiId.saveSceneButton
-                    save.BringIntoView() |> ignore
-                    Dispatcher.UIThread.RunJobs()
-                    clickBorder window ConstructorUiId.saveSceneButton.value
-                    let status = Assert.IsType<TextBlock>(launcherControl window ConstructorUiId.kitStatus)
-                    Assert.StartsWith("Not saved to the kit — ", status.Text)
-                    Assert.Contains("the kit is open read-only:", status.Text)
-                    assertFilesUnchanged ()
-                finally window.Close()
-                assertFilesUnchanged ()
+                    let window = Assert.IsType<MainConstructorWindow>(Assert.Single(pressAndObserve start ConstructorUiId.openKitReadOnlyButton))
+                    try
+                        Assert.True(window.IsVisible)
+                        Assert.False(start.IsVisible, "the start screen must close once its kit opens")
+                        Assert.Single(picks) |> ignore
+                        for id in offerIds do
+                            Assert.True(tryFindLauncherControl launcher id |> Option.isNone)
+                        Assert.DoesNotContain<Visual>(row, launcher.GetVisualDescendants())
+                        assertFilesUnchanged ()
 
-                Assert.Empty(clickAndObserve launcher ConstructorUiId.openInverseButton.value)
-                let inverse = Assert.IsType<InverseConstructorWindow>(Assert.Single(clickAndObserve launcher ConstructorUiId.launcherOpenKitReadOnlyButton.value))
+                        let experimentsTab = ConstructorUiId.ribbonTab (ConstructorUiKey TableAndElementRotationView.BayNames.experiments.value)
+                        clickBorder window experimentsTab.value
+                        let sceneName = Assert.IsType<TextBox>(launcherControl window ConstructorUiId.sceneNameField)
+                        sceneName.Text <- "Read-only scene"
+                        let save = launcherControl window ConstructorUiId.saveSceneButton
+                        save.BringIntoView() |> ignore
+                        Dispatcher.UIThread.RunJobs()
+                        clickBorder window ConstructorUiId.saveSceneButton.value
+                        let status = Assert.IsType<TextBlock>(launcherControl window ConstructorUiId.kitStatus)
+                        Assert.StartsWith("Not saved to the kit — ", status.Text)
+                        Assert.Contains("the kit is open read-only:", status.Text)
+                        assertFilesUnchanged ()
+                    finally window.Close()
+                    assertFilesUnchanged ()
+                finally closeStartScreen start
+
+                let inverseStart = startScreenOf launcher ConstructorUiId.openInverseButton
                 try
-                    Assert.True(inverse.IsVisible)
-                    Assert.Equal(2, picks.Count)
-                    for id in
-                        [ ConstructorUiId.launcherKitErrorText; ConstructorUiId.launcherOpenKitReadOnlyButton
-                          ConstructorUiId.launcherCancelKitOpenButton ] do
-                        Assert.True(tryFindLauncherControl launcher id |> Option.isNone)
+                    Assert.Empty(pressAndObserve inverseStart ConstructorUiId.openKitButton)
+                    let inverse = Assert.IsType<InverseConstructorWindow>(Assert.Single(pressAndObserve inverseStart ConstructorUiId.openKitReadOnlyButton))
+                    try
+                        Assert.True(inverse.IsVisible)
+                        Assert.False(inverseStart.IsVisible, "the start screen must close once its kit opens")
+                        Assert.Equal(2, picks.Count)
+                        for id in offerIds do
+                            Assert.True(tryFindLauncherControl launcher id |> Option.isNone)
+                        assertFilesUnchanged ()
+                    finally inverse.Close()
                     assertFilesUnchanged ()
-                finally inverse.Close()
-                assertFilesUnchanged ())
+                finally closeStartScreen inverseStart)
         finally held.library.kit.close () |> SceneTestFixture.kitSuccess
 
     [<Fact>]
@@ -943,22 +994,26 @@ module LauncherTests =
             let lockBytes = FileByteContent (File.ReadAllBytes lockFile.value)
             withLauncherPicker (TestAppScope.kitPickerOf folder) (fun launcher ->
                 for button in [ ConstructorUiId.openMainButton; ConstructorUiId.openInverseButton ] do
-                    Assert.Empty(clickAndObserve launcher button.value)
-                    launcherControl launcher ConstructorUiId.launcherKitErrorText |> ignore
-                    let readOnly = launcherControl launcher ConstructorUiId.launcherOpenKitReadOnlyButton
-                    let row = Assert.IsType<StackPanel>(readOnly.Parent)
-                    Assert.Empty(clickAndObserve launcher ConstructorUiId.launcherCancelKitOpenButton.value)
-                    for id in
-                        [ ConstructorUiId.launcherKitErrorText; ConstructorUiId.launcherOpenKitReadOnlyButton
-                          ConstructorUiId.launcherCancelKitOpenButton ] do
-                        Assert.True(tryFindLauncherControl launcher id |> Option.isNone)
-                    Assert.DoesNotContain<Visual>(row, launcher.GetVisualDescendants())
-                    Assert.Equal<byte>(lockBytes.value, File.ReadAllBytes lockFile.value))
+                    let start = startScreenOf launcher button
+                    try
+                        Assert.Empty(pressAndObserve start ConstructorUiId.openKitButton)
+                        launcherControl start ConstructorUiId.kitStartOfferText |> ignore
+                        let readOnly = launcherControl start ConstructorUiId.openKitReadOnlyButton
+                        let row = Assert.IsType<StackPanel>(readOnly.Parent)
+                        Assert.Empty(pressAndObserve start ConstructorUiId.cancelKitStartOfferButton)
+                        Assert.True(start.IsVisible, "Cancel must keep the start screen open")
+                        for id in
+                            [ ConstructorUiId.kitStartOfferText; ConstructorUiId.openKitReadOnlyButton
+                              ConstructorUiId.cancelKitStartOfferButton ] do
+                            Assert.True(tryFindLauncherControl start id |> Option.isNone)
+                        Assert.DoesNotContain<Visual>(row, start.GetVisualDescendants())
+                        Assert.Equal<byte>(lockBytes.value, File.ReadAllBytes lockFile.value)
+                    finally closeStartScreen start)
         finally held.library.kit.close () |> SceneTestFixture.kitSuccess
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``a kit that cannot be opened is shown on the launcher and opens no window`` () : unit =
+    let ``a kit that cannot be opened is shown on the start screen and opens no window`` () : unit =
         let folder = TestAppScope.freshKitFolder owner
         let context = freshContext ()
         let author = KitAuthor "test"
@@ -970,23 +1025,29 @@ module LauncherTests =
         File.WriteAllText(experimentFile.value, "{")
         withLauncherPicker (TestAppScope.kitPickerOf folder) (fun launcher ->
             for button in [ ConstructorUiId.openMainButton; ConstructorUiId.openInverseButton ] do
-                Assert.Empty(clickAndObserve launcher button.value)
-                let errorText = Assert.IsType<TextBlock>(launcherControl launcher ConstructorUiId.launcherKitErrorText)
-                Assert.Equal(ConstructorUiId.launcherKitErrorText.value, errorText.Name)
-                Assert.True(errorText.IsEffectivelyVisible)
-                Assert.Equal(Avalonia.Media.TextWrapping.Wrap, errorText.TextWrapping)
-                Assert.StartsWith("The kit could not be opened: ", errorText.Text)
-                Assert.Contains("E1.experiment-json", errorText.Text)
-                Assert.Equal(errorText.Text, AutomationProperties.GetName errorText)
-                for id in [ ConstructorUiId.launcherOpenKitReadOnlyButton; ConstructorUiId.launcherCancelKitOpenButton ] do
-                    Assert.True(tryFindLauncherControl launcher id |> Option.isNone)
-                Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                let start = startScreenOf launcher button
+                try
+                    Assert.Empty(pressAndObserve start ConstructorUiId.openKitButton)
+                    Assert.True(start.IsVisible, "a kit that cannot be opened must keep the start screen open")
+                    let statusText = Assert.IsType<TextBlock>(launcherControl start ConstructorUiId.kitStartStatusText)
+                    Assert.Equal(ConstructorUiId.kitStartStatusText.value, AutomationProperties.GetAutomationId statusText)
+                    Assert.True(statusText.IsEffectivelyVisible)
+                    Assert.Equal(Avalonia.Media.TextWrapping.Wrap, statusText.TextWrapping)
+                    Assert.StartsWith("The kit could not be opened: ", statusText.Text)
+                    Assert.Contains("E1.experiment-json", statusText.Text)
+                    for id in [ ConstructorUiId.openKitReadOnlyButton; ConstructorUiId.cancelKitStartOfferButton ] do
+                        Assert.True(tryFindLauncherControl start id |> Option.isNone)
+                    Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                finally closeStartScreen start
             File.Delete experimentFile.value
-            let window = Assert.IsType<MainConstructorWindow>(Assert.Single(clickAndObserve launcher ConstructorUiId.openMainButton.value))
+            let start = startScreenOf launcher ConstructorUiId.openMainButton
             try
-                Assert.True(window.IsVisible)
-                Assert.True(tryFindLauncherControl launcher ConstructorUiId.launcherKitErrorText |> Option.isNone)
-            finally window.Close()
+                let window = Assert.IsType<MainConstructorWindow>(Assert.Single(pressAndObserve start ConstructorUiId.openKitButton))
+                try
+                    Assert.True(window.IsVisible)
+                    Assert.False(start.IsVisible, "the start screen must close once its kit opens")
+                finally window.Close()
+            finally closeStartScreen start
             Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))
 
     [<Fact>]

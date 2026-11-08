@@ -1,6 +1,6 @@
 /// Runnable composition root (§A.1 / §A.6). Hosts the Avalonia `Application` +
 /// FuncUI `HostWindow` bootstrap: the launcher is the startup window, and its Main
-/// button opens the `MainConstructorWindow` workbench scene. The old Elmish
+/// button opens the kit start screen for the `MainConstructorWindow` scene. The old Elmish
 /// constructor shell (`MainWindow` hosting `Shell.init/update/view`) was dead code
 /// for the Main flow and is retired (spec 0038 Part B.1), along with the
 /// localization startup-error surface it carried.
@@ -26,7 +26,6 @@ open Elmish
 open Softellect.Sys.Logging
 
 open OpticalConstructor.Controls
-open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -87,7 +86,7 @@ module private ConstructorScene =
                 experimentExport = context.experimentExport
         }
 
-/// Works in the opened kit with its snapshot overlay and releases it on close (spec 0050 S4.3).
+/// Works in the kit the start screen opened, with its snapshot overlay, and releases it on close (spec 0050 S4.3, S5.2).
 type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     let stores = ConstructorScene.storesOf context opened
@@ -102,7 +101,7 @@ type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     /// The kit-overlaid stores supplied to this constructor's scene (spec 0050 S4.3).
     member _.sessionLibraryStores : KitLibraryStores = stores
 
-/// Opens the inverse seed in the supplied kit and releases it on close (spec 0050 S4.3).
+/// Opens the inverse seed in the kit the start screen opened and releases it on close (spec 0050 S4.3, S5.2).
 type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     do
@@ -113,9 +112,17 @@ type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this 
             |> ConstructorScene.withAppContext context
         ConstructorScene.mount this opened (fun () -> model.loadKit opened)
 
-/// Opens Main, Inverse, Materials and Library over one app scope, sharing editor-window launchers.
-/// A library-open failure is displayed with all surface actions disabled (spec 0038 step 045; spec 0050 S2.4).
-/// Confirms picked-kit snapshots before opening a constructor; catalogue decisions remain pending (spec 0050 S3.2, S4.3).
+module private KitConstructorWindows =
+    /// Shows the constructor window of `mode` over the kit the start screen opened (spec 0050 S4.3, S5.2).
+    let showConstructorIn (context : AppContext) (mode : TableAndElementRotationView.ConstructorMode) (opened : OpenedKit) : unit =
+        let window : Window =
+            match mode with
+            | TableAndElementRotationView.ForwardConstructor -> MainConstructorWindow(context, opened) :> Window
+            | TableAndElementRotationView.InverseConstructor -> InverseConstructorWindow(context, opened) :> Window
+        window.Show()
+
+/// Main and Inverse open the kit start screen of their mode; Materials and Library open over the one app scope, sharing
+/// editor-window launchers. A library-open failure disables every surface action (spec 0038 step 045; spec 0050 S2.4, S5.2).
 type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, opened : Result<AppContext, StorageError>, pickerFor : TopLevel -> KitFolderPicker) as this =
     inherit Window()
 
@@ -153,67 +160,12 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
             let launchers = TableAndElementRotationView.EditorLaunchers.defaults
             let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
             panel.Children.Add title
-            let mutable kitErrorOpt : TextBlock option = None
-            let mutable kitOfferOpt : StackPanel option = None
-            let clearKitError () : unit =
-                match kitErrorOpt with
-                | Some errorText ->
-                    panel.Children.Remove errorText |> ignore
-                    kitErrorOpt <- None
-                | None -> ()
-                match kitOfferOpt with
-                | Some row ->
-                    panel.Children.Remove row |> ignore
-                    kitOfferOpt <- None
-                | None -> ()
-            let showKitError (error : KitLibraryError) : unit =
-                clearKitError ()
-                let caption =
-                    match error with
-                    | KitLibraryKitErr (KitLockedErr holder) -> holder.openElsewhereCaption
-                    | _ -> error.openFailedCaption
-                let errorText = TextBlock(Name = ConstructorUiId.launcherKitErrorText.value, Text = caption.value, TextWrapping = TextWrapping.Wrap)
-                AutomationProperties.SetAutomationId(errorText, ConstructorUiId.launcherKitErrorText.value)
-                AutomationProperties.SetName(errorText, caption.value)
-                kitErrorOpt <- Some errorText
-                panel.Children.Insert(1, errorText)
-            let rec openConstructorKit (context : AppContext) (folder : KitFolder) (mode : TableAndElementRotationView.ConstructorMode) (access : KitAccess) : unit =
-                let author = KitAuthor Environment.UserName
-                match KitOpening.openKitAt folder access ClockProvider.system author context.catalogueImports with
-                | Ok kit ->
-                    clearKitError ()
-                    let showConstructor (resolved : OpenedKit) : unit =
-                        let window : Window =
-                            match mode with
-                            | TableAndElementRotationView.ForwardConstructor -> MainConstructorWindow(context, resolved) :> Window
-                            | TableAndElementRotationView.InverseConstructor -> InverseConstructorWindow(context, resolved) :> Window
-                        window.Show()
-                    kit.resolveAndShow context.catalogueImports showConstructor showKitError
-                | Error error ->
-                    showKitError error
-                    match error with
-                    | KitLibraryKitErr (KitLockedErr _) ->
-                        let readOnlyButton =
-                            surfaceButton ConstructorUiId.launcherOpenKitReadOnlyButton "Open read-only" (fun _ ->
-                                openConstructorKit context folder mode ReadOnlyKitAccess)
-                        readOnlyButton.Background <- SolidColorBrush MaterialsWindowView.positiveBackground
-                        let cancelButton =
-                            surfaceButton ConstructorUiId.launcherCancelKitOpenButton "Cancel" (fun _ -> clearKitError ())
-                        cancelButton.Background <- SolidColorBrush MaterialsWindowView.negativeBackground
-                        let row = StackPanel(Orientation = Layout.Orientation.Horizontal, Spacing = 12.0)
-                        row.Children.Add readOnlyButton
-                        row.Children.Add cancelButton
-                        kitOfferOpt <- Some row
-                        panel.Children.Insert(2, row)
-                    | _ -> ()
             let mainButton =
                 surfaceButton ConstructorUiId.openMainButton "Main" (fun context ->
-                    (pickerFor this).pickThen (fun folder ->
-                        openConstructorKit context folder TableAndElementRotationView.ForwardConstructor ReadWriteKitAccess))
+                    KitStartWindow(context, TableAndElementRotationView.ForwardConstructor, pickerFor, KitConstructorWindows.showConstructorIn context).Show())
             let inverseButton =
                 surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun context ->
-                    (pickerFor this).pickThen (fun folder ->
-                        openConstructorKit context folder TableAndElementRotationView.InverseConstructor ReadWriteKitAccess))
+                    KitStartWindow(context, TableAndElementRotationView.InverseConstructor, pickerFor, KitConstructorWindows.showConstructorIn context).Show())
             let materialsButton =
                 surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun context ->
                     launchers.openMaterialsWindow context.materials context.categories context.catalogueImports)

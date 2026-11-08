@@ -91,11 +91,14 @@ module WireUiFinalCompositionTests =
     let ``the launcher and both constructor states render over ONE root-composed app scope`` () =
         HeadlessSession.run (fun () ->
             let ctx = TestAppScope.freshAppContext owner
-            // The three windows the composition root hands the context to (Program.fs): the launcher is
-            // the startup window, Main / Inverse are its forward / inverse constructor scenes.
+            // The windows the composition root hands the context to (Program.fs): the launcher is the startup
+            // window, its Main / Inverse open the start screen of their mode, and a kit opens the forward /
+            // inverse constructor scene (spec 0050 S5.2).
             let settled = { ctx with pendingImports = [] }
             showAssertClose (LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok settled,
                 fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner)))
+            for mode in [ TableAndElementRotationView.ForwardConstructor; TableAndElementRotationView.InverseConstructor ] do
+                showAssertClose (KitStartWindow(ctx, mode, (fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner)), (fun _ _ -> ())))
             showAssertClose (MainConstructorWindow(ctx, TestAppScope.openedKitIn owner ctx.catalogueImports))
             showAssertClose (InverseConstructorWindow(ctx, TestAppScope.openedKitIn owner ctx.catalogueImports)))
 
