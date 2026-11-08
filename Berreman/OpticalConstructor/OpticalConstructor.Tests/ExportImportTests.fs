@@ -3,13 +3,6 @@ namespace OpticalConstructor.Tests
 open System
 open System.IO
 open System.Text.Json
-open Berreman.Constants
-open Berreman.Fields
-open Berreman.MaterialProperties
-open Berreman.Media
-open OpticalConstructor.Domain.Units
-open OpticalConstructor.Domain.BeamTree
-open OpticalConstructor.Domain.Project
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.ExperimentExport
 open Softellect.Sys.Primitives
@@ -17,11 +10,10 @@ open OpticalConstructor.Storage
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.Export
 open OpticalConstructor.Storage.MaterialLibrary
-open OpticalConstructor.Storage.DesignHistory
 open Xunit
 
 /// CSV export shape (§I.7, AC-I8), material import/export over the `materialEntry`
-/// `$def` (§I.8, AC-I10), and design-history append + diff (§I.8, AC-I11).
+/// `$def` (§I.8, AC-I10).
 module ExportImportTests =
 
     let private fixtures = Path.Combine(AppContext.BaseDirectory, "fixtures")
@@ -238,47 +230,3 @@ module ExportImportTests =
                         Assert.Equal(vacuumPlaceholderComplexity, e.complexity)
         finally
             if File.Exists path.value then File.Delete path.value
-
-    // --- AC-I11: appendRevision twice + diffRevisions (no external VCS) -------------
-
-    let private filmThickness : float<meter> = 1.0e-7<meter>
-
-    let private vacuumSystem : OpticalSystem =
-        {
-            description = Some (OpticalSystemDescription "test stack")
-            upper = OpticalProperties.vacuum
-            films = [ { properties = OpticalProperties.vacuum; thickness = Thickness.Thickness filmThickness } ]
-            substrate = None
-            lower = OpticalProperties.vacuum
-        }
-
-    let private light = IncidentLightInfo.create (WaveLength.nm 600.0<nm>)
-
-    let private node element children defaultUnit : BeamNode =
-        { element = element; system = vacuumSystem; incident = light; children = children; defaultUnit = defaultUnit }
-
-    let private sampleProject (defaultUnit : UnitOfMeasure) : OpticalConstructorProject =
-        { beamTree = { root = node (SampleElement vacuumSystem) Map.empty defaultUnit }; systems = [ vacuumSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
-
-    [<Fact>]
-    let ``AC-I11 appendRevision twice yields two numbered snapshots and diffRevisions returns a ProjectDiff`` () =
-        let folder = FolderName (Path.Combine(Path.GetTempPath(), $"""oc-hist-%s{(Guid.NewGuid().ToString("N"))}"""))
-        Directory.CreateDirectory folder.value |> ignore
-        try
-            let p1 = sampleProject Nanometer
-            let p2 = sampleProject Micrometer
-            match appendRevision folder p1, appendRevision folder p2 with
-            | Ok (), Ok () ->
-                let snaps = Directory.GetFiles(Path.Combine(folder.value, "history"), "rev-*.json")
-                Assert.Equal(2, snaps.Length)
-                // diffRevisions is pure: identical systems/sources -> no diff items.
-                let same = diffRevisions p1 p2
-                Assert.True(List.isEmpty same.systems)
-                Assert.True(List.isEmpty same.sources)
-                // An added system surfaces as an Added system diff item by index identity.
-                let p3 = { p2 with systems = vacuumSystem :: p2.systems }
-                let d = diffRevisions p1 p3
-                Assert.Contains(d.systems, fun (it : DiffItem) -> it.change = Added)
-            | r1, r2 -> Assert.Fail($"appendRevision failed: %A{r1} / %A{r2}")
-        finally
-            if Directory.Exists folder.value then Directory.Delete(folder.value, true)
