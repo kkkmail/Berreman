@@ -50,15 +50,21 @@ module KitHistory =
                 entries = []
             }
 
-        /// The one folder comparison, ordinal ignoring case as `RecentFiles.bump` compares paths: `change` maps the
-        /// matching entry, `None` drops it. It answers no `bool` so no primitive sits beside our types (spec 0050 S5.1).
+        /// The one folder comparison, ordinal ignoring case: `Some entry` when `entry` is the kit in `folder`. It
+        /// answers no `bool` so no primitive sits beside our types (spec 0050 S5.1).
+        static member private tryMatchFolder (folder : KitFolder) (entry : KitHistoryEntry) : KitHistoryEntry option =
+            match String.Equals(entry.folder.value.value, folder.value.value, StringComparison.OrdinalIgnoreCase) with
+            | true -> Some entry
+            | false -> None
+
+        /// `change` maps the kit in `folder`, `None` drops it; every other entry is kept (spec 0050 S5.1).
         member private this.changeEntry (folder : KitFolder) (change : KitHistoryEntry -> KitHistoryEntry option) : KitHistory =
             let changed =
                 this.entries
                 |> List.choose (fun entry ->
-                    match String.Equals(entry.folder.value.value, folder.value.value, StringComparison.OrdinalIgnoreCase) with
-                    | true -> change entry
-                    | false -> Some entry)
+                    match KitHistory.tryMatchFolder folder entry with
+                    | Some matched -> change matched
+                    | None -> Some entry)
 
             { this with entries = changed }
 
@@ -93,6 +99,28 @@ module KitHistory =
                 |> List.map snd
 
             { this with entries = kept }
+
+        /// Puts the kit opened from `folder` first, with `kitFile`'s id and name, one reading of `clock` and the star of
+        /// the entry it replaces (unstarred when new), then evicts down to `limit`, which can drop it (spec 0050 S5.1).
+        member this.bump (limit : KitHistoryLimit) (clock : ClockProvider) (folder : KitFolder) (kitFile : KitFile) : KitHistory =
+            let star =
+                this.entries
+                |> List.tryPick (KitHistory.tryMatchFolder folder)
+                |> Option.map _.star
+                |> Option.defaultValue UnstarredKit
+
+            let opened : KitHistoryEntry =
+                {
+                    folder = folder
+                    kitId = kitFile.id
+                    name = kitFile.name
+                    lastOpened = clock.now ()
+                    star = star
+                }
+
+            let others = this.forget folder
+            let reopened = { others with entries = opened :: others.entries }
+            reopened.evict limit
 
         /// The starred kits, then the rest, each group newest open first and equal times in stored order (spec 0050 S5.1).
         member this.displayOrder : KitHistoryEntry list =

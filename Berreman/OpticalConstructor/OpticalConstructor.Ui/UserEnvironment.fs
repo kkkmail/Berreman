@@ -4,8 +4,8 @@
 /// named/grouped favorites board (pinned reused engine `Layer`/`OpticalSystem`
 /// fragments and `materialEntry`/`sourceSpec` ids — §A.7 shapes, by value), the
 /// last working folder(s), the window/panel layout and theme (J.8), the toolbar
-/// contents, and the `Preferences` (J.7). The ordered recent-files list is NOT a
-/// field here — it lives solely in `Storage.RecentFiles` (its own `recent.json`).
+/// contents, and the `Preferences` (J.7). Recently opened kits are NOT kept here —
+/// the kit history keeps them (`KitHistoryProxy`, spec 0050 S5.1).
 ///
 /// Persistence is JSON validated on load against `optical-constructor-environment.
 /// schema.json` (added to the §A.7 schema family, same `JsonSchema.Net` library) —
@@ -224,9 +224,9 @@ type PickerPurpose =
 /// The persistent user environment (§J.6 [Core] + J.7/J.8 fields). Persisted as
 /// schema-validated JSON (NOT `.binz`); the favorites board, last folders, panel
 /// layout, theme, toolbar, and preferences all round-trip through it (AC-J6/AC-J8).
-/// The recent-files list is NOT persisted here — `Storage.RecentFiles` is the single
-/// recent-files store. This is the net-new persistent customization from 010 Part
-/// II §1.
+/// Recently opened kits are NOT kept here — the kit history keeps them
+/// (`KitHistoryProxy`, spec 0050 S5.1). This is the net-new persistent customization
+/// from 010 Part II §1.
 type EnvironmentSettings =
     {
         favorites : FavoriteGroup list
@@ -399,7 +399,7 @@ type EnvironmentSettings with
 
 /// The single fixed per-user settings path under the OS application-data folder
 /// (§J.6 item 2 — outside the repository working tree, so a committable-vs-gitignore
-/// non-issue). Mirrors the slice-013 recent-files path convention.
+/// non-issue).
 let settingsPath () : FileName =
     let folder =
         FolderName (
