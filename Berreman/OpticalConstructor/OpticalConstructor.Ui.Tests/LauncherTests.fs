@@ -129,6 +129,169 @@ module LauncherTests =
                     Dispatcher.UIThread.RunJobs()
             else Assert.Fail($"%s{id} has no on-screen position")
 
+    type private SnapshotLauncherFixture =
+        {
+            context : AppContext
+            folder : KitFolder
+            launcher : LauncherWindow
+            opened : ResizeArray<Window>
+            assertLibraryUnchanged : unit -> unit
+        }
+
+    let private launcherSiliconSnapshot () : LibraryEntryEnvelope =
+        (BuiltinCatalogue.catalogueData ()).envelopes
+        |> List.find (fun envelope -> envelope.content.id = MaterialIds.silicon.toLibraryEntryId)
+
+    let private launcherUserSnapshot () : MaterialId * LibraryEntryEnvelope =
+        let materialId = newMaterialId ()
+        let content =
+            {
+                (launcherSiliconSnapshot ()).content with
+                    id = materialId.toLibraryEntryId
+                    name = EntryName "Launcher kit material"
+                    provenance = UserProvenance
+            }
+        let snapshot = content.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+        materialId, snapshot
+
+    let private withSnapshotLauncher (snapshot : LibraryEntryEnvelope) (check : SnapshotLauncherFixture -> unit) : unit =
+        let original = freshContext ()
+        let proxy = original.catalogueImports.proxy
+        let writes = ResizeArray<unit>()
+        let recording =
+            {
+                proxy with
+                    putEntryVersion = fun put -> writes.Add (); proxy.putEntryVersion put
+                    pinEntryVersion = fun id version -> writes.Add (); proxy.pinEntryVersion id version
+                    retireEntry = fun id -> writes.Add (); proxy.retireEntry id
+                    logImport = fun entry -> writes.Add (); proxy.logImport entry
+                    forgetImport = fun id -> writes.Add (); proxy.forgetImport id
+            }
+        let imports =
+            {
+                original.catalogueImports with proxy = recording
+            }
+        let context =
+            {
+                original with catalogueImports = imports
+            }
+        match snapshot.content.provenance with
+        | UserProvenance -> Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, proxy.tryHeldEntry snapshot.content.id)
+        | _ -> ()
+        let heldEntries () : HeldEntry list =
+            let builtIn = proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> Result.defaultWith (fun error -> failwith error.describe)
+            let users = proxy.heldUserEntries () |> Result.defaultWith (fun error -> failwith error.describe)
+            builtIn @ users |> List.sortBy _.id
+        let loggedImports () : CatalogueImportLogEntry list =
+            proxy.loggedImports () |> Result.defaultWith (fun error -> failwith error.describe)
+        let beforeEntries = heldEntries ()
+        let beforeLog = loggedImports ()
+        let assertLibraryUnchanged () : unit =
+            Assert.Empty writes
+            Assert.Equal<HeldEntry list>(beforeEntries, heldEntries ())
+            Assert.Equal<CatalogueImportLogEntry list>(beforeLog, loggedImports ())
+        let folder = TestAppScope.freshKitFolder owner
+        let author = KitAuthor "test"
+        let kit =
+            openKitAt folder ReadWriteKitAccess ClockProvider.system author context.catalogueImports
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        try kit.library.kit.proxy.writeSnapshot snapshot |> SceneTestFixture.kitSuccess
+        finally kit.library.kit.close () |> SceneTestFixture.kitSuccess
+        HeadlessSession.run (fun () ->
+            let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok context,
+                fun _ -> TestAppScope.kitPickerOf folder)
+            let opened = ResizeArray<Window>()
+            use _subscription =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _)) ->
+                    match sender with
+                    | :? Window as window when not (obj.ReferenceEquals(window, launcher)) -> opened.Add window
+                    | _ -> ())
+            try
+                launcher.Show()
+                Dispatcher.UIThread.RunJobs()
+                Assert.Empty opened
+                check
+                    {
+                        context = context
+                        folder = folder
+                        launcher = launcher
+                        opened = opened
+                        assertLibraryUnchanged = assertLibraryUnchanged
+                    }
+                assertLibraryUnchanged ()
+            finally
+                for window in opened |> Seq.rev |> Seq.toList do window.Close()
+                launcher.Close()
+                Dispatcher.UIThread.RunJobs())
+
+    let private snapshotDialog (fixture : SnapshotLauncherFixture) (snapshot : LibraryEntryEnvelope) : ImportDialogWindow =
+        let dialog = Assert.IsType<ImportDialogWindow>(Assert.Single(clickAndObserve fixture.launcher ConstructorUiId.openMainButton.value))
+        Assert.True(dialog.IsVisible)
+        Assert.DoesNotContain(fixture.opened, fun window -> window :? MainConstructorWindow || window :? InverseConstructorWindow)
+        let rows = Assert.IsType<StackPanel>(launcherControl dialog ConstructorUiId.importDecisionList)
+        Assert.Single rows.Children |> ignore
+        let row = launcherControl dialog (ConstructorUiId.importDecisionRow snapshot.content.id.uiKey)
+        Assert.True(row.IsEffectivelyVisible)
+        let texts = row.GetVisualDescendants() |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None) |> Seq.toList
+        Assert.Contains(texts, fun text -> text.Contains(snapshot.content.name.value))
+        let action =
+            match fixture.context.catalogueImports.proxy.tryHeldEntry snapshot.content.id with
+            | Ok (Some held) ->
+                let version = held.versions |> List.find (fun version -> version.version = snapshot.content.version)
+                Assert.Equal(snapshot.contentHash, version.contentHash)
+                ReuseHeldEntry
+            | Ok None -> SkipIncomingEntry
+            | Error error -> failwith error.describe
+        let caption =
+            match action with
+            | ReuseHeldEntry -> "Reuse the held entry"
+            | _ -> "Keep the kit's copy (read-only)"
+        Assert.Contains($"Default: {caption}", texts)
+        Assert.True((launcherControl dialog (ConstructorUiId.importActionOption snapshot.content.id.uiKey action.uiKey)).IsEffectivelyVisible)
+        Assert.True(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
+        fixture.assertLibraryUnchanged ()
+        dialog
+
+    let private confirmSnapshotFromLauncher (materialId : MaterialId) (snapshot : LibraryEntryEnvelope) : unit =
+        withSnapshotLauncher snapshot (fun fixture ->
+            let heldBefore = fixture.context.catalogueImports.proxy.tryHeldEntry snapshot.content.id
+            let cancelled = snapshotDialog fixture snapshot
+            Assert.Single fixture.opened |> ignore
+            clickBorder cancelled ConstructorUiId.importCancelButton.value
+            Assert.False(cancelled.IsVisible)
+            Assert.Single fixture.opened |> ignore
+            Assert.False(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
+            fixture.assertLibraryUnchanged ()
+
+            let dialog = snapshotDialog fixture snapshot
+            Assert.Equal(2, fixture.opened.Count)
+            clickBorder dialog ConstructorUiId.importApplyButton.value
+            Assert.False(dialog.IsVisible)
+            Assert.Equal(3, fixture.opened.Count)
+            let constructor = Assert.IsType<MainConstructorWindow>(fixture.opened[2])
+            Assert.True(constructor.IsVisible)
+            Assert.True(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(heldBefore, fixture.context.catalogueImports.proxy.tryHeldEntry snapshot.content.id)
+            fixture.assertLibraryUnchanged ()
+
+            let expected = snapshot.content.toMaterialEntry |> Result.defaultWith (fun error -> failwith error.describe)
+            let version : MaterialVersionId =
+                {
+                    materialId = materialId
+                    version = snapshot.content.version
+                }
+            let materials = constructor.sessionLibraryStores.materials
+            Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some expected), materials.tryGetMaterial materialId)
+            Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some expected), materials.resolveVersion version)
+            Assert.Same(fixture.context.materials.listMaterials, materials.listMaterials)
+            Assert.Same(fixture.context.materials.searchMaterials, materials.searchMaterials)
+            fixture.assertLibraryUnchanged ()
+            constructor.Close()
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
+            fixture.assertLibraryUnchanged ())
+
     // ------------------------- structure (gate `ui-tests`) -------------------------
 
     [<Fact>]
@@ -602,6 +765,36 @@ module LauncherTests =
                 launcherControl window (ConstructorUiId.experimentViewButton experiment.id.uiKey) |> ignore
             finally window.Close()
             Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: a kit whose snapshot needs a decision opens the import dialog first, and Apply opens the constructor over its library`` () : unit =
+        let materialId, snapshot = launcherUserSnapshot ()
+        confirmSnapshotFromLauncher materialId snapshot
+        confirmSnapshotFromLauncher MaterialIds.silicon (launcherSiliconSnapshot ())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``cancelling a kit's import dialog opens nothing and releases the kit`` () : unit =
+        let _, snapshot = launcherUserSnapshot ()
+        withSnapshotLauncher snapshot (fun fixture ->
+            let dialog = snapshotDialog fixture snapshot
+            clickBorder dialog ConstructorUiId.importCancelButton.value
+            Assert.False(dialog.IsVisible)
+            Assert.Single fixture.opened |> ignore
+            Assert.False(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
+            fixture.assertLibraryUnchanged ()
+            let reopened = snapshotDialog fixture snapshot
+            reopened.Close()
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(2, fixture.opened.Count)
+            Assert.False(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
+            fixture.assertLibraryUnchanged ())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a kit whose snapshots the library holds byte for byte confirms every reuse row before opening`` () : unit =
+        confirmSnapshotFromLauncher MaterialIds.silicon (launcherSiliconSnapshot ())
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

@@ -90,13 +90,17 @@ module private ConstructorScene =
 /// Works in the opened kit with its snapshot overlay and releases it on close (spec 0050 S4.3).
 type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
+    let stores = ConstructorScene.storesOf context opened
+
     do
         this.Title <- "Optical Constructor — Main"
-        let stores = ConstructorScene.storesOf context opened
         let model =
             TableAndElementRotationView.initMainWithKit stores.library context.experiments stores.materials stores.samples stores.categories opened.library.kit
             |> ConstructorScene.withAppContext context
         ConstructorScene.mount this opened (fun () -> model.loadKit opened)
+
+    /// The kit-overlaid stores supplied to this constructor's scene (spec 0050 S4.3).
+    member _.sessionLibraryStores : KitLibraryStores = stores
 
 /// Opens the inverse seed in the supplied kit and releases it on close (spec 0050 S4.3).
 type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this =
@@ -111,7 +115,7 @@ type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this 
 
 /// Opens Main, Inverse, Materials and Library over one app scope, sharing editor-window launchers.
 /// A library-open failure is displayed with all surface actions disabled (spec 0038 step 045; spec 0050 S2.4).
-/// Picks a kit before opening a constructor; catalogue decisions remain pending (spec 0050 S3.2, S4.3).
+/// Confirms picked-kit snapshots before opening a constructor; catalogue decisions remain pending (spec 0050 S3.2, S4.3).
 type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, opened : Result<AppContext, StorageError>, pickerFor : TopLevel -> KitFolderPicker) as this =
     inherit Window()
 
@@ -162,27 +166,50 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                     panel.Children.Remove row |> ignore
                     kitOfferOpt <- None
                 | None -> ()
+            let showKitError (error : KitLibraryError) : unit =
+                clearKitError ()
+                let message =
+                    match error with
+                    | KitLibraryKitErr (KitLockedErr holder) -> $"The kit is open elsewhere: {holder.describe}."
+                    | _ -> $"The kit could not be opened: {error.describe}"
+                let errorText = TextBlock(Name = ConstructorUiId.launcherKitErrorText.value, Text = message, TextWrapping = TextWrapping.Wrap)
+                AutomationProperties.SetAutomationId(errorText, ConstructorUiId.launcherKitErrorText.value)
+                AutomationProperties.SetName(errorText, message)
+                kitErrorOpt <- Some errorText
+                panel.Children.Insert(1, errorText)
             let rec openConstructorKit (context : AppContext) (folder : KitFolder) (mode : TableAndElementRotationView.ConstructorMode) (access : KitAccess) : unit =
                 let author = KitAuthor Environment.UserName
                 match KitOpening.openKitAt folder access ClockProvider.system author context.catalogueImports with
                 | Ok kit ->
                     clearKitError ()
-                    let window : Window =
-                        match mode with
-                        | TableAndElementRotationView.ForwardConstructor -> MainConstructorWindow(context, kit) :> Window
-                        | TableAndElementRotationView.InverseConstructor -> InverseConstructorWindow(context, kit) :> Window
-                    window.Show()
+                    let showConstructor (resolved : OpenedKit) : unit =
+                        let window : Window =
+                            match mode with
+                            | TableAndElementRotationView.ForwardConstructor -> MainConstructorWindow(context, resolved) :> Window
+                            | TableAndElementRotationView.InverseConstructor -> InverseConstructorWindow(context, resolved) :> Window
+                        window.Show()
+                    match kit.pendingDecisions with
+                    | [] -> showConstructor kit
+                    | _ ->
+                        let closePendingKit () : unit =
+                            match kit.library.kit.close () with
+                            | Ok () -> ()
+                            | Error error -> Logger.logError $"LauncherWindow: could not close the pending kit: {error.describe}"
+                        // Spec 0050 S4.3 step 0156: Apply transfers ownership before the dialog's Closed event.
+                        let mutable wasApplied = false
+                        let onApplied (applied : ImportDialogApplied) : unit =
+                            wasApplied <- true
+                            match kit.withRebindings applied.outcome.rebindings with
+                            | Ok resolved -> showConstructor resolved
+                            | Error error ->
+                                closePendingKit ()
+                                showKitError error
+                        let dialog = ImportDialogWindow(context.catalogueImports, ResolveKitSnapshot (kit.library, kit.decisions), onApplied)
+                        dialog.Closed.Add(fun _ ->
+                            if not wasApplied then closePendingKit ())
+                        dialog.Show(this)
                 | Error error ->
-                    clearKitError ()
-                    let message =
-                        match error with
-                        | KitLibraryKitErr (KitLockedErr holder) -> $"The kit is open elsewhere: {holder.describe}."
-                        | _ -> $"The kit could not be opened: {error.describe}"
-                    let errorText = TextBlock(Name = ConstructorUiId.launcherKitErrorText.value, Text = message, TextWrapping = TextWrapping.Wrap)
-                    AutomationProperties.SetAutomationId(errorText, ConstructorUiId.launcherKitErrorText.value)
-                    AutomationProperties.SetName(errorText, message)
-                    kitErrorOpt <- Some errorText
-                    panel.Children.Insert(1, errorText)
+                    showKitError error
                     match error with
                     | KitLibraryKitErr (KitLockedErr _) ->
                         let readOnlyButton =
