@@ -136,3 +136,10 @@ module SchemaValidation =
 
     /// Validates a kit file before its version is compared and its metadata binds (spec 0050 S4.1).
     let validateKitFile (element : JsonElement) : Result<unit, StorageError> = validateWith kitFileSchema element
+
+    let private experimentFileSchemaFile : FileName = FileName (Path.Combine("schema", "experiment.schema.json"))
+
+    let private experimentFileSchema : Result<JsonSchema, StorageError> Lazy = lazy (experimentFileSchemaFile.tryLoadLibrarySchema ())
+
+    /// Validates an experiment file before its version is compared and its experiment binds (spec 0050 S4.3).
+    let validateExperimentFile (element : JsonElement) : Result<unit, StorageError> = validateWith experimentFileSchema element

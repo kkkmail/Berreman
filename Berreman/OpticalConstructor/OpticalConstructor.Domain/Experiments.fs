@@ -140,6 +140,9 @@ module Experiments =
 
         member this.next : ExperimentId = ExperimentId (this.value + 1)
 
+        /// Names an experiment's kit file by its identity, E<n> (spec 0050 S4.3).
+        member this.fileStem : FileStem = FileStem.ofText $"E{this.value}"
+
     /// Binds a versioned entry by its exact VersionRef, a preset by its stable id, or leaves it
     /// unbound (spec 0038 Part I; spec 0050 S2.2). Store pinning is a separate explicit operation.
     type ElementBinding =
@@ -264,6 +267,25 @@ module Experiments =
         /// The library references a kit snapshots, once each in setup order (spec 0050 S4.2).
         member this.libraryReferences : EntryReference list =
             this.setup |> List.choose (fun descriptor -> descriptor.binding.entryReferenceOpt) |> List.distinct
+
+    /// One experiment's versioned .experiment-json content (spec 0050 S4.3).
+    type ExperimentFile =
+        {
+            schemaVersion : FileSchemaVersion
+            experiment : Experiment
+        }
+
+        /// The only supported experiment file schema version (spec 0050 S4.3).
+        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
+
+    type Experiment with
+
+        /// Wraps the experiment in the current file schema (spec 0050 S4.3).
+        member this.experimentFile : ExperimentFile =
+            {
+                schemaVersion = ExperimentFile.currentSchemaVersion
+                experiment = this
+            }
 
     /// The in-progress experiment being built or edited (spec 028, the multi-step editor). `elementId` /
     /// `variable` are `None` until chosen; the interactive add needs both. When `editingId` is `Some` the
