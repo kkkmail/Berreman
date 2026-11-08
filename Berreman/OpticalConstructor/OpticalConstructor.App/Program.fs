@@ -150,13 +150,19 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
             let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
             panel.Children.Add title
             let mutable kitErrorOpt : TextBlock option = None
+            let mutable kitOfferOpt : StackPanel option = None
             let clearKitError () : unit =
                 match kitErrorOpt with
                 | Some errorText ->
                     panel.Children.Remove errorText |> ignore
                     kitErrorOpt <- None
                 | None -> ()
-            let openConstructorKit (context : AppContext) (folder : KitFolder) (mode : TableAndElementRotationView.ConstructorMode) (access : KitAccess) : unit =
+                match kitOfferOpt with
+                | Some row ->
+                    panel.Children.Remove row |> ignore
+                    kitOfferOpt <- None
+                | None -> ()
+            let rec openConstructorKit (context : AppContext) (folder : KitFolder) (mode : TableAndElementRotationView.ConstructorMode) (access : KitAccess) : unit =
                 let author = KitAuthor Environment.UserName
                 match KitOpening.openKitAt folder access ClockProvider.system author context.catalogueImports with
                 | Ok kit ->
@@ -168,12 +174,30 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                     window.Show()
                 | Error error ->
                     clearKitError ()
-                    let message = $"The kit could not be opened: {error.describe}"
+                    let message =
+                        match error with
+                        | KitLibraryKitErr (KitLockedErr holder) -> $"The kit is open elsewhere: {holder.describe}."
+                        | _ -> $"The kit could not be opened: {error.describe}"
                     let errorText = TextBlock(Name = ConstructorUiId.launcherKitErrorText.value, Text = message, TextWrapping = TextWrapping.Wrap)
                     AutomationProperties.SetAutomationId(errorText, ConstructorUiId.launcherKitErrorText.value)
                     AutomationProperties.SetName(errorText, message)
                     kitErrorOpt <- Some errorText
                     panel.Children.Insert(1, errorText)
+                    match error with
+                    | KitLibraryKitErr (KitLockedErr _) ->
+                        let readOnlyButton =
+                            surfaceButton ConstructorUiId.launcherOpenKitReadOnlyButton "Open read-only" (fun _ ->
+                                openConstructorKit context folder mode ReadOnlyKitAccess)
+                        readOnlyButton.Background <- SolidColorBrush MaterialsWindowView.positiveBackground
+                        let cancelButton =
+                            surfaceButton ConstructorUiId.launcherCancelKitOpenButton "Cancel" (fun _ -> clearKitError ())
+                        cancelButton.Background <- SolidColorBrush MaterialsWindowView.negativeBackground
+                        let row = StackPanel(Orientation = Layout.Orientation.Horizontal, Spacing = 12.0)
+                        row.Children.Add readOnlyButton
+                        row.Children.Add cancelButton
+                        kitOfferOpt <- Some row
+                        panel.Children.Insert(2, row)
+                    | _ -> ()
             let pickConstructorKit (context : AppContext) (mode : TableAndElementRotationView.ConstructorMode) : unit =
                 async {
                     let! folderOpt = (pickerFor this).pickKitFolder ()

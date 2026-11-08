@@ -19,6 +19,7 @@ open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Headless
 open Avalonia.Interactivity
+open Avalonia.Media
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
@@ -628,6 +629,142 @@ module LauncherTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: a kit open elsewhere offers Open read-only and Cancel in one row, and Open read-only opens it without writing`` () : unit =
+        let folder = TestAppScope.freshKitFolder owner
+        let context = freshContext ()
+        let author = KitAuthor "test"
+        let held =
+            openKitAt folder ReadWriteKitAccess ClockProvider.system author context.catalogueImports
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        try
+            let holder = held.library.kit.proxy.acquireLock held.library.kit.kitFile.created |> SceneTestFixture.kitSuccess
+            let lockFile = FileName (Path.Combine(folder.value.value, ".oc", "lock"))
+            let filesBefore =
+                Directory.GetFiles(folder.value.value, "*", SearchOption.AllDirectories)
+                |> Array.sort
+                |> Array.map (fun path ->
+                    let file = FileName path
+                    let content = FileByteContent (File.ReadAllBytes file.value)
+                    file, content)
+            let assertFilesUnchanged () : unit =
+                let filesNow =
+                    Directory.GetFiles(folder.value.value, "*", SearchOption.AllDirectories)
+                    |> Array.sort
+                    |> Array.map FileName
+                Assert.Equal<FileName>(filesBefore |> Array.map fst, filesNow)
+                for file, content in filesBefore do
+                    Assert.Equal<byte>(content.value, File.ReadAllBytes file.value)
+                Assert.True(File.Exists lockFile.value)
+            let picks = ResizeArray<unit>()
+            let picker : KitFolderPicker =
+                {
+                    pickKitFolder = fun () ->
+                        async {
+                            picks.Add ()
+                            return Some folder
+                        }
+                }
+            withLauncherPicker picker (fun launcher ->
+                Assert.Empty(clickAndObserve launcher ConstructorUiId.openMainButton.value)
+                let errorText = Assert.IsType<TextBlock>(launcherControl launcher ConstructorUiId.launcherKitErrorText)
+                Assert.Equal($"The kit is open elsewhere: {holder.describe}.", errorText.Text)
+                Assert.Contains($"process {System.Environment.ProcessId}", errorText.Text)
+                Assert.Equal(ConstructorUiId.launcherKitErrorText.value, errorText.Name)
+                Assert.Equal(errorText.Text, AutomationProperties.GetName errorText)
+                Assert.Equal(TextWrapping.Wrap, errorText.TextWrapping)
+                Assert.True(errorText.IsEffectivelyVisible)
+                let readOnly = Assert.IsType<Button>(launcherControl launcher ConstructorUiId.launcherOpenKitReadOnlyButton)
+                let cancel = Assert.IsType<Button>(launcherControl launcher ConstructorUiId.launcherCancelKitOpenButton)
+                for button, id, label in
+                    [ readOnly, ConstructorUiId.launcherOpenKitReadOnlyButton, "Open read-only"
+                      cancel, ConstructorUiId.launcherCancelKitOpenButton, "Cancel" ] do
+                    Assert.Equal(id.value, button.Name)
+                    Assert.Equal(label, Assert.IsType<string>(button.Content))
+                    Assert.Equal(label, AutomationProperties.GetName button)
+                    Assert.True(button.IsEffectivelyVisible)
+                    Assert.True(button.IsEnabled)
+                let row = Assert.IsType<StackPanel>(readOnly.Parent)
+                Assert.Same(row, cancel.Parent)
+                Assert.Same(errorText.Parent, row.Parent)
+                Assert.True(row.Bounds.Top >= errorText.Bounds.Bottom)
+                Assert.Equal(2, row.Children.Count)
+                Assert.Equal(Avalonia.Layout.Orientation.Horizontal, row.Orientation)
+                Assert.Equal(12.0, row.Spacing)
+                Assert.Equal(readOnly.Bounds.Top, cancel.Bounds.Top)
+                Assert.Equal(readOnly.Bounds.Right + 12.0, cancel.Bounds.Left)
+                Assert.Equal(MaterialsWindowView.positiveBackground, Assert.IsType<SolidColorBrush>(readOnly.Background).Color)
+                Assert.Equal(MaterialsWindowView.negativeBackground, Assert.IsType<SolidColorBrush>(cancel.Background).Color)
+                assertFilesUnchanged ()
+
+                let window = Assert.IsType<MainConstructorWindow>(Assert.Single(clickAndObserve launcher readOnly.Name))
+                try
+                    Assert.True(window.IsVisible)
+                    Assert.Single(picks) |> ignore
+                    for id in
+                        [ ConstructorUiId.launcherKitErrorText; ConstructorUiId.launcherOpenKitReadOnlyButton
+                          ConstructorUiId.launcherCancelKitOpenButton ] do
+                        Assert.True(tryFindLauncherControl launcher id |> Option.isNone)
+                    Assert.DoesNotContain<Visual>(row, launcher.GetVisualDescendants())
+                    assertFilesUnchanged ()
+
+                    let experimentsTab = ConstructorUiId.ribbonTab (ConstructorUiKey TableAndElementRotationView.BayNames.experiments.value)
+                    clickBorder window experimentsTab.value
+                    let sceneName = Assert.IsType<TextBox>(launcherControl window ConstructorUiId.sceneNameField)
+                    sceneName.Text <- "Read-only scene"
+                    let save = launcherControl window ConstructorUiId.saveSceneButton
+                    save.BringIntoView() |> ignore
+                    Dispatcher.UIThread.RunJobs()
+                    clickBorder window ConstructorUiId.saveSceneButton.value
+                    let status = Assert.IsType<TextBlock>(launcherControl window ConstructorUiId.kitStatus)
+                    Assert.StartsWith("Not saved to the kit — ", status.Text)
+                    Assert.Contains("the kit is open read-only:", status.Text)
+                    assertFilesUnchanged ()
+                finally window.Close()
+                assertFilesUnchanged ()
+
+                Assert.Empty(clickAndObserve launcher ConstructorUiId.openInverseButton.value)
+                let inverse = Assert.IsType<InverseConstructorWindow>(Assert.Single(clickAndObserve launcher ConstructorUiId.launcherOpenKitReadOnlyButton.value))
+                try
+                    Assert.True(inverse.IsVisible)
+                    Assert.Equal(2, picks.Count)
+                    for id in
+                        [ ConstructorUiId.launcherKitErrorText; ConstructorUiId.launcherOpenKitReadOnlyButton
+                          ConstructorUiId.launcherCancelKitOpenButton ] do
+                        Assert.True(tryFindLauncherControl launcher id |> Option.isNone)
+                    assertFilesUnchanged ()
+                finally inverse.Close()
+                assertFilesUnchanged ())
+        finally held.library.kit.close () |> SceneTestFixture.kitSuccess
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``Cancel on a kit open elsewhere opens nothing`` () : unit =
+        let folder = TestAppScope.freshKitFolder owner
+        let context = freshContext ()
+        let author = KitAuthor "test"
+        let held =
+            openKitAt folder ReadWriteKitAccess ClockProvider.system author context.catalogueImports
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        try
+            let lockFile = FileName (Path.Combine(folder.value.value, ".oc", "lock"))
+            let lockBytes = FileByteContent (File.ReadAllBytes lockFile.value)
+            withLauncherPicker (TestAppScope.kitPickerOf folder) (fun launcher ->
+                for button in [ ConstructorUiId.openMainButton; ConstructorUiId.openInverseButton ] do
+                    Assert.Empty(clickAndObserve launcher button.value)
+                    launcherControl launcher ConstructorUiId.launcherKitErrorText |> ignore
+                    let readOnly = launcherControl launcher ConstructorUiId.launcherOpenKitReadOnlyButton
+                    let row = Assert.IsType<StackPanel>(readOnly.Parent)
+                    Assert.Empty(clickAndObserve launcher ConstructorUiId.launcherCancelKitOpenButton.value)
+                    for id in
+                        [ ConstructorUiId.launcherKitErrorText; ConstructorUiId.launcherOpenKitReadOnlyButton
+                          ConstructorUiId.launcherCancelKitOpenButton ] do
+                        Assert.True(tryFindLauncherControl launcher id |> Option.isNone)
+                    Assert.DoesNotContain<Visual>(row, launcher.GetVisualDescendants())
+                    Assert.Equal<byte>(lockBytes.value, File.ReadAllBytes lockFile.value))
+        finally held.library.kit.close () |> SceneTestFixture.kitSuccess
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
     let ``a kit that cannot be opened is shown on the launcher and opens no window`` () : unit =
         let folder = TestAppScope.freshKitFolder owner
         let context = freshContext ()
@@ -648,6 +785,8 @@ module LauncherTests =
                 Assert.StartsWith("The kit could not be opened: ", errorText.Text)
                 Assert.Contains("E1.experiment-json", errorText.Text)
                 Assert.Equal(errorText.Text, AutomationProperties.GetName errorText)
+                for id in [ ConstructorUiId.launcherOpenKitReadOnlyButton; ConstructorUiId.launcherCancelKitOpenButton ] do
+                    Assert.True(tryFindLauncherControl launcher id |> Option.isNone)
                 Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
             File.Delete experimentFile.value
             let window = Assert.IsType<MainConstructorWindow>(Assert.Single(clickAndObserve launcher ConstructorUiId.openMainButton.value))

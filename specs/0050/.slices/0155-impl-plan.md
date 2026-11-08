@@ -1,0 +1,7 @@
+# Implementation plan — 0155
+
+Wire the existing LauncherWindow kit-opening function to offer a read-only retry only for KitLibraryKitErr (KitLockedErr holder). Keep the picked folder and constructor mode in the offer's callback, render the holder diagnostic above a horizontal Open read-only / Cancel row, and clear both diagnostic and row on success, cancellation or replacement error. Reuse MaterialsWindowView's public action colours and the existing ReadOnlyKitAccess context and window ownership.
+
+Modify OpticalConstructor.App/Program.fs, OpticalConstructor.Controls/UiIds.fs and OpticalConstructor.Ui.Tests/LauncherTests.fs. Add the two declared centralized IDs and exactly the two authorized smoke facts. Preserve WireUiFinalCompositionTests unchanged. The tests will drive the real launcher against a separately held kit, inspect accessibility and row geometry, verify every kit file's bytes and the holder's retained lock, and exercise cancellation without opening a window. Extend existing failure coverage without changing its identity.
+
+Risks are stale retry callbacks, accidental writable reopening, and releasing another holder's lock. Capture folder/mode at the failed attempt, reuse the existing storage boundary, and assert lock retention through constructor close. No durable format, constructor initialization, gate/census, version or external repository changes are needed. WIRE_UI Invariant 6 assigns all executable checks to the supervisor; this worker only implements and writes its handoff.
