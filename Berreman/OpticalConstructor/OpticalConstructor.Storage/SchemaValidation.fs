@@ -143,3 +143,10 @@ module SchemaValidation =
 
     /// Validates an experiment file before its version is compared and its experiment binds (spec 0050 S4.3).
     let validateExperimentFile (element : JsonElement) : Result<unit, StorageError> = validateWith experimentFileSchema element
+
+    let private sceneFileSchemaFile : FileName = FileName (Path.Combine("schema", "setup.schema.json"))
+
+    let private sceneFileSchema : Result<JsonSchema, StorageError> Lazy = lazy (sceneFileSchemaFile.tryLoadLibrarySchema ())
+
+    /// Validates a setup file before its version is compared and its scene binds (spec 0050 S4.3).
+    let validateSceneFile (element : JsonElement) : Result<unit, StorageError> = validateWith sceneFileSchema element

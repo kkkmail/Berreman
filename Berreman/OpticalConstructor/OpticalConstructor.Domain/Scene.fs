@@ -1,16 +1,9 @@
 namespace OpticalConstructor.Domain
 
-/// Spec 0038 (026, ADD_CONTRACT STORE_XDUO_0004) — the scene persistence seam. Declares, in the
-/// Domain, the DECLARED-lifecycle `SceneProxy`: the elevated `SceneName` key, the pure
-/// `SceneSnapshot` that captures the constructor scene as DATA (the placed elements, the table
-/// view state, the snap mode), the `SceneStoreError` channel, and the `[<ReferenceEquality>]`
-/// `SceneProxy` functional-proxy record — the `Library.LibraryProxy` convention (`ElementId.fs`):
-/// a record of camelCase `Result`-returning functions a test substitutes with an in-memory stub.
-/// This is ONLY the seam: NO disk format and NO `.ocproj` wiring. A future storage cycle
-/// (`IMPLEMENT_CONTRACT STORE_XDUO_0004`) swaps in a real, file-backed `create` in
-/// `OpticalConstructor.Storage`, leaving the bay / host logic that holds the proxy unchanged.
-/// Every primitive is elevated: the key is a single-case DU with a blank-rejecting `tryCreate`,
-/// the snap flag is a two-case DU (never a naked bool), and the error carries a diagnostic reason.
+open OpticalConstructor.Domain.LibraryEntryFiles
+
+/// Pure scene snapshots and their persistence seam (spec 0038, STORE_XDUO_0004),
+/// with a named, versioned .setup-json envelope for kit storage (spec 0050 S4.3).
 module Scene =
 
     /// The scene persistence error channel (errors as values; the case carries a diagnostic
@@ -21,14 +14,15 @@ module Scene =
     type SceneStoreError =
         | InvalidSceneErr of reason : string
 
-    /// A saved scene's name — the persistence key `saveScene` / `tryLoadScene` address and
-    /// `listScenes` enumerates. Elevated single-case string DU; `.value` is the raw key (reached
-    /// only at the storage boundary), and `tryCreate` rejects a blank name at the parse boundary
-    /// (a scene with no name has no addressable key), returning the typed `InvalidSceneErr`.
+    /// A saved scene's key; tryCreate rejects blank names (spec 0038, STORE_XDUO_0004).
+    /// The original name is retained in the file while its stem is filesystem-safe (spec 0050 S4.3).
     type SceneName =
         | SceneName of string
 
         member this.value = let (SceneName s) = this in s
+
+        /// The scene's file stem preserves its name except for forbidden characters (spec 0050 S4.3).
+        member this.fileStem : FileStem = FileStem.ofText this.value
 
         static member tryCreate (name : string) : Result<SceneName, SceneStoreError> =
             if System.String.IsNullOrWhiteSpace name
@@ -75,12 +69,8 @@ module Scene =
             beam : BeamLayout.BeamHost
         }
 
-    /// The constructor scene captured as pure DATA (the seam a future storage cycle serializes):
-    /// the placed `elements`, the table `view` state (screen rotation / pan / zoom), and the
-    /// `snap` mode. Holds no live element reference and no Avalonia handle — every field is a pure
-    /// Domain value, so a saved scene survives the session that authored it. The table PLATE and
-    /// the other project aggregates stay outside this snapshot — this slice captures exactly the
-    /// scene fields the how-to enumerates.
+    /// The placed elements, view, snap mode and pivot as pure data, without UI handles
+    /// (specs 0038, 0046). SceneFile preserves this snapshot in a kit (spec 0050 S4.3).
     type SceneSnapshot =
         {
             elements : SceneElement list
@@ -90,6 +80,26 @@ module Scene =
             /// middle of their incident face. It moves elements and rays, so a saved scene keeps it.
             pivot : BeamLayout.RotationPivot
         }
+
+        /// Each bound library entry at its latest, once in element order (spec 0050 S4.3).
+        member this.libraryReferences : EntryReference list =
+            this.elements
+            |> List.choose (fun element ->
+                element.placement.valueId
+                |> Option.bind (fun valueId -> valueId.tryToLibraryEntryId))
+            |> List.distinct
+            |> List.map EntryLatestReference
+
+    /// A .setup-json keeps the original scene name alongside its snapshot (spec 0050 S4.3).
+    type SceneFile =
+        {
+            schemaVersion : FileSchemaVersion
+            name : SceneName
+            scene : SceneSnapshot
+        }
+
+        /// The only scene-file schema version this app reads and writes (spec 0050 S4.3).
+        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
 
     /// The scene persistence seam (the functional-proxy convention, `Library.LibraryProxy`): a
     /// record of camelCase `Result`-returning functions a future disk-backed store fills; a test
