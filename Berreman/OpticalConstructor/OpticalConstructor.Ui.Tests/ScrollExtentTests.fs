@@ -21,6 +21,9 @@ open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
@@ -227,6 +230,37 @@ module ScrollExtentTests =
         assertReachable "Chart" (fun () -> ChartWindow(chart))
         assertReachable "Handoff" (fun () ->
             SolverHandoffWindow(library, noData, { name = ExperimentCollectionStore.CollectionName "run"; experiments = (filledExperiments ()).experimentCollection.experiments }))
+
+    /// Forty kits in memory, every fifth folder missing and every seventh kit starred, so the start screen's list is
+    /// longer than the screen (spec 0050 S5.2).
+    let private fortyKitHistory () : KitHistoryProxy =
+        let firstOpen = System.DateTime(2026, 11, 3, 12, 0, 0, System.DateTimeKind.Utc)
+        let folderOf (index : int) : KitFolder = KitFolder (FolderName $"C:/kits/bench-%02d{index}")
+        let entryOf (index : int) : KitHistoryEntry =
+            {
+                folder = folderOf index
+                kitId = KitId (System.Guid.NewGuid ())
+                name = KitName $"Bench kit %02d{index}"
+                lastOpened = ClockTime (firstOpen.AddMinutes (float index))
+                star =
+                    match index % 7 with
+                    | 0 -> StarredKit
+                    | _ -> UnstarredKit
+            }
+        let indices = [ 1 .. 40 ]
+        let present = indices |> List.filter (fun index -> index % 5 <> 0) |> List.map folderOf
+        let store = KitHistoryProxy.createInMemory present
+        store.writeHistory { KitHistory.empty with entries = indices |> List.map entryOf }
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        store
+
+    [<Fact>]
+    let ``the kit start screen leaves everything reachable`` () : unit =
+        let owner = FolderName "ScrollExtentTests"
+        let context = { TestAppScope.freshAppContext owner with kitHistory = fortyKitHistory () }
+        let picker = TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner)
+        assertReachable "KitStart" (fun () ->
+            KitStartWindow(context, ForwardConstructor, (fun _ -> picker), (fun _ _ -> ())))
 
     // ------------------------------ a window never opens larger than its screen ------------------------------
 

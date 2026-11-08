@@ -123,6 +123,7 @@
              default). Last in the list so later Part C/E/F window files can consume
              both the workbench and the context. -->
         <Compile Include="AppContext.fs" />
+        <Compile Include="KitStartWindow.fs" />
     </ItemGroup>
 
     <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a

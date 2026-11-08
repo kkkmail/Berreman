@@ -428,3 +428,81 @@ module KitStartWindowTests =
                     Assert.Equal(notes.notAKitCaption.value, textOf window ConstructorUiId.kitStartOfferText)
                     controlOf window ConstructorUiId.makeThisAKitButton |> ignore
                     Assert.Equal<string list>([ notesFile ], Directory.GetFileSystemEntries(notes.value.value) |> List.ofArray))))
+
+    /// The window's app scope: a fresh database scope whose kit history is a fresh in-memory one.
+    let private windowScope () : AppContext =
+        {
+            TestAppScope.freshAppContext (FolderName "KitStartWindowTests") with
+                kitHistory = KitHistoryProxy.createInMemory []
+        }
+
+    /// Runs a fact over fresh kit folders and a `showConstructor` record of every mode and kit it is given. At its end
+    /// every recorded kit is closed, then every fresh folder on disk is deleted; a failed close fails the fact.
+    let private withKitStartWindows (run : (unit -> KitFolder) -> ResizeArray<ConstructorMode * OpenedKit> -> unit) : unit =
+        let folders = ResizeArray<KitFolder> ()
+        let shown = ResizeArray<ConstructorMode * OpenedKit> ()
+
+        let freshFolder () : KitFolder =
+            let folder = TestAppScope.freshKitFolder (FolderName "KitStartWindowTests")
+            folders.Add folder
+            folder
+
+        try
+            run freshFolder shown
+        finally
+            let closes = shown |> Seq.map (fun (_, kit) -> kit.library.kit.close ()) |> List.ofSeq
+            for folder in folders do
+                if Directory.Exists folder.value.value then Directory.Delete(folder.value.value, true)
+            closes |> List.iter (Result.defaultWith (fun (error : KitError) -> failwith error.describe))
+
+    [<Fact>]
+    let ``the start screen's title names its mode and it carries its stable id`` () : unit =
+        HeadlessSession.run (fun () ->
+            withKitStartWindows (fun freshFolder shown ->
+                Assert.Equal("KitStartWindow", ConstructorUiId.kitStartWindow.value)
+                let titles = [ (ForwardConstructor, "Open a kit — Main"); (InverseConstructor, "Open a kit — Inverse") ]
+
+                for (mode, title) in titles do
+                    let picker = TestAppScope.kitPickerOf (freshFolder ())
+                    let window = KitStartWindow(windowScope (), mode, (fun _ -> picker), (fun shownMode kit -> shown.Add (shownMode, kit)))
+                    window.Show()
+                    Dispatcher.UIThread.RunJobs()
+
+                    try
+                        Assert.Equal(title, window.Title)
+                        Assert.Equal(ConstructorUiId.kitStartWindow.value, window.Name)
+                        Assert.Equal(ConstructorUiId.kitStartWindow.value, AutomationProperties.GetAutomationId window)
+                    finally
+                        window.Close()
+
+                Assert.Empty shown))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: New kit opens the new kit in the constructor of the screen's mode, bumps the history and closes the screen`` () : unit =
+        HeadlessSession.run (fun () ->
+            withKitStartWindows (fun freshFolder shown ->
+                for mode in [ ForwardConstructor; InverseConstructor ] do
+                    let folder = freshFolder ()
+                    let context = windowScope ()
+                    let window = KitStartWindow(context, mode, (fun _ -> TestAppScope.kitPickerOf folder), (fun shownMode kit -> shown.Add (shownMode, kit)))
+                    let closings = ref 0
+                    window.Closed.Add(fun _ -> closings.Value <- closings.Value + 1)
+                    window.Show()
+                    Dispatcher.UIThread.RunJobs()
+                    let before = shown.Count
+
+                    try
+                        pressAt window ConstructorUiId.newKitButton
+                    finally
+                        if window.IsVisible then window.Close()
+
+                    Assert.Equal(before + 1, shown.Count)
+                    let shownMode, kit = shown[before]
+                    Assert.Equal<ConstructorMode>(mode, shownMode)
+                    Assert.Equal<KitAccess>(ReadWriteKitAccess, kit.library.kit.access)
+                    Assert.Equal<KitName>(KitName (Path.GetFileName folder.value.value), kit.library.kit.kitFile.name)
+                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
+                    Assert.Equal(1, closings.Value)
+                    Assert.False(window.IsVisible, "The start screen stays open after New kit.")
+                    Assert.Equal<KitFolder list>([ folder ], (context.kitHistory.readHistory ()).entries |> List.map _.folder)))

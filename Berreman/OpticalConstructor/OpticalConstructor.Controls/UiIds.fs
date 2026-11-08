@@ -654,6 +654,8 @@ type ConstructorUiId =
     static member launcherReviewImportsButton : ConstructorUiId = ConstructorUiId "LauncherReviewImportsButton"
 
     // --- The kit start screen (KitStartView, KitStartWindow). ---
+    /// The start screen's window, Main's or Inverse's (001 §F, spec 0050 S5.2).
+    static member kitStartWindow : ConstructorUiId = ConstructorUiId "KitStartWindow"
     /// New kit…: picks a folder and opens or initialises its kit (spec 0050 S5.2).
     static member newKitButton : ConstructorUiId = ConstructorUiId "NewKitButton"
     /// Open kit…: picks a folder and opens only a kit (spec 0050 S5.2).
