@@ -3,6 +3,7 @@ namespace OpticalConstructor.Ui
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.MaterialLibrary
@@ -11,6 +12,7 @@ open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.CategoryDatabaseStore
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.KitHistoryStore
 open OpticalConstructor.Storage.LibraryBackupStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
@@ -19,7 +21,7 @@ open OpticalConstructor.Storage.SampleDatabaseStore
 open OpticalConstructor.Storage.SourceDatabaseStore
 open Softellect.Sys.Logging
 
-/// Shares library database stores, catalogue imports, experiment templates, exports and settings across windows.
+/// Shares library database stores, catalogue imports, experiment templates, exports, settings and the kit history across windows.
 /// Context identity is by reference; database identity comes from its configured connection.
 [<ReferenceEquality>]
 type AppContext =
@@ -50,6 +52,8 @@ type AppContext =
         /// window-policy / quick-pick / tree / bucketing fields from HERE, never from
         /// the provider.
         settings : WorkbenchSettings
+        /// The kit history the start screen lists and bumps, in the per-user preferences (001 §F, spec 0050 S5.2).
+        kitHistory : KitHistoryProxy
     }
 
     static member private compose (locations : DataLocations) (settings : WorkbenchSettings) (database : LibraryDatabase) : AppContext =
@@ -89,6 +93,7 @@ type AppContext =
                     locations.exportsFolder
                     (fun () -> OpticalConstructor.Storage.ExperimentExportFile.ExportTime System.DateTime.Now)
             settings = settings
+            kitHistory = KitHistoryProxy.create locations.preferencesFolder
         }
 
     /// Every start imports the shipped catalogue and registered folders by manifest hash, pending confirmation (spec 0050 S2.4; S3.1).

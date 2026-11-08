@@ -22,12 +22,14 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.EntryFileJson
+open OpticalConstructor.Storage.KitHistoryStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
@@ -652,6 +654,32 @@ module AppContextTests =
         let context = freshContext ()
         Assert.Equal<Result<unit, ExportError>>(Ok (), context.experimentExport.exportRun run)
         Assert.Single(Directory.GetFiles(locations.exportsFolder.value, "experiment-*.csv")) |> ignore
+
+    [<Fact>]
+    let ``create composes the kit history over the configured preferences folder`` () : unit =
+        let locations = TestAppScope.fileLocations owner
+        let context =
+            AppContext.create locations WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<KitHistory>(KitHistory.empty, context.kitHistory.readHistory ())
+        Assert.False(Directory.Exists locations.preferencesFolder.value, "composing and reading the kit history must create nothing")
+
+        let opened : KitHistoryEntry =
+            {
+                folder = TestAppScope.freshKitFolder owner
+                kitId = KitId (System.Guid.Parse "6e1f4b92-3a7c-4d58-b0e9-c25d8a17f463")
+                name = KitName "App scope kit"
+                lastOpened = ClockTime (System.DateTime(2026, 11, 8, 12, 0, 0, System.DateTimeKind.Utc))
+                star = StarredKit
+            }
+        let history : KitHistory = { KitHistory.empty with entries = [ opened ] }
+        Assert.Equal<Result<unit, KitHistoryError>>(Ok (), context.kitHistory.writeHistory history)
+        Assert.Equal<string list>(
+            [ "kit-history.json" ],
+            Directory.GetFileSystemEntries locations.preferencesFolder.value
+            |> Array.map (fun (path : string) -> Path.GetFileName path)
+            |> Array.toList)
+        Assert.Equal<KitHistory>(history, (KitHistoryProxy.create locations.preferencesFolder).readHistory ())
 
     [<Fact>]
     let ``create imports the Built-in catalogue into empty stores`` () : unit =
