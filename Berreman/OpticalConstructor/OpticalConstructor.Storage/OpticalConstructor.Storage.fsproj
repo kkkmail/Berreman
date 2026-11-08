@@ -42,10 +42,9 @@
         <Compile Include="Sidecar.fs" />
         <Compile Include="MaterialImport.fs" />
         <Compile Include="SpectralImport.fs" />
-        <!-- Persistence II (§I.5-I.8, slice 013): recent-files/autosave, undo/redo,
+        <!-- Persistence II (§I.5-I.8, slice 013): recent-files/autosave,
              export, and the material-library module. -->
         <Compile Include="RecentFiles.fs" />
-        <Compile Include="History.fs" />
         <Compile Include="Export.fs" />
         <!-- Spec 0046: the file-backed experiment-data export proxy (CSV). -->
         <Compile Include="ExperimentExportFile.fs" />

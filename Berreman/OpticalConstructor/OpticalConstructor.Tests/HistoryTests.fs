@@ -11,14 +11,11 @@ open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.Project
 open Softellect.Sys.Primitives
 open OpticalConstructor.Storage
-open OpticalConstructor.Storage.History
 open OpticalConstructor.Storage.ProjectFile
 open OpticalConstructor.Storage.Autosave
 open Xunit
 
-/// Undo/redo (§I.6, AC-I7) and autosave distinctness (§I.5, AC-I6). A destructive
-/// model edit followed by `undo` restores the pre-edit project; `redo` restores the
-/// edit; `undo` on empty history is a no-op. `writeAutosave` writes a distinct
+/// `writeAutosave` writes a distinct
 /// `.ocproj.autosave` and leaves the committed `.ocproj` untouched.
 module HistoryTests =
 
@@ -44,26 +41,6 @@ module HistoryTests =
 
     let private preEdit = projectWith Nanometer
     let private edited = projectWith Micrometer
-
-    [<Fact>]
-    let ``AC-I7 undo restores the pre-edit project and redo restores the edit`` () =
-        let h1 = EditHistory.ofPresent preEdit |> push edited
-        Assert.Equal<OpticalConstructorProject>(edited, h1.present)
-        let undone = undo h1
-        Assert.Equal<OpticalConstructorProject>(preEdit, undone.present)
-        let redone = redo undone
-        Assert.Equal<OpticalConstructorProject>(edited, redone.present)
-
-    [<Fact>]
-    let ``AC-I7 undo on empty history returns the input unchanged`` () =
-        let h = EditHistory.ofPresent preEdit
-        let undone = undo h
-        Assert.Equal<OpticalConstructorProject>(preEdit, undone.present)
-        Assert.True(List.isEmpty undone.past)
-        Assert.True(List.isEmpty undone.future)
-        // redo on empty future is likewise a no-op.
-        let redone = redo h
-        Assert.Equal<OpticalConstructorProject>(preEdit, redone.present)
 
     // --- R-1: RecentFiles.bump MRU invariant (pure, no IO) -------------------------
 
