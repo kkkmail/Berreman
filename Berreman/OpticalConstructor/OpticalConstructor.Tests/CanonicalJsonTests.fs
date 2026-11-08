@@ -15,6 +15,7 @@ open Berreman.Fields
 open Berreman.Dispersion
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Propagation
@@ -222,6 +223,13 @@ module CanonicalJsonTests =
         assertWrittenAsTag<TabulatedInterpolation> (fun interpolation -> interpolation.value)
         assertWrittenAsTag<PublishedIndexLaw> (fun law -> law.value)
         assertWrittenAsTag<PublishedGyrationLaw> (fun law -> law.value)
+        assertWrittenAsTag<KitStar> (fun star -> star.value)
+
+        for star, tag in [ StarredKit, 1; UnstarredKit, 2 ] do
+            let json = toJson star
+            use doc = JsonDocument.Parse json
+            Assert.Equal(tag, doc.RootElement.GetInt32())
+            Assert.Equal<KitStar>(star, ofJson<KitStar> json)
 
         let schema : EntrySchema = { kind = SourceEntryKind; version = FileSchemaVersion 1 }
         let json = toJson schema
@@ -235,3 +243,4 @@ module CanonicalJsonTests =
         Assert.Throws<JsonException>(fun () -> ofJson<PublishedIndexLaw> "4" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<LibraryEntryKind> "0" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<LibraryEntryKind> "\"MaterialEntryKind\"" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<KitStar> "3" |> ignore) |> ignore
