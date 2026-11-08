@@ -4,17 +4,9 @@ open System
 open System.IO
 open System.Text.Json
 open Softellect.Sys.Primitives
-open OpticalConstructor.Domain.Project
-open OpticalConstructor.Storage.Errors
-open OpticalConstructor.Storage.ProjectFile
 
-/// Recent-files persistence + autosave (§I.5 / R-1). Both go through the slice-003
-/// storage core: the recent-files preferences travel the shared `CanonicalJson.options`
-/// JSON stack (NO second serializer), and autosave reuses `FileName.saveProject`
-/// so it writes the SAME canonical JSON the user's `.ocproj` does — never a `.binz`
-/// pickle (binding rule 4). The recent-files list is the discoverability surface the
-/// Operator-facing UX checklist requires; autosave keeps a distinct `.autosave` file
-/// off the committed document so a write never clobbers the user's `.ocproj`.
+/// Keeps the most-recently-used paths in per-user `recent.json`
+/// through the shared `CanonicalJson.options`.
 module RecentFiles =
 
     /// Bound on the most-recently-used list (§I.5 — "bounded list"). The UI renders
@@ -44,7 +36,7 @@ module RecentFiles =
         |> fun kept -> path :: kept
         |> List.truncate maxRecent
 
-    /// Load the most-recently-used `.ocproj` paths (§I.5). A missing or unreadable
+    /// Load the most-recently-used paths (§I.5). A missing or unreadable
     /// preferences file yields the empty list rather than throwing — `loadRecent`'s
     /// signature is total (`unit -> FileName list`), so the UI never has to handle an
     /// error case just to render an empty Recent menu. The file stays a JSON array of path strings.
@@ -70,27 +62,3 @@ module RecentFiles =
                 File.WriteAllText(p.value, JsonSerializer.Serialize(updated |> List.map (fun f -> f.value), CanonicalJson.options))
             with _ -> ()
             updated
-
-/// Autosave path derivation + write (§I.5 / R-1). The autosave timer interval and
-/// trigger are owned by the UI model (Part J §J.10); this module owns only the
-/// path derivation and the write function.
-module Autosave =
-
-    /// The autosave sidewrite suffix (§I.5). Appended to the canonical `.ocproj`
-    /// path so the autosave file is a distinct sibling (`<name>.ocproj.autosave`),
-    /// contributed to `.gitignore` and never committed.
-    [<Literal>]
-    let autosaveSuffix = ".autosave"
-
-    type FileName with
-
-        /// The sibling autosave path of this project file path (§I.5). For
-        /// `…/foo.ocproj` this is `…/foo.ocproj.autosave`.
-        member this.autosavePath : FileName = this.addExtension (FileExtension autosaveSuffix)
-
-        /// Write the project to this file's `.autosave` sidewrite path (§I.5), reusing
-        /// `FileName.saveProject` (and so `serializeProject` — the same canonical
-        /// JSON). It writes ONLY the autosave file and MUST NOT overwrite the user's
-        /// `.ocproj` (AC-I6); a failed write returns `FileIoExn` for the UI to surface.
-        member this.writeAutosave (project : OpticalConstructorProject) : Result<unit, StorageError> =
-            this.autosavePath.saveProject project

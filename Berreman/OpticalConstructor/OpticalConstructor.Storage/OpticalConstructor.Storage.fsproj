@@ -14,8 +14,8 @@
     </PropertyGroup>
 
     <!-- Compile order (§I, slice 003): Errors first; SchemaValidation before
-         ProjectJson (deserializeProject calls validate-on-load); then ProjectFile
-         and Sidecar. The legacy placeholder `Storage.fs` is retained as a
+         ProjectJson (deserializeProject calls validate-on-load); then
+         Sidecar. The legacy placeholder `Storage.fs` is retained as a
          namespace anchor. -->
     <ItemGroup>
         <Compile Include="Errors.fs" />
@@ -34,15 +34,14 @@
         <Compile Include="KitFolderStore.fs" />
         <Compile Include="KitContentFiles.fs" />
         <Compile Include="ProjectJson.fs" />
-        <Compile Include="ProjectFile.fs" />
         <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-
              collections store. Reuses CanonicalJson.options + the validate-on-load seam;
-             compiles after CanonicalJson (its shared options) and ProjectFile. -->
+             compiles after CanonicalJson (its shared options). -->
         <Compile Include="GroupsLibrary.fs" />
         <Compile Include="Sidecar.fs" />
         <Compile Include="MaterialImport.fs" />
         <Compile Include="SpectralImport.fs" />
-        <!-- Persistence II (§I.5-I.8, slice 013): recent-files/autosave,
+        <!-- Persistence II (§I.5-I.8, slice 013): recent-files,
              export, and the material-library module. -->
         <Compile Include="RecentFiles.fs" />
         <Compile Include="Export.fs" />
