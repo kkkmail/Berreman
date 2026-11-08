@@ -2,8 +2,10 @@
 
 Step 0150 implements S43-OPENING. The partial implementation is committed at
 `7addce1`; accepted 0149 (`aa5ff97`) is the complete-slice comparison base.
-The operator-approved recovery in manual 011 is implemented and verified,
-awaiting the operator's commit. The arc remains escalated and stopped.
+The operator-approved recovery in manual 011 is now committed at `70254b5`.
+This normal-resume worker reviewed and preserved it against the slice, immutable
+acceptance oracle and manuals 008–011, then updated the three supplied handoff
+documents. Normal supervisor review and all sixteen gates are the next action.
 
 Eight inherited JSON-index expressions are now explicit `.[]` accesses, clearing
 all ten FS3369 diagnostics without changing their malformed values or assertions.
@@ -19,13 +21,20 @@ The kit-opening implementation and its six declared facts required no change.
   replacing the first error. Read-only opening writes nothing.
 - Snapshot decisions, including SameContentHash, stay pending until confirmation;
   opening does not mutate the library or import log.
-- The actual window picker passes resolved/unresolved suggestion, title,
+- The actual window picker has direct coverage for resolved/unresolved suggestion, title,
   single-selection, first-local-folder, cancellation, non-local-first selection
   and provider acquisition/resolution/dialog failure tests. It creates no folder.
 - Scratch construction preserves manual 010's Result-returning Storage factory,
   independent backing folders and typed initialization failures.
+- Preserved all six declared facts, approved JSON/picker repairs and original
+  assertions; refreshed the worker handoff without changing product code.
 
 # Tests
+
+This resumed IMPLEMENT worker ran no checks or gates under Invariant 6. The
+source review found the six declared identities, prescribed compile positions
+and approved manual 011 changes intact. This is source review, not a new test
+discovery or execution result. All sixteen gates remain for the supervisor.
 
 Operator verification in `.artifacts/0150-operator-repair/` passed all sixteen
 unchanged gates: build, elevation, constructor-unit-tests, ui-smoke, selected
@@ -69,16 +78,19 @@ provider failures at that boundary. ClockProvider.system reads UTC on every call
 scratchKit reuses Storage's fallible createInMemory under manual 010. No durable
 shape, serializer, cache, retry, confirmation policy or UI initializer changed.
 
-# Handoff
+# Deferred
 
-No implementation requirement is deferred. The bounded repair is ready for the
-operator's commit; normal supervisor acceptance remains pending. Manual 011
-explicitly overrides direct acceptance for this recovery: after commit and a
-relaunch instruction, use `--operator-reply <recovery-note>
---executability-profile 1`, without `--accept-current-slice`, to publish checkpoint
-149 through review and the full gate roster. The note is
-`.artifacts/0150-operator-repair/operator-reply.md`. Do not reset counters or
-fabricate measured checkpoint records.
+No 0150 implementation requirement is deferred. The approved repair has been
+committed and this worker was dispatched with its recovery note. Return the
+preserved implementation to the current normal supervisor review and full
+verification flow under `--executability-profile 1`. Manual 011 explicitly
+requires this flow, without `--accept-current-slice`.
+
+Only successful supervisor acceptance publishes checkpoint index 149, measured
+case evidence and expected-red bookkeeping. This worker does not launch another
+supervisor, reset counters, publish a baseline or fabricate checkpoint records.
+Its empty gate results and commit_ready false indicate pending supervisor
+acceptance, not an unresolved implementation or authority conflict.
 
 # Gotchas
 
@@ -88,10 +100,12 @@ fabricate measured checkpoint records.
   require source repair and actual recompilation.
 - Each test fixture stays under the test output directory; picker tests use
   separate providers/windows and observe assertions outside production's catch.
-- Published requirements, oracle, gate snapshots, test effects, state, baselines,
-  checkpoints, expected-red records, analyzer rules, version lock and Git are
-  preserved. ASG source was not changed. Nothing has been committed or relaunched
-  by the recovery agent.
+- This worker did not edit published requirements, oracle, gate snapshots, test
+  effects, state, baselines, checkpoints, expected-red records, analyzer rules,
+  version lock or receipts. Entry changes to `.executability-json`,
+  `.manifest.state.json` and `.supervisor-lock.diag` belong to the supervisor.
+- No version bump, Git mutation, ASG source change or arc restart was performed
+  by this worker.
 
 # Changelog
 
@@ -100,3 +114,6 @@ fabricate measured checkpoint records.
   and missing direct picker coverage outside the original edit authority.
 - 2026-11-08: Applied approved manual 011, repaired both test files, completed
   forced recompilation and full verification, and prepared the commit handoff.
+- 2026-11-08 (normal resume): Reviewed and preserved committed recovery
+  `70254b5`; refreshed worker handoffs for supervisor verification without
+  running checks or changing product/test code or protected records.

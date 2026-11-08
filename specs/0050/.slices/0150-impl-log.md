@@ -1,6 +1,49 @@
 # Implementation log
 
+## Normal recovery resume — 2026-11-08
+
+Before review: read the supplied attempt-01 recovery task, both worker prompts,
+project prompt, slice, gate snapshot, repository/naming instructions, manuals
+008–011 and the operator's final review. HEAD is `70254b5`, containing the
+approved recovery. The stopped/awaiting-commit language below describes the
+earlier operator phase; this dispatch is its requested normal worker resume.
+
+Review the existing implementation and authorized tests without running gates.
+Preserve the eight JSON syntax repairs, three extended picker facts, all
+original assertions and six declared KitOpening facts. Update only the supplied
+plan, log and state-of-world if the source review finds no implementation gap.
+The initial working tree has supervisor-owned changes to `.executability-json`,
+`.manifest.state.json` and `.supervisor-lock.diag`; leave those files untouched.
+
+After review: the source satisfies S43-OPENING in the slice and immutable
+acceptance oracle, with manual 010's Result-returning scratch amendment. The
+opening pipeline uses the existing open/initialize, content, snapshot and
+overlay seams; any downstream Error closes the context and retains the first
+error. All decision rows remain pending. The picker returns only the first
+local selection and catches provider failures at its boundary. Both project
+entries remain in the prescribed compile positions.
+
+Read all six KitOpening facts and the committed manual 011 diff. The eight
+JSON expressions retain their values/assertions with explicit dotted indexing.
+The three existing picker facts preserve the original library assertions and
+exercise the kit adapter through separate providers/windows, including all
+specified cancellation and failure paths. No test identity or source change is
+needed. The shared lock guard and fallible Storage factory remain untouched.
+
+Before handoff: update the state-of-world to describe this normal resume,
+restore its required `Deferred` heading, and distinguish the operator's prior
+measurements from this worker's source review. Preserve the inherited YAML
+floors; only the supervisor can publish checkpoint 149 and measured counts.
+
+After handoff: updated the three supplied worker documents. No implementation
+requirement remains unaddressed, and the historical authority conflict is
+resolved by manual 011. No build, test, analyzer, invariant, census or profile
+validation was run. Normal supervisor review and all sixteen gates remain the
+next action; this worker does not launch another supervisor or accept the slice.
+
 ## Operator recovery — 2026-11-08
+
+Historical operator phase, completed before the current resume:
 
 The operator approved `.slices/0150-01.postmortem-review-md`. Manual 011 and the
 project-prompt pointer authorize the two out-of-slice test-file repairs and a
@@ -106,6 +149,8 @@ worker handoff's pending status is superseded by this measured operator recovery
 
 ## Files modified
 
+- Normal resume: only the supplied 0150 plan, log and state-of-world documents.
+  Production code, tests and project files remain as committed at `70254b5`.
 - Attempt 03 modifies only the two Assert.Equal type arguments in
   KitOpeningTests.fs and the supplied 0150 plan, log and state-of-world files.
 - Attempt 02 modifies only KitOpeningTests.fs's error pattern and the supplied
@@ -118,6 +163,26 @@ worker handoff's pending status is superseded by this measured operator recovery
 - Created 0150-state-of-the-world.md at the exact supplied path.
 
 ## Testing state
+
+This resumed IMPLEMENT worker ran no checks or gates under Invariant 6. Source
+review found no unmet requirement or contradiction with the approved recovery.
+The prior warning/coverage authority conflict is closed by manual 011; it must
+not be reopened from the historical attempt-03 record below.
+
+Prior operator evidence is recorded in
+`.artifacts/0150-operator-repair/final-review.md`, `verification-summary.json`
+and `gate-results.json`: all sixteen gates passed, with 1,157 constructor
+cases, 215 smoke cases and fourteen selected UI identities, zero failures/skips
+and exact census. The forced rebuild, focused tests and supplemental elevation
+are operator measurements, not results produced or green-lit by this worker.
+
+All sixteen gates remain for the normal supervisor after worker exit. The
+structured handoff leaves gates_run and gate_results empty and commit_ready
+false because this worker cannot certify gate acceptance. There is no remaining
+implementation blocker. Inherited YAML floors remain 1151 and 215; the selected
+UI count is not a whole-suite floor. No checkpoint or baseline is published.
+
+### Attempt 03 testing state (historical; superseded by manual 011)
 
 Attempt 03 starts from the supervisor's measured build failure (exit 1):
 KitOpeningTests.fs:276-277 produced FS0041 because the complete lists could
@@ -154,6 +219,8 @@ unresolved. The authorized KitOpening implementation and repair are complete.
 
 ## Artifacts
 
+- Normal resume read the existing `.artifacts/0150-operator-repair/` evidence;
+  it created no executable-run artifacts.
 - Latest retry diagnostics were supplied in .artifacts/0150-attempt-03-task.txt.
 - Retry diagnostics were supplied in .artifacts/0150-attempt-02-task.txt.
 - Persistent run artifacts belong only in specs/0050/.artifacts.
@@ -161,6 +228,11 @@ unresolved. The authorized KitOpening implementation and repair are complete.
 
 ## Gotchas
 
+- The normal resume preserves manual 011's repaired indexing and extended
+  picker assertions. Its exception requires normal supervisor review and full
+  verification, without `--accept-current-slice` or fabricated checkpoint 149.
+- The current worker changes only its three handoff documents; supervisor-owned
+  receipt/state/lock diagnostics and all protected records are left untouched.
 - Manual 010 explicitly changes scratchKit to Result<KitContext, KitError>.
   The slice's infallible sketch is superseded; initialization errors propagate.
 - All snapshot decisions, including SameContentHash, must remain pending until

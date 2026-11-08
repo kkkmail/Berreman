@@ -1,5 +1,25 @@
 # Implementation plan
 
+## Normal recovery resume — 2026-11-08
+
+Read the supplied recovery task, slice and manuals 008–011. Preserve the
+implementation and approved repairs now committed at `70254b5`; accepted 0149
+(`aa5ff97`) remains the complete-slice comparison base. Review the existing
+opening composition, six declared facts, eight dotted-index repairs and three
+extended picker facts against S43-OPENING and the operator's amendments.
+
+If that review finds no missing requirement, change only the three supplied
+worker documents. Replace the stale stopped/awaiting-commit handoff with the
+current normal-resume status, retain the operator evidence as attributed prior
+evidence, and restore the required `Deferred` heading. Preserve inherited YAML
+floors of 1,151 constructor cases and 215 smoke cases. Run no executable checks
+under IMPLEMENT Invariant 6; normal supervisor review and verification own
+acceptance, checkpoint 149 and measured-count publication.
+
+Do not alter production/test contracts, identities, assertions, compiled
+snapshots, oracle, receipts, supervisor state, counters, checkpoints, versions
+or ASG. No additional implementation or new test identity is planned.
+
 ## Attempt 03 repair
 
 Resolve the supervisor's two FS0041 errors at KitOpeningTests.fs:276-277 by
