@@ -177,7 +177,7 @@ module FsxAcceptanceTests =
         let apply (msgs : TableAndElementRotationMsg list) (m : TableAndElementRotationModel) : TableAndElementRotationModel = msgs |> List.fold (fun acc msg -> updateTableAndElementRotation msg acc) m
         let idAt (i : int) (m : TableAndElementRotationModel) : Library.ElementId = (List.item i m.elements).id
         let table =
-            { initMainWith b.library (Experiments.createInMemoryExperiments ()) b.materials b.samples b.categories with
+            { SceneTestFixture.mainSceneWith b.library (Experiments.createInMemoryExperiments ()) b.materials b.samples b.categories with
                 sources = b.sources
                 experimentExport = b.export.proxy }
             |> apply

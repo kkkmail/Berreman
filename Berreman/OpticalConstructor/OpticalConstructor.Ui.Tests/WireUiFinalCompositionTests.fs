@@ -1,7 +1,9 @@
 /// Composition acceptance over one app scope (spec 0038 Part N; spec 0050 S4.3).
-/// Covers the remaining store composition and headless rendering through the root window factory.
+/// Covers the library and kit composition and headless rendering through the root window factory.
 /// Each opened window closes before the next probe to release its app-global registry key.
 namespace OpticalConstructor.Ui.Tests
+
+open OpticalConstructor.Tests
 
 open Avalonia.Controls
 open Avalonia.Threading
@@ -38,7 +40,9 @@ module WireUiFinalCompositionTests =
         | LibraryWindowKey ->
             LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups, ctx.catalogueImports) :> Window |> Ok
         | SolverHandoffWindowKey ->
-            SolverHandoffWindow(ctx.library, ctx.experimentData, handoffSnapshot) :> Window |> Ok
+            let kit = KitOpening.scratchKit () |> SceneTestFixture.kitSuccess
+            let data = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked kit.proxy
+            SolverHandoffWindow(ctx.library, data, handoffSnapshot) :> Window |> Ok
         | CategoryEditorKey ->
             CategoryEditorWindow(ctx.categories) :> Window |> Ok
         | MaterialEditorKey mintedId ->
@@ -80,16 +84,6 @@ module WireUiFinalCompositionTests =
             onCancelled = ignore
         }
 
-    // ============================ pure composition pin (gate `ui-tests`) ============================
-
-    [<Fact>]
-    let ``the finalized app scope carries every store proxy — the step-027 scene seam is composed at the root`` () =
-        let ctx = TestAppScope.freshAppContext owner
-        match ctx.experimentCollections.listCollections () with
-        | Ok _ -> ()
-        | Error e -> Assert.Fail($"the root-composed experiment-collection proxy must answer, got %A{e}")
-        Assert.Equal(WorkbenchSettings.defaults, ctx.settings)
-
     // ======================== the headless wiring assertion (gate `ui-smoke`) ========================
 
     [<Fact>]
@@ -101,8 +95,8 @@ module WireUiFinalCompositionTests =
             // the startup window, Main / Inverse are its forward / inverse constructor scenes.
             let settled = { ctx with pendingImports = [] }
             showAssertClose (LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok settled))
-            showAssertClose (MainConstructorWindow(ctx))
-            showAssertClose (InverseConstructorWindow(ctx)))
+            showAssertClose ((MainConstructorWindow.tryCreate ctx |> SceneTestFixture.kitSuccess))
+            showAssertClose ((InverseConstructorWindow.tryCreate ctx |> SceneTestFixture.kitSuccess)))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

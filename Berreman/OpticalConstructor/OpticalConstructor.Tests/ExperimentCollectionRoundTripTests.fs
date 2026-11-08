@@ -231,7 +231,7 @@ module ExperimentCollectionRoundTripTests =
             proxy.writeExperiment experiment |> kitContentValue
         let name = SceneName "Read-only bench"
         let newName = SceneName "New bench"
-        let scene = (initTableAndElementRotation ()).captureScene
+        let scene = (SceneTestFixture.staticScene ()).captureScene
         proxy.writeScene name scene |> kitContentValue
         let changedScene =
             {

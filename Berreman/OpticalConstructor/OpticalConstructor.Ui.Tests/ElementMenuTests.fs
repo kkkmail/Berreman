@@ -42,7 +42,7 @@ module ElementMenuTests =
     /// initMain = [ source (0); detector (1) ] + a sample (2) bound to a 1 mm glass PLATE (emits both),
     /// tilted to R2 = 30° so its reflected ray leaves the main beam.
     let private plateScene () : TableAndElementRotationModel =
-        initMain ()
+        SceneTestFixture.mainScene ()
         |> updateTableAndElementRotation (AddElement Sample)
         |> bind 2 plateId
         |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 30.0))
@@ -71,7 +71,7 @@ module ElementMenuTests =
 
     [<Fact>]
     let ``the menu switches a sample's reflected ray off and on; a polarizer's and a full mirror's rays stay fixed`` () =
-        let m = initMain () |> updateTableAndElementRotation (AddElement Sample) |> updateTableAndElementRotation (AddElement FlatMirror) |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> updateTableAndElementRotation (AddElement FlatMirror) |> updateTableAndElementRotation (AddElement LinearPolarizer)
         let sample = (elem 2 m).id
         let rOff = m |> updateTableAndElementRotation (ToggleElementRay (sample, BeamTree.ReflectedBeam))
         Assert.Equal(EmitTransmittedOnly, (elem 2 rOff).placement.emission)
@@ -275,7 +275,7 @@ module ElementMenuTests =
     [<Trait("Category", "ui-smoke")>]
     let ``right-clicking an element on the real Main view opens its menu, whose rows switch the ray`` () =
         HeadlessSession.run (fun () ->
-            let model0 = initMain () |> updateTableAndElementRotation (AddElement Sample)
+            let model0 = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample)
             let window = mount model0
             try
                 match tryFind window ConstructorUiId.tableElementCanvas.value with

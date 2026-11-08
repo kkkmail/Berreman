@@ -10,6 +10,8 @@
 /// with the bay into the step-013 Materials window — see `MaterialsWindowTests`.)
 namespace OpticalConstructor.Ui.Tests
 
+open OpticalConstructor.Tests
+
 open Xunit
 open Berreman.Constants
 open OpticalConstructor.Controls
@@ -50,7 +52,7 @@ module MainSceneMsgTests =
         | other -> failwith $"catalogue code '{other}' has no seeded default entry"
 
     /// The common Lego fixture: the Main scene with one added Sample, selected (index 2).
-    let private withSample () : TableAndElementRotationModel = updateTableAndElementRotation (AddElement Sample) (initMain ())
+    let private withSample () : TableAndElementRotationModel = updateTableAndElementRotation (AddElement Sample) (SceneTestFixture.mainScene ())
 
     // ======================= add / remove (the Lego palette) =======================
 
@@ -65,7 +67,7 @@ module MainSceneMsgTests =
     [<InlineData("D")>]
     let ``AddElement appends each catalogue kind on the beam, selected, at the default zoom`` (code : string) =
         let kind = kindOfCode code
-        let m = updateTableAndElementRotation (AddElement kind) (initMain ())
+        let m = updateTableAndElementRotation (AddElement kind) (SceneTestFixture.mainScene ())
         Assert.Equal(3, List.length m.elements)
         Assert.Equal(ElementSelected (SceneElementIndex 2), m.selection)
         Assert.Equal(kind, (elem 2 m).placement.catalogueKind)
@@ -74,32 +76,32 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``successive adds spread the middle elements along the beam`` () =
-        let m = initMain () |> updateTableAndElementRotation (AddElement Sample) |> updateTableAndElementRotation (AddElement Lens)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> updateTableAndElementRotation (AddElement Lens)
         Assert.True((elem 2 m).elementX < (elem 3 m).elementX, "later adds land further along the beam")
         Assert.False(close ((elem 2 m).elementX) ((elem 3 m).elementX), "no two adds land on the same spot")
 
     [<Fact>]
     let ``adding an element leaves the existing elements and the table view untouched`` () =
-        let before = initMain ()
+        let before = SceneTestFixture.mainScene ()
         let after = updateTableAndElementRotation (AddElement Lens) before
         Assert.Equal<TestElement list>(before.elements, after.elements |> List.take (List.length before.elements))
         Assert.Equal(before.view, after.view)
 
     [<Fact>]
     let ``adding an element preserves the palette and the snap chain`` () =
-        let before = initMain ()
+        let before = SceneTestFixture.mainScene ()
         let after = updateTableAndElementRotation (AddElement FlatMirror) before
         Assert.Equal<CatalogueKind list>(before.palette, after.palette)
         Assert.Equal(before.snapChain, after.snapChain)
 
     [<Fact>]
     let ``RemoveSelected with nothing selected is inert`` () =
-        let m = { initMain () with selection = NothingSelected }
+        let m = { SceneTestFixture.mainScene () with selection = NothingSelected }
         Assert.Equal<TableAndElementRotationModel>(m, updateTableAndElementRotation RemoveSelectedElement m)
 
     [<Fact>]
     let ``removing a middle element preserves the survivors' order`` () =
-        let m = initMain () |> updateTableAndElementRotation (AddElement Sample) |> updateTableAndElementRotation (AddElement Lens)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> updateTableAndElementRotation (AddElement Lens)
         let removed = updateTableAndElementRotation RemoveSelectedElement { m with selection = ElementSelected (SceneElementIndex 2) }   // drop the Sample
         Assert.Equal<CatalogueKind list>(
             [ LightSource; Detector; Lens ],
@@ -124,7 +126,7 @@ module MainSceneMsgTests =
         let kind = kindOfCode code
         let seedId = expectedSeedOf code
         Assert.Equal(Some seedId, kind.defaultSeedEntry)
-        let m = updateTableAndElementRotation (AddElement kind) (initMain ())
+        let m = updateTableAndElementRotation (AddElement kind) (SceneTestFixture.mainScene ())
         Assert.Equal(Some seedId, (elem 2 m).placement.valueId)
         // The pre-bound id RESOLVES through the live Library seam to an entry valid for the kind.
         match m.library.tryGetEntry seedId with
@@ -139,12 +141,12 @@ module MainSceneMsgTests =
     let ``a new sample stays UNBOUND (the inverse hook) and the not-bindable kinds bind nothing`` (code : string) =
         let kind = kindOfCode code
         Assert.Equal(None, kind.defaultSeedEntry)
-        let m = updateTableAndElementRotation (AddElement kind) (initMain ())
+        let m = updateTableAndElementRotation (AddElement kind) (SceneTestFixture.mainScene ())
         Assert.Equal(None, (elem 2 m).placement.valueId)
 
     [<Fact>]
     let ``AddElementBoundTo carries an explicit pre-bind — the CPR palette button's path`` () =
-        let m = updateTableAndElementRotation (AddElementBoundTo (CircularPolarizer, Some PresetIds.polarizerCpRight)) (initMain ())
+        let m = updateTableAndElementRotation (AddElementBoundTo (CircularPolarizer, Some PresetIds.polarizerCpRight)) (SceneTestFixture.mainScene ())
         Assert.Equal(3, List.length m.elements)
         Assert.Equal(ElementSelected (SceneElementIndex 2), m.selection)
         Assert.Equal(CircularPolarizer, (elem 2 m).placement.catalogueKind)
@@ -152,7 +154,7 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``the palette offers THREE polarizer buttons over the UNCHANGED CatalogueKinds`` () =
-        let buttons = (initMain ()).paletteButtons
+        let buttons = (SceneTestFixture.mainScene ()).paletteButtons
         // The polarizer trio: LP / CPL / CPR, in palette order — LP adds a LinearPolarizer, the
         // CPL / CPR pair adds CircularPolarizers; only the label and the pre-bound entry differ.
         let polarizers =
@@ -207,40 +209,40 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``a ray with no detector ends 1 m along`` () =
-        Assert.True(close ((initMain ()).openRayEndX) 1.0, "spec 0046: an open ray ends at the default detector point")
+        Assert.True(close ((SceneTestFixture.mainScene ()).openRayEndX) 1.0, "spec 0046: an open ray ends at the default detector point")
 
     // ============================= the Render bay =============================
 
     [<Fact>]
     let ``a double renderer swap round-trips the renderer kind`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal(m.render.kind, (m |> updateTableAndElementRotation RenderSwap |> updateTableAndElementRotation RenderSwap).render.kind)
 
     [<Fact>]
     let ``RenderSetRailsIndex (RendererControls.RendererPresetIndex clamps) to the option ends`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal(4, (updateTableAndElementRotation (RenderSetRailsIndex (RendererControls.RendererPresetIndex -5)) m).render.rails.value)
         Assert.Equal(72, (updateTableAndElementRotation (RenderSetRailsIndex (RendererControls.RendererPresetIndex 99)) m).render.rails.value)
 
     [<Fact>]
     let ``RenderSetCircles (RendererControls.CapCircles clamps) at the minimum`` () =
-        Assert.Equal(1, (updateTableAndElementRotation (RenderSetCircles (RendererControls.CapCircles 0)) (initMain ())).render.circles.value)
+        Assert.Equal(1, (updateTableAndElementRotation (RenderSetCircles (RendererControls.CapCircles 0)) (SceneTestFixture.mainScene ())).render.circles.value)
 
     [<Fact>]
     let ``RenderSetRadialsIndex (RendererControls.RendererPresetIndex clamps) to the option ends`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal(4, (updateTableAndElementRotation (RenderSetRadialsIndex (RendererControls.RendererPresetIndex -1)) m).render.radials.value)
         Assert.Equal(36, (updateTableAndElementRotation (RenderSetRadialsIndex (RendererControls.RendererPresetIndex 99)) m).render.radials.value)
 
     [<Fact>]
     let ``RenderSetLineOpacity (RendererControls.RendererOpacity clamps) into the unit interval`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal(0.0, (updateTableAndElementRotation (RenderSetLineOpacity (RendererControls.RendererOpacity -0.5)) m).render.lineOpacity.value)
         Assert.Equal(1.0, (updateTableAndElementRotation (RenderSetLineOpacity (RendererControls.RendererOpacity 1.5)) m).render.lineOpacity.value)
 
     [<Fact>]
     let ``in-range opacities are stored exactly`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal(0.5, (updateTableAndElementRotation (RenderSetRailOpacity (RendererControls.RendererOpacity 0.5)) m).render.railOpacity.value)
         Assert.Equal(0.25, (updateTableAndElementRotation (RenderSetFaceOpacity (RendererControls.RendererOpacity 0.25)) m).render.faceOpacity.value)
 
@@ -256,12 +258,12 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``RotSetAxis normalizes the angle mod 360`` () =
-        let m = updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 370.0)) (initMain ())   // table selected
+        let m = updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 370.0)) (SceneTestFixture.mainScene ())   // table selected
         Assert.True(close m.view.r1.degrees 10.0, $"370° must store as 10°, got {m.view.r1.degrees}")
 
     [<Fact>]
     let ``RotSetAxis R3 respects the table lock`` () =
-        let m = updateTableAndElementRotation (RotSetAxis (RotationControls.R3, BarDegrees 30.0)) (initMain ())   // table R3 unlocked by default
+        let m = updateTableAndElementRotation (RotSetAxis (RotationControls.R3, BarDegrees 30.0)) (SceneTestFixture.mainScene ())   // table R3 unlocked by default
         Assert.True(close m.view.r3.degrees 30.0)
         let locked = updateTableAndElementRotation ToggleR3Lock m                                       // table selected → locks the table
         let after = updateTableAndElementRotation (RotSetAxis (RotationControls.R3, BarDegrees 60.0)) locked
@@ -284,7 +286,7 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``RotSetAxis with nothing selected is inert`` () =
-        let m = { initMain () with selection = NothingSelected }
+        let m = { SceneTestFixture.mainScene () with selection = NothingSelected }
         Assert.Equal<TableAndElementRotationModel>(m, updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 45.0)) m)
 
     [<Theory>]
@@ -300,7 +302,7 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``RotRequestReset arms the confirm and RotCancel disarms it leaving the angles intact`` () =
-        let rotated = updateTableAndElementRotation (RotateR1By (BarDegrees 15.0)) (initMain ())   // table selected
+        let rotated = updateTableAndElementRotation (RotateR1By (BarDegrees 15.0)) (SceneTestFixture.mainScene ())   // table selected
         let armed = updateTableAndElementRotation RotRequestReset rotated
         Assert.Equal(RotationControls.ConfirmReset, armed.rotationConfirm)
         let cancelled = updateTableAndElementRotation RotCancel armed
@@ -309,17 +311,17 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``RotRequestResetAll arms the reset-all confirm`` () =
-        Assert.Equal(RotationControls.ConfirmResetAll, (updateTableAndElementRotation RotRequestResetAll (initMain ())).rotationConfirm)
+        Assert.Equal(RotationControls.ConfirmResetAll, (updateTableAndElementRotation RotRequestResetAll (SceneTestFixture.mainScene ())).rotationConfirm)
 
     [<Fact>]
     let ``RotConfirm with no pending confirm is inert`` () =
-        let m = updateTableAndElementRotation (RotateR1By (BarDegrees 15.0)) (initMain ())
+        let m = updateTableAndElementRotation (RotateR1By (BarDegrees 15.0)) (SceneTestFixture.mainScene ())
         Assert.Equal<TableAndElementRotationModel>(m, updateTableAndElementRotation RotConfirm m)
 
     [<Fact>]
     let ``a confirmed element reset leaves the table and the other elements alone`` () =
         let m =
-            initMain ()
+            SceneTestFixture.mainScene ()
             |> updateTableAndElementRotation (RotateR1By (BarDegrees 30.0))          // table selected → table R1 = 30°
             |> updateTableAndElementRotation (AddElement Sample)        // element 2 selected
             |> updateTableAndElementRotation (RotateR1By (BarDegrees 20.0))          // element R1 = 20°
@@ -341,7 +343,7 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``ToggleR3Lock with nothing selected is inert`` () =
-        let m = { initMain () with selection = NothingSelected }
+        let m = { SceneTestFixture.mainScene () with selection = NothingSelected }
         Assert.Equal<TableAndElementRotationModel>(m, updateTableAndElementRotation ToggleR3Lock m)
 
     // ============================ wheel zoom clamps ============================
@@ -358,24 +360,24 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``the table zoom clamps at its maximum`` () =
-        let m = updateTableAndElementRotation (Wheel (Set.empty, WheelNotches 100)) (initMain ())
+        let m = updateTableAndElementRotation (Wheel (Set.empty, WheelNotches 100)) (SceneTestFixture.mainScene ())
         Assert.True(close m.view.zoom.value 5.0, $"expected the 5x cap, got {m.view.zoom.value}")
 
     [<Fact>]
     let ``the table zoom clamps at its minimum`` () =
-        let m = updateTableAndElementRotation (Wheel (Set.empty, WheelNotches -100)) (initMain ())
+        let m = updateTableAndElementRotation (Wheel (Set.empty, WheelNotches -100)) (SceneTestFixture.mainScene ())
         Assert.True(close m.view.zoom.value 0.2, $"expected the 0.2x floor, got {m.view.zoom.value}")
 
     [<Fact>]
     let ``zoom-all magnifies every element even while the table is selected`` () =
-        let m = updateTableAndElementRotation (Wheel (Set.ofList [ ModCtrl; ModShift; ModAlt ], WheelNotches 2)) (initMain ())   // table selected
+        let m = updateTableAndElementRotation (Wheel (Set.ofList [ ModCtrl; ModShift; ModAlt ], WheelNotches 2)) (SceneTestFixture.mainScene ())   // table selected
         Assert.Equal(TableSelected, m.selection)
         for e in m.elements do
             Assert.True(close e.zoom.value (defaultElementZoom.value * 1.1 * 1.1), $"every element zooms, got {e.zoom.value}")
 
     [<Fact>]
     let ``zooming the table leaves the element draw zoom alone`` () =
-        let m = updateTableAndElementRotation (Wheel (Set.empty, WheelNotches 3)) (initMain ())
+        let m = updateTableAndElementRotation (Wheel (Set.empty, WheelNotches 3)) (SceneTestFixture.mainScene ())
         Assert.True(m.view.zoom.value > 1.0, "the table zoomed")
         for e in m.elements do
             Assert.True(close e.zoom.value defaultElementZoom.value, "no element draw zoom changed")
@@ -390,7 +392,7 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``RequestBindValueId (ElementValueId is) inert while the table is selected`` () =
-        let m = initMain ()   // table selected
+        let m = SceneTestFixture.mainScene ()   // table selected
         Assert.Equal<TableAndElementRotationModel>(m, updateTableAndElementRotation (RequestBindValueId (ElementValueId "lens-a")) m)
 
     [<Fact>]
@@ -421,14 +423,14 @@ module MainSceneMsgTests =
     let ``BindValueId (ElementValueId binds) a selected element directly and is inert for the table`` () =
         let bound = updateTableAndElementRotation (BindValueId (ElementValueId "detector-b")) (withSample ())
         Assert.Equal(Some (ElementValueId "detector-b"), (elem 2 bound).placement.valueId)
-        let tableSel = initMain ()
+        let tableSel = SceneTestFixture.mainScene ()
         Assert.Equal<TableAndElementRotationModel>(tableSel, updateTableAndElementRotation (BindValueId (ElementValueId "detector-b")) tableSel)
 
     // ========================= pointer drag threshold =========================
 
     [<Fact>]
     let ``PointerMove without a press is inert`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal<TableAndElementRotationModel>(m, updateTableAndElementRotation (PointerMove { sx = 10.0; sy = 10.0 }) m)
 
     [<Fact>]
@@ -436,12 +438,12 @@ module MainSceneMsgTests =
         // Element 0 of the static scene sits at x = -0.5 m → screen centre - 100 px.
         let start : ScreenPoint = { sx = TableScene.center.sx - 100.0; sy = TableScene.center.sy }
         let nearby : ScreenPoint = { sx = start.sx + 1.0; sy = start.sy }
-        let m = initTableAndElementRotation () |> updateTableAndElementRotation (PointerDown start) |> updateTableAndElementRotation (PointerMove nearby) |> updateTableAndElementRotation (PointerUp nearby)
+        let m = SceneTestFixture.staticScene () |> updateTableAndElementRotation (PointerDown start) |> updateTableAndElementRotation (PointerMove nearby) |> updateTableAndElementRotation (PointerUp nearby)
         Assert.Equal(ElementSelected (SceneElementIndex 0), m.selection)
 
     [<Fact>]
     let ``a pan-drag preserves the selection`` () =
-        let selected = clickAt { sx = TableScene.center.sx - 100.0; sy = TableScene.center.sy } (initTableAndElementRotation ())
+        let selected = clickAt { sx = TableScene.center.sx - 100.0; sy = TableScene.center.sy } (SceneTestFixture.staticScene ())
         Assert.Equal(ElementSelected (SceneElementIndex 0), selected.selection)
         let from : ScreenPoint = { sx = TableScene.center.sx + 50.0; sy = TableScene.center.sy + 50.0 }
         let dragged =
@@ -461,12 +463,12 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``ExpEdit with an id not in the collection is inert`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal<TableAndElementRotationModel>(m, updateTableAndElementRotation (ExpEdit (Experiments.ExperimentId 999)) m)
 
     [<Fact>]
     let ``ExpRemove with an id not in the collection is inert`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal<TableAndElementRotationModel>(m, updateTableAndElementRotation (ExpRemove (Experiments.ExperimentId 999)) m)
 
     // The workbench bays' disarm-on-query-change discipline moved WITH the bays into their
@@ -485,7 +487,7 @@ module MainSceneMsgTests =
     let ``BindValueIdTo commits to the element WITH THAT ID — regardless of the current selection`` () =
         // Selection sits on the TABLE; the targeted bind still lands on the detector element
         // (never "the current selection" — the modeless Select window may outlive it).
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal(TableSelected, m.selection)
         let bound = updateTableAndElementRotation (BindValueIdTo (ElementId "det", PresetIds.detectorIntensity)) m
         Assert.Equal(Some PresetIds.detectorIntensity, (elem 1 bound).placement.valueId)
@@ -496,7 +498,7 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``BindValueIdTo on a vanished element is a NO-OP plus the status line — never a throw`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "not-on-the-table", PresetIds.detectorIntensity)) m
         // Nothing changed but the status line.
         Assert.Equal<TestElement list>(m.elements, vanished.elements)
@@ -529,19 +531,19 @@ module MainSceneMsgTests =
     let ``an element ADD and the selected element's REMOVAL both cancel the active Select session`` () =
         // AddElement selects the new element — a table-selection change (the staleness rule).
         let cancels, session = recordingSession (ElementId "det")
-        let added = updateTableAndElementRotation (AddElement Lens) { initMain () with activeSelect = Some session }
+        let added = updateTableAndElementRotation (AddElement Lens) { SceneTestFixture.mainScene () with activeSelect = Some session }
         Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels)
         Assert.Equal<SelectSession option>(None, added.activeSelect)
         // RemoveSelected makes the session's target disappear — cancel and close.
         let cancels2, session2 = recordingSession (ElementId "det")
-        let armed = { initMain () with selection = ElementSelected (SceneElementIndex 1); activeSelect = Some session2 }
+        let armed = { SceneTestFixture.mainScene () with selection = ElementSelected (SceneElementIndex 1); activeSelect = Some session2 }
         let removed = updateTableAndElementRotation RemoveSelectedElement armed
         Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels2)
         Assert.Equal<SelectSession option>(None, removed.activeSelect)
         Assert.Equal(1, List.length removed.elements)
         // An INERT remove (the table is selected) touches nothing — the session survives.
         let cancels3, session3 = recordingSession (ElementId "det")
-        let inert = updateTableAndElementRotation RemoveSelectedElement { initMain () with activeSelect = Some session3 }
+        let inert = updateTableAndElementRotation RemoveSelectedElement { SceneTestFixture.mainScene () with activeSelect = Some session3 }
         Assert.Empty(cancels3)
         Assert.Equal<SelectSession option>(Some session3, inert.activeSelect)
 
@@ -562,7 +564,7 @@ module MainSceneMsgTests =
     [<Fact>]
     let ``the Select bay offers the quick-pick strip only BELOW the step-005 threshold`` () =
         // The seeded detector kind has 2 entries < the default threshold 5 → the inline strip.
-        let detSelected = { initMain () with selection = ElementSelected (SceneElementIndex 1) }
+        let detSelected = { SceneTestFixture.mainScene () with selection = ElementSelected (SceneElementIndex 1) }
         Assert.Equal<SelectorOffer>(QuickPickAndChoose, detSelected.selectorOffer)
         // The seeded Sample kind has 11 entries ≥ 5 → Choose… alone.
         Assert.Equal<SelectorOffer>(ChooseAlone, (withSample ()).selectorOffer)
@@ -570,13 +572,13 @@ module MainSceneMsgTests =
         let atThreshold = { detSelected with quickPickThreshold = WorkbenchSettings.QuickPickThreshold 2 }
         Assert.Equal<SelectorOffer>(ChooseAlone, atThreshold.selectorOffer)
         // No element selected → nothing bindable, no offer.
-        Assert.Equal<SelectorOffer>(NoSelectorOffer, (initMain ()).selectorOffer)
-        Assert.Equal<SelectorOffer>(NoSelectorOffer, ({ initMain () with selection = NothingSelected }).selectorOffer)
+        Assert.Equal<SelectorOffer>(NoSelectorOffer, (SceneTestFixture.mainScene ()).selectorOffer)
+        Assert.Equal<SelectorOffer>(NoSelectorOffer, ({ SceneTestFixture.mainScene () with selection = NothingSelected }).selectorOffer)
 
     [<Fact>]
     let ``SelectSessionStarted stores the handle and SelectSessionEnded clears only that SAME session`` () =
         let cancels, session = recordingSession (ElementId "det")
-        let started = updateTableAndElementRotation (SelectSessionStarted session) (initMain ())
+        let started = updateTableAndElementRotation (SelectSessionStarted session) (SceneTestFixture.mainScene ())
         Assert.Equal<SelectSession option>(Some session, started.activeSelect)
         // A STALE session's end (superseded by a re-target) never clears the successor.
         let _, stale = recordingSession (ElementId "det")
@@ -595,12 +597,12 @@ module MainSceneMsgTests =
         // open — the bind ends the session AND closes its window (on the window path the
         // window already closed itself; the extra Close is the safe no-op).
         let cancels, session = recordingSession (ElementId "det")
-        let bound = updateTableAndElementRotation (BindValueIdTo (ElementId "det", PresetIds.detectorIntensity)) { initMain () with activeSelect = Some session }
+        let bound = updateTableAndElementRotation (BindValueIdTo (ElementId "det", PresetIds.detectorIntensity)) { SceneTestFixture.mainScene () with activeSelect = Some session }
         Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels)
         Assert.Equal<SelectSession option>(None, bound.activeSelect)
         Assert.Equal(Some PresetIds.detectorIntensity, (elem 1 bound).placement.valueId)
         // The vanished-target no-op still ends the session (the choice was made either way).
         let cancels2, session2 = recordingSession (ElementId "gone")
-        let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "gone", PresetIds.detectorIntensity)) { initMain () with activeSelect = Some session2 }
+        let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "gone", PresetIds.detectorIntensity)) { SceneTestFixture.mainScene () with activeSelect = Some session2 }
         Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels2)
         Assert.Equal<SelectSession option>(None, vanished.activeSelect)

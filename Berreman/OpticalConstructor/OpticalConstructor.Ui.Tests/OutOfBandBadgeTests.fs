@@ -105,7 +105,7 @@ module OutOfBandBadgeTests =
                 libraryTrees = fun () -> Ok []
                 tryGetEntry = fun id -> Ok (if id = entryId then Some (SampleItem sample) else None)
             }
-        let baseModel = initMainWith libStub (Experiments.createInMemoryExperiments ()) materials samples categories
+        let baseModel = SceneTestFixture.mainSceneWith libStub (Experiments.createInMemoryExperiments ()) materials samples categories
         let flagged : TestElement =
             {
                 id = Library.ElementId "sample0"

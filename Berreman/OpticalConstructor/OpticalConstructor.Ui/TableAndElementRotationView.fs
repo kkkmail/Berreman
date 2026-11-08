@@ -25,7 +25,9 @@ open Berreman.Fields
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
-open OpticalConstructor.Storage.KitFolderStore
+open OpticalConstructor.Domain.KitLibrary
+open OpticalConstructor.Storage.KitContentFiles
+open OpticalConstructor.Ui.KitOpening
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -36,10 +38,6 @@ open OpticalConstructor.Domain.TableView
 // Spec 0038 (017): opened for `QuickPickThreshold.defaultValue` — the single-case DU's case
 // shadows the type under `WorkbenchSettings.`-qualified expression resolution.
 open OpticalConstructor.Domain.WorkbenchSettings
-// Spec 0038 Part L (037): opened so `CollectionName.tryCreate` resolves to the TYPE's static member —
-// the module-qualified `ExperimentCollectionStore.CollectionName.tryCreate` binds the same-named
-// union CASE in expression position instead (the `WorkbenchSettings` shadowing note above).
-open OpticalConstructor.Domain.ExperimentCollectionStore
 open OpticalConstructor.Controls
 
 // ---------------------------------------------------------------------------
@@ -362,21 +360,12 @@ type TableAndElementRotationModel =
         /// FORWARD Main scene, or the INVERSE flow `initInverse` seeds (unbound sample, chart
         /// gated on a hint). Defaults to `ForwardConstructor`; `initInverse` sets the inverse mode.
         constructorMode : ConstructorMode
-        /// Measured-data attachments over the session's in-memory kit (spec 0050 S4.2).
+        /// The kit this constructor works in (spec 0050 S4.3).
+        kit : KitContext
+        /// The last kit read or write that needs telling (spec 0050 S4.3).
+        kitStatus : ControlCaption option
+        /// Measured-data attachments read through kit (spec 0050 S4.2/S4.3).
         experimentData : ExperimentData.ExperimentDataProxy
-        /// Spec 0038 Part I/L (037): the experiment-collection persistence seam (STORE_XDUO_0005,
-        /// step 028/029) — named collections of the live experiments save / list / load through it.
-        experimentCollections : ExperimentCollectionStore.ExperimentCollectionProxy
-        /// Spec 0038 Part L (037): the in-progress collection NAME (the create / rename field). A
-        /// raw editable text until `CollectionName.tryCreate` validates it at save (the draft
-        /// `elementLabel` precedent — UI text stays a caption to the boundary).
-        collectionName : ControlCaption
-        /// Spec 0038 Part L (037): the names of every collection stored through the proxy — the
-        /// loadable list the builder shows, refreshed on save.
-        savedCollections : ExperimentCollectionStore.CollectionName list
-        /// Spec 0038 Part L (037): the last collection save / load status line (a no-op-plus-status
-        /// on a blank name or a load miss, never a throw — the `selectStatus` precedent).
-        collectionStatus : ControlCaption option
         /// Spec 0038 Part L (037): the typed per-experiment measured-data status, keyed by the
         /// experiment's id — set when a file is attached (load + validate through the proxy).
         experimentDataStatus : Map<Experiments.ExperimentId, ExperimentFileStatus>
@@ -467,30 +456,21 @@ module private DefaultStores =
             catalogueImports = context
         }
 
-/// Session-local kit and collection seams for constructors without injected app proxies (spec 0050 S4.2).
-let private defaultExperimentProxies () : ExperimentData.ExperimentDataProxy * ExperimentCollectionStore.ExperimentCollectionProxy =
-    OpticalConstructor.Storage.ExperimentDataStore.createFileBacked (KitProxy.createInMemory (InMemoryKitFolder.create ())),
-    ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
-
 /// The Main-screen "Lego" palette — the catalogue kinds the user can add to the scene. Shared by the
 /// forward (`initMainWith`) and inverse (`initInverse`) Main scenes; the static test window seeds an
 /// empty palette instead (the only behavioural difference between the test and Main scenes).
 let private mainPalette : CatalogueKind list =
     [ LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ]
 
-/// The shared scene seed: the standard table, the straight top-down view, the given elements, the
-/// table selected first, an add/remove `palette`, and the injected proxies (the read-only Library
-/// and Experiments seams, plus — spec 0033 step 024 — the material / sample WRITE seams behind the
-/// workbench bays). `init` (the test window) passes an empty palette; `initMain` (the Main screen)
-/// passes a non-empty one — that is the ONLY behavioural difference between them.
+/// Seeds a scene in an initialized kit, with the supplied stores, elements and palette (spec 0050 .manual/010).
+/// The static diagnostic supplies an empty palette; constructor scenes supply the add/remove kinds.
 let initWith
     (library : Library.LibraryProxy)
     (experiments : Experiments.ExperimentProxy)
     (materials : MaterialLibrary.MaterialProxy)
     (samples : Library.SampleProxy)
     (categories : MaterialLibrary.CategoryProxy)
-    (experimentData : ExperimentData.ExperimentDataProxy)
-    (experimentCollections : ExperimentCollectionStore.ExperimentCollectionProxy)
+    (kit : KitContext)
     (elements : TestElement list)
     (palette : CatalogueKind list) : TableAndElementRotationModel =
     {
@@ -522,11 +502,9 @@ let initWith
         quickPickThreshold = QuickPickThreshold.defaultValue
         selectWindowModality = SelectWindowModality.defaultValue
         constructorMode = ForwardConstructor
-        experimentData = experimentData
-        experimentCollections = experimentCollections
-        collectionName = ControlCaption ""
-        savedCollections = []
-        collectionStatus = None
+        kit = kit
+        kitStatus = None
+        experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked kit.proxy
         experimentDataStatus = Map.empty
         elementMenu = None
         rotationPivot = BeamLayout.PivotAtCentre
@@ -537,18 +515,19 @@ let initWith
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
 /// the central ray, no add/remove palette. Behaviour is unchanged from before — the palette is empty.
 /// The proxies default to the in-memory mocks/stores (the test scene never shows the ribbon bays).
-let initTableAndElementRotation () : TableAndElementRotationModel =
-    let stores = DefaultStores.create ()
-    let experimentData, experimentCollections = defaultExperimentProxies ()
-    let elements =
-        [ mkElement { x = -0.5<meter>; y = 0.0<meter> } LinearPolarizer
-          mkElement { x = 0.0<meter>; y = 0.0<meter> } Sample
-          mkElement { x = 0.5<meter>; y = 0.0<meter> } FlatMirror ]
-    {
-        initWith stores.library (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories experimentData experimentCollections elements [] with
-            sources = stores.sources
-            catalogueImports = stores.catalogueImports
-    }
+let initTableAndElementRotation () : Result<TableAndElementRotationModel, KitError> =
+    scratchKit ()
+    |> Result.map (fun kit ->
+        let stores = DefaultStores.create ()
+        let elements =
+            [ mkElement { x = -0.5<meter>; y = 0.0<meter> } LinearPolarizer
+              mkElement { x = 0.0<meter>; y = 0.0<meter> } Sample
+              mkElement { x = 0.5<meter>; y = 0.0<meter> } FlatMirror ]
+        {
+            initWith stores.library (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories kit elements [] with
+                sources = stores.sources
+                catalogueImports = stores.catalogueImports
+        })
 
 /// The DYNAMIC Main scene: the same table/view/selection/rotation logic, seeded with a light source and
 /// a detector at the ends of the beam, plus the catalogue palette the user can add elements from (the
@@ -562,76 +541,52 @@ let private mainSeedElements : TestElement list =
     [ { id = Library.ElementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
       { id = Library.ElementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
 
+/// Opens a forward scene in a fresh scratch kit, preserving initialization errors (spec 0050 .manual/010).
 let initMainWith
     (library : Library.LibraryProxy)
     (experiments : Experiments.ExperimentProxy)
     (materials : MaterialLibrary.MaterialProxy)
     (samples : Library.SampleProxy)
-    (categories : MaterialLibrary.CategoryProxy) : TableAndElementRotationModel =
-    // Spec 0038 Part L (037): the measured-data + experiment-collection proxies default to the real
-    // file-backed load adapter (step 036) and the step-029 in-memory collection store; the composition
-    // root threads its shared app-scope instances by record update (`AppContext.experimentData` /
-    // `.experimentCollections`), so two Main windows share one saved-collection store.
-    let experimentData, experimentCollections = defaultExperimentProxies ()
-    { initWith
-        library
-        experiments
-        materials
-        samples
-        categories
-        experimentData
-        experimentCollections
-        mainSeedElements
-        mainPalette
-        with snapChain = Scene.SnapToBeam }
+    (categories : MaterialLibrary.CategoryProxy) : Result<TableAndElementRotationModel, KitError> =
+    scratchKit ()
+    |> Result.map (fun kit ->
+        {
+            initWith library experiments materials samples categories kit mainSeedElements mainPalette with
+                snapChain = Scene.SnapToBeam
+        })
 
-/// Spec 0038 Part L (037): the INVERSE Main scene. The SAME dynamic Main workbench (table / view /
-/// selection / rotation logic, the add-remove palette, the snap chain, the injected proxies) opened
-/// in the inverse-problem flow: seeded with a light source, an UNBOUND SAMPLE (the unknown — step 30
-/// draws it dashed), and a detector on the beam. With the sample unbound (no hint) the forward
-/// experiment chart has nothing to compute against, so its surface is absent (`experimentChartVisible`);
-/// binding a HINT sample through the Library window's Select state (the same `BindValueIdTo` commit
-/// path) restores the chart. The user then builds an experiment collection and attaches one measured-
-/// data file per experiment. Proxies default like `initMainWith`; the composition root threads its
-/// shared app-scope experiment proxies by record update (step 45/47 own the Inverse launcher + acceptance).
+/// Opens an inverse scene with an unbound sample in a fresh scratch kit (spec 0038 Part L; spec 0050 .manual/010).
+/// A bound hint restores the forward chart; initialization errors propagate to the caller.
 let initInverse
     (library : Library.LibraryProxy)
     (experiments : Experiments.ExperimentProxy)
     (materials : MaterialLibrary.MaterialProxy)
     (samples : Library.SampleProxy)
-    (categories : MaterialLibrary.CategoryProxy) : TableAndElementRotationModel =
-    let experimentData, experimentCollections = defaultExperimentProxies ()
-    { initWith
-        library
-        experiments
-        materials
-        samples
-        categories
-        experimentData
-        experimentCollections
-        [ { id = Library.ElementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
-          { id = Library.ElementId "sample"; placement = ElementPlacement.create Sample { x = 0.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
-          { id = Library.ElementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
-        mainPalette
-        with snapChain = Scene.SnapToBeam; constructorMode = InverseConstructor }
+    (categories : MaterialLibrary.CategoryProxy) : Result<TableAndElementRotationModel, KitError> =
+    scratchKit ()
+    |> Result.map (fun kit ->
+        let elements =
+            [ { id = Library.ElementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
+              { id = Library.ElementId "sample"; placement = ElementPlacement.create Sample { x = 0.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
+              { id = Library.ElementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
+        {
+            initWith library experiments materials samples categories kit elements mainPalette with
+                snapChain = Scene.SnapToBeam
+                constructorMode = InverseConstructor
+        })
 
-/// The Main scene with the default in-memory mock proxies / stores (the test default; the composition
-/// root injects its own proxies via `initMainWith`).
-let initMain () : TableAndElementRotationModel =
+/// Opens the default Main scene, preserving scratch-kit initialization errors (spec 0050 .manual/010).
+let initMain () : Result<TableAndElementRotationModel, KitError> =
     let stores = DefaultStores.create ()
-    {
-        initMainWith stores.library (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories with
-            sources = stores.sources
-            catalogueImports = stores.catalogueImports
-    }
+    initMainWith stores.library (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories
+    |> Result.map (fun model ->
+        {
+            model with
+                sources = stores.sources
+                catalogueImports = stores.catalogueImports
+        })
 
-// ---------------------------------------------------------------------------
-// Scene capture / restore (spec 0038 step 027, IMPLEMENT_CONTRACT STORE_XDUO_0004).
-// The pure, Avalonia-free projection between the LIVE workbench `Model` and the Domain
-// `Scene.SceneSnapshot` the `SceneProxy` persists — no window, no live handle, so a headless
-// test round-trips them. The proxy stores the DATA; these two functions are how the host turns
-// its live scene into that data and back.
-// ---------------------------------------------------------------------------
+// Scene capture and restore project the live model to the kit's snapshot (spec 0038 step 027; spec 0050 S4.3).
 
 /// Project the live workbench model into a pure `Scene.SceneSnapshot`: the placed `elements`
 /// (each element's serializable id, its full `placement` — which already carries the
@@ -766,13 +721,6 @@ type TableAndElementRotationMsg =
     /// Spec 0027 (030 follow-up): open the chart window for a COLLECTED experiment by id (the per-row "View"
     /// button, and a double-click on the experiment row).
     | ViewExperiment of Experiments.ExperimentId
-    /// Spec 0038 Part L (037) — the experiment-collection BUILDER. `CollectionSetName` edits the
-    /// in-progress collection name (create / rename); `CollectionSave` persists the live experiments
-    /// under that name through the `ExperimentCollectionProxy` (and refreshes the saved list);
-    /// `CollectionLoad` loads a stored collection (by name) back into the live collection.
-    | CollectionSetName of ControlCaption
-    | CollectionSave
-    | CollectionLoad of ExperimentCollectionStore.CollectionName
     /// Records a picked file through the kit, then loads and validates its attachment (spec 0050 S4.2).
     | AttachDataFileTo of Experiments.ExperimentId * FileName
     /// Spec 0038 (013) — the ribbon tab-strip row's right-aligned "Materials…" button: open the
@@ -1591,6 +1539,36 @@ let private validateExperimentAttachment
     | Ok series -> DataFileValidated series.pointCount
     | Error error -> error.fileStatus
 
+type TableAndElementRotationModel with
+
+    /// Works in the opened kit and rechecks every recorded data attachment (spec 0050 S4.3; 001 §E).
+    member model.loadKit (opened : OpenedKit) : TableAndElementRotationModel =
+        let loaded =
+            {
+                model with
+                    kit = opened.library.kit
+                    experimentData = opened.experimentData
+                    experimentCollection = Experiments.ExperimentCollection.ofLoaded opened.experiments
+                    kitStatus = None
+            }
+        let statuses =
+            opened.experiments
+            |> List.choose (fun experiment ->
+                match experiment.dataFileOpt with
+                | Some attachment ->
+                    let status =
+                        match loaded.experimentData.attachmentStatus attachment with
+                        | Ok AttachedDataUnchanged -> validateExperimentAttachment loaded experiment attachment
+                        | Ok (AttachedDataChanged _) -> DataFileChangedSinceAttach
+                        | Ok AttachedDataMissing -> DataFileMissingFromKit attachment.path.toControlCaption
+                        | Error error -> AttachedFileParseError error.caption
+                    Some (experiment.id, status)
+                | None -> None)
+            |> Map.ofList
+        {
+            loaded with experimentDataStatus = statuses
+        }
+
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -1748,17 +1726,48 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | ExportExperimentData -> exportDraftRun model
     | ExpSetRangePoints n -> { model with experimentCollection = Experiments.setRangePoints n.curvePointCount model.experimentCollection }
     | ExpCommit ->
-        // Spec 0038 Part I (step 025): capture the live scene as the experiment's ordered setup and commit.
-        // Spec 0046: the experiment records the capture the detectors allow (the draft's request coerced);
-        // with no capturing detector there is nothing to record and the commit is refused.
+        // Spec 0038 step 025; spec 0046: capture the live setup and the detectors' allowed measurement.
+        // Spec 0050 S4.3: accept the committed draft only after its kit file is recorded.
         match model.draftCapture with
         | Some capture ->
             let collection = Experiments.chooseMeasurement capture model.experimentCollection
-            { model with experimentCollection = Experiments.commit model.experimentSetup collection }
+            let committed = Experiments.commit model.experimentSetup collection
+            if committed = model.experimentCollection then model
+            else
+                match committed.draft.editingId |> Option.bind (fun id -> committed.experiments |> List.tryFind (fun experiment -> experiment.id = id)) with
+                | Some experiment ->
+                    let library : KitLibraryContext =
+                        {
+                            kit = model.kit
+                            imports = model.catalogueImports
+                        }
+                    match library.recordExperiment experiment with
+                    | Ok () ->
+                        {
+                            model with
+                                experimentCollection = committed
+                                kitStatus = None
+                        }
+                    | Error error ->
+                        {
+                            model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        }
+                | None -> model
         | None -> model
     | ExpNew -> { model with experimentCollection = model.experimentCollection.newDraft }
     | ExpEdit id -> { model with experimentCollection = Experiments.edit id model.experimentCollection }
-    | ExpRemove id -> { model with experimentCollection = Experiments.remove id model.experimentCollection }
+    | ExpRemove id ->
+        match model.kit.proxy.deleteExperiment id with
+        | Ok () | Error (MissingKitFileErr _) ->
+            {
+                model with
+                    experimentCollection = Experiments.remove id model.experimentCollection
+                    kitStatus = None
+            }
+        | Error error ->
+            {
+                model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+            }
     | OpenExperimentChartWindow ->
         // Spec 0027 (026) Part 3: a double-click on the inline chart opens the pop-out interactive ScottPlot
         // window for the current experiment chart. Opening a `Window` is a side effect, matching the existing
@@ -1771,61 +1780,6 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         // button / a row double-click). Same side-effecting seam as OpenExperimentChartWindow.
         viewExperimentHook model id
         model
-    | CollectionSetName name ->
-        // Spec 0038 Part L (037): edit the in-progress collection name (create / rename). Raw text
-        // until `CollectionName.tryCreate` validates it at save.
-        { model with collectionName = name }
-    | CollectionSave ->
-        // Spec 0038 Part L (037): persist the live experiments under the named collection through the
-        // `ExperimentCollectionProxy`, then refresh the loadable saved list. A blank name is rejected
-        // at the store boundary (`CollectionName.tryCreate`) as a typed status, never a throw.
-        match CollectionName.tryCreate model.collectionName.value with
-        | Ok name ->
-            let snapshot : ExperimentCollectionStore.ExperimentCollectionSnapshot =
-                { name = name; experiments = model.experimentCollection.experiments }
-            match model.experimentCollections.saveCollection snapshot with
-            | Ok () ->
-                let saved =
-                    match model.experimentCollections.listCollections () with
-                    | Ok names -> names
-                    | Error _ -> model.savedCollections
-                { model with
-                    savedCollections = saved
-                    collectionStatus = Some (ControlCaption $"Saved collection '{name.value}' ({List.length model.experimentCollection.experiments} experiment(s)).") }
-            | Error (ExperimentCollectionStore.InvalidCollectionErr reason) ->
-                { model with collectionStatus = Some (ControlCaption $"Save failed — {reason}") }
-        | Error (ExperimentCollectionStore.InvalidCollectionErr reason) ->
-            { model with collectionStatus = Some (ControlCaption $"Save failed — {reason}") }
-    | CollectionLoad name ->
-        // Spec 0038 Part L (037); spec 0050 .manual/001 §E: check attachments on open before validating unchanged data.
-        match model.experimentCollections.tryLoadCollection name with
-        | Ok (Some snapshot) ->
-            let experiments = snapshot.experiments
-            let statuses =
-                experiments
-                |> List.choose (fun experiment ->
-                    match experiment.dataFileOpt with
-                    | Some attachment ->
-                        let status =
-                            match model.experimentData.attachmentStatus attachment with
-                            | Ok AttachedDataUnchanged -> validateExperimentAttachment model experiment attachment
-                            | Ok (AttachedDataChanged _) -> DataFileChangedSinceAttach
-                            | Ok AttachedDataMissing -> DataFileMissingFromKit attachment.path.toControlCaption
-                            | Error error -> AttachedFileParseError error.caption
-                        Some (experiment.id, status)
-                    | None -> None)
-                |> Map.ofList
-            {
-                model with
-                    experimentCollection = Experiments.ExperimentCollection.ofLoaded experiments
-                    collectionName = name.caption
-                    experimentDataStatus = statuses
-                    collectionStatus = Some (ControlCaption $"Loaded collection '{name.value}' ({List.length experiments} experiment(s)).")
-            }
-        | Ok None ->
-            { model with collectionStatus = Some (ControlCaption $"No collection named '{name.value}' is stored.") }
-        | Error (ExperimentCollectionStore.InvalidCollectionErr reason) ->
-            { model with collectionStatus = Some (ControlCaption $"Load failed — {reason}") }
     | AttachDataFileTo (experimentId, file) ->
         match model.experimentData.attachDataFile file with
         | Error error ->
@@ -1838,12 +1792,24 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             let collection = Experiments.attachDataFile experimentId attachment model.experimentCollection
             match collection.experiments |> List.tryFind (fun e -> e.id = experimentId) with
             | Some experiment ->
-                let status = validateExperimentAttachment model experiment attachment
-                {
-                    model with
-                        experimentCollection = collection
-                        experimentDataStatus = model.experimentDataStatus |> Map.add experimentId status
-                }
+                let library : KitLibraryContext =
+                    {
+                        kit = model.kit
+                        imports = model.catalogueImports
+                    }
+                match library.recordExperiment experiment with
+                | Ok () ->
+                    let status = validateExperimentAttachment model experiment attachment
+                    {
+                        model with
+                            experimentCollection = collection
+                            experimentDataStatus = model.experimentDataStatus |> Map.add experimentId status
+                            kitStatus = None
+                    }
+                | Error error ->
+                    {
+                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                    }
             | None -> model
     | OpenMaterialsWindow ->
         // Spec 0038 step 013: a pure launch of the single-instance Materials window
@@ -3376,12 +3342,7 @@ let private selectorBayContent (model : TableAndElementRotationModel) (dispatch 
         LibraryControls.libraryControlsView LibraryControls.empty (libraryHandlers model dispatch)
 
 // ---------------------------------------------------------------------------
-// Spec 0038 Part L (037) — the experiment-collection BUILDER, rendered in the Ui layer beneath the
-// (untouched) Controls-layer `ExperimentControls.view`: name / save / list / load a named collection
-// through the `ExperimentCollectionProxy`, and attach ONE measured-data file per experiment (through
-// the picker) whose parse / validation status shows inline as a typed message. Its automation ids are
-// `ConstructorUiId`'s.
-// ---------------------------------------------------------------------------
+// Experiments are kept in the kit; inverse experiments attach measured data (spec 0050 S4.3).
 
 /// Spec 0038 Part L (038): build the measured-data picker's options carrying the persisted start
 /// folder. PURE — the resolved `suggested` folder (resolved from the persisted path through the
@@ -3502,48 +3463,21 @@ let private dataFileRow (model : TableAndElementRotationModel) (dispatch : Table
     |> Avalonia.FuncUI.DSL.View.withKey ("DataFileRow_" + experiment.id.uiKey.value)
     :> IView
 
-/// The experiment-collection builder (name / save / list / load + — in the INVERSE constructor only —
-/// per-experiment data-file attach).
-/// A pure projection of the model plus the dispatch seam — no window needed, so a headless test
-/// drives the collection round-trip and the attach status through `update` alone.
+/// Experiments are kept in the kit; show its status and the inverse data-file attachments (spec 0050 S4.3).
 let private collectionBuilderView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let sectionHeading (text : string) : IView =
         TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0)) ] :> IView
-    // Commit the collection name on Enter / blur (the `numberField` precedent) — an every-keystroke
-    // dispatch that rewrites the model text is the FuncUI render-loop hazard we avoid here.
-    let commitName (src : obj) : unit =
-        match src with
-        | :? TextBox as tb when not (isNull tb.Text) -> dispatch (CollectionSetName (ControlCaption tb.Text))
-        | _ -> ()
-    let nameField : IView =
-        TextBox.create [
-            TextBox.name ConstructorUiId.collectionNameField.value
-            TextBox.width 180.0
-            TextBox.text model.collectionName.value
-            TextBox.onKeyDown (fun e -> if e.Key = Key.Enter then commitName e.Source)
-            TextBox.onLostFocus (fun e -> commitName e.Source)
-        ] :> IView
     let statusRow : IView list =
-        match model.collectionStatus with
+        match model.kitStatus with
         | None -> []
         | Some text ->
             [ (TextBlock.create [
-                  ConstructorUiId.collectionStatus.automationAttribute<TextBlock> ()
+                  ConstructorUiId.kitStatus.automationAttribute<TextBlock> ()
                   TextBlock.text text.value
                   TextBlock.foreground (brush (Color.FromRgb(90uy, 90uy, 90uy)))
                   TextBlock.textWrapping TextWrapping.Wrap
                   TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0))
-               ] |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.collectionStatus.value) :> IView ]
-    let savedRow : IView list =
-        match model.savedCollections with
-        | [] -> []
-        | names ->
-            [ sectionHeading "Saved collections:"
-              WrapPanel.create [
-                  WrapPanel.name ConstructorUiId.savedCollections.value
-                  WrapPanel.orientation Orientation.Horizontal
-                  WrapPanel.children (names |> List.map (fun n -> workbenchButton (ConstructorUiId.savedCollection n) n.caption (fun () -> dispatch (CollectionLoad n))))
-              ] :> IView ]
+               ] |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.kitStatus.value) :> IView ]
     // Spec 0046: measured-data files belong to the INVERSE problem alone — the forward (Main) constructor
     // shows no "Data files" section at all.
     let dataFileSection : IView list =
@@ -3562,16 +3496,7 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
-        StackPanel.children (
-            [ sectionHeading "Collection:"
-              StackPanel.create [
-                  StackPanel.orientation Orientation.Horizontal
-                  StackPanel.spacing 6.0
-                  StackPanel.children [ nameField; workbenchButton ConstructorUiId.saveCollectionButton (ControlCaption "Save collection") (fun () -> dispatch CollectionSave) ]
-              ] :> IView ]
-            @ statusRow
-            @ savedRow
-            @ dataFileSection)
+        StackPanel.children (statusRow @ dataFileSection)
     ] :> IView
 
 /// The Experiments bay content (spec 0038 Part L, 037): the (untouched) Controls-layer experiment

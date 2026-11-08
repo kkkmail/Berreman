@@ -581,7 +581,7 @@ module LauncherTests =
             let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok context)
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
-            let constructorWindow = MainConstructorWindow(context)
+            let constructorWindow = (MainConstructorWindow.tryCreate context |> SceneTestFixture.kitSuccess)
             constructorWindow.Show()
             Dispatcher.UIThread.RunJobs()
             try

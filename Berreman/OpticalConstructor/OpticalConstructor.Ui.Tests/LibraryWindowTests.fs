@@ -1449,7 +1449,7 @@ module LibraryWindowTests =
     /// injectable stores), for the strip-button acceptance.
     let private mountMain (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) : HostWindow =
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
-        let model0 = Scene.initMainWith library (Experiments.createInMemoryExperiments ()) materials samples categories
+        let model0 = SceneTestFixture.mainSceneWith library (Experiments.createInMemoryExperiments ()) materials samples categories
         let window = HostWindow(Width = 980.0, Height = 1050.0)
         Program.mkSimple (fun () -> model0) Scene.updateTableAndElementRotation Scene.mainView
         |> Program.withHost window
@@ -1925,7 +1925,7 @@ module LibraryWindowTests =
     let private freshMainModel () : Scene.TableAndElementRotationModel =
         let library, samples, materials = freshStores ()
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
-        Scene.initMainWith library (Experiments.createInMemoryExperiments ()) materials samples categories
+        SceneTestFixture.mainSceneWith library (Experiments.createInMemoryExperiments ()) materials samples categories
 
     /// Click the shared table canvas at canvas-local coordinates (the pointer gestures live on
     /// the wrapping Border and read positions relative to the NAMED canvas).

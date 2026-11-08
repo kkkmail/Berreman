@@ -211,7 +211,7 @@ module LightSourceEditorTests =
     [<Trait("Category", "ui-smoke")>]
     let ``a user source and a seeded lithography source bind to the table's source and resolve`` () =
         HeadlessSession.run (fun () ->
-            let m0 = { Scene.initMain () with selection = Scene.ElementSelected (Scene.SceneElementIndex 0) }
+            let m0 = { SceneTestFixture.mainScene () with selection = Scene.ElementSelected (Scene.SceneElementIndex 0) }
             let mine : SourcePreset = { id = Placement.ElementValueId "src-mine"; name = EntryName "My 13.4 nm line"; waveLength = WaveLength.nm 13.4<nm>; tuning = FixedLine; protection = UserManaged }
             Assert.Equal(Ok (), m0.sources.saveSource mine)
             let sourceId = (List.item 0 m0.elements).id

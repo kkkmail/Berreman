@@ -1,5 +1,7 @@
 namespace OpticalConstructor.Ui.Tests
 
+open OpticalConstructor.Tests
+
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
@@ -98,7 +100,7 @@ module WireUiCompositionTests =
     /// Elmish loop over `initMainWith` — exactly what the launcher's Main button does with
     /// `Startup.context` (spec 0038 step 006).
     let private mountRoot () : Window =
-        let window = OpticalConstructor.App.MainConstructorWindow(TestAppScope.freshAppContext owner)
+        let window = (OpticalConstructor.App.MainConstructorWindow.tryCreate (TestAppScope.freshAppContext owner) |> SceneTestFixture.kitSuccess)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window :> Window

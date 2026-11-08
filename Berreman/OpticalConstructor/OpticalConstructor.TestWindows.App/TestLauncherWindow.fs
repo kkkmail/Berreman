@@ -13,6 +13,7 @@ open OpticalConstructor.Controls
 open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Media
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.TestWindows
 
 /// The test-launcher form: the diagnostic counterpart of the product launcher.
@@ -36,7 +37,10 @@ type TestLauncherWindow() as this =
                 Margin = Thickness(0.0, 0.0, 0.0, 14.0))
         // One button per diagnostic scene: stable Name + AutomationId (same string)
         // and the human label as the accessible name.
-        let sceneButton (id : string) (label : string) (openScene : unit -> Window) : Button =
+        let kitStatus = TextBlock(TextWrapping = TextWrapping.Wrap, IsVisible = false)
+        AutomationProperties.SetAutomationId(kitStatus, ConstructorUiId.kitStatus.value)
+        AutomationProperties.SetName(kitStatus, "Kit status")
+        let sceneButton (id : string) (label : string) (openScene : unit -> Result<Window, KitError>) : Button =
             let button =
                 Button(
                     Name = id,
@@ -45,18 +49,29 @@ type TestLauncherWindow() as this =
                     Margin = Thickness(0.0, 0.0, 0.0, 8.0))
             AutomationProperties.SetAutomationId(button, id)
             AutomationProperties.SetName(button, label)
-            button.Click.Add(fun _ -> (openScene ()).Show())
+            button.Click.Add(fun _ ->
+                match openScene () with
+                | Ok window ->
+                    kitStatus.IsVisible <- false
+                    window.Show()
+                | Error error ->
+                    kitStatus.Text <- $"The diagnostic could not be opened: {error.describe}"
+                    kitStatus.IsVisible <- true)
             button
-        let scenes : (string * string * (unit -> Window)) list =
-            [ ConstructorUiId.openTableRotationTestButton.value, "Test Optical Table Rotations", fun () -> TableRotationWindow() :> Window
-              ConstructorUiId.openElementRotationTestButton.value, "Test Optical Element Rotations", fun () -> ElementRotationWindow() :> Window
-              ConstructorUiId.openTableAndElementRotationTestButton.value, "Test Table + Element Rotations", fun () -> TableAndElementRotationWindow() :> Window
-              ConstructorUiId.openElementMovementTestButton.value, "Test Element Movement", fun () -> ElementMovementWindow() :> Window
-              ConstructorUiId.openRendererTestButton.value, "Test Renderers", fun () -> RendererTestWindow() :> Window
-              ConstructorUiId.openSnapToBeamTestButton.value, "Test Snap to Beam", fun () -> SnapToBeamWindow() :> Window
-              ConstructorUiId.openSnapToReflectedTestButton.value, "Test Snap to Reflected Light", fun () -> SnapToReflectedWindow() :> Window ]
+        let scenes : (string * string * (unit -> Result<Window, KitError>)) list =
+            [ ConstructorUiId.openTableRotationTestButton.value, "Test Optical Table Rotations", fun () -> TableRotationWindow() :> Window |> Ok
+              ConstructorUiId.openElementRotationTestButton.value, "Test Optical Element Rotations", fun () -> ElementRotationWindow() :> Window |> Ok
+              ConstructorUiId.openTableAndElementRotationTestButton.value, "Test Table + Element Rotations", fun () -> TableAndElementRotationWindow.tryCreate () |> Result.map (fun window -> window :> Window)
+              ConstructorUiId.openElementMovementTestButton.value, "Test Element Movement", fun () -> ElementMovementWindow() :> Window |> Ok
+              ConstructorUiId.openRendererTestButton.value, "Test Renderers", fun () -> RendererTestWindow() :> Window |> Ok
+              ConstructorUiId.openSnapToBeamTestButton.value, "Test Snap to Beam", fun () -> SnapToBeamWindow() :> Window |> Ok
+              ConstructorUiId.openSnapToReflectedTestButton.value, "Test Snap to Reflected Light", fun () -> SnapToReflectedWindow() :> Window |> Ok ]
         let panel = StackPanel(Margin = Thickness 20.0)
         panel.Children.Add title
+        panel.Children.Add kitStatus
         for (id, label, openScene) in scenes do
             panel.Children.Add(sceneButton id label openScene)
-        this.Content <- panel
+        this.Content <- ScrollViewer(
+            Content = panel,
+            HorizontalScrollBarVisibility = Primitives.ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = Primitives.ScrollBarVisibility.Auto)

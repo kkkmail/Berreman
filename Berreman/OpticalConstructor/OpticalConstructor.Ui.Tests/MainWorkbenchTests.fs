@@ -71,7 +71,7 @@ module MainWorkbenchTests =
 
     /// Composes Main from the Built-in catalogue and live stores as in the App (spec 0050 §3.4–3.5).
     let private mainWith (stores : InMemoryCatalogueStores) : TableAndElementRotationModel =
-        initMainWith
+        SceneTestFixture.mainSceneWith
             (liveLibrary stores.libraryEntries stores.samples (SourceProxy.createInMemory ()))
             (Experiments.createInMemoryExperiments ())
             stores.materials

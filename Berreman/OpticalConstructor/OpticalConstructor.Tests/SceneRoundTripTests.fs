@@ -98,7 +98,7 @@ module SceneRoundTripTests =
 
     let private sourceModel () : TableAndElementRotationModel =
         {
-            initMain () with
+            SceneTestFixture.mainScene () with
                 elements = [ sourceEl; polarizerEl; detectorEl ]
                 view = dialledView
                 snapChain = Scene.SnapToBeam
@@ -148,7 +148,7 @@ module SceneRoundTripTests =
         Assert.True(File.Exists((file.combine folder.value).value))
 
         // Spec 0038 step 027: a different base model exposes a restore that leaves old state behind.
-        let restored = restoreScene loaded (initTableAndElementRotation ())
+        let restored = restoreScene loaded (SceneTestFixture.staticScene ())
         Assert.Equal<string list>(
             [ "src"; "pol"; "det" ],
             restored.elements |> List.map (fun element -> element.id.value))

@@ -2,7 +2,12 @@ namespace OpticalConstructor.Ui.Tests
 
 open System.IO
 open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui
 
 module TestAppScope =
@@ -53,3 +58,15 @@ module TestAppScope =
             |> Result.defaultWith (fun error -> failwith error.describe)
         settlePendingImports context
         context
+
+    /// Returns an uncreated GUID-named kit folder under the owner's test output (spec 0050 .spec-md §3.10).
+    let freshKitFolder (owner : FolderName) : KitFolder =
+        let instance = FolderName (System.Guid.NewGuid().ToString("N"))
+        let folder = (testLocations owner).kitsFolder.combine instance
+        KitFolder folder
+
+    /// Opens a fresh read-write test kit, failing the calling fact with its error (spec 0050 .spec-md §3.10).
+    let openedKitIn (owner : FolderName) (imports : CatalogueImportContext) : OpenedKit =
+        let author = KitAuthor "test"
+        KitOpening.openKitAt (freshKitFolder owner) ReadWriteKitAccess ClockProvider.system author imports
+        |> Result.defaultWith (fun error -> failwith error.describe)

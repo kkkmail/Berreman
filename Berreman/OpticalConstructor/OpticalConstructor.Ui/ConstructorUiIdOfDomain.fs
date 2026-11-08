@@ -184,10 +184,6 @@ module ConstructorUiIdOfDomain =
 
         static member dataFileStatus (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataFileStatus_{experimentId.value}"
 
-        /// A saved collection's loadable row in the collection builder, by its name.
-        static member savedCollection (name : OpticalConstructor.Domain.ExperimentCollectionStore.CollectionName) : ConstructorUiId =
-            ConstructorUiId $"SavedCollection_{name.value}"
-
         /// A material-category option of the Material editor.
         static member materialEditorCategoryOption (categoryId : CategoryId) : ConstructorUiId =
             ConstructorUiId $"MaterialCategoryOption_{categoryId.value}"
@@ -365,10 +361,6 @@ module ConstructorUiIdOfDomain =
         /// The experiment as the key of its Experiments-bay collection row (its number's text).
         member this.uiKey : ConstructorUiKey = ConstructorUiKey (string this.value)
 
-    type OpticalConstructor.Domain.ExperimentCollectionStore.CollectionName with
-
-        /// The name as its saved-collection button shows it.
-        member this.caption : ControlCaption = ControlCaption this.value
 
     type EntryName with
 

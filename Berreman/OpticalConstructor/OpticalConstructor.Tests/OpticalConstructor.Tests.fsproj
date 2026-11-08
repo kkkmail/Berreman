@@ -17,6 +17,7 @@
 
     <ItemGroup>
         <Compile Include="BuiltinCatalogue.fs" />
+        <Compile Include="SceneTestFixture.fs" />
         <Compile Include="ScaffoldTests.fs" />
         <Compile Include="UnitsTests.fs" />
         <Compile Include="GradientDiscretizeTests.fs" />
@@ -150,21 +151,7 @@
              preserving element ids, kinds, placements, bindings and view state; file replacement,
              missing/malformed files, SceneName validation and SnapMode wire forms. -->
         <Compile Include="SceneRoundTripTests.fs" />
-        <!-- Spec 0038 step 028 (ADD_CONTRACT STORE_XDUO_0005): the experiment-collection persistence
-             seam — CollectionName's blank-rejecting tryCreate, and the mock/stub
-             ExperimentCollectionProxy exercised through saveCollection / tryLoadCollection /
-             listCollections' exact signatures over a named list of the step-25 full-setup Experiments
-             (the optional DataAttachment attachment riding along per experiment). Declared contract:
-             types + inline map-backed mock + test, no real store yet. -->
-        <Compile Include="ExperimentCollectionProxyTests.fs" />
-        <!-- Spec 0038 step 029 (IMPLEMENT_CONTRACT STORE_XDUO_0005): the experiment-collection
-             persistence seam is implemented — the real in-memory
-             ExperimentCollectionProxy.createInMemory (ref-map store). Drives the acceptance
-             round-trip saveCollection -> listCollections -> tryLoadCollection over a collection of a
-             full E1 setup, a sample-less E2, and a dark E3 (with and without DataAttachment
-             attachments), reproducing ordered setups, the optional sample/source/dark shapes, and the
-             per-experiment attachments value-identically; plus the upsert, load-miss, blank-name
-             rejection, and multi-collection listing. -->
+        <!-- Experiment kit files preserve setups and attachments (spec 0050 S4.3). -->
         <Compile Include="ExperimentCollectionRoundTripTests.fs" />
         <!-- Spec 0038 Part I (step 031): the pure out-of-band dispersion diagnostic — a fixed 600 nm
              request inside a 300-700 nm segment does not flag, a 200-800 nm sweep against the same

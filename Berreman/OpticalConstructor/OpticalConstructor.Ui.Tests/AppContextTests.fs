@@ -223,12 +223,9 @@ module AppContextTests =
             pending.decisions |> List.map _.entryId |> List.sort)
         pending
 
-    /// A workbench surface composed FROM the app scope — what `MainConstructorWindow` runs (the two
-    /// experiment proxies thread by record update, spec 0038 Part L step 037).
+    /// A workbench surface shares the app library and works in its own kit (spec 0050 S4.3).
     let private surfaceOf (context : AppContext) : TableAndElementRotationModel =
-        { initMainWith context.library context.experiments context.materials context.samples context.categories with
-            experimentData = context.experimentData
-            experimentCollections = context.experimentCollections }
+        SceneTestFixture.mainSceneWith context.library context.experiments context.materials context.samples context.categories
 
     // ============================ pure contract (gate `ui-tests`) ============================
 
@@ -720,10 +717,10 @@ module AppContextTests =
             let context = freshContext ()
             // Two REAL Main windows over the SAME injected scope — the launcher's Main button
             // clicked twice (spec 0038 step 006: launcher-opened windows share the stores).
-            let first = OpticalConstructor.App.MainConstructorWindow(context)
+            let first = (OpticalConstructor.App.MainConstructorWindow.tryCreate context |> SceneTestFixture.kitSuccess)
             first.Show()
             Dispatcher.UIThread.RunJobs()
-            let second = OpticalConstructor.App.MainConstructorWindow(context)
+            let second = (OpticalConstructor.App.MainConstructorWindow.tryCreate context |> SceneTestFixture.kitSuccess)
             second.Show()
             Dispatcher.UIThread.RunJobs()
             // Observe the windows the REAL launcher seam opens (subscribed only after both Main

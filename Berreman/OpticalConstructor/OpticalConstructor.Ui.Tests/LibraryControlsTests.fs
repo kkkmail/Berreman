@@ -50,7 +50,7 @@ module LibraryControlsTests =
 
     /// Build the model with a single Sample element selected (so the Select bay shows samples).
     let private withSampleSelected () : TableAndElementRotationModel =
-        initMain () |> updateTableAndElementRotation (AddElement Sample)   // appends a Sample at index 2, selects it
+        SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample)   // appends a Sample at index 2, selects it
 
     /// Spec 0038 (017): the 11 BuiltinCatalogue.samples () entries exceed the default quick-pick
     /// threshold 5 (Choose… alone). These tests raise it to exercise the STRIP mechanics.
@@ -139,10 +139,10 @@ module LibraryControlsTests =
         let bound = updateTableAndElementRotation (BindValueId (ElementValueId glass1mmId)) m
         Assert.Equal(Some (ElementValueId glass1mmId), (elem 2 bound).placement.valueId)
         // Inert when the table is selected.
-        let tableSel = { (initMain ()) with selection = TableSelected }
+        let tableSel = { (SceneTestFixture.mainScene ()) with selection = TableSelected }
         Assert.Equal<TableAndElementRotationModel>(tableSel, updateTableAndElementRotation (BindValueId (ElementValueId glass1mmId)) tableSel)
         // Inert when nothing is selected.
-        let nothingSel = { (initMain ()) with selection = NothingSelected }
+        let nothingSel = { (SceneTestFixture.mainScene ()) with selection = NothingSelected }
         Assert.Equal<TableAndElementRotationModel>(nothingSel, updateTableAndElementRotation (BindValueId (ElementValueId glass1mmId)) nothingSel)
 
     [<Fact>]
@@ -169,7 +169,7 @@ module LibraryControlsTests =
         Assert.Equal<Ribbon.BayName list>(
             [ BayNames.add; BayNames.rotation; BayNames.move; BayNames.render; BayNames.selector ],
             BayNames.allBayNames |> List.truncate 5)
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         let bays = mainBays m ignore
         Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
 

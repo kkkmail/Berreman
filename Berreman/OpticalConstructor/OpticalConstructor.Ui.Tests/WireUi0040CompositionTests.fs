@@ -177,7 +177,7 @@ module WireUi0040CompositionTests =
     /// are mutable): the SAME `MainConstructorWindow(AppContext.create …)` the launcher's Main
     /// button builds with `Startup.context` (spec 0038 step 006 / 045).
     let private mountRoot () : Window =
-        let window = OpticalConstructor.App.MainConstructorWindow(TestAppScope.freshAppContext owner)
+        let window = (OpticalConstructor.App.MainConstructorWindow.tryCreate (TestAppScope.freshAppContext owner) |> SceneTestFixture.kitSuccess)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window :> Window

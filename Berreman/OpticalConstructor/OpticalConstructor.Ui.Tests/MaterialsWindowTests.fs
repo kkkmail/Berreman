@@ -1170,7 +1170,7 @@ module MaterialsWindowTests =
     /// Mount the REAL Main workbench MVU loop headless (the MainConstructorWindow shape with
     /// injectable stores), for the strip-button acceptance.
     let private mountMain (materials : MaterialProxy) (samples : SampleProxy) (categories : CategoryProxy) : HostWindow =
-        let model0 = Scene.initMainWith (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) materials samples categories
+        let model0 = SceneTestFixture.mainSceneWith (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) materials samples categories
         let window = HostWindow(Width = 980.0, Height = 1050.0)
         Program.mkSimple (fun () -> model0) Scene.updateTableAndElementRotation Scene.mainView
         |> Program.withHost window
@@ -1631,7 +1631,7 @@ module MaterialsWindowTests =
             let sceneMaterials = BuiltinCatalogue.materialStore (samplesReferencing sceneSamples)
             let sceneCategories = BuiltinCatalogue.categoryStore (materialsReferencingCategory sceneMaterials)
             let model0 =
-                Scene.initMainWith (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) sceneMaterials sceneSamples sceneCategories
+                SceneTestFixture.mainSceneWith (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) sceneMaterials sceneSamples sceneCategories
             let session : Scene.SelectSession =
                 {
                     target = ElementId "det"

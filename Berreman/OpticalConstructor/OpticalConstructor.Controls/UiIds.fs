@@ -161,11 +161,8 @@ type ConstructorUiId =
     /// The Select bay's Choose… verb and its inline quick-pick strip.
     static member selectorChooseButton : ConstructorUiId = ConstructorUiId "SelectorChooseButton"
     static member selectorQuickPickStrip : ConstructorUiId = ConstructorUiId "SelectorQuickPickStrip"
-    /// The experiment-collection builder: the name field, Save, the status line, the saved list and the data files.
-    static member collectionNameField : ConstructorUiId = ConstructorUiId "CollectionNameField"
-    static member saveCollectionButton : ConstructorUiId = ConstructorUiId "SaveCollectionButton"
-    static member collectionStatus : ConstructorUiId = ConstructorUiId "CollectionStatus"
-    static member savedCollections : ConstructorUiId = ConstructorUiId "SavedCollections"
+    /// The kit status line and the inverse experiment data files (spec 0050 S4.3).
+    static member kitStatus : ConstructorUiId = ConstructorUiId "KitStatus"
     static member experimentDataFiles : ConstructorUiId = ConstructorUiId "ExperimentDataFiles"
 
     // --- The materials workbench list surface (`MaterialsControls`). ---

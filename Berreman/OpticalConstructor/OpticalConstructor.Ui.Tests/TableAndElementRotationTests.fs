@@ -46,7 +46,7 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``init: table selected, three elements on the central ray, top-down view`` () =
-        let m = initTableAndElementRotation ()
+        let m = SceneTestFixture.staticScene ()
         Assert.Equal(TableSelected, m.selection)
         Assert.Equal(3, List.length m.elements)
         Assert.True(close m.view.r1.degrees 0.0 && close m.view.zoom.value 1.0)
@@ -60,11 +60,11 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``the static test scene has no palette (add/remove is off), behaviour unchanged`` () =
-        Assert.True(List.isEmpty (initTableAndElementRotation ()).palette)
+        Assert.True(List.isEmpty (SceneTestFixture.staticScene ()).palette)
 
     [<Fact>]
     let ``initMain: a light source and a detector on the beam, table selected, same zoom, with a palette`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal(TableSelected, m.selection)
         Assert.Equal(2, List.length m.elements)
         Assert.Equal(LightSource, (elem 0 m).placement.catalogueKind)
@@ -74,7 +74,7 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``the default test scene composes its stores from the Built-in catalogue`` () : unit =
-        let model = initMain ()
+        let model = SceneTestFixture.mainScene ()
         Assert.Equal<Result<Library.Sample list, Library.SampleError>>(
             Ok (BuiltinCatalogue.samples () |> List.sortBy _.id),
             model.samples.listSamples MaterialLibrary.IncludeInactive |> Result.map (List.sortBy _.id))
@@ -90,7 +90,7 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``AddElement appends a catalogue element on the beam and selects it (so the bar acts on it)`` () =
-        let m1 = updateTableAndElementRotation (AddElement Sample) (initMain ())
+        let m1 = updateTableAndElementRotation (AddElement Sample) (SceneTestFixture.mainScene ())
         Assert.Equal(3, List.length m1.elements)
         Assert.Equal(ElementSelected (SceneElementIndex 2), m1.selection)
         Assert.Equal(Sample, (elem 2 m1).placement.catalogueKind)
@@ -100,18 +100,18 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``RemoveSelected removes the selected element; it is inert when the table is selected`` () =
-        let withSample = updateTableAndElementRotation (AddElement Sample) (initMain ())   // 3 elements, element 2 selected
+        let withSample = updateTableAndElementRotation (AddElement Sample) (SceneTestFixture.mainScene ())   // 3 elements, element 2 selected
         let removed = updateTableAndElementRotation RemoveSelectedElement withSample
         Assert.Equal(2, List.length removed.elements)
         Assert.Equal(NothingSelected, removed.selection)
-        let tableSel = { (initMain ()) with selection = TableSelected }
+        let tableSel = { (SceneTestFixture.mainScene ()) with selection = TableSelected }
         Assert.Equal<TableAndElementRotationModel>(tableSel, updateTableAndElementRotation RemoveSelectedElement tableSel)
 
     // ===================== Main-screen large controls: Move / Render / Ribbon (task 018) =====================
 
     [<Fact>]
     let ``the Move bay slides the SELECTED element along the beam, clamped to the plate; inert otherwise`` () =
-        let m = updateTableAndElementRotation (AddElement Sample) (initMain ())   // element 2 selected, at x = -0.3
+        let m = updateTableAndElementRotation (AddElement Sample) (SceneTestFixture.mainScene ())   // element 2 selected, at x = -0.3
         let slid = updateTableAndElementRotation (SlideSelectedBy (BarMeters 0.3)) m
         Assert.True(close ((elem 2 slid).elementX) 0.0, $"slid to x = {(elem 2 slid).elementX}")
         // Clamp to ±half the plate (default table is 2 m → ±1.0 m).
@@ -119,12 +119,12 @@ module TableAndElementRotationTests =
         Assert.True(close ((elem 2 (updateTableAndElementRotation (SlideSelectedTo (BarMeters -5.0)) m)).elementX) -1.0, "clamps to -1.0")
         Assert.True(close ((elem 2 (updateTableAndElementRotation ResetSelectedPosition slid)).elementX) 0.0, "reset → table centre")
         // With the TABLE selected, sliding is a no-op (nothing on the beam is selected).
-        let tableSel = { (initMain ()) with selection = TableSelected }
+        let tableSel = { (SceneTestFixture.mainScene ()) with selection = TableSelected }
         Assert.Equal<TableAndElementRotationModel>(tableSel, updateTableAndElementRotation (SlideSelectedBy (BarMeters 0.5)) tableSel)
 
     [<Fact>]
     let ``the Render bay tunes how elements are drawn (swap + the serializable config)`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal(RendererControls.Wireframe, m.render.kind)
         Assert.Equal(72, m.render.rails.value)
         Assert.Equal(RendererControls.Shapes, (updateTableAndElementRotation RenderSwap m).render.kind)
@@ -137,13 +137,13 @@ module TableAndElementRotationTests =
     [<Fact>]
     let ``Main: adding a flat mirror reflects the beam, so a downstream element leaves the straight ray`` () =
         // initMain = [source(0); detector(1)]. Add a flat mirror (index 2, selected) and tilt it to R2 = 45°.
-        let m = initMain () |> updateTableAndElementRotation (AddElement FlatMirror) |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 45.0))
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement FlatMirror) |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 45.0))
         let centres = m.snappedCentres
         // The DETECTOR (index 1) is now OFF the straight +X ray (y ≠ 0) — the beam reflected off the mirror,
         // figured out from the mirror tracking REFLECTED light (not hardcoded).
         Assert.True(abs (centres.[SceneElementIndex 1]).y > 1.0e-3, $"the detector snapped off the straight ray (y = {(centres.[SceneElementIndex 1]).y})")
         // A transmissive element (a polarizer) instead keeps the beam straight.
-        let straight = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        let straight = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
         Assert.True(abs ((straight.snappedCentres).[SceneElementIndex 1]).y < 1.0e-9, "a polarizer keeps the beam straight")
 
     [<Fact>]
@@ -152,19 +152,19 @@ module TableAndElementRotationTests =
         // the downstream detector snaps to a position with a non-zero z (perpendicular to the table). R3
         // starts locked on a fresh element, so unlock it first (as the user does).
         let m =
-            initMain ()
+            SceneTestFixture.mainScene ()
             |> updateTableAndElementRotation (AddElement FlatMirror)                            // mirror (index 2) selected, R3 locked
             |> updateTableAndElementRotation ToggleR3Lock                                       // unlock the mirror's R3
             |> updateTableAndElementRotation (RotSetAxis (RotationControls.R3, BarDegrees 30.0))
         let det = (m.snappedCentres).[SceneElementIndex 1]
         Assert.True(abs det.z > 1.0e-3, $"the detector snapped out of the table plane (z = {det.z})")
         // In plane (no R3) the detector stays on the table (z = 0).
-        let flat = initMain () |> updateTableAndElementRotation (AddElement FlatMirror) |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 45.0))
+        let flat = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement FlatMirror) |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 45.0))
         Assert.True(abs ((flat.snappedCentres).[SceneElementIndex 1]).z < 1.0e-9, "an in-plane reflection keeps z = 0")
 
     [<Fact>]
     let ``Main: a transmissive downstream element auto-orients to face the reflected beam`` () =
-        let m = initMain () |> updateTableAndElementRotation (AddElement FlatMirror) |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 45.0))
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement FlatMirror) |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 45.0))
         let incoming = ((fst (m.mainSnap)).[SceneElementIndex 1]).incoming |> Option.get   // the reflected beam at the detector
         Assert.True(abs incoming.y > 1.0e-3, "the beam at the detector is reflected (bent off +X)")
         // The detector is drawn FACING that reflected beam (its N1 = the incoming direction), as in the test.
@@ -179,7 +179,7 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``the ribbon offers every large control as a Bay; selecting one is pure state`` () =
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         Assert.Equal(BayNames.add, m.ribbon)                           // the first tab, Add, is open at start (spec 0046)
         let bays = mainBays m ignore
         Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
@@ -217,20 +217,20 @@ module TableAndElementRotationTests =
                 ns
             // Every bay has a (visible) ribbon tab.
             // Main opens on Add (spec 0046): the palette shows, the rotation buttons do not.
-            let addView = visibleNames (initMain ())
+            let addView = visibleNames (SceneTestFixture.mainScene ())
             Assert.DoesNotContain(ConstructorUiId.rotationR2PlusButton.value, addView)
-            let rotationView = visibleNames (updateTableAndElementRotation (SelectBay BayNames.rotation) (initMain ()))
+            let rotationView = visibleNames (updateTableAndElementRotation (SelectBay BayNames.rotation) (SceneTestFixture.mainScene ()))
             for bay in BayNames.allBayNames do
                 Assert.Contains((ConstructorUiId.ribbonTab (ConstructorUiKey bay.value)).value, rotationView)
             // The Rotate bay shows the rotation buttons; the Move bay's controls are hidden.
             Assert.Contains(ConstructorUiId.rotationR2PlusButton.value, rotationView)
             Assert.DoesNotContain(ConstructorUiId.rayPositionMinusButton.value, rotationView)
             // Selecting the Render bay reveals the renderer sliders (and hides the rotation buttons).
-            let renderView = visibleNames (updateTableAndElementRotation (SelectBay BayNames.render) (initMain ()))
+            let renderView = visibleNames (updateTableAndElementRotation (SelectBay BayNames.render) (SceneTestFixture.mainScene ()))
             Assert.Contains(ConstructorUiId.rendererRailsSlider.value, renderView)
             Assert.DoesNotContain(ConstructorUiId.rotationR2PlusButton.value, renderView)
             // Selecting the Move bay reveals the along-beam controls.
-            Assert.Contains(ConstructorUiId.rayPositionMinusButton.value, visibleNames (updateTableAndElementRotation (SelectBay BayNames.move) (initMain ()))))
+            Assert.Contains(ConstructorUiId.rayPositionMinusButton.value, visibleNames (updateTableAndElementRotation (SelectBay BayNames.move) (SceneTestFixture.mainScene ()))))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -241,7 +241,7 @@ module TableAndElementRotationTests =
         HeadlessSession.run (fun () ->
             // Spec 0038 step 006: the real window takes the injected app scope — a fresh one here
             // (this file opens the view module, not `OpticalConstructor.Ui`, so qualify the type).
-            let window = OpticalConstructor.App.MainConstructorWindow(TestAppScope.freshAppContext owner)
+            let window = (OpticalConstructor.App.MainConstructorWindow.tryCreate (TestAppScope.freshAppContext owner) |> SceneTestFixture.kitSuccess)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let click (name : string) : unit =
@@ -275,14 +275,14 @@ module TableAndElementRotationTests =
     [<Fact>]
     let ``rotation acts on the TABLE when the table is selected`` () =
         // init has the table selected.
-        let m = updateTableAndElementRotation (Wheel (Set.ofList [ ModShift ], OpticalConstructor.Ui.WheelNotches 1)) (initTableAndElementRotation ())
+        let m = updateTableAndElementRotation (Wheel (Set.ofList [ ModShift ], OpticalConstructor.Ui.WheelNotches 1)) (SceneTestFixture.staticScene ())
         Assert.True(close m.view.r1.degrees 5.0, $"table R1 = {m.view.r1.degrees}")
         // No element rotated.
         Assert.True(m.elements |> List.forall (fun e -> close (deg e.placement.r1) 0.0))
 
     [<Fact>]
     let ``rotation acts on the ELEMENT when an element is selected`` () =
-        let m0 = initTableAndElementRotation ()
+        let m0 = SceneTestFixture.staticScene ()
         // Element 1 sits at table x = 0 → screen centre.
         let selected = clickAt { sx = OpticalConstructor.Ui.TableScene.center.sx; sy = OpticalConstructor.Ui.TableScene.center.sy } m0
         Assert.Equal(ElementSelected (SceneElementIndex 1), selected.selection)
@@ -294,7 +294,7 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``rotating the table does NOT change element angles but moves how they project (snapped to table)`` () =
-        let m0 = initTableAndElementRotation ()                                  // table selected
+        let m0 = SceneTestFixture.staticScene ()                                  // table selected
         let before = centreOf m0.view (elem 0 m0)
         let m1 = updateTableAndElementRotation (RotateR1By (BarDegrees 90.0)) m0              // rotate the TABLE view
         // The element's own rotation angles are unchanged...
@@ -309,7 +309,7 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``R3 starts locked on elements and unlocked on the table; the toggle targets the selection`` () =
-        let m0 = initTableAndElementRotation ()
+        let m0 = SceneTestFixture.staticScene ()
         // Table selected → ToggleR3Lock toggles the TABLE's R3 lock (task 008 — the table now has one).
         Assert.Equal(RotationLocked, (updateTableAndElementRotation ToggleR3Lock m0).tableR3Locked)
         // Select an element: R3 locked, so Alt+wheel is inert; after unlocking it turns.
@@ -320,7 +320,7 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``Ctrl+Alt+wheel zooms the selected element (nothing when the table is selected); Ctrl+Alt+Shift zooms all`` () =
-        let m0 = initTableAndElementRotation ()   // table selected
+        let m0 = SceneTestFixture.staticScene ()   // table selected
         // Table selected → element-zoom does nothing.
         Assert.True(m0.elements |> List.forall (fun e -> close e.zoom.value defaultElementZoom.value))
         let tableSelZoom = updateTableAndElementRotation (Wheel (Set.ofList [ ModCtrl; ModAlt ], OpticalConstructor.Ui.WheelNotches 1)) m0
@@ -335,7 +335,7 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``plain wheel zooms the table; a drag pans it; a click selects table or element`` () =
-        let m0 = initTableAndElementRotation ()
+        let m0 = SceneTestFixture.staticScene ()
         Assert.True((updateTableAndElementRotation (Wheel (Set.empty, OpticalConstructor.Ui.WheelNotches 1)) m0).view.zoom.value > 1.0, "plain wheel zooms the table")
         let dragged = m0 |> updateTableAndElementRotation (PointerDown OpticalConstructor.Ui.TableScene.center) |> updateTableAndElementRotation (PointerMove { sx = OpticalConstructor.Ui.TableScene.center.sx + 120.0; sy = OpticalConstructor.Ui.TableScene.center.sy + 40.0 }) |> updateTableAndElementRotation (PointerUp { sx = OpticalConstructor.Ui.TableScene.center.sx + 120.0; sy = OpticalConstructor.Ui.TableScene.center.sy + 40.0 })
         Assert.True(close dragged.view.panX.value 120.0 && close dragged.view.panY.value 40.0, "a drag pans the table")
@@ -346,7 +346,7 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``clicking off the plate unselects the table, then rotation gestures are inert`` () =
-        let off = clickAt { sx = OpticalConstructor.Ui.TableScene.center.sx; sy = OpticalConstructor.Ui.TableScene.center.sy + 200.0 } (initTableAndElementRotation ())   // init has the table selected
+        let off = clickAt { sx = OpticalConstructor.Ui.TableScene.center.sx; sy = OpticalConstructor.Ui.TableScene.center.sy + 200.0 } (SceneTestFixture.staticScene ())   // init has the table selected
         Assert.Equal(NothingSelected, off.selection)
         // Nothing selected ⇒ nothing to rotate (button delta and wheel both no-ops).
         let after = off |> updateTableAndElementRotation (RotateR1By (BarDegrees 15.0)) |> updateTableAndElementRotation (Wheel (Set.ofList [ ModShift ], OpticalConstructor.Ui.WheelNotches 1))
@@ -355,7 +355,7 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``the table R3 is unlocked by default; locking it makes table R3 rotation inert`` () =
-        let m0 = initTableAndElementRotation ()   // table selected
+        let m0 = SceneTestFixture.staticScene ()   // table selected
         Assert.Equal(RotationFree, m0.tableR3Locked)
         let locked = updateTableAndElementRotation ToggleR3Lock m0
         Assert.Equal(RotationLocked, locked.tableR3Locked)
@@ -363,15 +363,15 @@ module TableAndElementRotationTests =
 
     [<Fact>]
     let ``setting an axis to an exact angle acts on the current selection`` () =
-        let t = updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 42.5)) (initTableAndElementRotation ())   // table selected
+        let t = updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 42.5)) (SceneTestFixture.staticScene ())   // table selected
         Assert.True(close t.view.r1.degrees 42.5, $"table R1 = {t.view.r1.degrees}")
-        let e = initTableAndElementRotation () |> clickAt { sx = OpticalConstructor.Ui.TableScene.center.sx; sy = OpticalConstructor.Ui.TableScene.center.sy } |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 33.0))
+        let e = SceneTestFixture.staticScene () |> clickAt { sx = OpticalConstructor.Ui.TableScene.center.sx; sy = OpticalConstructor.Ui.TableScene.center.sy } |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 33.0))
         Assert.True(close (deg (elem 1 e).placement.r1) 33.0, "element R1 set")
 
     [<Fact>]
     let ``Reset (selection, confirmed) zeros only the selected object's rotations`` () =
         let m =
-            initTableAndElementRotation ()
+            SceneTestFixture.staticScene ()
             |> updateTableAndElementRotation (RotateR1By (BarDegrees 30.0))                       // table R1 = 30
             |> clickAt { sx = OpticalConstructor.Ui.TableScene.center.sx; sy = OpticalConstructor.Ui.TableScene.center.sy }     // select element 1
             |> updateTableAndElementRotation (RotateR2By (BarDegrees 20.0))                        // element 1 R2 = 20
@@ -383,7 +383,7 @@ module TableAndElementRotationTests =
     [<Fact>]
     let ``Reset All (confirmed) zeros the table's AND every element's rotations`` () =
         let dirtied =
-            initTableAndElementRotation ()
+            SceneTestFixture.staticScene ()
             |> updateTableAndElementRotation (RotateR1By (BarDegrees 40.0))                       // rotate the table
             |> clickAt { sx = OpticalConstructor.Ui.TableScene.center.sx; sy = OpticalConstructor.Ui.TableScene.center.sy }     // select element 1
             |> updateTableAndElementRotation ToggleR3Lock                            // unlock element R3
@@ -400,7 +400,7 @@ module TableAndElementRotationTests =
     // ================== real headless pointer injection ==================
 
     let private withMouseHarness (inject : Window -> unit) : TableAndElementRotationModel =
-        let mutable model = initTableAndElementRotation ()
+        let mutable model = SceneTestFixture.staticScene ()
         let dispatch (m : TableAndElementRotationMsg) = model <- updateTableAndElementRotation m model
         let window = Window(Width = 920.0, Height = 780.0)
         window.Content <- Component(fun _ -> tableAndElementRotationView model dispatch)
@@ -485,7 +485,7 @@ module TableAndElementRotationTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the table+element window host opens and renders headlessly`` () =
         HeadlessSession.run (fun () ->
-            let window = TableAndElementRotationWindow()
+            let window = (TableAndElementRotationWindow.tryCreate () |> SceneTestFixture.kitSuccess)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(window.IsVisible)
@@ -495,7 +495,7 @@ module TableAndElementRotationTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Main scene renders its add/remove palette (the only UI difference from the test scene)`` () =
         HeadlessSession.run (fun () ->
-            let mutable model = initMain ()
+            let mutable model = SceneTestFixture.mainScene ()
             let dispatch (m : TableAndElementRotationMsg) = model <- updateTableAndElementRotation m model
             let window = Window(Width = tableAndElementRotationCanvasWidth, Height = tableAndElementRotationCanvasHeight + 170.0)
             window.Content <- Component(fun _ -> tableAndElementRotationView model dispatch)
@@ -517,7 +517,7 @@ module TableAndElementRotationTests =
         // CPR — over the UNCHANGED CatalogueKinds; each add lands PRE-BOUND to its seeded entry,
         // while a sample add stays UNBOUND (the inverse hook).
         HeadlessSession.run (fun () ->
-            let mutable model = initMain ()
+            let mutable model = SceneTestFixture.mainScene ()
             let dispatch (m : TableAndElementRotationMsg) = model <- updateTableAndElementRotation m model
             let window = Window(Width = tableAndElementRotationCanvasWidth, Height = tableAndElementRotationCanvasHeight + 260.0)
             window.Content <- Component(fun _ -> tableAndElementRotationView model dispatch)

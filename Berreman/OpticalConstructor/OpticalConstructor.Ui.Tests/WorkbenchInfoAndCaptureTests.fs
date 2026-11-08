@@ -66,7 +66,7 @@ module WorkbenchInfoAndCaptureTests =
 
     [<Fact>]
     let ``elementInfo names the element and its bound entry, or says it is unbound`` () =
-        let m = initMain () |> bind 0 PresetIds.heNe633 |> updateTableAndElementRotation (AddElement CatalogueKind.Sample)
+        let m = SceneTestFixture.mainScene () |> bind 0 PresetIds.heNe633 |> updateTableAndElementRotation (AddElement CatalogueKind.Sample)
         let heading, detail = (fun (info : ElementInfo) -> info.heading.value, info.detail.value) (elementInfo m (SceneElementIndex 0))
         Assert.Equal("Light source #1", heading)
         Assert.Contains("HeNe laser 632.8 nm", detail)
@@ -77,7 +77,7 @@ module WorkbenchInfoAndCaptureTests =
     [<Trait("Category", "ui-smoke")>]
     let ``hovering an element shows what it is, and its menu says the same, wrapped, at most 460 px wide`` () =
         HeadlessSession.run (fun () ->
-            let m = initMain () |> bind 0 PresetIds.arf193
+            let m = SceneTestFixture.mainScene () |> bind 0 PresetIds.arf193
             let window = mountView m ignore
             match findControl window (ConstructorUiId.elementHover (ElementId "src")).value with
             | Some target -> Assert.Contains("ArF excimer 193 nm", string (ToolTip.GetTip target))
@@ -139,7 +139,7 @@ module WorkbenchInfoAndCaptureTests =
         HeadlessSession.run (fun () ->
             let captured : SelectionContext<LibraryEntry> option ref = ref None
             let launchers = { EditorLaunchers.defaults with openLibrarySelectWindow = fun _ _ _ _ _ _ _ _ _ ctx -> captured.Value <- Some ctx; None }
-            let m0 = { (initMain () |> bind 0 PresetIds.krf248) with launchers = launchers }
+            let m0 = { (SceneTestFixture.mainScene () |> bind 0 PresetIds.krf248) with launchers = launchers }
             let opened = updateTableAndElementRotation (OpenElementMenuAt (canvasPointOf 0 m0)) m0
             let mutable model = opened
             let window = mountView opened (fun msg -> model <- updateTableAndElementRotation msg model)
@@ -161,7 +161,7 @@ module WorkbenchInfoAndCaptureTests =
 
     /// A bound glass film (index 2) varied on R2, captured in T, with the given source.
     let private filmOnR2 (source : ElementValueId) : TableAndElementRotationModel =
-        let m = initMain () |> bind 0 source |> updateTableAndElementRotation (AddElement CatalogueKind.Sample) |> bind 2 glassFilm200Id
+        let m = SceneTestFixture.mainScene () |> bind 0 source |> updateTableAndElementRotation (AddElement CatalogueKind.Sample) |> bind 2 glassFilm200Id
         m
         |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id)
         |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
@@ -200,7 +200,7 @@ module WorkbenchInfoAndCaptureTests =
     [<Fact>]
     let ``each branch reads what its detector reads: T intensity, R Psi and Delta`` () =
         let m =
-            initMain ()
+            SceneTestFixture.mainScene ()
             |> updateTableAndElementRotation (AddElement CatalogueKind.Sample) |> bind 2 glassPlate1mmId
             |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 30.0))
             |> updateTableAndElementRotation (AddElement Detector)
@@ -254,7 +254,7 @@ module WorkbenchInfoAndCaptureTests =
     [<Fact>]
     let ``Export data hands the draft's run to the export seam, and says so when there is nothing to export`` () =
         let store = ExperimentExport.createInMemoryExperimentExport ()
-        let nothing = updateTableAndElementRotation ExportExperimentData { initMain () with experimentExport = store.proxy }
+        let nothing = updateTableAndElementRotation ExportExperimentData { SceneTestFixture.mainScene () with experimentExport = store.proxy }
         Assert.StartsWith("Nothing exported", nothing.exportStatus |> Option.map (fun c -> c.value) |> Option.defaultValue "")
         let exported = updateTableAndElementRotation ExportExperimentData { filmOnR2 PresetIds.source600 with experimentExport = store.proxy }
         Assert.StartsWith("Exported 1 series", exported.exportStatus |> Option.map (fun c -> c.value) |> Option.defaultValue "")
@@ -269,7 +269,7 @@ module WorkbenchInfoAndCaptureTests =
     [<Fact>]
     let ``a polarizer AFTER the sample analyzes: crossed polarizers around a clear film pass nothing`` () =
         let m =
-            initMain ()
+            SceneTestFixture.mainScene ()
             |> updateTableAndElementRotation (AddElement LinearPolarizer)                       // index 2, R1 = 0, before the sample
             |> updateTableAndElementRotation (AddElement CatalogueKind.Sample) |> bind 3 glassFilm200Id
             |> updateTableAndElementRotation (AddElement LinearPolarizer)                       // index 4, after the sample

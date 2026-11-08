@@ -118,7 +118,7 @@ module ScrollExtentTests =
     /// Main with a polarizer whose R1 run is collected AND being edited — the tallest Experiments bay (editor,
     /// chart, description, collection row, export, collection builder) above the table.
     let private filledExperiments () : TableAndElementRotationModel =
-        let m = initMain () |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
         let pid = (List.item 2 m.elements).id
         m |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation ExpCommit |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation (SelectBay BayNames.experiments)
 
@@ -128,7 +128,7 @@ module ScrollExtentTests =
     [<Trait("Category", "ui-smoke")>]
     let ``Main: every bay leaves the whole page reachable — the table below a tall bay included`` () =
         for bay in BayNames.allBayNames do
-            assertReachable $"Main/%s{bay.value}" (fun () -> constructorWindow ({ initMain () with selection = ElementSelected (SceneElementIndex 0) } |> updateTableAndElementRotation (SelectBay bay)))
+            assertReachable $"Main/%s{bay.value}" (fun () -> constructorWindow ({ SceneTestFixture.mainScene () with selection = ElementSelected (SceneElementIndex 0) } |> updateTableAndElementRotation (SelectBay bay)))
         assertReachable "Main/Experiments (collected + chart)" (fun () -> constructorWindow (filledExperiments ()))
 
     [<Fact>]
@@ -136,7 +136,7 @@ module ScrollExtentTests =
         let materials, samples, categories, library = stores ()
         assertReachable "Inverse/Experiments" (fun () ->
             constructorWindow
-                { initInverse library (Experiments.createInMemoryExperiments ()) materials samples categories with
+                { SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories with
                     ribbon = BayNames.experiments
                     experimentCollection = (filledExperiments ()).experimentCollection })
 
@@ -324,8 +324,8 @@ module ScrollExtentTests =
     [<Fact>]
     let ``the Main window opens on Add; the Attach data file section belongs to the Inverse window alone`` () =
         let materials, samples, categories, library = stores ()
-        Assert.Equal(BayNames.add, (initMain ()).ribbon)
-        Assert.Equal(BayNames.add, (initInverse library (Experiments.createInMemoryExperiments ()) materials samples categories).ribbon)
+        Assert.Equal(BayNames.add, (SceneTestFixture.mainScene ()).ribbon)
+        Assert.Equal(BayNames.add, (SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories).ribbon)
         HeadlessSession.run (fun () ->
             let texts (model0 : TableAndElementRotationModel) : string list =
                 let window = constructorWindow model0
@@ -339,7 +339,7 @@ module ScrollExtentTests =
             Assert.DoesNotContain("Attach data file…", forward)
             Assert.DoesNotContain("Data files:", forward)
             let inverse =
-                let m = { initInverse library (Experiments.createInMemoryExperiments ()) materials samples categories with ribbon = BayNames.experiments }
+                let m = { SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories with ribbon = BayNames.experiments }
                 texts { m with experimentCollection = (filledExperiments ()).experimentCollection }
             Assert.Contains("Data files:", inverse)
             Assert.Contains("Attach data file…", inverse))

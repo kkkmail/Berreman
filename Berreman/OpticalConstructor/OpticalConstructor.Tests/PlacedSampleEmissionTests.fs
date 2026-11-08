@@ -74,14 +74,14 @@ module PlacedSampleEmissionTests =
     let ``a placed Mirror sample defaults to reflected-only and its experiment to CaptureReflected`` () =
         // A sample is placed UNBOUND (the inverse hook) then bound; the bind seeds the emission. A
         // reflect-only sample continues the main beam on its reflected ray, so the seeded detector sees R.
-        let m = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 mirrorId
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 mirrorId
         Assert.Equal<Emission>(EmitReflectedOnly, emissionOf 2 m)
         let chosen = m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m))
         Assert.Equal(CaptureReflected, chosen.experimentCollection.draft.measurement)
 
     [<Fact>]
     let ``a placed Plate sample supporting both defaults to EmitBoth and its experiment to what the detectors capture`` () =
-        let m = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 plateId
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 plateId
         Assert.Equal<Emission>(EmitBoth, emissionOf 2 m)
         // Spec 0046: the capture follows the DETECTORS — the seeded detector sits on the plate's
         // transmitted beam only, so T is the default ...
@@ -99,7 +99,7 @@ module PlacedSampleEmissionTests =
     let ``binding a placed sample from a Mirror to a Plate re-seeds the placed emission`` () =
         // The single seed point runs on every bind, so re-binding a placed sample tracks the new
         // geometry rather than leaving the first bind's emission stale.
-        let m = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 mirrorId
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 mirrorId
         Assert.Equal<Emission>(EmitReflectedOnly, emissionOf 2 m)
         let rebound = m |> bind 2 plateId
         Assert.Equal<Emission>(EmitBoth, emissionOf 2 rebound)

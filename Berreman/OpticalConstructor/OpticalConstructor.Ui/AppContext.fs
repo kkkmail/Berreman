@@ -1,8 +1,6 @@
 namespace OpticalConstructor.Ui
 
 open OpticalConstructor.Domain
-open OpticalConstructor.Domain.KitFolders
-open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Library
@@ -21,7 +19,7 @@ open OpticalConstructor.Storage.SampleDatabaseStore
 open OpticalConstructor.Storage.SourceDatabaseStore
 open Softellect.Sys.Logging
 
-/// Shares the configured library database stores and session proxies across product windows.
+/// Shares library database stores, catalogue imports, experiment templates, exports and settings across windows.
 /// Context identity is by reference; database identity comes from its configured connection.
 [<ReferenceEquality>]
 type AppContext =
@@ -44,12 +42,6 @@ type AppContext =
         catalogueImports : CatalogueImportContext
         /// Startup catalogues whose complete row lists await confirmation (spec 0050 §3.7).
         pendingImports : PendingCatalogueImport list
-        /// Measured-data attachments over the session's in-memory kit (spec 0050 S4.2).
-        experimentData : ExperimentData.ExperimentDataProxy
-        /// Spec 0038 Part I/L (037): the experiment-collection persistence seam
-        /// (STORE_XDUO_0005, step 029 in-memory `createInMemory`) — named collections
-        /// of experiments save / list / load through it.
-        experimentCollections : ExperimentCollectionStore.ExperimentCollectionProxy
         /// Write each exported run as CSV in the configured exports folder (spec 0046; spec 0050 §3.9).
         /// No file is written until an export is requested.
         experimentExport : ExperimentExport.ExperimentExportProxy
@@ -92,8 +84,6 @@ type AppContext =
             libraryBackups = LibraryBackupProxy.createInDatabase database locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
             catalogueImports = catalogueImports
             pendingImports = pendingImports
-            experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked (KitProxy.createInMemory (InMemoryKitFolder.create ()))
-            experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
             experimentExport =
                 OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
                     locations.exportsFolder

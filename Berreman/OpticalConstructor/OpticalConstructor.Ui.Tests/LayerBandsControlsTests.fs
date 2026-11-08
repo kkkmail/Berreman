@@ -42,7 +42,7 @@ module LayerBandsControlsTests =
         }
 
     let private detailsAttributionData () : DetailsAttributionData =
-        let model = initMain ()
+        let model = SceneTestFixture.mainScene ()
         let ptbMaterialId = newMaterialId ()
         let riiMaterialId = newMaterialId ()
         let ptbId = newSampleId ()
@@ -97,7 +97,7 @@ module LayerBandsControlsTests =
         Assert.Equal(Some BayNames.details, List.tryLast BayNames.allBayNames)
         Assert.DoesNotContain(Ribbon.BayName "Materials", BayNames.allBayNames)
         Assert.DoesNotContain(Ribbon.BayName "Library", BayNames.allBayNames)
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         let bays = mainBays m ignore
         let names = bays |> List.map (fun b -> b.name)
         Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, names)
@@ -112,7 +112,7 @@ module LayerBandsControlsTests =
     let ``detailsState for a multilayer sample yields collapsed x-N bands and a descriptive title`` () =
         // A Sample bound to the 41-layer quarter-wave multilayer ⇒ two collapsed bands (glass ×21, vacuum ×20).
         let m =
-            initMain ()
+            SceneTestFixture.mainScene ()
             |> updateTableAndElementRotation (AddElement Sample)             // index 2
             |> bind 2 multilayerQwId
         let bays = mainBays m ignore
@@ -129,7 +129,7 @@ module LayerBandsControlsTests =
     [<Fact>]
     let ``detailsState shows a hint when nothing is selected and nothing bound`` () =
         // initMain selects the table first; with no element selected the Details bay shows a hint (no bands).
-        let m = { (initMain ()) with selection = TableSelected }
+        let m = { (SceneTestFixture.mainScene ()) with selection = TableSelected }
         let bays = mainBays m ignore
         Assert.Contains(BayNames.details, bays |> List.map (fun b -> b.name))
 
@@ -285,7 +285,7 @@ module LayerBandsControlsTests =
         HeadlessSession.run (fun () ->
             // Add a Sample, bind it to the multilayer, show the Details bay.
             let mutable model =
-                initMain ()
+                SceneTestFixture.mainScene ()
                 |> updateTableAndElementRotation (AddElement Sample)               // index 2, selected
                 |> updateTableAndElementRotation (BindValueId (ElementValueId multilayerQwId))
                 |> updateTableAndElementRotation (SelectBay BayNames.details)

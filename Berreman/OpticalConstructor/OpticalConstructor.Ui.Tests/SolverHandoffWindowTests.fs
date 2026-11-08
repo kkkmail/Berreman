@@ -6,6 +6,7 @@ open Avalonia.Headless
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain
@@ -64,7 +65,12 @@ module SolverHandoffWindowTests =
         let samples = BuiltinCatalogue.sampleStore ()
         let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
-        let m0 = initInverse (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) materials samples categories
+        let owner = FolderName "SolverHandoffWindowTests"
+        let m0 =
+            {
+                SceneTestFixture.inverseScene (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) materials samples categories with
+                    catalogueImports = (TestAppScope.freshAppContext owner).catalogueImports
+            }
         let src, sample, det = endpoints m0
         let bindOne (elementId : Library.ElementId) (entryOpt : Placement.ElementValueId option) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
             match entryOpt with

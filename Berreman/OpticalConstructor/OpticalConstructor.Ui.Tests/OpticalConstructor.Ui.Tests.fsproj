@@ -17,6 +17,7 @@
 
     <ItemGroup>
         <Compile Include="..\OpticalConstructor.Tests\BuiltinCatalogue.fs" Link="BuiltinCatalogue.fs" />
+        <Compile Include="..\OpticalConstructor.Tests\SceneTestFixture.fs" Link="SceneTestFixture.fs" />
         <Compile Include="TestApp.fs" />
         <Compile Include="TestAppScope.fs" />
         <!-- Spec 0026 Part I (slice 003): pure localization logic tests (no headless
@@ -205,10 +206,7 @@
         <Compile Include="WorkbenchInfoAndCaptureTests.fs" />
         <!-- Spec 0046: every window's scroll extent holds all of its content (nothing unreachable). -->
         <Compile Include="ScrollExtentTests.fs" />
-        <!-- Spec 0038 Part L (step 037): the inverse constructor state (initInverse — unbound sample,
-             chart gated on a hint) and the experiment-collection builder (name / save / list / load
-             through the ExperimentCollectionProxy; per-experiment data-file attach that loads +
-             validates through the ExperimentDataProxy into a typed status), over mock proxies. -->
+        <!-- The inverse constructor keeps experiments and measured-data attachments in the kit (spec 0050 S4.3). -->
         <Compile Include="InverseConstructorTests.fs" />
         <!-- Spec 0038 Part L (step 038): the measured-data picker's persistent last-folder plumbing —
              pure tests over the re-typed EnvironmentSettings.lastFolders (Map keyed by picker purpose):

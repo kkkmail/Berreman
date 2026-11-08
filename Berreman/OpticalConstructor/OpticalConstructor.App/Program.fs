@@ -25,6 +25,7 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.Errors
@@ -46,15 +47,7 @@ module private Startup =
     /// (spec 0038 Part C, step 006; spec 0050 §3.9).
     let context = AppContext.create dataLocations workbenchSettings
 
-/// Spec 0038 step 045: the shared body of the two constructor windows. The forward Main scene and
-/// the inverse scene are the SAME dynamic "Lego constructor" (`mainView` over
-/// `TableAndElementRotationView.update`) run over the SAME app scope — they differ ONLY in the seed
-/// the Elmish loop starts from (forward `initMainWith` vs inverse `initInverse`, step 037) and their
-/// title. `mount` sizes the window like the Main scene has since spec 0027 task 018 (the ribbon's tab
-/// strip + the tallest bay — Render's three rows — need more headroom than the flat bar) and runs the
-/// scene from `seed`. Both window types below thread the app-scope experiment-data / experiment-
-/// collection proxies (STORE_XDUO_0006 / 0005) onto the seed by record update, so every constructor
-/// window the launcher or the strip opens shares the ONE collection store built in `AppContext.create`.
+/// Mounts each constructor over its own kit and the shared app library (spec 0050 S4.3).
 module private ConstructorScene =
     let mount (window : HostWindow) (seed : unit -> TableAndElementRotationView.TableAndElementRotationModel) : unit =
         window.Width <- TableAndElementRotationView.tableAndElementRotationCanvasWidth
@@ -66,48 +59,38 @@ module private ConstructorScene =
         |> Program.withHost window
         |> Program.run
 
-/// The Main screen (Spec 0027): the dynamic "Lego constructor" — the SAME table + element scene as
-/// "Test Table + Element Rotations" (`TableAndElementRotationView`), seeded with a light source and a
-/// detector and given an add/remove palette. Spec 0038 Part C (step 006): the five app-scope proxies —
-/// library / experiments / materials / samples / categories (STORE_XDUO_0001/0002/0003, coupled in
-/// `AppContext.create`) — are NO LONGER built here; they arrive injected as `context` built once at
-/// startup (`Startup.context`), so every Main window the launcher opens shares the same stores. All
-/// five inject through `initMainWith`; the app-scope experiment-data + experiment-collection proxies
-/// (STORE_XDUO_0006 / 0005, Part L step 037) thread on by record update, so every Main window shares
-/// the ONE collection store. `WireUiCompositionTests` (and the step-006 `AppContextTests` two-surface
-/// proof) drive THIS window headless over a context composed the same way.
-type MainConstructorWindow(context : AppContext) as this =
+    let withAppContext (context : AppContext) (model : TableAndElementRotationView.TableAndElementRotationModel) : TableAndElementRotationView.TableAndElementRotationModel =
+        {
+            model with
+                sources = context.sources
+                libraryBackups = context.libraryBackups
+                catalogueImports = context.catalogueImports
+                experimentExport = context.experimentExport
+        }
+
+/// The forward constructor works in its own initialized scratch kit (spec 0050 S4.3; .manual/010).
+type MainConstructorWindow private (model : TableAndElementRotationView.TableAndElementRotationModel) as this =
     inherit HostWindow()
     do
         this.Title <- "Optical Constructor — Main"
-        ConstructorScene.mount this (fun () ->
-            { TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories with
-                sources = context.sources
-                libraryBackups = context.libraryBackups
-                catalogueImports = context.catalogueImports
-                experimentExport = context.experimentExport
-                experimentData = context.experimentData
-                experimentCollections = context.experimentCollections })
+        ConstructorScene.mount this (fun () -> model)
 
-/// Spec 0038 step 045: the INVERSE constructor window (`initInverse`, Part L step 037). The SAME
-/// dynamic workbench as `MainConstructorWindow` opened in the inverse-problem flow: seeded with a light
-/// source, an UNBOUND sample (the unknown — drawn dashed), and a detector; with the sample unbound the
-/// forward experiment chart is absent until a HINT sample is bound through the Library window's Select
-/// state. Shares the SAME app scope as the launcher and the Main window (the step-006 `context`), so the
-/// stores and the ONE saved-collection store are shared; the app-scope experiment proxies thread on by
-/// record update exactly as the Main window does.
-type InverseConstructorWindow(context : AppContext) as this =
+    /// Creates the window only after its kit initializes successfully (spec 0050 .manual/010).
+    static member tryCreate (context : AppContext) : Result<MainConstructorWindow, KitError> =
+        TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories
+        |> Result.map (fun model -> MainConstructorWindow(ConstructorScene.withAppContext context model))
+
+/// The inverse constructor opens an unbound sample in its own scratch kit (spec 0050 S4.3; .manual/010).
+type InverseConstructorWindow private (model : TableAndElementRotationView.TableAndElementRotationModel) as this =
     inherit HostWindow()
     do
         this.Title <- "Optical Constructor — Inverse"
-        ConstructorScene.mount this (fun () ->
-            { TableAndElementRotationView.initInverse context.library context.experiments context.materials context.samples context.categories with
-                sources = context.sources
-                libraryBackups = context.libraryBackups
-                catalogueImports = context.catalogueImports
-                experimentExport = context.experimentExport
-                experimentData = context.experimentData
-                experimentCollections = context.experimentCollections })
+        ConstructorScene.mount this (fun () -> model)
+
+    /// Creates the window only after its kit initializes successfully (spec 0050 .manual/010).
+    static member tryCreate (context : AppContext) : Result<InverseConstructorWindow, KitError> =
+        TableAndElementRotationView.initInverse context.library context.experiments context.materials context.samples context.categories
+        |> Result.map (fun model -> InverseConstructorWindow(ConstructorScene.withAppContext context model))
 
 /// Opens Main, Inverse, Materials and Library over one app scope, sharing editor-window launchers.
 /// A library-open failure is displayed with all surface actions disabled (spec 0038 step 045; spec 0050 S2.4).
@@ -147,10 +130,23 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                 button
             // Spec 0038 step 045: share the constructor strip's single-instance window registry.
             let launchers = TableAndElementRotationView.EditorLaunchers.defaults
+            let kitStatus = TextBlock(TextWrapping = TextWrapping.Wrap, IsVisible = false)
+            AutomationProperties.SetAutomationId(kitStatus, ConstructorUiId.kitStatus.value)
+            AutomationProperties.SetName(kitStatus, "Kit status")
+            let openConstructor (created : Result<Window, KitError>) : unit =
+                match created with
+                | Ok window ->
+                    kitStatus.IsVisible <- false
+                    window.Show()
+                | Error error ->
+                    kitStatus.Text <- $"The constructor could not be opened: {error.describe}"
+                    kitStatus.IsVisible <- true
             let mainButton =
-                surfaceButton ConstructorUiId.openMainButton "Main" (fun context -> MainConstructorWindow(context).Show())
+                surfaceButton ConstructorUiId.openMainButton "Main" (fun context ->
+                    MainConstructorWindow.tryCreate context |> Result.map (fun window -> window :> Window) |> openConstructor)
             let inverseButton =
-                surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun context -> InverseConstructorWindow(context).Show())
+                surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun context ->
+                    InverseConstructorWindow.tryCreate context |> Result.map (fun window -> window :> Window) |> openConstructor)
             let materialsButton =
                 surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun context ->
                     launchers.openMaterialsWindow context.materials context.categories context.catalogueImports)
@@ -218,6 +214,7 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                         this.Content <- launcherContent recreated)
                     panel.Children.Add recreateButton
                 | _ -> ()
+            panel.Children.Add kitStatus
             panel.Children.Add mainButton
             panel.Children.Add inverseButton
             panel.Children.Add materialsButton

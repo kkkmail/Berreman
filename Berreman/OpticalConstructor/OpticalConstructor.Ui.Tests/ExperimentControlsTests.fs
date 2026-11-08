@@ -34,7 +34,7 @@ module ExperimentControlsTests =
 
     /// Spec 0046: the Main scene with its source bound to a TUNABLE source (xenon lamp + monochromator,
     /// 190–1000 nm) — only a tunable source's wavelength can be varied.
-    let private withTunableSource () : TableAndElementRotationModel = bind 0 Library.PresetIds.xenonMonochromator (initMain ())
+    let private withTunableSource () : TableAndElementRotationModel = bind 0 Library.PresetIds.xenonMonochromator (SceneTestFixture.mainScene ())
 
     /// Bind the 200 nm glass film from BuiltinCatalogue.sample by Library.SampleIds (spec 0050 §3.3).
     let private glassFilm200Id : ElementValueId = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.glassFilm200Id)).entryId
@@ -87,7 +87,7 @@ module ExperimentControlsTests =
             [ BayNames.add; BayNames.rotation; BayNames.move; BayNames.render; BayNames.selector
               BayNames.experiments; BayNames.details ],
             BayNames.allBayNames)
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         let bays = mainBays m ignore
         Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
 
@@ -105,14 +105,14 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``a fixed-line or unbound source varies nothing — its wavelength cannot be changed`` () =
-        for m in [ initMain (); bind 0 Library.PresetIds.heNe633 (initMain ()) ] do
+        for m in [ SceneTestFixture.mainScene (); bind 0 Library.PresetIds.heNe633 (SceneTestFixture.mainScene ()) ] do
             let chosen = m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src"))
             Assert.Equal(None, chosen.experimentCollection.draft.variable)
             Assert.Empty((chosen.experimentState).variableChoices)
 
     [<Fact>]
     let ``choosing a sample allows R1 and R2 and can then switch variable`` () =
-        let m = initMain () |> updateTableAndElementRotation (AddElement Sample)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample)
         let sid = idOf 2 m
         let m1 = m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId sid))
         // The sample bay state offers exactly the sample's allowed variables (R1, R2).
@@ -124,7 +124,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``choosing a mirror defaults the capture to reflected (not hard-coded)`` () =
-        let m = initMain () |> updateTableAndElementRotation (AddElement FlatMirror)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement FlatMirror)
         let mid = idOf 2 m
         let m1 = m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId mid))
         Assert.Equal(Experiments.CaptureReflected, m1.experimentCollection.draft.measurement)
@@ -134,16 +134,16 @@ module ExperimentControlsTests =
         // Spec 0040 Part D.3: a placed sample is bounded by the SAMPLE it is bound to, not the generic
         // defaultEmission. Spec 0046: a MIRROR reflects only ⇒ the beam continues reflected and the seeded
         // detector captures R; a ThinFilm reflects AND transmits (EmitBoth).
-        let mirror = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 euvMirrorId
+        let mirror = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 euvMirrorId
         Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, (elem 2 mirror).placement.emission)
         let mirrorChosen = mirror |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 mirror)))
         Assert.Equal(Experiments.CaptureReflected, mirrorChosen.experimentCollection.draft.measurement)
-        let film = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassFilm600Id
+        let film = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassFilm600Id
         Assert.Equal<Placement.Emission>(Placement.EmitBoth, (elem 2 film).placement.emission)
 
         // Spec 0046: a Plate EMITS both, but what an experiment captures follows the DETECTORS — the
         // seeded detector sits on the plate's transmitted beam only ⇒ CaptureTransmitted.
-        let plate = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassPlate1mmId
+        let plate = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassPlate1mmId
         Assert.Equal<Placement.Emission>(Placement.EmitBoth, (elem 2 plate).placement.emission)
         let plateChosen = plate |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 plate)))
         Assert.Equal(Experiments.CaptureTransmitted, plateChosen.experimentCollection.draft.measurement)
@@ -151,7 +151,7 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``the measurement and range round-trip through the model`` () =
         let m =
-            initMain ()
+            SceneTestFixture.mainScene ()
             |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src"))
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
             |> updateTableAndElementRotation (ExpSetRangeMin (ExperimentControls.ExperimentRangeEnd 250.0))
@@ -211,12 +211,12 @@ module ExperimentControlsTests =
 
     /// initMain + a LinearPolarizer at index 2, chosen to vary (default VaryR1).
     let private withChosenPolarizer () : TableAndElementRotationModel =
-        let m = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
         m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m)))
 
     /// initMain + a bound Sample at index 2, chosen, on the given variable, capture T.
     let private withChosenSample (v : ExperimentControls.VariableChoice) : TableAndElementRotationModel =
-        let m = initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassFilm200Id
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassFilm200Id
         m
         |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m)))
         |> updateTableAndElementRotation (ExpChooseVariable v)
@@ -224,7 +224,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``with no element chosen the chart is empty`` () =
-        Assert.Empty(((initMain ()).experimentResult).series)
+        Assert.Empty(((SceneTestFixture.mainScene ()).experimentResult).series)
 
     [<Fact>]
     let ``varying a polarizer R1 with an intensity detector yields an intensity series`` () =
@@ -263,7 +263,7 @@ module ExperimentControlsTests =
         // reflected ray (spec 0046: Both is offered only then), VaryR2, capture Both ⇒ a transmitted AND
         // a reflected intensity series.
         let m =
-            initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassPlate1mmId
+            SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassPlate1mmId
             |> updateTableAndElementRotation (AddElement Detector)
             |> (fun m -> m |> updateTableAndElementRotation (PlaceOnBeam ((elem 3 m).id, BeamLayout.OnReflectedBeamOf (elem 2 m).id)))
             |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
@@ -276,7 +276,7 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``an ellipsometer VaryR2 experiment yields two series (Psi and Delta)`` () =
         let m =
-            initMain () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassFilm200Id |> bind 1 Library.PresetIds.detectorEllipsometer
+            SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassFilm200Id |> bind 1 Library.PresetIds.detectorEllipsometer
             |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
@@ -287,7 +287,7 @@ module ExperimentControlsTests =
     let ``a VaryR2 experiment with no bound sample yields an empty chart`` () =
         // A polarizer varied on R2 is impossible (polarizers only vary R1); use a sample element but do NOT
         // bind it — an R2 vary then has no sample to re-solve.
-        let m = initMain () |> updateTableAndElementRotation (AddElement Sample)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample)
         let m1 =
             m
             |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
@@ -302,7 +302,7 @@ module ExperimentControlsTests =
         // button's right-circular one (idx 3). The varied element's own bound entry wins; the
         // scene's last bound polarizer only serves a non-polarizer varied element.
         let m =
-            initMain ()
+            SceneTestFixture.mainScene ()
             |> updateTableAndElementRotation (AddElement LinearPolarizer)                                                       // pre-bound PresetIds.polarizerLp
             |> updateTableAndElementRotation (AddElementBoundTo (CircularPolarizer, Some Library.PresetIds.polarizerCpRight))   // pre-bound PresetIds.polarizerCpRight
         Assert.Equal(ResolvedAnalyzer Library.IdealLinear, runAnalyzerKind m (Some (elem 2 m).id))
@@ -313,7 +313,7 @@ module ExperimentControlsTests =
         // A circular-only scene: the resolution is the BOUND entry's kind (circular). The retired
         // fallback would have silently answered IdealLinear here.
         let m =
-            initMain ()
+            SceneTestFixture.mainScene ()
             |> updateTableAndElementRotation (AddElement CircularPolarizer)   // pre-bound PresetIds.polarizerCpLeft
             |> updateTableAndElementRotation (AddElement Sample)              // unbound (the inverse hook)
         Assert.Equal(ResolvedAnalyzer Library.IdealCircularLeft, runAnalyzerKind m (Some (elem 3 m).id))
@@ -321,7 +321,7 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``runAnalyzerKind reports the typed NoAnalyzerPresent status when the scene holds no bound polarizer`` () =
         // initMain = source + detector only; adding an (unbound) sample binds no polarizer entry.
-        let m = initMain () |> updateTableAndElementRotation (AddElement Sample)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample)
         Assert.Equal(NoAnalyzerPresent, runAnalyzerKind m (Some (elem 2 m).id))
         Assert.Equal(NoAnalyzerPresent, runAnalyzerKind m None)
 
@@ -329,7 +329,7 @@ module ExperimentControlsTests =
     let ``a rotate-R1 intensity run with NO analyzer reports the typed status chart — no silent Malus curve`` () =
         // The retired fallback would have synthesized an IdealLinear Malus curve here; the
         // experiment surface now reports the typed 'no analyzer present' status instead.
-        let m = initMain () |> updateTableAndElementRotation (AddElement Sample)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample)
         let m1 = m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m)))     // a sample defaults to VaryR1
         let chart = m1.experimentResult
         Assert.Empty(chart.series)
@@ -342,7 +342,7 @@ module ExperimentControlsTests =
     let ``a rotate-R1 intensity run with a pre-bound polarizer still yields the Malus curve`` () =
         // The step-018 add path pre-binds the polarizer, so the analyzer resolves from the BOUND
         // entry — the surface that used to lean on the silent fallback keeps its curve.
-        let m = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
         Assert.Equal(Some Library.PresetIds.polarizerLp, (elem 2 m).placement.valueId)
         let chart = (m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m)))).experimentResult
         Assert.Single(chart.series) |> ignore
@@ -457,7 +457,7 @@ module ExperimentControlsTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Experiments bay shows the intensity polyline for a varied polarizer`` () =
         HeadlessSession.run (fun () ->
-            let baseModel = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+            let baseModel = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
             let pid = idOf 2 baseModel
             let mutable model =
                 baseModel
@@ -478,7 +478,7 @@ module ExperimentControlsTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Experiments bay lists candidates and a click picks the element`` () =
         HeadlessSession.run (fun () ->
-            let mutable model = initMain () |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+            let mutable model = SceneTestFixture.mainScene () |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
             let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 300.0)
             window.Content <- Component(fun _ -> mainView model dispatch)
@@ -509,7 +509,7 @@ module ExperimentControlsTests =
     [<Trait("Category", "ui-smoke")>]
     let ``clicking Add in the Experiments bay adds the experiment to the collection`` () =
         HeadlessSession.run (fun () ->
-            let baseModel = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+            let baseModel = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
             let pid = idOf 2 baseModel
             let mutable model =
                 baseModel
@@ -566,7 +566,7 @@ module ExperimentControlsTests =
     [<Trait("Category", "ui-smoke")>]
     let ``removing a collected experiment re-renders without a name-collision crash`` () =
         HeadlessSession.run (fun () ->
-            let baseM = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+            let baseM = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
             let pid = idOf 2 baseM
             let seed =
                 baseM
@@ -587,7 +587,7 @@ module ExperimentControlsTests =
             // Elements: src(0), det(1), Sample(2), Polarizer(3). Select the sample and remove it (a MIDDLE
             // element) while the Experiments bay's candidate list is present.
             let seed =
-                initMain ()
+                SceneTestFixture.mainScene ()
                 |> updateTableAndElementRotation (AddElement Sample)
                 |> updateTableAndElementRotation (AddElement LinearPolarizer)
                 |> (fun m -> { m with selection = ElementSelected (SceneElementIndex 2) })
@@ -609,7 +609,7 @@ module ExperimentControlsTests =
         // this recycled a named box into a differently-named one and threw.
         HeadlessSession.run (fun () ->
             let seed =
-                initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)     // idx 2
+                SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)     // idx 2
                 |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src"))                     // source ⇒ variable boxes = [wavelength]
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let pid = idOf 2 seed
@@ -625,7 +625,7 @@ module ExperimentControlsTests =
     let ``toggling the T-R-both capture (series count) re-renders without a crash`` () =
         HeadlessSession.run (fun () ->
             let seed =
-                initMain () |> updateTableAndElementRotation (AddElement Sample)
+                SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample)
                 |> (fun m -> { m with selection = ElementSelected (SceneElementIndex 2) })
                 |> updateTableAndElementRotation (BindValueId glassFilm200Id)
                 |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
@@ -646,7 +646,7 @@ module ExperimentControlsTests =
         // The reported bug: clicking a previously added experiment did nothing (an Avalonia error swallowed
         // the click's re-render). Drive it through a live re-render and assert the edit actually takes.
         HeadlessSession.run (fun () ->
-            let baseModel = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+            let baseModel = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
             let pid = idOf 2 baseModel
             let seed =
                 baseModel
@@ -738,7 +738,7 @@ module ExperimentControlsTests =
         // path AND forces ScottPlot's real Skia rasterization (headless Avalonia never rasterizes), so a
         // construction- or render-time throw would surface here rather than silently failing in the app.
         HeadlessSession.run (fun () ->
-            let m = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+            let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
             let pid = idOf 2 m
             let chart = (m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid))).experimentResult
             Assert.False(List.isEmpty chart.series, "precondition: the R1 intensity chart has a series")
@@ -756,7 +756,7 @@ module ExperimentControlsTests =
         // Proves the full host path — update → openChartWindowHook → ChartWindow — actually fires (the hook
         // is a mutable assigned by a module-level statement; this guards against it staying the no-op stub).
         HeadlessSession.run (fun () ->
-            let m = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+            let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
             let pid = idOf 2 m
             let m1 = m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid))      // draft ⇒ a non-empty R1 intensity chart
             Assert.False(List.isEmpty (m1.experimentResult).series, "precondition: the draft chart has a series")
@@ -772,7 +772,7 @@ module ExperimentControlsTests =
         // the chart window for THAT experiment; a row double-click calls the same action. This drives the
         // full path button → dispatch → update → viewExperimentHook → ChartWindow.
         HeadlessSession.run (fun () ->
-            let baseM = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+            let baseM = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
             let pid = idOf 2 baseM
             let seed =
                 baseM

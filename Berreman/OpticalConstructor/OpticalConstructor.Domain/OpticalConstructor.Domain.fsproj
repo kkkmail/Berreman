@@ -149,15 +149,7 @@
              SceneStoreError. Depends on Library (ElementId), Placement
              (ElementPlacement / CatalogueKind) and Table (TableViewState) above. -->
         <Compile Include="Scene.fs" />
-        <!-- Spec 0038 (028, ADD_CONTRACT STORE_XDUO_0005): the experiment-collection persistence
-             seam — CollectionName (blank-rejecting tryCreate) / ExperimentCollectionSnapshot (a
-             named list of the step-25 full-setup Experiments, each with its optional DataAttachment
-             attachment) / ExperimentCollectionError / the [<ReferenceEquality>]
-             ExperimentCollectionProxy functional-proxy record. The DECLARED seam only (no disk
-             format, no .ocproj wiring); a future storage cycle swaps in a real file-backed store.
-             Named ExperimentCollectionStore (NOT ExperimentCollection) to avoid colliding with the
-             Experiments.ExperimentCollection type; compiles after Experiments.fs (reuses its
-             Experiment). -->
+        <!-- The named experiment snapshot shown by the solver hand-off (spec 0050 S4.3). -->
         <Compile Include="ExperimentCollectionStore.fs" />
         <!-- Spec 0038 Part I (step 031): the pure OUT-OF-BAND dispersion diagnostic — given the
              materials reachable through an element's binding and the wavelengths an experiment
