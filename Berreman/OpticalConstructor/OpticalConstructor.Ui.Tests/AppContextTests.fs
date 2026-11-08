@@ -20,6 +20,8 @@ open OpticalConstructor.Domain.ExperimentExport
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Storage.Errors
@@ -29,6 +31,7 @@ open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 // Spec 0050 S3.3: isolated picker sessions must not race the assembly's Avalonia session.
@@ -66,36 +69,50 @@ module AppContextTests =
         invalidOp $"The library folder picker requested an unrelated storage operation: {methodInfo.Name}."
 
     type private LibraryPickerTestFolder =
-        static member create (folder : FolderName) : IStorageFolder =
+        static member ofUri (location : System.Uri) : IStorageFolder =
             LibraryPickerStorageTestProxy.create<IStorageFolder> (fun methodInfo _ ->
                 match methodInfo.Name with
-                | "get_Name" -> box (Path.GetFileName folder.value)
-                | "get_Path" -> box (System.Uri(folder.value))
+                | "get_Name" -> box (Path.GetFileName location.AbsolutePath)
+                | "get_Path" -> box location
                 | "get_CanBookmark" -> box false
                 | "Dispose" -> null
                 | _ -> unexpectedPickerStorageCall methodInfo)
 
-    type private LibraryPickerTestProvider(suggested : IStorageFolder, selected : IStorageFolder list) =
+        static member create (folder : FolderName) : IStorageFolder =
+            LibraryPickerTestFolder.ofUri (System.Uri(folder.value))
+
+    type private LibraryPickerTestProvider
+        (suggested : IStorageFolder,
+         selected : IStorageFolder list,
+         ?resolveFolder : unit -> Task<IStorageFolder>,
+         ?openPicker : unit -> Task<IReadOnlyList<IStorageFolder>>) =
         let resolvedPaths = ResizeArray<System.Uri>()
         let pickerOptions = ResizeArray<FolderPickerOpenOptions>()
+        let requestedCalls = ResizeArray<string>()
         let providerInstance =
             LibraryPickerStorageTestProxy.create<IStorageProvider> (fun methodInfo arguments ->
+                requestedCalls.Add methodInfo.Name
                 match methodInfo.Name with
                 | "get_CanOpen" | "get_CanSave" -> box false
                 | "get_CanPickFolder" -> box true
                 | "TryGetFolderFromPathAsync" ->
                     let path = unbox<System.Uri> arguments.[0]
                     resolvedPaths.Add path
-                    box (Task.FromResult<IStorageFolder> suggested)
+                    match resolveFolder with
+                    | Some resolve -> box (resolve ())
+                    | None -> box (Task.FromResult<IStorageFolder> suggested)
                 | "OpenFolderPickerAsync" ->
                     let options = unbox<FolderPickerOpenOptions> arguments.[0]
                     pickerOptions.Add options
-                    box (Task.FromResult<IReadOnlyList<IStorageFolder>>(List.toArray selected))
+                    match openPicker with
+                    | Some pick -> box (pick ())
+                    | None -> box (Task.FromResult<IReadOnlyList<IStorageFolder>>(List.toArray selected))
                 | _ -> unexpectedPickerStorageCall methodInfo)
 
         member _.storageProvider : IStorageProvider = providerInstance
         member _.paths : System.Uri list = List.ofSeq resolvedPaths
         member _.options : FolderPickerOpenOptions list = List.ofSeq pickerOptions
+        member _.calls : string list = List.ofSeq requestedCalls
 
     type private LibraryPickerTestWindow(createProvider : TopLevel -> IStorageProvider) =
         inherit Window()
@@ -117,6 +134,12 @@ module AppContextTests =
     let private runLibraryPickerTest (action : unit -> unit) : unit =
         use session = HeadlessUnitTestSession.StartNew(typeof<LibraryPickerTestAppBuilder>)
         session.Dispatch(System.Action(action), System.Threading.CancellationToken.None).GetAwaiter().GetResult()
+
+    // Manual 011: completed storage tasks keep the adapter on this isolated UI thread.
+    let private pickKitFolderForTest (window : TopLevel) (suggested : FolderName) : KitFolder option =
+        let picker = KitFolderPicker.ofWindow window suggested
+        let task = picker.pickKitFolder () |> Async.StartImmediateAsTask
+        task.GetAwaiter().GetResult()
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
     /// workbench rows / verb buttons live in variable-membership lists, so they carry an
@@ -254,7 +277,32 @@ module AppContextTests =
                 Assert.Equal(chosen, Assert.Single picked)
                 Assert.Same(uiThread, Assert.Single callbackThreads)
             finally
-                window.Close())
+                window.Close()
+
+            let root = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitPicker", System.Guid.NewGuid().ToString("N")))
+            let kitStart = FolderName (Path.Combine(root.value, "Suggested kit"))
+            let kitChosen = FolderName (Path.Combine(root.value, "Chosen kit #1"))
+            let kitIgnored = FolderName (Path.Combine(root.value, "Ignored kit"))
+            let expected = KitFolder kitChosen
+            let suggestedKit = LibraryPickerTestFolder.create kitStart
+            for resolved in [ suggestedKit; null ] do
+                let kitProvider =
+                    LibraryPickerTestProvider(resolved,
+                        [ LibraryPickerTestFolder.create kitChosen; LibraryPickerTestFolder.create kitIgnored ])
+                let kitWindow = LibraryPickerTestWindow(fun _ -> kitProvider.storageProvider)
+                try
+                    Assert.False(Directory.Exists root.value)
+                    let result = pickKitFolderForTest kitWindow kitStart
+                    Assert.Equal<KitFolder option>(Some expected, result)
+                    Assert.Equal(kitStart.value, Path.TrimEndingDirectorySeparator((Assert.Single kitProvider.paths).LocalPath))
+                    let options = Assert.Single kitProvider.options
+                    Assert.Equal("Choose a kit folder", options.Title)
+                    Assert.False options.AllowMultiple
+                    Assert.Same(resolved, options.SuggestedStartLocation)
+                    Assert.Equal<string list>([ "TryGetFolderFromPathAsync"; "OpenFolderPickerAsync" ], kitProvider.calls)
+                    Assert.False(Directory.Exists root.value)
+                finally
+                    kitWindow.Close())
 
     [<Fact>]
     let ``cancelling the library folder picker leaves the selection unchanged`` () : unit =
@@ -279,7 +327,27 @@ module AppContextTests =
                 Assert.Empty picked
                 Assert.Equal<FolderName option>(Some previous, selection)
             finally
-                window.Close())
+                window.Close()
+
+            let root = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitPicker", System.Guid.NewGuid().ToString("N")))
+            let local = LibraryPickerTestFolder.create root
+            let remote = LibraryPickerTestFolder.ofUri (System.Uri("https://example.invalid/kit"))
+            for selected in [ []; [ remote ]; [ remote; local ] ] do
+                let kitProvider = LibraryPickerTestProvider(null, selected)
+                let kitWindow = LibraryPickerTestWindow(fun _ -> kitProvider.storageProvider)
+                try
+                    Assert.False(Directory.Exists root.value)
+                    let result = pickKitFolderForTest kitWindow root
+                    Assert.Equal<KitFolder option>(None, result)
+                    Assert.Equal(root.value, Path.TrimEndingDirectorySeparator((Assert.Single kitProvider.paths).LocalPath))
+                    let options = Assert.Single kitProvider.options
+                    Assert.Equal("Choose a kit folder", options.Title)
+                    Assert.False options.AllowMultiple
+                    Assert.Null options.SuggestedStartLocation
+                    Assert.Equal<string list>([ "TryGetFolderFromPathAsync"; "OpenFolderPickerAsync" ], kitProvider.calls)
+                    Assert.False(Directory.Exists root.value)
+                finally
+                    kitWindow.Close())
 
     [<Fact>]
     let ``an unavailable storage provider leaves the library folder selection unchanged`` () : unit =
@@ -302,7 +370,47 @@ module AppContextTests =
                 Assert.Empty picked
                 Assert.Equal<FolderName option>(Some previous, selection)
             finally
-                window.Close())
+                window.Close()
+
+            let root = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitPicker", System.Guid.NewGuid().ToString("N")))
+            let kitOwners = ResizeArray<TopLevel>()
+            let unavailableWindow =
+                LibraryPickerTestWindow(fun topLevel ->
+                    kitOwners.Add topLevel
+                    raise (System.PlatformNotSupportedException("No kit storage provider is available.")))
+            try
+                Assert.False(Directory.Exists root.value)
+                let result = pickKitFolderForTest unavailableWindow root
+                Assert.Equal<KitFolder option>(None, result)
+                Assert.Same(unavailableWindow, Assert.Single kitOwners)
+                Assert.False(Directory.Exists root.value)
+            finally
+                unavailableWindow.Close()
+
+            let resolved = LibraryPickerTestFolder.create root
+            let resolutionFailure =
+                LibraryPickerTestProvider(resolved, [], resolveFolder = (fun () ->
+                    Task.FromException<IStorageFolder>(IOException("The suggested folder could not be resolved."))))
+            let dialogFailure =
+                LibraryPickerTestProvider(resolved, [], openPicker = (fun () ->
+                    Task.FromException<IReadOnlyList<IStorageFolder>>(IOException("The folder dialog failed."))))
+            for provider in [ resolutionFailure; dialogFailure ] do
+                let kitWindow = LibraryPickerTestWindow(fun _ -> provider.storageProvider)
+                try
+                    Assert.False(Directory.Exists root.value)
+                    let result = pickKitFolderForTest kitWindow root
+                    Assert.Equal<KitFolder option>(None, result)
+                    Assert.Equal(root.value, Path.TrimEndingDirectorySeparator((Assert.Single provider.paths).LocalPath))
+                    Assert.False(Directory.Exists root.value)
+                finally
+                    kitWindow.Close()
+            Assert.Empty resolutionFailure.options
+            Assert.Equal<string list>([ "TryGetFolderFromPathAsync" ], resolutionFailure.calls)
+            let options = Assert.Single dialogFailure.options
+            Assert.Equal("Choose a kit folder", options.Title)
+            Assert.False options.AllowMultiple
+            Assert.Same(resolved, options.SuggestedStartLocation)
+            Assert.Equal<string list>([ "TryGetFolderFromPathAsync"; "OpenFolderPickerAsync" ], dialogFailure.calls))
 
     [<Fact>]
     let ``create imports the Built-in catalogue into a new library database file and a reopen does not import again`` () : unit =

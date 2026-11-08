@@ -236,6 +236,15 @@ changes, preserving canonical serialization and typed errors. Its 0145 recovery
 exception requires normal profile-1 resume after the operator's commit to record
 checkpoint 144, without `--accept-current-slice`.
 
+At step 0150, every role also reads
+`specs/0050/.manual/011-step-0150-warning-and-picker-recovery.md`. It authorizes
+the inherited JSON-index warning repair and direct kit-picker coverage inside
+the existing UI facts. An incremental zero-warning summary does not clear a
+previous diagnostic without source repair and recompilation. Its recovery
+exception requires normal profile-1 resume after the operator's commit to record
+checkpoint 149, without `--accept-current-slice`. Later edits preserve the
+corrected indexing and extended picker assertions.
+
 The repository's own walls, from AGENTS.md:
 
 - **Never bump a version ring**, Berreman's or STL's.

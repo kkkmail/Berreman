@@ -172,9 +172,9 @@ module KitContentFileJsonTests =
                 (fun node -> node["experiment"]["id"] <- JsonValue.Create 0)
                 (fun node -> node["experiment"]["setup"] <- JsonValue.Create "not-an-array")
                 (fun node -> node["experiment"]["range"] <- JsonValue.Create "not-an-object")
-                (fun node -> node["experiment"]["dataFileOpt"]["contentHash"] <- JsonValue.Create "abc")
-                (fun node -> node["experiment"]["dataFileOpt"]["path"] <- JsonValue.Create "")
-                (fun node -> node["experiment"]["dataFileOpt"]["notes"] <- JsonValue.Create "unexpected")
+                (fun node -> node.["experiment"].["dataFileOpt"].["contentHash"] <- JsonValue.Create "abc")
+                (fun node -> node.["experiment"].["dataFileOpt"].["path"] <- JsonValue.Create "")
+                (fun node -> node.["experiment"].["dataFileOpt"].["notes"] <- JsonValue.Create "unexpected")
                 (fun node -> (node["experiment"]["dataFileOpt"]).AsObject().Remove "path" |> ignore)
                 (fun node -> (node["experiment"]["dataFileOpt"]).AsObject().Remove "contentHash" |> ignore)
             ]
@@ -187,11 +187,11 @@ module KitContentFileJsonTests =
 
         let malformedEdits : (JsonObject -> unit) list =
             [
-                (fun node -> node["experiment"]["setup"][0] <- JsonValue.Create "not-a-descriptor")
-                (fun node -> node["experiment"]["setup"][0]["binding"] <- JsonValue.Create "not-a-binding")
+                (fun node -> node.["experiment"].["setup"].[0] <- JsonValue.Create "not-a-descriptor")
+                (fun node -> node.["experiment"].["setup"].[0].["binding"] <- JsonValue.Create "not-a-binding")
                 (fun node -> node["experiment"]["varied"] <- JsonValue.Create "not-a-varied-element")
                 (fun node -> node["experiment"]["measurement"] <- JsonValue.Create "not-a-measurement")
-                (fun node -> node["experiment"]["range"]["points"] <- JsonValue.Create "not-a-count")
+                (fun node -> node.["experiment"].["range"].["points"] <- JsonValue.Create "not-a-count")
                 (fun node -> node["experiment"]["sourceWaveLengthOpt"] <- JsonValue.Create "not-a-wavelength")
             ]
         let malformed = KitFileText "{"
@@ -365,8 +365,8 @@ module KitContentFileJsonTests =
 
         let malformedEdits : (JsonObject -> unit) list =
             [
-                (fun node -> node["scene"]["elements"][0] <- JsonValue.Create "not-an-element")
-                (fun node -> node["scene"]["elements"][0]["placement"] <- JsonValue.Create "not-a-placement")
+                (fun node -> node.["scene"].["elements"].[0] <- JsonValue.Create "not-an-element")
+                (fun node -> node.["scene"].["elements"].[0].["placement"] <- JsonValue.Create "not-a-placement")
                 (fun node -> node["scene"]["view"] <- JsonValue.Create "not-a-view")
                 (fun node -> node["scene"]["snap"] <- JsonValue.Create "not-a-snap-mode")
                 (fun node -> node["scene"]["pivot"] <- JsonValue.Create "not-a-pivot")

@@ -1,5 +1,43 @@
 # Implementation log
 
+## Operator recovery — 2026-11-08
+
+The operator approved `.slices/0150-01.postmortem-review-md`. Manual 011 and the
+project-prompt pointer authorize the two out-of-slice test-file repairs and a
+normal profile-1 resume after the operator's commit. Entry `7addce1` already
+contains the partial implementation; the complete slice is compared with
+accepted 0149 (`aa5ff97`). The earlier worker record below is historical.
+
+- Replaced exactly eight ambiguous JSON-index expressions with explicit `.[]`
+  indexing. Malformed values, assertions and identities are unchanged.
+- Extended the three existing picker facts to invoke `KitFolderPicker.ofWindow`
+  through the same isolated headless/storage fixture, with separate instances.
+  Covered resolved/unresolved suggestions, dialog options, first local selection,
+  cancellation, non-local first selection, provider/lookup/dialog failures and
+  absence of folder creation. Assertions run outside the adapter's catch.
+- Preserved all original library-picker assertions, all test identities and the
+  six declared KitOpening facts. No production repair was necessary.
+- Forced Release recompilation passes with no owned-code warnings; the ten
+  FS3369 diagnostics are gone. Two vendored MathNet SYSLIB0051 warnings remain
+  separate in the evidence. The normal build gate reports zero warnings/errors.
+- Nine focused JSON facts and all three extended picker facts pass. An initial
+  interior-wildcard filter was rejected before discovery; its log is retained,
+  and the corrected exact-name invocation passed without any source change.
+- All sixteen unchanged gates pass, with exact census and zero failures/skips:
+  1,157 constructor cases, 215 smoke cases and fourteen selected UI identities.
+  Supplemental elevation against accepted 0149 passes four product projects
+  with zero findings under the existing ELEV004 exclusion.
+- All 494 steps validate; the refreshed profile-1 receipt validates and all 988
+  compiled artifacts remain byte-identical. State, counters, checkpoints,
+  baselines, expected-red records, oracle, test effects and Git are preserved.
+
+Evidence and the prepared operator reply are in `.artifacts/0150-operator-repair/`.
+The repair is ready for the operator's commit. Keep the arc stopped. After a
+subsequent relaunch instruction, use normal `--operator-reply` resume with
+`--executability-profile 1`, without `--accept-current-slice`, so the supervisor
+reviews and verifies the slice before publishing checkpoint 149. The earlier
+worker handoff's pending status is superseded by this measured operator recovery.
+
 ## Progress
 
 - Attempt 03, before repair: read the retry task, worker prompts, slice, gate
