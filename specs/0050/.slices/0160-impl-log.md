@@ -1,6 +1,102 @@
 # Implementation log — slice 0160
 
-## Current normal worker resume — 2026-11-08, after manual 013
+## Current worker resume — 2026-11-08, after the ASG live-input repair
+
+Entry HEAD is `7392e82` (`0050-0160-manual`). This section governs the current
+handoff. Every section below it is historical. The task's operator note
+supersedes the stop-before-switch advice in postmortem/review 0160-03. Under it:
+
+- ASG 0090 manual 033 fixes the false stale-receipt and source-mutation guards.
+- Agent switches, other valid `.specrc` edits and `.manual/` edits at any depth
+  are allowed during a running arc.
+
+### Progress
+
+- Read the task, both ASG worker prompts, the project prompt, AGENTS.md (from
+  CLAUDE.md), the slice, the frozen fifteen-gate snapshot, manuals 012 and 013,
+  postmortem 0160-03 with its review, and the previous handoff files.
+- Before handoff edits: no product change is indicated. Writes are limited to
+  the three supplied handoff paths.
+- Inspected `git diff 37cb549 HEAD`. It changes only `.specrc`
+  (`"agent": "openai-codex"` → `"claude-code"`), `.manifest.state.json`,
+  `.supervisor-lock.diag`, postmortem 0160-03 with its review, and the three
+  handoff files. No product, schema, test, project-file, elevation-driver or
+  gate-snapshot file changed since the operator-verified `37cb549`.
+- Inspected `git diff --stat 8d82da6 HEAD` over `Berreman/`, `Elevation/`,
+  AGENTS.md and `.user-md/`. All 22 files are the declared retirement, manual
+  012's two documentation-only Storage cleanups, or manual 013's elevation
+  driver, harness and guidance.
+- Ran the slice's retirement search, `git grep -n -E
+  "ProjectJson|OpticalConstructorProject|schemaDefAnchors|optical-constructor-project|Domain.Project"
+  -- Berreman/`. It found nothing (exit 1). This is a source inspection, not a
+  gate verdict.
+- Source review of the effective repair:
+  - `schema/material-metadata.schema.json` has draft 2020-12, `$id`
+    `https://berreman/schema/material-metadata.json`, root
+    `$ref` `#/$defs/materialEntry`, and the four definitions. `category` is a
+    plain `string`; the dispersion `kind` and `unitOfMeasure` enums remain.
+  - The Storage fsproj ships it as a `PreserveNewest` `Content` item in the
+    project schema's place.
+  - `Report.fs` loads it through a private `FileName` and lazy `tryLoadSchema`;
+    `validateEntryElement` answers `validateWith materialEntrySchema element`.
+  - `SchemaValidation.fs` no longer has the project-schema lazy or `validate`.
+  - `ExportImportTests` holds the declared numeric-category (`12`) fact, which
+    requires a non-empty `SchemaValidationErr`.
+  - The migrated `AC-C1 a fresh project table is 1.2 x 2.0 x 0.10 m` in
+    `TableViewTests` is byte-identical to its body at `8d82da6`.
+- Confirmed that `.arc-base-json` records
+  `f395597c071910aaa215518626563f6c784bfb62`.
+- Wrote the three handoff files. Their history is kept below; LF endings were
+  checked.
+
+### Files modified
+
+Only `0160-impl-plan.md`, `0160-impl-log.md` and `0160-state-of-the-world.md`
+beside the slice. No production, test, schema, project, supervisor-owned,
+`.specrc`, `.manual/`, ASG or STL file was written.
+
+### Testing state
+
+Per Invariant 6, this IMPLEMENT worker ran no build, test, analyzer, invariant
+or validation command. It reports `gates_run: []` and `gate_results: {}`.
+
+The operator's earlier evidence is not supervisor acceptance. It is in
+`.artifacts/0160-02-operator-repair/` and records:
+
+- all fifteen gates passing;
+- twelve of twelve product projects analyzed with zero new findings;
+- 1,136 constructor cases / 1,111 method identities, with exact census and
+  zero failures or skips.
+
+Normal supervisor review and all fifteen frozen gates must measure and publish
+checkpoint 159 and case evidence before 0161. The gates are build, elevation
+from the arc origin, the whole constructor suite and the twelve s18 invariants.
+The YAML keeps the inherited 1,142 floor. The declared seven deletions and one
+addition give `1142 - 7 + 1 = 1136`; the migrated fact does not change the count.
+
+The implementation is complete and ready for normal review. Readiness is not a
+gate result.
+
+### Artifacts
+
+None produced. Read `.artifacts/0160-operator-repair/` and
+`.artifacts/0160-02-operator-repair/` as historical evidence.
+
+### Gotchas
+
+- `.executability-json`, `.manifest.state.json` and `.supervisor-lock.diag`
+  were dirty on entry. They are supervisor-owned and were left alone.
+- The working-tree compiled `.slices/*.gates` / `*.slice-md` files show
+  CRLF-only differences from the index (git status lists none as modified).
+  They are supervisor-written and were left alone.
+- `.specrc` now selects `claude-code`, committed in `7392e82`. Under the
+  operator note it is a valid concurrent operator edit, not a worker defect or
+  scope violation. No invalid configuration or conflicting requirement was
+  found.
+- Retain profile 1 and normal review. Do not use `--accept-current-slice`.
+  Operator commits never narrow elevation below the arc origin.
+
+## Historical: normal worker resume — 2026-11-08, after manual 013
 
 Entry HEAD is `37cb549` (`0050-0160-manual`), following the committed material
 repair and arc-origin recovery. The task explicitly requests preservation and

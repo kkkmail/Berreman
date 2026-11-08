@@ -1,38 +1,43 @@
 # Implementation plan — slice 0160
 
-## Normal resume after manual 013 — 2026-11-08
+## Resume after the ASG live-input repair — 2026-11-08
 
-Resume the committed repair at `37cb549` under the task's operator note,
-[manual 012](../.manual/012-step-0160-material-schema-recovery.md) and
-[manual 013](../.manual/013-arc-origin-elevation-recovery.md). Preserve the
-completed codec/aggregate retirement, effective material-metadata schema,
-caller-owned category membership, all retained assertions and declared test
-effects. No further product or test edit is indicated by the source inspection.
+Entry HEAD is `7392e82` (`0050-0160-manual`). Compared with the verified repair
+at `37cb549`, it only commits the operator's `.specrc` backend selection
+(`openai-codex` → `claude-code`), postmortem 03 with its review, and the previous
+handoff files. Product, schema, test, elevation-driver and gate inputs are
+unchanged. Per the task's operator note, ASG 0090 manual 033 fixes the false
+stale-receipt and source-mutation guards. Valid `.specrc` edits and any
+`.manual/` edits made during the arc are allowed, so they are neither a defect
+nor a scope violation. Keep the selected backend and every concurrent operator
+edit as they are.
 
-Read the committed origin record, elevation driver and operator evidence.
-Elevation must use `f395597c071910aaa215518626563f6c784bfb62` from
-`.arc-base-json`, supplied to the frozen command as `ASG_ARC_BASE_COMMIT`.
-Neither accepted slice 0159 nor entry HEAD is the comparison base. Preserve
-coverage of committed and uncommitted arc changes and dependent projects.
+Under [manual 012](../.manual/012-step-0160-material-schema-recovery.md) and
+[manual 013](../.manual/013-arc-origin-elevation-recovery.md), keep the committed
+material-schema repair, the codec/schema/aggregate retirement, all assertions
+and the declared test effects: one migration, seven deletions and one addition.
+No new product work is indicated. The work is source inspection only:
 
-Refresh only the supplied `0160-impl-plan.md`, `0160-impl-log.md` and
-`0160-state-of-the-world.md` paths. Replace the stale pre-commit handoff,
-retain the historical repair trail in the log and restore every required
-state-of-world heading. Attribute prior measurements to the existing operator
-artifacts; leave the implementation, frozen contracts, receipts, compiled
-artifacts and supervisor records untouched.
+1. Confirm the product diff against accepted 0159 (`8d82da6`) and the empty
+   retirement search.
+2. Confirm the effective material schema, the `tryLoadSchema` / `validateWith`
+   seams, the declared numeric-category fact and the byte-identical migrated
+   table fact.
+3. Confirm that `.arc-base-json` records origin
+   `f395597c071910aaa215518626563f6c784bfb62`.
+
+Then refresh only the three supplied handoff paths.
 
 ## Verification and handoff
 
-The IMPLEMENT worker's Invariant 6 reserves execution of checks and gates to
-the supervisor. Run no build, tests, analyzer, scope harness, invariants or
-validation command. Inspect source and recorded evidence only; return
-`gates_run: []` and `gate_results: {}` without claiming a fresh verdict.
+Invariant 6 reserves every check and gate for the supervisor. This round runs
+no build, test, analyzer, invariant or validation command and returns
+`gates_run: []` / `gate_results: {}`. The operator's earlier evidence (fifteen
+gates, twelve analyzed projects, 1,136 constructor cases with exact census) is
+not supervisor acceptance.
 
-Keep the inherited YAML floor at checkpoint 158's 1142. The operator evidence
-records 1136 cases after seven deletions, one unchanged migration and one
-addition. Normal supervisor review and all fifteen frozen gates must publish
-checkpoint 159 and measured case evidence before step 0161. Retain
-`--executability-profile 1`; do not use `--accept-current-slice`, manufacture
-a checkpoint, narrow the origin, lower a floor or reset budgets. No Git
-mutation, relaunch or ASG/STL edit belongs to this worker round.
+Normal review and all fifteen frozen gates must publish measured checkpoint 159
+and case evidence before step 0161. The YAML keeps the inherited 1,142 floor.
+The run keeps `--executability-profile 1`. This round does not use
+`--accept-current-slice`, does not change frozen contracts, does not reset
+budgets and does not edit STL, ASG or git.
