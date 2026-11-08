@@ -5,13 +5,8 @@ open Softellect.Sys.Primitives
 open Softellect.Sys.Core
 open OpticalConstructor.Storage.Errors
 
-/// `.binz` sidecar read/write (§I.4 / R-4) for DERIVED/BULK artefacts ONLY —
-/// parametric-sweep result tables (`Variables.fs:237,270`), in-layer field maps,
-/// and fit/design histories. It reuses `Softellect.Sys.Core.serialize`/
-/// `deserialize` with `BinaryZippedFormat` (`Core.fs:254,257`); no second pickler,
-/// no second zip path, no custom binary format. The canonical project definition
-/// MUST NOT travel this path (binding rule 4) — `writeSidecar` of an
-/// `OpticalConstructorProject` is forbidden by directive and never done.
+/// `.binz` sidecars for derived/bulk artifacts only (§I.4 / R-4; spec 0050 S4.4).
+/// Sweeps, field maps and fit histories reuse Softellect.Sys serialization with BinaryZippedFormat.
 module Sidecar =
 
     /// The sidecar file extension, taken from the Softellect format itself

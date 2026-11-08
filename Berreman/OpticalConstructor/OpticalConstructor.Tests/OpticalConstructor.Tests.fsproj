@@ -30,7 +30,6 @@
              (BeamLayout) — three segments per tilted element, reflected side beams, host fallback,
              the element-menu ray switches, and the detector-driven experiment captures. -->
         <Compile Include="BeamLayoutTests.fs" />
-        <Compile Include="ProjectJsonRoundtripTests.fs" />
         <Compile Include="SidecarTests.fs" />
         <Compile Include="DispersionModelsTests.fs" />
         <Compile Include="MaterialImportTests.fs" />

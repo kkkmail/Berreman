@@ -119,13 +119,9 @@ module CanonicalJson =
             | [| re; im |] -> Complex(re, im)
             | _ -> raise (JsonException "a complex number is the pair [re, im]")
 
-    /// Custom converter for the engine's Math.NET complex matrix
-    /// (`Matrix<Complex>`). FSharp.SystemTextJson unwraps the single-case
-    /// `Eps`/`Mu`/`Rho` -> `ComplexMatrix3x3` -> `ComplexMatrix` wrappers down to
-    /// this Math.NET type, which System.Text.Json cannot round-trip on its own.
-    /// It is serialized as a rectangular array of cells, each through `ComplexConverter`, and rebuilt as
-    /// a dense matrix on read, so Math.NET's element-wise value-equality makes a
-    /// whole-`OpticalConstructorProject` round-trip compare equal.
+    /// Round-trip the Math.NET matrices exposed by unwrapped Eps/Mu/Rho values.
+    /// Rectangular arrays of ComplexConverter cells preserve element-wise equality
+    /// (spec 0050 S4.4, manual 012).
     type private ComplexMatrixConverter() =
         inherit JsonConverter<Matrix<Complex>>()
 

@@ -18,6 +18,16 @@ module ExportImportTests =
 
     let private fixtures = Path.Combine(AppContext.BaseDirectory, "fixtures")
 
+    [<Fact>]
+    let ``a material entry outside the materialEntry definition is SchemaValidationErr`` () : unit =
+        let materialId = MaterialIds.glass152
+        let json = $"""{{"id":"{materialId.value}","name":"Glass","category":12}}"""
+        use document = JsonDocument.Parse json
+        match validateEntryElement document.RootElement with
+        | Error (SchemaValidationErr messages) -> Assert.NotEmpty messages
+        | Error error -> Assert.Fail($"expected structural validation error: {error.describe}")
+        | Ok () -> Assert.Fail("accepted a material entry with a non-string category")
+
     // --- AC-I8: exportTableCsv writes header + one comma-separated line per row ----
 
     [<Fact>]

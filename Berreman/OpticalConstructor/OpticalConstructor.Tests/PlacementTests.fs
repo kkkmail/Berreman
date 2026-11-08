@@ -2,24 +2,12 @@ namespace OpticalConstructor.Tests
 
 open Berreman.Constants
 open Berreman.Geometry
-open Berreman.Fields
-open Berreman.MaterialProperties
-open Berreman.Media
 open OpticalConstructor.Domain
-open OpticalConstructor.Domain.Units
-open OpticalConstructor.Domain.Project
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.Storage
-open OpticalConstructor.Storage.Errors
-open OpticalConstructor.Storage.ProjectJson
 open Xunit
 
-/// Part A headless geometry / placement tests (Spec 0026, slice 001): rest-pose
-/// normals (AC-A1), default locks (AC-A2), per-axis lock behaviour (A.4.5),
-/// `r2 + R2` additivity (AC-A3), R3 non-orthogonality (AC-A4), the emission
-/// invariant (AC-A5), the placement round-trip + schema validation (AC-A6), and
-/// the catalogue-kind -> domain mapping (AC-A7). Everything here is provable
-/// headless — no Avalonia type is touched (constraint 0.3).
+/// Headless placement geometry, locks, emission and catalogue-kind mapping
+/// (spec 0026 Part A, AC-A1–5 / AC-A7; spec 0050 S4.4).
 module PlacementTests =
 
     /// Absolute float tolerance, matching the project's `abs (a - b) <= eps`
@@ -146,66 +134,3 @@ module PlacementTests =
             match toConstructorElement k with
             | BeamTree.AnalyzerElement -> failwith $"catalogue kind {k} must not map to Analyzer"
             | _ -> ()
-
-    // --- AC-A6: placement round-trip + schema validation -------------------
-
-    let private vacuumSystem : OpticalSystem =
-        {
-            description = None
-            upper = OpticalProperties.vacuum
-            films = []
-            substrate = None
-            lower = OpticalProperties.vacuum
-        }
-
-    let private light = IncidentLightInfo.create (WaveLength.nm 600.0<nm>)
-
-    let private rootNode : BeamTree.BeamNode =
-        {
-            element = BeamTree.DetectorElement
-            system = vacuumSystem
-            incident = light
-            children = Map.empty
-            defaultUnit = Nanometer
-        }
-
-    let private okOr (r : Result<'a, _>) : 'a =
-        match r with
-        | Ok v -> v
-        | Error e -> failwith $"unexpected storage error: {e}"
-
-    [<Fact>]
-    let ``AC-A6 a project carrying placement round-trips through the canonical JSON and passes schema validation`` () =
-        // A placement carrying the full §A.8 shape: box, three angles, three locks,
-        // catalogue kind, valueId = None, emission metadata, display unit.
-        let placement =
-            ElementPlacement.create CircularPolarizer { x = 0.01<meter>; y = -0.02<meter> }
-            |> setR2Locked RotationFree
-            |> withR2 (Angle.degree 12.0<deg>)
-        let project : OpticalConstructorProject =
-            { beamTree = { root = rootNode }; systems = [ vacuumSystem ]; sources = []; placements = [ placement ]; table = OpticalConstructor.Domain.Table.defaultTable }
-        // serialize -> validate-on-load -> bind. validate-on-load runs the published
-        // schema against the document before binding (AC-A6).
-        let json = project.serializeProject |> okOr
-        Assert.StartsWith("{", json.value.TrimStart())
-        let back = json.parseProject |> okOr
-        // Exactly one placement survived ...
-        Assert.Equal(1, List.length back.placements)
-        let bp = List.head back.placements
-        // ... with its canonical-SI scalars intact (angles in radians, points/box in meters) ...
-        Assert.True(close bp.r2.value placement.r2.value, $"R2 = {bp.r2.value}")
-        Assert.True(close (bp.placementPoint.x / 1.0<meter>) 0.01, $"point.x = {bp.placementPoint.x}")
-        Assert.True(close (bp.placementPoint.y / 1.0<meter>) -0.02, $"point.y = {bp.placementPoint.y}")
-        Assert.True(close (bp.box.a1 / 1.0<meter>) (opticalFaceExtent / 1.0<meter>), $"box.a1 = {bp.box.a1}")
-        Assert.True(close (bp.box.b / 1.0<meter>) (opticalDepth / 1.0<meter>), $"box.b = {bp.box.b}")
-        // ... the lock flags, catalogue kind, emission, display unit, and the
-        // unbound (None) value id all preserved.
-        Assert.Equal(RotationLocked, bp.r3Locked)
-        Assert.Equal(RotationFree, bp.r2Locked)
-        Assert.Equal(CircularPolarizer, bp.catalogueKind)
-        Assert.Equal(EmitTransmittedOnly, bp.emission)   // spec 0046: a polarizer transmits only
-        Assert.Equal(Millimeter, bp.displayUnit)
-        Assert.True(Option.isNone bp.valueId)
-        // The box normals (the rest-pose basis) round-trip too.
-        Assert.True(close bp.box.n1.x centralRayDirection.x, $"n1.x = {bp.box.n1.x}")
-        Assert.True(close bp.box.n2.z tableNormal.z, $"n2.z = {bp.box.n2.z}")

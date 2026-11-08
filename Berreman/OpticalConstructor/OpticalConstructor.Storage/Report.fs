@@ -1,9 +1,7 @@
 namespace OpticalConstructor.Storage
 
-open System
 open System.IO
 open System.Text.Json
-open System.Text.Json.Nodes
 open Json.Schema
 open Softellect.Sys.Primitives
 open Berreman.MathNetNumericsMath
@@ -11,14 +9,11 @@ open Berreman.MaterialProperties
 open Berreman.Dispersion
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.SchemaValidation
 
-/// Shareable material-library file format (§I.8 / R-4). Import accepts the canonical
-/// library JSON `exportMaterials` writes AND refractiveindex.info-style external CSV
-/// (delegated to `MaterialImport`/FSharp.Data — no hand-rolled CSV reader). Export
-/// writes the canonical JSON, validated against the §A.7 `materialEntry` `$def`
-/// (the slice-003 schema, reused), so a library file is itself schema-checked. The
-/// dispersion-model→tensor MAPPING is owned by Part D §D.9 and is NOT redefined here;
-/// this module owns only the file read and the `MaterialEntry list` boundary.
+/// Material metadata import/export (§I.8 / R-4; spec 0050 S4.4, manual 012).
+/// JSON exports use schema/material-metadata.schema.json; CSV imports reuse MaterialImport.
+/// Category membership is resolved through the caller's list.
 module MaterialLibrary =
 
     /// Metadata-only materialEntry DTO: category display names resolve through the caller's categories
@@ -41,38 +36,18 @@ module MaterialLibrary =
             active = None
         }
 
-    /// Standalone material-entry structure from the project schema, with internal references preserved.
-    /// Category membership is checked against the caller's list at conversion (spec 0050 S1.7).
-    /// Loaded once without a `$id` to avoid colliding with the project schema's registration (§I.2).
+    let private materialEntrySchemaFile : FileName =
+        FileName (Path.Combine("schema", "material-metadata.schema.json"))
+
+    /// Load schema/material-metadata.schema.json once; caller lists own category membership
+    /// (spec 0050 S1.7 / S4.4, manual 012).
     let private materialEntrySchema : Lazy<Result<JsonSchema, StorageError>> =
-        lazy
-            let schemaPath =
-                Path.Combine(AppContext.BaseDirectory, "schema", "optical-constructor-project.schema.json")
-            if not (File.Exists schemaPath) then Error SchemaMissingErr
-            else
-                try
-                    let text = File.ReadAllText schemaPath
-                    let document = JsonNode.Parse text
-                    let defs = document.["$defs"]
-                    // The project enum predates caller-owned categories; keep every structural constraint
-                    // while resolving category membership through the supplied list (spec 0050 S1.7).
-                    defs.["materialEntry"].["properties"].["category"].AsObject().Remove("enum") |> ignore
-                    let defsText = defs.ToJsonString()
-                    let wrapper =
-                        $"""{{"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/materialEntry","$defs":%s{defsText}}}"""
-                    Ok (JsonSchema.FromText wrapper)
-                with e -> Error (FileIoExn e)
+        lazy (materialEntrySchemaFile.tryLoadSchema ())
 
     /// Validate material-entry structure through the reused `$def` (§I.8 / AC-I10; spec 0050 S1.7).
     /// The import/export boundary resolves category membership through the caller's list.
     let validateEntryElement (element : JsonElement) : Result<unit, StorageError> =
-        match materialEntrySchema.Value with
-        | Error e -> Error e
-        | Ok schema ->
-            let options = EvaluationOptions(OutputFormat = OutputFormat.List)
-            let results = schema.Evaluate(element, options)
-            if results.IsValid then Ok ()
-            else Error (SchemaValidationErr [ "document violated the materialEntry $def" ])
+        validateWith materialEntrySchema element
 
     /// Parse a persisted DTO back to a domain entry. The persisted `id` is the `MaterialId`'s Guid
     /// STRING form (spec 0033 step 002); a non-Guid id is a typed error — no legacy string-id path,

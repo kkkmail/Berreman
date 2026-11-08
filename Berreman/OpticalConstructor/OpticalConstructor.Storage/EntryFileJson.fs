@@ -84,7 +84,7 @@ module EntryFileJson =
     type LibraryEntryEnvelope with
 
         /// The entry's file: the content's canonical node with `contentHash` beside its keys, indented and
-        /// ending with one `\n` (spec 0050 001 §B), as `ProjectJson.serializeProject` adds `schemaVersion`. The
+        /// ending with one `\n` (spec 0050 001 §B / S4.4). The
         /// file is flat, so the hash's key is the envelope's field name.
         member this.fileText : Result<LibraryFileText, StorageError> =
             match nodeOf this.content, nodeOf this.contentHash with

@@ -7,12 +7,8 @@ open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.Sidecar
 open Xunit
 
-/// `.binz` sidecar write/read for derived/bulk artefacts (AC-A6 / AC-I4 / AC-I5).
-/// A representative parametric-sweep result table (the kind of derived output the
-/// `Variables.calculate` producers yield) round-trips byte-for-value through the
-/// zipped-FsPickler `.binz` seam; a missing sidecar surfaces `SidecarMissingErr`
-/// rather than throwing. The canonical project never travels this path (binding
-/// rule 4 — `writeSidecar` is never called with an `OpticalConstructorProject`).
+/// Derived sweep tables round-trip through `.binz`; missing files return SidecarMissingErr
+/// (AC-A6 / AC-I4 / AC-I5; spec 0050 S4.4).
 module SidecarTests =
 
     /// A stand-in sweep table: (plot-x, scalar-result) pairs, as `calculate`

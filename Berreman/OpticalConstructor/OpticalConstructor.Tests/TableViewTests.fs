@@ -125,3 +125,10 @@ module TableViewTests =
         let cy = face |> List.averageBy (fun p -> p.sy)
         Assert.True((TableView.tableHit ppm center view table { sx = cx; sy = cy } = InsidePolygon),
                     "the tumbled plate's own centre should still select it")
+
+    [<Fact>]
+    let ``AC-C1 a fresh project table is 1.2 x 2.0 x 0.10 m`` () =
+        let fresh = OpticalConstructor.Domain.Table.defaultTable
+        Assert.Equal(1.2<meter>, fresh.width)
+        Assert.Equal(2.0<meter>, fresh.length)
+        Assert.Equal(0.10<meter>, fresh.thickness)

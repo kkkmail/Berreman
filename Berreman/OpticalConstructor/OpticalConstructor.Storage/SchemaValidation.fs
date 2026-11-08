@@ -7,10 +7,8 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.Errors
 
-/// JSON-Schema validate-on-load (§I.2 / R-2) via JsonSchema.Net. The published
-/// schema is a build-copied content item shipped beside the assembly; it is
-/// loaded and `Evaluate`d against the parsed document BEFORE the domain model is
-/// bound. Compiled before `ProjectJson` so `ProjectJsonText.parseProject` can call it.
+/// JSON-Schema validate-on-load (§I.2 / R-2; spec 0050 S4.4) via JsonSchema.Net.
+/// Each format loads its build-copied schema once and validates before binding.
 module SchemaValidation =
 
     type FileName with
@@ -28,13 +26,6 @@ module SchemaValidation =
                 with e -> Error (FileIoExn e)
             else
                 Error SchemaMissingErr
-
-    let private projectSchemaFile : FileName =
-        FileName (Path.Combine("schema", "optical-constructor-project.schema.json"))
-
-    /// The project schema, loaded ONCE (§I.2 — "load the schema once into a `JsonSchema` value"), so
-    /// validate-on-load is idempotent across calls.
-    let private schema : Result<JsonSchema, StorageError> Lazy = lazy (projectSchemaFile.tryLoadSchema ())
 
     /// Flatten a JsonSchema.Net evaluation tree into `<instance-location>: <keyword> -> <message>` lines, in
     /// the library's own wording (§I.2). Walks `results.Details` so a NESTED violation keeps its location.
@@ -71,10 +62,6 @@ module SchemaValidation =
                     if List.isEmpty messages then [ "schema validation failed" ]
                     else messages
                 Error (SchemaValidationErr messages)
-
-    /// Validate `element` against the project schema through `validateWith`; the caller MUST NOT bind a
-    /// project on `Error`.
-    let validate (element : JsonElement) : Result<unit, StorageError> = validateWith schema element
 
     let private libraryCommonSchemaFile : FileName = FileName (Path.Combine("schema", "library-common.schema.json"))
 

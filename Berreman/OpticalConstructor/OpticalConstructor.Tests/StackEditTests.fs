@@ -8,7 +8,6 @@ open Berreman.Media
 open Berreman.Solvers
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
-open OpticalConstructor.Domain.Project
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Ui

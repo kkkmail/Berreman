@@ -245,6 +245,14 @@ exception requires normal profile-1 resume after the operator's commit to record
 checkpoint 149, without `--accept-current-slice`. Later edits preserve the
 corrected indexing and extended picker assertions.
 
+At steps 0160 and 0354, every role also reads
+`specs/0050/.manual/012-step-0160-material-schema-recovery.md`. Material metadata
+schemas validate structure; category membership is resolved through the caller's
+list. Extract the effective schema without the obsolete JSON category enum and
+preserve all accepted export/import assertions. Its explicit 0160 recovery
+exception requires normal profile-1 resume after the operator's commit to record
+checkpoint 159 and measured case evidence, without `--accept-current-slice`.
+
 The repository's own walls, from AGENTS.md:
 
 - **Never bump a version ring**, Berreman's or STL's.

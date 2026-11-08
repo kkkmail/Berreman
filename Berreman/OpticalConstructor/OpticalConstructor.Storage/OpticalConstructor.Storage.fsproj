@@ -13,10 +13,6 @@
         <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
-    <!-- Compile order (§I, slice 003): Errors first; SchemaValidation before
-         ProjectJson (deserializeProject calls validate-on-load); then
-         Sidecar. The legacy placeholder `Storage.fs` is retained as a
-         namespace anchor. -->
     <ItemGroup>
         <Compile Include="Errors.fs" />
         <Compile Include="SchemaValidation.fs" />
@@ -33,7 +29,6 @@
         <Compile Include="CatalogueImportStore.fs" />
         <Compile Include="KitFolderStore.fs" />
         <Compile Include="KitContentFiles.fs" />
-        <Compile Include="ProjectJson.fs" />
         <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-
              collections store. Reuses CanonicalJson.options + the validate-on-load seam;
              compiles after CanonicalJson (its shared options). -->
@@ -65,7 +60,7 @@
          `schema/` path is preserved into the output (and flows to consumers) so
          `SchemaValidation` can load it beside the assembly at runtime (§I.2). -->
     <ItemGroup>
-        <Content Include="schema\optical-constructor-project.schema.json">
+        <Content Include="schema\material-metadata.schema.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <!-- Spec 0026 Part G/H (slice 007): the groups/collections schema, build-copied
