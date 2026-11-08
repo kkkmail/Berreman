@@ -69,6 +69,31 @@ module KitTests =
         Assert.Empty(kit.sendExclude)
 
     [<Fact>]
+    let ``a new kit is named for its folder`` () : unit =
+        let id = KitId (Guid.Parse "6f1c2a9e-3b7d-4e25-9a41-0c8d5e7f2b16")
+        let author = KitAuthor "Test author"
+        let instant = ClockTime (DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc))
+        let name = KitName "Optics QZ"
+        let expected = KitFile.create id name author instant
+        let folderNames =
+            [
+                FolderName "C:/kits/Optics QZ"
+                FolderName @"C:\kits\Optics QZ\"
+                FolderName "C:/kits/Optics QZ/"
+            ]
+
+        for folderName in folderNames do
+            let folder = KitFolder folderName
+            Assert.Equal<Result<KitFile, KitError>>(Ok expected, folder.namedKitFile id author instant)
+
+        for folderName in [ FolderName "C:/"; FolderName @"C:\"; FolderName "/"; FolderName "C:/kits/   /" ] do
+            let folder = KitFolder folderName
+            match folder.namedKitFile id author instant with
+            | Error (InvalidKitNameErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail($"Expected InvalidKitNameErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("A folder without a nonblank leaf must not name a kit.")
+
+    [<Fact>]
     let ``the kit file is named by its extension alone`` () : unit =
         let expectedExtension = FileExtension ".kit-json"
         let expectedFileName = FileName ".kit-json"

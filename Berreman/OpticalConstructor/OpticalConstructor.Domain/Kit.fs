@@ -268,6 +268,14 @@ module Kit =
 
     type KitFolder with
 
+        /// Creates metadata named for this folder's leaf, refusing a blank leaf without accessing disk (spec 0050 S4.3).
+        member this.namedKitFile (id : KitId) (author : KitAuthor) (now : ClockTime) : Result<KitFile, KitError> =
+            let folder = this.value.value.Replace('\\', '/').TrimEnd('/')
+            let leaf =
+                if folder.Length = 2 && Char.IsLetter folder[0] && folder[1] = ':' then ""
+                else folder.Substring(folder.LastIndexOf('/') + 1)
+            KitName.tryCreate leaf |> Result.map (fun name -> KitFile.create id name author now)
+
         /// Resolves a file inside this folder to a validated relative path without reading disk (spec 0050 S4.2).
         member this.tryKitPathOf (file : FileName) : KitRelativePath option =
             let folder = this.value.value.Replace('\\', '/').TrimEnd('/')

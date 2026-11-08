@@ -454,3 +454,25 @@ module KitFolders =
                     this with kitFile = savedKitFile
                 })
 
+    /// Asks for a kit folder asynchronously, returning None when the user cancels (spec 0050 S4.3).
+    [<ReferenceEquality>]
+    type KitFolderPicker =
+        {
+            pickKitFolder : unit -> Async<KitFolder option>
+        }
+
+    type KitContext with
+
+        /// Opens read-write, initializing only a folder without a kit; all other errors pass through (spec 0050 S4.3).
+        static member openOrInitialise
+            (proxy : KitProxy)
+            (clock : ClockProvider)
+            (newKitFile : ClockTime -> Result<KitFile, KitError>)
+            : Result<KitContext, KitError> =
+            match KitContext.openKit proxy ReadWriteKitAccess clock with
+            | Error (NotAKitFolderErr _) ->
+                newKitFile (clock.now ())
+                |> Result.bind proxy.initialiseKit
+                |> Result.bind (fun () -> KitContext.openKit proxy ReadWriteKitAccess clock)
+            | result -> result
+

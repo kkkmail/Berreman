@@ -1,0 +1,188 @@
+# Secondary review: 0145-01 — scratch-kit construction contract
+
+This is the owning orchestrator's advisory review of the agent-written
+[primary postmortem](0145-01.postmortem-md). It is not a mechanical fallback or
+an operator decision. Implementation awaits agreement.
+
+Incident: arc-watch `78e2fcc70266403c82e07dbc524463f4`, supervisor PID `172556`,
+terminal escalation at `2026-11-08T00:00:41Z` (November 7, 19:00:41 Toronto).
+The [event](../.artifacts/arc-watch/78e2fcc70266403c82e07dbc524463f4/event.json)
+matches the launch's spec and PID. That process has exited. This event has not
+previously received a secondary review.
+
+## Conclusion
+
+The primary diagnosis is substantiated: the scratch-kit construction contract
+is incompatible with the accepted implementation. Step 0145 requires a
+Domain-layer, two-argument, infallible `KitContext.createInMemory`. The canonical
+in-memory factory now lives in Storage and initialization returns serialization
+errors as values. Domain cannot call Storage without a reference cycle. Fresh
+exclusive ownership removes lock contention; it does not remove serialization
+or its error channel.
+
+Classify this as a spec/contract conflict following an accepted implementation
+change, with a missing forward reconciliation. It is not evidence of an ASG
+execution defect or an agent needing another cheap retry. The worker explicitly
+reported its incomplete work; the judge and resolver correctly refused to invent
+a new construction contract. Repeating the same instructions will not resolve
+the contradiction.
+
+Recommend a Storage extension returning `Result<KitContext, KitError>`, reusing
+the existing factory. Reconcile the downstream scratch and scene-construction
+rules in the same operator ruling. Do not move JSON machinery into Domain,
+duplicate the proxy, discard errors, or introduce a compatibility factory.
+
+## Current state and independently checked evidence
+
+- The preceding repair succeeded: checkpoint index 131 records 1,076 constructor
+  cases. The resumed arc accepted all thirteen slices 0132–0144 normally.
+  Latest accepted HEAD is `85aa1902e8ec3c53a8bda4bf0f38028d7737e5b8` (0144).
+  The guard repair in [manual 009](../.manual/009-step-0132-lock-guard-recovery.md)
+  remains binding; this incident is separate from it.
+- State records 144 completed slices and 0145/index 144 escalated. Checkpoint
+  144 is absent. The inherited constructor floor is 1,129, resolved through
+  preceding checkpoints; checkpoint 143 itself records the UI-smoke count.
+  The profile-1 receipt currently validates.
+- Four product files contain the worker's partial implementation: Domain
+  `Kit.fs`, `KitFolders.fs`, Tests `KitTests.fs`, `KitProxyTests.fs`. Supervisor
+  state is also dirty; the primary report and three worker records are untracked.
+  These existing changes must be preserved. No 0145 commit exists.
+- The [0145 slice](0145.slice-md) and immutable oracle require eight new concrete
+  identities. One naming fact plus three shared facts inherited by both proxy
+  subclasses provide seven. The in-memory-only context fact and constructor are
+  missing. This is source evidence, not a measured 1,136-case test run.
+- The supervisor log records a preliminary build pass at `23:50:13Z`, followed
+  by a cycle-1 escalation and resolver confirmation. There is no 0145 full-suite,
+  elevation or invariant result. The worker's "no gates run" statement describes
+  its own role; it does not negate the supervisor's build. The judge's supplied
+  pending snapshot should likewise not be read as a build failure.
+- `Domain/KitFolders.fs:203–208` accepts metadata serialization, lock serialization,
+  lock parsing and snapshot validation functions. At `239–256`, metadata is
+  installed only after successful serialization. `Storage/KitFolderStore.fs:163–172`
+  is the canonical composition of those dependencies. `CanonicalJson.fs:208–212`
+  returns a typed serialization error. Storage already references Domain; the
+  reverse reference would be cyclic.
+- Accepted commit `63f1847` (0128) moved `KitProxy.createInMemory` into Storage
+  to support canonical `.kit-json` reads and actual content hashes. Its
+  [implementation log](0128-impl-log.md) records that change, and the
+  [cycle-2 judge](../.artifacts/code_judge/0128-01-code-judge.md) approved it.
+  Reverting that move would lose accepted behavior. The later slice still
+  assumes the simpler step-0125 constructor.
+
+The primary postmortem's proposed repair is therefore sound. This review adds
+an explicit distinction between repairing 0145 now and governing future callers:
+the ruling must resolve their contracts now, while their scheduled feature
+implementation remains at its own step. No future UI implementation is claimed
+to have been tested. Neither the primary report nor this review authorizes a
+commit; the operator retains that step.
+
+## Proposed actions — approval required
+
+1. **Record the construction ruling and complete its forward scope.** Create
+   the next manual, expected to be `010-step-0145-scratch-kit-construction.md`,
+   and add its pointer to `.user-md/Berreman/arc-runner.user-md`. Authorize
+   `Storage/KitFolderStore.fs` in addition to the four original source files;
+   override the Domain-only location and infallible return requirement while
+   preserving the Domain `KitContext` type, two inputs and all behavioral
+   obligations. Preserve the published spec, oracle, ledger and gate snapshots.
+   The ruling must explicitly permit the dependent signature/call-site changes
+   below, and a normal-resume exception for checkpoint 144. It is not permission
+   to implement unrelated future features early.
+
+2. **Complete 0145 using existing construction and add its missing fact.** In
+   Storage, extend `KitContext` with `createInMemory (kitFile : KitFile)
+   (clock : ClockProvider) : Result<KitContext, KitError>`. Create one fresh
+   `InMemoryKitFolder`, obtain its first proxy through `KitProxy.createInMemory`,
+   initialize through that proxy, and map success to a read-write context holding
+   the same proxy, metadata and clock. Propagate initialization errors unchanged.
+   Do not call `openKit`, acquire a lock or call `recordStamps`; preserve the
+   existing initialization write bookkeeping. Add the already-declared fact
+   `OpticalConstructor.Tests.KitProxyTests.an in-memory kit context holds its
+   kit file and writes through its own folder`, requiring successful construction
+   and its prescribed metadata/write/read assertions. Within that same identity,
+   check canonical metadata reads, independent contexts and no lock/cache creation
+   through the existing observable seams. Keep the seven authored identities and
+   all inherited assertions. No new census identity, serializer, retry policy,
+   durable format or proxy field is needed.
+
+3. **Verify the complete repaired slice and unchanged execution contract.** Run
+   focused relevant tests and all fourteen unchanged 0145 gates: build,
+   elevation, constructor-unit-tests and the eleven s17 invariants. Require
+   **1,137 constructor cases** (1,129 + the eight declared additions), exact
+   profile-1 census, zero failed/skipped cases and zero owned-code warnings.
+   Include all changed projects in elevation; use accepted `85aa190` as the
+   comparison if changes have already been committed. Validate all 494 steps
+   and refresh the profile-1 receipt for the project-prompt change while preserving
+   all 988 compiled artifacts. Keep state, counters, checkpoints, expected-red,
+   baselines and operator test effects untouched. Evidence belongs under
+   `.artifacts/0145-operator-repair/`. Do not claim future UI verification.
+
+4. **Prepare the commit and normal-resume handoff, then stop.** Update the
+   manual and 0145 implementation/state-of-world records with the actual measured
+   results and prepare an operator reply. Retain the inherited YAML baseline of
+   1,129 until the supervisor publishes a new checkpoint. Leave the repair for
+   the operator to commit. ASG requires no source change for this incident.
+
+After the operator commits and instructs a relaunch, resume 0145 normally with
+`--operator-reply <recovery-note> --executability-profile 1`. **Do not use
+`--accept-current-slice`.** Normal review and the complete gate roster must
+publish checkpoint index 144 with its measured 1,137-case floor before advancing.
+This must be explicit in the manual because the standing project prompt otherwise
+directs acceptance of committed green work.
+
+## Binding scope for future construction
+
+The direct references are 0145, 0150, 0152, 0267, 0299 and 0420. In particular:
+
+- **0150:** `KitOpening.scratchKit` returns the typed construction result and
+  uses the Storage extension. Preserve its declared test identity and require
+  success in its fixture; preserve scratch metadata defaults and unique IDs.
+- **0152:** the current instruction that scene entry points "keep their
+  signatures" must be overridden. Separate successful kit acquisition from
+  scene initialization: the common initializer receives a ready `KitContext`;
+  scratch entry points propagate creation errors. App and diagnostic composition
+  boundaries display/report an error before opening a constructor, rather than
+  throw or silently substitute a dummy kit. Existing tests use shared success
+  fixtures and keep their declared identities/assertions. An already-opened kit
+  must initialize directly from its supplied context, without first creating
+  an unnecessary scratch kit that could fail independently.
+- **0153–0154 and later consumers:** preserve that ownership/error flow when
+  scene loading and picked-folder windows are wired. Reconcile callers in the
+  App, TestWindows, constructor tests and UI tests in the steps where those
+  signatures change. Do not leave any caller using an unsafe unwrap.
+- **0267/0299/0420:** keep later `KitFile.create` defaults and the existing
+  scratch-kit ID mint; the Result contract does not change those requirements.
+
+A scan of all pending step prose also identifies explicit scene-initializer
+consumers at 0148, 0153, 0154, 0184–0189, 0201–0202, 0223, 0225, 0238–0243,
+0252, 0259–0260, 0265–0266, 0273, 0279–0280, 0282–0283, 0310, 0312, 0315,
+0319, 0323–0324, 0328, 0410, 0412, 0414, 0421, 0432, 0449, 0488 and 0490.
+0148 precedes the scene-construction change and keeps its current behavior;
+later consumers inherit the revised construction contract. The ruling should
+govern every consumer of these entry points, including indirect callers, with
+this list serving as the checked starting inventory rather than an exemption
+for an unlisted call site.
+
+## Alternatives and recurrence
+
+Moving/injecting canonical serialization into a lower layer is possible only
+with a substantially wider architecture change; it still needs an honest error
+contract. Keeping an infallible facade would require throwing or pretending an
+initialization error cannot occur. Neither is preferable to the small Storage
+extension and an explicit downstream ruling.
+
+This resembles 0052/0056 in its incompatible obligations, but it is a new concrete
+construction conflict. The preventive lesson is to trace future consumers when
+an accepted change moves a factory or changes its construction dependencies,
+and record the resulting binding contract before those slices run. A cheap
+retry is ineffective here. The eventual aggregate postmortem analysis can assess
+whether ASG should systematically request that forward-impact check; no unverified
+ASG defect or tool patch is asserted by this incident.
+
+## Review boundaries
+
+This review used source, existing reports, Git history, state/checkpoints,
+compiled gates and read-only receipt validation. It ran no build, test or gate.
+Only this matching secondary report was written. The primary postmortem,
+implementation, worker records, supervisor state, Git index and HEAD are preserved.
+Repairs, acceptance, commit and relaunch await the operator's decision.

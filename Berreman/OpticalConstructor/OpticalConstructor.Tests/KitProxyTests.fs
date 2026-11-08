@@ -1152,6 +1152,151 @@ type KitProxyContract () =
         Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxyC.readKitFile ())
 
     [<Fact>]
+    member this.``opening a folder that holds no kit initialises it and opens it read-write`` () : unit =
+        let labPath = KitRelativePath "data/raw/run.csv"
+        for labFileOpt in [ None; Some labPath ] do
+            let folder = this.freshFolder ()
+            let proxy = folder.openProxy ()
+            let clock = steppingClock ()
+            let kit = newKitFile clock
+            let labText = KitFileText "angle,intensity\n45,0.25\n"
+            match labFileOpt with
+            | Some path -> folder.placeLabFile path.value labText.value
+            | None -> ()
+            let before = folder.paths ()
+            let mutable newKitCalls = 0
+            let makeKit (now : ClockTime) : Result<KitFile, KitError> =
+                newKitCalls <- newKitCalls + 1
+                let expectedTime = ClockTime (kit.created.value.AddSeconds 1.0)
+                Assert.Equal<ClockTime>(expectedTime, now)
+                Ok kit
+            let context =
+                KitContext.openOrInitialise proxy clock makeKit
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            Assert.Equal(1, newKitCalls)
+            Assert.Equal<KitFile>(kit, context.kitFile)
+            Assert.Equal<KitAccess>(ReadWriteKitAccess, context.access)
+            Assert.Same(proxy, context.proxy)
+            Assert.Same(clock, context.clock)
+            let expectedPaths =
+                [ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ] @ before
+                |> List.distinct
+                |> List.sortWith (fun first second -> String.CompareOrdinal(first, second))
+            Assert.Equal<string list>(expectedPaths, folder.paths ())
+            Assert.Equal<Result<KitFile, KitError>>(Ok kit, (folder.openProxy ()).readKitFile ())
+            Assert.Equal<Result<FileName list, KitError>>(Ok [], context.proxy.changedKitFiles ())
+            match labFileOpt with
+            | Some path ->
+                Assert.Equal<Result<KitFileText, KitError>>(Ok labText, proxy.readDataFile path |> Result.map (fun file -> file.text))
+            | None -> ()
+            Assert.Equal<Result<unit, KitError>>(Ok (), context.close ())
+
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let clock = steppingClock ()
+        let kit = newKitFile clock
+        let before = folder.paths ()
+        let creationError = InvalidKitNameErr "the picked folder has no leaf name"
+        let noInitialisation =
+            {
+                proxy with initialiseKit = fun _ -> failwith "Rejected metadata must not initialize a kit."
+            }
+        let failedCreation = KitContext.openOrInitialise noInitialisation clock (fun _ -> Error creationError)
+        Assert.Equal<Result<KitFile, KitError>>(Error creationError, failedCreation |> Result.map (fun context -> context.kitFile))
+        Assert.Equal<string list>(before, folder.paths ())
+        let initialisationError = KitIoErr "cannot initialize this folder"
+        let failedWriter =
+            {
+                proxy with initialiseKit = fun _ -> Error initialisationError
+            }
+        let failedInitialisation = KitContext.openOrInitialise failedWriter clock (fun _ -> Ok kit)
+        Assert.Equal<Result<KitFile, KitError>>(Error initialisationError, failedInitialisation |> Result.map (fun context -> context.kitFile))
+        Assert.Equal<string list>(before, folder.paths ())
+
+    [<Fact>]
+    member this.``opening a folder that is a kit keeps its kit file`` () : unit =
+        let folder = this.freshFolder ()
+        let proxyA = folder.openProxy ()
+        let proxyB = folder.openProxy ()
+        let clock = steppingClock ()
+        let kit =
+            {
+                newKitFile clock with notes = KitNotes "first"
+            }
+        let replacement =
+            {
+                kit with id = KitId (Guid.Parse "63a633d3-30d1-4b7b-9b27-350e9ce9fc2f")
+            }
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.initialiseKit kit)
+        let metadataPath = KitRelativePath ".kit-json"
+        let originalMetadata = proxyB.readDataFile metadataPath
+        let mutable newKitCalls = 0
+        let makeKit (_ : ClockTime) : Result<KitFile, KitError> =
+            newKitCalls <- newKitCalls + 1
+            Ok replacement
+        let context =
+            KitContext.openOrInitialise proxyA clock makeKit
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(0, newKitCalls)
+        Assert.Equal<KitFile>(kit, context.kitFile)
+        Assert.Equal<KitAccess>(ReadWriteKitAccess, context.access)
+        Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxyB.readKitFile ())
+        Assert.Equal<Result<KitDataFile, KitError>>(originalMetadata, proxyB.readDataFile metadataPath)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], context.proxy.changedKitFiles ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), context.close ())
+
+        let before = folder.paths ()
+        let unusedClock : ClockProvider =
+            {
+                now = fun () -> failwith "A rejected metadata read must not consult the clock."
+            }
+        for readError in [ KitIoErr "metadata cannot be read"; KitFileRejectedErr "metadata schema is unsupported" ] do
+            let rejectedProxy =
+                {
+                    proxyA with
+                        readKitFile = fun () -> Error readError
+                        initialiseKit = fun _ -> failwith "A read error must not initialize a kit."
+                }
+            let result = KitContext.openOrInitialise rejectedProxy unusedClock makeKit
+            Assert.Equal<Result<KitFile, KitError>>(Error readError, result |> Result.map (fun opened -> opened.kitFile))
+            Assert.Equal(0, newKitCalls)
+            Assert.Equal<string list>(before, folder.paths ())
+            Assert.Equal<Result<KitDataFile, KitError>>(originalMetadata, proxyB.readDataFile metadataPath)
+
+    [<Fact>]
+    member this.``a kit open elsewhere is not opened or initialised again`` () : unit =
+        let folder = this.freshFolder ()
+        let proxyA = folder.openProxy ()
+        let proxyB = folder.openProxy ()
+        let clock = steppingClock ()
+        let kit = newKitFile clock
+        let owner =
+            KitContext.openOrInitialise proxyA clock (fun _ -> Ok kit)
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let holder = storedKitLock proxyA
+        let before = folder.paths ()
+        let lockBefore = proxyB.readDataFile KitRelativePath.kitLockPath
+        let mutable newKitCalls = 0
+        let makeKit (_ : ClockTime) : Result<KitFile, KitError> =
+            newKitCalls <- newKitCalls + 1
+            Ok kit
+        let refused = KitContext.openOrInitialise proxyB clock makeKit
+        Assert.Equal<Result<KitFile, KitError>>(Error (KitLockedErr holder), refused |> Result.map (fun context -> context.kitFile))
+        Assert.Equal(0, newKitCalls)
+        Assert.Equal<string list>(before, folder.paths ())
+        Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxyB.readKitFile ())
+        Assert.Equal<Result<KitDataFile, KitError>>(lockBefore, proxyB.readDataFile KitRelativePath.kitLockPath)
+        let reader =
+            KitContext.openKit proxyB ReadOnlyKitAccess clock
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<KitFile>(kit, reader.kitFile)
+        Assert.Equal<KitAccess>(ReadOnlyKitAccess, reader.access)
+        Assert.Equal<Result<unit, KitError>>(Ok (), reader.close ())
+        Assert.Equal<string list>(before, folder.paths ())
+        Assert.Equal<Result<KitDataFile, KitError>>(lockBefore, proxyB.readDataFile KitRelativePath.kitLockPath)
+        Assert.Equal<Result<unit, KitError>>(Ok (), owner.close ())
+
+    [<Fact>]
     member this.``opening a kit read-write reads its kit file and takes the lock, and closing it releases the lock`` () : unit =
         let folder = this.freshFolder ()
         let proxyA = folder.openProxy ()
