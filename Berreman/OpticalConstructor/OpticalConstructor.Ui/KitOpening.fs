@@ -17,6 +17,7 @@ open OpticalConstructor.Domain.Scene
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
+open OpticalConstructor.Ui.ImportDialogView
 
 /// Supplies the clock at the kit-opening composition boundary (spec 0050 S4.3).
 type ClockProvider with
@@ -49,6 +50,30 @@ type OpenedKit =
             {
                 this with overlay = overlay
             })
+
+    /// Shows the kit at once only when it has no snapshot row; otherwise the import dialog confirms every row, Reuse
+    /// included, before `show` (spec 0050 S4.3, S5.2). A cancelled dialog or a failed re-binding releases the kit.
+    member this.resolveAndShow (imports : CatalogueImportContext) (show : OpenedKit -> unit) (onFailed : KitLibraryError -> unit) : unit =
+        match this.pendingDecisions with
+        | [] -> show this
+        | _ ->
+            let closePendingKit () : unit =
+                match this.library.kit.close () with
+                | Ok () -> ()
+                | Error error -> Logger.logError $"OpenedKit.resolveAndShow: could not close the pending kit: {error.describe}"
+            // Spec 0050 S4.3 step 0156: Apply transfers ownership before the dialog's Closed event.
+            let mutable wasApplied = false
+            let onApplied (applied : ImportDialogApplied) : unit =
+                wasApplied <- true
+                match this.withRebindings applied.outcome.rebindings with
+                | Ok resolved -> show resolved
+                | Error error ->
+                    closePendingKit ()
+                    onFailed error
+            let dialog = ImportDialogWindow(imports, ResolveKitSnapshot (this.library, this.decisions), onApplied)
+            dialog.Closed.Add(fun _ ->
+                if not wasApplied then closePendingKit ())
+            dialog.Show()
 
 /// Reads an opened kit's experiments, scenes and snapshot decisions and opens its overlay (spec 0050 S4.3, S5.2).
 /// Any failure closes the kit, logging a failed close, and answers the first error.
@@ -146,6 +171,17 @@ type KitFolderPicker with
                     with _ -> return None
                 }
         }
+
+    /// Starts the picker on the calling UI thread and hands on the folder it answers; a cancel calls nothing (spec 0050 S5.2).
+    /// It catches nothing: `ofWindow` already answers None when the dialog cannot open.
+    member this.pickThen (onPicked : KitFolder -> unit) : unit =
+        async {
+            let! folderOpt = this.pickKitFolder ()
+            match folderOpt with
+            | Some folder -> onPicked folder
+            | None -> ()
+        }
+        |> Async.StartImmediate
 
 /// Creates an independent scratch kit, preserving initialization errors (spec 0050 S4.3; .manual/010).
 let scratchKit () : Result<KitContext, KitError> =

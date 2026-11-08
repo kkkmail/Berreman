@@ -188,26 +188,7 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                             | TableAndElementRotationView.ForwardConstructor -> MainConstructorWindow(context, resolved) :> Window
                             | TableAndElementRotationView.InverseConstructor -> InverseConstructorWindow(context, resolved) :> Window
                         window.Show()
-                    match kit.pendingDecisions with
-                    | [] -> showConstructor kit
-                    | _ ->
-                        let closePendingKit () : unit =
-                            match kit.library.kit.close () with
-                            | Ok () -> ()
-                            | Error error -> Logger.logError $"LauncherWindow: could not close the pending kit: {error.describe}"
-                        // Spec 0050 S4.3 step 0156: Apply transfers ownership before the dialog's Closed event.
-                        let mutable wasApplied = false
-                        let onApplied (applied : ImportDialogApplied) : unit =
-                            wasApplied <- true
-                            match kit.withRebindings applied.outcome.rebindings with
-                            | Ok resolved -> showConstructor resolved
-                            | Error error ->
-                                closePendingKit ()
-                                showKitError error
-                        let dialog = ImportDialogWindow(context.catalogueImports, ResolveKitSnapshot (kit.library, kit.decisions), onApplied)
-                        dialog.Closed.Add(fun _ ->
-                            if not wasApplied then closePendingKit ())
-                        dialog.Show(this)
+                    kit.resolveAndShow context.catalogueImports showConstructor showKitError
                 | Error error ->
                     showKitError error
                     match error with
@@ -225,20 +206,14 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                         kitOfferOpt <- Some row
                         panel.Children.Insert(2, row)
                     | _ -> ()
-            let pickConstructorKit (context : AppContext) (mode : TableAndElementRotationView.ConstructorMode) : unit =
-                async {
-                    let! folderOpt = (pickerFor this).pickKitFolder ()
-                    match folderOpt with
-                    | Some folder -> openConstructorKit context folder mode ReadWriteKitAccess
-                    | None -> ()
-                }
-                |> Async.StartImmediate
             let mainButton =
                 surfaceButton ConstructorUiId.openMainButton "Main" (fun context ->
-                    pickConstructorKit context TableAndElementRotationView.ForwardConstructor)
+                    (pickerFor this).pickThen (fun folder ->
+                        openConstructorKit context folder TableAndElementRotationView.ForwardConstructor ReadWriteKitAccess))
             let inverseButton =
                 surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun context ->
-                    pickConstructorKit context TableAndElementRotationView.InverseConstructor)
+                    (pickerFor this).pickThen (fun folder ->
+                        openConstructorKit context folder TableAndElementRotationView.InverseConstructor ReadWriteKitAccess))
             let materialsButton =
                 surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun context ->
                     launchers.openMaterialsWindow context.materials context.categories context.catalogueImports)

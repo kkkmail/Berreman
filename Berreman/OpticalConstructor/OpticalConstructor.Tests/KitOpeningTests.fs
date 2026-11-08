@@ -398,3 +398,23 @@ module KitOpeningTests =
         Assert.Equal(
             "The kit is open elsewhere: lab on BENCH-1 (process 4242) since 2026-11-03 12:00:00 UTC.",
             holder.openElsewhereCaption.value)
+
+    [<Fact>]
+    let ``pickThen hands on the folder the picker answers and nothing on a cancel`` () : unit =
+        withOpeningFolder (fun folder _ _ ->
+            let answering : KitFolderPicker =
+                {
+                    pickKitFolder = fun () -> async { return Some folder }
+                }
+            let picked = ResizeArray<KitFolder>()
+            answering.pickThen picked.Add
+            Assert.Equal<KitFolder list>([ folder ], List.ofSeq picked)
+
+            let cancelling : KitFolderPicker =
+                {
+                    pickKitFolder = fun () -> async { return None }
+                }
+            let cancelled = ResizeArray<KitFolder>()
+            cancelling.pickThen cancelled.Add
+            Assert.Empty cancelled
+            Assert.False(Directory.Exists folder.value.value))
