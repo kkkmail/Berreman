@@ -1,5 +1,49 @@
 # Implementation log
 
+## Operator-authorized recovery
+
+The operator approved the four-step plan in `0145-01.postmortem-review-md`.
+Entry HEAD `d015bc2` contains the partial attempt and its reports; accepted
+0144 remains `85aa190`. The historical authority conflict below is resolved
+by `.manual/010-step-0145-scratch-kit-construction.md` and its project-prompt
+pointer. Future scratch/scene consumers inherit that construction ruling.
+
+- Added `KitContext.createInMemory` as a Storage extension returning
+  `Result<KitContext, KitError>`. Its fifteen lines create one private folder
+  and canonical proxy, initialize through that proxy, and map success to the
+  read-write context. Errors pass through unchanged. It does not consult the
+  clock, open the kit, acquire a lock or scan stamps. All pre-existing Storage
+  code, including manual 009's guard repair, is unchanged.
+- Added the missing in-memory-only fact under its exact declared identity.
+  It checks metadata, access and clock capture, canonical serialized reads,
+  absence of a lock, empty initial file/snapshot listings, write/read behavior,
+  isolated contexts, metadata replacement and own-write stamp bookkeeping.
+  Every prior assertion line and fact name/order is retained. The committed
+  Domain implementation and seven existing 0145 identities are preserved.
+- Recorded the forward signature/caller changes for 0150, 0152 and subsequent
+  consumers without implementing their scheduled features early. No serializer,
+  proxy field, durable format, retry loop or ASG source was added or changed.
+- Initial full build succeeded with no owned-code warnings (two existing
+  vendored MathNet SYSLIB0051 warnings). All 92 focused kit cases passed, with
+  zero failures/skips. All 494 steps validate; all 988 compiled artifacts are
+  byte-identical; the profile-1 receipt is refreshed and validates.
+
+Full verification and final scope evidence are recorded in
+`.artifacts/0145-operator-repair/final-review.md`; the operator-resume note is
+beside it. These recovery measurements are independent of the historical
+IMPLEMENT worker's gate-execution restriction. Preserve supervisor state,
+checkpoints, counters, expected-red and baselines. Wait for the operator to
+commit and instruct a relaunch. Normal resume must include
+`--executability-profile 1` and the operator reply, without direct acceptance,
+so the supervisor publishes checkpoint 144 with the measured constructor floor.
+
+All fourteen unchanged slice gates subsequently passed: the gate build has zero
+warnings/errors; the five-project working-tree elevation gate has no findings;
+all 1,137 constructor cases passed with exact census and zero failures/skips;
+all eleven s17 invariants passed. Supplemental elevation against accepted 0144
+passed all seven affected projects with zero new findings. The final protected-file
+check and complete evidence are documented in the final review cited above.
+
 ## Progress
 
 - Read AGENTS.md, the task, both worker protocols, the project prompt, slice 0145, its resolved gates, naming conventions, manual 001 sections E/F, the S43-OPEN-SEAM oracle, and existing Domain/Storage/test implementations.

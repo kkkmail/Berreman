@@ -1574,6 +1574,57 @@ type KitProxyTests () =
                     |> Result.defaultWith (fun error -> failwith error.describe)
         }
 
+    [<Fact>]
+    member _.``an in-memory kit context holds its kit file and writes through its own folder`` () : unit =
+        let kit = newKitFile (steppingClock ())
+        let clock : ClockProvider =
+            {
+                now = fun () -> failwith "Scratch construction must capture its clock without consulting it."
+            }
+        let first = KitContext.createInMemory kit clock |> Result.defaultWith (fun error -> failwith error.describe)
+        let second = KitContext.createInMemory kit clock |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.NotSame(first.proxy, second.proxy)
+        let metadataPath = KitRelativePath ".kit-json"
+        let canonical = kit.fileText |> Result.defaultWith (fun error -> failwith error.describe)
+        for context in [ first; second ] do
+            Assert.Equal<KitFile>(kit, context.kitFile)
+            Assert.Equal<KitAccess>(ReadWriteKitAccess, context.access)
+            Assert.Same(clock, context.clock)
+            Assert.Equal<Result<KitFile, KitError>>(Ok kit, context.proxy.readKitFile ())
+            let stored = context.proxy.readDataFile metadataPath |> Result.defaultWith (fun error -> failwith error.describe)
+            Assert.Equal<KitFileText>(canonical, stored.text)
+            Assert.Equal<Result<KitFile, StorageError>>(Ok kit, stored.text.parseKitFile)
+            for kind in KitFileKind.all do
+                Assert.Equal<Result<FileStem list, KitError>>(Ok [], context.proxy.listKindFiles kind)
+            Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok [], context.proxy.listSnapshots ())
+            Assert.Equal<Result<FileName list, KitError>>(Ok [], context.proxy.changedKitFiles ())
+            match context.proxy.readDataFile KitRelativePath.kitLockPath with
+            | Error (MissingKitFileErr reason) -> Assert.Contains(KitRelativePath.kitLockPath.value, reason)
+            | Error error -> Assert.Fail($"Expected an absent scratch-kit lock, got {error.describe}")
+            | Ok _ -> Assert.Fail("Scratch construction must not acquire a lock.")
+
+        let experiment = FileStem.ofText "E1"
+        let firstText = KitFileText "first experiment\n"
+        let secondText = KitFileText "independent experiment\n"
+        Assert.Equal<Result<unit, KitError>>(Ok (), first.proxy.writeKindFile ExperimentKitFile experiment firstText)
+        Assert.Equal<Result<KitFileText, KitError>>(Ok firstText, first.proxy.readKindFile ExperimentKitFile experiment)
+        Assert.Equal<Result<FileStem list, KitError>>(Ok [], second.proxy.listKindFiles ExperimentKitFile)
+        Assert.Equal<Result<unit, KitError>>(Ok (), second.proxy.writeKindFile ExperimentKitFile experiment secondText)
+        Assert.Equal<Result<KitFileText, KitError>>(Ok secondText, second.proxy.readKindFile ExperimentKitFile experiment)
+        Assert.Equal<Result<KitFileText, KitError>>(Ok firstText, first.proxy.readKindFile ExperimentKitFile experiment)
+        let replacement =
+            {
+                kit with notes = KitNotes "changed only in the first context"
+            }
+        Assert.Equal<Result<unit, KitError>>(Ok (), first.proxy.writeKitFile replacement)
+        Assert.Equal<Result<KitFile, KitError>>(Ok replacement, first.proxy.readKitFile ())
+        Assert.Equal<Result<KitFile, KitError>>(Ok kit, second.proxy.readKitFile ())
+        let updated = first.proxy.readDataFile metadataPath |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<KitFile, StorageError>>(Ok replacement, updated.text.parseKitFile)
+        for context in [ first; second ] do
+            Assert.Equal<Result<FileName list, KitError>>(Ok [], context.proxy.changedKitFiles ())
+            Assert.Equal<Result<unit, KitError>>(Ok (), context.close ())
+
 /// Runs the shared kit-file contract over real folders under the test output (spec 0050 S4.1).
 type KitProxyFolderTests () =
     inherit KitProxyContract ()

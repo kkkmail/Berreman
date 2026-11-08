@@ -418,3 +418,18 @@ module KitFolderStore =
                                     | None -> Ok ()
                                 released |> Result.map (fun () -> heldLockOpt <- None)))
             }
+
+    type KitContext with
+
+        /// Initializes a private read-write kit without a lock or stamp scan; serialization errors pass through (spec 0050 S4.3; .manual/010).
+        static member createInMemory (kitFile : KitFile) (clock : ClockProvider) : Result<KitContext, KitError> =
+            let folder = InMemoryKitFolder.create ()
+            let proxy = KitProxy.createInMemory folder
+            proxy.initialiseKit kitFile
+            |> Result.map (fun () ->
+                {
+                    proxy = proxy
+                    kitFile = kitFile
+                    access = ReadWriteKitAccess
+                    clock = clock
+                })

@@ -1,23 +1,49 @@
 # Where we are
 
-Step 0145 partially implements S43-OPEN-SEAM. Folder-derived naming, the asynchronous picker contract and read-write open-or-initialize behavior are implemented with seven authorized concrete test identities. The step is blocked, not complete: the prescribed Domain-only, infallible in-memory context constructor conflicts with the current Storage-owned serialized proxy factory. No gates were run and commit readiness is not claimed.
+Step 0145's S43-OPEN-SEAM implementation is complete under the operator-approved
+construction ruling in `.manual/010-step-0145-scratch-kit-construction.md`.
+The missing Storage-owned, Result-returning scratch-context constructor and its
+eighth declared identity are present. The partial attempt was committed as
+`d015bc2`; accepted 0144 remains `85aa190`. The arc stays stopped at 0145 pending
+the operator's commit and explicit relaunch instruction.
 
 # What's working
 
-- Added folder-leaf kit naming with slash normalization and drive-root rejection.
-- Added the reference-equality asynchronous folder-picker seam.
-- Added open-or-initialize orchestration through existing kit locking, stamping and access controls.
-- Added seven authorized test identities covering naming, initialization, preservation, error propagation and read-only recovery after a foreign lock.
+- Folder-leaf kit naming and the asynchronous folder-picker contract.
+- Read-write open-or-initialize behavior, existing metadata/file preservation,
+  typed errors and foreign-lock refusal with read-only recovery.
+- Private scratch-context construction through the canonical in-memory proxy,
+  returning initialization errors as values and capturing the supplied clock.
+- All eight declared concrete identities, with every earlier assertion and fact
+  name preserved. The guard repair from manual 009 is unchanged.
 
 # Tests
 
-No build, test, analyzer or invariant gate was run, per IMPLEMENT Invariant 6. The resolved supervisor roster is build, elevation, all-discovered constructor-unit-tests and eleven s17 invariants.
+The operator repair ran all fourteen unchanged 0145 gates successfully: build
+(zero warnings/errors), elevation (five working-tree-affected projects, zero new
+findings), all-discovered constructor-unit-tests (1,137 passed, zero failures or
+skips, exact profile-1 census), and all eleven s17 invariants. These are operator
+repair measurements, distinct from the earlier IMPLEMENT worker's restricted
+execution role and preliminary supervisor build.
 
-The new naming fact covers the three specified path spellings, complete created metadata, drive roots and whitespace leaves. Three new shared contract facts run under both KitProxyTests and KitProxyFolderTests. They cover exact fresh-kit paths, pre-existing lab files, one metadata-constructor call at the supplied time, preserved existing metadata bytes, recorded stamps, construction and initialization failures, IO/schema read failures, unchanged foreign locks and successful read-only recovery. Existing test identities and assertions are unchanged.
+All 92 focused kit cases also passed. The new fact verifies metadata/access,
+clock capture without a clock read, canonical metadata round-tripping, absence
+of a created lock, initially empty kind/snapshot listings, experiment writes and
+reads, independent contexts, metadata replacement and own-write bookkeeping.
 
-The required eighth identity, `OpticalConstructor.Tests.KitProxyTests.an in-memory kit context holds its kit file and writes through its own folder`, is not added because the required production constructor is blocked. Its owning step is 0145, path OpticalConstructor.Tests/KitProxyTests.fs, discovery gate and suite constructor-unit-tests, obligation S43-OPEN-SEAM. The required eight-case increase has not been delivered or measured.
+The partial attempt's Domain edits were already committed, so supplemental
+elevation against accepted `85aa190` covered the complete step and passed all
+seven affected projects with zero new findings. Full results and logs are in
+`.artifacts/0145-operator-repair/final-review.md`.
 
-This YAML repeats the existing checkpoint 142 count, not a new baseline or a result from this round.
+All 494 steps validated; all 988 compiled artifacts are byte-identical. The
+profile-1 receipt was refreshed for the project prompt and validates. Future UI
+construction is governed by manual 010 but is not implemented or tested here.
+
+The YAML preserves the inherited supervisor-owned baseline (resolved through
+checkpoint 143 from checkpoint 142). The operator's 1,137-case measurement does
+not publish a baseline. Checkpoint 144 remains absent until normal supervisor
+verification succeeds after the operator's commit and relaunch instruction.
 
 ```yaml
 gates:
@@ -26,26 +52,46 @@ gates:
 
 # Architecture
 
-`KitFolder.namedKitFile` uses string normalization and `KitName.tryCreate` followed by `KitFile.create`; it does no filesystem IO. A drive designator left after stripping trailing separators is treated as an empty leaf, meeting the explicit C:/ rejection requirement.
+`KitFolder.namedKitFile`, `KitFolderPicker` and `KitContext.openOrInitialise`
+remain unchanged from the committed partial attempt in Domain. The added
+`KitContext.createInMemory` extension lives beside the existing factory in
+Storage, avoiding a reference cycle or duplicate serialization.
 
-`KitFolderPicker.pickKitFolder` returns `Async<KitFolder option>`, so a UI can supply an asynchronous dialog without blocking its dispatcher. `KitContext.openOrInitialise` calls `openKit` read-write, initializes only on `NotAKitFolderErr`, then calls `openKit` again. Other errors pass through unchanged. No proxy field, durable representation, schema version or migration changed.
-
-The blocked constructor cannot reuse the current factory from its prescribed layer. Domain/KitFolders.fs's `InMemoryKitFolder.createKitProxy` requires metadata serialization, lock serialization, lock parsing and snapshot validation functions. The sole `KitProxy.createInMemory` implementation lives in Storage/KitFolderStore.fs and supplies those functions through the existing canonical JSON/schema code. Storage already references Domain. Calling it from Domain creates a project cycle; copying serializers violates reuse; placeholders or ignored initialization errors violate the real proxy contract. The requested constructor has neither injected dependencies nor a Result channel.
+It creates one `InMemoryKitFolder`, obtains its first proxy through
+`KitProxy.createInMemory`, calls `initialiseKit`, and maps success to a context
+holding that proxy, metadata, ReadWriteKitAccess and clock. It does not call
+`openKit`, acquire a lock or scan stamps; initialization retains its own-write
+bookkeeping. The Result error is unchanged. No proxy field, durable format,
+serialization implementation, migration or retry policy changed.
 
 # Deferred
 
-No work is assigned to a later slice. This step remains blocked on an authority decision for `KitContext.createInMemory` and its one test.
+No 0145 implementation remains deferred. The next action is the operator's
+commit, followed by an explicit relaunch instruction. Use the prepared recovery
+operator reply with `--executability-profile 1` for normal resume. Do not use
+`--accept-current-slice`: the supervisor must record checkpoint 144 and the new
+1,137-case floor and complete expected-red bookkeeping itself.
 
-Required decision: authorize a Storage extension reusing the existing factory with `Result<KitContext, KitError>`, add Storage/KitFolderStore.fs to step 0145's edits, and adjust the downstream S43-OPENING construction contract; or specify an authorized lower-level serializer seam and move. The current effects fix the member in Domain, the two-argument infallible signature, four editable files and no additional member/option/verb. The worker has not amended that contract.
+Manual 010 settles the forward contract now. Future scratch/scene feature work
+remains at its declared steps: 0150 returns construction errors; 0152 passes a
+ready context to the common initializer and propagates errors from scratch entry
+points; later callers preserve that flow. An already-opened context must not
+first require creation of a disposable scratch kit.
 
 # Gotchas
 
-- The existing serialized in-memory proxy is newer than the simple step-125 construction described by this slice. Its Storage dependencies cannot be replaced by a fake metadata encoding or a second parser.
-- Seven of eight authorized concrete identities are authored. No census entry, gate, oracle, checkpoint or baseline was edited to conceal the missing one.
-- The supervisor-owned specs/0050/.manifest.state.json was dirty before the worker started and remains untouched.
-- Source edits are additions in exactly the four authorized files. Diff numstats match with and without ignoring CR-at-EOL; worker documents use LF and only the supplied output paths.
-- No git mutation, version bump, external repository write or persistent run artifact was produced.
+- Published contracts, oracle, gate snapshots, state, counters, checkpoints,
+  expected-red, baselines, test effects and contract registries are unchanged.
+- The primary and secondary postmortems retain the pre-repair evidence. Their
+  construction proposals are now authorized by manual 010.
+- Initialization errors cannot be hidden by an infallible wrapper or a dummy
+  proxy. Future callers must observe the revised typed error contract.
+- No version bump, commit, ASG change or arc restart was performed.
 
 # Changelog
 
-2026-11-07 — Added folder naming, asynchronous picker and open-or-initialize behavior with seven authorized test identities; blocked the remaining in-memory constructor on its Domain/Storage construction contract conflict, with supervisor verification pending.
+- 2026-11-07: Added naming, picker and open-or-initialize behavior with seven
+  concrete identities; reported the construction authority conflict.
+- 2026-11-07 (operator recovery): Recorded manual 010, completed the Storage
+  extension and eighth identity, verified the full gate roster, refreshed the
+  receipt and prepared the normal-resume handoff.

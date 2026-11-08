@@ -227,6 +227,15 @@ profile-1 resume after the operator's commit to record checkpoint 131, without
 `--accept-current-slice`. Later edits to the shared guard preserve that repaired
 contract, including steps 0133, 0138, 0196, 0204, 0307 and 0484.
 
+For spec 0050, every role also reads
+`specs/0050/.manual/010-step-0145-scratch-kit-construction.md` at 0145 and when
+creating or consuming scratch-kit and scene initializers (especially 0150,
+0152–0154 and the forward inventory in that ruling). It authorizes the
+Storage-owned, Result-returning constructor and required downstream signature
+changes, preserving canonical serialization and typed errors. Its 0145 recovery
+exception requires normal profile-1 resume after the operator's commit to record
+checkpoint 144, without `--accept-current-slice`.
+
 The repository's own walls, from AGENTS.md:
 
 - **Never bump a version ring**, Berreman's or STL's.
