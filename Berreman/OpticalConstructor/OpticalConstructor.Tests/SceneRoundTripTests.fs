@@ -105,6 +105,33 @@ module SceneRoundTripTests =
                 rotationPivot = BeamLayout.PivotAtIncidentFace
         }
 
+    [<Theory>]
+    [<InlineData("")>]
+    [<InlineData("   ")>]
+    let ``SceneName.tryCreate rejects a blank name as InvalidScene carrying a reason`` (raw : string) =
+        match SceneName.tryCreate raw with
+        | Error (InvalidSceneErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSceneErr _), got %A{other}")
+
+    [<Fact>]
+    let ``SceneName.tryCreate rejects a null name as InvalidScene`` () =
+        match SceneName.tryCreate (null : string) with
+        | Error (InvalidSceneErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSceneErr _), got %A{other}")
+
+    [<Fact>]
+    let ``SceneName.tryCreate accepts a non-blank name and round-trips its value`` () =
+        match SceneName.tryCreate "Experiment A" with
+        | Ok n -> Assert.Equal("Experiment A", n.value)
+        | Error e -> Assert.Fail($"expected Ok, got %A{e}")
+
+    [<Fact>]
+    let ``SnapMode round-trips its wire form: true snaps to the beam, false is free placement`` () =
+        Assert.Equal(SnapToBeam, SnapMode.create true)
+        Assert.Equal(FreePlacement, SnapMode.create false)
+        Assert.True(SnapToBeam.value)
+        Assert.False(FreePlacement.value)
+
     [<Fact>]
     let ``a scene round-trips through its kit file, reproducing ids, kinds, placements, bindings and view state`` () : unit =
         let folder, proxy = createContentTestKit classFolder

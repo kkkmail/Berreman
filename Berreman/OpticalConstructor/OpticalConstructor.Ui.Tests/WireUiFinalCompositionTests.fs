@@ -1,19 +1,6 @@
-/// Spec 0038 Part N (step 047, WIRE_UI / AC-W1) — the CLOSING composition acceptance. Prior steps
-/// built every component; this step finalizes the composition root (`OpticalConstructor.App`) and
-/// drives the WHOLE root-wired surface headless. The composition root builds the app scope
-/// (`AppContext.create`) ONCE — the five stores, the file-backed `ExperimentDataProxy` (36), the
-/// in-memory `ExperimentCollectionProxy` (29) and `SceneProxy` (27) — and hands it to the launcher
-/// window and both constructor states; the window-launcher seam (`WindowLauncher.create` over the ONE
-/// host-layer `WindowRegistry`) opens every window through ONE factory (Materials, Library, the three
-/// editors, SolverHandoff) under the app's modality switch.
-///
-/// Two layers. A `ui-tests` pin that the finalized app scope carries every store proxy built once —
-/// including the step-027 scene seam this step adds to the scope. Then the `ui-smoke` wiring assertion
-/// (the WIRE_UI family's mandate): render one frame each for the launcher, the Main constructor, the
-/// Inverse constructor, the Materials and Library windows in Browse and Select, the three editor
-/// windows, and the SolverHandoff window — all over ONE app scope composed exactly like
-/// `Startup.context` — without throwing. Every real-launcher open CLOSES the window it opens, so no key
-/// leaks across the app-global `WindowRegistry` (the `WindowLauncherTests` discipline).
+/// Composition acceptance over one app scope (spec 0038 Part N; spec 0050 S4.3).
+/// Covers the remaining store composition and headless rendering through the root window factory.
+/// Each opened window closes before the next probe to release its app-global registry key.
 namespace OpticalConstructor.Ui.Tests
 
 open Avalonia.Controls
@@ -98,13 +85,6 @@ module WireUiFinalCompositionTests =
     [<Fact>]
     let ``the finalized app scope carries every store proxy — the step-027 scene seam is composed at the root`` () =
         let ctx = TestAppScope.freshAppContext owner
-        // The scene proxy (STORE_XDUO_0004) is now built once at the app scope: a fresh scope has no
-        // saved scenes, and the seam answers (a live in-memory store, not a throwing stub).
-        match ctx.scenes.listScenes () with
-        | Ok [] -> ()
-        | Ok other -> Assert.Fail($"a fresh app scope must carry an empty scene store, got %A{other}")
-        | Error e -> Assert.Fail($"the root-composed scene proxy must answer, got %A{e}")
-        // …beside the two experiment seams and the settings the root also composes.
         match ctx.experimentCollections.listCollections () with
         | Ok _ -> ()
         | Error e -> Assert.Fail($"the root-composed experiment-collection proxy must answer, got %A{e}")

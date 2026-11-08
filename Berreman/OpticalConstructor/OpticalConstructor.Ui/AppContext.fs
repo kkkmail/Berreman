@@ -50,14 +50,6 @@ type AppContext =
         /// (STORE_XDUO_0005, step 029 in-memory `createInMemory`) — named collections
         /// of experiments save / list / load through it.
         experimentCollections : ExperimentCollectionStore.ExperimentCollectionProxy
-        /// Spec 0038 (027, STORE_XDUO_0004): the scene persistence seam — the in-memory
-        /// `Scene.SceneProxy.createInMemory` store (`Scene.fs`), built ONCE at the app scope
-        /// beside the five stores and the two experiment seams above, so "every proxy is built
-        /// exactly once at the root" holds (step 047 acceptance). The scene save/load surface
-        /// that consumes it is a later cycle — the seam is composed here now exactly as
-        /// `experimentCollections` was before its builder wired in; a future disk-backed `create`
-        /// swaps in with no change to any consumer.
-        scenes : Scene.SceneProxy
         /// Write each exported run as CSV in the configured exports folder (spec 0046; spec 0050 §3.9).
         /// No file is written until an export is requested.
         experimentExport : ExperimentExport.ExperimentExportProxy
@@ -102,7 +94,6 @@ type AppContext =
             pendingImports = pendingImports
             experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked (KitProxy.createInMemory (InMemoryKitFolder.create ()))
             experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
-            scenes = Scene.SceneProxy.createInMemory ()
             experimentExport =
                 OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
                     locations.exportsFolder

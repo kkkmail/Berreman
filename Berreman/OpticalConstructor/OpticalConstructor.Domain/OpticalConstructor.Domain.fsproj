@@ -145,11 +145,8 @@
         <Compile Include="SampleStore.fs" />
         <Compile Include="CatalogueImport.fs" />
         <Compile Include="KitLibrary.fs" />
-        <!-- Spec 0038 (026, ADD_CONTRACT STORE_XDUO_0004): the scene persistence seam —
-             SceneName / SceneSnapshot (elements + table view state + snap mode, all pure data) /
-             SceneStoreError / the [<ReferenceEquality>] SceneProxy functional-proxy record. The
-             DECLARED seam only (no disk format, no .ocproj wiring); a future storage cycle swaps
-             in a real file-backed store. Depends on Library (ElementId), Placement
+        <!-- Spec 0038: SceneName / SceneSnapshot (elements + table view state + snap mode, all pure data) /
+             SceneStoreError. Depends on Library (ElementId), Placement
              (ElementPlacement / CatalogueKind) and Table (TableViewState) above. -->
         <Compile Include="Scene.fs" />
         <!-- Spec 0038 (028, ADD_CONTRACT STORE_XDUO_0005): the experiment-collection persistence
