@@ -151,6 +151,14 @@ module KitArchive =
             | KitTreeFolder path -> $"{path.value}/"
             |> ZipEntryName
 
+        /// The file entries' paths in order: what an archive job counts, reports and checks cancellation before (spec 0050 S6).
+        static member filePathsOf (entries : KitTreeEntry list) : KitRelativePath list =
+            entries
+            |> List.choose (fun entry ->
+                match entry with
+                | KitTreeFile path -> Some path
+                | KitTreeFolder _ -> None)
+
     /// How many files an archive job handles (spec 0050 S6).
     type KitArchiveFileCount =
         | KitArchiveFileCount of int
@@ -163,6 +171,13 @@ module KitArchive =
             filesDone : KitArchiveFileCount
             filesTotal : KitArchiveFileCount
         }
+
+        /// The progress told once these files are handled (spec 0050 S6).
+        static member afterFiles (handled : KitRelativePath list) (filesTotal : KitArchiveFileCount) : KitArchiveProgress =
+            {
+                filesDone = handled |> List.length |> KitArchiveFileCount
+                filesTotal = filesTotal
+            }
 
     /// Told after each file and asked before each whether the job is cancelled, the token checked between steps as in
     /// `JobRunner.runLoop` (spec 0050 S6).
@@ -204,6 +219,7 @@ module KitArchive =
         }
 
     /// The zip / unzip seam. It does IO only: what is sent and what is received is the kit's rule (spec 0050 S6; 001 §P).
+    /// Storage's `KitArchiveProxy.create` is the real one over System.IO.Compression, `createInMemory` the double.
     [<ReferenceEquality>]
     type KitArchiveProxy =
         {
@@ -309,19 +325,6 @@ module KitArchive =
 
         /// The double: the four fields over `disk`, so every proxy over one disk sees the others' writes (spec 0050 S6).
         static member createInMemory (disk : InMemoryArchiveDisk) : KitArchiveProxy =
-            let filePaths (entries : KitTreeEntry list) : KitRelativePath list =
-                entries
-                |> List.choose (fun entry ->
-                    match entry with
-                    | KitTreeFile path -> Some path
-                    | KitTreeFolder _ -> None)
-
-            let progressOf (handled : KitRelativePath list) (filesTotal : KitArchiveFileCount) : KitArchiveProgress =
-                {
-                    filesDone = handled |> List.length |> KitArchiveFileCount
-                    filesTotal = filesTotal
-                }
-
             let listKitTree (kit : KitFolder) : Result<KitTreeEntry list, KitArchiveError> =
                 let folder = kit.value.archiveDiskName
                 match disk.tryDiskItem folder with
@@ -341,7 +344,7 @@ module KitArchive =
                 | None -> Error (KitArchiveIoErr $"'{folder.value}': the in-memory disk holds no such folder")
 
             let writeKitZip (job : KitZipJob) (observer : KitArchiveObserver) : Result<KitArchiveOutcome, KitArchiveError> =
-                let files = filePaths job.entries
+                let files = KitTreeEntry.filePathsOf job.entries
                 let filesTotal = files |> List.length |> KitArchiveFileCount
 
                 let rec zipFrom
@@ -361,7 +364,7 @@ module KitArchive =
                             match disk.tryDiskFile file with
                             | Some content ->
                                 let zippedNow = path :: zipped
-                                observer.reportArchiveProgress (progressOf zippedNow filesTotal)
+                                observer.reportArchiveProgress (KitArchiveProgress.afterFiles zippedNow filesTotal)
                                 zipFrom rest zippedNow (Map.add path content contents)
                             | None -> Error (KitArchiveIoErr $"'{file.value}': the in-memory disk holds no such file")
 
@@ -402,7 +405,7 @@ module KitArchive =
 
                 let extractFrom (contents : Map<KitRelativePath, FileByteContent>) : Result<KitArchiveOutcome, KitArchiveError> =
                     let held = disk.paths () |> List.map (fun name -> name.archiveDiskKey) |> Set.ofList
-                    let filesTotal = filePaths job.entries |> List.length |> KitArchiveFileCount
+                    let filesTotal = KitTreeEntry.filePathsOf job.entries |> List.length |> KitArchiveFileCount
 
                     let rec extractEntries (pending : KitTreeEntry list) (extracted : KitRelativePath list) : Result<KitArchiveOutcome, KitArchiveError> =
                         match pending with
@@ -419,7 +422,7 @@ module KitArchive =
                                 | Some content ->
                                     disk.setDiskItem (job.target.archiveDiskFileOf path) (ArchiveDiskFile content)
                                     let extractedNow = path :: extracted
-                                    observer.reportArchiveProgress (progressOf extractedNow filesTotal)
+                                    observer.reportArchiveProgress (KitArchiveProgress.afterFiles extractedNow filesTotal)
                                     extractEntries rest extractedNow
                                 | None ->
                                     removeCreated held

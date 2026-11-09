@@ -30,6 +30,7 @@
         <Compile Include="KitFolderStore.fs" />
         <Compile Include="KitContentFiles.fs" />
         <Compile Include="KitHistoryStore.fs" />
+        <Compile Include="KitArchiveStore.fs" />
         <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-
              collections store. Reuses CanonicalJson.options + the validate-on-load seam;
              compiles after CanonicalJson (its shared options). -->

@@ -1,13 +1,18 @@
 namespace OpticalConstructor.Tests
 
 open System
+open System.IO
+open System.IO.Compression
 open System.Text
 open System.Threading
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitArchive
+open OpticalConstructor.Storage.KitFolderStore
+open OpticalConstructor.Storage.KitArchiveStore
 
 /// One disk seen through an archive proxy and an outside writer, every path relative to `root` (spec 0050 S6).
 type KitArchiveTestDisk =
@@ -331,3 +336,185 @@ type KitArchiveProxyTests () =
                         disk.tryDiskFile (FileName $"{under folder}/{path}") |> Option.map (fun content -> path, content.value))
             paths = namesUnder
         }
+
+/// A kit made through `KitProxy.create`, held open read-write, and the zip it was sent to while open (spec 0050 S6).
+type KitArchiveSentKit =
+    {
+        context : KitContext
+        kit : KitFolder
+        zip : FileName
+    }
+
+module private KitArchiveFolderTestData =
+
+    /// A place under a folder, the relative path's `/`-separated segments joined by the platform.
+    let placeUnder (folder : string) (relative : string) : string =
+        if relative = "" then folder else Path.Combine(Array.append [| folder |] (relative.Split('/')))
+
+    /// Every file and folder under a folder, relative and forward-slashed, in ordinal order; none when it is not there.
+    let namesOnDisk (folder : string) : string list =
+        if Directory.Exists folder then
+            Directory.GetFileSystemEntries(folder, "*", SearchOption.AllDirectories)
+            |> Array.map (fun name -> Path.GetRelativePath(folder, name).Replace('\\', '/'))
+            |> Array.sortWith (fun first second -> String.CompareOrdinal(first, second))
+            |> Array.toList
+        else
+            []
+
+    /// A disk rooted at a new folder under the test output, never under `%TEMP%`, as `KitProxyFolderTests` (spec 0050 S6).
+    let folderArchiveDisk () : KitArchiveTestDisk =
+        let root = Path.Combine(AppContext.BaseDirectory, "KitArchiveProxyFolderTests", Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory root |> ignore
+        let under = placeUnder root
+        {
+            archive = KitArchiveProxy.create ()
+            root = root
+            placeFile =
+                fun path bytes ->
+                    let file = under path
+                    Directory.CreateDirectory(Path.GetDirectoryName file) |> ignore
+                    File.WriteAllBytes(file, bytes)
+            placeFolder = fun path -> Directory.CreateDirectory(under path) |> ignore
+            files =
+                fun folder ->
+                    let full = under folder
+                    namesOnDisk full
+                    |> List.choose (fun path ->
+                        let file = placeUnder full path
+                        if File.Exists file then Some (path, File.ReadAllBytes file) else None)
+            paths = fun folder -> namesOnDisk (under folder)
+        }
+
+    let expectKit<'Value> (result : Result<'Value, KitError>) : 'Value =
+        match result with
+        | Ok value -> value
+        | Error error -> failwith error.describe
+
+    let fixedClock : ClockProvider = { now = fun () -> ClockTime (DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc)) }
+
+    /// `run 1.csv` as a lab wrote it: a UTF-8 byte-order mark, then its text (spec 0050 S6).
+    let csvWithByteOrderMark : byte[] = Array.append [| 0xEFuy; 0xBBuy; 0xBFuy |] (Encoding.UTF8.GetBytes "phi,I\n0,0.5\n")
+
+    /// Makes `Optics QZ` through `KitProxy.create` (its kit file, an experiment file, a copied-in lab file and a DNG),
+    /// opens it read-write so it holds `.oc/lock`, and sends it while open to `exports/Optics QZ.zip` (spec 0050 S6).
+    let sendOpenKit (disk : KitArchiveTestDisk) : KitArchiveSentKit =
+        let kit = folderUnder disk "Optics QZ"
+        let proxy = KitProxy.create kit
+        expectKit (proxy.initialiseKit dngExcludingKitFile)
+        let experiment = FileStem.ofText "E1"
+        expectKit (proxy.writeKindFile ExperimentKitFile experiment (KitFileText "{ \"experiment\": \"E1\" }\n"))
+        let raw = expectKit (KitDataFolder.tryCreate (KitRelativePath "data/raw"))
+        let source = FileName "run 1.csv"
+        let copied = expectKit (proxy.copyInFile raw source (FileByteContent csvWithByteOrderMark))
+        Assert.Equal<KitRelativePath>(KitRelativePath "data/raw/run 1.csv", copied.path)
+        disk.placeFile "Optics QZ/data/raw/IMG_0001.DNG" [| 0uy .. 255uy |]
+        let context = expectKit (KitContext.openKit (KitProxy.create kit) ReadWriteKitAccess fixedClock)
+        disk.placeFolder "exports"
+        let zip = FileName $"{disk.root}/exports/Optics QZ.zip"
+        Assert.Equal<Result<KitArchiveOutcome, KitArchiveError>>(
+            Ok (KitArchiveFinished (KitArchiveFileCount 3)),
+            disk.archive.sendKit context.kitFile kit zip KitArchiveObserver.unobserved)
+        { context = context; kit = kit; zip = zip }
+
+    /// Writes a zip holding a file under each name as given, its content the name's UTF-8.
+    let writeZipOf (zip : string) (names : string list) : unit =
+        use stream = new FileStream(zip, FileMode.Create, FileAccess.Write, FileShare.None)
+        use archive = new ZipArchive(stream, ZipArchiveMode.Create)
+        for name in names do
+            let entry = archive.CreateEntry name
+            use content = entry.Open ()
+            let bytes = Encoding.UTF8.GetBytes name
+            content.Write(bytes, 0, bytes.Length)
+
+open KitArchiveFolderTestData
+
+/// The archive contract over real folders under the test output, through `KitArchiveProxy.create` (spec 0050 S6).
+type KitArchiveProxyFolderTests () =
+    inherit KitArchiveProxyContract ()
+
+    override _.freshDisk () : KitArchiveTestDisk = folderArchiveDisk ()
+
+    [<Fact>]
+    member this.``a zip entry that would escape the folder is refused and nothing is extracted`` () : unit =
+        let disk = this.freshDisk ()
+        let beside = Path.GetDirectoryName disk.root
+
+        for escaping in [ "../evil.txt"; "a/../../evil.txt"; "C:/evil.txt"; "..\\evil.txt" ] do
+            let zip = FileName (placeUnder disk.root "escaping.zip")
+            writeZipOf zip.value [ ".kit-json"; "ok.txt"; escaping ]
+
+            match disk.archive.listZipEntries zip with
+            | Error (KitZipEntryEscapesErr reason) -> Assert.Contains(escaping, reason)
+            | Ok _
+            | Error _ -> Assert.Fail $"listed the escaping entry '{escaping}'"
+
+            match disk.archive.receiveKit zip (folderUnder disk "received") KitArchiveObserver.unobserved with
+            | Error (KitZipEntryEscapesErr reason) -> Assert.Contains(escaping, reason)
+            | Ok _
+            | Error _ -> Assert.Fail $"received a zip holding the escaping entry '{escaping}'"
+
+            Assert.DoesNotContain<string>("received", disk.paths "")
+            Assert.Empty(Directory.GetFiles(disk.root, "evil.txt", SearchOption.AllDirectories))
+            Assert.False(File.Exists(Path.Combine(beside, "evil.txt")))
+
+    [<Fact>]
+    member this.``a sent kit, received elsewhere and reopened, equals the original kit file by file`` () : unit =
+        let disk = this.freshDisk ()
+        let sent = sendOpenKit disk
+        let received = folderUnder disk "received/Optics QZ"
+
+        Assert.Equal<Result<KitArchiveOutcome, KitArchiveError>>(
+            Ok (KitArchiveFinished (KitArchiveFileCount 3)),
+            disk.archive.receiveKit sent.zip received KitArchiveObserver.unobserved)
+
+        let reopened = expectKit (KitContext.openKit (KitProxy.create received) ReadOnlyKitAccess fixedClock)
+        Assert.Equal<KitFile>(sent.context.kitFile, reopened.kitFile)
+
+        let original = disk.files "Optics QZ"
+        let leftOut = [ KitRelativePath.kitLockPath.value; "data/raw/IMG_0001.DNG" ]
+        for path in leftOut do
+            Assert.Contains<string>(path, original |> List.map fst)
+        let expected = original |> List.filter (fun (path, _) -> not (List.contains path leftOut))
+        Assert.Equal<(string * byte list) list>(comparableFiles expected, comparableFiles (disk.files "received/Optics QZ"))
+        Assert.Equal<byte>(csvWithByteOrderMark, File.ReadAllBytes(placeUnder disk.root "received/Optics QZ/data/raw/run 1.csv"))
+
+        Assert.Equal<Result<unit, KitError>>(Ok (), reopened.close ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), sent.context.close ())
+
+    [<Fact>]
+    member this.``the zip's entries are forward-slashed kit-relative names`` () : unit =
+        let disk = this.freshDisk ()
+        let sent = sendOpenKit disk
+        let tree = expectOk (disk.archive.listKitTree sent.kit)
+        let expected = sent.context.kitFile.sentEntries tree |> List.map (fun entry -> entry.zipEntryName.value)
+
+        let names =
+            using (ZipFile.OpenRead sent.zip.value) (fun archive -> archive.Entries |> Seq.map (fun entry -> entry.FullName) |> Seq.toList)
+
+        Assert.Equal<string list>(expected, names)
+        Assert.Contains<string>("data/raw/run 1.csv", names)
+        for name in names do
+            Assert.DoesNotContain("\\", name)
+            Assert.DoesNotContain(":", name)
+            Assert.False(name.StartsWith('/'), name)
+        Assert.Equal<Result<unit, KitError>>(Ok (), sent.context.close ())
+
+    [<Fact>]
+    member this.``a zip that cannot replace its file is KitArchiveIoErr and leaves no temporary file`` () : unit =
+        let disk = this.freshDisk ()
+        sampleKitWithAppCache disk
+        let olderZip = Encoding.UTF8.GetBytes "an older zip"
+        disk.placeFile "exports/k.zip" olderZip
+        let zip = FileName $"{disk.root}/exports/k.zip"
+
+        let refused =
+            use holder = new FileStream(zip.value, FileMode.Open, FileAccess.Read, FileShare.None)
+            disk.archive.sendKit dngExcludingKitFile (folderUnder disk "kit") zip KitArchiveObserver.unobserved
+
+        match refused with
+        | Error (KitArchiveIoErr reason) -> Assert.Contains("k.zip", reason)
+        | Ok _
+        | Error _ -> Assert.Fail "replaced a zip another program holds open"
+
+        Assert.Equal<byte>(olderZip, File.ReadAllBytes zip.value)
+        Assert.Empty(Directory.GetFiles(placeUnder disk.root "exports", "*.tmp"))

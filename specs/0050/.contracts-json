@@ -56,9 +56,9 @@
     "temporaries": []
   },
   "FILE_BigBoy_0001": {
-    "lifecycle": "declared",
+    "lifecycle": "implemented",
     "declaringStep": 197,
-    "implementStep": null,
+    "implementStep": 199,
     "openTemporary": false,
     "consumers": [],
     "temporaries": []
