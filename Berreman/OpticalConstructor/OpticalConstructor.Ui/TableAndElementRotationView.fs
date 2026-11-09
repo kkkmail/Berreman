@@ -292,6 +292,13 @@ type ExperimentFileStatus =
         | DataFileChangedSinceAttach -> ControlCaption "Data changed since attach — attach it again to validate it"
         | DataFileMissingFromKit path -> ControlCaption $"Data file missing — {path.value}"
 
+/// What asked for the check of kit files changed outside the app (spec 0050 S5.3).
+type KitCheckOrigin =
+    /// The window was activated; a check that finds nothing says nothing (spec 0050 S5.3).
+    | KitCheckOnActivation
+    /// The Kit menu's Reload changes; a check that finds nothing says so (spec 0050 S5.3).
+    | KitCheckOnRequest
+
 type TableAndElementRotationModel =
     {
         table : OpticalTable
@@ -385,6 +392,8 @@ type TableAndElementRotationModel =
         kitFolderOpt : KitFolder option
         /// The explorer and the window close the Kit menu reaches; `initWith` holds the inert one (spec 0050 S5.3).
         kitShell : KitWindowShell
+        /// The kit files changed outside the app that the kit bar offers to reload, in `changedKitFiles`' order, empty when nothing is offered (spec 0050 S5.3).
+        kitChanges : FileName list
         /// The last kit read or write that needs telling (spec 0050 S4.3).
         kitStatus : ControlCaption option
         /// The scene name being edited, validated when saved (spec 0050 S4.3).
@@ -532,6 +541,7 @@ let initWith
         kit = kit
         kitFolderOpt = None
         kitShell = KitWindowShell.inert
+        kitChanges = []
         kitStatus = None
         sceneName = ControlCaption ""
         savedScenes = []
@@ -805,6 +815,12 @@ type TableAndElementRotationMsg =
     | ShowKitInExplorer
     /// The Kit menu's Close kit: the shell closes the window, and nothing is lost (spec 0050 S5.3; .spec-md §10.5).
     | CloseKit
+    /// Offers the kit files changed outside the app since the stamps were last recorded (spec 0050 S5.3).
+    | CheckKitChanges of KitCheckOrigin
+    /// The offer's Reload: re-reads the kit file, experiments and scene names into the model (spec 0050 S5.3).
+    | ReloadKitChanges
+    /// The offer's Keep mine: keeps the model and records the current stamps, so the offer clears (spec 0050 S5.3).
+    | KeepMyKitChanges
     /// Spec 0038 (013) — the ribbon tab-strip row's right-aligned "Materials…" button: open the
     /// SINGLE-INSTANCE Materials window (UICOMP_XDUO_0009) over the app-scope material + category
     /// stores through the launcher seam (a second click ACTIVATES the live window — the shared
@@ -1621,37 +1637,52 @@ let private validateExperimentAttachment
     | Ok series -> DataFileValidated series.pointCount
     | Error error -> error.fileStatus
 
+/// Sets what a kit's content decides, so a reload sets exactly what an open sets (spec 0050 S4.3, S5.3; 001 §E):
+/// the kit, its experiments with a fresh draft, their attachments rechecked through the model's `experimentData`,
+/// its scene names, and no status or reload offer.
+let private withKitContent
+    (kit : KitContext)
+    (experiments : Experiments.Experiment list)
+    (scenes : Scene.SceneName list)
+    (model : TableAndElementRotationModel)
+    : TableAndElementRotationModel =
+    let loaded =
+        {
+            model with
+                kit = kit
+                experimentCollection = Experiments.ExperimentCollection.ofLoaded experiments
+                kitStatus = None
+                kitChanges = []
+                savedScenes = scenes
+        }
+    let statuses =
+        experiments
+        |> List.choose (fun experiment ->
+            match experiment.dataFileOpt with
+            | Some attachment ->
+                let status =
+                    match loaded.experimentData.attachmentStatus attachment with
+                    | Ok AttachedDataUnchanged -> validateExperimentAttachment loaded experiment attachment
+                    | Ok (AttachedDataChanged _) -> DataFileChangedSinceAttach
+                    | Ok AttachedDataMissing -> DataFileMissingFromKit attachment.path.toControlCaption
+                    | Error error -> AttachedFileParseError error.caption
+                Some (experiment.id, status)
+            | None -> None)
+        |> Map.ofList
+    {
+        loaded with experimentDataStatus = statuses
+    }
+
 type TableAndElementRotationModel with
 
     /// Works in the opened kit and rechecks every recorded data attachment (spec 0050 S4.3; 001 §E).
     member model.loadKit (opened : OpenedKit) : TableAndElementRotationModel =
-        let loaded =
-            {
-                model with
-                    kit = opened.library.kit
-                    kitFolderOpt = Some opened.folder
-                    experimentData = opened.experimentData
-                    experimentCollection = Experiments.ExperimentCollection.ofLoaded opened.experiments
-                    kitStatus = None
-                    savedScenes = opened.scenes
-            }
-        let statuses =
-            opened.experiments
-            |> List.choose (fun experiment ->
-                match experiment.dataFileOpt with
-                | Some attachment ->
-                    let status =
-                        match loaded.experimentData.attachmentStatus attachment with
-                        | Ok AttachedDataUnchanged -> validateExperimentAttachment loaded experiment attachment
-                        | Ok (AttachedDataChanged _) -> DataFileChangedSinceAttach
-                        | Ok AttachedDataMissing -> DataFileMissingFromKit attachment.path.toControlCaption
-                        | Error error -> AttachedFileParseError error.caption
-                    Some (experiment.id, status)
-                | None -> None)
-            |> Map.ofList
         {
-            loaded with experimentDataStatus = statuses
+            model with
+                kitFolderOpt = Some opened.folder
+                experimentData = opened.experimentData
         }
+        |> withKitContent opened.library.kit opened.experiments opened.scenes
 
     /// The kit's name, ` (read-only)` when it was opened read-only, then ` — ` and its folder when it has one
     /// (spec 0050 S5.3; .manual/001 §O).
@@ -1688,6 +1719,18 @@ let private guardKitWrite (model : TableAndElementRotationModel) (write : unit -
         {
             model with kitStatus = Some (ControlCaption "The kit is open read-only: nothing is saved.")
         }
+
+/// Runs a step of the reload offer only for a kit with a folder: nothing outside the app changes a scratch kit (spec 0050 S5.3).
+let private guardKitFolder (model : TableAndElementRotationModel) (step : unit -> TableAndElementRotationModel) : TableAndElementRotationModel =
+    match model.kitFolderOpt with
+    | Some _ -> step ()
+    | None -> model
+
+/// Tells why the kit could not be checked for outside changes, keeping the model and its offer (spec 0050 S5.3).
+let private withKitCheckFailure (error : KitError) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    {
+        model with kitStatus = Some (ControlCaption $"The kit could not be checked for changes — {error.describe}")
+    }
 
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
@@ -1992,6 +2035,58 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         // Spec 0050 S5.3, .spec-md §10.5: kit writes are already on disk; the window's Closed handler releases the kit (step 154).
         model.kitShell.requestClose ()
         model
+    // Spec 0050 S5.3: none of the three writes a kit file, so a read-only kit is offered reloads too (step 131).
+    | CheckKitChanges origin ->
+        guardKitFolder model (fun () ->
+            match model.kit.proxy.changedKitFiles () with
+            | Ok [] ->
+                match origin with
+                | KitCheckOnRequest ->
+                    {
+                        model with
+                            kitChanges = []
+                            kitStatus = Some (ControlCaption "No kit file changed outside the app.")
+                    }
+                | KitCheckOnActivation ->
+                    {
+                        model with kitChanges = []
+                    }
+            | Ok files ->
+                {
+                    model with kitChanges = files
+                }
+            | Error error -> withKitCheckFailure error model)
+    | ReloadKitChanges ->
+        guardKitFolder model (fun () ->
+            let proxy = model.kit.proxy
+            let reloaded =
+                proxy.readKitFile ()
+                |> Result.bind (fun kitFile ->
+                    proxy.readExperiments ()
+                    |> Result.bind (fun experiments ->
+                        proxy.readSceneNames ()
+                        |> Result.bind (fun scenes ->
+                            proxy.recordStamps ()
+                            |> Result.map (fun () ->
+                                let kit =
+                                    {
+                                        model.kit with kitFile = kitFile
+                                    }
+                                withKitContent kit experiments scenes model))))
+            match reloaded with
+            | Ok reloadedModel -> reloadedModel
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"The kit could not be reloaded — {error.describe}")
+                })
+    | KeepMyKitChanges ->
+        guardKitFolder model (fun () ->
+            match model.kit.proxy.recordStamps () with
+            | Ok () ->
+                {
+                    model with kitChanges = []
+                }
+            | Error error -> withKitCheckFailure error model)
     | OpenMaterialsWindow ->
         // Spec 0038 step 013: a pure launch of the single-instance Materials window
         // (UICOMP_XDUO_0009) over app-scope stores and import seam — the launcher seam's

@@ -12,6 +12,7 @@ open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
+open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -36,7 +37,7 @@ module KitWindowModelTests =
             if Directory.Exists root.value then Directory.Delete(root.value, true)
 
     /// Loads the opened kit into a fresh Main scene; the scene's scratch kit and the opened kit are closed at the end.
-    let private withLoadedScene (opened : OpenedKit) (run : TableAndElementRotationModel -> unit) : unit =
+    let private withLoadedScene (opened : OpenedKit) (run : TableAndElementRotationModel -> 'Outcome) : 'Outcome =
         let scene = initMain () |> kitValue
         try run (scene.loadKit opened)
         finally
@@ -70,6 +71,43 @@ module KitWindowModelTests =
         Directory.GetFiles(folder.value.value, "*", SearchOption.AllDirectories)
         |> Array.map (fun path -> FileName path, FileByteContent (File.ReadAllBytes path))
         |> Map.ofArray
+
+    /// Commits an experiment over a pre-bound linear polarizer through the model, which records it in the kit as `E1`.
+    let private committedPolarizerExperiment (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let placed = model |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+        let polarizer = placed.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
+        placed
+        |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
+        |> updateTableAndElementRotation ExpCommit
+
+    /// Another writer's `E2`: the committed experiment given `id = ExperimentId 2` (spec 0050 S5.3, step 148).
+    let private writeE2 (writer : KitProxy) (committed : Experiments.Experiment) : unit =
+        let e2 =
+            {
+                committed with id = Experiments.ExperimentId 2
+            }
+        writer.writeExperiment e2 |> kitValue
+
+    /// Another writer's kit file, renamed (spec 0050 S5.3, step 125).
+    let private renameKit (writer : KitProxy) (name : KitName) : unit =
+        let kitFile = writer.readKitFile () |> kitValue
+        let renamed =
+            {
+                kitFile with name = name
+            }
+        writer.writeKitFile renamed |> kitValue
+
+    /// Opens the kit read-write and commits `E1` through the model; then another writer, `KitProxy.create` over the
+    /// kit's folder with no lock (step 126), writes `E2` and names the kit `Renamed`. Runs over the writer and the model.
+    let private withOtherWritersChanges (run : KitProxy -> TableAndElementRotationModel -> unit) : unit =
+        withTitledFolder (fun folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun loaded ->
+                let committed = committedPolarizerExperiment loaded
+                let writer = KitProxy.create folder
+                writeE2 writer (List.exactlyOne committed.experimentCollection.experiments)
+                renameKit writer (KitName "Renamed")
+                run writer committed))
 
     [<Fact>]
     let ``the window title names the kit, its folder and the constructor`` () : unit =
@@ -237,3 +275,95 @@ module KitWindowModelTests =
                 Assert.Equal<TableAndElementRotationModel>(model, answer)
                 Assert.True(File.Exists(lockFile folder), "the kit stays locked until its window releases it"))
             Assert.False(File.Exists(lockFile folder)))
+
+    [<Fact>]
+    let ``files another writer changed are offered, and the window's own writes are not`` () : unit =
+        withTitledFolder (fun folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun loaded ->
+                let committed = committedPolarizerExperiment loaded
+                Assert.Equal(1, List.length committed.experimentCollection.experiments)
+                let own = committed |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+                Assert.Equal<TableAndElementRotationModel>(committed, own)
+                let writer = KitProxy.create folder
+                writeE2 writer (List.exactlyOne committed.experimentCollection.experiments)
+                renameKit writer (KitName "Renamed")
+                let offered = committed |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+                Assert.Equal<FileName list>([ FileName ".kit-json"; FileName "E2.experiment-json" ], offered.kitChanges)
+                Assert.Equal<TableAndElementRotationModel>({ committed with kitChanges = offered.kitChanges }, offered)))
+
+    [<Fact>]
+    let ``Reload reads the kit's files in and clears the offer`` () : unit =
+        withOtherWritersChanges (fun writer committed ->
+            let offered = committed |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+            Assert.NotEmpty(offered.kitChanges)
+            let reloaded = offered |> updateTableAndElementRotation ReloadKitChanges
+            let held = writer.readExperiments () |> kitValue
+            Assert.Equal<Experiments.ExperimentId list>(
+                [ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ],
+                held |> List.map (fun experiment -> experiment.id))
+            Assert.Equal<Experiments.ExperimentCollection>(Experiments.ExperimentCollection.ofLoaded held, reloaded.experimentCollection)
+            Assert.Equal<KitName>(KitName "Renamed", reloaded.kit.kitFile.name)
+            Assert.StartsWith("Renamed", reloaded.kitWindowTitle.value)
+            Assert.Equal<KitContext>({ offered.kit with kitFile = reloaded.kit.kitFile }, reloaded.kit)
+            Assert.Empty(reloaded.kitChanges)
+            Assert.Equal<ControlCaption option>(None, reloaded.kitStatus)
+            let again = reloaded |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+            Assert.Empty(again.kitChanges))
+
+    [<Fact>]
+    let ``Keep mine keeps the model and clears the offer until the next change`` () : unit =
+        withOtherWritersChanges (fun writer committed ->
+            let offered = committed |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+            Assert.NotEmpty(offered.kitChanges)
+            let kept = offered |> updateTableAndElementRotation KeepMyKitChanges
+            Assert.Equal<TableAndElementRotationModel>({ offered with kitChanges = [] }, kept)
+            Assert.Equal<Experiments.ExperimentCollection>(committed.experimentCollection, kept.experimentCollection)
+            Assert.Equal<KitName>(KitName "Optics QZ", kept.kit.kitFile.name)
+            let again = kept |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+            Assert.Empty(again.kitChanges)
+            renameKit writer (KitName "Renamed again")
+            let reoffered = again |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+            Assert.Equal<FileName list>([ FileName ".kit-json" ], reoffered.kitChanges))
+
+    [<Fact>]
+    let ``a requested check with nothing changed says so, and an activation check stays silent`` () : unit =
+        withTitledFolder (fun folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun model ->
+                let requested = model |> updateTableAndElementRotation (CheckKitChanges KitCheckOnRequest)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "No kit file changed outside the app."), requested.kitStatus)
+                Assert.Equal<TableAndElementRotationModel>({ model with kitStatus = requested.kitStatus }, requested)
+                let activated = model |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+                Assert.Equal<ControlCaption option>(None, activated.kitStatus)
+                Assert.Equal<TableAndElementRotationModel>(model, activated)))
+
+    [<Fact>]
+    let ``a kit opened read-only is offered changes and reloads them`` () : unit =
+        withTitledFolder (fun folder imports ->
+            let created = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            let first =
+                withLoadedScene created (fun loaded ->
+                    (committedPolarizerExperiment loaded).experimentCollection.experiments |> List.exactlyOne)
+            let opened = openKitAt folder ReadOnlyKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun model ->
+                Assert.Equal<Experiments.ExperimentId list>(
+                    [ first.id ],
+                    model.experimentCollection.experiments |> List.map (fun experiment -> experiment.id))
+                let writer = KitProxy.create folder
+                writeE2 writer first
+                let before = folderBytes folder
+                let offered = model |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+                Assert.Equal<FileName list>([ FileName "E2.experiment-json" ], offered.kitChanges)
+                let reloaded = offered |> updateTableAndElementRotation ReloadKitChanges
+                let held = writer.readExperiments () |> kitValue
+                Assert.Equal<Experiments.ExperimentId list>(
+                    [ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ],
+                    reloaded.experimentCollection.experiments |> List.map (fun experiment -> experiment.id))
+                Assert.Equal<Experiments.Experiment list>(held, reloaded.experimentCollection.experiments)
+                Assert.Equal<KitAccess>(ReadOnlyKitAccess, reloaded.kit.access)
+                Assert.Empty(reloaded.kitChanges)
+                Assert.Equal<ControlCaption option>(None, reloaded.kitStatus)
+                let again = reloaded |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+                Assert.Empty(again.kitChanges)
+                Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
