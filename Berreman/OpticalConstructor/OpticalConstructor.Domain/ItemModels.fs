@@ -1,6 +1,11 @@
 namespace OpticalConstructor.Domain
 
-/// The parameter vocabulary of items and item models, shared with the fitter (spec 0050 S7.1).
+open Berreman.Media
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Library
+
+/// The parameter vocabulary of items and item models, shared with the fitter, and the parameters the existing
+/// models publish (spec 0050 S7.1).
 module ItemModels =
 
     /// The name a fitted parameter is reported under — elevated so that a report cannot silently pair a
@@ -102,3 +107,48 @@ module ItemModels =
                 { name = ParameterName "elementUncertainty"; kind = FractionParameter; defaultValue = element }
                 { name = ParameterName "throughputUncertainty"; kind = FractionParameter; defaultValue = throughput }
             ]
+
+    type Thickness with
+
+        /// A finite thickness in metres as a parameter value; `Infinity` has none (spec 0050 S7.1).
+        member this.parameterValueOpt : ParameterValue option =
+            match this with
+            | Thickness t -> Some (ParameterValue (float t))
+            | Infinity -> None
+
+    type SourcePreset with
+
+        /// The output polarization and intensity scale over the preset's own λ and tunable limits, defaulting to
+        /// unpolarized light at unit scale (spec 0050 S7.1; 001 §I, §N).
+        member _.parameterAxes : ItemParameterAxis list =
+            [
+                { name = ParameterName "azimuth"; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
+                { name = ParameterName "ellipticity"; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
+                { name = ParameterName "degreeOfPolarization"; kind = FractionParameter; defaultValue = ParameterValue 0.0 }
+                { name = ParameterName "intensityScale"; kind = ScaleParameter; defaultValue = ParameterValue 1.0 }
+            ]
+
+    type PolarizerPreset with
+
+        /// None: an ideal LP or CP, and a constant-Mueller compound, has no parameter (spec 0050 S7.1; 001 §I).
+        member _.parameterAxes : ItemParameterAxis list = []
+
+    type Sample with
+
+        /// One thickness per finite layer in stack order, in metres: `film<k>.thickness`, `film<k>.layer<j>.thickness`
+        /// (shared by every period), `substrate.thickness`. Materials publish none: a study owns them (spec 0050 S7.1).
+        member this.parameterAxes : ItemParameterAxis list =
+            let filmLayers : (ParameterName * SampleLayer) list =
+                this.structure.films
+                |> List.mapi (fun i item ->
+                    match item with
+                    | SingleLayer layer -> [ ParameterName $"film{i + 1}.thickness", layer ]
+                    | Repeated group ->
+                        group.cell |> List.mapi (fun j layer -> ParameterName $"film{i + 1}.layer{j + 1}.thickness", layer))
+                |> List.concat
+            let substrateLayers : (ParameterName * SampleLayer) list =
+                this.structure.substrate |> Option.toList |> List.map (fun layer -> ParameterName "substrate.thickness", layer)
+            filmLayers @ substrateLayers
+            |> List.choose (fun (name, layer) ->
+                layer.thickness.parameterValueOpt
+                |> Option.map (fun value -> { name = name; kind = ThicknessParameter; defaultValue = value }))

@@ -130,6 +130,7 @@
   "203": {},
   "204": {},
   "205": {},
+  "206": {},
   "21": {
     "constructor-unit-tests": [
       "OpticalConstructor.Tests.CanonicalJsonTests.a complex number survives the shared options as its real and imaginary parts",
