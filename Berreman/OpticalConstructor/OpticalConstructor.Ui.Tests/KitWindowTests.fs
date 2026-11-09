@@ -17,6 +17,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Tests
@@ -676,3 +677,313 @@ module KitWindowTests =
                     Assert.Equal("Copy experiments from another kit…", boxLabelOf window ConstructorUiId.kitCopyExperimentsButton))
                 Assert.True(File.Exists copiedFile, "Copy must leave E2.experiment-json in the window's kit folder")
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    let private libraryValue (result : Result<'Value, KitLibrary.KitLibraryError>) : 'Value =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    /// The 600 nm source preset over the shipped source-preset item model (spec 0050 S7.1, step 210).
+    let private laser600Choice : ItemModelChoice =
+        SourcePresetChoice (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source Library.PresetIds.source600)
+
+    /// The 1 mm glass plate's first version over the shipped stack-sample item model (spec 0050 S7.1, step 210).
+    let private plateChoice : ItemModelChoice =
+        StackSampleChoice (
+            BuiltinCatalogue.itemModel ItemModels.ItemModelIds.stackSampleItemModelId,
+            Library.SampleVersionId.firstOf Library.SampleIds.glassPlate1mmId,
+            BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId
+        )
+
+    /// A fixed-mounted piece of the model at revision 1, its parameters at their defaults (spec 0050 S7.1).
+    let private pieceOf (guid : string) (label : string) (model : ItemModelChoice) : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (System.Guid.Parse guid)
+                label = ItemLabel label
+                model = model
+                dial = FixedMounting
+            }
+        draft.toItem
+
+    /// A Laser600 piece with its `intensityScale` known at `value`, so same-model pieces differ in their parameters.
+    let private scaledLaser600 (guid : string) (label : string) (value : float) : Item =
+        let item = pieceOf guid label laser600Choice
+        let name = ItemModels.ParameterName "intensityScale"
+        match item.tryFindParameter name with
+        | Some _ -> ()
+        | None -> Assert.Fail "the source-preset item model must publish 'intensityScale'"
+        {
+            item with
+                parameters =
+                    item.parameters
+                    |> List.map (fun parameter ->
+                        if parameter.name = name then
+                            {
+                                parameter with state = KnownParameter (ItemModels.ParameterValue value)
+                            }
+                        else
+                            parameter)
+        }
+
+    /// The source's Laser600, which E1 assigns at its light source (spec 0050 S7.2).
+    let private copiedLaser600 : Item = scaledLaser600 "22900000-0000-4000-8000-000000000001" "Laser600" 0.75
+
+    /// The source's second piece of the same preset, which no experiment assigns.
+    let private spareLaser600 : Item = scaledLaser600 "22900000-0000-4000-8000-000000000002" "Laser600 spare" 0.5
+
+    /// The source's QZ, which E2 assigns at its plate (spec 0050 S7.2).
+    let private sourceQz : Item = pieceOf "22900000-0000-4000-8000-000000000003" "QZ" plateChoice
+
+    /// The window kit's own Laser600: the same preset and label under another id, onto which the copied Laser600 maps
+    /// by default.
+    let private ownLaser600 : Item = pieceOf "22900000-0000-4000-8000-000000000004" "Laser600" laser600Choice
+
+    /// A bench piece of the same preset under a third id, its parameters unlike either source piece's.
+    let private benchLaser600 : Item = scaledLaser600 "22900000-0000-4000-8000-000000000005" "Laser600 bench" 0.25
+
+    /// Experiment `n` of one element, bound by `binding` and assigned the item.
+    let private assignedExperiment
+        (n : int)
+        (element : string)
+        (label : string)
+        (kind : Placement.CatalogueKind)
+        (binding : Experiments.ElementBinding)
+        (item : Item)
+        : Experiments.Experiment =
+        {
+            storedExperiment with
+                id = Experiments.ExperimentId n
+                setup =
+                    [
+                        {
+                            elementId = Library.ElementId element
+                            label = Experiments.ElementLabel label
+                            kind = kind
+                            placement = Experiments.PlacementSummary.ofPlacement (Placement.ElementPlacement.create kind Placement.TablePoint.origin)
+                            binding = binding
+                            itemIdOpt = Some item.id
+                        }
+                    ]
+        }
+
+    /// E1 binds the 600 nm source preset at its light source, where the copied Laser600 is assigned.
+    let private itemE1 : Experiments.Experiment =
+        assignedExperiment
+            1
+            "copied-source"
+            "Light source #1"
+            Placement.CatalogueKind.LightSource
+            (Experiments.BoundByEntryId Library.PresetIds.source600)
+            copiedLaser600
+
+    /// E2 binds the 1 mm glass plate at version 1 at its sample, where QZ is assigned.
+    let private itemE2 : Experiments.Experiment =
+        let plate = Lifecycle.SampleVersionRef (Library.SampleVersionId.firstOf Library.SampleIds.glassPlate1mmId)
+        assignedExperiment 2 "copied-plate" "Sample #1" Placement.CatalogueKind.Sample (Experiments.BoundByVersion plate) sourceQz
+
+    /// The kit to copy from, made as step 228 makes it: the copied Laser600, its spare and QZ through `recordItem`, then
+    /// E1 and E2 through `recordExperiment`; closed, so the window opens it (spec 0050 S7.2).
+    let private itemSourceKit (ctx : AppContext) : KitFolder =
+        let folder = TestAppScope.freshKitFolder owner
+        let created = openedAt folder ReadWriteKitAccess ctx
+        try
+            for item in [ copiedLaser600; spareLaser600; sourceQz ] do
+                created.library.recordItem item |> libraryValue
+            for experiment in [ itemE1; itemE2 ] do
+                created.library.recordExperiment experiment |> libraryValue
+        finally created.library.kit.close () |> SceneTestFixture.kitSuccess
+        folder
+
+    /// A kit made in a fresh folder holding the items, each recorded with its model snapshots, then opened read-write
+    /// as a window opens it (spec 0050 S7.2).
+    let private openedHolding (ctx : AppContext) (items : Item list) : OpenedKit =
+        let folder = TestAppScope.freshKitFolder owner
+        let created = openedAt folder ReadWriteKitAccess ctx
+        try
+            for item in items do
+                created.library.recordItem item |> libraryValue
+        finally created.library.kit.close () |> SceneTestFixture.kitSuccess
+        openedAt folder ReadWriteKitAccess ctx
+
+    /// The item files at the kit folder's root, in ordinal order.
+    let private itemFilesIn (folder : KitFolder) : string list =
+        Directory.GetFiles(folder.value.value, "*.item-json") |> Array.map Path.GetFileName |> Array.sort |> List.ofArray
+
+    /// What a kit holds once closed and reopened read-only: its experiments, the items they resolve to through
+    /// `Experiment.itemsUsedBy`, and all its items (spec 0050 S7.2).
+    type private ReopenedKitCopy =
+        {
+            experiments : Experiments.Experiment list
+            resolved : Result<Item list, ItemError>
+            items : Item list
+        }
+
+    let private reopenedCopy (folder : KitFolder) : ReopenedKitCopy =
+        let later = KitContext.openKit (KitProxy.create folder) ReadOnlyKitAccess ClockProvider.system |> SceneTestFixture.kitSuccess
+        try
+            let experiments = later.proxy.readExperiments () |> SceneTestFixture.kitSuccess
+            let items = later.proxy.readItems () |> SceneTestFixture.kitSuccess
+            let reopened : ReopenedKitCopy =
+                {
+                    experiments = experiments
+                    resolved = Experiments.Experiment.itemsUsedBy experiments items
+                    items = items
+                }
+            reopened
+        finally later.close () |> SceneTestFixture.kitSuccess
+
+    /// The fill of the choice box carrying `id`: the chosen one is on `positiveBackground`.
+    let private fillOf (window : Window) (id : ConstructorUiId) : Color =
+        Assert.IsType<SolidColorBrush>(Assert.IsType<Border>(controlById window id).Background).Color
+
+    /// Every control carrying a mapping choice's id.
+    let private choiceBoxesIn (window : Window) : Control list =
+        window.GetVisualDescendants()
+        |> Seq.choose (function :? Control as control -> Some control | _ -> None)
+        |> Seq.filter (fun control ->
+            let automationId = AutomationProperties.GetAutomationId control
+            not (isNull automationId) && automationId.StartsWith "KitCopyItemChoice_")
+        |> List.ofSeq
+
+    /// Every `TextBlock` in the window showing the mapping table's intro line.
+    let private mappingIntrosIn (window : Window) : TextBlock list =
+        let intro = "Items the chosen experiments use: add each to this kit, or use an item it already has."
+        window.GetVisualDescendants()
+        |> Seq.choose (function :? TextBlock as text when text.Text = intro -> Some text | _ -> None)
+        |> List.ofSeq
+
+    [<Fact>]
+    let ``the copy-mapping UiIds are the stable intent-named ids`` () : unit =
+        let sourceItem = ItemId (System.Guid.Parse "22900000-0000-4000-8000-0000000000a1")
+        let kitItem = ItemId (System.Guid.Parse "22900000-0000-4000-8000-0000000000b2")
+        Assert.Equal("KitCopyItemList", ConstructorUiId.kitCopyItemList.value)
+        Assert.Equal("KitCopyItemChoice_22900000-0000-4000-8000-0000000000a1_Add", (ConstructorUiId.kitCopyItemChoice sourceItem AddCopiedItem).value)
+        Assert.Equal(
+            "KitCopyItemChoice_22900000-0000-4000-8000-0000000000a1_22900000-0000-4000-8000-0000000000b2",
+            (ConstructorUiId.kitCopyItemChoice sourceItem (MapOntoKitItem kitItem)).value)
+
+    [<Fact>]
+    let ``an open source lists the items its chosen experiments use, each with Add and the kit's items, the choice marked`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let sourceFolder = itemSourceKit ctx
+            let opened = openedHolding ctx [ ownLaser600 ]
+            try
+                let listed =
+                    kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert
+                    |> updateTableAndElementRotation (OpenCopySource sourceFolder)
+                try
+                    let chosen =
+                        listed
+                        |> updateTableAndElementRotation (ToggleCopiedExperiment itemE1.id)
+                        |> updateTableAndElementRotation (ToggleCopiedExperiment itemE2.id)
+                    let expectedRows : ItemCopyRow list =
+                        [
+                            {
+                                sourceItem = copiedLaser600
+                                choice = MapOntoKitItem ownLaser600.id
+                            }
+                            {
+                                sourceItem = sourceQz
+                                choice = AddCopiedItem
+                            }
+                        ]
+                    match chosen.kitCopyOpt with
+                    | Some copySource -> Assert.Equal<ItemCopyRow list>(expectedRows, copySource.itemRows)
+                    | None -> Assert.Fail "the copy source must stay open while its experiments are chosen"
+                    let laserAdd = ConstructorUiId.kitCopyItemChoice copiedLaser600.id AddCopiedItem
+                    let laserUse = ConstructorUiId.kitCopyItemChoice copiedLaser600.id (MapOntoKitItem ownLaser600.id)
+                    let qzAdd = ConstructorUiId.kitCopyItemChoice sourceQz.id AddCopiedItem
+                    let qzUse = ConstructorUiId.kitCopyItemChoice sourceQz.id (MapOntoKitItem ownLaser600.id)
+                    withKitWindow chosen (fun window ->
+                        let list = Assert.IsType<ScrollViewer>(controlById window ConstructorUiId.kitCopyExperimentList)
+                        let intro = Assert.Single(mappingIntrosIn window)
+                        Assert.Contains<Visual>(list, intro.GetVisualAncestors())
+                        let table = Assert.IsType<StackPanel>(controlById window ConstructorUiId.kitCopyItemList)
+                        Assert.Contains<Visual>(list, table.GetVisualAncestors())
+                        Assert.Equal(2, table.Children.Count)
+                        let lineOf (index : int) : string =
+                            Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(table.Children[index]).Children[0]).Text
+                        let laserModel = (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.sourcePresetItemModelId).versionId.entryReference
+                        let plateModel = (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.stackSampleItemModelId).versionId.entryReference
+                        Assert.Equal($"Laser600 — {laserModel.describe}", lineOf 0)
+                        Assert.Equal($"QZ — {plateModel.describe}", lineOf 1)
+                        for id, label, block in [ laserAdd, "Add", 0; laserUse, "Use Laser600", 0; qzAdd, "Add", 1; qzUse, "Use Laser600", 1 ] do
+                            Assert.Equal(label, boxLabelOf window id)
+                            Assert.Contains<Visual>(table.Children[block], (controlById window id).GetVisualAncestors())
+                        Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window laserUse)
+                        Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window laserAdd)
+                        Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window qzAdd)
+                        Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window qzUse)
+                        let boxes = choiceBoxesIn window
+                        Assert.Equal(4, List.length boxes)
+                        for box in boxes do
+                            Assert.Contains<Visual>(list, box.GetVisualAncestors())
+                        Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.kitCopyItemChoice spareLaser600.id AddCopiedItem)))
+                    withKitWindow listed (fun window ->
+                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyItemList)
+                        Assert.Empty(choiceBoxesIn window)
+                        Assert.Empty(mappingIntrosIn window))
+                finally listed.closeCopySource () |> ignore
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing a mapping choice and Copy adds or maps the item as chosen`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let sourceFolder = itemSourceKit ctx
+            let shell =
+                {
+                    KitWindowShell.inert with kitPicker = TestAppScope.kitPickerOf sourceFolder
+                }
+            // Presses Copy experiments, E1's toggle, the choice and Copy in a window over the kit, then closes the kit.
+            let copyE1Choosing (opened : OpenedKit) (choice : ItemCopyChoice) (told : string) : unit =
+                let byDefault = ConstructorUiId.kitCopyItemChoice copiedLaser600.id (MapOntoKitItem ownLaser600.id)
+                let pressed = ConstructorUiId.kitCopyItemChoice copiedLaser600.id choice
+                let filesBefore = itemFilesIn opened.folder
+                try
+                    withKitWindow (kitWindowModel ctx opened ForwardConstructor shell) (fun window ->
+                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyItemList)
+                        pressBox window ConstructorUiId.kitCopyExperimentsButton
+                        let toggleId = ConstructorUiId.kitCopyExperimentToggle itemE1.id
+                        pressAtCentre window (copyToggleOf window itemE1.id) toggleId.value
+                        Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window byDefault)
+                        Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window pressed)
+                        pressBox window pressed
+                        Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window pressed)
+                        Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window byDefault)
+                        Assert.Equal<string list>(filesBefore, itemFilesIn opened.folder)
+                        pressBox window ConstructorUiId.kitCopyChosenButton
+                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyItemList)
+                        Assert.StartsWith(told, textOf window ConstructorUiId.kitStatus))
+                finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
+
+            // Add: the copied Laser600 comes in under its own id beside the kit's, relabelled.
+            let target = openedHolding ctx [ ownLaser600 ]
+            copyE1Choosing target AddCopiedItem "Copied 1 experiment(s) and added 1 item(s)"
+            Assert.Equal<string list>([ "Laser600 (2).item-json"; "Laser600.item-json" ], itemFilesIn target.folder)
+            let added = reopenedCopy target.folder
+            match added.experiments, added.resolved with
+            | [ copiedE1 ], Ok [ piece ] ->
+                Assert.Equal<ItemId option list>([ Some copiedLaser600.id ], copiedE1.setup |> List.map (fun descriptor -> descriptor.itemIdOpt))
+                Assert.Equal<Item>({ copiedLaser600 with label = ItemLabel "Laser600 (2)" }, piece)
+            | experiments, _ -> Assert.Fail $"E1 must be copied alone and resolve the added piece, not {List.length experiments} experiment(s)"
+            Assert.Equal<Set<ItemId>>(set [ ownLaser600.id; copiedLaser600.id ], added.items |> List.map (fun item -> item.id) |> set)
+
+            // Use: the copied E1 is bound to the bench's own third piece, and neither source piece comes in.
+            let bench = openedHolding ctx [ ownLaser600; benchLaser600 ]
+            let benchFile = Path.Combine(bench.folder.value.value, "Laser600 bench.item-json")
+            let benchBytes = File.ReadAllBytes benchFile
+            copyE1Choosing bench (MapOntoKitItem benchLaser600.id) "Copied 1 experiment(s) from"
+            Assert.Equal<string list>([ "Laser600 bench.item-json"; "Laser600.item-json" ], itemFilesIn bench.folder)
+            Assert.Equal<byte[]>(benchBytes, File.ReadAllBytes benchFile)
+            let mapped = reopenedCopy bench.folder
+            match mapped.experiments, mapped.resolved with
+            | [ copiedE1 ], Ok [ piece ] ->
+                Assert.Equal<ItemId option list>([ Some benchLaser600.id ], copiedE1.setup |> List.map (fun descriptor -> descriptor.itemIdOpt))
+                Assert.Equal<ItemId>(benchLaser600.id, piece.id)
+                Assert.Equal<Parameter list>(benchLaser600.parameters, piece.parameters)
+                for sourcePiece in [ copiedLaser600; spareLaser600 ] do
+                    Assert.NotEqual<Parameter list>(sourcePiece.parameters, piece.parameters)
+            | experiments, _ -> Assert.Fail $"E1 must be copied alone and resolve exactly the chosen piece, not {List.length experiments} experiment(s)"
+            Assert.Equal<Set<ItemId>>(set [ ownLaser600.id; benchLaser600.id ], mapped.items |> List.map (fun item -> item.id) |> set))

@@ -719,6 +719,8 @@ type ConstructorUiId =
     static member kitCopyChosenButton : ConstructorUiId = ConstructorUiId "KitCopyChosenButton"
     /// The copy panel's Cancel: closes the source, copying nothing (spec 0050 S6).
     static member kitCopyCancelButton : ConstructorUiId = ConstructorUiId "KitCopyCancelButton"
+    /// The copy panel's item-mapping table: one block per item the chosen experiments use (spec 0050 S7.2).
+    static member kitCopyItemList : ConstructorUiId = ConstructorUiId "KitCopyItemList"
 
     // --- The Data locations window (DataLocationsView, DataLocationsWindow). ---
     /// The single-instance window listing every data location (001 §G, spec 0050 S5.3).

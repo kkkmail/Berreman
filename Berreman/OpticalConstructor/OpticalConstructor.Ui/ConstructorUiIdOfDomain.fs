@@ -194,6 +194,12 @@ module ConstructorUiIdOfDomain =
         static member kitCopyExperimentToggle (experimentId : ExperimentId) : ConstructorUiId =
             ConstructorUiId $"KitCopyExperimentToggle_{experimentId.value}"
 
+        /// The mapping table's choice for a source item: `_Add`, or `_<the kit item's GUID>` it maps onto (spec 0050 S7.2).
+        static member kitCopyItemChoice (sourceItem : Kit.ItemId) (choice : Kit.ItemCopyChoice) : ConstructorUiId =
+            match choice with
+            | Kit.AddCopiedItem -> ConstructorUiId $"KitCopyItemChoice_{sourceItem.value}_Add"
+            | Kit.MapOntoKitItem kitItem -> ConstructorUiId $"KitCopyItemChoice_{sourceItem.value}_{kitItem.value}"
+
         /// A material-category option of the Material editor.
         static member materialEditorCategoryOption (categoryId : CategoryId) : ConstructorUiId =
             ConstructorUiId $"MaterialCategoryOption_{categoryId.value}"

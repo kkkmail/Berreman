@@ -10,6 +10,7 @@ open Avalonia.Media
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
@@ -122,6 +123,61 @@ let private kitSendRows (model : TableAndElementRotationModel) (dispatch : Table
     else
         []
 
+/// The mapping table, one block per used item: its line, then Add and Use for each kit item, the choice filled. It
+/// shares the toggles' bounded scroller, so the bar grows no taller and no control leaves the screen (spec 0050 S7.2).
+let private kitCopyItemRows
+    (model : TableAndElementRotationModel)
+    (copySource : KitCopySource)
+    (dispatch : TableAndElementRotationMsg -> unit)
+    : IView list =
+    let block (row : ItemCopyRow) : IView =
+        let source = row.sourceItem
+        let line =
+            match source.model.entryReferenceOpt with
+            | Some reference -> $"{source.label.value} — {reference.describe}"
+            | None -> source.label.value
+        let choiceBox (choice : ItemCopyChoice) (caption : ControlCaption) : IView =
+            let id = ConstructorUiId.kitCopyItemChoice source.id choice
+            let choose () = dispatch (ChooseCopiedItem (source.id, choice))
+            if choice = row.choice then
+                MaterialsWindowView.actionButton id caption MaterialsWindowView.positiveBackground choose
+            else
+                MaterialsWindowView.verbButton id caption choose
+        let choices =
+            choiceBox AddCopiedItem (ControlCaption "Add")
+            :: (model.kitItems |> List.map (fun item -> choiceBox (MapOntoKitItem item.id) (ControlCaption $"Use {item.label.value}")))
+        StackPanel.create [
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.margin (Thickness(0.0, 2.0, 0.0, 2.0))
+            StackPanel.children [
+                TextBlock.create [
+                    TextBlock.textWrapping TextWrapping.Wrap
+                    TextBlock.text line
+                ]
+                WrapPanel.create [
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.children choices
+                ]
+            ]
+        ] :> IView
+    match copySource.itemRows with
+    | [] -> []
+    | rows ->
+        [
+            TextBlock.create [
+                TextBlock.textWrapping TextWrapping.Wrap
+                TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0))
+                TextBlock.text "Items the chosen experiments use: add each to this kit, or use an item it already has."
+            ]
+            StackPanel.create [
+                ConstructorUiId.kitCopyItemList.automationAttribute<StackPanel> ()
+                StackPanel.orientation Orientation.Vertical
+                StackPanel.children (rows |> List.map block)
+            ]
+            |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.kitCopyItemList.value
+            :> IView
+        ]
+
 /// The open copy source: its name, a toggle per experiment in a list that scrolls inside its own height, because the
 /// bar sits outside the page's scroll, then Copy and Cancel on one row, the Copy box's right margin parting the pair
 /// (spec 0050 S6; .spec-md §10.5). Nothing while no source is open.
@@ -178,7 +234,7 @@ let private kitCopyRows (model : TableAndElementRotationModel) (dispatch : Table
                         ScrollViewer.content (
                             StackPanel.create [
                                 StackPanel.orientation Orientation.Vertical
-                                StackPanel.children (copySource.experiments |> List.map toggle)
+                                StackPanel.children ((copySource.experiments |> List.map toggle) @ kitCopyItemRows model copySource dispatch)
                             ])
                     ]
                     StackPanel.create [

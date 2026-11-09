@@ -270,8 +270,9 @@ module ScrollExtentTests =
             KitStartWindow(context, ForwardConstructor, (fun _ -> picker), (fun _ _ -> ())))
 
     /// The tallest Experiments bay under the kit bar at its tallest: a read-only kit with a folder, so its caption is
-    /// longest and Show in Explorer is offered, a running send, an open copy source of forty experiments with two
-    /// chosen, three files offered for reload and a status (spec 0050 S5.3, S6).
+    /// longest and Show in Explorer is offered, a running send, an open copy source of forty experiments, all chosen,
+    /// whose twenty items each have a row offering Add and the kit's three items, three files offered for reload and a
+    /// status (spec 0050 S5.3, S6, S7.2).
     let private tallestKitBar () : TableAndElementRotationModel =
         let filled = filledExperiments ()
         let readOnlyKit =
@@ -289,13 +290,35 @@ module ScrollExtentTests =
                     access = ReadOnlyKitAccess
             }
         let collected = List.head filled.experimentCollection.experiments
+        let laser600 : ItemModelChoice =
+            SourcePresetChoice (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source PresetIds.source600)
+        let pieceOf (n : int) (label : string) : Item =
+            let draft : ItemDraft =
+                {
+                    id = ItemId (System.Guid.Parse $"22900000-0000-4000-8000-%012d{n}")
+                    label = ItemLabel label
+                    model = laser600
+                    dial = FixedMounting
+                }
+            draft.toItem
+        let kitItems = [ 1 .. 3 ] |> List.map (fun n -> pieceOf (100 + n) $"Bench laser {n}")
+        let sourceItems = [ 1 .. 20 ] |> List.map (fun n -> pieceOf n $"Laser600 piece {n}")
+        let rowOf (index : int) (item : Item) : ItemCopyRow =
+            {
+                sourceItem = item
+                choice =
+                    match index % 2 with
+                    | 0 -> AddCopiedItem
+                    | _ -> MapOntoKitItem (List.item (index % 3) kitItems).id
+            }
+        let experiments = [ 1 .. 40 ] |> List.map (fun n -> { collected with id = Experiments.ExperimentId n })
         let copySource : KitCopySource =
             {
                 source = sourceKit
-                experiments = [ 1 .. 40 ] |> List.map (fun n -> { collected with id = Experiments.ExperimentId n })
-                chosen = [ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ]
-                items = []
-                itemRows = []
+                experiments = experiments
+                chosen = experiments |> List.map (fun experiment -> experiment.id)
+                items = sourceItems
+                itemRows = sourceItems |> List.mapi rowOf
             }
         let handle : KitArchiveJobHandle =
             {
@@ -312,7 +335,8 @@ module ScrollExtentTests =
                 kitFolderOpt = Some (KitFolder (FolderName "C:/kits/ScrollExtentTests/a bench kit with a long folder name"))
                 kitSend = (filled.kitSend.started handle).progressed (progress.jobProgress (JobRunner.JobElapsed System.TimeSpan.Zero))
                 kitCopyOpt = Some copySource
-                kitChanges = [ FileName ".kit-json"; FileName "E1.experiment-json"; FileName "E2.experiment-json" ]
+                kitItems = kitItems
+                kitChanges =[ FileName ".kit-json"; FileName "E1.experiment-json"; FileName "E2.experiment-json" ]
                 kitStatus = Some (ControlCaption "The kit is open read-only: nothing is saved.")
         }
 
