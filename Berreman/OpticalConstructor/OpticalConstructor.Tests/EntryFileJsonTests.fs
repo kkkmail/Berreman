@@ -3,6 +3,7 @@ namespace OpticalConstructor.Tests
 open System
 open System.Numerics
 open System.Text.Json.Nodes
+open Microsoft.FSharp.Reflection
 open Xunit
 open Berreman.Constants
 open Berreman.Fields
@@ -15,6 +16,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.DispersionModels
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.EntryTextDiff
@@ -430,6 +432,123 @@ module EntryFileJsonTests =
         match (LibraryFileText "{ this is not JSON").parseEntry MaterialEntryKind with
         | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason, "the error carries the parser's message")
         | other -> Assert.Fail($"a text that is not JSON: expected MalformedJsonErr, got %A{other}")
+
+    let private unionCaseNames<'Union> (values : 'Union list) : Set<string> =
+        values |> List.map (fun value -> (fst (FSharpValue.GetUnionFields(box value, typeof<'Union>))).Name) |> Set.ofList
+
+    let private everyUnionCaseName<'Union> () : Set<string> =
+        FSharpType.GetUnionCases typeof<'Union> |> Array.map _.Name |> Set.ofArray
+
+    let private noiseAxesOf (form : ItemModelForm) : ItemParameterAxis list option =
+        match form with
+        | IntensityDetectorModel noise
+        | MuellerPolarimeterModel noise
+        | EllipsometerModel noise -> Some noise
+        | SourcePresetItemModel
+        | IdealPolarizerItemModel
+        | StackSampleItemModel
+        | OpticalElementModel _
+        | EmptySlotModel -> None
+
+    /// The noise axes the file holds: the payload's form, whose only field is the axis list (spec 0050 S7.1).
+    let private noiseAxisNodes (entry : JsonObject) : JsonObject list =
+        entry.["payload"].["Fields"].[0].["Fields"].[0].AsArray() |> Seq.map (fun axis -> axis.AsObject()) |> List.ofSeq
+
+    let private intTagOf (node : JsonNode) : int option =
+        match node with
+        | :? JsonValue as value ->
+            match value.TryGetValue<int>() with
+            | true, tag -> Some tag
+            | false, _ -> None
+        | _ -> None
+
+    /// On disk each noise axis's kind is its int tag, never its case name; a tag of 0, one past the last, or the case
+    /// name is `MalformedJsonErr` at the file seam (spec 0050 S7.1; AGENTS.md ELEV017).
+    let private assertDetectorFile (content : LibraryEntryContent) (noise : ItemParameterAxis list) : unit =
+        let file = fileOf content
+        let onDisk = noiseAxisNodes ((JsonNode.Parse file.value).AsObject())
+        Assert.Equal<int option list>(noise |> List.map (fun axis -> Some axis.kind.value), onDisk |> List.map (fun axis -> intTagOf axis["kind"]))
+
+        let firstKindTo (tag : JsonNode) (entry : JsonObject) : unit = (List.head (noiseAxisNodes entry))["kind"] <- tag
+
+        let refused : (string * (JsonObject -> unit)) list =
+            [
+                "a kind tag of 0", firstKindTo (JsonValue.Create 0)
+                "an unrecognised kind tag, one past the last", firstKindTo (JsonValue.Create 8)
+                "a kind written as its case name", firstKindTo (JsonValue.Create (nameof AngleParameter))
+            ]
+
+        for place, edit in refused do
+            match (editedText file edit).parseEntry ItemModelEntryKind with
+            | Error (MalformedJsonErr reason) -> Assert.Contains(nameof ParameterKind, reason)
+            | other -> Assert.Fail($"{place}: expected MalformedJsonErr, got %A{other}")
+
+    [<Fact>]
+    let ``an item-model entry file round-trips every model form`` () =
+        let detectorNoiseAxes : ItemParameterAxis list =
+            match (BuiltinCatalogue.itemModel ItemModelIds.muellerPolarimeterModelId).entry.model with
+            | MuellerPolarimeterModel noise -> noise
+            | other -> failwith $"the shipped Mueller polarimeter holds %A{other}"
+
+        let zeroNoiseAxes : ItemParameterAxis list = detectorNoiseAxes |> List.map (fun axis -> { axis with defaultValue = ParameterValue 0.0 })
+        Assert.Equal(3, detectorNoiseAxes.Length)
+        Assert.NotEqual<ItemParameterAxis list>(detectorNoiseAxes, zeroNoiseAxes)
+
+        let part (form : OpticalForm) (offset : Angle) : CompoundComponent = { form = form; offset = offset }
+
+        let opticalForms : OpticalForm list =
+            [
+                RealPolarizerModel ExtinctionRatioLeakage
+                RealPolarizerModel DiattenuationLeakage
+                RetarderPlateModel ConstantRetardance
+                RetarderPlateModel (InverseWaveLengthRetardance (WaveLength.nm 632.8<nm>))
+                BlackBoxMuellerModel SixteenElementMueller
+                BlackBoxMuellerModel FifteenElementsAndScale
+                CompoundModel
+                    [
+                        part (RealPolarizerModel DiattenuationLeakage) Angle.zero
+                        part (CompoundModel [ part (RetarderPlateModel ConstantRetardance) (atDegrees 45.0); part (BlackBoxMuellerModel FifteenElementsAndScale) (atDegrees (-15.0)) ]) (atDegrees 30.0)
+                    ]
+            ]
+
+        let forms : ItemModelForm list =
+            (opticalForms |> List.map OpticalElementModel)
+            @ [ EmptySlotModel ]
+            @ ([ detectorNoiseAxes; zeroNoiseAxes ] |> List.collect (fun noise -> [ IntensityDetectorModel noise; MuellerPolarimeterModel noise; EllipsometerModel noise ]))
+            @ [ SourcePresetItemModel; IdealPolarizerItemModel; StackSampleItemModel ]
+
+        Assert.Equal<Set<string>>(everyUnionCaseName<ItemModelForm> (), unionCaseNames forms)
+        Assert.Equal<Set<string>>(everyUnionCaseName<OpticalForm> (), unionCaseNames opticalForms)
+
+        let entryOf (index : int) (provenance : EntryProvenance) (form : ItemModelForm) : ItemModelEntry =
+            {
+                id = ItemModelId (Guid.Parse $"3e7a9c51-6d2b-4f84-b1e0-{index + 1:D12}")
+                name = EntryName $"Item model form {index + 1}"
+                description = EntryDescription $"Item model form {index + 1}, a test item model"
+                model = form
+                protection = provenance.protection
+            }
+
+        for provenance in [ builtInCatalogue; UserProvenance ] do
+            forms
+            |> List.iteri (fun i form ->
+                let entry = entryOf i provenance form
+                let content = LibraryEntryContent.ofItemModel VersionNumber.first provenance entry |> decodedOf
+                Assert.Equal<LibraryEntryKind>(ItemModelEntryKind, content.schema.kind)
+                let readBack = roundTrip content
+                let decoded = readBack.content.toItemModel |> decodedOf
+                Assert.Equal<ItemModelEntry>(entry, decoded)
+                Assert.Equal<EntryProvenance>(provenance, readBack.content.provenance)
+
+                match noiseAxesOf form, noiseAxesOf decoded.model with
+                | Some noise, Some decodedNoise ->
+                    Assert.Equal<ParameterValue list>(noise |> List.map _.defaultValue, decodedNoise |> List.map _.defaultValue)
+                    assertDetectorFile content noise
+                | None, None -> ()
+                | _ -> Assert.Fail($"item model form {i + 1} changed between a detector and another form on its round trip"))
+
+        let realLinearPolarizer = LibraryEntryContent.ofItemModel VersionNumber.first UserProvenance (entryOf 0 UserProvenance (List.head forms)) |> decodedOf
+        assertSchemaInvalid "a real linear polarizer's file read as a polarizer" ((fileOf realLinearPolarizer).parseEntry PolarizerEntryKind)
 
     /// A catalogue holding a material, a sample and a source.
     let private threeKindManifest : CatalogueManifest =

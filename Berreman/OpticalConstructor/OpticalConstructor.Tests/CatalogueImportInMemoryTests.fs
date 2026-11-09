@@ -4,6 +4,7 @@ open System
 open System.IO
 open Softellect.Sys.Primitives
 open Xunit
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
@@ -15,6 +16,7 @@ open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.CategoryDatabaseStore
 open OpticalConstructor.Storage.EntryFileJson
+open OpticalConstructor.Storage.ItemModelDatabaseStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
 open OpticalConstructor.Storage.PresetDatabaseStore
@@ -29,6 +31,7 @@ type ImportStoreSet =
         materials : MaterialProxy
         samples : SampleProxy
         presets : LibraryProxy
+        itemModels : ItemModelProxy
     }
 
 module private CatalogueImportContractData =
@@ -1616,6 +1619,17 @@ type CatalogueImportContract () =
         Assert.Equal<Result<int, SampleError>>(Ok (countOf SampleEntryKind), stores.samples.listSamples IncludeInactive |> Result.map List.length)
         Assert.Equal(countOf SourceEntryKind + countOf PolarizerEntryKind + countOf DetectorEntryKind, (presetEntries stores).Length)
 
+        let itemModelRows : ItemModelVersionId list =
+            catalogue.envelopes
+            |> List.filter (fun envelope -> envelope.content.schema.kind = ItemModelEntryKind)
+            |> List.map (fun envelope ->
+                let row : ItemModelVersion = { version = envelope.content.version; entry = envelope.content.toItemModel |> decodeImportEntry }
+                row.versionId)
+        let listed = stores.itemModels.listItemModels () |> Result.map (List.map _.versionId)
+        Assert.NotEmpty itemModelRows
+        Assert.Equal<Result<int, ItemModelError>>(Ok (countOf ItemModelEntryKind), listed |> Result.map List.length)
+        Assert.Equal<Result<Set<ItemModelVersionId>, ItemModelError>>(Ok (Set.ofList itemModelRows), listed |> Result.map Set.ofList)
+
     [<Fact>]
     member this.``every imported entry resolves by its id to its decoded value`` () : unit =
         let catalogue = readImportCatalogue ()
@@ -1652,6 +1666,9 @@ type CatalogueImportContract () =
                     |> expectImportOk
                     |> Option.map (fun held -> held.content.toItemModel |> decodeImportEntry)
                 Assert.True((Some expected = actual), "An item-model id must resolve to its decoded value.")
+                let expectedVersion : ItemModelVersion = { version = content.version; entry = expected }
+                Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(
+                    Ok (Some expectedVersion), stores.itemModels.resolveItemModelVersion expectedVersion.versionId)
 
     [<Fact>]
     member this.``importing a catalogue the stores already hold reuses every entry and writes nothing`` () : unit =
@@ -2098,6 +2115,7 @@ type CatalogueImportInMemoryTests () =
             materials = stores.materials
             samples = stores.samples
             presets = stores.libraryEntries
+            itemModels = stores.itemModels
         }
 
     [<Fact>]
@@ -2155,6 +2173,7 @@ type CatalogueImportSqliteTests () =
             materials = MaterialProxy.createInDatabase database
             samples = SampleProxy.createInDatabase database
             presets = LibraryProxy.createInDatabase database
+            itemModels = ItemModelProxy.createInDatabase database
         }
 
     [<Fact>]
