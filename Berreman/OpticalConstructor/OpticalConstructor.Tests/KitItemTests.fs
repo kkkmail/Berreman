@@ -20,14 +20,31 @@ module KitItemTests =
     /// A preset's binding at its latest version, built from its GUID text rather than through the member under test.
     let private presetAtLatest (preset : ElementValueId) : EntryReference = EntryLatestReference (LibraryEntryId (Guid.Parse preset.value))
 
-    let private sourceModel : ItemModelVersionId = (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId).versionId
-    let private polarizerModel : ItemModelVersionId = (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId).versionId
-    let private stackModel : ItemModelVersionId = (BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId).versionId
+    let private sourceItemModel : ItemModelVersion = BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId
+    let private polarizerItemModel : ItemModelVersion = BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId
+    let private stackItemModel : ItemModelVersion = BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId
+    let private sourceModel : ItemModelVersionId = sourceItemModel.versionId
+    let private polarizerModel : ItemModelVersionId = polarizerItemModel.versionId
+    let private stackModel : ItemModelVersionId = stackItemModel.versionId
     let private sampleVersion : SampleVersionId = SampleVersionId.firstOf SampleIds.glassPlate1mmId
 
     /// The glass plate's first version as a reference, built from its GUID rather than through the member under test.
     let private sampleAtVersion : EntryReference =
         EntryVersionReference { entryId = SampleIds.glassPlate1mmId.toLibraryEntryId; version = VersionNumber.first }
+
+    /// The Built-in polarizer preset of that id, failing when the catalogue holds another kind under it.
+    let private polarizerPreset (id : ElementValueId) : PolarizerPreset =
+        match BuiltinCatalogue.preset id with
+        | PolarizerItem polarizer -> polarizer
+        | SampleItem _ | SourceItem _ | DetectorItem _ -> failwith $"The Built-in preset '{id.value}' is not a polarizer."
+
+    let private knownAt (name : ParameterName) (value : ParameterValue) : Parameter = { name = name; state = KnownParameter value }
+
+    /// The draft's item, failing with the refusal's text when `addTo` refuses it.
+    let private added (items : Item list) (draft : ItemDraft) : Item =
+        match draft.addTo items with
+        | Ok item -> item
+        | Error error -> failwith $"'{draft.label.value}' was refused: {error.describe}"
 
     let private assertReferences (instance : ItemModelInstance) (model : ItemModelVersionId) (binding : EntryReference option) : unit =
         Assert.Equal<EntryReference option>(Some (exactModelVersion model), instance.entryReferenceOpt)
@@ -255,3 +272,230 @@ module KitItemTests =
         Assert.Equal<ItemParameterAxis list>([ dialZero ], (DialMounted DialNegative).parameterAxes)
         Assert.Equal<ItemParameterAxis list>([ dialZero ], (DialMounted DialPositive).parameterAxes)
         Assert.Equal<ItemParameterAxis list>([], FixedMounting.parameterAxes)
+
+    [<Fact>]
+    let ``adding an item from a library model creates its parameters known at the model's defaults and its dial zero`` () : unit =
+        let circularPolarizer = BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId
+        let cpl1Id = ItemId (Guid.Parse "7d613690-0061-4b67-802e-4d443d689476")
+
+        let cpl1 : ItemDraft =
+            {
+                id = cpl1Id
+                label = ItemLabel "CPL1"
+                model = LibraryModelChoice circularPolarizer
+                dial = DialMounted DialPositive
+            }
+
+        let circularPolarizerV1 : ItemModelVersionId =
+            {
+                itemModelId = ItemModelIds.circularPolarizerModelId
+                version = VersionNumber.first
+            }
+
+        let expected : Item =
+            {
+                id = cpl1Id
+                label = ItemLabel "CPL1"
+                model = ItemModelVersionInstance circularPolarizerV1
+                parameters =
+                    [
+                        knownAt (ParameterName "c1.extinctionRatio") (ParameterValue 0.0)
+                        knownAt (ParameterName "c1.axisOffset") (ParameterValue 0.0)
+                        knownAt (ParameterName "c2.retardance") (ParameterValue (Math.PI / 2.0))
+                        knownAt (ParameterName "c2.fastAxisOffset") (ParameterValue 0.0)
+                        knownAt (ParameterName "dialZero") (ParameterValue 0.0)
+                    ]
+                dial = DialMounted DialPositive
+                photoOpt = None
+                notes = ItemNotes ""
+                revision = ItemRevision 1
+                history = []
+            }
+
+        let item = cpl1.toItem
+        Assert.Equal<Item>(expected, item)
+        Assert.Equal<ItemModelInstance>(ItemModelVersionInstance circularPolarizer.versionId, item.model)
+
+        // Every parameter is its axis's default, the model's axes first and the dial's last.
+        let axes = circularPolarizer.entry.model.parameterAxes @ (DialMounted DialPositive).parameterAxes
+        Assert.Equal<Parameter list>(axes |> List.map Parameter.knownAtDefault, item.parameters)
+
+        match cpl1.addTo [] with
+        | Ok addedItem -> Assert.Equal<Item>(expected, addedItem)
+        | Error error -> Assert.Fail($"an empty kit refused CPL1: {error.describe}")
+
+    [<Fact>]
+    let ``a source preset, an ideal polarizer and a sample give an item their own parameters`` () : unit =
+        let heNe = BuiltinCatalogue.source PresetIds.heNe633
+        let linearPolarizer = polarizerPreset PresetIds.polarizerLp
+        let glassPlate = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
+
+        let laserDraft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "f08359e8-6ea0-485d-bb95-dcb2ff4c9023")
+                label = ItemLabel "Laser"
+                model = SourcePresetChoice (sourceItemModel, heNe)
+                dial = FixedMounting
+            }
+
+        let lp1Draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "b8492f97-06ee-40b2-a563-ce9970e1f8ab")
+                label = ItemLabel "LP1"
+                model = PolarizerPresetChoice (polarizerItemModel, linearPolarizer)
+                dial = DialMounted DialNegative
+            }
+
+        let plateDraft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "6b1c045e-8e01-47cf-a319-a6c2e3567071")
+                label = ItemLabel "Plate"
+                model = StackSampleChoice (stackItemModel, sampleVersion, glassPlate)
+                dial = FixedMounting
+            }
+
+        let laser = added [] laserDraft
+        let lp1 = added [ laser ] lp1Draft
+        let plate = added [ laser; lp1 ] plateDraft
+
+        // Each names the shipped item model's exact version and binds its preset or sample as typed physics.
+        let modelV1 (id : ItemModelId) : ItemModelVersionId = { itemModelId = id; version = VersionNumber.first }
+        let laserModel = modelV1 ItemModelIds.sourcePresetItemModelId
+        let lp1Model = modelV1 ItemModelIds.idealPolarizerItemModelId
+        let plateModel = modelV1 ItemModelIds.stackSampleItemModelId
+
+        let instances : (Item * ItemModelInstance * ItemModelVersionId) list =
+            [
+                laser, PresetInstance (laserModel, PresetIds.heNe633), laserModel
+                lp1, PresetInstance (lp1Model, PresetIds.polarizerLp), lp1Model
+                plate, SampleInstance (plateModel, sampleVersion), plateModel
+            ]
+
+        for item, instance, model in instances do
+            Assert.Equal<ItemModelInstance>(instance, item.model)
+            Assert.Equal<EntryReference option>(Some (exactModelVersion model), item.model.entryReferenceOpt)
+
+        Assert.Equal<Parameter list>(
+            [
+                knownAt (ParameterName "azimuth") (ParameterValue 0.0)
+                knownAt (ParameterName "ellipticity") (ParameterValue 0.0)
+                knownAt (ParameterName "degreeOfPolarization") (ParameterValue 0.0)
+                knownAt (ParameterName "intensityScale") (ParameterValue 1.0)
+            ],
+            laser.parameters)
+
+        Assert.Equal<Parameter list>([ knownAt (ParameterName "dialZero") (ParameterValue 0.0) ], lp1.parameters)
+
+        match plate.parameters with
+        | [ { name = name; state = KnownParameter thickness } ] ->
+            Assert.Equal<ParameterName>(ParameterName "substrate.thickness", name)
+            Assert.Equal(1e-3, thickness.value, 1e-15)
+        | parameters -> Assert.Fail($"the plate holds {parameters.Length} parameters, not its substrate thickness alone")
+
+        // A model that does not take the choice's binding, a preset id that is no GUID, a sample version of another
+        // sample and a binding model chosen without its binding are each refused, and the kit keeps what it held.
+        let kit = [ laser; lp1; plate ]
+        let circularPolarizer = BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId
+        let notAGuid : PolarizerPreset = { linearPolarizer with id = ElementValueId "not-a-guid" }
+
+        let refused : (ItemModelChoice * ItemModelVersion) list =
+            [
+                SourcePresetChoice (polarizerItemModel, heNe), polarizerItemModel
+                SourcePresetChoice (circularPolarizer, heNe), circularPolarizer
+                PolarizerPresetChoice (stackItemModel, linearPolarizer), stackItemModel
+                PolarizerPresetChoice (polarizerItemModel, notAGuid), polarizerItemModel
+                StackSampleChoice (stackItemModel, SampleVersionId.firstOf SampleIds.glassFilm600Id, glassPlate), stackItemModel
+                StackSampleChoice (sourceItemModel, sampleVersion, glassPlate), sourceItemModel
+                LibraryModelChoice sourceItemModel, sourceItemModel
+                LibraryModelChoice stackItemModel, stackItemModel
+            ]
+
+        for choice, model in refused do
+            let draft : ItemDraft =
+                {
+                    id = ItemId (Guid.Parse "540fdf04-d6ca-47f4-a374-49a16f028b1f")
+                    label = ItemLabel "Refused"
+                    model = choice
+                    dial = FixedMounting
+                }
+
+            match draft.addTo kit with
+            | Error (InvalidItemModelBindingErr reason) -> Assert.Contains($"'{model.entry.name.value}'", reason)
+            | Error error -> Assert.Fail($"expected an invalid item model binding: {error.describe}")
+            | Ok item -> Assert.Fail($"recorded an item over a model that does not take its binding: {item.label.value}")
+
+        Assert.Equal<Item list>([ laser; lp1; plate ], kit)
+
+    [<Fact>]
+    let ``two items of one model are two items with equal starting parameters`` () : unit =
+        let realLinearPolarizer = BuiltinCatalogue.itemModel ItemModelIds.realLinearPolarizerModelId
+
+        let draftOf (id : ItemId) (label : ItemLabel) : ItemDraft =
+            {
+                id = id
+                label = label
+                model = LibraryModelChoice realLinearPolarizer
+                dial = DialMounted DialPositive
+            }
+
+        let lp1 = added [] (draftOf (ItemId (Guid.Parse "28f940f8-6b2e-48c5-8e93-65dc011e8780")) (ItemLabel "LP1"))
+        let lp2 = added [ lp1 ] (draftOf (ItemId (Guid.Parse "c52c3d48-ecc5-4019-bf1e-1a5b3df11240")) (ItemLabel "LP2"))
+
+        Assert.NotEqual<ItemId>(lp1.id, lp2.id)
+        Assert.NotEqual<ItemLabel>(lp1.label, lp2.label)
+        Assert.Equal<ItemModelInstance>(ItemModelVersionInstance realLinearPolarizer.versionId, lp1.model)
+        Assert.Equal<ItemModelInstance>(lp1.model, lp2.model)
+        Assert.Equal<Parameter list>(lp1.parameters, lp2.parameters)
+
+        Assert.Equal<Parameter list>(
+            [
+                knownAt (ParameterName "extinctionRatio") (ParameterValue 0.0)
+                knownAt (ParameterName "axisOffset") (ParameterValue 0.0)
+                knownAt (ParameterName "dialZero") (ParameterValue 0.0)
+            ],
+            lp2.parameters)
+
+    [<Fact>]
+    let ``adding an item whose id or label file name the kit already holds is refused`` () : unit =
+        let realLinearPolarizer = BuiltinCatalogue.itemModel ItemModelIds.realLinearPolarizerModelId
+        let lp1Id = ItemId (Guid.Parse "c4c3c64b-0c6f-4f68-a2e3-0b611726ac81")
+
+        let draftOf (id : ItemId) (label : ItemLabel) : ItemDraft =
+            {
+                id = id
+                label = label
+                model = LibraryModelChoice realLinearPolarizer
+                dial = DialMounted DialPositive
+            }
+
+        let lp1 = added [] (draftOf lp1Id (ItemLabel "LP1"))
+        let lpUnderscore1 = added [ lp1 ] (draftOf (ItemId (Guid.Parse "82f8374a-12e6-48c0-8b07-c1f706a7688e")) (ItemLabel "LP_1"))
+        let kit = [ lp1; lpUnderscore1 ]
+
+        // On Windows `lp1.item-json` is the file `LP1.item-json`, and `LP:1` is stored as `LP_1.item-json`.
+        let sameFile : (ItemLabel * ItemLabel) list =
+            [
+                ItemLabel "lp1", ItemLabel "LP1"
+                ItemLabel "LP:1", ItemLabel "LP_1"
+            ]
+
+        for label, held in sameFile do
+            match (draftOf (ItemId (Guid.Parse "f09049d9-b228-4c69-ab7e-d655d97c66e0")) label).addTo kit with
+            | Error (DuplicateItemLabelErr reason) ->
+                Assert.Contains($"'{label.value}'", reason)
+                Assert.Contains($"'{held.value}'", reason)
+                Assert.Contains((ItemKitFile.fileNameOf held.fileStem).value, reason)
+            | Error error -> Assert.Fail($"expected a duplicate item label: {error.describe}")
+            | Ok item -> Assert.Fail($"recorded '{item.label.value}' beside '{held.value}'")
+
+        match (draftOf lp1Id (ItemLabel "LP3")).addTo kit with
+        | Error (DuplicateItemIdErr reason) ->
+            Assert.Contains("'LP3'", reason)
+            Assert.Contains("'LP1'", reason)
+            Assert.Contains(lp1Id.value.ToString(), reason)
+        | Error error -> Assert.Fail($"expected a duplicate item id: {error.describe}")
+        | Ok item -> Assert.Fail($"recorded '{item.label.value}' under LP1's id")
+
+        // A new id under a new file name is added beside them.
+        let lp2 = added kit (draftOf (ItemId (Guid.Parse "c91baa09-e606-4a43-bf77-259fd3db1a05")) (ItemLabel "LP2"))
+        Assert.Equal<ItemLabel>(ItemLabel "LP2", lp2.label)

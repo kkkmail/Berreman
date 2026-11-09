@@ -595,3 +595,123 @@ module Kit =
 
         member this.tryFindParameter (name : ParameterName) : Parameter option =
             this.parameters |> List.tryFind (fun parameter -> parameter.name = name)
+
+    /// An item model as the library resolved it: a binding form with the preset or sample version it binds, or a model
+    /// that stands alone (spec 0050 S7.1; 001 §I).
+    type ItemModelChoice =
+        | SourcePresetChoice of model : ItemModelVersion * source : SourcePreset
+        | PolarizerPresetChoice of model : ItemModelVersion * polarizer : PolarizerPreset
+        | StackSampleChoice of model : ItemModelVersion * version : SampleVersionId * sample : Sample
+        | LibraryModelChoice of ItemModelVersion
+
+        /// The chosen model's exact version, with the preset or sample version it binds (spec 0050 S7.1).
+        member this.instance : ItemModelInstance =
+            match this with
+            | SourcePresetChoice (model, source) -> PresetInstance (model.versionId, source.id)
+            | PolarizerPresetChoice (model, polarizer) -> PresetInstance (model.versionId, polarizer.id)
+            | StackSampleChoice (model, version, _) -> SampleInstance (model.versionId, version)
+            | LibraryModelChoice model -> ItemModelVersionInstance model.versionId
+
+        /// The model's axes over its typed binding, or a standalone form's own; empty when the form takes no such
+        /// binding, which `ItemDraft.addTo` refuses (spec 0050 S7.1).
+        member this.parameterAxes : ItemParameterAxis list =
+            let boundAxes (model : ItemModelVersion) (binding : ItemModelBinding) : ItemParameterAxis list =
+                model.entry.model.tryBoundParameterAxes binding |> Option.defaultValue []
+
+            match this with
+            | SourcePresetChoice (model, source) -> boundAxes model (SourcePresetBound source)
+            | PolarizerPresetChoice (model, polarizer) -> boundAxes model (PolarizerPresetBound polarizer)
+            | StackSampleChoice (model, _, sample) -> boundAxes model (StackSampleBound sample)
+            | LibraryModelChoice model -> model.entry.model.parameterAxes
+
+    /// What `AddItem` gives: a new item's id, label, chosen model and mounting (spec 0050 S7.1; 001 §P).
+    type ItemDraft =
+        {
+            id : ItemId
+            label : ItemLabel
+            model : ItemModelChoice
+            dial : ItemDial
+        }
+
+        /// The new item at revision 1, with every parameter its model and then its dial publish known at its default
+        /// (spec 0050 S7.1; 001 §I).
+        member this.toItem : Item =
+            let item : Item =
+                {
+                    id = this.id
+                    label = this.label
+                    model = this.model.instance
+                    parameters = this.model.parameterAxes @ this.dial.parameterAxes |> List.map Parameter.knownAtDefault
+                    dial = this.dial
+                    photoOpt = None
+                    notes = ItemNotes ""
+                    revision = ItemRevision.first
+                    history = []
+                }
+
+            item
+
+        /// The new item, refused when the kit holds its id or its label's file name ignoring case, because every
+        /// `<label>.item-json` shares the kit root on Windows, or when its model does not take its binding. It writes
+        /// nothing; the caller records the item (spec 0050 S7.1).
+        member this.addTo (items : Item list) : Result<Item, ItemError> =
+            let modelText (model : ItemModelVersion) : string =
+                $"the item model '{model.entry.name.value}' ({model.versionId.entryReference.describe})"
+
+            let takesText (model : ItemModelVersion) : string =
+                match model.entry.model.bindingKindOpt with
+                | Some SourcePresetBinding -> $"{modelText model} binds a source preset"
+                | Some PolarizerPresetBinding -> $"{modelText model} binds a polarizer preset"
+                | Some StackSampleBinding -> $"{modelText model} binds a stack sample"
+                | None -> $"{modelText model} binds nothing"
+
+            // The binding must be the kind its model's form takes (step 208), and a preset binds by its GUID (step 137).
+            let unlessTaken (model : ItemModelVersion) (binding : ItemModelBinding) (bound : string) : string option =
+                match model.entry.model.tryBoundParameterAxes binding with
+                | Some _ -> None
+                | None -> Some $"{takesText model}, not {bound}"
+
+            let unlessGuid (model : ItemModelVersion) (preset : ElementValueId) (bound : string) : string option =
+                match preset.tryToLibraryEntryId with
+                | Some _ -> None
+                | None -> Some $"{modelText model} cannot bind {bound}: its id is not a canonical GUID"
+
+            let bindingRules : string option list =
+                match this.model with
+                | SourcePresetChoice (model, source) ->
+                    let bound = $"the source preset '{source.name.value}' ({source.id.value})"
+                    [ unlessTaken model (SourcePresetBound source) bound; unlessGuid model source.id bound ]
+                | PolarizerPresetChoice (model, polarizer) ->
+                    let bound = $"the polarizer preset '{polarizer.name.value}' ({polarizer.id.value})"
+                    [ unlessTaken model (PolarizerPresetBound polarizer) bound; unlessGuid model polarizer.id bound ]
+                | StackSampleChoice (model, version, sample) ->
+                    let bound = $"the sample '{sample.name.value}' ({sample.id.value})"
+                    [
+                        unlessTaken model (StackSampleBound sample) bound
+                        if version.sampleId = sample.id then
+                            None
+                        else
+                            Some $"{modelText model} cannot bind {bound} at a version of the sample {version.sampleId.value}"
+                    ]
+                | LibraryModelChoice model ->
+                    match model.entry.model.bindingKindOpt with
+                    | Some _ -> [ Some $"{takesText model}, and the choice binds none" ]
+                    | None -> []
+
+            let sameFile (held : Item) : string option =
+                if String.Equals(held.label.fileStem.value, this.label.fileStem.value, StringComparison.OrdinalIgnoreCase) then
+                    let file = ItemKitFile.fileNameOf held.label.fileStem
+                    Some $"'{this.label.value}' beside '{held.label.value}': both are stored as {file.value}, ignoring case"
+                else
+                    None
+
+            match items |> List.tryFind (fun held -> held.id = this.id) with
+            | Some held ->
+                Error (DuplicateItemIdErr $"'{this.label.value}' reuses the id {this.id.value} of '{held.label.value}'")
+            | None ->
+                match items |> List.tryPick sameFile with
+                | Some reason -> Error (DuplicateItemLabelErr reason)
+                | None ->
+                    match bindingRules |> List.choose id with
+                    | reason :: _ -> Error (InvalidItemModelBindingErr reason)
+                    | [] -> Ok this.toItem
