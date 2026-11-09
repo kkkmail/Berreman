@@ -97,3 +97,74 @@ module KitItemTests =
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
         Assert.Equal(7, descriptions |> List.distinct |> List.length)
+
+    [<Fact>]
+    let ``a parameter is created known at its axis default`` () : unit =
+        let axes = (OpticalElementModel (RetarderPlateModel ConstantRetardance)).parameterAxes
+
+        match axes |> List.tryFind (fun axis -> axis.name = ParameterName "retardance") with
+        | Some axis ->
+            let expected : Parameter =
+                {
+                    name = ParameterName "retardance"
+                    state = KnownParameter (ParameterValue (Math.PI / 2.0))
+                }
+
+            Assert.Equal<Parameter>(expected, Parameter.knownAtDefault axis)
+        | None -> Assert.Fail("the constant retarder plate publishes no retardance axis")
+
+    [<Fact>]
+    let ``a parameter whose state keeps its rules is kept, and one that breaks them is InvalidParameterStateErr`` () : unit =
+        let parameterOf (state : ParameterState) : Parameter = { name = ParameterName "retardance"; state = state }
+        let unitInterval : ParameterInterval = { lower = ParameterValue 0.0; upper = ParameterValue 1.0 }
+
+        let unknownWithin (start : ParameterValue) (bounds : ParameterInterval) (priorOpt : ParameterPrior option) : ParameterState =
+            UnknownParameter { start = start; bounds = bounds; priorOpt = priorOpt }
+
+        let priorOf (sigma : ParameterSigma) : ParameterPrior = { centre = ParameterValue 0.5; sigma = sigma }
+
+        let calibratedWith (sigma : ParameterSigma) : ParameterState =
+            let calibration : CalibratedParameterData =
+                {
+                    value = ParameterValue 0.25
+                    sigma = sigma
+                    fitRun = FitRunName "QZ-LR@20261101T120000Z"
+                }
+
+            CalibratedParameter calibration
+
+        let kept : ParameterState list =
+            [
+                KnownParameter (ParameterValue 0.1)
+                unknownWithin (ParameterValue 0.5) unitInterval None
+                unknownWithin (ParameterValue 0.5) unitInterval (Some (priorOf (ParameterSigma 0.1)))
+                unknownWithin (ParameterValue 0.0) unitInterval None
+                calibratedWith (ParameterSigma 0.01)
+            ]
+
+        for state in kept do
+            let parameter = parameterOf state
+
+            match parameter.validate with
+            | Ok validated -> Assert.Equal<Parameter>(parameter, validated)
+            | Error error -> Assert.Fail($"refused a parameter that keeps its rules: {error.describe}")
+
+        let unboundedAbove : ParameterInterval = { lower = ParameterValue 0.0; upper = ParameterValue Double.PositiveInfinity }
+        let empty : ParameterInterval = { lower = ParameterValue 1.0; upper = ParameterValue 1.0 }
+
+        // Each refused state names the rule it breaks.
+        let refused : (ParameterState * string) list =
+            [
+                KnownParameter (ParameterValue Double.NaN), "the known value NaN is not finite"
+                unknownWithin (ParameterValue 0.5) unboundedAbove None, "the upper bound Infinity is not finite"
+                unknownWithin (ParameterValue 1.0) empty None, "the lower bound 1 is not below the upper bound 1"
+                unknownWithin (ParameterValue (-0.5)) unitInterval None, "the start -0.5 lies outside [0, 1]"
+                unknownWithin (ParameterValue 0.5) unitInterval (Some (priorOf (ParameterSigma 0.0))), "the prior sigma 0 is not above zero"
+                calibratedWith (ParameterSigma (-1.0)), "the calibration sigma -1 is not above zero"
+            ]
+
+        for state, rule in refused do
+            match (parameterOf state).validate with
+            | Error (InvalidParameterStateErr reason) -> Assert.Equal<string>($"retardance: {rule}", reason)
+            | Error error -> Assert.Fail($"expected an invalid parameter state: {error.describe}")
+            | Ok parameter -> Assert.Fail($"kept a parameter that breaks its rules: {parameter.name.value}")

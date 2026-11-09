@@ -440,3 +440,116 @@ module Kit =
                     }
                 Some (EntryVersionReference reference)
             | ItemModelVersionInstance _ -> None
+
+    /// The bounds a fit searches a parameter within, in its kind's unit (spec 0050 S7.1; 001 §I).
+    type ParameterInterval =
+        {
+            lower : ParameterValue
+            upper : ParameterValue
+        }
+
+    /// One standard deviation in the parameter's unit (spec 0050 S7.1; 001 §I).
+    type ParameterSigma =
+        | ParameterSigma of double
+
+        member this.value : double = let (ParameterSigma sigma) = this in sigma
+
+    /// A Gaussian prior on an unknown parameter (spec 0050 S7.1; 001 §I).
+    type ParameterPrior =
+        {
+            centre : ParameterValue
+            sigma : ParameterSigma
+        }
+
+    /// Where a fit starts an unknown parameter, the bounds it searches and its optional prior (spec 0050 S7.1).
+    type UnknownParameterData =
+        {
+            start : ParameterValue
+            bounds : ParameterInterval
+            priorOpt : ParameterPrior option
+        }
+
+    /// The fit run a calibration came from, named by its file stem `<study>@<stamp>` (spec 0050 S7.1; 001 §A).
+    type FitRunName =
+        | FitRunName of string
+
+        member this.value : string = let (FitRunName name) = this in name
+
+    /// A value a fit run determined, with its standard deviation (spec 0050 S7.1; 001 §I).
+    type CalibratedParameterData =
+        {
+            value : ParameterValue
+            sigma : ParameterSigma
+            fitRun : FitRunName
+        }
+
+    /// Whether a parameter is known, left for a fit to find, or calibrated by one (spec 0050 S7.1; .spec-md §3.17).
+    type ParameterState =
+        | KnownParameter of ParameterValue
+        | UnknownParameter of UnknownParameterData
+        | CalibratedParameter of CalibratedParameterData
+
+    /// One of an item's parameters: its model axis's name and its state (spec 0050 S7.1; 001 §I).
+    type Parameter =
+        {
+            name : ParameterName
+            state : ParameterState
+        }
+
+        /// The one way an item's parameters are made from a model's axes (spec 0050 S7.1).
+        static member knownAtDefault (axis : ItemParameterAxis) : Parameter =
+            {
+                name = axis.name
+                state = KnownParameter axis.defaultValue
+            }
+
+        /// The parameter when its numbers are finite, an unknown's bounds are ordered and hold its start, and every
+        /// sigma is above zero; a kind's range is its model's, not checked here (spec 0050 S7.1, S8.1).
+        member this.validate : Result<Parameter, ItemError> =
+            let render (number : double) : string = number.ToString("R", CultureInfo.InvariantCulture)
+
+            let finite (role : string) (number : double) : string option =
+                if Double.IsFinite number then None else Some $"{role} {render number} is not finite"
+
+            let positive (role : string) (sigma : ParameterSigma) : string option =
+                if sigma.value > 0.0 then None else Some $"{role} {render sigma.value} is not above zero"
+
+            // Finiteness leads each list, so a NaN is reported as itself rather than as a misplaced bound.
+            let brokenRules : string option list =
+                match this.state with
+                | KnownParameter known -> [ finite "the known value" known.value ]
+                | UnknownParameter unknown ->
+                    let start = unknown.start.value
+                    let lower = unknown.bounds.lower.value
+                    let upper = unknown.bounds.upper.value
+
+                    let priorRules : string option list =
+                        match unknown.priorOpt with
+                        | None -> []
+                        | Some prior ->
+                            [
+                                finite "the prior centre" prior.centre.value
+                                finite "the prior sigma" prior.sigma.value
+                                positive "the prior sigma" prior.sigma
+                            ]
+
+                    [
+                        finite "the start" start
+                        finite "the lower bound" lower
+                        finite "the upper bound" upper
+                        if lower < upper then None
+                        else Some $"the lower bound {render lower} is not below the upper bound {render upper}"
+                        if lower <= start && start <= upper then None
+                        else Some $"the start {render start} lies outside [{render lower}, {render upper}]"
+                    ]
+                    @ priorRules
+                | CalibratedParameter calibrated ->
+                    [
+                        finite "the calibrated value" calibrated.value.value
+                        finite "the calibration sigma" calibrated.sigma.value
+                        positive "the calibration sigma" calibrated.sigma
+                    ]
+
+            match brokenRules |> List.choose id with
+            | [] -> Ok this
+            | rule :: _ -> Error (InvalidParameterStateErr $"{this.name.value}: {rule}")
