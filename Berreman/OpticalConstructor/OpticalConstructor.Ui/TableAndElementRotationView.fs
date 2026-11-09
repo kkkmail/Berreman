@@ -225,6 +225,23 @@ type EditorLaunchers =
                     | Error _ -> None
         }
 
+/// What the Kit menu reaches outside the model (spec 0050 S5.3); function-valued, so it compares by reference.
+[<ReferenceEquality>]
+type KitWindowShell =
+    {
+        /// The explorer that shows the kit's folder (spec 0050 S5.3, step 182).
+        explorer : ExplorerProxy
+        /// Closes the window hosting the workbench, which releases its kit as it closes (spec 0050 S5.3, step 154).
+        requestClose : unit -> unit
+    }
+
+    /// The test scenes' shell: it starts no Explorer and closes no window (spec 0050 S5.3).
+    static member inert : KitWindowShell =
+        {
+            explorer = ExplorerProxy.createInMemory ignore
+            requestClose = ignore
+        }
+
 /// Spec 0038 (016): the handle of the ONE open Select-state window session this workbench
 /// requested (the step-017 Choose… flow populates it; nothing else in the workbench opens a
 /// Select window yet). The window itself is HOST state — the model only holds how to end the
@@ -366,6 +383,8 @@ type TableAndElementRotationModel =
         kit : KitContext
         /// The kit's folder, `None` for the scratch kit of a scene that opened no folder (spec 0050 S5.3).
         kitFolderOpt : KitFolder option
+        /// The explorer and the window close the Kit menu reaches; `initWith` holds the inert one (spec 0050 S5.3).
+        kitShell : KitWindowShell
         /// The last kit read or write that needs telling (spec 0050 S4.3).
         kitStatus : ControlCaption option
         /// The scene name being edited, validated when saved (spec 0050 S4.3).
@@ -512,6 +531,7 @@ let initWith
         constructorMode = ForwardConstructor
         kit = kit
         kitFolderOpt = None
+        kitShell = KitWindowShell.inert
         kitStatus = None
         sceneName = ControlCaption ""
         savedScenes = []
@@ -779,6 +799,12 @@ type TableAndElementRotationMsg =
     | SceneSave
     /// Restores the kit's named scene onto the table (spec 0050 S4.3).
     | SceneLoad of Scene.SceneName
+    /// The kit bar's forward / inverse switch, which keeps the kit and the model (spec 0050 S5.3).
+    | SwitchConstructorMode of ConstructorMode
+    /// The Kit menu's Show in Explorer: the kit's folder in the shell's explorer (spec 0050 S5.3).
+    | ShowKitInExplorer
+    /// The Kit menu's Close kit: the shell closes the window, and nothing is lost (spec 0050 S5.3; .spec-md §10.5).
+    | CloseKit
     /// Spec 0038 (013) — the ribbon tab-strip row's right-aligned "Materials…" button: open the
     /// SINGLE-INSTANCE Materials window (UICOMP_XDUO_0009) over the app-scope material + category
     /// stores through the launcher seam (a second click ACTIVATES the live window — the shared
@@ -1946,6 +1972,26 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             {
                 model with kitStatus = Some (ControlCaption $"Load failed — {error.describe}")
             }
+    // Spec 0050 S5.3: the chart and Data-files gating already follow `constructorMode`.
+    | SwitchConstructorMode mode ->
+        {
+            model with constructorMode = mode
+        }
+    | ShowKitInExplorer ->
+        // Spec 0050 S5.3: a kit with no folder has nothing to show.
+        match model.kitFolderOpt with
+        | Some folder ->
+            match model.kitShell.explorer.showFolder folder.value with
+            | Ok () -> model
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"The kit folder could not be shown — {error.describe}")
+                }
+        | None -> model
+    | CloseKit ->
+        // Spec 0050 S5.3, .spec-md §10.5: kit writes are already on disk; the window's Closed handler releases the kit (step 154).
+        model.kitShell.requestClose ()
+        model
     | OpenMaterialsWindow ->
         // Spec 0038 step 013: a pure launch of the single-instance Materials window
         // (UICOMP_XDUO_0009) over app-scope stores and import seam — the launcher seam's

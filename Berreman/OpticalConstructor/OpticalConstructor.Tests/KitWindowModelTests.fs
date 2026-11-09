@@ -8,6 +8,7 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
@@ -53,6 +54,16 @@ module KitWindowModelTests =
             dataFileOpt = None
             sourceWaveLengthOpt = None
         }
+
+    /// A shell that records every folder it is asked to show and every window close it is asked for.
+    let private recordingShell (shown : ResizeArray<FolderName>) (closes : ResizeArray<unit>) : KitWindowShell =
+        {
+            KitWindowShell.explorer = ExplorerProxy.createInMemory shown.Add
+            requestClose = fun () -> closes.Add ()
+        }
+
+    /// The kit folder's lock file.
+    let private lockFile (folder : KitFolder) : string = Path.Combine(folder.value.value, ".oc", "lock")
 
     /// Every file under the kit folder, with its bytes.
     let private folderBytes (folder : KitFolder) : Map<FileName, FileByteContent> =
@@ -126,3 +137,103 @@ module KitWindowModelTests =
             withLoadedScene created (fun model -> Assert.Equal<ControlAvailability>(ControlOffered, model.kitWrites))
             let opened = openKitAt folder ReadOnlyKitAccess ClockProvider.system titleAuthor imports |> openedValue
             withLoadedScene opened (fun model -> Assert.Equal<ControlAvailability>(ControlWithheld, model.kitWrites)))
+
+    [<Fact>]
+    let ``switching the constructor keeps the kit, the table and the experiments`` () : unit =
+        withTitledFolder (fun folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun model ->
+                let placed = model |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+                let polarizer = placed.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
+                let forward =
+                    placed
+                    |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
+                    |> updateTableAndElementRotation ExpCommit
+                    |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                Assert.Equal(1, List.length forward.experimentCollection.experiments)
+                Assert.Equal<Ribbon.BayName>(BayNames.experiments, forward.ribbon)
+                Assert.Equal<ConstructorMode>(ForwardConstructor, forward.constructorMode)
+                let inverse = forward |> updateTableAndElementRotation (SwitchConstructorMode InverseConstructor)
+                Assert.Equal<ConstructorMode>(InverseConstructor, inverse.constructorMode)
+                Assert.Equal<KitContext>(forward.kit, inverse.kit)
+                Assert.Equal<TestElement list>(forward.elements, inverse.elements)
+                Assert.Equal<Experiments.ExperimentCollection>(forward.experimentCollection, inverse.experimentCollection)
+                Assert.Equal<Ribbon.BayName>(forward.ribbon, inverse.ribbon)
+                Assert.EndsWith("— Inverse", inverse.kitWindowTitle.value)
+                let back = inverse |> updateTableAndElementRotation (SwitchConstructorMode ForwardConstructor)
+                Assert.Equal<TableAndElementRotationModel>(forward, back)))
+
+    [<Fact>]
+    let ``Show in Explorer asks the explorer for the kit's folder`` () : unit =
+        withTitledFolder (fun folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun loaded ->
+                let shown = ResizeArray<FolderName> ()
+                let closes = ResizeArray<unit> ()
+                let model =
+                    {
+                        loaded with kitShell = recordingShell shown closes
+                    }
+                let answer = model |> updateTableAndElementRotation ShowKitInExplorer
+                Assert.Equal<FolderName list>([ folder.value ], List.ofSeq shown)
+                Assert.Empty(closes)
+                Assert.Equal<TableAndElementRotationModel>(model, answer)))
+
+    [<Fact>]
+    let ``a kit folder the explorer cannot show is told in the kit status`` () : unit =
+        withTitledFolder (fun folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun loaded ->
+                let refusing : KitWindowShell =
+                    {
+                        explorer =
+                            {
+                                ExplorerProxy.showFolder = fun _ -> Error (MissingFolderErr "gone")
+                            }
+                        requestClose = ignore
+                    }
+                let model =
+                    {
+                        loaded with kitShell = refusing
+                    }
+                let answer = model |> updateTableAndElementRotation ShowKitInExplorer
+                match answer.kitStatus with
+                | Some status ->
+                    Assert.Contains("gone", status.value)
+                    Assert.StartsWith("The kit folder could not be shown — ", status.value)
+                | None -> Assert.Fail "the refusal was not told in the kit status"
+                Assert.Equal<TableAndElementRotationModel>({ model with kitStatus = answer.kitStatus }, answer)))
+
+    [<Fact>]
+    let ``a scene that opened no folder shows nothing in Explorer`` () : unit =
+        let scene = initMain () |> kitValue
+        try
+            let shown = ResizeArray<FolderName> ()
+            let closes = ResizeArray<unit> ()
+            let model =
+                {
+                    scene with kitShell = recordingShell shown closes
+                }
+            let answer = model |> updateTableAndElementRotation ShowKitInExplorer
+            Assert.Empty(shown)
+            Assert.Empty(closes)
+            Assert.Equal<TableAndElementRotationModel>(model, answer)
+        finally scene.kit.close () |> kitValue
+
+    [<Fact>]
+    let ``Close kit asks the window to close and changes nothing else`` () : unit =
+        withTitledFolder (fun folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun loaded ->
+                let shown = ResizeArray<FolderName> ()
+                let closes = ResizeArray<unit> ()
+                let model =
+                    {
+                        loaded with kitShell = recordingShell shown closes
+                    }
+                let answer = model |> updateTableAndElementRotation CloseKit
+                Assert.Equal(1, closes.Count)
+                Assert.Empty(shown)
+                Assert.Equal<TableAndElementRotationModel>(model, answer)
+                Assert.True(File.Exists(lockFile folder), "the kit stays locked until its window releases it"))
+            Assert.False(File.Exists(lockFile folder)))
