@@ -2,6 +2,8 @@
 module OpticalConstructor.Ui.KitOpening
 
 open System
+open System.Diagnostics
+open System.IO
 open Avalonia.Controls
 open Avalonia.Platform.Storage
 open Softellect.Sys.Logging
@@ -182,6 +184,27 @@ type KitFolderPicker with
             | None -> ()
         }
         |> Async.StartImmediate
+
+/// Adapts the system's file browser to the explorer seam (spec 0050 S5.3).
+type ExplorerProxy with
+
+    /// Starts explorer.exe on the folder's full path and never waits for it; a missing folder is MissingFolderErr,
+    /// told and never made (spec 0050 S5.3; .manual/001 §G). Any exception is ExplorerLaunchErr carrying its message.
+    static member system : ExplorerProxy =
+        {
+            showFolder =
+                fun folder ->
+                    try
+                        let fullPath = Path.GetFullPath folder.value
+                        match Directory.Exists fullPath with
+                        | false -> Error (MissingFolderErr fullPath)
+                        | true ->
+                            let startInfo = ProcessStartInfo("explorer.exe", UseShellExecute = false)
+                            startInfo.ArgumentList.Add fullPath
+                            use explorer = Process.Start(startInfo)
+                            Ok ()
+                    with e -> Error (ExplorerLaunchErr e.Message)
+        }
 
 /// Creates an independent scratch kit, preserving initialization errors (spec 0050 S4.3; .manual/010).
 let scratchKit () : Result<KitContext, KitError> =
