@@ -324,6 +324,10 @@ type KitCopySource =
         source : KitContext
         experiments : Experiments.Experiment list
         chosen : Experiments.ExperimentId list
+        /// The source kit's items, read when it opens (spec 0050 S7.2).
+        items : Item list
+        /// The mapping table: one row per item the chosen experiments use, with its choice (spec 0050 S7.2).
+        itemRows : ItemCopyRow list
     }
 
     /// Chooses the experiment, or unchooses it when chosen, keeping the source's order; an id the source does not
@@ -886,6 +890,8 @@ type TableAndElementRotationMsg =
     | OpenCopySource of KitFolder
     /// Chooses the source's experiment to copy, or unchooses it when chosen (spec 0050 S6).
     | ToggleCopiedExperiment of Experiments.ExperimentId
+    /// A press of a choice of the mapping table: how the source item of this id comes into the kit (spec 0050 S7.2).
+    | ChooseCopiedItem of ItemId * ItemCopyChoice
     /// The copy panel's Copy: copies the chosen experiments into the kit and shows them (spec 0050 S6).
     | CopyChosenExperiments
     /// The copy panel's Cancel: closes the source and copies nothing (spec 0050 S6).
@@ -2241,12 +2247,20 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                                 source = source
                                 experiments = []
                                 chosen = []
+                                items = []
+                                itemRows = []
                             }
-                        match source.proxy.readExperiments () with
-                        | Ok experiments ->
+                        // Spec 0050 S7.2: the items are read after the experiments; no row shows until an experiment is chosen.
+                        let read =
+                            source.proxy.readExperiments ()
+                            |> Result.bind (fun experiments -> source.proxy.readItems () |> Result.map (fun items -> experiments, items))
+                        match read with
+                        | Ok (experiments, items) ->
                             Ok
                                 {
-                                    unread with experiments = experiments
+                                    unread with
+                                        experiments = experiments
+                                        items = items
                                 }
                         | Error error ->
                             unread.release ()
@@ -2265,17 +2279,52 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | ToggleCopiedExperiment id ->
         match model.kitCopyOpt with
         | Some copySource ->
-            {
-                model with kitCopyOpt = Some (copySource.toggled id)
-            }
+            let toggled = copySource.toggled id
+            let chosenExperiments = toggled.experiments |> List.filter (fun experiment -> List.contains experiment.id toggled.chosen)
+            // Spec 0050 S7.2: a row comes at its default, keeps the user's choice while used, and goes when unused; a
+            // dangling item id keeps the selection and rows as they were.
+            match Experiments.Experiment.itemsUsedBy chosenExperiments copySource.items with
+            | Ok used ->
+                {
+                    model with
+                        kitCopyOpt =
+                            Some
+                                {
+                                    toggled with itemRows = ItemCopyRow.copyRowsFor used model.kitItems copySource.itemRows
+                                }
+                }
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"The experiment could not be chosen to copy — {error.describe}")
+                }
         | None -> model
+    | ChooseCopiedItem (id, choice) ->
+        match model.kitCopyOpt with
+        | Some copySource when copySource.itemRows |> List.exists (fun row -> row.sourceItem.id = id) ->
+            let rows =
+                copySource.itemRows
+                |> List.map (fun row ->
+                    if row.sourceItem.id = id then
+                        {
+                            row with choice = choice
+                        }
+                    else
+                        row)
+            {
+                model with
+                    kitCopyOpt =
+                        Some
+                            {
+                                copySource with itemRows = rows
+                            }
+            }
+        | _ -> model
     | CopyChosenExperiments ->
         guardKitWrite model (fun () ->
             match model.kitCopyOpt with
             | Some copySource when not (List.isEmpty copySource.chosen) ->
-                // Spec 0050 S7.2: no rows yet, so each item the copied experiments use is mapped or added by its default.
                 let copied =
-                    model.kit.copyExperimentsFrom copySource.source copySource.chosen []
+                    model.kit.copyExperimentsFrom copySource.source copySource.chosen copySource.itemRows
                     |> Result.bind (fun report ->
                         model.kit.proxy.readExperiments ()
                         |> Result.bind (fun experiments -> model.kit.proxy.readItems () |> Result.map (fun items -> report, experiments, items))
@@ -2284,10 +2333,14 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 | Ok (report, experiments, items) ->
                     // Spec 0050 S6, S7.2: as a reload sets it (step 187), over the kit's items as the copy left them.
                     let shown = withKitContent model.kit experiments items model.savedScenes model
+                    let copiedCount = List.length report.experiments
+                    let sourceName = copySource.source.kitFile.name
+                    let told =
+                        match report.items with
+                        | [] -> $"Copied {copiedCount} experiment(s) from {sourceName.value}."
+                        | added -> $"Copied {copiedCount} experiment(s) and added {List.length added} item(s) from {sourceName.value}."
                     {
-                        shown.closeCopySource () with
-                            kitStatus =
-                                Some (ControlCaption $"Copied {List.length report.experiments} experiment(s) from {copySource.source.kitFile.name.value}.")
+                        shown.closeCopySource () with kitStatus = Some (ControlCaption told)
                     }
                 | Error error ->
                     {

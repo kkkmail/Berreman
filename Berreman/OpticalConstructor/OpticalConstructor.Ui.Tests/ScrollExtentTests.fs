@@ -294,6 +294,8 @@ module ScrollExtentTests =
                 source = sourceKit
                 experiments = [ 1 .. 40 ] |> List.map (fun n -> { collected with id = Experiments.ExperimentId n })
                 chosen = [ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ]
+                items = []
+                itemRows = []
             }
         let handle : KitArchiveJobHandle =
             {
