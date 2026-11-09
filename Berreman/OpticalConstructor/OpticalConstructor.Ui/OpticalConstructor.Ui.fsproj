@@ -114,6 +114,7 @@
         <Compile Include="SolverHandoffView.fs" />
         <Compile Include="SolverHandoffWindow.fs" />
         <Compile Include="KitOpening.fs" />
+        <Compile Include="KitArchiveJob.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="KitStartView.fs" />
         <Compile Include="KitWindowView.fs" />

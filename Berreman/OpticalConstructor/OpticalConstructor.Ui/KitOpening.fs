@@ -146,6 +146,17 @@ let openExistingKitAt
     |> Result.mapError KitLibraryKitErr
     |> Result.bind (fun context -> openedOver folder context imports)
 
+/// Starts a dialog on the calling UI thread and hands on what it answers; a cancel calls nothing. The one body that
+/// starts every dialog (spec 0050 S5.2, S6).
+let startPick<'Picked> (pick : Async<'Picked option>) (onPicked : 'Picked -> unit) : unit =
+    async {
+        let! pickedOpt = pick
+        match pickedOpt with
+        | Some picked -> onPicked picked
+        | None -> ()
+    }
+    |> Async.StartImmediate
+
 /// Adapts a window's storage provider to the kit-folder picker seam (spec 0050 S4.3).
 type KitFolderPicker with
 
@@ -179,14 +190,7 @@ type KitFolderPicker with
 
     /// Starts the picker on the calling UI thread and hands on the folder it answers; a cancel calls nothing (spec 0050 S5.2).
     /// It catches nothing: `ofWindow` already answers None when the dialog cannot open.
-    member this.pickThen (onPicked : KitFolder -> unit) : unit =
-        async {
-            let! folderOpt = this.pickKitFolder ()
-            match folderOpt with
-            | Some folder -> onPicked folder
-            | None -> ()
-        }
-        |> Async.StartImmediate
+    member this.pickThen (onPicked : KitFolder -> unit) : unit = startPick (this.pickKitFolder ()) onPicked
 
 /// Whether a constructor window held a chosen kit (spec 0050 S5.3).
 type KitWindowPresence =
