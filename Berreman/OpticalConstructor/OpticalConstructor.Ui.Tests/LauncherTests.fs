@@ -53,6 +53,10 @@ module LauncherTests =
         |> Seq.choose (function :? Button as b -> Some b | _ -> None)
         |> List.ofSeq
 
+    /// Every launcher button but the footer's Data locations link, which is not a surface (spec 0050 S5.3).
+    let private surfaceButtons (w : Window) : Button list =
+        buttons w |> List.filter (fun b -> b.Name <> ConstructorUiId.launcherDataLocationsLink.value)
+
     let private tryFindButton (name : string) (w : Window) : Button option =
         buttons w |> List.tryFind (fun b -> b.Name = name)
 
@@ -364,7 +368,7 @@ module LauncherTests =
     [<Fact>]
     let ``the launcher hosts Main / Inverse / Materials / Library in that order by stable name`` () =
         withLauncher (fun launcher ->
-            let names = buttons launcher |> List.map (fun b -> b.Name)
+            let names = surfaceButtons launcher |> List.map (fun b -> b.Name)
             Assert.Equal<string list>(
                 [ ConstructorUiId.openMainButton.value
                   ConstructorUiId.openInverseButton.value
@@ -382,7 +386,7 @@ module LauncherTests =
                   ConstructorUiId.openInverseButton.value
                   ConstructorUiId.openMaterialsButton.value
                   ConstructorUiId.openLibraryButton.value ],
-                buttons launcher |> List.map _.Name))
+                surfaceButtons launcher |> List.map _.Name))
 
     [<Fact>]
     let ``each launcher button carries its stable AutomationId and label`` () =
@@ -478,7 +482,7 @@ module LauncherTests =
                 Assert.True(text.IsEffectivelyVisible, "the version footer must be visible")
                 // It sits at the bottom of the form: below every surface button.
                 let footerTop = text.TranslatePoint(Point(0.0, 0.0), launcher) |> Option.ofNullable
-                for button in buttons launcher do
+                for button in surfaceButtons launcher do
                     let buttonBottom = button.TranslatePoint(Point(0.0, button.Bounds.Height), launcher) |> Option.ofNullable
                     match footerTop, buttonBottom with
                     | Some (f : Point), Some (b : Point) -> Assert.True(f.Y >= b.Y, $"the footer (y = {f.Y}) must sit below '{button.Name}' (bottom y = {b.Y})")
@@ -1164,6 +1168,57 @@ module LauncherTests =
                 opened.Close()
                 Dispatcher.UIThread.RunJobs()
             | others -> Assert.Fail($"expected exactly one window, found {others.Length}"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the Data locations link opens one Data locations window listing the configured locations`` () : unit =
+        withLauncher (fun launcher ->
+            let link = Assert.IsType<Button>(launcherControl launcher ConstructorUiId.launcherDataLocationsLink)
+            Assert.Equal(ConstructorUiId.launcherDataLocationsLink.value, link.Name)
+            Assert.Equal("Data locations", AutomationProperties.GetName link)
+            let opened = ResizeArray<Window>()
+            let clickLink () : Window list =
+                let windows = clickAndObserve launcher ConstructorUiId.launcherDataLocationsLink.value
+                opened.AddRange windows
+                windows
+            // Close every window the link opened, so the app-global registry does not leak DataLocationsWindowKey.
+            try
+                let window = Assert.IsType<DataLocationsWindow>(Assert.Single(clickLink ()))
+                Assert.True(window.IsVisible, "the Data locations window must be shown")
+                let kitsPath = Assert.IsType<TextBlock>(launcherControl window (ConstructorUiId.dataLocationPathText KitsLocation))
+                Assert.Equal((TestAppScope.testLocations owner).kitsFolder.value, kitsPath.Text)
+                Assert.Empty(clickLink ())
+                Assert.True(window.IsVisible, "a second click must keep the one Data locations window open")
+            finally
+                for window in opened do window.Close()
+                Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Data locations link stays enabled when the library fails to open`` () : unit =
+        HeadlessSession.run (fun () ->
+            let mismatch : LibrarySchemaMismatchInfo =
+                {
+                    foundOpt = Some (LibrarySchemaVersion 2)
+                    expected = LibrarySchemaVersion.current
+                }
+            let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Error (LibrarySchemaMismatchErr mismatch),
+                fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner))
+            launcher.Show()
+            Dispatcher.UIThread.RunJobs()
+            try
+                match tryFindButton ConstructorUiId.launcherDataLocationsLink.value launcher with
+                | Some link ->
+                    Assert.True(link.IsEnabled, "the Data locations link must stay enabled")
+                    Assert.True(link.IsEffectivelyEnabled, "the Data locations link must stay effectively enabled")
+                | None -> Assert.Fail($"launcher link '{ConstructorUiId.launcherDataLocationsLink.value}' was not found")
+                for id in
+                    [ ConstructorUiId.openMainButton; ConstructorUiId.openInverseButton
+                      ConstructorUiId.openMaterialsButton; ConstructorUiId.openLibraryButton ] do
+                    match tryFindButton id.value launcher with
+                    | Some button -> Assert.False(button.IsEnabled)
+                    | None -> Assert.Fail($"launcher button '{id.value}' was not found")
+            finally launcher.Close())
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

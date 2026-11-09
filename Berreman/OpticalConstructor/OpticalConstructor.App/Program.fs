@@ -167,7 +167,8 @@ module private KitConstructorWindows =
             Logger.logError $"KitConstructorWindows.showConstructorIn: no kit window was registered for {opened.folder.value.value}"
 
 /// Main and Inverse open the kit start screen of their mode; Materials and Library open over the one app scope, sharing
-/// editor-window launchers. A library-open failure disables every surface action (spec 0038 step 045; spec 0050 S2.4, S5.2).
+/// editor-window launchers. A library-open failure disables every surface action, never the footer's Data locations link
+/// (spec 0038 step 045; spec 0050 S2.4, S5.2, S5.3).
 type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, opened : Result<AppContext, StorageError>, pickerFor : TopLevel -> KitFolderPicker) as this =
     inherit Window()
 
@@ -182,6 +183,18 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
         this.Height <- 300.0
         this.CanResize <- false
         OpticalConstructor.Controls.WindowFit.keepOnScreen this
+        let dataLocationsLauncher =
+            WindowLauncher.WindowLauncher.create
+                (fun (_ : WindowLauncher.WindowKey) -> DataLocationsWindow(locations, ExplorerProxy.system) :> Window |> Ok)
+                settings.selectWindowModality
+                WindowLauncher.BrowseOpen
+        let openDataLocations () : unit =
+            match dataLocationsLauncher.openOrActivate WindowLauncher.DataLocationsWindowKey with
+            | Ok _ -> ()
+            | Error (WindowLauncher.WindowFactoryFailedErr (_, reason)) ->
+                Logger.logError $"LauncherWindow: could not open the Data locations window: {reason}"
+            | Error (WindowLauncher.WindowNotRegisteredErr _) ->
+                Logger.logError "LauncherWindow: no Data locations window was registered"
         let rec launcherContent (outcome : Result<AppContext, StorageError>) : Control =
             let title =
                 TextBlock(
@@ -228,7 +241,26 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                     Margin = Thickness(20.0, 0.0, 20.0, 10.0))
             AutomationProperties.SetAutomationId(version, ConstructorUiId.launcherVersionText.value)
             AutomationProperties.SetName(version, versionText)
-            DockPanel.SetDock(version, Dock.Bottom)
+            // Spec 0050 S5.3: the locations do not depend on the library, so the link is enabled in every outcome.
+            let linkText = "Data locations"
+            let dataLocationsLink =
+                Button(
+                    Name = ConstructorUiId.launcherDataLocationsLink.value,
+                    Content = TextBlock(Text = linkText, TextDecorations = TextDecorations.Underline),
+                    Background = Brushes.Transparent,
+                    BorderThickness = Thickness 0.0,
+                    Padding = Thickness 0.0,
+                    FontSize = 11.0,
+                    VerticalAlignment = Layout.VerticalAlignment.Center,
+                    Margin = Thickness(20.0, 0.0, 0.0, 10.0))
+            AutomationProperties.SetAutomationId(dataLocationsLink, ConstructorUiId.launcherDataLocationsLink.value)
+            AutomationProperties.SetName(dataLocationsLink, linkText)
+            dataLocationsLink.Click.Add(fun _ -> openDataLocations ())
+            DockPanel.SetDock(dataLocationsLink, Dock.Left)
+            let footer = DockPanel()
+            footer.Children.Add dataLocationsLink
+            footer.Children.Add version
+            DockPanel.SetDock(footer, Dock.Bottom)
             match outcome with
             | Ok _ ->
                 match pendingImports with
@@ -281,7 +313,7 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
             panel.Children.Add materialsButton
             panel.Children.Add libraryButton
             let form = DockPanel()
-            form.Children.Add version
+            form.Children.Add footer
             // Spec 0046; spec 0050 S2.4: a wrapped open error must not push the buttons out of reach.
             form.Children.Add(ScrollViewer(
                 Content = panel,

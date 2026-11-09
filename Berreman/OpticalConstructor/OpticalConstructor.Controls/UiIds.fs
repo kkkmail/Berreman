@@ -647,6 +647,8 @@ type ConstructorUiId =
     static member launcherPendingImportsText : ConstructorUiId = ConstructorUiId "LauncherPendingImportsText"
     /// Reopens the next pending startup catalogue's import decisions (spec 0050 S3.2).
     static member launcherReviewImportsButton : ConstructorUiId = ConstructorUiId "LauncherReviewImportsButton"
+    /// The footer link that opens the Data locations window, enabled in every outcome (001 §O, §G; spec 0050 S5.3).
+    static member launcherDataLocationsLink : ConstructorUiId = ConstructorUiId "LauncherDataLocationsLink"
 
     // --- The kit start screen (KitStartView, KitStartWindow). ---
     /// The start screen's window, Main's or Inverse's (001 §F, spec 0050 S5.2).
