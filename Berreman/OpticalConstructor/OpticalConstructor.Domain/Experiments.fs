@@ -268,6 +268,25 @@ module Experiments =
         member this.libraryReferences : EntryReference list =
             this.setup |> List.choose (fun descriptor -> descriptor.binding.entryReferenceOpt) |> List.distinct
 
+        /// Copies into a kit holding `taken`, in order: a free id is kept, a clash takes the next of the highest id
+        /// taken, incoming or given so far; only `id` changes (spec 0050 S6).
+        static member renumberedFor (taken : ExperimentId list) (incoming : Experiment list) : Experiment list =
+            let incomingIds = incoming |> List.map (fun experiment -> experiment.id)
+            incoming
+            |> List.fold (fun (given : ExperimentId list, renumbered : Experiment list) experiment ->
+                let id =
+                    if List.contains experiment.id taken || List.contains experiment.id given then
+                        (List.max (taken @ incomingIds @ given)).next
+                    else
+                        experiment.id
+                let copied =
+                    {
+                        experiment with id = id
+                    }
+                id :: given, copied :: renumbered) ([], [])
+            |> snd
+            |> List.rev
+
     /// One experiment's versioned .experiment-json content (spec 0050 S4.3).
     type ExperimentFile =
         {

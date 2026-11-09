@@ -365,6 +365,53 @@ module ExperimentProxyTests =
             [ latestSampleReference; materialReference; nextSampleReference; sampleReference; sourceReference ],
             reversed.libraryReferences)
 
+    /// One copy into a kit holding `taken`, and the experiments it must answer (spec 0050 S6).
+    type private RenumberingCase =
+        {
+            taken : ExperimentId list
+            incoming : Experiment list
+            expected : Experiment list
+        }
+
+    let private numbered (experiment : Experiment) (id : ExperimentId) : Experiment =
+        {
+            experiment with id = id
+        }
+
+    [<Fact>]
+    let ``copied experiments keep their ids unless the kit holds them, and a clash takes the next free id`` () : unit =
+        let unnumbered (experiments : Experiment list) : Experiment list =
+            experiments |> List.map (fun experiment -> numbered experiment (ExperimentId 0))
+        let cases : RenumberingCase list =
+            [
+                {
+                    taken = [ ExperimentId 1; ExperimentId 2 ]
+                    incoming = [ numbered e1 (ExperimentId 2); numbered e2 (ExperimentId 3) ]
+                    expected = [ numbered e1 (ExperimentId 4); numbered e2 (ExperimentId 3) ]
+                }
+                {
+                    taken = []
+                    incoming = [ numbered e1 (ExperimentId 2); numbered e2 (ExperimentId 3) ]
+                    expected = [ numbered e1 (ExperimentId 2); numbered e2 (ExperimentId 3) ]
+                }
+                {
+                    taken = [ ExperimentId 5 ]
+                    incoming = [ numbered e1 (ExperimentId 1); numbered e2 (ExperimentId 5); numbered e3 (ExperimentId 2) ]
+                    expected = [ numbered e1 (ExperimentId 1); numbered e2 (ExperimentId 6); numbered e3 (ExperimentId 2) ]
+                }
+                // An id given to an earlier incoming experiment is taken, and no later incoming id is handed out.
+                {
+                    taken = []
+                    incoming = [ numbered e1 (ExperimentId 1); numbered e2 (ExperimentId 1); numbered e3 (ExperimentId 2) ]
+                    expected = [ numbered e1 (ExperimentId 1); numbered e2 (ExperimentId 3); numbered e3 (ExperimentId 2) ]
+                }
+            ]
+        for renumbering in cases do
+            let renumbered = Experiment.renumberedFor renumbering.taken renumbering.incoming
+            Assert.Equal<Experiment list>(renumbering.expected, renumbered)
+            Assert.Equal<Experiment list>(unnumbered renumbering.incoming, unnumbered renumbered)
+        Assert.Empty(Experiment.renumberedFor [ ExperimentId 1 ] [])
+
     [<Fact>]
     let ``pinning an experiment's bound sample version BLOCKS removal of that sample`` () =
         let bound = BuiltinCatalogue.sampleStore ()

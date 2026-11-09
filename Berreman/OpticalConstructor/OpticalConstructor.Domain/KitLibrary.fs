@@ -48,6 +48,29 @@ module KitLibrary =
             categories : CategoryProxy
         }
 
+    /// Resolves the references, then each envelope's own references, depth first and in order, visiting each version
+    /// once; answers the visited envelopes in visit order, or the first error (spec 0050 S6).
+    let referenceClosure
+        (resolve : EntryReference -> Result<LibraryEntryEnvelope, KitLibraryError>)
+        (references : EntryReference list)
+        : Result<LibraryEntryEnvelope list, KitLibraryError> =
+        let rec visit
+            (visited : Set<LibraryVersionRef>)
+            (closure : LibraryEntryEnvelope list)
+            (pending : EntryReference list)
+            : Result<LibraryEntryEnvelope list, KitLibraryError> =
+            match pending with
+            | [] -> Ok (List.rev closure)
+            | reference :: rest ->
+                resolve reference
+                |> Result.bind (fun envelope ->
+                    let version = envelope.libraryVersionRef
+                    if Set.contains version visited then
+                        visit visited closure rest
+                    else
+                        visit (Set.add version visited) (envelope :: closure) (envelope.content.references @ rest))
+        visit Set.empty [] references
+
     /// One opened kit and the library seam supplying and pinning its versions (spec 0050 S4.2).
     [<ReferenceEquality>]
     type KitLibraryContext =
@@ -114,6 +137,7 @@ module KitLibrary =
 
         /// Pins and writes missing versions depth first, retaining held snapshots and returning writes in visit order (spec 0050 S4.2).
         /// Read-only access performs no IO; the first failure stops traversal and keeps earlier writes for the next call.
+        /// Each reference's closure is resolved before its writes (spec 0050 S6).
         member this.snapshotReferences (references : EntryReference list) : Result<LibraryVersionRef list, KitLibraryError> =
             match this.kit.access with
             | ReadOnlyKitAccess -> Error (KitLibraryKitErr (KitReadOnlyErr "snapshotReferences"))
@@ -148,33 +172,26 @@ module KitLibrary =
                                 |> Option.defaultValue envelope
                                 |> Ok)
 
-                    let rec visitReferences
-                        (visited : Set<LibraryVersionRef>)
-                        (written : LibraryVersionRef list)
-                        (pending : EntryReference list)
-                        : Result<LibraryVersionRef list, KitLibraryError> =
-                        match pending with
-                        | [] -> Ok (List.rev written)
-                        | reference :: rest ->
-                            resolveReference reference
-                            |> Result.bind (fun envelope ->
-                                let version = envelope.libraryVersionRef
-                                if Set.contains version visited then
-                                    visitReferences visited written rest
-                                else
-                                    let writeResult =
-                                        if Map.containsKey version snapshots then
-                                            Ok written
-                                        else
-                                            this.imports.proxy.pinEntryVersion version.entryId version.version
-                                            |> Result.mapError KitLibraryImportErr
-                                            |> Result.bind (fun () -> this.kit.proxy.writeSnapshot envelope |> Result.mapError KitLibraryKitErr)
-                                            |> Result.map (fun () -> version :: written)
-                                    writeResult
-                                    |> Result.bind (fun nextWritten ->
-                                        visitReferences (Set.add version visited) nextWritten (envelope.content.references @ rest)))
+                    let writeLacking (written : LibraryVersionRef list) (envelope : LibraryEntryEnvelope) : Result<LibraryVersionRef list, KitLibraryError> =
+                        let version = envelope.libraryVersionRef
+                        if Map.containsKey version snapshots || List.contains version written then
+                            Ok written
+                        else
+                            this.imports.proxy.pinEntryVersion version.entryId version.version
+                            |> Result.mapError KitLibraryImportErr
+                            |> Result.bind (fun () -> this.kit.proxy.writeSnapshot envelope |> Result.mapError KitLibraryKitErr)
+                            |> Result.map (fun () -> version :: written)
 
-                    visitReferences Set.empty [] references)
+                    let writeClosure (written : LibraryVersionRef list) (closure : LibraryEntryEnvelope list) : Result<LibraryVersionRef list, KitLibraryError> =
+                        closure
+                        |> List.fold (fun result envelope -> result |> Result.bind (fun current -> writeLacking current envelope)) (Ok written)
+
+                    // One closure per reference, so an unheld later reference keeps the earlier ones' writes (spec 0050 S6).
+                    references
+                    |> List.fold (fun result reference ->
+                        result |> Result.bind (fun written ->
+                            referenceClosure resolveReference [ reference ] |> Result.bind (writeClosure written))) (Ok [])
+                    |> Result.map List.rev)
 
     let private tryOverlayReplacement (overlay : KitLibraryOverlay) (id : LibraryEntryId) : LibraryEntryEnvelope option =
         overlay.replacements

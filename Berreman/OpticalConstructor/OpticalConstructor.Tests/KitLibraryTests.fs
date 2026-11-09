@@ -324,6 +324,39 @@ module KitLibraryTests =
         assertSnapshots (expected @ [ glass ]) sharedCategory
 
     [<Fact>]
+    let ``the closure of references walks each entry's references depth first, each version once`` () : unit =
+        let envelopes = (BuiltinCatalogue.catalogueData ()).envelopes
+        let resolve (reference : EntryReference) : Result<LibraryEntryEnvelope, KitLibraryError> =
+            let resolved =
+                match reference with
+                | EntryVersionReference version -> envelopes |> List.tryFind (fun envelope -> envelope.libraryVersionRef = version)
+                | EntryLatestReference id ->
+                    envelopes
+                    |> List.filter (fun envelope -> envelope.content.id = id)
+                    |> List.sortByDescending (fun envelope -> envelope.content.version)
+                    |> List.tryHead
+            match resolved with
+            | Some envelope -> Ok envelope
+            | None -> Error (UnheldEntryErr reference.describe)
+        let multilayer : LibraryVersionRef =
+            {
+                entryId = SampleIds.multilayerQwId.toLibraryEntryId
+                version = VersionNumber.first
+            }
+        let reference = EntryVersionReference multilayer
+        Assert.Equal<Result<LibraryEntryEnvelope list, KitLibraryError>>(Ok (sampleClosure ()), referenceClosure resolve [ reference; reference ])
+
+        let localId = LibraryEntryId (Guid.Parse "20300000-0000-4000-8000-000000000001")
+        let localVersion : LibraryVersionRef =
+            {
+                entryId = localId
+                version = VersionNumber.first
+            }
+        for unheld in [ EntryLatestReference localId; EntryVersionReference localVersion ] do
+            Assert.Equal<Result<LibraryEntryEnvelope list, KitLibraryError>>(
+                Error (UnheldEntryErr unheld.describe), referenceClosure resolve [ reference; unheld ])
+
+    [<Fact>]
     let ``referencing a version the kit already holds writes and pins nothing`` () : unit =
         let fixture = freshSnapshotFixture ()
         let reference = EntryVersionReference (sampleEnvelope ()).libraryVersionRef
