@@ -8,7 +8,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 
 /// The parameter vocabulary of items and item models, shared with the fitter, the parameters the existing
-/// models publish, and the parameterised item models as data (spec 0050 S7.1).
+/// models publish, the parameterised item models as data and the item-model store's seam (spec 0050 S7.1).
 module ItemModels =
 
     /// The name a fitted parameter is reported under — elevated so that a report cannot silently pair a
@@ -308,3 +308,102 @@ module ItemModels =
             | Some kind when kind = binding.bindingKind -> Some (this.parameterAxes @ binding.parameterAxes)
             | Some _
             | None -> None
+
+    /// An item model's frozen identity, the GUID its library entry carries (spec 0050 S7.1; 001 §I).
+    type ItemModelId =
+        | ItemModelId of Guid
+
+        member this.value : Guid = let (ItemModelId g) = this in g
+
+    /// One version of one item model: what an item pins and snapshots (spec 0050 S7.1; 001 §I).
+    type ItemModelVersionId =
+        {
+            itemModelId : ItemModelId
+            version : VersionNumber
+        }
+
+    /// An item-model library entry, shaped like `PolarizerPreset`; its protection derives from its provenance at the
+    /// file seam (spec 0050 S7.1).
+    type ItemModelEntry =
+        {
+            id : ItemModelId
+            name : EntryName
+            description : EntryDescription
+            model : ItemModelForm
+            protection : EntryProtection
+        }
+
+    /// One stored version of an item model (spec 0050 S7.1).
+    type ItemModelVersion =
+        {
+            version : VersionNumber
+            entry : ItemModelEntry
+        }
+
+        member this.versionId : ItemModelVersionId = { itemModelId = this.entry.id; version = this.version }
+
+    /// The frozen identities of the built-in item models the Built-in catalogue ships (spec 0050 S7.1; .spec-md §3.3).
+    module ItemModelIds =
+        let realLinearPolarizerModelId : ItemModelId = Guid.Parse "940bda4e-db9c-4103-b59c-dab2f3ee5875" |> ItemModelId
+        let retarderPlateModelId : ItemModelId = Guid.Parse "8e9797b7-f0db-443f-b33d-61f9901881cd" |> ItemModelId
+        let circularPolarizerModelId : ItemModelId = Guid.Parse "33486eec-836a-4cbf-ac79-e3f14439ad4b" |> ItemModelId
+        let blackBoxMuellerModelId : ItemModelId = Guid.Parse "852cbb95-e9f8-4963-8098-866303071e67" |> ItemModelId
+        let emptySlotModelId : ItemModelId = Guid.Parse "628b87f6-8e8c-460b-8a91-1815063aa9dd" |> ItemModelId
+        let intensityDetectorModelId : ItemModelId = Guid.Parse "01cfdc64-d07e-4e2b-963e-ea3caa8428e6" |> ItemModelId
+        let muellerPolarimeterModelId : ItemModelId = Guid.Parse "7e74324f-ded2-4607-b9d8-a40d477ac437" |> ItemModelId
+        let ellipsometerModelId : ItemModelId = Guid.Parse "608caa06-1b53-464e-962f-073730270af6" |> ItemModelId
+        let sourcePresetItemModelId : ItemModelId = Guid.Parse "239b0cfb-9938-5f3b-a767-c4252ea671b6" |> ItemModelId
+        let idealPolarizerItemModelId : ItemModelId = Guid.Parse "d47e5ce3-3e74-5058-848e-3aa54930e377" |> ItemModelId
+        let stackSampleItemModelId : ItemModelId = Guid.Parse "4d13ecb1-2006-576f-99e7-e8bc266e8624" |> ItemModelId
+
+    /// Why an item-model store refused or failed (spec 0050 S7.1): the id is already held, the store cannot hold the
+    /// entry (a protection or an id it refuses), or the store beneath failed, carrying that failure's `describe`.
+    type ItemModelError =
+        | DuplicateItemModelErr of reason : string
+        | InvalidItemModelErr of reason : string
+        | ItemModelStoreUnavailableErr of reason : string
+
+        member this.describe : string =
+            match this with
+            | DuplicateItemModelErr reason -> $"the item model is already held: {reason}"
+            | InvalidItemModelErr reason -> $"the item model cannot be stored: {reason}"
+            | ItemModelStoreUnavailableErr reason -> $"the item-model store is unavailable: {reason}"
+
+    /// The item-model store (spec 0050 S7.1): list answers each item model's latest version by name, then id; resolve
+    /// answers that exact version or `None`; save stores a new item model and refuses a held id with
+    /// `DuplicateItemModelErr`, changing nothing, because a later version arrives only through import (step 95).
+    [<ReferenceEquality>]
+    type ItemModelProxy =
+        {
+            listItemModels : unit -> Result<ItemModelVersion list, ItemModelError>
+            resolveItemModelVersion : ItemModelVersionId -> Result<ItemModelVersion option, ItemModelError>
+            saveItemModel : ItemModelVersion -> Result<unit, ItemModelError>
+        }
+
+        /// The in-memory double: it holds what it is given, built-ins included, in a map mutated only inside the closure,
+        /// as `CatalogueProxy.createInMemory` keeps its store; it never answers the other two errors (spec 0050 S7.1).
+        static member createInMemory () : ItemModelProxy =
+            let store = ref (Map.empty : Map<ItemModelId, ItemModelVersion>)
+            {
+                listItemModels =
+                    fun () ->
+                        store.Value.Values
+                        |> List.ofSeq
+                        |> List.sortBy (fun (held : ItemModelVersion) -> held.entry.name, held.entry.id)
+                        |> Ok
+                resolveItemModelVersion =
+                    fun versionId ->
+                        store.Value
+                        |> Map.tryFind versionId.itemModelId
+                        |> Option.filter (fun (held : ItemModelVersion) -> held.version = versionId.version)
+                        |> Ok
+                saveItemModel =
+                    fun itemModel ->
+                        match store.Value |> Map.tryFind itemModel.entry.id with
+                        | Some held ->
+                            let entry = held.entry
+                            Error (DuplicateItemModelErr $"'{entry.name.value}' ({entry.id.value}) at version {held.version.value}")
+                        | None ->
+                            store.Value <- store.Value |> Map.add itemModel.entry.id itemModel
+                            Ok ()
+            }
