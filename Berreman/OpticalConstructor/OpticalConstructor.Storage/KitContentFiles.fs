@@ -25,6 +25,12 @@ module KitContentFiles =
         member this.fileText : Result<KitFileText, StorageError> =
             nodeOf this |> Result.map (fun node -> node.canonicalFileText |> KitFileText)
 
+    type ItemFile with
+
+        /// Canonical item JSON with LF line ends and one final newline (spec 0050 S7.1).
+        member this.fileText : Result<KitFileText, StorageError> =
+            nodeOf this |> Result.map (fun node -> node.canonicalFileText |> KitFileText)
+
     type KitFileText with
 
         member private this.toContentJsonText : JsonText = JsonText this.value
@@ -36,6 +42,10 @@ module KitContentFiles =
         /// Validates the setup schema and rejects unsupported versions before binding (spec 0050 S4.3).
         member this.parseSceneFile : Result<SceneFile, StorageError> =
             parseVersionedText SchemaValidation.validateSceneFile SetupKitFile.extension SceneFile.currentSchemaVersion this.toContentJsonText
+
+        /// Validates the item schema and rejects unsupported versions before binding; no older version is read (spec 0050 S7.1).
+        member this.parseItemFile : Result<ItemFile, StorageError> =
+            parseVersionedText SchemaValidation.validateItemFile ItemKitFile.extension ItemFile.currentSchemaVersion this.toContentJsonText
 
     let private contentStorageRejectedErr (file : FileName) (error : StorageError) : KitError =
         KitFileRejectedErr $"the file '{file.value}': {error.describe}"

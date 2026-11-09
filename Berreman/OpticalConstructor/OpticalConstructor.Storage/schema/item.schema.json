@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://berreman/schema/item.json",
+  "title": "ItemFile",
+  "description": "One item's <label>.item-json content (spec 0050 S7.1). Only version 1's body is validated so other positive schema versions reach the typed version check before binding.",
+  "type": "object",
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" }
+  },
+  "if": {
+    "required": ["schemaVersion"],
+    "properties": { "schemaVersion": { "const": 1 } }
+  },
+  "then": {
+    "required": ["schemaVersion", "item"],
+    "additionalProperties": false,
+    "properties": {
+      "schemaVersion": true,
+      "item": {
+        "type": "object",
+        "required": ["id", "label", "model", "parameters", "dial", "photoOpt", "notes", "revision", "history"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "https://berreman/schema/library-common.json#/$defs/guid" },
+          "label": { "type": "string", "minLength": 1 },
+          "model": true,
+          "parameters": { "type": "array" },
+          "dial": true,
+          "photoOpt": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "string", "minLength": 1 }
+            ]
+          },
+          "notes": { "type": "string" },
+          "revision": { "type": "integer", "minimum": 1 },
+          "history": { "type": "array" }
+        }
+      }
+    }
+  }
+}

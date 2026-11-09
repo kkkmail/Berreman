@@ -715,3 +715,22 @@ module Kit =
                     match bindingRules |> List.choose id with
                     | reason :: _ -> Error (InvalidItemModelBindingErr reason)
                     | [] -> Ok this.toItem
+
+    /// One item's versioned `<label>.item-json` content; a file is read back as its `item` (spec 0050 S7.1; 001 §A).
+    type ItemFile =
+        {
+            schemaVersion : FileSchemaVersion
+            item : Item
+        }
+
+        /// The only supported item file schema version (spec 0050 S7.1).
+        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
+
+    type Item with
+
+        /// The item in the current item file schema (spec 0050 S7.1).
+        member this.itemFile : ItemFile =
+            {
+                schemaVersion = ItemFile.currentSchemaVersion
+                item = this
+            }

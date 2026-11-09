@@ -8,6 +8,7 @@ open Berreman.Fields
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -437,3 +438,275 @@ module KitContentFileJsonTests =
                 sceneFixture with elements = [ nonEntryElement ]
             }
         Assert.Empty nonEntryScene.libraryReferences
+
+    /// The draft's item at revision 1, failing with the refusal's text when an empty kit refuses it.
+    let private draftedItem (draft : ItemDraft) : Item =
+        match draft.addTo [] with
+        | Ok item -> item
+        | Error error -> failwith $"'{draft.label.value}' was refused: {error.describe}"
+
+    /// The Built-in polarizer preset of that id, failing when the catalogue holds another kind under it.
+    let private polarizerPresetOf (id : ElementValueId) : PolarizerPreset =
+        match BuiltinCatalogue.preset id with
+        | PolarizerItem polarizer -> polarizer
+        | SampleItem _ | SourceItem _ | DetectorItem _ -> failwith $"The Built-in preset '{id.value}' is not a polarizer."
+
+    let private cpl1Draft : ItemDraft =
+        {
+            id = ItemId (Guid.Parse "861bcd5e-8c9b-4e16-b315-76f3c2d799ca")
+            label = ItemLabel "CPL1"
+            model = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId)
+            dial = DialMounted DialPositive
+        }
+
+    /// CPL1 at revision 2: its retardance left to a fit under a prior, its fast-axis offset calibrated, and the
+    /// revision-1 parameters in its history.
+    let private cpl1 : Item =
+        let drafted = draftedItem cpl1Draft
+
+        let retardance : UnknownParameterData =
+            let bounds : ParameterInterval =
+                {
+                    lower = ParameterValue 1.2
+                    upper = ParameterValue 1.9
+                }
+
+            let prior : ParameterPrior =
+                {
+                    centre = ParameterValue (Math.PI / 2.0)
+                    sigma = ParameterSigma 0.05
+                }
+
+            {
+                start = ParameterValue 1.55
+                bounds = bounds
+                priorOpt = Some prior
+            }
+
+        let fastAxisOffset : CalibratedParameterData =
+            {
+                value = ParameterValue 0.0125
+                sigma = ParameterSigma 0.0004
+                fitRun = FitRunName "CPL1-offset@20261108T093000Z"
+            }
+
+        let revised (parameter : Parameter) : Parameter =
+            if parameter.name = ParameterName "c2.retardance" then
+                {
+                    parameter with state = UnknownParameter retardance
+                }
+            elif parameter.name = ParameterName "c2.fastAxisOffset" then
+                {
+                    parameter with state = CalibratedParameter fastAxisOffset
+                }
+            else
+                parameter
+
+        let revisionOne : ItemRevisionRecord =
+            {
+                revision = ItemRevision.first
+                parameters = drafted.parameters
+            }
+
+        {
+            drafted with
+                parameters = drafted.parameters |> List.map revised
+                photoOpt = Some (KitRelativePath "data/photos/CPL1.jpg")
+                notes = ItemNotes "the left-handed circular polarizer, re-measured after cleaning"
+                revision = ItemRevision.first.next
+                history = [ revisionOne ]
+        }
+
+    let private laserDraft : ItemDraft =
+        {
+            id = ItemId (Guid.Parse "0c902cce-0bf6-48e7-badc-60f08d99c98c")
+            label = ItemLabel "Laser"
+            model = SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source PresetIds.heNe633)
+            dial = FixedMounting
+        }
+
+    let private lp1Draft : ItemDraft =
+        {
+            id = ItemId (Guid.Parse "b78e50eb-900c-4c95-906a-43a50ccc4f57")
+            label = ItemLabel "LP1"
+            model = PolarizerPresetChoice (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId, polarizerPresetOf PresetIds.polarizerLp)
+            dial = DialMounted DialNegative
+        }
+
+    let private plateDraft : ItemDraft =
+        {
+            id = ItemId (Guid.Parse "b4c85d10-d97e-4c6c-ba7f-787c9f0333b1")
+            label = ItemLabel "Plate1"
+            model =
+                StackSampleChoice (
+                    BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId,
+                    SampleVersionId.firstOf SampleIds.glassPlate1mmId,
+                    BuiltinCatalogue.sample SampleIds.glassPlate1mmId
+                )
+            dial = FixedMounting
+        }
+
+    /// A standalone model's item, then a source, an ideal-polarizer and a stack item, each with the draft it came from.
+    let private itemsWithDrafts : (Item * ItemDraft) list =
+        [
+            cpl1, cpl1Draft
+            draftedItem laserDraft, laserDraft
+            draftedItem lp1Draft, lp1Draft
+            draftedItem plateDraft, plateDraft
+        ]
+
+    let private editedItemFileOf (item : Item) (edit : JsonObject -> unit) : KitFileText =
+        let text = item.itemFile.fileText |> kitContentJsonValue
+        let node = (JsonNode.Parse text.value).AsObject()
+        edit node
+        node.canonicalFileText |> KitFileText
+
+    let private editedItemFile (edit : JsonObject -> unit) : KitFileText = editedItemFileOf cpl1 edit
+
+    [<Fact>]
+    let ``an item is stored under its label`` () : unit =
+        let label = ItemLabel "CPL1"
+        let expectedStem = FileStem "CPL1"
+        let expectedName = FileName "CPL1.item-json"
+
+        Assert.Equal<FileStem>(expectedStem, label.fileStem)
+        Assert.Equal<FileName>(expectedName, ItemKitFile.fileNameOf label.fileStem)
+        Assert.Equal<FileName>(expectedName, ItemKitFile.fileNameOf cpl1.label.fileStem)
+
+    [<Fact>]
+    let ``an item file round-trips through its canonical text`` () : unit =
+        let expectedVersion = FileSchemaVersion 1
+
+        for item, draft in itemsWithDrafts do
+            let file = item.itemFile
+            let text = file.fileText |> kitContentJsonValue
+            let readBack = text.parseItemFile |> kitContentJsonValue
+
+            Assert.Equal<FileSchemaVersion>(expectedVersion, file.schemaVersion)
+            Assert.Equal<Item>(item, file.item)
+            Assert.Equal<ItemFile>(file, readBack)
+            Assert.DoesNotContain("\r", text.value)
+            Assert.StartsWith("{\n  \"item\": {", text.value)
+            Assert.EndsWith("}\n", text.value)
+            Assert.False(text.value.EndsWith "\n\n", "the file ends with exactly one line end")
+
+            let node = (JsonNode.Parse text.value).AsObject()
+            let keys = [ for KeyValue (key, _) in node -> key ]
+            Assert.Equal<string list>([ "item"; "schemaVersion" ], keys)
+            Assert.Equal<KitFileText>(text, readBack.fileText |> kitContentJsonValue)
+
+            // The item read back names its model's exact version and, for a binding form, its typed physics.
+            let referenceCount =
+                match draft.model with
+                | LibraryModelChoice _ -> 1
+                | SourcePresetChoice _ | PolarizerPresetChoice _ | StackSampleChoice _ -> 2
+
+            Assert.Equal<ItemModelInstance>(draft.model.instance, readBack.item.model)
+            Assert.Equal<EntryReference list>(item.libraryReferences, readBack.item.libraryReferences)
+            Assert.Equal(referenceCount, readBack.item.libraryReferences.Length)
+
+        // CPL1 keeps its revision, its unknown and calibrated parameters, its history and its photo.
+        let cpl1Back = (cpl1.itemFile.fileText |> kitContentJsonValue).parseItemFile |> kitContentJsonValue
+        Assert.Equal<ItemRevision>(ItemRevision 2, cpl1Back.item.revision)
+        Assert.Equal<ItemRevisionRecord list>(cpl1.history, cpl1Back.item.history)
+        Assert.Equal<KitRelativePath option>(Some (KitRelativePath "data/photos/CPL1.jpg"), cpl1Back.item.photoOpt)
+
+        match cpl1Back.item.tryFindParameter (ParameterName "c2.retardance") with
+        | Some { state = UnknownParameter { priorOpt = Some _ } } -> ()
+        | Some _ | None -> Assert.Fail "CPL1 did not read its retardance back as unknown under a prior"
+
+        match cpl1Back.item.tryFindParameter (ParameterName "c2.fastAxisOffset") with
+        | Some { state = CalibratedParameter _ } -> ()
+        | Some _ | None -> Assert.Fail "CPL1 did not read its fast-axis offset back as calibrated"
+
+    [<Fact>]
+    let ``an item file of another schema version is UnsupportedSchemaVersionErr`` () : unit =
+        let intact =
+            [
+                for item, _ in itemsWithDrafts ->
+                    editedItemFileOf item (fun node -> node["schemaVersion"] <- JsonValue.Create 2)
+            ]
+        let versionOnly = KitFileText "{ \"schemaVersion\": 2 }"
+        let invalidBody =
+            editedItemFile (fun node ->
+                node["schemaVersion"] <- JsonValue.Create 2
+                node["item"] <- JsonValue.Create "not-an-item")
+        let expectedFound = FileSchemaVersion 2
+        let expectedVersion = FileSchemaVersion 1
+
+        for text in intact @ [ versionOnly; invalidBody ] do
+            match text.parseItemFile with
+            | Error (UnsupportedSchemaVersionErr info) ->
+                Assert.Equal(ItemKitFile.extension, info.fileExtension)
+                Assert.Equal<FileSchemaVersion>(expectedFound, info.found)
+                Assert.Equal<FileSchemaVersion>(expectedVersion, info.expected)
+            | Error error -> Assert.Fail($"expected UnsupportedSchemaVersionErr: {error.describe}")
+            | Ok _ -> Assert.Fail "accepted an item file of another schema version"
+
+    [<Fact>]
+    let ``a schema-invalid or malformed item file is refused before it binds`` () : unit =
+        let assertSchemaInvalid (text : KitFileText) : unit =
+            match text.parseItemFile with
+            | Error (SchemaValidationErr messages) ->
+                Assert.NotEmpty messages
+                for message in messages do
+                    Assert.False(String.IsNullOrWhiteSpace message)
+            | Error error -> Assert.Fail($"expected SchemaValidationErr: {error.describe}")
+            | Ok _ -> Assert.Fail($"accepted a schema-invalid item file: {text.value}")
+
+        for key in [ "schemaVersion"; "item" ] do
+            editedItemFile (fun node -> node.Remove key |> ignore) |> assertSchemaInvalid
+
+        for key in [ "id"; "label"; "model"; "parameters"; "dial"; "photoOpt"; "notes"; "revision"; "history" ] do
+            editedItemFile (fun node -> node["item"].AsObject().Remove key |> ignore)
+            |> assertSchemaInvalid
+
+        let invalidEdits : (JsonObject -> unit) list =
+            [
+                (fun node -> node["notes"] <- JsonValue.Create "unexpected")
+                (fun node -> node["schemaVersion"] <- JsonValue.Create 0)
+                (fun node -> node["schemaVersion"] <- JsonValue.Create (-1))
+                (fun node -> node["schemaVersion"] <- JsonValue.Create 1.5)
+                (fun node -> node["schemaVersion"] <- JsonValue.Create "1")
+                (fun node -> node["schemaVersion"] <- null)
+                (fun node -> node["item"] <- null)
+                (fun node -> node["item"]["unexpected"] <- JsonValue.Create "unexpected")
+                (fun node -> node["item"]["id"] <- JsonValue.Create "not-a-guid")
+                (fun node -> node["item"]["id"] <- JsonValue.Create "861BCD5E-8C9B-4E16-B315-76F3C2D799CA")
+                (fun node -> node["item"]["label"] <- JsonValue.Create "")
+                (fun node -> node["item"]["label"] <- JsonValue.Create 1)
+                (fun node -> node["item"]["label"] <- null)
+                (fun node -> node["item"]["parameters"] <- JsonValue.Create "not-an-array")
+                (fun node -> node["item"]["photoOpt"] <- JsonValue.Create "")
+                (fun node -> node["item"]["photoOpt"] <- JsonValue.Create 1)
+                (fun node -> node["item"]["notes"] <- null)
+                (fun node -> node["item"]["notes"] <- JsonValue.Create 1)
+                (fun node -> node["item"]["revision"] <- JsonValue.Create 0)
+                (fun node -> node["item"]["revision"] <- JsonValue.Create (-1))
+                (fun node -> node["item"]["revision"] <- JsonValue.Create 1.5)
+                (fun node -> node["item"]["revision"] <- JsonValue.Create "2")
+                (fun node -> node["item"]["history"] <- JsonValue.Create "not-an-array")
+            ]
+
+        for edit in invalidEdits do
+            editedItemFile edit |> assertSchemaInvalid
+
+        for text in [ KitFileText "null"; KitFileText "[]"; KitFileText "1" ] do
+            assertSchemaInvalid text
+
+        let malformedEdits : (JsonObject -> unit) list =
+            [
+                (fun node -> node["item"]["model"] <- JsonValue.Create "not-a-model")
+                (fun node -> node.["item"].["parameters"].[0] <- JsonValue.Create "not-a-parameter")
+                (fun node -> node.["item"].["parameters"].[0].["state"] <- JsonValue.Create "not-a-state")
+                (fun node -> node["item"]["dial"] <- JsonValue.Create "not-a-dial")
+                (fun node -> node.["item"].["history"].[0] <- JsonValue.Create "not-a-revision")
+                (fun node -> node.["item"].["history"].[0].["parameters"] <- JsonValue.Create "not-a-parameter-list")
+            ]
+        let malformed = KitFileText "{"
+
+        for text in malformed :: (malformedEdits |> List.map editedItemFile) do
+            match text.parseItemFile with
+            | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail($"expected MalformedJsonErr: {error.describe}")
+            | Ok _ -> Assert.Fail($"accepted malformed item file text: {text.value}")
