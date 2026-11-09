@@ -1,5 +1,30 @@
 # Step 0185 — IMPLEMENT — impl-log
 
+## Normal profile-1 resume (2026-11-08) — commit_ready: true
+
+The operator relaunched after committing the repair (`6607a49`, `b6668ae`) and
+asked for a normal resume. This attempt changes no product or test file.
+
+- Read the base protocol, the `IMPLEMENT` delta, the project prompt, the slice,
+  its gate snapshot, manual 014 and this log.
+- Verified the committed tree against the slice and manual 014. The checks were
+  read-only; no gate was run (Invariant 6).
+  - `kitWrites`, `guardKitWrite` and the four guarded arms (`ExpCommit`, `ExpRemove`,
+    `AttachDataFileTo`, `SceneSave`) are present.
+  - The Experiments bay state sets `addAvailability` / `removalAvailability`.
+  - `availableWorkbenchButton` draws Save scene, and `attachDataFileButton` takes
+    `model.kitWrites`.
+  - `ExperimentControlsState.removalAvailability` is present.
+  - The three declared new facts and the inverse fact are present.
+  - The scene fixture keeps `readOnlyView` without `ReadOnlyKitAccess`.
+  - The launcher fact checks the disabled Save and that no status appears.
+- `git diff HEAD -- Berreman/` is empty, and the 0185 diff has no CRLF churn
+  (`--numstat` equals `--ignore-cr-at-eol`).
+- Rewrote the state of the world. The earlier one lacked the required
+  `Architecture` and `Deferred` headings, and its `Next action` handoff is now
+  obsolete. The YAML floors stay at 1195 / 227 as the operator directs.
+- The operator note agrees with the code; there is no contradiction to record.
+
 ## Operator recovery — commit_ready: true
 
 The operator approved the secondary review's four recovery steps on 2026-11-08.

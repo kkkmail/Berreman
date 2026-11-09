@@ -1,5 +1,14 @@
 # Step 0185 — IMPLEMENT — impl-plan
 
+## Resume plan (2026-11-08, normal profile-1 relaunch)
+
+The implementation and manual 014's repairs are committed (`6607a49`, `b6668ae`).
+This attempt verifies the committed tree against the slice and manual 014 without
+changing it. It then refreshes the log and the state of the world, which now has
+every required heading. It hands off to the supervisor's review and frozen gates
+for measured checkpoint 184. No code is written, and no checkpoint, floor or
+budget is touched.
+
 ## Approach
 
 A kit opened read-only refuses its four write messages, and the window withholds the controls that send them
