@@ -461,6 +461,37 @@ module KitFolders =
             pickKitFolder : unit -> Async<KitFolder option>
         }
 
+    /// Why a folder could not be shown in the system's file browser (spec 0050 S5.3).
+    type ExplorerError =
+        /// The folder does not exist, so nothing is shown (spec 0050 S5.3).
+        | MissingFolderErr of reason : string
+        /// The file browser could not be started (spec 0050 S5.3).
+        | ExplorerLaunchErr of reason : string
+
+        member this.describe : string =
+            match this with
+            | MissingFolderErr reason -> $"the folder does not exist: {reason}"
+            | ExplorerLaunchErr reason -> $"the folder could not be shown: {reason}"
+
+    /// Shows a folder in the system's file browser: Ui's `ExplorerProxy.system`, or `createInMemory` the double (spec 0050 S5.3).
+    [<ReferenceEquality>]
+    type ExplorerProxy =
+        {
+            /// Opens the folder in the file browser and answers at once, never waiting for the browser (spec 0050 S5.3).
+            showFolder : FolderName -> Result<unit, ExplorerError>
+        }
+
+    type ExplorerProxy with
+
+        /// The double: hands every folder it is asked to show to `record` and answers `Ok ()`, starting nothing (spec 0050 S5.3).
+        static member createInMemory (record : FolderName -> unit) : ExplorerProxy =
+            {
+                showFolder =
+                    fun folder ->
+                        record folder
+                        Ok ()
+            }
+
     type KitContext with
 
         /// Opens read-write, initializing only a folder without a kit; all other errors pass through (spec 0050 S4.3).
