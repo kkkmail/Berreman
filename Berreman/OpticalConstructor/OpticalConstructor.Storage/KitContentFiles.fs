@@ -181,3 +181,130 @@ module KitContentFiles =
         member this.recordItem (item : Item) : Result<unit, KitLibraryError> =
             this.snapshotReferences item.libraryReferences
             |> Result.bind (fun _ -> this.kit.proxy.writeItem item |> Result.mapError KitLibraryKitErr)
+
+    /// What a copy brought into the kit, in write order: each experiment as written, each data file copied in and each
+    /// snapshot added (spec 0050 S6).
+    type ExperimentCopyReport =
+        {
+            experiments : Experiment list
+            dataFiles : DataAttachment list
+            snapshots : LibraryVersionRef list
+        }
+
+    type KitContext with
+
+        /// Copies the chosen experiments of the source, with the data files they reference and the source's snapshots of
+        /// their closure this kit lacks, renumbered on a clash. Everything is read before anything is written, and the
+        /// source is only read; the first failure stops the copy, keeping what it wrote (spec 0050 S6).
+        member this.copyExperimentsFrom (source : KitContext) (ids : ExperimentId list) : Result<ExperimentCopyReport, KitLibraryError> =
+            let keep (offered : Experiment list) : Result<Experiment list, KitLibraryError> =
+                match ids |> List.tryFind (fun id -> not (offered |> List.exists (fun experiment -> experiment.id = id))) with
+                | Some missing -> Error (KitLibraryKitErr (MissingKitFileErr (ExperimentKitFile.fileNameOf missing.fileStem).value))
+                | None -> Ok (offered |> List.filter (fun experiment -> List.contains experiment.id ids))
+
+            // The source's own snapshots answer the closure: the exact version, or the entry's highest one (spec 0050 S6).
+            let lackedSnapshots (kept : Experiment list) : Result<LibraryEntryEnvelope list, KitLibraryError> =
+                source.proxy.listSnapshots ()
+                |> Result.mapError KitLibraryKitErr
+                |> Result.bind (fun offered ->
+                    let resolve (reference : EntryReference) : Result<LibraryEntryEnvelope, KitLibraryError> =
+                        let candidates =
+                            match reference with
+                            | EntryVersionReference version -> offered |> List.filter (fun envelope -> envelope.libraryVersionRef = version)
+                            | EntryLatestReference id -> offered |> List.filter (fun envelope -> envelope.content.id = id)
+                        match candidates |> List.sortByDescending (fun envelope -> envelope.content.version) |> List.tryHead with
+                        | Some envelope -> Ok envelope
+                        | None -> Error (UnheldEntryErr reference.describe)
+
+                    referenceClosure resolve (kept |> List.collect (fun experiment -> experiment.libraryReferences)))
+                |> Result.bind (fun closure ->
+                    this.proxy.listSnapshots ()
+                    |> Result.mapError KitLibraryKitErr
+                    |> Result.map (fun held ->
+                        let heldVersions = held |> List.map (fun envelope -> envelope.libraryVersionRef)
+                        closure |> List.filter (fun envelope -> not (List.contains envelope.libraryVersionRef heldVersions))))
+
+            let readDataFiles (kept : Experiment list) : Result<(KitRelativePath * LabFileSource) list, KitLibraryError> =
+                kept
+                |> List.choose (fun experiment -> experiment.dataFileOpt |> Option.map (fun attachment -> attachment.path))
+                |> List.distinct
+                |> List.fold (fun result path ->
+                    result |> Result.bind (fun read ->
+                        source.proxy.readLabFile path
+                        |> Result.mapError KitLibraryKitErr
+                        |> Result.map (fun lab -> (path, lab) :: read))) (Ok [])
+                |> Result.map List.rev
+
+            let renumber (kept : Experiment list) : Result<Experiment list, KitLibraryError> =
+                this.proxy.readExperiments ()
+                |> Result.mapError KitLibraryKitErr
+                |> Result.map (fun held -> Experiment.renumberedFor (held |> List.map (fun experiment -> experiment.id)) kept)
+
+            let writeSnapshots (snapshots : LibraryEntryEnvelope list) : Result<LibraryVersionRef list, KitLibraryError> =
+                snapshots
+                |> List.fold (fun result envelope ->
+                    result |> Result.bind (fun written ->
+                        this.proxy.writeSnapshot envelope
+                        |> Result.mapError KitLibraryKitErr
+                        |> Result.map (fun () -> envelope.libraryVersionRef :: written))) (Ok [])
+                |> Result.map List.rev
+
+            // A file keeps its data folder and takes the next free suffix on a clash (spec 0050 S4.2, S6).
+            let copyDataFiles (files : (KitRelativePath * LabFileSource) list) : Result<(KitRelativePath * DataAttachment) list, KitLibraryError> =
+                files
+                |> List.fold (fun result (path, lab) ->
+                    result |> Result.bind (fun copied ->
+                        let folder =
+                            match path.parentOpt |> Option.map KitDataFolder.tryCreate with
+                            | Some (Ok dataFolder) -> dataFolder
+                            | _ -> KitDataFolder.root
+                        this.proxy.copyInFile folder lab.file.leafName lab.content
+                        |> Result.mapError KitLibraryKitErr
+                        |> Result.map (fun data -> (path, data.attachment) :: copied))) (Ok [])
+                |> Result.map List.rev
+
+            let writeExperiments (copied : (KitRelativePath * DataAttachment) list) (renumbered : Experiment list) : Result<Experiment list, KitLibraryError> =
+                let moved = Map.ofList copied
+                renumbered
+                |> List.fold (fun result experiment ->
+                    result |> Result.bind (fun written ->
+                        let copy =
+                            {
+                                experiment with dataFileOpt = experiment.dataFileOpt |> Option.bind (fun attachment -> Map.tryFind attachment.path moved)
+                            }
+                        this.proxy.writeExperiment copy
+                        |> Result.mapError KitLibraryKitErr
+                        |> Result.map (fun () -> copy :: written))) (Ok [])
+                |> Result.map List.rev
+
+            // Snapshots and data come first, so a written experiment never references a file the kit lacks (spec 0050 S6).
+            let writeAll
+                (snapshots : LibraryEntryEnvelope list)
+                (files : (KitRelativePath * LabFileSource) list)
+                (renumbered : Experiment list)
+                : Result<ExperimentCopyReport, KitLibraryError> =
+                writeSnapshots snapshots
+                |> Result.bind (fun added ->
+                    copyDataFiles files
+                    |> Result.bind (fun copied ->
+                        writeExperiments copied renumbered
+                        |> Result.map (fun experiments ->
+                            let report : ExperimentCopyReport =
+                                {
+                                    experiments = experiments
+                                    dataFiles = copied |> List.map snd
+                                    snapshots = added
+                                }
+                            report)))
+
+            match this.access with
+            | ReadOnlyKitAccess -> Error (KitLibraryKitErr (KitReadOnlyErr "copyExperimentsFrom"))
+            | ReadWriteKitAccess ->
+                source.proxy.readExperiments ()
+                |> Result.mapError KitLibraryKitErr
+                |> Result.bind keep
+                |> Result.bind (fun kept ->
+                    lackedSnapshots kept
+                    |> Result.bind (fun snapshots ->
+                        readDataFiles kept
+                        |> Result.bind (fun files -> renumber kept |> Result.bind (writeAll snapshots files))))
