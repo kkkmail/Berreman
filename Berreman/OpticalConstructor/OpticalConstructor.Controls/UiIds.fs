@@ -700,6 +700,10 @@ type ConstructorUiId =
     /// The reload offer's Keep mine (spec 0050 S5.3).
     static member kitChangesKeepMineButton : ConstructorUiId = ConstructorUiId "KitChangesKeepMineButton"
 
+    // --- The Data locations window (DataLocationsView, DataLocationsWindow). ---
+    /// The last folder Open folder could not open, and why (spec 0050 S5.3).
+    static member dataLocationsStatusText : ConstructorUiId = ConstructorUiId "DataLocationsStatusText"
+
     // --- The diagnostic test launcher window (`TestLauncherWindow`, project TestWindows.App). ---
     static member openTableRotationTestButton : ConstructorUiId = ConstructorUiId "OpenTableRotationTestButton"
     static member openElementRotationTestButton : ConstructorUiId = ConstructorUiId "OpenElementRotationTestButton"

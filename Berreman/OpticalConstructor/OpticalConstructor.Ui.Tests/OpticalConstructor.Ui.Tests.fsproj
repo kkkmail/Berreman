@@ -239,6 +239,7 @@
         <Compile Include="WireUi0040CompositionTests.fs" />
         <Compile Include="KitStartWindowTests.fs" />
         <Compile Include="KitWindowTests.fs" />
+        <Compile Include="DataLocationsWindowTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

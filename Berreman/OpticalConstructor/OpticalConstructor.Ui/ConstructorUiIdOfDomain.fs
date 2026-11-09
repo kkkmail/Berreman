@@ -16,6 +16,7 @@ open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.WorkbenchSettings
 
 /// The Controls values derived from a Domain value: the automation ids (spec 0048 R1) and a control's
 /// keys, counts and captions. Controls references no Domain type, so they are extension members here,
@@ -597,3 +598,49 @@ module ConstructorUiIdOfDomain =
             match this with
             | ScalarMuKind -> ControlCaption "Scalar"
             | GyromagneticMuKind -> ControlCaption "Gyromagnetic"
+
+    type FolderName with
+
+        /// The folder's text as its Data locations row shows it (spec 0050 S5.3).
+        member this.pathCaption : ControlCaption = ControlCaption this.value
+
+    type FileName with
+
+        /// The library file's full path as its Data locations row shows it (spec 0050 S5.3).
+        member this.pathCaption : ControlCaption = ControlCaption this.value
+
+    type DataLocationKind with
+
+        /// The location as its Data locations row names it (spec 0050 S5.3).
+        member this.caption : ControlCaption =
+            match this with
+            | LibraryDatabaseLocation -> ControlCaption "Library database"
+            | LibraryBackupsLocation -> ControlCaption "Library backups"
+            | PreferencesLocation -> ControlCaption "Preferences"
+            | KitsLocation -> ControlCaption "Kit folders (suggested parent)"
+            | ExportsLocation -> ControlCaption "Exports"
+            | CataloguesLocation -> ControlCaption "Catalogue exports"
+            | ShippedCatalogueLocation -> ControlCaption "Shipped catalogue"
+
+        /// The location as the key of its Data locations row's ids (spec 0050 S5.3).
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | LibraryDatabaseLocation -> ConstructorUiKey "LibraryDatabase"
+            | LibraryBackupsLocation -> ConstructorUiKey "LibraryBackups"
+            | PreferencesLocation -> ConstructorUiKey "Preferences"
+            | KitsLocation -> ConstructorUiKey "Kits"
+            | ExportsLocation -> ConstructorUiKey "Exports"
+            | CataloguesLocation -> ConstructorUiKey "Catalogues"
+            | ShippedCatalogueLocation -> ConstructorUiKey "ShippedCatalogue"
+
+    type ConstructorUiId with
+
+        /// A location's row in the Data locations window (spec 0050 S5.3).
+        static member dataLocationRow (kind : DataLocationKind) : ConstructorUiId = ConstructorUiId $"DataLocationRow_{kind.uiKey.value}"
+
+        /// The path a location's row shows (spec 0050 S5.3).
+        static member dataLocationPathText (kind : DataLocationKind) : ConstructorUiId = ConstructorUiId $"DataLocationPath_{kind.uiKey.value}"
+
+        /// A location's Open folder, present only where the row has a folder (spec 0050 S5.3).
+        static member dataLocationOpenFolderButton (kind : DataLocationKind) : ConstructorUiId =
+            ConstructorUiId $"DataLocationOpenFolder_{kind.uiKey.value}"
