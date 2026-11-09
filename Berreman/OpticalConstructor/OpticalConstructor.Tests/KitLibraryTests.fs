@@ -1797,6 +1797,7 @@ module KitLibraryTests =
         Assert.Equal<Item list>(items, opened.proxy.readItems () |> expectKitOk)
         let overlay = context.openOverlay [] |> expectSnapshotOk
         let session = (storesForOverlay empty).overlaidWith overlay
+        let itemModels = empty.itemModels.overlaidWith overlay
         for item in items do
             let modelVersion =
                 match item.model with
@@ -1812,6 +1813,7 @@ module KitLibraryTests =
             Assert.Equal<LibraryEntryKind>(ItemModelEntryKind, snapshot.content.schema.kind)
             Assert.Equal<VersionNumber>(shipped.version, snapshot.content.version)
             Assert.Equal<ItemModelEntry>(shipped.entry, snapshot.content.toItemModel |> expectOverlayStoreOk)
+            Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Ok (Some shipped), itemModels.resolveItemModelVersion modelVersion)
             match item.model with
             | PresetInstance (_, preset) ->
                 Assert.Equal<Result<LibraryEntry option, LibraryError>>(
@@ -1952,6 +1954,169 @@ module KitLibraryTests =
             Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
             assertSnapshots [] fixture
             Assert.Empty(fixture.context.kit.proxy.readItems () |> expectKitOk)
+
+    /// A test-local, user-managed item model at its first version (spec 0050 S7.2).
+    let private userItemModel (id : ItemModelId) (name : EntryName) (model : ItemModelForm) : ItemModelVersion =
+        {
+            version = VersionNumber.first
+            entry =
+                {
+                    id = id
+                    name = name
+                    description = EntryDescription $"{name.value}, kept by this test"
+                    model = model
+                    protection = UserManaged
+                }
+        }
+
+    [<Fact>]
+    let ``a kit's item models resolve from its snapshots against an empty library`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        let versionIds : ItemModelVersionId list =
+            [ ItemModelIds.retarderPlateModelId; ItemModelIds.circularPolarizerModelId ]
+            |> List.map (fun id ->
+                {
+                    itemModelId = id
+                    version = VersionNumber.first
+                })
+        let expected = versionIds |> List.map (fun versionId -> itemModelEnvelope versionId.itemModelId)
+        Assert.Equal<LibraryVersionRef list>(
+            expected |> List.map _.libraryVersionRef,
+            fixture.context.snapshotReferences (versionIds |> List.map _.entryReference) |> expectSnapshotOk)
+        assertSnapshots expected fixture
+
+        let empty = CatalogueImportProxy.createInMemory ()
+        let opened =
+            KitContext.openKit (KitProxy.createInMemory fixture.folder) ReadOnlyKitAccess fixture.context.kit.clock |> expectKitOk
+        let context : KitLibraryContext =
+            {
+                kit = opened
+                imports = CatalogueImportContext.create empty.proxy
+            }
+        let paths = fixture.folder.paths ()
+        let overlay = context.openOverlay [] |> expectSnapshotOk
+        let store = ItemModelProxy.createInMemory ()
+        let session = store.overlaidWith overlay
+        for versionId in versionIds do
+            let shipped = BuiltinCatalogue.itemModel versionId.itemModelId
+            Assert.Equal<ItemModelVersionId>(versionId, shipped.versionId)
+            Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Ok (Some shipped), session.resolveItemModelVersion versionId)
+            Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(
+                Ok None, session.resolveItemModelVersion { versionId with version = VersionNumber.first.next })
+            Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Ok None, store.resolveItemModelVersion versionId)
+        let circular = BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId
+        let retarder = BuiltinCatalogue.itemModel ItemModelIds.retarderPlateModelId
+        Assert.True(circular.entry.name < retarder.entry.name)
+        Assert.Equal<Result<ItemModelVersion list, ItemModelError>>(Ok [ circular; retarder ], session.listItemModels ())
+        Assert.Equal<Result<ItemModelVersion list, ItemModelError>>(Ok [], store.listItemModels ())
+        Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+        Assert.Empty(empty.proxy.heldEntriesOf CatalogueIds.builtInCatalogue |> expectImportOk)
+        Assert.Empty(empty.proxy.heldUserEntries () |> expectImportOk)
+
+    [<Fact>]
+    let ``the overlaid item-model store answers the kit's divergent version and passes a save through`` () : unit =
+        let held = BuiltinCatalogue.freshStores ()
+        let fixture = snapshotFixture held.proxy ReadWriteKitAccess
+        let shipped = BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId
+        let content =
+            {
+                (itemModelEnvelope ItemModelIds.circularPolarizerModelId).content with
+                    descriptionOpt = Some (EntryDescription "The circular polarizer as this kit measured it")
+            }
+        let divergent = fixture.context.imports.sealEntry content |> expectImportOk
+        fixture.context.kit.proxy.writeSnapshot divergent |> expectKitOk
+        // Both names sort before every Built-in model's and their ids the other way round, so the listing shows the
+        // store-first and the by-name rules.
+        let kitOnly =
+            userItemModel
+                (ItemModelId (Guid.Parse "22200000-0000-4000-8000-000000000003"))
+                (EntryName "A kit-only wave plate")
+                (OpticalElementModel (RetarderPlateModel ConstantRetardance))
+        let kitOnlyPolarizer =
+            userItemModel
+                (ItemModelId (Guid.Parse "22200000-0000-4000-8000-000000000001"))
+                (EntryName "B kit-only polarizer")
+                (OpticalElementModel (RealPolarizerModel ExtinctionRatioLeakage))
+        let snapshotOf (itemModel : ItemModelVersion) : LibraryEntryEnvelope =
+            let snapshot =
+                LibraryEntryContent.ofItemModel itemModel.version UserProvenance itemModel.entry
+                |> expectOverlayStoreOk
+                |> fixture.context.imports.sealEntry
+                |> expectImportOk
+            fixture.context.kit.proxy.writeSnapshot snapshot |> expectKitOk
+            snapshot
+        let kitOnlySnapshot = snapshotOf kitOnly
+        let kitOnlyContent = kitOnlySnapshot.content
+        let kitOnlyPolarizerSnapshot = snapshotOf kitOnlyPolarizer
+        let overlay = fixture.context.openOverlay [] |> expectSnapshotOk
+        let session = held.itemModels.overlaidWith overlay
+
+        let kitModel : ItemModelVersion =
+            {
+                version = content.version
+                entry = content.toItemModel |> expectOverlayStoreOk
+            }
+        Assert.Equal<ItemModelVersionId>(shipped.versionId, kitModel.versionId)
+        Assert.NotEqual<EntryDescription>(shipped.entry.description, kitModel.entry.description)
+        Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Ok (Some kitModel), session.resolveItemModelVersion shipped.versionId)
+        Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Ok (Some shipped), held.itemModels.resolveItemModelVersion shipped.versionId)
+        Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Ok (Some kitOnly), session.resolveItemModelVersion kitOnly.versionId)
+        let stored = held.itemModels.listItemModels () |> expectOverlayStoreOk
+        Assert.Equal<ItemModelVersion list>(
+            BuiltinCatalogue.itemModels () |> List.sortBy (fun itemModel -> itemModel.entry.name, itemModel.entry.id), stored)
+        let listed = session.listItemModels () |> expectOverlayStoreOk
+        Assert.True(kitOnlyPolarizer.entry.id < kitOnly.entry.id)
+        Assert.Equal<ItemModelVersion list>(stored @ [ kitOnly; kitOnlyPolarizer ], listed)
+        Assert.Equal<ItemModelVersion>(shipped, listed |> List.filter (fun itemModel -> itemModel.entry.id = shipped.entry.id) |> Assert.Single)
+
+        let saved =
+            userItemModel
+                (ItemModelId (Guid.Parse "22200000-0000-4000-8000-000000000002"))
+                (EntryName "Bench quarter-wave plate")
+                (OpticalElementModel (RetarderPlateModel ConstantRetardance))
+        Assert.Equal<Result<unit, ItemModelError>>(Ok (), session.saveItemModel saved)
+        Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Ok (Some saved), held.itemModels.resolveItemModelVersion saved.versionId)
+        match session.saveItemModel kitModel with
+        | Error (DuplicateItemModelErr reason) -> Assert.Contains(string shipped.entry.id.value, reason)
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail("A save of a held id must be the store's own refusal.")
+        Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Ok (Some shipped), held.itemModels.resolveItemModelVersion shipped.versionId)
+        assertSnapshots [ divergent; kitOnlySnapshot; kitOnlyPolarizerSnapshot ] fixture
+
+        // A re-bound kit model resolves to the held entry and leaves the listing (spec 0050 S4.2).
+        let rebinding : EntryRebinding =
+            {
+                incoming = kitOnlyContent.id
+                held = shipped.entry.id.toLibraryEntryId
+            }
+        let rebound = held.itemModels.overlaidWith (fixture.context.openOverlay [ rebinding ] |> expectSnapshotOk)
+        Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Ok (Some shipped), rebound.resolveItemModelVersion kitOnly.versionId)
+        Assert.Equal<Result<ItemModelVersion list, ItemModelError>>(
+            Ok ((held.itemModels.listItemModels () |> expectOverlayStoreOk) @ [ kitOnlyPolarizer ]), rebound.listItemModels ())
+
+        // A snapshot that is no item model is the store's typed refusal, naming the snapshot.
+        let undescribed =
+            {
+                kitOnlyContent with descriptionOpt = None
+            }
+        let refusal =
+            match undescribed.toItemModel with
+            | Error error -> error.describe
+            | Ok _ -> failwith "An item model without a description must not decode."
+        let invalidOverlay : KitLibraryOverlay =
+            {
+                snapshots =
+                    [
+                        {
+                            kitOnlySnapshot with content = undescribed
+                        }
+                    ]
+                replacements = []
+            }
+        let invalid = held.itemModels.overlaidWith invalidOverlay
+        let expectedError = ItemModelStoreUnavailableErr $"snapshot {undescribed.describe}: {refusal}"
+        Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Error expectedError, invalid.resolveItemModelVersion kitOnly.versionId)
+        Assert.Equal<Result<ItemModelVersion list, ItemModelError>>(Error expectedError, invalid.listItemModels ())
 
     [<Fact>]
     let ``every kit library error renders its condition and its payload`` () : unit =

@@ -7,6 +7,7 @@ open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.ItemModels
 
 /// Snapshots referenced versions and overlays the session's library with kit entries (spec 0050 S4.2).
 module KitLibrary =
@@ -371,4 +372,43 @@ module KitLibrary =
                 materials = this.materials.overlaidWith overlay
                 samples = this.samples.overlaidWith overlay
                 categories = this.categories.overlaidWith overlay
+            }
+
+    /// The session's item models over read-only kit versions, so a kit's items resolve their models on any machine
+    /// (spec 0050 S7.2; 001 §E). Composed beside `KitLibraryStores`, not inside it.
+    type ItemModelProxy with
+
+        /// Re-bound entries resolve to the held one and exact versions prefer the kit's snapshot; listings append the
+        /// kit's snapshot-only item models by name, then id; saves pass through (spec 0050 S7.2, S4.2).
+        member this.overlaidWith (overlay : KitLibraryOverlay) : ItemModelProxy =
+            let decode (envelope : LibraryEntryEnvelope) : Result<ItemModelVersion, ItemModelError> =
+                let content = envelope.content
+                content.toItemModel
+                |> Result.map (fun entry ->
+                    let itemModel : ItemModelVersion =
+                        {
+                            version = content.version
+                            entry = entry
+                        }
+                    itemModel)
+                |> Result.mapError (fun error -> ItemModelStoreUnavailableErr $"snapshot {content.describe}: {error.describe}")
+            {
+                this with
+                    resolveItemModelVersion = fun versionId ->
+                        resolveOverlayReference
+                            overlay
+                            versionId.entryReference
+                            (fun () -> this.resolveItemModelVersion versionId)
+                            (decode >> Result.map Some)
+                    listItemModels = fun () ->
+                        this.listItemModels ()
+                        |> Result.bind (fun stored ->
+                            overlayListingSnapshots overlay [ ItemModelEntryKind ]
+                            |> List.filter (fun envelope ->
+                                not (stored |> List.exists (fun held -> held.entry.id.toLibraryEntryId = envelope.content.id)))
+                            |> List.fold (fun result envelope ->
+                                result |> Result.bind (fun itemModels ->
+                                    decode envelope |> Result.map (fun itemModel -> itemModel :: itemModels))) (Ok [])
+                            |> Result.map (fun snapshots ->
+                                stored @ (snapshots |> List.sortBy (fun itemModel -> itemModel.entry.name, itemModel.entry.id))))
             }
