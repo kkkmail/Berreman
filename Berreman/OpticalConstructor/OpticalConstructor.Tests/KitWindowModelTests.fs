@@ -609,3 +609,196 @@ module KitWindowModelTests =
                 Assert.Equal<ControlCaption option>(Some (ControlCaption $"The kit was sent: {zippedFiles} file(s) zipped."), sent.kitStatus)
                 Assert.Equal<KitAccess>(ReadOnlyKitAccess, sent.kit.access)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
+
+    /// The kit a fact copies experiments from, and the two experiments it holds (spec 0050 S6).
+    type private CopySourceKit =
+        {
+            sourceFolder : KitFolder
+            e1 : Experiments.Experiment
+            e2 : Experiments.Experiment
+        }
+
+    /// A dark line, no element varied (spec 0038 Part I), attaching the data file when one is given.
+    let private darkLine (id : Experiments.ExperimentId) (dataFileOpt : DataAttachment option) : Experiments.Experiment =
+        {
+            storedExperiment with
+                id = id
+                dataFileOpt = dataFileOpt
+        }
+
+    /// `Copy source` beside the fact's kit folder: E1, a dark line, and E2, which attaches `measured.csv` from outside
+    /// the kit through `attachLabFile`. It is closed and the app cache its lock left is removed, so a fact sees all
+    /// that a read-only open writes (spec 0050 S6).
+    let private copySourceUnder (factFolder : FolderName) (imports : CatalogueImportContext) : CopySourceKit =
+        let folder = KitFolder (factFolder.combine (FolderName "Copy source"))
+        let created = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+        let source =
+            try
+                let proxy = created.library.kit.proxy
+                let picked = (FileName "measured.csv").combine factFolder
+                File.WriteAllText(picked.value, "x,intensity\n0,1\n45,0.5\n")
+                let lab : LabFileSource =
+                    {
+                        file = picked
+                        content = FileByteContent (File.ReadAllBytes picked.value)
+                    }
+                let attachment = proxy.attachLabFile KitDataFolder.root lab |> kitValue
+                let made : CopySourceKit =
+                    {
+                        sourceFolder = folder
+                        e1 = darkLine (Experiments.ExperimentId 1) None
+                        e2 = darkLine (Experiments.ExperimentId 2) (Some attachment)
+                    }
+                proxy.writeExperiment made.e1 |> kitValue
+                proxy.writeExperiment made.e2 |> kitValue
+                made
+            finally created.library.kit.close () |> kitValue
+        Directory.Delete(Path.Combine(folder.value.value, ".oc"), true)
+        source
+
+    /// The `.oc` app cache of a kit folder.
+    let private appCacheOf (folder : KitFolder) : string = Path.Combine(folder.value.value, ".oc")
+
+    /// The experiment files at the kit folder's root.
+    let private experimentFilesIn (folder : KitFolder) : string list =
+        Directory.GetFiles(folder.value.value, "*.experiment-json") |> Array.map Path.GetFileName |> Array.sort |> List.ofArray
+
+    let private readOnlyRefusal : ControlCaption option = Some (ControlCaption "The kit is open read-only: nothing is saved.")
+
+    [<Fact>]
+    let ``choosing a kit to copy from opens it read-only and lists its experiments`` () : unit =
+        withFactFolder (fun factFolder folder imports ->
+            let source = copySourceUnder factFolder imports
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun model ->
+                let before = folderBytes source.sourceFolder
+                let listed = model |> updateTableAndElementRotation (OpenCopySource source.sourceFolder)
+                match listed.kitCopyOpt with
+                | Some copySource ->
+                    Assert.Equal<KitAccess>(ReadOnlyKitAccess, copySource.source.access)
+                    Assert.Equal<KitName>(KitName "Copy source", copySource.source.kitFile.name)
+                    Assert.Equal<Experiments.Experiment list>([ source.e1; source.e2 ], copySource.experiments)
+                    Assert.Empty(copySource.chosen)
+                | None -> Assert.Fail "the chosen kit was not opened to copy from"
+                Assert.Equal<ControlCaption option>(None, listed.kitStatus)
+                Assert.Equal<Experiments.ExperimentCollection>(model.experimentCollection, listed.experimentCollection)
+                Assert.False(Directory.Exists(appCacheOf source.sourceFolder), "a read-only open writes no .oc")
+                Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes source.sourceFolder)))
+
+    [<Fact>]
+    let ``copying the chosen experiments brings them into the kit and the window, and closes the source`` () : unit =
+        withFactFolder (fun factFolder folder imports ->
+            let source = copySourceUnder factFolder imports
+            let created = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            try created.library.kit.proxy.writeItem windowCpl1 |> kitValue
+            finally created.library.kit.close () |> kitValue
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun model ->
+                Assert.Equal<Item list>([ windowCpl1 ], model.kitItems)
+                let sourceBefore = folderBytes source.sourceFolder
+                let copied =
+                    model
+                    |> updateTableAndElementRotation (OpenCopySource source.sourceFolder)
+                    |> updateTableAndElementRotation (ToggleCopiedExperiment source.e2.id)
+                    |> updateTableAndElementRotation CopyChosenExperiments
+                Assert.Equal<Experiments.Experiment list>([ source.e2 ], copied.experimentCollection.experiments)
+                Assert.Equal<Experiments.ExperimentId list>(
+                    [ source.e2.id ],
+                    copied.experimentDataStatus |> Map.toList |> List.map fst)
+                Assert.Equal<string list>([ "E2.experiment-json" ], experimentFilesIn folder)
+                let copiedData = Path.Combine(folder.value.value, "data", "measured.csv")
+                Assert.True(File.Exists copiedData, "E2's data file must be copied under data")
+                Assert.Equal<byte[]>(File.ReadAllBytes(Path.Combine(source.sourceFolder.value.value, "data", "measured.csv")), File.ReadAllBytes copiedData)
+                Assert.Equal<KitCopySource option>(None, copied.kitCopyOpt)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Copied 1 experiment(s) from Copy source."), copied.kitStatus)
+                Assert.Equal<Item list>(model.kitItems, copied.kitItems)
+                Assert.Equal<Scene.SceneName list>(model.savedScenes, copied.savedScenes)
+                Assert.Equal<KitContext>(model.kit, copied.kit)
+                Assert.Equal<Map<FileName, FileByteContent>>(sourceBefore, folderBytes source.sourceFolder)
+                let checkedChanges = copied |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+                Assert.Empty(checkedChanges.kitChanges)
+                Assert.Equal<TableAndElementRotationModel>(copied, checkedChanges)))
+
+    [<Fact>]
+    let ``toggling an experiment twice leaves it unchosen, and Cancel copies nothing`` () : unit =
+        withFactFolder (fun factFolder folder imports ->
+            let source = copySourceUnder factFolder imports
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun model ->
+                Assert.Equal<TableAndElementRotationModel>(model, model |> updateTableAndElementRotation (ToggleCopiedExperiment source.e1.id))
+                let listed = model |> updateTableAndElementRotation (OpenCopySource source.sourceFolder)
+                let chosenOf (current : TableAndElementRotationModel) : Experiments.ExperimentId list =
+                    match current.kitCopyOpt with
+                    | Some copySource -> copySource.chosen
+                    | None -> failwith "the copy source must stay open while experiments are chosen"
+                let twice =
+                    listed
+                    |> updateTableAndElementRotation (ToggleCopiedExperiment source.e1.id)
+                    |> updateTableAndElementRotation (ToggleCopiedExperiment source.e1.id)
+                Assert.Empty(chosenOf twice)
+                let both =
+                    listed
+                    |> updateTableAndElementRotation (ToggleCopiedExperiment source.e2.id)
+                    |> updateTableAndElementRotation (ToggleCopiedExperiment source.e1.id)
+                Assert.Equal<Experiments.ExperimentId list>([ source.e1.id; source.e2.id ], chosenOf both)
+                let once = listed |> updateTableAndElementRotation (ToggleCopiedExperiment source.e1.id)
+                Assert.Equal<Experiments.ExperimentId list>([ source.e1.id ], chosenOf once)
+                let cancelled = once |> updateTableAndElementRotation CloseCopySource
+                Assert.Equal<KitCopySource option>(None, cancelled.kitCopyOpt)
+                Assert.Equal<TableAndElementRotationModel>({ once with kitCopyOpt = None }, cancelled)
+                Assert.Empty(experimentFilesIn folder)))
+
+    [<Fact>]
+    let ``a kit opened read-only neither opens a source nor copies`` () : unit =
+        withFactFolder (fun factFolder folder imports ->
+            let source = copySourceUnder factFolder imports
+            let created = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            created.library.kit.close () |> kitValue
+            let opened = openKitAt folder ReadOnlyKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun model ->
+                let before = folderBytes folder
+                let sourceBefore = folderBytes source.sourceFolder
+                let refused = model |> updateTableAndElementRotation (OpenCopySource source.sourceFolder)
+                Assert.Equal<ControlCaption option>(readOnlyRefusal, refused.kitStatus)
+                Assert.Equal<KitCopySource option>(None, refused.kitCopyOpt)
+                Assert.Equal<TableAndElementRotationModel>({ model with kitStatus = readOnlyRefusal }, refused)
+                let sourceContext = KitContext.openKit (KitProxy.create source.sourceFolder) ReadOnlyKitAccess ClockProvider.system |> kitValue
+                let withSource =
+                    {
+                        model with
+                            kitCopyOpt =
+                                Some
+                                    {
+                                        source = sourceContext
+                                        experiments = [ source.e1; source.e2 ]
+                                        chosen = [ source.e2.id ]
+                                    }
+                    }
+                let notCopied = withSource |> updateTableAndElementRotation CopyChosenExperiments
+                Assert.Equal<ControlCaption option>(readOnlyRefusal, notCopied.kitStatus)
+                Assert.Equal<TableAndElementRotationModel>({ withSource with kitStatus = readOnlyRefusal }, notCopied)
+                Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)
+                Assert.Equal<Map<FileName, FileByteContent>>(sourceBefore, folderBytes source.sourceFolder)))
+
+    [<Fact>]
+    let ``a kit cannot copy from itself, and a folder that is no kit is told`` () : unit =
+        withFactFolder (fun factFolder folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun model ->
+                let itself = model |> updateTableAndElementRotation (OpenCopySource (KitFolder (FolderName $"{folder.value.value}/")))
+                let selfRefusal = Some (ControlCaption "A kit cannot copy experiments from itself.")
+                Assert.Equal<ControlCaption option>(selfRefusal, itself.kitStatus)
+                Assert.Equal<TableAndElementRotationModel>({ model with kitStatus = selfRefusal }, itself)
+                let notes = factFolder.combine (FolderName "Notes")
+                Directory.CreateDirectory notes.value |> ignore
+                File.WriteAllText(Path.Combine(notes.value, "notes.txt"), "Not a kit\n")
+                let noKit = model |> updateTableAndElementRotation (OpenCopySource (KitFolder notes))
+                match noKit.kitStatus with
+                | Some status ->
+                    Assert.StartsWith("The kit could not be opened to copy from — ", status.value)
+                    Assert.Contains("the folder is not a kit", status.value)
+                | None -> Assert.Fail "a folder that is no kit was not told in the kit status"
+                Assert.Equal<KitCopySource option>(None, noKit.kitCopyOpt)
+                Assert.Equal<string list>(
+                    [ "notes.txt" ],
+                    Directory.GetFileSystemEntries notes.value |> Array.map Path.GetFileName |> List.ofArray)))

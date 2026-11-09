@@ -28,6 +28,7 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Storage.KitContentFiles
+open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Domain.KitArchive
 open Softellect.Sys.Primitives
@@ -240,10 +241,12 @@ type KitWindowShell =
         archive : KitArchiveProxy
         /// Runs the send off the UI thread, with its progress and its end as messages (spec 0050 S6, step 200).
         archiveJobs : KitArchiveJob.KitArchiveJobHost
+        /// The folder dialog that chooses the kit to copy experiments from (spec 0050 S6, step 145).
+        kitPicker : KitFolderPicker
     }
 
-    /// The test scenes' shell: it starts no Explorer, closes no window, picks no zip and runs no job; its archive is
-    /// an in-memory disk of its own (spec 0050 S5.3, S6).
+    /// The test scenes' shell: it starts no Explorer, closes no window, picks no zip or kit and runs no job; its
+    /// archive is an in-memory disk of its own (spec 0050 S5.3, S6).
     static member inert : KitWindowShell =
         {
             explorer = ExplorerProxy.createInMemory ignore
@@ -251,6 +254,10 @@ type KitWindowShell =
             zipPicker = KitZipPicker.none
             archive = KitArchiveProxy.createInMemory (InMemoryArchiveDisk.create ())
             archiveJobs = KitArchiveJob.KitArchiveJobHost.inert
+            kitPicker =
+                {
+                    pickKitFolder = fun () -> async { return None }
+                }
         }
 
 /// Spec 0038 (016): the handle of the ONE open Select-state window session this workbench
@@ -309,6 +316,32 @@ type KitCheckOrigin =
     | KitCheckOnActivation
     /// The Kit menu's Reload changes; a check that finds nothing says so (spec 0050 S5.3).
     | KitCheckOnRequest
+
+/// The kit chosen to copy experiments from, opened read-only, its experiments as read, and the ids chosen so far, in
+/// the source's order (spec 0050 S6).
+type KitCopySource =
+    {
+        source : KitContext
+        experiments : Experiments.Experiment list
+        chosen : Experiments.ExperimentId list
+    }
+
+    /// Chooses the experiment, or unchooses it when chosen, keeping the source's order; an id the source does not
+    /// hold is never chosen (spec 0050 S6).
+    member this.toggled (id : Experiments.ExperimentId) : KitCopySource =
+        {
+            this with
+                chosen =
+                    this.experiments
+                    |> List.map (fun experiment -> experiment.id)
+                    |> List.filter (fun held -> (held = id) <> List.contains held this.chosen)
+        }
+
+    /// Closes the source. A read-only source holds no lock, so a failed close is only logged (spec 0050 S6, step 131).
+    member this.release () : unit =
+        match this.source.close () with
+        | Ok () -> ()
+        | Error error -> Softellect.Sys.Logging.Logger.logError $"KitCopySource.release: could not close the copy source: {error.describe}"
 
 type TableAndElementRotationModel =
     {
@@ -407,6 +440,8 @@ type TableAndElementRotationModel =
         kitChanges : FileName list
         /// The window's one send of its kit, idle while none runs (spec 0050 S6, step 200).
         kitSend : KitArchiveJob.KitArchiveJobState
+        /// The kit open to copy experiments from, `None` while no copy is being chosen (spec 0050 S6).
+        kitCopyOpt : KitCopySource option
         /// The last kit read or write that needs telling (spec 0050 S4.3).
         kitStatus : ControlCaption option
         /// The scene name being edited, validated when saved (spec 0050 S4.3).
@@ -558,6 +593,7 @@ let initWith
         kitShell = KitWindowShell.inert
         kitChanges = []
         kitSend = KitArchiveJob.KitArchiveJobState.idle
+        kitCopyOpt = None
         kitStatus = None
         sceneName = ControlCaption ""
         savedScenes = []
@@ -846,6 +882,14 @@ type TableAndElementRotationMsg =
     | SendKitEnded of Result<KitArchiveOutcome, KitArchiveError>
     /// Cancels the running send before its next file; its end message returns the window to idle (spec 0050 S6).
     | CancelSendKit
+    /// Opens the kit the folder dialog chose read-only and lists its experiments to copy (spec 0050 S6).
+    | OpenCopySource of KitFolder
+    /// Chooses the source's experiment to copy, or unchooses it when chosen (spec 0050 S6).
+    | ToggleCopiedExperiment of Experiments.ExperimentId
+    /// The copy panel's Copy: copies the chosen experiments into the kit and shows them (spec 0050 S6).
+    | CopyChosenExperiments
+    /// The copy panel's Cancel: closes the source and copies nothing (spec 0050 S6).
+    | CloseCopySource
     /// Spec 0038 (013) — the ribbon tab-strip row's right-aligned "Materials…" button: open the
     /// SINGLE-INSTANCE Materials window (UICOMP_XDUO_0009) over the app-scope material + category
     /// stores through the launcher seam (a second click ACTIVATES the live window — the shared
@@ -1772,6 +1816,17 @@ let private withKitCheckFailure (error : KitError) (model : TableAndElementRotat
         model with kitStatus = Some (ControlCaption $"The kit could not be checked for changes — {error.describe}")
     }
 
+type TableAndElementRotationModel with
+
+    /// Closes the open copy source, if any, and forgets it (spec 0050 S6).
+    member model.closeCopySource () : TableAndElementRotationModel =
+        match model.kitCopyOpt with
+        | Some copySource -> copySource.release ()
+        | None -> ()
+        {
+            model with kitCopyOpt = None
+        }
+
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -2167,6 +2222,78 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | CancelSendKit ->
         model.kitSend.cancel ()
         model
+    // Spec 0050 S6: opening a source and copying are behind `guardKitWrite`; choosing and Cancel write nothing.
+    | OpenCopySource folder ->
+        guardKitWrite model (fun () ->
+            match model.kitFolderOpt with
+            | Some own when own.canonical = folder.canonical ->
+                {
+                    model with kitStatus = Some (ControlCaption "A kit cannot copy experiments from itself.")
+                }
+            | _ ->
+                let closed = model.closeCopySource ()
+                // A read-only open writes nothing, not even `.oc` (spec 0050 S6, steps 126, 131).
+                let opened =
+                    KitContext.openKit (KitProxy.create folder) ReadOnlyKitAccess model.kit.clock
+                    |> Result.bind (fun source ->
+                        let unread : KitCopySource =
+                            {
+                                source = source
+                                experiments = []
+                                chosen = []
+                            }
+                        match source.proxy.readExperiments () with
+                        | Ok experiments ->
+                            Ok
+                                {
+                                    unread with experiments = experiments
+                                }
+                        | Error error ->
+                            unread.release ()
+                            Error error)
+                match opened with
+                | Ok copySource ->
+                    {
+                        closed with
+                            kitCopyOpt = Some copySource
+                            kitStatus = None
+                    }
+                | Error error ->
+                    {
+                        closed with kitStatus = Some (ControlCaption $"The kit could not be opened to copy from — {error.describe}")
+                    })
+    | ToggleCopiedExperiment id ->
+        match model.kitCopyOpt with
+        | Some copySource ->
+            {
+                model with kitCopyOpt = Some (copySource.toggled id)
+            }
+        | None -> model
+    | CopyChosenExperiments ->
+        guardKitWrite model (fun () ->
+            match model.kitCopyOpt with
+            | Some copySource when not (List.isEmpty copySource.chosen) ->
+                let copied =
+                    model.kit.copyExperimentsFrom copySource.source copySource.chosen
+                    |> Result.bind (fun report ->
+                        model.kit.proxy.readExperiments ()
+                        |> Result.mapError KitLibraryKitErr
+                        |> Result.map (fun experiments -> report, experiments))
+                match copied with
+                | Ok (report, experiments) ->
+                    // Spec 0050 S6: as a reload sets it (step 187), over the items as loaded (step 223).
+                    let shown = withKitContent model.kit experiments model.kitItems model.savedScenes model
+                    {
+                        shown.closeCopySource () with
+                            kitStatus =
+                                Some (ControlCaption $"Copied {List.length report.experiments} experiment(s) from {copySource.source.kitFile.name.value}.")
+                    }
+                | Error error ->
+                    {
+                        model with kitStatus = Some (ControlCaption $"The experiments could not be copied — {error.describe}")
+                    }
+            | _ -> model)
+    | CloseCopySource -> model.closeCopySource ()
     | OpenMaterialsWindow ->
         // Spec 0038 step 013: a pure launch of the single-instance Materials window
         // (UICOMP_XDUO_0009) over app-scope stores and import seam — the launcher seam's
