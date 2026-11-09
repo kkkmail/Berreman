@@ -106,3 +106,35 @@ module KitArchiveTests =
     let ``a kit is sent as a zip named for it`` () : unit =
         let expected = FileName "Optics_ QZ_LR.zip"
         Assert.Equal<FileName>(expected, (KitName "Optics: QZ/LR").zipFileName)
+
+    [<Fact>]
+    let ``a zip entry name is a kit-relative path, a folder's ending in a slash, and an escaping name is refused`` () : unit =
+        let run = KitTreeFile (kitPath "data/run 1.csv")
+        let raw = KitTreeFolder (kitPath "data/raw")
+        Assert.Equal<Result<KitTreeEntry, KitArchiveError>>(Ok run, KitTreeEntry.tryOfZipEntryName (ZipEntryName "data/run 1.csv"))
+        Assert.Equal<Result<KitTreeEntry, KitArchiveError>>(Ok raw, KitTreeEntry.tryOfZipEntryName (ZipEntryName "data/raw/"))
+        Assert.Equal<ZipEntryName>(ZipEntryName "data/run 1.csv", run.zipEntryName)
+        Assert.Equal<ZipEntryName>(ZipEntryName "data/raw/", raw.zipEntryName)
+
+        for name in [ "../evil.txt"; "/etc/x"; "C:/x.txt"; "a/../../b.txt"; @"a\..\..\b.txt"; "./a"; "" ] do
+            match KitTreeEntry.tryOfZipEntryName (ZipEntryName name) with
+            | Error (KitZipEntryEscapesErr reason) -> Assert.Contains($"'{name}'", reason)
+            | Ok _
+            | Error _ -> Assert.Fail $"'{name}' was not refused as a zip entry escaping its folder"
+
+    [<Fact>]
+    let ``every kit archive error renders its condition and its payload`` () : unit =
+        let rendered =
+            [
+                KitArchiveIoErr "reason one", "a kit archive could not be read or written: reason one"
+                KitZipEntryEscapesErr "reason two", "a zip entry is not a path inside the folder: reason two"
+                KitZipTargetNotEmptyErr "reason three", "the folder to extract into is not empty: reason three"
+                KitZipInsideKitErr "reason four", "the zip would be written inside the kit it holds: reason four"
+                KitZipHoldsNoKitErr "reason five", "the zip holds no kit: reason five"
+            ]
+
+        for error, expected in rendered do
+            Assert.Equal<string>(expected, error.describe)
+
+        let texts = rendered |> List.map (fun (error, _) -> error.describe)
+        Assert.Equal<int>(texts.Length, (List.distinct texts).Length)

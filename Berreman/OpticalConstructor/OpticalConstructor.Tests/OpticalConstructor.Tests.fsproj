@@ -211,6 +211,7 @@
         <Compile Include="KitWindowModelTests.fs" />
         <Compile Include="DataLocationsTests.fs" />
         <Compile Include="KitArchiveTests.fs" />
+        <Compile Include="KitArchiveProxyTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
