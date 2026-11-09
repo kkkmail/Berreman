@@ -73,7 +73,14 @@ module private ConstructorScene =
             match opened.library.kit.close () with
             | Ok () -> ()
             | Error error -> Logger.logError $"ConstructorScene: could not close the kit: {error.describe}")
-        Program.mkSimple seed TableAndElementRotationView.updateTableAndElementRotation TableAndElementRotationView.mainView
+        // Spec 0050 S5.3: the title follows the model on every render, so a mode switch or a reload's new name shows.
+        let titledView
+            (model : TableAndElementRotationView.TableAndElementRotationModel)
+            (dispatch : TableAndElementRotationView.TableAndElementRotationMsg -> unit)
+            : Avalonia.FuncUI.Types.IView =
+            window.Title <- model.kitWindowTitle.value
+            TableAndElementRotationView.mainView model dispatch
+        Program.mkSimple seed TableAndElementRotationView.updateTableAndElementRotation titledView
         |> Program.withHost window
         |> Program.run
 
@@ -87,12 +94,12 @@ module private ConstructorScene =
         }
 
 /// Works in the kit the start screen opened, with its snapshot overlay, and releases it on close (spec 0050 S4.3, S5.2).
+/// Its title names the kit, its access, its folder and the constructor (spec 0050 S5.3).
 type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     let stores = ConstructorScene.storesOf context opened
 
     do
-        this.Title <- "Optical Constructor — Main"
         let model =
             TableAndElementRotationView.initMainWithKit stores.library context.experiments stores.materials stores.samples stores.categories opened.library.kit
             |> ConstructorScene.withAppContext context
@@ -102,10 +109,10 @@ type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     member _.sessionLibraryStores : KitLibraryStores = stores
 
 /// Opens the inverse seed in the kit the start screen opened and releases it on close (spec 0050 S4.3, S5.2).
+/// Its title names the kit, its access, its folder and the constructor (spec 0050 S5.3).
 type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     do
-        this.Title <- "Optical Constructor — Inverse"
         let stores = ConstructorScene.storesOf context opened
         let model =
             TableAndElementRotationView.initInverseWithKit stores.library context.experiments stores.materials stores.samples stores.categories opened.library.kit

@@ -34,6 +34,8 @@ type ClockProvider with
 [<ReferenceEquality>]
 type OpenedKit =
     {
+        /// The folder the kit was opened from (spec 0050 S5.3).
+        folder : KitFolder
         library : KitLibraryContext
         experimentData : ExperimentData.ExperimentDataProxy
         experiments : Experiment list
@@ -79,7 +81,7 @@ type OpenedKit =
 
 /// Reads an opened kit's experiments, scenes and snapshot decisions and opens its overlay (spec 0050 S4.3, S5.2).
 /// Any failure closes the kit, logging a failed close, and answers the first error.
-let private openedOver (context : KitContext) (imports : CatalogueImportContext) : Result<OpenedKit, KitLibraryError> =
+let private openedOver (folder : KitFolder) (context : KitContext) (imports : CatalogueImportContext) : Result<OpenedKit, KitLibraryError> =
     let library : KitLibraryContext =
         {
             kit = context
@@ -97,6 +99,7 @@ let private openedOver (context : KitContext) (imports : CatalogueImportContext)
                     library.openOverlay []
                     |> Result.map (fun overlay ->
                         {
+                            folder = folder
                             library = library
                             experimentData = ExperimentDataStore.createFileBacked context.proxy
                             experiments = experiments
@@ -130,7 +133,7 @@ let openKitAt
         | ReadOnlyKitAccess -> KitContext.openKit proxy ReadOnlyKitAccess clock
     opened
     |> Result.mapError KitLibraryKitErr
-    |> Result.bind (fun context -> openedOver context imports)
+    |> Result.bind (fun context -> openedOver folder context imports)
 
 /// Opens a folder that is already a kit read-write and never initialises one, so Open kit… can offer Make this a kit (spec 0050 S5.2).
 /// A folder without .kit-json is NotAKitFolderErr and a kit open elsewhere KitLockedErr; neither writes anything.
@@ -141,7 +144,7 @@ let openExistingKitAt
     : Result<OpenedKit, KitLibraryError> =
     KitContext.openKit (KitProxy.create folder) ReadWriteKitAccess clock
     |> Result.mapError KitLibraryKitErr
-    |> Result.bind (fun context -> openedOver context imports)
+    |> Result.bind (fun context -> openedOver folder context imports)
 
 /// Adapts a window's storage provider to the kit-folder picker seam (spec 0050 S4.3).
 type KitFolderPicker with

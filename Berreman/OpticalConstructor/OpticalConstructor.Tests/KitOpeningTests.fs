@@ -107,6 +107,24 @@ module KitOpeningTests =
             Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))
 
     [<Fact>]
+    let ``an opened kit carries the folder it was opened from`` () : unit =
+        withOpeningFolder (fun folder imports _ ->
+            withOpenedKit folder ReadWriteKitAccess imports (fun opened ->
+                Assert.Equal<KitFolder>(folder, opened.folder)))
+
+        withOpeningFolder (fun folder imports _ ->
+            withOpenedKit folder ReadWriteKitAccess imports ignore
+            withOpenedKit folder ReadOnlyKitAccess imports (fun opened ->
+                Assert.Equal<KitAccess>(ReadOnlyKitAccess, opened.library.kit.access)
+                Assert.Equal<KitFolder>(folder, opened.folder)))
+
+        withOpeningFolder (fun folder imports _ ->
+            withOpenedKit folder ReadWriteKitAccess imports ignore
+            let opened = openExistingKitAt folder ClockProvider.system imports |> openingValue
+            try Assert.Equal<KitFolder>(folder, opened.folder)
+            finally opened.library.kit.close () |> kitValue)
+
+    [<Fact>]
     let ``opening a kit reads its experiments and scenes`` () : unit =
         withOpeningFolder (fun folder imports _ ->
             let name = SceneName "Bench"

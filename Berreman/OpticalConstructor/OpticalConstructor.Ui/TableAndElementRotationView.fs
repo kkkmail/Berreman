@@ -364,6 +364,8 @@ type TableAndElementRotationModel =
         constructorMode : ConstructorMode
         /// The kit this constructor works in (spec 0050 S4.3).
         kit : KitContext
+        /// The kit's folder, `None` for the scratch kit of a scene that opened no folder (spec 0050 S5.3).
+        kitFolderOpt : KitFolder option
         /// The last kit read or write that needs telling (spec 0050 S4.3).
         kitStatus : ControlCaption option
         /// The scene name being edited, validated when saved (spec 0050 S4.3).
@@ -509,6 +511,7 @@ let initWith
         selectWindowModality = SelectWindowModality.defaultValue
         constructorMode = ForwardConstructor
         kit = kit
+        kitFolderOpt = None
         kitStatus = None
         sceneName = ControlCaption ""
         savedScenes = []
@@ -1600,6 +1603,7 @@ type TableAndElementRotationModel with
             {
                 model with
                     kit = opened.library.kit
+                    kitFolderOpt = Some opened.folder
                     experimentData = opened.experimentData
                     experimentCollection = Experiments.ExperimentCollection.ofLoaded opened.experiments
                     kitStatus = None
@@ -1622,6 +1626,27 @@ type TableAndElementRotationModel with
         {
             loaded with experimentDataStatus = statuses
         }
+
+    /// The kit's name, ` (read-only)` when it was opened read-only, then ` — ` and its folder when it has one
+    /// (spec 0050 S5.3; .manual/001 §O).
+    member model.kitCaption : ControlCaption =
+        let accessMarker =
+            match model.kit.access with
+            | ReadOnlyKitAccess -> " (read-only)"
+            | ReadWriteKitAccess -> ""
+        let folderPart =
+            match model.kitFolderOpt with
+            | Some folder -> $" — {folder.value.value}"
+            | None -> ""
+        ControlCaption $"{model.kit.kitFile.name.value}{accessMarker}{folderPart}"
+
+    /// The constructor window's title: `kitCaption`, then the constructor in the launcher buttons' words (spec 0050 S5.3).
+    member model.kitWindowTitle : ControlCaption =
+        let constructorName =
+            match model.constructorMode with
+            | ForwardConstructor -> "Main"
+            | InverseConstructor -> "Inverse"
+        ControlCaption $"{model.kitCaption.value} — Optical Constructor — {constructorName}"
 
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
