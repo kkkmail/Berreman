@@ -23,7 +23,7 @@ open OpticalConstructor.Domain.WorkbenchSettings
 
 module WindowLauncher =
 
-    /// The identity of every window the launcher manages (§5). The four
+    /// The identity of every window the launcher manages (§5). The
     /// parameterless cases are the single-instance windows; the editor cases key
     /// by the edited entity's elevated id, so two edits of the SAME entity meet
     /// in one window while different entities each get their own. An Add-opened
@@ -36,6 +36,8 @@ module WindowLauncher =
         | LibraryWindowKey
         | SolverHandoffWindowKey
         | CategoryEditorKey
+        /// The single-instance Data locations window (001 §G, spec 0050 S5.3).
+        | DataLocationsWindowKey
         | MaterialEditorKey of MaterialLibrary.MaterialId
         | SampleEditorKey of Library.SampleId
         /// Spec 0046: the Library's light-source editor, keyed by the source's entry id (a new

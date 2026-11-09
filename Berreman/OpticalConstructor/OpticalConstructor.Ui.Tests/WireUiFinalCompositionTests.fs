@@ -10,6 +10,7 @@ open Avalonia.Threading
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
@@ -46,6 +47,8 @@ module WireUiFinalCompositionTests =
             SolverHandoffWindow(ctx.library, data, handoffSnapshot) :> Window |> Ok
         | CategoryEditorKey ->
             CategoryEditorWindow(ctx.categories) :> Window |> Ok
+        | DataLocationsWindowKey ->
+            DataLocationsWindow(TestAppScope.testLocations owner, ExplorerProxy.createInMemory ignore) :> Window |> Ok
         | MaterialEditorKey mintedId ->
             MaterialEditorWindow(ctx.materials, MaterialEditorView.NewMaterial mintedId, categories = ctx.categories) :> Window |> Ok
         | SampleEditorKey mintedId ->
@@ -118,7 +121,8 @@ module WireUiFinalCompositionTests =
               SampleEditorKey (Library.newSampleId ())
               SourceEditorKey (Library.newSourceId ())
               CategoryEditorKey
-              SolverHandoffWindowKey ]
+              SolverHandoffWindowKey
+              DataLocationsWindowKey ]
             |> List.iter (openThroughLauncher ctx))
 
     [<Fact>]

@@ -18,6 +18,7 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.DataLocationsView
+open OpticalConstructor.Ui.WindowLauncher
 
 /// The Data locations screen mounted headless: its rows, their paths and Open folder (spec 0050 S5.3).
 module DataLocationsWindowTests =
@@ -128,3 +129,41 @@ module DataLocationsWindowTests =
 
                 Assert.Equal<FolderName list>([ testLocations.exportsFolder ], List.ofSeq shown)
                 assertAbsent window ConstructorUiId.dataLocationsStatusText))
+
+    [<Fact>]
+    let ``the Data locations window is titled and carries its stable id`` () : unit =
+        HeadlessSession.run (fun () ->
+            let window = DataLocationsWindow(testLocations, ExplorerProxy.createInMemory ignore)
+
+            try
+                Assert.Equal("Data locations", window.Title)
+                Assert.Equal(ConstructorUiId.dataLocationsWindow.value, window.Name)
+                Assert.Equal(ConstructorUiId.dataLocationsWindow.value, AutomationProperties.GetAutomationId window)
+            finally
+                window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Data locations window opens once through the registry`` () : unit =
+        HeadlessSession.run (fun () ->
+            let factory (key : WindowKey) : Result<Window, WindowLauncherError> =
+                match key with
+                | DataLocationsWindowKey -> DataLocationsWindow(testLocations, ExplorerProxy.createInMemory ignore) :> Window |> Ok
+                | _ -> Error (WindowFactoryFailedErr (key, "only the Data locations window is built here"))
+
+            let launcher = WindowLauncher.create factory ModelessSelectWindows BrowseOpen
+
+            match launcher.openOrActivate DataLocationsWindowKey with
+            | Ok (CreatedWindow created) ->
+                try
+                    Assert.IsType<DataLocationsWindow>(created) |> ignore
+                    Assert.True(created.IsVisible, "the first open must show the Data locations window")
+
+                    match launcher.openOrActivate DataLocationsWindowKey with
+                    | Ok (ActivatedWindow activated) ->
+                        Assert.True(obj.ReferenceEquals(activated, created), "the second open must activate the same window")
+                    | other -> Assert.Fail $"the second open must activate, got %A{other}"
+                finally
+                    created.Close()
+                    Dispatcher.UIThread.RunJobs()
+            | other -> Assert.Fail $"the first open must create, got %A{other}")

@@ -701,6 +701,8 @@ type ConstructorUiId =
     static member kitChangesKeepMineButton : ConstructorUiId = ConstructorUiId "KitChangesKeepMineButton"
 
     // --- The Data locations window (DataLocationsView, DataLocationsWindow). ---
+    /// The single-instance window listing every data location (001 §G, spec 0050 S5.3).
+    static member dataLocationsWindow : ConstructorUiId = ConstructorUiId "DataLocationsWindow"
     /// The last folder Open folder could not open, and why (spec 0050 S5.3).
     static member dataLocationsStatusText : ConstructorUiId = ConstructorUiId "DataLocationsStatusText"
 

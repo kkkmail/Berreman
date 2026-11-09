@@ -288,6 +288,11 @@ module ScrollExtentTests =
     let ``the kit window: the kit bar and the page stay reachable`` () : unit =
         assertReachable "KitWindow" (fun () -> viewWindow KitWindowView.kitWindowView (tallestKitBar ()))
 
+    [<Fact>]
+    let ``the Data locations window leaves everything reachable`` () : unit =
+        assertReachable "DataLocations" (fun () ->
+            DataLocationsWindow(TestAppScope.testLocations (FolderName "ScrollExtentTests"), ExplorerProxy.createInMemory ignore))
+
     // ------------------------------ a window never opens larger than its screen ------------------------------
 
     [<Fact>]

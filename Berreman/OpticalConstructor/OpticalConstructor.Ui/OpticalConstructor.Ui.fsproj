@@ -126,6 +126,7 @@
              both the workbench and the context. -->
         <Compile Include="AppContext.fs" />
         <Compile Include="KitStartWindow.fs" />
+        <Compile Include="DataLocationsWindow.fs" />
     </ItemGroup>
 
     <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a
