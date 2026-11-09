@@ -93,6 +93,12 @@ dotnet test --no-build -c Release --filter-trait "Category=ui-smoke"
 
 - No test, fixture or kit lives under Documents; test kits and
   databases go under the test run's output directory.
+- When a development run exceeds its effective gate deadline, report the gate,
+  measured duration and deadline in the state-of-the-world's Tests section.
+  The supervisor enforces `attempt_timeout_seconds`, else
+  `runtime_estimate_seconds`, from the step's `.gates` snapshot. For spec 0050
+  from step 0210, read `specs/0050/.manual/015-ui-smoke-deadline.md` for the
+  approved deadline increase and normal profile-1 recovery.
 
 ---
 

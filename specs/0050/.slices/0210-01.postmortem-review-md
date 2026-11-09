@@ -1,0 +1,56 @@
+# Secondary review — slice 0210, postmortem 01
+
+The operator approved solutions 1 and 2 in the
+[agent-written postmortem](0210-01.postmortem-md). This review records the
+confirmed cause, the publication correction found during verification and the
+completed recovery. Watch event: `f5066a4afcad4c4089e7835c089dcb1f`, PID 121688.
+
+## Findings
+
+The escalation was a hard deadline, not an observed assertion failure. The
+supervisor stopped smoke at 180.3 seconds before a complete result. The prior
+worker logs show 237/237 passes in 192.0 and 193.7 seconds. The operator recovery
+now independently passed the same 237 accepted cases in 190.9 seconds
+under the approved 600-second allowance, with no failures or skips.
+
+ASG's deadline resolver uses the runtime estimate when no explicit attempt
+deadline exists. The frozen and catalog descriptors both lacked that explicit
+field. The arc log confirms 27 near-budget warnings before the timeout and
+four boot warnings; source inspection confirms those call sites only log them.
+The worker task builder does not supply resolved deadlines. The symptom is
+provider-independent. Startup growth is consistent with the timing trend;
+the postmortem's linear projection is not a guaranteed future runtime.
+
+## Correction to the proposed procedure
+
+Changing only the two descriptors is insufficient under profile 1. The first
+production-compiler preview rejected the candidate with `COMMAND_DRIFT`, since
+the effective deadline is part of the accepted command identity. ASG already
+provides `rebind-commands` for deliberate catalog changes. Applying that in the
+preview, then in the real spec, changes only 216 smoke command hashes in each
+metadata file. There is no execution-progress file to carry in this arc.
+Requirements, selections, counts, checkpoints and completed slices remain unchanged. This is a necessary part of the
+authorized deadline increase, not a new ASG source repair or validator bypass.
+
+The corrected preview validates all 494 steps, preserves 209 completed steps
+and changes only the deadline line in 122 pending smoke snapshots. The actual
+compiled artifacts and receipt are left for normal boot publication. A direct
+receipt check before that publication is expected to report the amended inputs.
+
+The user already committed the slice work as `90ab50b`; the primary report's
+uncommitted-tree statement was accurate when written. There is no requirement
+to keep the budget changes in an isolated commit or leave implementation dirty.
+Normal resume remains necessary because checkpoint 209 is absent.
+
+## Disposition
+
+Manual 015 records the approved 180 → 600 second change in the frozen roster
+and live catalog, the project-prompt deadline-reporting rule, the command rebind
+and measured results. ASG-ERRORS.md and ASG spec 0090 manual 034 file the missing
+notifications and worker deadline visibility as **OPEN**, not fixed.
+
+The arc remains stopped. Await the operator's commits and explicit relaunch
+request, then use the operator reply and `--executability-profile 1` for a normal
+cycle, without `--accept-current-slice`. Require measured checkpoint 209 before
+0211 and reattach the PID monitor. No product/test/STL edit, Git commit or restart
+was performed in this recovery. Full evidence: `.artifacts/0210-deadline-recovery/`.
