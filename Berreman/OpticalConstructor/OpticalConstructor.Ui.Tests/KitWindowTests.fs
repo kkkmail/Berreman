@@ -148,8 +148,9 @@ module KitWindowTests =
     /// shell is private to `OpticalConstructor.Tests`, which this project does not reference.
     let private recordingShell (shown : ResizeArray<FolderName>) (closes : ResizeArray<unit>) : KitWindowShell =
         {
-            KitWindowShell.explorer = ExplorerProxy.createInMemory shown.Add
-            requestClose = fun () -> closes.Add ()
+            KitWindowShell.inert with
+                explorer = ExplorerProxy.createInMemory shown.Add
+                requestClose = fun () -> closes.Add ()
         }
 
     /// The forward or inverse constructor loaded from the opened kit, its Kit menu reaching `shell` (spec 0050 S5.3).

@@ -2,17 +2,21 @@ namespace OpticalConstructor.Tests
 
 open System
 open System.IO
+open System.Threading
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.KitArchiveStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
+open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -26,15 +30,22 @@ module KitWindowModelTests =
     let private kitValue (result : Result<'Value, KitError>) : 'Value =
         result |> Result.defaultWith (fun error -> failwith error.describe)
 
-    /// Runs over an uncreated `Optics QZ` kit folder inside a fresh GUID-named folder, deleted at the end.
-    let private withTitledFolder (run : KitFolder -> CatalogueImportContext -> unit) : unit =
+    let private archiveValue (result : Result<'Value, KitArchiveError>) : 'Value =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    /// Runs over a fresh GUID-named fact folder and an uncreated `Optics QZ` kit folder inside it, deleted at the end.
+    let private withFactFolder (run : FolderName -> KitFolder -> CatalogueImportContext -> unit) : unit =
         let root = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitWindowModelTests", Guid.NewGuid().ToString("N")))
         let location = FolderName (Path.Combine(root.value, "Optics QZ"))
         let folder = KitFolder location
         let imports = CatalogueImportContext.create (BuiltinCatalogue.freshStores ()).proxy
-        try run folder imports
+        try run root folder imports
         finally
             if Directory.Exists root.value then Directory.Delete(root.value, true)
+
+    /// Runs over an uncreated `Optics QZ` kit folder inside a fresh GUID-named folder, deleted at the end.
+    let private withTitledFolder (run : KitFolder -> CatalogueImportContext -> unit) : unit =
+        withFactFolder (fun _ folder imports -> run folder imports)
 
     /// Loads the opened kit into a fresh Main scene; the scene's scratch kit and the opened kit are closed at the end.
     let private withLoadedScene (opened : OpenedKit) (run : TableAndElementRotationModel -> 'Outcome) : 'Outcome =
@@ -59,9 +70,30 @@ module KitWindowModelTests =
     /// A shell that records every folder it is asked to show and every window close it is asked for.
     let private recordingShell (shown : ResizeArray<FolderName>) (closes : ResizeArray<unit>) : KitWindowShell =
         {
-            KitWindowShell.explorer = ExplorerProxy.createInMemory shown.Add
-            requestClose = fun () -> closes.Add ()
+            KitWindowShell.inert with
+                explorer = ExplorerProxy.createInMemory shown.Add
+                requestClose = fun () -> closes.Add ()
         }
+
+    /// A shell over the real archive whose job host runs each send at once, recording its progress and its end as the
+    /// messages the window would receive, in order (spec 0050 S6).
+    let private sendingShell (messages : ResizeArray<TableAndElementRotationMsg>) : KitWindowShell =
+        {
+            KitWindowShell.inert with
+                archive = KitArchiveProxy.create ()
+                archiveJobs = KitArchiveJobHost.immediate (SendKitProgressed >> messages.Add) (SendKitEnded >> messages.Add)
+        }
+
+    /// Passes the recorded messages through the update in order (spec 0050 S6).
+    let private passedThrough (messages : TableAndElementRotationMsg list) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        messages |> List.fold (fun current msg -> updateTableAndElementRotation msg current) model
+
+    /// The zip a fact sends to: `exports/Optics QZ.zip` under the fact's folder, beside the kit and never inside it.
+    /// Its folder is made, as a save dialog's folder exists (spec 0050 S6).
+    let private exportsZipUnder (factFolder : FolderName) : FileName =
+        let exports = factFolder.combine (FolderName "exports")
+        Directory.CreateDirectory exports.value |> ignore
+        (FileName "Optics QZ.zip").combine exports
 
     /// The kit folder's lock file.
     let private lockFile (folder : KitFolder) : string = Path.Combine(folder.value.value, ".oc", "lock")
@@ -224,11 +256,11 @@ module KitWindowModelTests =
             withLoadedScene opened (fun loaded ->
                 let refusing : KitWindowShell =
                     {
-                        explorer =
-                            {
-                                ExplorerProxy.showFolder = fun _ -> Error (MissingFolderErr "gone")
-                            }
-                        requestClose = ignore
+                        KitWindowShell.inert with
+                            explorer =
+                                {
+                                    ExplorerProxy.showFolder = fun _ -> Error (MissingFolderErr "gone")
+                                }
                     }
                 let model =
                     {
@@ -366,4 +398,174 @@ module KitWindowModelTests =
                 Assert.Equal<ControlCaption option>(None, reloaded.kitStatus)
                 let again = reloaded |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
                 Assert.Empty(again.kitChanges)
+                Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
+
+    [<Fact>]
+    let ``Send kit zips the kit's folder and tells how many files it sent`` () : unit =
+        withFactFolder (fun factFolder folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun loaded ->
+                let messages = ResizeArray<TableAndElementRotationMsg> ()
+                let model =
+                    {
+                        loaded with kitShell = sendingShell messages
+                    }
+                let zip = exportsZipUnder factFolder
+                Assert.True(File.Exists(lockFile folder), "the kit holds its lock while it is sent")
+                let sent = model |> updateTableAndElementRotation (SendKit zip) |> passedThrough (List.ofSeq messages)
+                Assert.True(File.Exists zip.value, "the zip must be written where it was asked for")
+                let entries = KitArchiveProxy.create().listZipEntries zip |> archiveValue
+                Assert.Contains(KitTreeFile (KitRelativePath ".kit-json"), entries)
+                Assert.Contains(KitTreeFolder (KitRelativePath "data"), entries)
+                Assert.Contains(KitTreeFolder (KitRelativePath "library"), entries)
+                let cacheEntries =
+                    entries
+                    |> List.choose (fun entry ->
+                        match entry.path.pathRole with
+                        | KitAppCachePath -> Some entry
+                        | KitContentPath -> None)
+                Assert.Empty(cacheEntries)
+                let zippedFiles = KitTreeEntry.filePathsOf entries |> List.length
+                Assert.Equal<ControlCaption option>(Some (ControlCaption $"The kit was sent: {zippedFiles} file(s) zipped."), sent.kitStatus)
+                Assert.Equal<KitArchiveJobState>(KitArchiveJobState.idle, sent.kitSend)))
+
+    [<Fact>]
+    let ``a running send shows each zipped file as progress`` () : unit =
+        withFactFolder (fun factFolder folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun loaded ->
+                let messages = ResizeArray<TableAndElementRotationMsg> ()
+                let model =
+                    {
+                        loaded with kitShell = sendingShell messages
+                    }
+                let started = model |> updateTableAndElementRotation (SendKit (exportsZipUnder factFolder))
+                Assert.True(started.kitSend.job.isRunning, "the send must run once it starts")
+                Assert.Equal<string option>(None, started.kitSend.job.progressText)
+                let progresses =
+                    messages
+                    |> Seq.choose (fun msg ->
+                        match msg with
+                        | SendKitProgressed progress -> Some progress
+                        | _ -> None)
+                    |> List.ofSeq
+                Assert.NotEmpty(progresses)
+                let running = started |> updateTableAndElementRotation (SendKitProgressed (List.head progresses))
+                Assert.True(running.kitSend.job.isRunning, "the send must still run after its first file")
+                match running.kitSend.job.progressText with
+                | Some text -> Assert.StartsWith("1 / ", text)
+                | None -> Assert.Fail "the first zipped file was not shown as progress"
+                let total = List.length progresses
+                progresses
+                |> List.iteri (fun index progress ->
+                    let shown = started |> updateTableAndElementRotation (SendKitProgressed progress)
+                    match shown.kitSend.job.progressText with
+                    | Some text -> Assert.StartsWith($"{index + 1} / {total}", text)
+                    | None -> Assert.Fail $"zipped file {index + 1} was not shown as progress")))
+
+    [<Fact>]
+    let ``a cancelled send writes no zip and says so`` () : unit =
+        withFactFolder (fun factFolder folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun loaded ->
+                use source = new CancellationTokenSource ()
+                let kept = ResizeArray<KitArchiveObserver -> Result<KitArchiveOutcome, KitArchiveError>> ()
+                let deferred : KitArchiveJobHost =
+                    {
+                        startArchiveJob =
+                            fun job ->
+                                kept.Add job
+                                {
+                                    cancelArchiveJob = fun () -> source.Cancel ()
+                                }
+                    }
+                let model =
+                    {
+                        loaded with
+                            kitShell =
+                                {
+                                    KitWindowShell.inert with
+                                        archive = KitArchiveProxy.create ()
+                                        archiveJobs = deferred
+                                }
+                    }
+                let zip = exportsZipUnder factFolder
+                let started = model |> updateTableAndElementRotation (SendKit zip)
+                Assert.True(started.kitSend.job.isRunning, "the send must run until it ends")
+                Assert.False(File.Exists zip.value, "a kept job writes nothing")
+                let job = Assert.Single(kept)
+                let cancelling = started |> updateTableAndElementRotation CancelSendKit
+                Assert.True(source.IsCancellationRequested, "Cancel must cancel the running send")
+                Assert.Equal<TableAndElementRotationModel>(started, cancelling)
+                let observer : KitArchiveObserver =
+                    {
+                        reportArchiveProgress = ignore
+                        cancellation = source.Token
+                    }
+                let archiveEnd = job observer
+                Assert.Equal<Result<KitArchiveOutcome, KitArchiveError>>(Ok KitArchiveCancelled, archiveEnd)
+                let ended = cancelling |> updateTableAndElementRotation (SendKitEnded archiveEnd)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Send kit was cancelled: no zip was written."), ended.kitStatus)
+                Assert.Equal<KitArchiveJobState>(KitArchiveJobState.idle, ended.kitSend)
+                Assert.False(File.Exists zip.value, "a cancelled send writes no zip")
+                Assert.False(File.Exists $"{zip.value}.tmp", "a cancelled send leaves no partial zip")))
+
+    [<Fact>]
+    let ``a scratch kit is not sent and no job starts`` () : unit =
+        withFactFolder (fun factFolder _ _ ->
+            let scene = initMain () |> kitValue
+            try
+                let messages = ResizeArray<TableAndElementRotationMsg> ()
+                let model =
+                    {
+                        scene with kitShell = sendingShell messages
+                    }
+                let zip = exportsZipUnder factFolder
+                let answer = model |> updateTableAndElementRotation (SendKit zip)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "A kit with no folder cannot be sent."), answer.kitStatus)
+                Assert.Empty(messages)
+                Assert.Equal<TableAndElementRotationModel>({ model with kitStatus = answer.kitStatus }, answer)
+                Assert.False(answer.kitSend.job.isRunning, "no send may start for a scratch kit")
+                Assert.False(File.Exists zip.value, "a scratch kit writes no zip")
+            finally scene.kit.close () |> kitValue)
+
+    [<Fact>]
+    let ``a send that fails tells why and leaves the window idle`` () : unit =
+        withTitledFolder (fun folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun loaded ->
+                let messages = ResizeArray<TableAndElementRotationMsg> ()
+                let model =
+                    {
+                        loaded with kitShell = sendingShell messages
+                    }
+                let inside = (FileName "Optics QZ.zip").combine folder.value
+                let ended = model |> updateTableAndElementRotation (SendKit inside) |> passedThrough (List.ofSeq messages)
+                match ended.kitStatus with
+                | Some status ->
+                    Assert.StartsWith("The kit could not be sent — ", status.value)
+                    Assert.Contains("inside the kit it holds", status.value)
+                | None -> Assert.Fail "the failed send was not told in the kit status"
+                Assert.Equal<KitArchiveJobState>(KitArchiveJobState.idle, ended.kitSend)
+                Assert.False(File.Exists inside.value, "a refused send writes no zip")))
+
+    [<Fact>]
+    let ``a kit opened read-only is sent, and its folder is unchanged`` () : unit =
+        withFactFolder (fun factFolder folder imports ->
+            let created = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            created.library.kit.close () |> kitValue
+            let opened = openKitAt folder ReadOnlyKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun loaded ->
+                let messages = ResizeArray<TableAndElementRotationMsg> ()
+                let model =
+                    {
+                        loaded with kitShell = sendingShell messages
+                    }
+                let before = folderBytes folder
+                let zip = exportsZipUnder factFolder
+                let sent = model |> updateTableAndElementRotation (SendKit zip) |> passedThrough (List.ofSeq messages)
+                Assert.True(File.Exists zip.value, "a kit opened read-only must be sent")
+                let zippedFiles = KitArchiveProxy.create().listZipEntries zip |> archiveValue |> KitTreeEntry.filePathsOf |> List.length
+                Assert.Equal<ControlCaption option>(Some (ControlCaption $"The kit was sent: {zippedFiles} file(s) zipped."), sent.kitStatus)
+                Assert.Equal<KitAccess>(ReadOnlyKitAccess, sent.kit.access)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))

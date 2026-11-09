@@ -29,6 +29,7 @@ open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Ui.KitOpening
+open OpticalConstructor.Domain.KitArchive
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -233,13 +234,23 @@ type KitWindowShell =
         explorer : ExplorerProxy
         /// Closes the window hosting the workbench, which releases its kit as it closes (spec 0050 S5.3, step 154).
         requestClose : unit -> unit
+        /// The Send kit… save dialog (spec 0050 S6, step 198).
+        zipPicker : KitZipPicker
+        /// The zip writer a send runs through (spec 0050 S6, step 197).
+        archive : KitArchiveProxy
+        /// Runs the send off the UI thread, with its progress and its end as messages (spec 0050 S6, step 200).
+        archiveJobs : KitArchiveJob.KitArchiveJobHost
     }
 
-    /// The test scenes' shell: it starts no Explorer and closes no window (spec 0050 S5.3).
+    /// The test scenes' shell: it starts no Explorer, closes no window, picks no zip and runs no job; its archive is
+    /// an in-memory disk of its own (spec 0050 S5.3, S6).
     static member inert : KitWindowShell =
         {
             explorer = ExplorerProxy.createInMemory ignore
             requestClose = ignore
+            zipPicker = KitZipPicker.none
+            archive = KitArchiveProxy.createInMemory (InMemoryArchiveDisk.create ())
+            archiveJobs = KitArchiveJob.KitArchiveJobHost.inert
         }
 
 /// Spec 0038 (016): the handle of the ONE open Select-state window session this workbench
@@ -394,6 +405,8 @@ type TableAndElementRotationModel =
         kitShell : KitWindowShell
         /// The kit files changed outside the app that the kit bar offers to reload, in `changedKitFiles`' order, empty when nothing is offered (spec 0050 S5.3).
         kitChanges : FileName list
+        /// The window's one send of its kit, idle while none runs (spec 0050 S6, step 200).
+        kitSend : KitArchiveJob.KitArchiveJobState
         /// The last kit read or write that needs telling (spec 0050 S4.3).
         kitStatus : ControlCaption option
         /// The scene name being edited, validated when saved (spec 0050 S4.3).
@@ -542,6 +555,7 @@ let initWith
         kitFolderOpt = None
         kitShell = KitWindowShell.inert
         kitChanges = []
+        kitSend = KitArchiveJob.KitArchiveJobState.idle
         kitStatus = None
         sceneName = ControlCaption ""
         savedScenes = []
@@ -821,6 +835,14 @@ type TableAndElementRotationMsg =
     | ReloadKitChanges
     /// The offer's Keep mine: keeps the model and records the current stamps, so the offer clears (spec 0050 S5.3).
     | KeepMyKitChanges
+    /// Sends the kit to this zip: the Send kit button's message after its save dialog, and how a test sends a kit (spec 0050 S6).
+    | SendKit of FileName
+    /// The running send zipped one more file (spec 0050 S6).
+    | SendKitProgressed of JobRunner.JobProgress
+    /// The running send ended: its file count, its cancel or why it failed (spec 0050 S6).
+    | SendKitEnded of Result<KitArchiveOutcome, KitArchiveError>
+    /// Cancels the running send before its next file; its end message returns the window to idle (spec 0050 S6).
+    | CancelSendKit
     /// Spec 0038 (013) — the ribbon tab-strip row's right-aligned "Materials…" button: open the
     /// SINGLE-INSTANCE Materials window (UICOMP_XDUO_0009) over the app-scope material + category
     /// stores through the launcher seam (a second click ACTIVATES the live window — the shared
@@ -2087,6 +2109,44 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     model with kitChanges = []
                 }
             | Error error -> withKitCheckFailure error model)
+    // Spec 0050 S6: a send writes no kit file, so it is not behind `guardKitWrite`: a kit opened read-only is sent as
+    // it is, which is how a reviewer returns a kit (001 §E 'Review round-trip'). One archive job runs per window.
+    | SendKit zip ->
+        match model.kitFolderOpt with
+        | None ->
+            {
+                model with kitStatus = Some (ControlCaption "A kit with no folder cannot be sent.")
+            }
+        | Some folder ->
+            if model.kitSend.job.isRunning then
+                model
+            else
+                let handle =
+                    model.kitShell.archiveJobs.startArchiveJob (fun observer ->
+                        model.kitShell.archive.sendKit model.kit.kitFile folder zip observer)
+                {
+                    model with
+                        kitSend = model.kitSend.started handle
+                        kitStatus = None
+                }
+    | SendKitProgressed progress ->
+        {
+            model with kitSend = model.kitSend.progressed progress
+        }
+    | SendKitEnded result ->
+        let told =
+            match result with
+            | Ok (KitArchiveFinished files) -> $"The kit was sent: {files.value} file(s) zipped."
+            | Ok KitArchiveCancelled -> "Send kit was cancelled: no zip was written."
+            | Error error -> $"The kit could not be sent — {error.describe}"
+        {
+            model with
+                kitSend = KitArchiveJob.KitArchiveJobState.idle
+                kitStatus = Some (ControlCaption told)
+        }
+    | CancelSendKit ->
+        model.kitSend.cancel ()
+        model
     | OpenMaterialsWindow ->
         // Spec 0038 step 013: a pure launch of the single-instance Materials window
         // (UICOMP_XDUO_0009) over app-scope stores and import seam — the launcher seam's

@@ -79,8 +79,9 @@ module private ConstructorScene =
         let hostDispatch : (TableAndElementRotationView.TableAndElementRotationMsg -> unit) ref = ref ignore
         let shell : TableAndElementRotationView.KitWindowShell =
             {
-                explorer = ExplorerProxy.system
-                requestClose = window.Close
+                TableAndElementRotationView.KitWindowShell.inert with
+                    explorer = ExplorerProxy.system
+                    requestClose = window.Close
             }
         let init () : TableAndElementRotationView.TableAndElementRotationModel * Cmd<TableAndElementRotationView.TableAndElementRotationMsg> =
             let seeded = seed ()
