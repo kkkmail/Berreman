@@ -18,6 +18,7 @@ open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.KitOpening
+open OpticalConstructor.Ui.WindowLauncher
 
 module KitOpeningTests =
 
@@ -436,3 +437,14 @@ module KitOpeningTests =
             cancelling.pickThen cancelled.Add
             Assert.Empty cancelled
             Assert.False(Directory.Exists folder.value.value))
+
+    [<Fact>]
+    let ``two spellings of one kit folder are one window key, and no window holds a new kit`` () : unit =
+        let forward = KitFolder (FolderName "C:/kits/a")
+        let backslashed = KitFolder (FolderName @"C:\KITS\A\")
+        Assert.Equal<WindowKey>(forward.windowKey, backslashed.windowKey)
+        Assert.Equal<WindowKey>(KitWindowKey forward.canonical, backslashed.windowKey)
+
+        let fresh = KitFolder (FolderName (Path.Combine(AppContext.BaseDirectory, "KitOpeningTests", Guid.NewGuid().ToString("N"))))
+        Assert.Equal<KitWindowPresence>(NoKitWindowOpen, fresh.activateKitWindow ())
+        Assert.False(Directory.Exists fresh.value.value)

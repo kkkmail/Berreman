@@ -49,6 +49,14 @@ type KitStartWindow(context : AppContext, mode : ConstructorMode, pickerFor : To
                 imports = context.catalogueImports
                 picker = pickerFor this
                 showKit = showKit
+                // The screen closes when it brings a kit's window forward, as when it hands a kit over (spec 0050 S5.3).
+                activateKitWindow =
+                    fun (folder : KitFolder) ->
+                        match folder.activateKitWindow () with
+                        | KitWindowActivated ->
+                            this.Close()
+                            KitWindowActivated
+                        | NoKitWindowOpen -> NoKitWindowOpen
             }
         Program.mkProgram
             (fun () -> initKitStart kitStartContext mode, Cmd.ofEffect (fun d -> dispatch <- d))

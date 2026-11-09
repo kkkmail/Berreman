@@ -32,7 +32,8 @@ module WireUiFinalCompositionTests =
     /// The ONE composition-root window factory: every `WindowKey` maps to its window built over the
     /// app-scope proxies — the "construct the WindowLauncher with every window factory" seam. The two
     /// editor keys carry the entity id minted at open (an Add opens a `NewMaterial` / `NewBlankSample`
-    /// editor under that id). Exhaustive over `WindowKey`.
+    /// editor under that id). Exhaustive over `WindowKey`; a kit's constructor window is built by the kit hand-off, never
+    /// by this factory (spec 0050 S5.3).
     let private rootWindowFactory (ctx : AppContext) (key : WindowKey) : Result<Window, WindowLauncherError> =
         match key with
         | MaterialsWindowKey ->
@@ -51,6 +52,7 @@ module WireUiFinalCompositionTests =
             SampleEditorWindow(ctx.materials, ctx.samples, ctx.categories, ctx.catalogueImports, SampleEditorView.NewBlankSample mintedId) :> Window |> Ok
         | SourceEditorKey mintedId ->
             LightSourceEditorWindow(ctx.sources, LightSourceEditorView.NewSource mintedId) :> Window |> Ok
+        | KitWindowKey _ -> Error (WindowFactoryFailedErr (key, "a kit window opens over its opened kit"))
 
     /// Show a window, pump one frame, assert it rendered, then close and pump the close (the `Closed`
     /// hooks) — the "renders one frame without throwing" probe. Flexible over the concrete window type.

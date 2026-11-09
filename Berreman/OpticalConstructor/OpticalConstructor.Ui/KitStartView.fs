@@ -38,6 +38,8 @@ type KitStartContext =
         picker : KitFolderPicker
         /// Hands an opened kit to the screen's window (spec 0050 S5.2).
         showKit : OpenedKit -> unit
+        /// Brings forward the window that already holds a chosen kit, if one does (spec 0050 S5.3).
+        activateKitWindow : KitFolder -> KitWindowPresence
     }
 
 /// The question the screen asks after an open (spec 0050 S5.2).
@@ -156,6 +158,18 @@ let private kitStartOpened (folder : KitFolder) (answer : Result<OpenedKit, KitL
         }
     | Error error -> m |> kitStartFailed error
 
+/// A kit whose window is open is brought forward, and nothing is opened, bumped or handed over: that window holds it,
+/// and its entry was bumped when it opened. Otherwise `openKit` runs (spec 0050 S5.3).
+let private kitStartChosen (folder : KitFolder) (openKit : unit -> Result<OpenedKit, KitLibraryError>) (m : KitStartModel) : KitStartModel =
+    match m.context.activateKitWindow folder with
+    | KitWindowActivated ->
+        {
+            m with
+                offer = NoKitStartOffer
+                status = None
+        }
+    | NoKitWindowOpen -> m |> kitStartOpened folder (openKit ())
+
 /// The screen as it opens in `mode`: the history read once, the empty filter, its rows, no question and no status
 /// (spec 0050 S5.2).
 let initKitStart (context : KitStartContext) (mode : ConstructorMode) : KitStartModel =
@@ -174,6 +188,7 @@ let initKitStart (context : KitStartContext) (mode : ConstructorMode) : KitStart
 
 /// Star, unstar, forget and locate write the history through `changeHistory`; the filter only re-lists. The three opens
 /// answer through `KitOpening`, and a read-only open bumps the history too, because the user chose the kit (spec 0050 S5.2).
+/// Each open first brings forward a window that already holds the kit (spec 0050 S5.3).
 let updateKitStart (msg : KitStartMsg) (m : KitStartModel) : KitStartModel =
     match msg with
     | StarKit folder -> m |> kitStartChanged (fun history -> history.star folder)
@@ -187,10 +202,10 @@ let updateKitStart (msg : KitStartMsg) (m : KitStartModel) : KitStartModel =
                 rows = kitStartRows m.context m.history filter
         }
     | CreateKit folder ->
-        m |> kitStartOpened folder (openKitAt folder ReadWriteKitAccess m.context.clock m.context.author m.context.imports)
-    | OpenKit folder -> m |> kitStartOpened folder (openExistingKitAt folder m.context.clock m.context.imports)
+        m |> kitStartChosen folder (fun () -> openKitAt folder ReadWriteKitAccess m.context.clock m.context.author m.context.imports)
+    | OpenKit folder -> m |> kitStartChosen folder (fun () -> openExistingKitAt folder m.context.clock m.context.imports)
     | OpenKitReadOnly folder ->
-        m |> kitStartOpened folder (openKitAt folder ReadOnlyKitAccess m.context.clock m.context.author m.context.imports)
+        m |> kitStartChosen folder (fun () -> openKitAt folder ReadOnlyKitAccess m.context.clock m.context.author m.context.imports)
     | DismissKitStartOffer -> { m with offer = NoKitStartOffer }
     | KitOpenFailed error -> m |> kitStartFailed error
 

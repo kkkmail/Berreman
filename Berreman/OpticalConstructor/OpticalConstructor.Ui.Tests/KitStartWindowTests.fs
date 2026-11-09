@@ -101,6 +101,7 @@ module KitStartWindowTests =
             imports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
             picker = picker
             showKit = shown.Add
+            activateKitWindow = fun _ -> NoKitWindowOpen
         }
 
     /// Runs a fact over its own root under the test output. At its end every kit `shown` recorded is closed, then the

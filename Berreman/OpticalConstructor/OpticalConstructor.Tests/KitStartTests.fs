@@ -86,6 +86,7 @@ module KitStartTests =
             imports = CatalogueImportContext.create stores.proxy
             picker = { pickKitFolder = fun () -> async { return None } }
             showKit = shown.Add
+            activateKitWindow = fun _ -> NoKitWindowOpen
         }
 
     /// `clock`, keeping its last answer in `last`, so a fact reads the instant a bump recorded (spec 0050 S5.2).
@@ -437,6 +438,44 @@ module KitStartTests =
             Assert.Equal<KitHistory>(seeded, refused.history)
             Assert.Equal<KitHistoryRow list>(opened.rows, refused.rows)
             Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))
+
+    [<Fact>]
+    let ``a kit whose window is open is activated, not opened, bumped or handed over`` () : unit =
+        withKitStartRoot (fun root shown ->
+            let folder = kitIn root "Bench A"
+            let seeded = { KitHistory.empty with entries = [ olderEntryOf folder ] }
+            let store = historyOver [ folder ] seeded
+            let activations = ResizeArray<KitFolder> ()
+            let context = contextOver store shown
+
+            let activating : KitStartContext =
+                {
+                    context with
+                        activateKitWindow =
+                            fun (chosen : KitFolder) ->
+                                activations.Add chosen
+                                if chosen.windowKey = folder.windowKey then KitWindowActivated else NoKitWindowOpen
+                }
+
+            madeKitAt folder activating.imports |> ignore
+            let before = kitFolderBytes folder
+            let opened = initKitStart activating ForwardConstructor
+            // A pending question and an earlier failure, which bringing the kit's window forward drops.
+            let asked = { opened with offer = MakeKitOffer folder; status = Some (ControlCaption "an earlier failure") }
+
+            for msg in [ OpenKit folder; CreateKit folder; OpenKitReadOnly folder ] do
+                activations.Clear ()
+                let answered = updateKitStart msg asked
+
+                Assert.Equal<KitFolder list>([ folder ], List.ofSeq activations)
+                Assert.Empty shown
+                Assert.Equal<KitStartOffer>(NoKitStartOffer, answered.offer)
+                Assert.Equal<ControlCaption option>(None, answered.status)
+                Assert.Equal<KitHistory>(seeded, store.readHistory ())
+                Assert.Equal<KitHistory>(seeded, answered.history)
+                Assert.Equal<KitHistoryRow list>(opened.rows, answered.rows)
+                Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                Assert.Equal<Map<FileName, FileByteContent>>(before, kitFolderBytes folder))
 
     [<Fact>]
     let ``a failed resolution reported by the window is shown`` () : unit =

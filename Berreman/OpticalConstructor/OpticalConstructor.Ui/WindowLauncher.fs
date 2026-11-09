@@ -41,6 +41,8 @@ module WindowLauncher =
         /// Spec 0046: the Library's light-source editor, keyed by the source's entry id (a new
         /// source's id is minted at window open, like a sample's).
         | SourceEditorKey of sourceEntryId : Placement.ElementValueId
+        /// A constructor window, keyed by its kit's canonical folder (spec 0050 S5.3).
+        | KitWindowKey of Kit.KitFolder
 
     /// Whether an editor's entity already lives in its store (spec §0.1: the
     /// operator's "is-new flag" is a two-case DU, never a bool). `NewUnsaved` =

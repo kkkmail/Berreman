@@ -188,6 +188,33 @@ type KitFolderPicker with
         }
         |> Async.StartImmediate
 
+/// Whether a constructor window held a chosen kit (spec 0050 S5.3).
+type KitWindowPresence =
+    /// A window held the kit and was brought forward (spec 0050 S5.3).
+    | KitWindowActivated
+    /// No window holds the kit (spec 0050 S5.3).
+    | NoKitWindowOpen
+
+/// One window per kit, over the host-layer window registry (spec 0050 S5.3).
+type KitFolder with
+
+    /// The registry key of the kit's constructor window: every spelling of one folder is one key (spec 0050 S5.3).
+    member this.windowKey : WindowLauncher.WindowKey = WindowLauncher.KitWindowKey this.canonical
+
+    /// Brings forward the window registered under `windowKey`, and never opens one: the factory builds no window, so
+    /// every answer but an activation is `NoKitWindowOpen` (spec 0050 S5.3).
+    member this.activateKitWindow () : KitWindowPresence =
+        let launcher =
+            WindowLauncher.WindowLauncher.create
+                (fun key -> Error (WindowLauncher.WindowNotRegisteredErr key))
+                WorkbenchSettings.SelectWindowModality.defaultValue
+                WindowLauncher.BrowseOpen
+        match launcher.openOrActivate this.windowKey with
+        | Ok (WindowLauncher.ActivatedWindow _) -> KitWindowActivated
+        | Ok (WindowLauncher.CreatedWindow _)
+        | Ok (WindowLauncher.RetargetedWindow _)
+        | Error _ -> NoKitWindowOpen
+
 /// Adapts the system's file browser to the explorer seam (spec 0050 S5.3).
 type ExplorerProxy with
 
