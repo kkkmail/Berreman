@@ -39,6 +39,8 @@ type OpenedKit =
         library : KitLibraryContext
         experimentData : ExperimentData.ExperimentDataProxy
         experiments : Experiment list
+        /// The kit's items as read at open, in label order (spec 0050 S6, S7.1).
+        items : Item list
         scenes : SceneName list
         decisions : ImportDecision list
         overlay : KitLibraryOverlay
@@ -79,8 +81,8 @@ type OpenedKit =
                 if not wasApplied then closePendingKit ())
             dialog.Show()
 
-/// Reads an opened kit's experiments, scenes and snapshot decisions and opens its overlay (spec 0050 S4.3, S5.2).
-/// Any failure closes the kit, logging a failed close, and answers the first error.
+/// Reads an opened kit's experiments, items, scenes and snapshot decisions and opens its overlay (spec 0050 S4.3,
+/// S5.2, S6). Any failure closes the kit, logging a failed close, and answers the first error.
 let private openedOver (folder : KitFolder) (context : KitContext) (imports : CatalogueImportContext) : Result<OpenedKit, KitLibraryError> =
     let library : KitLibraryContext =
         {
@@ -91,22 +93,26 @@ let private openedOver (folder : KitFolder) (context : KitContext) (imports : Ca
         context.proxy.readExperiments ()
         |> Result.mapError KitLibraryKitErr
         |> Result.bind (fun experiments ->
-            context.proxy.readSceneNames ()
+            context.proxy.readItems ()
             |> Result.mapError KitLibraryKitErr
-            |> Result.bind (fun scenes ->
-                library.resolveSnapshots ()
-                |> Result.bind (fun decisions ->
-                    library.openOverlay []
-                    |> Result.map (fun overlay ->
-                        {
-                            folder = folder
-                            library = library
-                            experimentData = ExperimentDataStore.createFileBacked context.proxy
-                            experiments = experiments
-                            scenes = scenes
-                            decisions = decisions
-                            overlay = overlay
-                        }))))
+            |> Result.bind (fun items ->
+                context.proxy.readSceneNames ()
+                |> Result.mapError KitLibraryKitErr
+                |> Result.bind (fun scenes ->
+                    library.resolveSnapshots ()
+                    |> Result.bind (fun decisions ->
+                        library.openOverlay []
+                        |> Result.map (fun overlay ->
+                            {
+                                folder = folder
+                                library = library
+                                experimentData = ExperimentDataStore.createFileBacked context.proxy
+                                experiments = experiments
+                                items = items
+                                scenes = scenes
+                                decisions = decisions
+                                overlay = overlay
+                            })))))
     match result with
     | Ok kit -> Ok kit
     | Error error ->

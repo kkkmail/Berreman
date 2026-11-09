@@ -7,6 +7,7 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
@@ -145,6 +146,56 @@ module KitOpeningTests =
                 Assert.Equal<SceneName list>([ name ], opened.scenes)
                 Assert.Equal<SceneSnapshot>(scene, opened.library.kit.proxy.readScene name |> kitValue)
                 Assert.Empty opened.pendingDecisions))
+
+    let private openingCpl1 : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "2f6c9a41-7b3e-4d58-a1c0-8e5d3b97f264")
+                label = ItemLabel "CPL1"
+                model = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId)
+                dial = DialMounted DialPositive
+            }
+        draft.toItem
+
+    let private openingLp1 : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "b93e1d05-6a4f-4c27-8d18-f0c2a5e7b631")
+                label = ItemLabel "LP1"
+                model = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.realLinearPolarizerModelId)
+                dial = DialMounted DialNegative
+            }
+        draft.toItem
+
+    [<Fact>]
+    let ``opening a kit reads its items, and an item file that does not read refuses the open`` () : unit =
+        withOpeningFolder (fun folder imports _ ->
+            // Written out of label order: the open answers them in label order.
+            withOpenedKit folder ReadWriteKitAccess imports (fun opened ->
+                Assert.Empty opened.items
+                for item in [ openingLp1; openingCpl1 ] do
+                    opened.library.kit.proxy.writeItem item |> kitValue)
+
+            for access in [ ReadWriteKitAccess; ReadOnlyKitAccess ] do
+                withOpenedKit folder access imports (fun opened ->
+                    Assert.Equal<KitAccess>(access, opened.library.kit.access)
+                    Assert.Equal<Item list>([ openingCpl1; openingLp1 ], opened.items))
+
+            let broken = FileName (Path.Combine(folder.value.value, "Broken.item-json"))
+            File.WriteAllText(broken.value, "{")
+            for access in [ ReadWriteKitAccess; ReadOnlyKitAccess ] do
+                match openKitAt folder access ClockProvider.system openingAuthor imports with
+                | Error (KitLibraryKitErr (KitFileRejectedErr reason)) -> Assert.Contains("Broken.item-json", reason)
+                | Error error -> Assert.Fail error.describe
+                | Ok opened ->
+                    opened.library.kit.close () |> kitValue
+                    Assert.Fail "a kit whose item file does not read must refuse the open"
+                Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+
+            // The refusal is that file's alone, and the refused open left the kit free to open read-write again.
+            File.Delete broken.value
+            withOpenedKit folder ReadWriteKitAccess imports (fun reopened ->
+                Assert.Equal<Item list>([ openingCpl1; openingLp1 ], reopened.items)))
 
     [<Fact>]
     let ``a kit open elsewhere is KitLockedErr inside the open's error, and opening it read-only writes nothing`` () : unit =

@@ -413,6 +413,8 @@ type TableAndElementRotationModel =
         sceneName : ControlCaption
         /// The names of the scenes saved in this kit (spec 0050 S4.3).
         savedScenes : Scene.SceneName list
+        /// The kit's items in label order, as the kit last read or wrote them (spec 0050 S6, S7.1).
+        kitItems : Item list
         /// Measured-data attachments read through kit (spec 0050 S4.2/S4.3).
         experimentData : ExperimentData.ExperimentDataProxy
         /// Spec 0038 Part L (037): the typed per-experiment measured-data status, keyed by the
@@ -559,6 +561,7 @@ let initWith
         kitStatus = None
         sceneName = ControlCaption ""
         savedScenes = []
+        kitItems = []
         experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked kit.proxy
         experimentDataStatus = Map.empty
         elementMenu = None
@@ -1674,10 +1677,11 @@ let private validateExperimentAttachment
 
 /// Sets what a kit's content decides, so a reload sets exactly what an open sets (spec 0050 S4.3, S5.3; 001 §E):
 /// the kit, its experiments with a fresh draft, their attachments rechecked through the model's `experimentData`,
-/// its scene names, and no status or reload offer.
+/// its items, its scene names, and no status or reload offer.
 let private withKitContent
     (kit : KitContext)
     (experiments : Experiments.Experiment list)
+    (items : Item list)
     (scenes : Scene.SceneName list)
     (model : TableAndElementRotationModel)
     : TableAndElementRotationModel =
@@ -1689,6 +1693,7 @@ let private withKitContent
                 kitStatus = None
                 kitChanges = []
                 savedScenes = scenes
+                kitItems = items
         }
     let statuses =
         experiments
@@ -1710,14 +1715,14 @@ let private withKitContent
 
 type TableAndElementRotationModel with
 
-    /// Works in the opened kit and rechecks every recorded data attachment (spec 0050 S4.3; 001 §E).
+    /// Works in the opened kit, loads its items and rechecks every recorded data attachment (spec 0050 S4.3, S6; 001 §E).
     member model.loadKit (opened : OpenedKit) : TableAndElementRotationModel =
         {
             model with
                 kitFolderOpt = Some opened.folder
                 experimentData = opened.experimentData
         }
-        |> withKitContent opened.library.kit opened.experiments opened.scenes
+        |> withKitContent opened.library.kit opened.experiments opened.items opened.scenes
 
     /// The kit's name, ` (read-only)` when it was opened read-only, then ` — ` and its folder when it has one
     /// (spec 0050 S5.3; .manual/001 §O).
@@ -2099,15 +2104,17 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 |> Result.bind (fun kitFile ->
                     proxy.readExperiments ()
                     |> Result.bind (fun experiments ->
-                        proxy.readSceneNames ()
-                        |> Result.bind (fun scenes ->
-                            proxy.recordStamps ()
-                            |> Result.map (fun () ->
-                                let kit =
-                                    {
-                                        model.kit with kitFile = kitFile
-                                    }
-                                withKitContent kit experiments scenes model))))
+                        proxy.readItems ()
+                        |> Result.bind (fun items ->
+                            proxy.readSceneNames ()
+                            |> Result.bind (fun scenes ->
+                                proxy.recordStamps ()
+                                |> Result.map (fun () ->
+                                    let kit =
+                                        {
+                                            model.kit with kitFile = kitFile
+                                        }
+                                    withKitContent kit experiments items scenes model)))))
             match reloaded with
             | Ok reloadedModel -> reloadedModel
             | Error error ->

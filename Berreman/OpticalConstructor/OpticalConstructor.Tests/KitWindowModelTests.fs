@@ -8,6 +8,7 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
@@ -399,6 +400,45 @@ module KitWindowModelTests =
                 let again = reloaded |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
                 Assert.Empty(again.kitChanges)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
+
+    let private windowCpl1 : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "6e2a4c81-9d07-4b3f-a5e6-1c8f0b2d7a49")
+                label = ItemLabel "CPL1"
+                model = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId)
+                dial = DialMounted DialPositive
+            }
+        draft.toItem
+
+    let private windowLp1 : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "d05b7f3a-2c64-4e91-8b2d-7a3e9c1f6058")
+                label = ItemLabel "LP1"
+                model = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.realLinearPolarizerModelId)
+                dial = DialMounted DialNegative
+            }
+        draft.toItem
+
+    [<Fact>]
+    let ``a loaded kit's items are the window's, and Reload reads an item another writer wrote`` () : unit =
+        withTitledFolder (fun folder imports ->
+            let created = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            try created.library.kit.proxy.writeItem windowCpl1 |> kitValue
+            finally created.library.kit.close () |> kitValue
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun model ->
+                Assert.Equal<Item list>([ windowCpl1 ], model.kitItems)
+                let writer = KitProxy.create folder
+                writer.writeItem windowLp1 |> kitValue
+                let offered = model |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+                Assert.Equal<FileName list>([ FileName "LP1.item-json" ], offered.kitChanges)
+                Assert.Equal<Item list>([ windowCpl1 ], offered.kitItems)
+                let reloaded = offered |> updateTableAndElementRotation ReloadKitChanges
+                Assert.Equal<Item list>([ windowCpl1; windowLp1 ], reloaded.kitItems)
+                Assert.Empty(reloaded.kitChanges)
+                Assert.Equal<ControlCaption option>(None, reloaded.kitStatus)))
 
     [<Fact>]
     let ``Send kit zips the kit's folder and tells how many files it sent`` () : unit =

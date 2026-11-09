@@ -445,6 +445,10 @@
   "221": {
     "constructor_unit_tests": 1321
   },
+  "222": {
+    "constructor_unit_tests": 1323,
+    "ui_smoke_tests": 237
+  },
   "23": {
     "constructor_unit_tests": 746
   },
