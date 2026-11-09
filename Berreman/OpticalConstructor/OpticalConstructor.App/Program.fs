@@ -63,6 +63,8 @@ module private ConstructorScene =
             }
         stores.overlaidWith opened.overlay
 
+    /// Runs the kit window over `seed`: the kit bar above the workbench, the system explorer and this window's close
+    /// as its Kit menu's shell, and an outside-change check of the kit on every activation (spec 0050 S5.3).
     let mount (window : HostWindow) (opened : OpenedKit) (seed : unit -> TableAndElementRotationView.TableAndElementRotationModel) : unit =
         window.Width <- TableAndElementRotationView.tableAndElementRotationCanvasWidth
         window.Height <- TableAndElementRotationView.tableAndElementRotationCanvasHeight + 210.0
@@ -73,16 +75,35 @@ module private ConstructorScene =
             match opened.library.kit.close () with
             | Ok () -> ()
             | Error error -> Logger.logError $"ConstructorScene: could not close the kit: {error.describe}")
+        // The init Cmd stores the Elmish dispatch (Program.run is synchronous), so a host event can send a message.
+        let hostDispatch : (TableAndElementRotationView.TableAndElementRotationMsg -> unit) ref = ref ignore
+        let shell : TableAndElementRotationView.KitWindowShell =
+            {
+                explorer = ExplorerProxy.system
+                requestClose = window.Close
+            }
+        let init () : TableAndElementRotationView.TableAndElementRotationModel * Cmd<TableAndElementRotationView.TableAndElementRotationMsg> =
+            let seeded = seed ()
+            {
+                seeded with kitShell = shell
+            },
+            Cmd.ofEffect (fun dispatch -> hostDispatch.Value <- dispatch)
         // Spec 0050 S5.3: the title follows the model on every render, so a mode switch or a reload's new name shows.
         let titledView
             (model : TableAndElementRotationView.TableAndElementRotationModel)
             (dispatch : TableAndElementRotationView.TableAndElementRotationMsg -> unit)
             : Avalonia.FuncUI.Types.IView =
             window.Title <- model.kitWindowTitle.value
-            TableAndElementRotationView.mainView model dispatch
-        Program.mkSimple seed TableAndElementRotationView.updateTableAndElementRotation titledView
+            KitWindowView.kitWindowView model dispatch
+        Program.mkProgram
+            init
+            (fun msg model -> TableAndElementRotationView.updateTableAndElementRotation msg model, Cmd.none)
+            titledView
         |> Program.withHost window
         |> Program.run
+        // Spec 0050 S5.3; .manual/001 §E: every activation, the first included, offers the kit files changed outside the app.
+        window.Activated.Add(fun _ ->
+            hostDispatch.Value (TableAndElementRotationView.CheckKitChanges TableAndElementRotationView.KitCheckOnActivation))
 
     let withAppContext (context : AppContext) (model : TableAndElementRotationView.TableAndElementRotationModel) : TableAndElementRotationView.TableAndElementRotationModel =
         {
@@ -94,7 +115,7 @@ module private ConstructorScene =
         }
 
 /// Works in the kit the start screen opened, with its snapshot overlay, and releases it on close (spec 0050 S4.3, S5.2).
-/// Its title names the kit, its access, its folder and the constructor (spec 0050 S5.3).
+/// It runs the kit window, titled by the kit, its access, its folder and the constructor (spec 0050 S5.3).
 type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     let stores = ConstructorScene.storesOf context opened
@@ -109,7 +130,7 @@ type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     member _.sessionLibraryStores : KitLibraryStores = stores
 
 /// Opens the inverse seed in the kit the start screen opened and releases it on close (spec 0050 S4.3, S5.2).
-/// Its title names the kit, its access, its folder and the constructor (spec 0050 S5.3).
+/// It runs the kit window, titled by the kit, its access, its folder and the constructor (spec 0050 S5.3).
 type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     do

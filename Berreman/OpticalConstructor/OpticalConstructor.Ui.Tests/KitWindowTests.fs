@@ -116,19 +116,33 @@ module KitWindowTests =
             window.Close()
             Dispatcher.UIThread.RunJobs()
 
-    /// Presses the box carrying `id` at its centre, as `LibraryWindowTests.clickOn` does.
-    let private pressBox (window : Window) (id : ConstructorUiId) : unit =
-        let pressed = Assert.IsType<Border>(controlById window id)
-        Assert.True(pressed.IsEffectivelyVisible, $"{id.value} must be visible")
+    /// Presses `pressed` at its centre, as `LibraryWindowTests.clickOn` does; a press that closes the window gets no
+    /// release, as `LauncherTests.clickBorder` does.
+    let private pressAtCentre (window : Window) (pressed : Border) (name : string) : unit =
+        Assert.True(pressed.IsEffectivelyVisible, $"{name} must be visible")
         pressed.BringIntoView() |> ignore
         Dispatcher.UIThread.RunJobs()
         match pressed.TranslatePoint(Point(pressed.Bounds.Width / 2.0, pressed.Bounds.Height / 2.0), window) |> Option.ofNullable with
         | Some centre ->
             window.MouseDown(centre, MouseButton.Left, RawInputModifiers.None)
             Dispatcher.UIThread.RunJobs()
-            window.MouseUp(centre, MouseButton.Left, RawInputModifiers.None)
-            Dispatcher.UIThread.RunJobs()
-        | None -> Assert.Fail $"{id.value} has no position in its window"
+            if window.IsVisible then
+                window.MouseUp(centre, MouseButton.Left, RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+        | None -> Assert.Fail $"{name} has no position in its window"
+
+    /// Presses the box carrying `id` at its centre.
+    let private pressBox (window : Window) (id : ConstructorUiId) : unit =
+        pressAtCentre window (Assert.IsType<Border>(controlById window id)) id.value
+
+    /// Presses the ribbon tab of `bay`, which carries its id as its `Name` (`Ribbon.tab`).
+    let private pressRibbonTab (window : Window) (bay : Ribbon.BayName) : unit =
+        let id = ConstructorUiId.ribbonTab bay.uiKey
+        let tab =
+            window.GetVisualDescendants()
+            |> Seq.tryPick (function :? Border as border when border.Name = id.value -> Some border | _ -> None)
+            |> Option.defaultWith (fun () -> failwith $"{id.value} must be in the window")
+        pressAtCentre window tab id.value
 
     /// A shell that records every folder it is asked to show and every window close it is asked for. The step-186
     /// shell is private to `OpticalConstructor.Tests`, which this project does not reference.
@@ -334,3 +348,79 @@ module KitWindowTests =
                     Assert.Equal(1, closes.Count)
                     Assert.Equal<FolderName list>([ opened.folder.value ], List.ofSeq shown))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    /// The experiment another writer adds to the kit: one committed in a scratch Main model, given the id `E2`. It
+    /// varies a polarizer added to the scene, because the scene's unbound source varies nothing.
+    let private outsideExperiment () : Experiments.Experiment =
+        let scratch = initMain () |> SceneTestFixture.kitSuccess
+        try
+            let withPolarizer = scratch |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+            let polarizer = withPolarizer.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
+            let committed =
+                withPolarizer
+                |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
+                |> updateTableAndElementRotation ExpCommit
+            let experiment = Assert.Single(committed.experimentCollection.experiments)
+            {
+                experiment with id = Experiments.ExperimentId 2
+            }
+        finally scratch.kit.close () |> SceneTestFixture.kitSuccess
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: activating a constructor window offers the kit files changed outside the app, and Reload reads them in`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            let lockFile = Path.Combine(opened.folder.value.value, ".oc", "lock")
+            let e2 = outsideExperiment ()
+            let window = MainConstructorWindow(ctx, opened)
+            let other = Window()
+            try
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                // Showing activates the window: its first check finds nothing, because opening the kit recorded its stamps.
+                Assert.True((controlById window ConstructorUiId.kitBar).IsEffectivelyVisible, "the kit bar must show above the workbench")
+                Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitChangesText)
+                // Another writer (step 126) adds `E2` while the window is open.
+                let writer = KitProxy.create opened.folder
+                writer.writeExperiment e2 |> SceneTestFixture.kitSuccess
+                other.Show()
+                other.Activate()
+                Dispatcher.UIThread.RunJobs()
+                window.Activate()
+                Dispatcher.UIThread.RunJobs()
+                Assert.Contains("E2.experiment-json", textOf window ConstructorUiId.kitChangesText)
+                pressBox window ConstructorUiId.kitChangesReloadButton
+                Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitChangesText)
+                pressRibbonTab window BayNames.experiments
+                let row = controlById window (ConstructorUiId.experimentEditButton e2.id.uiKey)
+                Assert.True(row.IsEffectivelyVisible, "the reloaded kit's E2 must be a row of the collection")
+            finally
+                other.Close()
+                window.Close()
+                Dispatcher.UIThread.RunJobs()
+            Assert.False(File.Exists(lockFile), "closing the constructor window must release its kit"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``Close kit closes the window and releases the kit`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            let lockFile = Path.Combine(opened.folder.value.value, ".oc", "lock")
+            let window = MainConstructorWindow(ctx, opened)
+            let closings = ResizeArray<unit> ()
+            window.Closed.Add(fun _ -> closings.Add ())
+            try
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                Assert.True(File.Exists(lockFile), "the open kit must hold its lock")
+                pressBox window ConstructorUiId.kitCloseButton
+                Assert.Equal(1, closings.Count)
+                Assert.False(window.IsVisible, "Close kit must close the window")
+                Assert.False(File.Exists(lockFile), "closing the constructor window must release its kit")
+            finally
+                if window.IsVisible then
+                    window.Close()
+                    Dispatcher.UIThread.RunJobs())
