@@ -701,6 +701,14 @@ type ConstructorUiId =
     static member kitChangesReloadButton : ConstructorUiId = ConstructorUiId "KitChangesReloadButton"
     /// The reload offer's Keep mine (spec 0050 S5.3).
     static member kitChangesKeepMineButton : ConstructorUiId = ConstructorUiId "KitChangesKeepMineButton"
+    /// The Kit menu's Send kit…: asks for a zip and sends the kit to it, present for a kit with a folder (spec 0050 S6).
+    static member sendKitButton : ConstructorUiId = ConstructorUiId "SendKitButton"
+    /// The running send's progress bar, the fraction of the kit's files zipped (spec 0050 S6).
+    static member sendKitProgressBar : ConstructorUiId = ConstructorUiId "SendKitProgressBar"
+    /// The running send's count of files zipped over the kit's files (spec 0050 S6).
+    static member sendKitProgressText : ConstructorUiId = ConstructorUiId "SendKitProgressText"
+    /// Cancels the running send before its next file (spec 0050 S6).
+    static member sendKitCancelButton : ConstructorUiId = ConstructorUiId "SendKitCancelButton"
 
     // --- The Data locations window (DataLocationsView, DataLocationsWindow). ---
     /// The single-instance window listing every data location (001 §G, spec 0050 S5.3).

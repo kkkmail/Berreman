@@ -9,6 +9,8 @@ open Avalonia.Media
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain.KitArchive
+open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 type TableAndElementRotationModel with
@@ -53,6 +55,17 @@ type TableAndElementRotationModel with
 /// The Kit menu as the bar's verb row, then the constructor and its switch (spec 0050 S5.3; 001 §O). A row, not an
 /// Avalonia `Menu`: a popup cannot be proven headless, as the model-driven element menu shows.
 let private kitMenuRow (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+    // Spec 0050 S6: the save dialog suggests `<kit name>.zip`, and a cancelled dialog sends nothing. Hidden while a
+    // send runs, one per window.
+    let sendKit : IView list =
+        match model.kitFolderOpt with
+        | Some _ when not model.kitSend.job.isRunning ->
+            [
+                MaterialsWindowView.verbButton ConstructorUiId.sendKitButton (ControlCaption "Send kit…") (fun () ->
+                    model.kitShell.zipPicker.pickZipToWriteThen model.kit.kitFile.name.zipFileName (SendKit >> dispatch))
+            ]
+        | Some _
+        | None -> []
     let showInExplorer : IView list =
         match model.kitFolderOpt with
         | Some _ ->
@@ -80,8 +93,22 @@ let private kitMenuRow (model : TableAndElementRotationModel) (dispatch : TableA
         | InverseConstructor -> [ modeText (ControlCaption "Inverse constructor"); switchButton (ControlCaption "Switch to Main") ForwardConstructor ]
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
-        WrapPanel.children (showInExplorer @ kitVerbs @ constructorItems)
+        WrapPanel.children (sendKit @ showInExplorer @ kitVerbs @ constructorItems)
     ] :> IView
+
+/// The running send's progress row directly under the Kit menu, its Cancel ending the send before its next file
+/// (spec 0050 S6; .spec-md §10.2). Nothing while no send runs.
+let private kitSendRows (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
+    if model.kitSend.job.isRunning then
+        let ids : KitArchiveProgressIds =
+            {
+                bar = ConstructorUiId.sendKitProgressBar
+                text = ConstructorUiId.sendKitProgressText
+                cancel = ConstructorUiId.sendKitCancelButton
+            }
+        [ kitArchiveProgressView model.kitSend ids (fun () -> dispatch CancelSendKit) ]
+    else
+        []
 
 /// The reload offer: the files changed outside the app over Reload and Keep mine on one row, the Reload box's right
 /// margin parting the opposing pair (spec 0050 S5.3; .spec-md §10.5). Nothing while nothing is offered.
@@ -133,6 +160,7 @@ let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndEle
                 StackPanel.margin (Thickness(8.0, 6.0, 8.0, 2.0))
                 StackPanel.children (
                     [ model.kitCaptionRow; kitMenuRow model dispatch ]
+                    @ kitSendRows model dispatch
                     @ kitChangesRows model dispatch
                     @ model.kitStatusRows)
             ]

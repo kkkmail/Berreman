@@ -15,11 +15,13 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.App
@@ -153,6 +155,25 @@ module KitWindowTests =
                 requestClose = fun () -> closes.Add ()
         }
 
+    /// A send's handle that records each cancel it is asked for (spec 0050 S6).
+    let private recordingHandle (cancels : ResizeArray<unit>) : KitArchiveJobHandle =
+        {
+            cancelArchiveJob = fun () -> cancels.Add ()
+        }
+
+    /// `filesDone` of `filesTotal` files zipped, as a send's progress (spec 0050 S6).
+    let private zippedFiles (filesDone : int) (filesTotal : int) : JobRunner.JobProgress =
+        let progress : KitArchiveProgress =
+            {
+                filesDone = KitArchiveFileCount filesDone
+                filesTotal = KitArchiveFileCount filesTotal
+            }
+        progress.jobProgress (JobRunner.JobElapsed System.TimeSpan.Zero)
+
+    /// The running send's progress row: its bar, its count and its Cancel.
+    let private sendProgressIds : ConstructorUiId list =
+        [ ConstructorUiId.sendKitProgressBar; ConstructorUiId.sendKitProgressText; ConstructorUiId.sendKitCancelButton ]
+
     /// The forward or inverse constructor loaded from the opened kit, its Kit menu reaching `shell` (spec 0050 S5.3).
     let private kitWindowModel (ctx : AppContext) (opened : OpenedKit) (mode : ConstructorMode) (shell : KitWindowShell) : TableAndElementRotationModel =
         let seed =
@@ -230,6 +251,13 @@ module KitWindowTests =
         Assert.Equal("KitChangesText", ConstructorUiId.kitChangesText.value)
         Assert.Equal("KitChangesReloadButton", ConstructorUiId.kitChangesReloadButton.value)
         Assert.Equal("KitChangesKeepMineButton", ConstructorUiId.kitChangesKeepMineButton.value)
+
+    [<Fact>]
+    let ``the Send kit UiIds are the stable intent-named ids`` () : unit =
+        Assert.Equal("SendKitButton", ConstructorUiId.sendKitButton.value)
+        Assert.Equal("SendKitProgressBar", ConstructorUiId.sendKitProgressBar.value)
+        Assert.Equal("SendKitProgressText", ConstructorUiId.sendKitProgressText.value)
+        Assert.Equal("SendKitCancelButton", ConstructorUiId.sendKitCancelButton.value)
 
     [<Fact>]
     let ``the kit bar shows the kit, its Kit menu and the constructor`` () : unit =
@@ -326,6 +354,38 @@ module KitWindowTests =
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
+    let ``a running send shows its progress bar, its count and Cancel, and hides Send kit`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            let cancels = ResizeArray<unit> ()
+            try
+                let idle = kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert
+                let running =
+                    {
+                        idle with kitSend = (idle.kitSend.started (recordingHandle cancels)).progressed (zippedFiles 2 5)
+                    }
+                withKitWindow running (fun window ->
+                    Assert.StartsWith("2 / 5", textOf window ConstructorUiId.sendKitProgressText)
+                    let bar = Assert.IsType<ProgressBar>(controlById window ConstructorUiId.sendKitProgressBar)
+                    Assert.Equal(0.4, bar.Value, 12)
+                    Assert.False(bar.IsIndeterminate, "a send that told its files must not show an indeterminate bar")
+                    Assert.Equal("Cancel", boxLabelOf window ConstructorUiId.sendKitCancelButton)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.sendKitButton))
+                withKitWindow idle (fun window ->
+                    Assert.Equal("Send kit…", boxLabelOf window ConstructorUiId.sendKitButton)
+                    for id in sendProgressIds do
+                        Assert.Equal<Control option>(None, tryControlById window id))
+                Assert.Empty(cancels)
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
+            let scratch = initMain () |> SceneTestFixture.kitSuccess
+            try
+                withKitWindow scratch (fun window ->
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.sendKitButton)
+                    Assert.Equal("Close kit", boxLabelOf window ConstructorUiId.kitCloseButton))
+            finally scratch.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``pressing the kit bar's buttons sends their messages`` () : unit =
         HeadlessSession.run (fun () ->
@@ -348,6 +408,58 @@ module KitWindowTests =
                     pressBox window ConstructorUiId.kitCloseButton
                     Assert.Equal(1, closes.Count)
                     Assert.Equal<FolderName list>([ opened.folder.value ], List.ofSeq shown))
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing Send kit asks for a zip named for the kit and starts the send, and Cancel cancels it`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            let factFolder = (TestAppScope.testLocations owner).exportsFolder.combine (FolderName (System.Guid.NewGuid().ToString("N")))
+            let kitZipName = FileName $"{opened.library.kit.kitFile.name.value}.zip"
+            let zip = FileName (Path.Combine(factFolder.value, kitZipName.value))
+            let suggestions = ResizeArray<FileName> ()
+            let jobs = ResizeArray<KitArchiveObserver -> Result<KitArchiveOutcome, KitArchiveError>> ()
+            let cancels = ResizeArray<unit> ()
+            let picker : KitZipPicker =
+                {
+                    KitZipPicker.none with
+                        pickZipToWrite =
+                            fun name ->
+                                suggestions.Add name
+                                async { return Some zip }
+                }
+            let deferred : KitArchiveJobHost =
+                {
+                    startArchiveJob =
+                        fun job ->
+                            jobs.Add job
+                            recordingHandle cancels
+                }
+            try
+                let shell =
+                    {
+                        KitWindowShell.inert with
+                            zipPicker = picker
+                            archiveJobs = deferred
+                    }
+                let model = kitWindowModel ctx opened ForwardConstructor shell
+                withKitWindow model (fun window ->
+                    for id in sendProgressIds do
+                        Assert.Equal<Control option>(None, tryControlById window id)
+                    pressBox window ConstructorUiId.sendKitButton
+                    Assert.Equal<FileName list>([ kitZipName ], List.ofSeq suggestions)
+                    Assert.Single(jobs) |> ignore
+                    let progressText = controlById window ConstructorUiId.sendKitProgressText
+                    Assert.True(progressText.IsEffectivelyVisible, "a started send must show its progress")
+                    Assert.Equal("Starting…", textOf window ConstructorUiId.sendKitProgressText)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.sendKitButton)
+                    Assert.Empty(cancels)
+                    pressBox window ConstructorUiId.sendKitCancelButton
+                    Assert.Equal(1, cancels.Count)
+                    Assert.Single(jobs) |> ignore)
+                Assert.False(File.Exists zip.value, "a kept job writes no zip")
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
     /// The experiment another writer adds to the kit: one committed in a scratch Main model, given the id `E2`. It
