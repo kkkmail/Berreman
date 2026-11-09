@@ -43,6 +43,7 @@ module ExperimentCollectionRoundTripTests =
     let private placementOf (kind : CatalogueKind) : PlacementSummary =
         PlacementSummary.ofPlacement (ElementPlacement.create kind TablePoint.origin)
 
+    /// A descriptor deliberately assigned no physical item.
     let private desc (idStr : string) (label : string) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
         {
             elementId = el idStr
@@ -50,6 +51,17 @@ module ExperimentCollectionRoundTripTests =
             kind = kind
             placement = placementOf kind
             binding = binding
+            itemIdOpt = None
+        }
+
+    /// E1's two linear polarizers share one preset and are two physical pieces (spec 0050 S7.2).
+    let private lp1ItemId : ItemId = ItemId (Guid.Parse "41b7c2e9-3a5d-4f08-9c61-2e8d7b0a5f13")
+
+    let private lp2ItemId : ItemId = ItemId (Guid.Parse "92d4e8a1-6c3f-4b27-8e05-7f1a9c3b2d64")
+
+    let private pieceAt (itemId : ItemId) (descriptor : ElementDescriptor) : ElementDescriptor =
+        {
+            descriptor with itemIdOpt = Some itemId
         }
 
     let private glassPlateBinding : ElementBinding =
@@ -61,9 +73,9 @@ module ExperimentCollectionRoundTripTests =
             setup =
                 [
                     desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600)
-                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
+                    pieceAt lp1ItemId (desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp))
                     desc "s" "Sample #3" Sample glassPlateBinding
-                    desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
+                    pieceAt lp2ItemId (desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp))
                     desc "det" "Detector #5" Detector (BoundByEntryId PresetIds.detectorIntensity)
                 ]
             varied =
@@ -127,6 +139,12 @@ module ExperimentCollectionRoundTripTests =
             (List.item 0 loaded).versionRefs)
         Assert.Empty((List.item 1 loaded).versionRefs)
         Assert.Equal(None, (List.item 2 loaded).varied)
+        Assert.Equal<ItemId option list>(
+            [ None; Some lp1ItemId; None; Some lp2ItemId; None ],
+            (List.item 0 loaded).setup |> List.map (fun descriptor -> descriptor.itemIdOpt))
+        Assert.Equal<ItemId option list>(
+            [ None; None; None; None ],
+            (List.item 1 loaded).setup |> List.map (fun descriptor -> descriptor.itemIdOpt))
         Assert.Equal<DataAttachment option list>(
             [ Some e1Attachment; None; Some e3Attachment ],
             loaded |> List.map (fun experiment -> experiment.dataFileOpt))

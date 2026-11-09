@@ -734,3 +734,96 @@ module Kit =
                 schemaVersion = ItemFile.currentSchemaVersion
                 item = this
             }
+
+    type ItemLabel with
+
+        /// The first of the label, `<label> (2)`, `<label> (3)`, … whose file stem no taken label has, ignoring case,
+        /// because an item's file is named by its label (spec 0050 S7.2; `KitDataFolder.copyTargetFor`).
+        member this.nextFreeAmong (taken : ItemLabel list) : ItemLabel =
+            let isTaken (candidate : ItemLabel) : bool =
+                taken
+                |> List.exists (fun held -> String.Equals(held.fileStem.value, candidate.fileStem.value, StringComparison.OrdinalIgnoreCase))
+
+            let rec tryCandidate (suffix : int) : ItemLabel =
+                let candidate =
+                    if suffix = 1 then this
+                    else ItemLabel $"{this.value} ({suffix.ToString(CultureInfo.InvariantCulture)})"
+
+                if isTaken candidate then tryCandidate (suffix + 1) else candidate
+
+            tryCandidate 1
+
+    /// How a copied experiment's item comes into the target kit: as the kit's item of that id, bringing nothing, or
+    /// added. Never stored, so it carries no wire tag (spec 0050 S7.2; 001 §H).
+    type ItemCopyChoice =
+        | MapOntoKitItem of ItemId
+        | AddCopiedItem
+
+    type Item with
+
+        /// The held item of this id, because one id is one physical piece; else the first held item of this model and
+        /// label; else added (spec 0050 S7.2; 001 §I).
+        member this.defaultCopyChoice (held : Item list) : ItemCopyChoice =
+            match held |> List.tryFind (fun item -> item.id = this.id) with
+            | Some item -> MapOntoKitItem item.id
+            | None ->
+                match held |> List.tryFind (fun item -> item.model = this.model && item.label = this.label) with
+                | Some item -> MapOntoKitItem item.id
+                | None -> AddCopiedItem
+
+    /// One row of a copy's item-mapping table: an item the copied experiments use and how it comes in (spec 0050 S7.2).
+    type ItemCopyRow =
+        {
+            sourceItem : Item
+            choice : ItemCopyChoice
+        }
+
+        /// One row per used item, in order, keeping the choice of a chosen row of the same source id and otherwise
+        /// taking the default, so the panel keeps what the user chose while the picked experiments change (spec 0050 S7.2).
+        static member copyRowsFor (used : Item list) (held : Item list) (chosen : ItemCopyRow list) : ItemCopyRow list =
+            used
+            |> List.map (fun item ->
+                let choice =
+                    match chosen |> List.tryFind (fun row -> row.sourceItem.id = item.id) with
+                    | Some row -> row.choice
+                    | None -> item.defaultCopyChoice held
+
+                {
+                    sourceItem = item
+                    choice = choice
+                })
+
+        /// The added rows' items in order, each relabelled clear of the held labels and of those given before it, after
+        /// every row is checked: a mapping must name a held id, and a held piece is mapped, never added (spec 0050 S7.2).
+        static member itemsToAdd (rows : ItemCopyRow list) (held : Item list) : Result<Item list, ItemError> =
+            let refusalOf (row : ItemCopyRow) : ItemError option =
+                let source = row.sourceItem
+                match row.choice with
+                | MapOntoKitItem id ->
+                    if held |> List.exists (fun item -> item.id = id) then None
+                    else Some (UnknownKitItemErr $"'{source.label.value}' maps onto {id.value}")
+                | AddCopiedItem ->
+                    match held |> List.tryFind (fun item -> item.id = source.id) with
+                    | Some item ->
+                        Some (DuplicateItemIdErr $"'{source.label.value}' is the kit's '{item.label.value}' ({item.id.value}), which is mapped, not added")
+                    | None -> None
+
+            match rows |> List.tryPick refusalOf with
+            | Some error -> Error error
+            | None ->
+                let heldLabels = held |> List.map (fun item -> item.label)
+
+                rows
+                |> List.choose (fun row ->
+                    match row.choice with
+                    | AddCopiedItem -> Some row.sourceItem
+                    | MapOntoKitItem _ -> None)
+                |> List.fold (fun (added : Item list) source ->
+                    let taken = heldLabels @ (added |> List.map (fun item -> item.label))
+                    let relabelled =
+                        {
+                            source with label = source.label.nextFreeAmong taken
+                        }
+
+                    added @ [ relabelled ]) []
+                |> Ok

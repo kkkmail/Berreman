@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Tests
 
+open System
 open Xunit
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
@@ -7,6 +8,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary       // VersionNumber (spec 0038 Part H)
 open OpticalConstructor.Domain.Lifecycle             // VersionRef / SampleVersionRef
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.LibraryEntryFiles
 
@@ -21,9 +23,15 @@ module ExperimentProxyTests =
     let private placementOf (kind : CatalogueKind) : PlacementSummary =
         PlacementSummary.ofPlacement (ElementPlacement.create kind TablePoint.origin)
 
-    /// A captured setup descriptor (id / label / kind / rest placement / binding).
+    /// A captured setup descriptor (id / label / kind / rest placement / binding), deliberately assigned no physical item.
     let private desc (idStr : string) (label : string) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
-        { ElementDescriptor.elementId = el idStr; label = ElementLabel label; kind = kind; placement = placementOf kind; binding = binding }
+        { ElementDescriptor.elementId = el idStr; label = ElementLabel label; kind = kind; placement = placementOf kind; binding = binding; itemIdOpt = None }
+
+    /// A captured setup descriptor with the physical item explicitly assigned at it (spec 0050 S7.2).
+    let private pieceAt (item : Item) (idStr : string) (label : string) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
+        {
+            desc idStr label kind binding with itemIdOpt = Some item.id
+        }
 
     /// The version-one binding of `BuiltinCatalogue.sample`'s 1 mm glass plate.
     let private glassPlateBinding : ElementBinding =
@@ -411,6 +419,159 @@ module ExperimentProxyTests =
             Assert.Equal<Experiment list>(renumbering.expected, renumbered)
             Assert.Equal<Experiment list>(unnumbered renumbering.incoming, unnumbered renumbered)
         Assert.Empty(Experiment.renumberedFor [ ExperimentId 1 ] [])
+
+    // ============================ spec 0050 S7.2: the physical items an experiment uses ============================
+
+    /// The draft's item, built from the shipped item model's resolved version, failing when `addTo` refuses it.
+    let private itemOf (draft : ItemDraft) : Item =
+        match draft.addTo [] with
+        | Ok item -> item
+        | Error error -> failwith $"'{draft.label.value}' was refused: {error.describe}"
+
+    let private glassPlateVersion : SampleVersionId = SampleVersionId.firstOf SampleIds.glassPlate1mmId
+
+    /// The Built-in polarizer preset of that id, failing when the catalogue holds another kind under it.
+    let private polarizerPresetOf (id : ElementValueId) : PolarizerPreset =
+        match BuiltinCatalogue.preset id with
+        | PolarizerItem polarizer -> polarizer
+        | SampleItem _ | SourceItem _ | DetectorItem _ -> failwith $"The Built-in preset '{id.value}' is not a polarizer."
+
+    let private laserItem : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "5d3b8a51-0c47-4b8e-9f2a-6e1d7c90b4a3")
+                label = ItemLabel "Laser"
+                model = SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source PresetIds.heNe633)
+                dial = FixedMounting
+            }
+
+        itemOf draft
+
+    /// A glass plate on the stack-sample item model at the plate's first version: QZ-A and QZ-B share both.
+    let private plateDraft (id : ItemId) (label : ItemLabel) : ItemDraft =
+        {
+            id = id
+            label = label
+            model = StackSampleChoice (BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId, glassPlateVersion, BuiltinCatalogue.sample SampleIds.glassPlate1mmId)
+            dial = FixedMounting
+        }
+
+    let private qzAItem : Item = itemOf (plateDraft (ItemId (Guid.Parse "a0c6f3d2-71b4-4e0f-8d5a-3b9e2c1f6a70")) (ItemLabel "QZ-A"))
+
+    /// QZ-B is another piece of QZ-A's model and sample version, with its own measured parameters.
+    let private qzBItem : Item =
+        let drafted = itemOf (plateDraft (ItemId (Guid.Parse "b7e2d9c4-58a1-4f63-a0b8-9c4d1e2f3a85")) (ItemLabel "QZ-B"))
+        {
+            drafted with
+                parameters = drafted.parameters |> List.map (fun parameter -> { parameter with state = KnownParameter (ParameterValue 1.05e-3) })
+        }
+
+    let private cplItem : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "c3f81e6a-9d24-4b57-b0e1-7a2c5d8f4b96")
+                label = ItemLabel "CPL"
+                model = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId)
+                dial = DialMounted DialPositive
+            }
+
+        itemOf draft
+
+    [<Fact>]
+    let ``the items an experiment uses are its explicit physical ids, each once`` () : unit =
+        let items = [ laserItem; qzAItem; qzBItem; cplItem ]
+        Assert.Equal<ItemModelInstance>(qzAItem.model, qzBItem.model)
+        Assert.Equal<ItemModelInstance>(SampleInstance ((BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId).versionId, glassPlateVersion), qzBItem.model)
+        Assert.NotEqual<ItemId>(qzAItem.id, qzBItem.id)
+        Assert.NotEqual<Parameter list>(qzAItem.parameters, qzBItem.parameters)
+
+        let bench =
+            {
+                e3 with
+                    id = ExperimentId 21
+                    setup =
+                        [
+                            pieceAt laserItem "src" "Light source #1" LightSource (BoundByEntryId PresetIds.heNe633)
+                            pieceAt qzBItem "qz" "Sample #2" Sample glassPlateBinding
+                            desc "lp" "Linear polarizer #3" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
+                            desc "det" "Detector #4" Detector (BoundByEntryId PresetIds.detectorIntensity)
+                        ]
+            }
+
+        // QZ-A shares QZ-B's model, sample version and binding, and is still not used.
+        Assert.Equal<Result<Item list, ItemError>>(Ok [ laserItem; qzBItem ], Experiment.itemsUsedBy [ bench ] items)
+
+        let again =
+            {
+                bench with
+                    id = ExperimentId 22
+                    setup =
+                        [
+                            pieceAt qzBItem "qz" "Sample #1" Sample glassPlateBinding
+                            pieceAt qzBItem "qz-again" "Sample #2" Sample glassPlateBinding
+                        ]
+            }
+
+        Assert.Equal<Result<Item list, ItemError>>(Ok [ qzBItem ], Experiment.itemsUsedBy [ again ] items)
+        Assert.Equal<Result<Item list, ItemError>>(Ok [ laserItem; qzBItem ], Experiment.itemsUsedBy [ again; bench ] items)
+        // The items come in the order they are supplied, not the order the setups name them.
+        Assert.Equal<Result<Item list, ItemError>>(
+            Ok [ qzBItem; laserItem ], Experiment.itemsUsedBy [ bench ] [ cplItem; qzBItem; qzAItem; laserItem ])
+
+        // E1 binds the plate and the presets the items bind, yet assigns no piece, so it uses none.
+        Assert.Equal<Result<Item list, ItemError>>(Ok [], Experiment.itemsUsedBy [ e1; e3 ] items)
+        Assert.Equal<Result<Item list, ItemError>>(Ok [], Experiment.itemsUsedBy [] items)
+
+        // A standalone item model binds no preset or sample and is used by its id alone.
+        Assert.Equal<EntryReference option>(None, cplItem.model.bindingReferenceOpt)
+        let circular =
+            {
+                e3 with
+                    id = ExperimentId 23
+                    setup = [ pieceAt cplItem "cpl" "Circular polarizer #1" CircularPolarizer Unbound ]
+            }
+
+        Assert.Equal<Result<Item list, ItemError>>(Ok [ cplItem ], Experiment.itemsUsedBy [ circular ] items)
+        Assert.Equal<Result<Item list, ItemError>>(Ok [ laserItem; qzBItem; cplItem ], Experiment.itemsUsedBy [ circular; bench ] items)
+
+    [<Fact>]
+    let ``a missing physical item is refused instead of guessed from a shared preset`` () : unit =
+        let heldPolarizer =
+            let draft : ItemDraft =
+                {
+                    id = ItemId (Guid.Parse "d94a0b17-2e6c-4f85-a3d9-1b7e8c2f5a04")
+                    label = ItemLabel "LP1"
+                    model = PolarizerPresetChoice (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId, polarizerPresetOf PresetIds.polarizerLp)
+                    dial = DialMounted DialNegative
+                }
+
+            itemOf draft
+
+        let missing = ItemId (Guid.Parse "e15c7a93-4b08-4d2f-8e6a-5c9b3d1f7e28")
+        let polarizerBinding = BoundByEntryId PresetIds.polarizerLp
+        Assert.Equal<ItemModelInstance>(PresetInstance ((BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId).versionId, PresetIds.polarizerLp), heldPolarizer.model)
+
+        let dangling =
+            {
+                e3 with
+                    id = ExperimentId 24
+                    setup =
+                        [
+                            pieceAt laserItem "src" "Light source #1" LightSource (BoundByEntryId PresetIds.heNe633)
+                            {
+                                desc "lp" "Linear polarizer #2" LinearPolarizer polarizerBinding with itemIdOpt = Some missing
+                            }
+                            pieceAt heldPolarizer "lp-held" "Linear polarizer #3" LinearPolarizer polarizerBinding
+                        ]
+            }
+
+        match Experiment.itemsUsedBy [ dangling ] [ laserItem; heldPolarizer; qzAItem ] with
+        | Error (UnknownKitItemErr reason) ->
+            Assert.Contains(missing.value.ToString(), reason)
+            Assert.Contains("'Linear polarizer #2' (lp)", reason)
+            Assert.Contains("E24", reason)
+            Assert.DoesNotContain(heldPolarizer.id.value.ToString(), reason)
+        | other -> Assert.Fail($"expected UnknownKitItemErr for the missing piece, got %A{other}")
 
     [<Fact>]
     let ``pinning an experiment's bound sample version BLOCKS removal of that sample`` () =

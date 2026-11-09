@@ -171,6 +171,7 @@ module KitLibraryTests =
                             | CatalogueKind.Sample, _ -> BoundByVersion (SampleVersionRef sampleVersion)
                             | _, Some valueId -> BoundByEntryId valueId
                             | _, None -> Unbound
+                        itemIdOpt = None
                     })
             varied = None
             measurement = CaptureTransmitted

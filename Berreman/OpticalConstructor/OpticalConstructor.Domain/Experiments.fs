@@ -192,7 +192,8 @@ module Experiments =
     /// catalogue kind, a placement/orientation summary, and the bound entry reference (by version where
     /// versioned). The ordered list of these on an `Experiment` IS the setup — the light-traversal chain
     /// including the detector, whose kind determines the expected data-file shape (§15.3, consumed by
-    /// step 34).
+    /// step 34). `itemIdOpt` is the physical piece explicitly assigned at the element, apart from its library
+    /// `binding`; `None` means none was, and no model, preset, label or binding infers one (spec 0050 S7.2).
     type ElementDescriptor =
         {
             elementId : ElementId
@@ -200,6 +201,7 @@ module Experiments =
             kind : CatalogueKind
             placement : PlacementSummary
             binding : ElementBinding
+            itemIdOpt : ItemId option
         }
 
     /// The element an experiment varies, identified WITHIN the setup (spec 0038 Part I): its serializable
@@ -286,6 +288,25 @@ module Experiments =
                 id :: given, copied :: renumbered) ([], [])
             |> snd
             |> List.rev
+
+        /// The items the experiments' descriptors explicitly assign, once each in the supplied order; an assigned id
+        /// the items lack is refused, naming the element, never matched by preset or model (spec 0050 S7.2).
+        static member itemsUsedBy (experiments : Experiment list) (items : Item list) : Result<Item list, ItemError> =
+            let assigned : (Experiment * ElementDescriptor * ItemId) list =
+                experiments
+                |> List.collect (fun experiment ->
+                    experiment.setup
+                    |> List.choose (fun descriptor -> descriptor.itemIdOpt |> Option.map (fun id -> experiment, descriptor, id)))
+
+            let isHeld (id : ItemId) : bool = items |> List.exists (fun item -> item.id = id)
+
+            match assigned |> List.tryFind (fun (_, _, id) -> not (isHeld id)) with
+            | Some (experiment, descriptor, id) ->
+                let element = $"'{descriptor.label.value}' ({descriptor.elementId.value}) of {experiment.id.fileStem.value}"
+                Error (UnknownKitItemErr $"{id.value}, assigned at the element {element}")
+            | None ->
+                let used = assigned |> List.map (fun (_, _, id) -> id)
+                items |> List.filter (fun item -> List.contains item.id used) |> List.distinctBy (fun item -> item.id) |> Ok
 
     /// One experiment's versioned .experiment-json content (spec 0050 S4.3).
     type ExperimentFile =

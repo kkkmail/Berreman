@@ -1626,16 +1626,29 @@ type TableAndElementRotationModel with
     /// `ElementDescriptor` per present element (in scene order), carrying its id, human label, catalogue kind,
     /// placement/orientation summary and versioned/preset binding. The detector element is part of the chain
     /// (its kind fixes the expected data-file shape). Built on commit; the descriptor snapshot survives the
-    /// element's later removal.
+    /// element's later removal. An element of the edited experiment keeps its assigned item while its binding is
+    /// unchanged; a new or rebound one carries none, never one guessed from its preset (spec 0050 S7.2).
     member internal model.experimentSetup : Experiments.ElementDescriptor list =
+        let collection = model.experimentCollection
+        let editedSetup : Experiments.ElementDescriptor list =
+            collection.draft.editingId
+            |> Option.bind (fun id -> collection.experiments |> List.tryFind (fun experiment -> experiment.id = id))
+            |> Option.map (fun experiment -> experiment.setup)
+            |> Option.defaultValue []
+
         model.elements
         |> List.map (fun e ->
+            let binding = descriptorBinding model e.placement.catalogueKind e.placement.valueId
             {
                 Experiments.ElementDescriptor.elementId = e.id
                 label = experimentElementLabel model e.id
                 kind = e.placement.catalogueKind
                 placement = Experiments.PlacementSummary.ofPlacement e.placement
-                binding = descriptorBinding model e.placement.catalogueKind e.placement.valueId
+                binding = binding
+                itemIdOpt =
+                    editedSetup
+                    |> List.tryFind (fun descriptor -> descriptor.elementId = e.id && descriptor.binding = binding)
+                    |> Option.bind (fun descriptor -> descriptor.itemIdOpt)
             })
 
 type MeasuredData.ExperimentDataError with

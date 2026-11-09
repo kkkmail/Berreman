@@ -36,7 +36,8 @@ module KitContentFiles =
 
         member private this.toContentJsonText : JsonText = JsonText this.value
 
-        /// Validates the experiment schema and rejects unsupported versions before binding (spec 0050 S4.3).
+        /// Validates the experiment schema and rejects unsupported versions before binding (spec 0050 S4.3). A descriptor
+        /// without its `itemIdOpt` is refused, so an older body never binds with an inferred item (spec 0050 S7.2).
         member this.parseExperimentFile : Result<ExperimentFile, StorageError> =
             parseVersionedText SchemaValidation.validateExperimentFile ExperimentKitFile.extension ExperimentFile.currentSchemaVersion this.toContentJsonText
 

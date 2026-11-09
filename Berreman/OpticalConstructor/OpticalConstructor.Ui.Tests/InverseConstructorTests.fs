@@ -453,6 +453,79 @@ module InverseConstructorTests =
         Assert.Equal<ControlCaption option>(None, missing.kitStatus)
         initial.kit.close () |> SceneTestFixture.kitSuccess
 
+    // ================================ copied physical items (spec 0050 S7.2) ================================
+
+    [<Fact>]
+    let ``recommitting a copied experiment preserves its assigned physical ids`` () =
+        let folder = TestAppScope.freshKitFolder owner
+        // Two linear polarizers on the one preset: two physical pieces that only their ids tell apart.
+        let built, expId =
+            inverseIn folder
+            |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+            |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+            |> withIntensityExperiment
+        let polarizers = built.elements |> List.filter (fun e -> e.placement.catalogueKind = Placement.LinearPolarizer)
+        Assert.Equal<Placement.ElementValueId option list>(
+            [ Some PresetIds.polarizerLp; Some PresetIds.polarizerLp ], polarizers |> List.map (fun e -> e.placement.valueId))
+        let lpA = List.item 0 polarizers
+        let lpB = List.item 1 polarizers
+        let sample = theSample built
+        let pieceA = ItemId (System.Guid.Parse "3c9e1f47-8a2d-4b06-9e53-1f7a2c8d4b60")
+        let pieceB = ItemId (System.Guid.Parse "4daf2058-9b3e-4c17-af64-208b3d9e5c71")
+        let samplePiece = ItemId (System.Guid.Parse "5eb03169-ac4f-4d28-b075-319c4eaf6d82")
+        let assigned = Map.ofList [ lpA.id, pieceA; lpB.id, pieceB; sample.id, samplePiece ]
+
+        // A copy writes the experiment into the kit with the pieces its item mapping assigned (spec 0050 S6, S7.2).
+        let captured = Assert.Single(built.experimentCollection.experiments)
+        Assert.All(captured.setup, fun descriptor -> Assert.Equal<ItemId option>(None, descriptor.itemIdOpt))
+        let copied =
+            {
+                captured with
+                    setup =
+                        captured.setup
+                        |> List.map (fun descriptor ->
+                            {
+                                descriptor with itemIdOpt = Map.tryFind descriptor.elementId assigned
+                            })
+            }
+        built.kit.proxy.writeExperiment copied |> SceneTestFixture.kitSuccess
+        built.kit.close () |> SceneTestFixture.kitSuccess
+
+        // The scene is no kit file, so the reopened bench is laid out as the copy found it.
+        let loaded =
+            {
+                inverseIn folder with elements = built.elements
+            }
+        Assert.Equal<Experiments.Experiment list>([ copied ], loaded.experimentCollection.experiments)
+
+        // Edit the range, rebind the sample to a hint and add a third piece of the same preset, then recommit.
+        let recommitted =
+            loaded
+            |> updateTableAndElementRotation (ExpEdit expId)
+            |> updateTableAndElementRotation (ExpSetRangePoints (ExperimentControls.ExperimentPointCount 7))
+            |> updateTableAndElementRotation (BindValueIdTo (sample.id, Placement.ElementValueId glassFilm200Id))
+            |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+            |> updateTableAndElementRotation ExpCommit
+        Assert.Equal<ControlCaption option>(None, recommitted.kitStatus)
+        let added = List.last recommitted.elements
+        Assert.Equal<Placement.ElementValueId option>(Some PresetIds.polarizerLp, added.placement.valueId)
+        recommitted.kit.close () |> SceneTestFixture.kitSuccess
+
+        let reopened = inverseIn folder
+        let stored = Assert.Single(reopened.experimentCollection.experiments)
+        reopened.kit.close () |> SceneTestFixture.kitSuccess
+        Assert.Equal(expId, stored.id)
+        Assert.Equal(7, stored.range.points.value)
+        let pieceOf (elementId : ElementId) : ItemId option =
+            stored.setup |> List.tryFind (fun descriptor -> descriptor.elementId = elementId) |> Option.bind (fun descriptor -> descriptor.itemIdOpt)
+        Assert.Equal<ItemId option>(Some pieceA, pieceOf lpA.id)
+        Assert.Equal<ItemId option>(Some pieceB, pieceOf lpB.id)
+        Assert.NotEqual<ItemId>(pieceA, pieceB)
+        // The rebound sample and the new polarizer carry no piece: none is guessed from a binding or a preset.
+        Assert.Equal<ItemId option>(None, pieceOf sample.id)
+        Assert.Equal<ItemId option>(None, pieceOf added.id)
+        Assert.Equal<ItemId list>([ pieceA; pieceB ], stored.setup |> List.choose (fun descriptor -> descriptor.itemIdOpt))
+
     // ================================ headless render (gate ui-smoke) ================================
 
     [<Fact>]

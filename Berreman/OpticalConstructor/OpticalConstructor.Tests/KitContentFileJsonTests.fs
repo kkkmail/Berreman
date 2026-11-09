@@ -46,6 +46,7 @@ module KitContentFileJsonTests =
                         kind = LightSource
                         placement = PlacementSummary.ofPlacement (ElementPlacement.create LightSource TablePoint.origin)
                         binding = BoundByEntryId PresetIds.source600
+                        itemIdOpt = None
                     }
                     {
                         elementId = ElementId "sample"
@@ -53,6 +54,7 @@ module KitContentFileJsonTests =
                         kind = Sample
                         placement = PlacementSummary.ofPlacement (ElementPlacement.create Sample TablePoint.origin)
                         binding = BoundByVersion sampleReference
+                        itemIdOpt = None
                     }
                     {
                         elementId = polarizerId
@@ -60,6 +62,7 @@ module KitContentFileJsonTests =
                         kind = LinearPolarizer
                         placement = PlacementSummary.ofPlacement (ElementPlacement.create LinearPolarizer TablePoint.origin)
                         binding = Unbound
+                        itemIdOpt = None
                     }
                 ]
             varied =
@@ -202,6 +205,79 @@ module KitContentFileJsonTests =
             | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
             | Error error -> Assert.Fail($"expected MalformedJsonErr: {error.describe}")
             | Ok _ -> Assert.Fail($"accepted malformed experiment file text: {text.value}")
+
+    [<Fact>]
+    let ``experiment files preserve distinct same-preset physical ids and reject an omitted identity field`` () : unit =
+        let lpAItemId = ItemId (Guid.Parse "6a2f0c8e-1d47-4b93-a5e2-8c3b7d9f0e14")
+        let lpBItemId = ItemId (Guid.Parse "7b3e1d9f-2e58-4ca4-b6f3-9d4c8e0a1f25")
+        let polarizerBinding = BoundByEntryId PresetIds.polarizerLp
+
+        let polarizerAt (elementId : ElementId) (label : ElementLabel) (itemId : ItemId) : ElementDescriptor =
+            {
+                elementId = elementId
+                label = label
+                kind = LinearPolarizer
+                placement = PlacementSummary.ofPlacement (ElementPlacement.create LinearPolarizer TablePoint.origin)
+                binding = polarizerBinding
+                itemIdOpt = Some itemId
+            }
+
+        let experiment =
+            {
+                e3 with
+                    id = ExperimentId 7
+                    setup =
+                        [
+                            polarizerAt (ElementId "lp-a") (ElementLabel "Linear polarizer #1") lpAItemId
+                            polarizerAt (ElementId "lp-b") (ElementLabel "Linear polarizer #2") lpBItemId
+                        ]
+            }
+
+        let text = experiment.experimentFile.fileText |> kitContentJsonValue
+        let readBack = text.parseExperimentFile |> kitContentJsonValue
+        Assert.Equal<Experiment>(experiment, readBack.experiment)
+        Assert.Equal<ItemId option list>(
+            [ Some lpAItemId; Some lpBItemId ], readBack.experiment.setup |> List.map (fun descriptor -> descriptor.itemIdOpt))
+        // Both pieces bind the one preset, so only their ids tell them apart.
+        Assert.Equal<ElementBinding list>(
+            [ polarizerBinding; polarizerBinding ], readBack.experiment.setup |> List.map (fun descriptor -> descriptor.binding))
+
+        // The option is the shared canonical form: the GUID as the serializer writes it, or null when unassigned.
+        let setupOf (stored : KitFileText) : JsonArray = (JsonNode.Parse stored.value).["experiment"].["setup"].AsArray()
+        Assert.Equal<string list>(
+            [ lpAItemId.value.ToString(); lpBItemId.value.ToString() ],
+            [ for descriptor in setupOf text -> descriptor.["itemIdOpt"].GetValue<string>() ])
+
+        for descriptor in setupOf (e1.experimentFile.fileText |> kitContentJsonValue) do
+            Assert.True(descriptor.AsObject().ContainsKey "itemIdOpt", "an unassigned descriptor still carries the field")
+            Assert.Null(descriptor.["itemIdOpt"])
+
+        let edited (edit : JsonObject -> unit) : KitFileText =
+            let node = (JsonNode.Parse text.value).AsObject()
+            edit node
+            node.canonicalFileText |> KitFileText
+
+        let refusals : (JsonObject -> unit) list =
+            [
+                (fun node -> node.["experiment"].["setup"].[1].AsObject().Remove "itemIdOpt" |> ignore)
+                (fun node -> node.["experiment"].["setup"].[0].AsObject().Remove "itemIdOpt" |> ignore)
+                (fun node -> node.["experiment"].["setup"].[1].["itemIdOpt"] <- JsonValue.Create "not-a-guid")
+                (fun node -> node.["experiment"].["setup"].[1].["itemIdOpt"] <- JsonValue.Create (lpBItemId.value.ToString().ToUpperInvariant()))
+                (fun node -> node.["experiment"].["setup"].[1].["itemIdOpt"] <- JsonValue.Create 7)
+            ]
+
+        // An older body without the field, or one with no GUID in it, is refused before it binds: nothing is inferred.
+        for refused in refusals |> List.map edited do
+            match refused.parseExperimentFile with
+            | Error (SchemaValidationErr messages) -> Assert.NotEmpty messages
+            | Error error -> Assert.Fail($"expected SchemaValidationErr: {error.describe}")
+            | Ok parsed -> Assert.Fail($"accepted a descriptor without a valid item id: {parsed.experiment.setup.Length} descriptor(s)")
+
+        let unassigned = editedExperimentFile (fun node -> node.["experiment"].["setup"].[0].AsObject().Remove "itemIdOpt" |> ignore)
+        match unassigned.parseExperimentFile with
+        | Error (SchemaValidationErr messages) -> Assert.NotEmpty messages
+        | Error error -> Assert.Fail($"expected SchemaValidationErr: {error.describe}")
+        | Ok _ -> Assert.Fail "accepted an unassigned descriptor without its item id field"
 
     let private sceneSource : SceneElement =
         let position : TablePoint =
