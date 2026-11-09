@@ -3,6 +3,9 @@ namespace OpticalConstructor.Domain
 open System
 open System.Globalization
 open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 
 /// A kit's identity, file metadata and access mode (spec 0050 S4.1).
@@ -351,3 +354,89 @@ module Kit =
                 path = this.path
                 contentHash = this.contentHash
             }
+
+    /// Why an item, its label, its model binding or one of its parameters was refused, named in the reason
+    /// (spec 0050 S7.1).
+    type ItemError =
+        | InvalidItemLabelErr of reason : string
+        | DuplicateItemLabelErr of reason : string
+        | DuplicateItemIdErr of reason : string
+        | UnknownItemParameterErr of reason : string
+        | InvalidParameterStateErr of reason : string
+        | InvalidItemModelBindingErr of reason : string
+        | UnknownKitItemErr of reason : string
+
+        member this.describe : string =
+            match this with
+            | InvalidItemLabelErr reason -> $"the item label is not valid: {reason}"
+            | DuplicateItemLabelErr reason -> $"the kit already has an item of that label: {reason}"
+            | DuplicateItemIdErr reason -> $"the kit already has an item of that id: {reason}"
+            | UnknownItemParameterErr reason -> $"the item has no such parameter: {reason}"
+            | InvalidParameterStateErr reason -> $"the parameter state is not valid: {reason}"
+            | InvalidItemModelBindingErr reason -> $"the item model binding is not valid: {reason}"
+            | UnknownKitItemErr reason -> $"the kit has no item of that id: {reason}"
+
+    /// One physical piece's frozen identity, minted by the caller as a kit's is (spec 0050 S7.1; 001 §I).
+    type ItemId =
+        | ItemId of Guid
+
+        member this.value : Guid = let (ItemId g) = this in g
+
+    /// The lab's name for a piece (`LP1`, `CPL2`, `QZ`), kept as given; its `<label>.item-json` stem follows the
+    /// shared name rule (spec 0050 S7.1; 001 §A).
+    type ItemLabel =
+        | ItemLabel of string
+
+        member this.value : string = let (ItemLabel text) = this in text
+
+        static member tryCreate (text : string) : Result<ItemLabel, ItemError> =
+            if String.IsNullOrWhiteSpace text then
+                Error (InvalidItemLabelErr $"'{text}': an item label must not be blank")
+            else
+                Ok (ItemLabel text)
+
+        member this.fileStem : FileStem = FileStem.ofText this.value
+
+    /// Free-text item notes, empty when there are none (spec 0050 S7.1).
+    type ItemNotes =
+        | ItemNotes of string
+
+        member this.value : string = let (ItemNotes text) = this in text
+
+    /// The revision an item file carries, counting up from one (spec 0050 S7.1; 001 §I).
+    type ItemRevision =
+        | ItemRevision of int
+
+        member this.value : int = let (ItemRevision revision) = this in revision
+
+        static member first : ItemRevision = ItemRevision 1
+
+        member this.next : ItemRevision = ItemRevision (this.value + 1)
+
+    /// The exact item-model version an item instantiates, with the preset or sample its binding form takes its physics
+    /// from; a standalone model binds nothing (spec 0050 S7.1; 001 §I).
+    type ItemModelInstance =
+        | PresetInstance of model : ItemModelVersionId * preset : ElementValueId
+        | SampleInstance of model : ItemModelVersionId * sample : SampleVersionId
+        | ItemModelVersionInstance of ItemModelVersionId
+
+        /// The model version the kit snapshots and pins, in every case (spec 0050 S7.1).
+        member this.entryReferenceOpt : EntryReference option =
+            match this with
+            | PresetInstance (model, _)
+            | SampleInstance (model, _)
+            | ItemModelVersionInstance model -> Some model.entryReference
+
+        /// The bound physics by step 137's rules: a preset's GUID at its latest, a sample's exact version; `None` for a
+        /// standalone model or a preset id that is no GUID, which AddItem refuses (spec 0050 S4.2, S7.1).
+        member this.bindingReferenceOpt : EntryReference option =
+            match this with
+            | PresetInstance (_, preset) -> preset.tryToLibraryEntryId |> Option.map EntryLatestReference
+            | SampleInstance (_, sample) ->
+                let reference : LibraryVersionRef =
+                    {
+                        entryId = sample.sampleId.toLibraryEntryId
+                        version = sample.version
+                    }
+                Some (EntryVersionReference reference)
+            | ItemModelVersionInstance _ -> None
