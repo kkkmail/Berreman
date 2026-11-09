@@ -6,6 +6,7 @@ open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Scene
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
@@ -53,15 +54,43 @@ module KitContentFiles =
     let private contentReadRejectedErr (file : FileName) (error : KitError) : KitError =
         KitFileRejectedErr $"reading the file '{file.value}': {error.describe}"
 
+    /// Writes a rendered content file whole under its kind and stem; a rendering refusal names the file
+    /// (spec 0050 S4.3, S7.1).
+    let private writeRenderedKindFile
+        (proxy : KitProxy)
+        (kind : KitFileKind)
+        (stem : FileStem)
+        (rendered : Result<KitFileText, StorageError>)
+        : Result<unit, KitError> =
+        rendered
+        |> Result.mapError (contentStorageRejectedErr (kind.fileNameOf stem))
+        |> Result.bind (proxy.writeKindFile kind stem)
+
+    /// Reads and parses every file of the kind in listing order, accepting each against those read before it; the
+    /// first refusal, naming its file, answers the whole read (spec 0050 S4.3, S7.1).
+    let private readEveryKindFile<'Parsed, 'Content>
+        (proxy : KitProxy)
+        (kind : KitFileKind)
+        (parse : KitFileText -> Result<'Parsed, StorageError>)
+        (accept : FileName -> FileStem -> 'Content list -> 'Parsed -> Result<'Content, KitError>)
+        : Result<'Content list, KitError> =
+        proxy.listKindFiles kind
+        |> Result.bind (fun stems ->
+            stems
+            |> List.fold (fun result stem ->
+                result |> Result.bind (fun contents ->
+                    let file = kind.fileNameOf stem
+                    proxy.readKindFile kind stem
+                    |> Result.mapError (contentReadRejectedErr file)
+                    |> Result.bind (fun text -> parse text |> Result.mapError (contentStorageRejectedErr file))
+                    |> Result.bind (accept file stem contents)
+                    |> Result.map (fun content -> content :: contents))) (Ok []))
+
     type KitProxy with
 
         /// Replaces the experiment's kit file whole, naming any rendering refusal (spec 0050 S4.3).
         member this.writeExperiment (experiment : Experiment) : Result<unit, KitError> =
-            let stem = experiment.id.fileStem
-            let file = ExperimentKitFile.fileNameOf stem
-            experiment.experimentFile.fileText
-            |> Result.mapError (contentStorageRejectedErr file)
-            |> Result.bind (this.writeKindFile ExperimentKitFile stem)
+            writeRenderedKindFile this ExperimentKitFile experiment.id.fileStem experiment.experimentFile.fileText
 
         /// Deletes the experiment's kit file, or reports it missing (spec 0050 S4.3).
         member this.deleteExperiment (id : ExperimentId) : Result<unit, KitError> =
@@ -69,36 +98,25 @@ module KitContentFiles =
 
         /// Reads every experiment in id order; an unreadable or misnamed file refuses the whole read (spec 0050 S4.3).
         member this.readExperiments () : Result<Experiment list, KitError> =
-            this.listKindFiles ExperimentKitFile
-            |> Result.bind (fun stems ->
-                stems
-                |> List.fold (fun result stem ->
-                    result |> Result.bind (fun experiments ->
-                        let file = ExperimentKitFile.fileNameOf stem
-                        this.readKindFile ExperimentKitFile stem
-                        |> Result.mapError (contentReadRejectedErr file)
-                        |> Result.bind (fun text -> text.parseExperimentFile |> Result.mapError (contentStorageRejectedErr file))
-                        |> Result.bind (fun parsed ->
-                            let experiment = parsed.experiment
-                            if String.Equals(experiment.id.fileStem.value, stem.value, StringComparison.OrdinalIgnoreCase) then
-                                Ok (experiment :: experiments)
-                            else
-                                Error (KitFileRejectedErr $"the file '{file.value}' holds experiment '{experiment.id.fileStem.value}' instead of '{stem.value}'")))) (Ok []))
+            let accept (file : FileName) (stem : FileStem) (_ : Experiment list) (parsed : ExperimentFile) : Result<Experiment, KitError> =
+                let experiment = parsed.experiment
+                if String.Equals(experiment.id.fileStem.value, stem.value, StringComparison.OrdinalIgnoreCase) then
+                    Ok experiment
+                else
+                    Error (KitFileRejectedErr $"the file '{file.value}' holds experiment '{experiment.id.fileStem.value}' instead of '{stem.value}'")
+
+            readEveryKindFile this ExperimentKitFile (fun text -> text.parseExperimentFile) accept
             |> Result.map (List.sortBy (fun experiment -> experiment.id))
 
         /// Replaces the setup file at the name's safe stem, preserving its original name (spec 0050 S4.3).
         member this.writeScene (name : SceneName) (scene : SceneSnapshot) : Result<unit, KitError> =
-            let stem = name.fileStem
-            let file = SetupKitFile.fileNameOf stem
             let sceneFile : SceneFile =
                 {
                     schemaVersion = SceneFile.currentSchemaVersion
                     name = name
                     scene = scene
                 }
-            sceneFile.fileText
-            |> Result.mapError (contentStorageRejectedErr file)
-            |> Result.bind (this.writeKindFile SetupKitFile stem)
+            writeRenderedKindFile this SetupKitFile name.fileStem sceneFile.fileText
 
         /// Reads the named setup's scene, reporting a missing or refused file by name (spec 0050 S4.3).
         member this.readScene (name : SceneName) : Result<SceneSnapshot, KitError> =
@@ -114,17 +132,33 @@ module KitContentFiles =
 
         /// Reads original setup names in ordinal order; any refused file refuses the list (spec 0050 S4.3).
         member this.readSceneNames () : Result<SceneName list, KitError> =
-            this.listKindFiles SetupKitFile
-            |> Result.bind (fun stems ->
-                stems
-                |> List.fold (fun result stem ->
-                    result |> Result.bind (fun names ->
-                        let file = SetupKitFile.fileNameOf stem
-                        this.readKindFile SetupKitFile stem
-                        |> Result.mapError (contentReadRejectedErr file)
-                        |> Result.bind (fun text -> text.parseSceneFile |> Result.mapError (contentStorageRejectedErr file))
-                        |> Result.map (fun parsed -> parsed.name :: names))) (Ok []))
+            let accept (_ : FileName) (_ : FileStem) (_ : SceneName list) (parsed : SceneFile) : Result<SceneName, KitError> =
+                Ok parsed.name
+
+            readEveryKindFile this SetupKitFile (fun text -> text.parseSceneFile) accept
             |> Result.map (List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value)))
+
+        /// Replaces the item's `<label>.item-json` whole, naming any rendering refusal; a file under an earlier label
+        /// stays (spec 0050 S7.1).
+        member this.writeItem (item : Item) : Result<unit, KitError> =
+            writeRenderedKindFile this ItemKitFile item.label.fileStem item.itemFile.fileText
+
+        /// Reads every item in its label's ordinal order. A file that does not read, holds another label or repeats an id
+        /// refuses the whole read, so a kit never opens with an item left out (spec 0050 S7.1).
+        member this.readItems () : Result<Item list, KitError> =
+            // Files list in ordinal order, so a repeated id names both of its files, whichever was read first.
+            let accept (file : FileName) (stem : FileStem) (read : (FileName * Item) list) (parsed : ItemFile) : Result<FileName * Item, KitError> =
+                let item = parsed.item
+                if String.Equals(item.label.fileStem.value, stem.value, StringComparison.OrdinalIgnoreCase) then
+                    match read |> List.tryFind (fun (_, held) -> held.id = item.id) with
+                    | Some (heldFile, held) ->
+                        Error (KitFileRejectedErr $"the file '{file.value}' repeats the id {item.id.value} of item '{held.label.value}' in '{heldFile.value}'")
+                    | None -> Ok (file, item)
+                else
+                    Error (KitFileRejectedErr $"the file '{file.value}' holds item '{item.label.value}' instead of '{stem.value}'")
+
+            readEveryKindFile this ItemKitFile (fun text -> text.parseItemFile) accept
+            |> Result.map (List.map snd >> List.sortWith (fun first second -> String.CompareOrdinal(first.label.value, second.label.value)))
 
     type KitLibraryContext with
 
