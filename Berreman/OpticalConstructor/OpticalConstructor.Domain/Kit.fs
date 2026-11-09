@@ -553,3 +553,45 @@ module Kit =
             match brokenRules |> List.choose id with
             | [] -> Ok this
             | rule :: _ -> Error (InvalidParameterStateErr $"{this.name.value}: {rule}")
+
+    /// How an item is mounted: on a dial, whose raw reading maps to the physical angle as `sign · (reading − dialZero)`
+    /// (`MuellerReconstruction.physicalAngle`), or fixed, read off no dial (spec 0050 S7.1; 001 §I).
+    type ItemDial =
+        | DialMounted of DialSign
+        | FixedMounting
+
+        /// The dial zero as an ordinary parameter of a dial-mounted item; a fixed one has none (spec 0050 S7.1).
+        member this.parameterAxes : ItemParameterAxis list =
+            match this with
+            | DialMounted _ -> [ { name = ParameterName "dialZero"; kind = AngleParameter; defaultValue = ParameterValue 0.0 } ]
+            | FixedMounting -> []
+
+    /// The parameter values an earlier revision of an item held: its short value history (spec 0050 S7.1; 001 §I).
+    type ItemRevisionRecord =
+        {
+            revision : ItemRevision
+            parameters : Parameter list
+        }
+
+    /// One physical piece in a kit, holding its own parameters, which no other item shares, even of the same model;
+    /// the photo is a kit file and `history` lists earlier revisions oldest first (spec 0050 S7.1; 001 §I).
+    type Item =
+        {
+            id : ItemId
+            label : ItemLabel
+            model : ItemModelInstance
+            parameters : Parameter list
+            dial : ItemDial
+            photoOpt : KitRelativePath option
+            notes : ItemNotes
+            revision : ItemRevision
+            history : ItemRevisionRecord list
+        }
+
+        /// What the kit snapshots and pins when it records the item: the model's exact version, then its bound physics,
+        /// each named once (spec 0050 S7.1).
+        member this.libraryReferences : EntryReference list =
+            [ this.model.entryReferenceOpt; this.model.bindingReferenceOpt ] |> List.choose id |> List.distinct
+
+        member this.tryFindParameter (name : ParameterName) : Parameter option =
+            this.parameters |> List.tryFind (fun parameter -> parameter.name = name)

@@ -17,6 +17,18 @@ module KitItemTests =
     let private exactModelVersion (model : ItemModelVersionId) : EntryReference =
         EntryVersionReference { entryId = model.itemModelId.toLibraryEntryId; version = model.version }
 
+    /// A preset's binding at its latest version, built from its GUID text rather than through the member under test.
+    let private presetAtLatest (preset : ElementValueId) : EntryReference = EntryLatestReference (LibraryEntryId (Guid.Parse preset.value))
+
+    let private sourceModel : ItemModelVersionId = (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId).versionId
+    let private polarizerModel : ItemModelVersionId = (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId).versionId
+    let private stackModel : ItemModelVersionId = (BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId).versionId
+    let private sampleVersion : SampleVersionId = SampleVersionId.firstOf SampleIds.glassPlate1mmId
+
+    /// The glass plate's first version as a reference, built from its GUID rather than through the member under test.
+    let private sampleAtVersion : EntryReference =
+        EntryVersionReference { entryId = SampleIds.glassPlate1mmId.toLibraryEntryId; version = VersionNumber.first }
+
     let private assertReferences (instance : ItemModelInstance) (model : ItemModelVersionId) (binding : EntryReference option) : unit =
         Assert.Equal<EntryReference option>(Some (exactModelVersion model), instance.entryReferenceOpt)
         Assert.Equal<EntryReference option>(Some model.entryReference, instance.entryReferenceOpt)
@@ -53,14 +65,7 @@ module KitItemTests =
 
     [<Fact>]
     let ``an item's model is referenced as the library snapshots it`` () : unit =
-        let sourceModel = (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId).versionId
-        let polarizerModel = (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId).versionId
-        let stackModel = (BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId).versionId
         let standaloneModel = (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId).versionId
-        let sampleVersion = SampleVersionId.firstOf SampleIds.glassPlate1mmId
-        let presetAtLatest (preset : ElementValueId) : EntryReference = EntryLatestReference (LibraryEntryId (Guid.Parse preset.value))
-        let sampleAtVersion : EntryReference =
-            EntryVersionReference { entryId = SampleIds.glassPlate1mmId.toLibraryEntryId; version = VersionNumber.first }
 
         let bound : (ItemModelInstance * ItemModelVersionId * EntryReference) list =
             [
@@ -168,3 +173,85 @@ module KitItemTests =
             | Error (InvalidParameterStateErr reason) -> Assert.Equal<string>($"retardance: {rule}", reason)
             | Error error -> Assert.Fail($"expected an invalid parameter state: {error.describe}")
             | Ok parameter -> Assert.Fail($"kept a parameter that breaks its rules: {parameter.name.value}")
+
+    [<Fact>]
+    let ``an item references its model's library version once and finds its parameters by name`` () : unit =
+        let circularPolarizerV1 : ItemModelVersionId =
+            {
+                itemModelId = ItemModelIds.circularPolarizerModelId
+                version = VersionNumber.first
+            }
+
+        let dialZero : Parameter = { name = ParameterName "dialZero"; state = KnownParameter (ParameterValue 0.0) }
+        let retardanceAt (value : ParameterValue) : Parameter = { name = ParameterName "c2.retardance"; state = KnownParameter value }
+
+        let revisionOne : ItemRevisionRecord =
+            {
+                revision = ItemRevision.first
+                parameters = [ retardanceAt (ParameterValue (Math.PI / 2.0)); dialZero ]
+            }
+
+        let cpl1 : Item =
+            {
+                id = ItemId (Guid.NewGuid())
+                label = ItemLabel "CPL1"
+                model = ItemModelVersionInstance circularPolarizerV1
+                parameters = [ retardanceAt (ParameterValue 1.55); dialZero ]
+                dial = DialMounted DialPositive
+                photoOpt = Some (KitRelativePath "data/photos/CPL1.jpg")
+                notes = ItemNotes "the left-handed circular polarizer"
+                revision = ItemRevision.first.next
+                history = [ revisionOne ]
+            }
+
+        Assert.Equal<EntryReference list>([ exactModelVersion circularPolarizerV1 ], cpl1.libraryReferences)
+        Assert.Equal<EntryReference list>([ circularPolarizerV1.entryReference ], cpl1.libraryReferences)
+        Assert.Equal<Parameter option>(Some dialZero, cpl1.tryFindParameter (ParameterName "dialZero"))
+        Assert.Equal<Parameter option>(Some (retardanceAt (ParameterValue 1.55)), cpl1.tryFindParameter (ParameterName "c2.retardance"))
+        Assert.Equal<Parameter option>(None, cpl1.tryFindParameter (ParameterName "nothing"))
+
+        let itemOver (label : ItemLabel) (model : ItemModelInstance) : Item =
+            {
+                id = ItemId (Guid.NewGuid())
+                label = label
+                model = model
+                parameters = []
+                dial = FixedMounting
+                photoOpt = None
+                notes = ItemNotes ""
+                revision = ItemRevision.first
+                history = []
+            }
+
+        let bound : (Item * EntryReference list) list =
+            [
+                itemOver (ItemLabel "Laser") (PresetInstance (sourceModel, PresetIds.heNe633)),
+                [ exactModelVersion sourceModel; presetAtLatest PresetIds.heNe633 ]
+                itemOver (ItemLabel "LP1") (PresetInstance (polarizerModel, PresetIds.polarizerLp)),
+                [ exactModelVersion polarizerModel; presetAtLatest PresetIds.polarizerLp ]
+                itemOver (ItemLabel "QZ") (SampleInstance (stackModel, sampleVersion)),
+                [ exactModelVersion stackModel; sampleAtVersion ]
+            ]
+
+        for item, references in bound do
+            Assert.Equal<EntryReference list>(references, item.libraryReferences)
+
+        // A binding naming the model's own GUID and version is the same reference, so it is named once.
+        let sharedEntry = Guid.Parse "6f1d2c3b-4a59-4e68-9d7c-8b0a1f2e3d4c"
+        let sharedModel : ItemModelVersionId = { itemModelId = ItemModelId sharedEntry; version = VersionNumber.first }
+        let sharedSample : SampleVersionId = { sampleId = SampleId sharedEntry; version = VersionNumber.first }
+        let selfBound = itemOver (ItemLabel "QZ2") (SampleInstance (sharedModel, sharedSample))
+        Assert.Equal<EntryReference list>([ exactModelVersion sharedModel ], selfBound.libraryReferences)
+
+    [<Fact>]
+    let ``a dial-mounted item publishes its dial zero and a fixed one nothing`` () : unit =
+        let dialZero : ItemParameterAxis =
+            {
+                name = ParameterName "dialZero"
+                kind = AngleParameter
+                defaultValue = ParameterValue 0.0
+            }
+
+        Assert.Equal<ItemParameterAxis list>([ dialZero ], (DialMounted DialNegative).parameterAxes)
+        Assert.Equal<ItemParameterAxis list>([ dialZero ], (DialMounted DialPositive).parameterAxes)
+        Assert.Equal<ItemParameterAxis list>([], FixedMounting.parameterAxes)
