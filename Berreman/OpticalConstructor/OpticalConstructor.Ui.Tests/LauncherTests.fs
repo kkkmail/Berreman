@@ -955,10 +955,11 @@ module LauncherTests =
                         let save = launcherControl window ConstructorUiId.saveSceneButton
                         save.BringIntoView() |> ignore
                         Dispatcher.UIThread.RunJobs()
+                        Assert.True(save.IsEffectivelyVisible)
+                        Assert.False(save.IsEnabled, "a read-only kit must withhold Save scene")
+                        Assert.Equal<Control option>(None, tryFindLauncherControl window ConstructorUiId.kitStatus)
                         clickBorder window ConstructorUiId.saveSceneButton.value
-                        let status = Assert.IsType<TextBlock>(launcherControl window ConstructorUiId.kitStatus)
-                        Assert.StartsWith("Not saved to the kit — ", status.Text)
-                        Assert.Contains("the kit is open read-only:", status.Text)
+                        Assert.Equal<Control option>(None, tryFindLauncherControl window ConstructorUiId.kitStatus)
                         assertFilesUnchanged ()
                     finally window.Close()
                     assertFilesUnchanged ()

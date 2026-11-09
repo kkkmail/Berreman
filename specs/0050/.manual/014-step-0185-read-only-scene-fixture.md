@@ -1,9 +1,13 @@
-# Step 0185: preserve the scene-save storage-refusal fixture
+# Step 0185: preserve read-only UI and storage-refusal coverage
 
 The operator approved the four recovery steps in
 `.slices/0185-01.postmortem-review-md` on 2026-11-08. This ruling supplies the
 missing fixture-migration authority for S53-READ-ONLY. The published spec,
 ledger, acceptance oracle and compiled gate contracts remain unchanged.
+
+After verification exposed the launcher expectation below, the operator also
+approved additional test repairs needed to complete this recovery. The earlier
+repair is committed as `6607a493b05cfe41b86947ad44905a35d383d228`.
 
 ## Authorized repair
 
@@ -27,7 +31,22 @@ operator test-census row. Do not weaken assertions, production guards, gates,
 counts or budgets. At steps 0187, 0188 and 0260 preserve the distinction between
 model access refusal and storage refusal, including when 0260 renames the scene
 test class to `SetupSaveLoadTests`. This is specific authority for the named fact,
-not a general permission to change fixtures outside a step's effects.
+not a general permission to change unrelated fixtures outside a step's effects.
+
+The additional approval extends edit authority to
+`Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/LauncherTests.fs`, in
+`OpticalConstructor.Ui.Tests.LauncherTests.acceptance: a kit open elsewhere offers Open read-only and Cancel in one row, and Open read-only opens it without writing`.
+Replace its two obsolete storage-error text assertions after a disabled Save
+click with assertions that Save remains visible but disabled and that clicking
+it leaves `KitStatus` absent. Preserve the unchanged-file/lock checks, test
+identity, launcher behavior and all other assertions. The scene-save fact keeps
+its storage-error assertions; the new model fact verifies direct write-message
+refusal. These three tests cover distinct paths without weakening the guard.
+
+For any other failure caused by the same read-only behavior change, the
+operator authorized the necessary test adaptation during this recovery. Record
+each concrete change and its preserved obligation here. Do not use that
+authority to waive failures, retire tests, lower counts or alter frozen gates.
 
 ## Verification and handoff
 
@@ -51,43 +70,57 @@ with the operator reply and `--executability-profile 1`, without
 0186. Do not manufacture that checkpoint or reset consumed budgets. No ASG or
 STL source change is part of this recovery.
 
-## Operator recovery — not commit-ready
+## First verification and additional approval
 
-The approved scene-save repair is complete under manual 014: only the
-`access = ReadOnlyKitAccess` fixture line was removed. Every assertion and
-identity remains. The five worker product/test files are unchanged from operator
-entry. The project prompt points to the amendment; all 494 steps validate and
-the receipt is refreshed with all 988 compiled artifacts byte-identical.
+The first verification attempt passed build, elevation across all 12 projects
+and all 1,197 constructor cases. Smoke passed 226 of 227 cases and failed only
+the launcher expectation described above; the gate engine stopped there. That
+failure and the original entry snapshot are preserved under
+`.artifacts/0185-operator-repair/initial-verification/`.
 
-Measured gates: build passed with zero warnings/errors; elevation passed over
-all 12 product projects from the immutable arc origin; constructor-unit-tests
-passed all 1,197 cases, exact census, zero failures/skips. Smoke ran all 227
-accepted cases: 226 passed, one failed, none skipped. The engine short-circuited,
-so the selected UI gate and fourteen invariants did not run.
+The operator approved the additional test repair. The launcher now checks
+visible-but-disabled Save and unchanged status after a click, retaining all
+file/lock checks. The revised full frozen roster passed as recorded below.
+The arc remains stopped; no checkpoint or budget was changed.
 
-The additional failure is
-`LauncherTests.acceptance: a kit open elsewhere offers Open read-only and Cancel in one row, and Open read-only opens it without writing`,
-at `LauncherTests.fs:959`: `Missing control KitStatus`. The test clicks Save
-scene in a genuinely read-only window and expects the old storage-error prefix.
-Step 0185 now disables that control, so no write message or status is produced.
-This is a second omitted test adaptation; production must keep Save disabled.
+## Measured implementation
 
-The proposed narrow repair asserts Save remains visible but disabled, clicking
-it produces no status, and all kit bytes/locks remain unchanged. It preserves
-the test identity and all other assertions. The old storage-error assertions
-remain in SceneSaveLoadTests; direct model refusal is covered by the new
-KitWindowModelTests fact. Replacing the launcher's two old status assertions
-exceeds the approved assertion-preservation constraint, so operator agreement
-was requested. `LauncherTests.fs` remains unchanged. The concrete patch is
-`.artifacts/0185-operator-repair/launcher-read-only-proposal.patch`.
+The scene fixture deletion, launcher expectation repair and project-prompt
+pointer are complete. Every scene-save assertion remains; only the two approved
+obsolete launcher status assertions were replaced. All other launcher assertions
+and the five worker product/test files are preserved. Both storage-refusal
+fixtures, the new read-only model/control tests and launcher acceptance passed.
+
+All **19 frozen gates passed**. Release build: zero owned-code warnings; two existing SYSLIB0051 warnings in vendored MathNet; zero errors. Elevation:
+all **12 of 12** product projects from immutable origin
+`f395597c071910aaa215518626563f6c784bfb62`, zero findings with the existing
+ELEV004 exclusion. All fourteen s21 invariants passed.
+
+| Test gate | Cases | Method identities | Failed | Skipped | Accepted census |
+|---|---:|---:|---:|---:|---|
+| constructor-unit-tests | 1197 | 1172 | 0 | 0 | exact match |
+| ui-smoke | 227 | 227 | 0 | 0 | exact match |
+| ui-tests | 47 | 47 | 0 | 0 | exact match |
+
+Constructor cases increased by exactly two; smoke stayed at 227. The four
+selected UI classes include exactly the one declared new method. No test was
+retired, renamed or skipped. All 494 steps validate and the refreshed profile-1
+receipt validates; all 988 compiled artifacts are byte-identical.
+
+Published contracts, census and supervisor/checkpoint records, budgets and
+version locks were preserved. Inherited YAML floors remain 1,195 and 227;
+checkpoint 184 remains absent. No ASG/STL source change, Git mutation or arc
+restart was performed. The slice handoff is ready for the operator's commit.
 
 Evidence: `.artifacts/0185-operator-repair/verification-summary.json`,
-`gate-results.json`, per-gate logs and archived constructor/smoke TRX reports.
-The original worker handoff is archived alongside them. No ASG/STL change,
-commit, restart, checkpoint creation or budget/floor edit was performed.
+`gate-results.json`, `test-inventory.json`, `elevation-coverage.json`,
+`contract-validation.json`, the archived TRX reports and per-gate logs.
+`final-scope-check.json` records the final protected-file and Git checks.
 
-After agreement, extend manual 014 to the named launcher fact, apply the narrow
-repair and complete verification. Keep waiting for the operator's commit. A
-later explicitly requested relaunch still requires normal
-`--executability-profile 1`, without `--accept-current-slice`, and measured
-checkpoint 184 before 0186. The arc remains stopped.
+Wait for the operator's commit and explicit relaunch request. Manual 014 overrides
+the generic committed-green acceptance rule for this recovery: resume normally
+with an operator reply and `--executability-profile 1`, without
+`--accept-current-slice`, and reattach the monitor. The supervisor must review
+the repaired slice, rerun its frozen gates and publish measured checkpoint 184
+and case evidence before 0186. Do not write that checkpoint by hand, lower the
+inherited floors or reset budgets.

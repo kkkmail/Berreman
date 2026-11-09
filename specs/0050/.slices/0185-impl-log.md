@@ -1,91 +1,32 @@
 # Step 0185 — IMPLEMENT — impl-log
 
-## Operator recovery — not commit-ready
+## Operator recovery — commit_ready: true
 
-The approved scene-save repair is complete under manual 014: only the
-`access = ReadOnlyKitAccess` fixture line was removed. Every assertion and
-identity remains. The five worker product/test files are unchanged from operator
-entry. The project prompt points to the amendment; all 494 steps validate and
-the receipt is refreshed with all 988 compiled artifacts byte-identical.
+The operator approved the secondary review's four recovery steps on 2026-11-08.
+Manual 014 supplies the omitted fixture authority under S53-READ-ONLY. The
+project prompt directs every role to it at 0185, 0187, 0188 and 0260.
+After the first verification exposed a second obsolete expectation, the
+operator also authorized the additional test repair. The earlier repair is
+already committed as `6607a493b05cfe41b86947ad44905a35d383d228`.
 
-Measured gates: build passed with zero warnings/errors; elevation passed over
-all 12 product projects from the immutable arc origin; constructor-unit-tests
-passed all 1,197 cases, exact census, zero failures/skips. Smoke ran all 227
-accepted cases: 226 passed, one failed, none skipped. The engine short-circuited,
-so the selected UI gate and fourteen invariants did not run.
+Removed only `access = ReadOnlyKitAccess` from the existing scene-save fact's
+`protectedModel` in `SceneSaveLoadTests.fs`. It retains the refusing proxy and
+every assertion, test identity and case. Its inherited read-write access lets
+the save reach the storage refusal. The new read-only model and control facts
+independently cover the earlier guard. The five worker product/test files were
+preserved byte-for-byte from operator entry.
 
-The additional failure is
-`LauncherTests.acceptance: a kit open elsewhere offers Open read-only and Cancel in one row, and Open read-only opens it without writing`,
-at `LauncherTests.fs:959`: `Missing control KitStatus`. The test clicks Save
-scene in a genuinely read-only window and expects the old storage-error prefix.
-Step 0185 now disables that control, so no write message or status is produced.
-This is a second omitted test adaptation; production must keep Save disabled.
+Updated the existing launcher read-only acceptance fact to check that Save is
+visible but disabled and that clicking it leaves `KitStatus` absent. Its former
+storage-error expectation depended on a click that the new disabled control
+correctly ignores. Every other launcher assertion, including file/lock checks,
+remains. The scene-save storage-refusal assertions and direct model refusal
+tests retain their separate coverage; no identity, case or gate was removed.
 
-The proposed narrow repair asserts Save remains visible but disabled, clicking
-it produces no status, and all kit bytes/locks remain unchanged. It preserves
-the test identity and all other assertions. The old storage-error assertions
-remain in SceneSaveLoadTests; direct model refusal is covered by the new
-KitWindowModelTests fact. Replacing the launcher's two old status assertions
-exceeds the approved assertion-preservation constraint, so operator agreement
-was requested. `LauncherTests.fs` remains unchanged. The concrete patch is
-`.artifacts/0185-operator-repair/launcher-read-only-proposal.patch`.
-
-Evidence: `.artifacts/0185-operator-repair/verification-summary.json`,
-`gate-results.json`, per-gate logs and archived constructor/smoke TRX reports.
-The original worker handoff is archived alongside them. No ASG/STL change,
-commit, restart, checkpoint creation or budget/floor edit was performed.
-
-After agreement, extend manual 014 to the named launcher fact, apply the narrow
-repair and complete verification. Keep waiting for the operator's commit. A
-later explicitly requested relaunch still requires normal
-`--executability-profile 1`, without `--accept-current-slice`, and measured
-checkpoint 184 before 0186. The arc remains stopped.
-
-## Historical worker report — before operator recovery
-
-The following is the original worker report; the current status is above.
-
-## Blocking conflict and missing authority (commit_ready: false)
-
-**Every requirement of step 0185 is implemented inside its authorized effects. The step still cannot pass its own
-`ui-tests` gate**, because a fact in a selected class asserts the old behaviour of a read-only `SceneSave`, and the
-fact's file is not in the step's effects.
-
-- **Conflicting test.** Identity
-  `OpticalConstructor.Ui.Tests.SceneSaveLoadTests.a saved scene is a setup file in the kit and loads back onto the table`.
-  - Owner gate: `ui-tests`. The class `OpticalConstructor.Ui.Tests.SceneSaveLoadTests` is in this step's
-    `ui-tests` selection.
-  - Authored at step 0153 (S4.3).
-  - File `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/SceneSaveLoadTests.fs`, lines 119–137.
-- **What the fact does.**
-  - Its `protectedModel` sets the kit to `proxy = ordered.kit.proxy.readOnlyView` **and**
-    `access = ReadOnlyKitAccess` (line 126), then sends `SceneSave`.
-  - It asserts `Assert.StartsWith("Not saved to the kit — ", status.value)` and `Assert.Contains("read-only", …)`.
-- **Conflicting obligation.** S53-READ-ONLY, step 0185 How-to (1), requires `SceneSave` under `ReadOnlyKitAccess`
-  to answer `kitStatus = Some (ControlCaption "The kit is open read-only: nothing is saved.")` and to call no
-  proxy. The acceptance pins that exact text through
-  `KitWindowModelTests.a kit opened read-only refuses every write message and writes nothing`. That status does not
-  start with `Not saved to the kit — `, so the fact fails once the guard lands. This follows from the code and is
-  certain for that assertion. It was not measured: Invariant 6, no test run.
-- **Why no in-scope implementation fixes it.** The step requires one status for all four write messages under
-  read-only access, and the fact requires a different prefix for the same input. The step's census declares
-  `change_expectation` only for `InverseConstructorTests.a kit write that fails keeps the experiment and shows why`.
-  That fact has the identical fixture shape, and the step repairs it by keeping `access` read-write.
-  `SceneSaveLoadTests.fs` is in neither `effects.edits` nor `effects.tests`.
-- **Missing authority.** The step needs a `change_expectation` effect, or an operator ruling, for that fact in
-  `SceneSaveLoadTests.fs` under S53-READ-ONLY at step 0185.
-- **Proposed repair, the same treatment the step prescribes for `InverseConstructorTests`.** Delete line 126
-  (`access = ReadOnlyKitAccess`) from the fact's `protectedModel`, so its access stays `ReadWriteKitAccess`. The
-  save then reaches the `readOnlyView` proxy and fails there, and every assertion of the fact is kept.
-  - By the code, the refusal is `Not saved to the kit — the kit refused the library snapshot: the kit is open
-    read-only: writeKindFile`. The polarizer's snapshot is already held from the earlier save, so `writeScene` hits
-    the proxy's `writeKindFile`. Had the snapshot been missing, `writeSnapshot` refuses with the same prefix and the
-    same `read-only` text.
-  - The fact's other checks also hold: `savedScenes`, `captureScene` and `sceneName` are unchanged, and the
-    kit's scene names are unchanged.
-  - No identity is added, renamed or removed, and the counts are unchanged.
-- **Not done, because not authorized.** `SceneSaveLoadTests.fs` was not edited. No census, baseline, oracle, gate
-  or supervisor file was edited.
+The escalation was an omitted later fixture migration, not evidence that the
+accepted storage-refusal assertion was wrong. The worker correctly preserved
+the unauthorized test. The primary and secondary reports remain unchanged;
+the original worker handoff is archived under the recovery artifacts.
 
 ## Progress
 
@@ -99,7 +40,7 @@ fact's file is not in the step's effects.
 - [x] Tests: two `KitWindowModelTests` facts, one `KitWindowTests` fact, and the `InverseConstructorTests`
   fixture.
 - [x] Traced every selected and all-discovered test that sends a write message. Found the `SceneSaveLoadTests`
-  conflict above.
+  conflict, now resolved by manual 014.
 - [x] State of the world.
 
 ## Files modified
@@ -212,63 +153,77 @@ fact's file is not in the step's effects.
   - Tuples have at most three elements with distinct types (ELEV011).
   - Nothing maps to `bool` (ELEV012). `.value` appears only at Avalonia and text sinks (ELEV004, excluded).
 
-## Testing state
+## Measured verification
 
-**`commit_ready: false`.** The `SceneSaveLoadTests` fact above conflicts with S53-READ-ONLY, and the authority to
-repair it is missing. Everything else the step asks for is implemented.
+All 19 unchanged gates passed through ASG's gate evaluator. The Release build
+reported zero owned-code warnings; two existing SYSLIB0051 warnings in vendored MathNet and zero errors. Elevation actually analyzed all 12 product
+projects from immutable origin `f395597c071910aaa215518626563f6c784bfb62`, with
+zero findings under the existing ELEV004 exclusion. The first run's smoke
+failure is archived under `initial-verification/`. After the authorized test
+repair, the entire roster passed without a failure waiver.
 
-Under Invariant 6 this `IMPLEMENT` worker ran no gate: no build, no test, no analyzer and no invariant grep. These
-checks were made without running a gate:
+| Test gate | Cases | Method identities | Failed | Skipped | Accepted census |
+|---|---:|---:|---:|---:|---|
+| constructor-unit-tests | 1197 | 1172 | 0 | 0 | exact match |
+| ui-smoke | 227 | 227 | 0 | 0 | exact match |
+| ui-tests | 47 | 47 | 0 | 0 | exact match |
 
-- All five edited files are LF (0 CR bytes), `git diff --check` is clean, and `--ignore-cr-at-eol` gives the same
-  numstat.
-- No added line contains any s21 invariant word.
-- Every API used was checked against its declaration:
-  - `openKitAt`, `ClockProvider.system`, `writeExperiment`, `FileName.combine`, `initInverseWithKit` and
-    `loadKit`;
-  - `ConstructorUiId.experimentRemoveButton (ConstructorUiKey)`, `ConstructorUiId.attachDataFile (ExperimentId)`
-    and `ExperimentId.uiKey` (`ConstructorUiIdOfDomain`, auto-opened);
-  - `BayNames.experiments`, `ExperimentControls.VaryR2`, `Experiments.ExperimentCollection.canCommit`, and the
-    `TestAppScope` and `SceneTestFixture` helpers.
-- `ExperimentControlsState` is built in full only in `emptyExperimentControls` and `experimentState`, and both set
-  the new field.
-- Every test that sends `ExpCommit`, `ExpRemove`, `AttachDataFileTo` or `SceneSave` was traced:
-  - `ElementMenuTests`, `ExperimentControlsTests`, `MainSceneMsgTests`, `ScrollExtentTests` and
-    `SolverHandoffWindowTests` use read-write kits, and the guard passes them through unchanged.
-  - `InverseConstructorTests` is fixed within the step's effects.
-  - `SceneSaveLoadTests` is the blocking conflict.
+The complete constructor suite rose from 1,195 to 1197 cases
+through its two declared additions. Smoke remains 227. The selected
+UI census includes all four declared classes and the one new controls fact;
+it is not a whole-suite UI baseline. The scene-save, inverse-refusal and new
+read-only facts and the repaired launcher fact all passed. Neither repair changes
+an identity or requires an operator census row.
 
-Test identities created, all declared by the step:
+| Frozen gate | Result | Seconds |
+|---|---|---:|
+| build | PASS | 70.1 |
+| elevation | PASS | 173.6 |
+| constructor-unit-tests | PASS | 58.3 |
+| ui-smoke | PASS | 158.2 |
+| ui-tests | PASS | 21.6 |
+| invariant-s21-elev-list-empty | PASS | 0.2 |
+| invariant-s21-no-vstest | PASS | 0.2 |
+| invariant-s21-no-kit-kit-json | PASS | 0.2 |
+| invariant-s21-no-eps-axis-evaluated | PASS | 0.2 |
+| invariant-s21-complexity-mandatory | PASS | 0.2 |
+| invariant-s21-no-seeded-string-preset-ids | PASS | 0.2 |
+| invariant-s21-no-seeding-seam | PASS | 0.2 |
+| invariant-s21-t1-no-code-seeds | PASS | 0.2 |
+| invariant-s21-no-seed-modules | PASS | 0.2 |
+| invariant-s21-no-test-db | PASS | 0.2 |
+| invariant-s21-no-versions-in-use | PASS | 0.2 |
+| invariant-s21-no-scene-collection-seams | PASS | 0.2 |
+| invariant-s21-t4-no-ocproj | PASS | 0.2 |
+| invariant-s21-no-recent-json | PASS | 0.2 |
 
-- `OpticalConstructor.Tests.KitWindowModelTests.a kit opened read-only refuses every write message and writes nothing`
-- `OpticalConstructor.Tests.KitWindowModelTests.a kit's access decides whether its writes are offered`
-- `OpticalConstructor.Ui.Tests.KitWindowTests.a read-only window withholds every write control`
+All 494 steps validate. The profile-1 receipt was refreshed for the prompt
+amendment; all 988 compiled artifacts are byte-identical. Published contracts,
+operator census, checkpoint/case records, supervisor state, budgets, package
+versions and version lock remain unchanged. Checkpoint 184 is still absent.
+No ASG or STL source change, commit or relaunch was performed.
 
-The changed expectation, as declared, is
-`OpticalConstructor.Ui.Tests.InverseConstructorTests.a kit write that fails keeps the experiment and shows why`.
-None is removed or renamed.
+Evidence: `.artifacts/0185-operator-repair/verification-summary.json`,
+`gate-results.json`, `test-inventory.json`, `elevation-coverage.json`,
+`contract-validation.json`, the archived TRX reports and per-gate logs.
+`final-scope-check.json` records the final protected-file and Git checks.
 
-Expected counts:
+## Handoff
 
-- constructor-unit-tests: 1195, from checkpoint 183 (step 0184), to 1197 (+2).
-- ui-smoke: unchanged at 227.
-- ui-tests over the selected classes: +1. That gate's pass needs the `SceneSaveLoadTests` repair authorized above.
-
-## Artifacts
-
-- `.artifacts/0185-worker/wrap_arms.py`: the mechanical re-indent that wrapped the four write arms in the guard.
-  It changes indentation and adds the wrapper line and closing parenthesis only.
+Wait for the operator's commit and explicit relaunch request. Manual 014 overrides
+the generic committed-green acceptance rule for this recovery: resume normally
+with an operator reply and `--executability-profile 1`, without
+`--accept-current-slice`, and reattach the monitor. The supervisor must review
+the repaired slice, rerun its frozen gates and publish measured checkpoint 184
+and case evidence before 0186. Do not write that checkpoint by hand, lower the
+inherited floors or reset budgets.
 
 ## Gotchas
 
-- `KitLibraryContext.snapshotReferences` short-circuits on `ReadOnlyKitAccess` with
-  `KitReadOnlyErr "snapshotReferences"` before touching the proxy. A test that wants a write to reach a refusing
-  proxy must keep the access read-write and swap only the proxy (`readOnlyView`). Its refusal reason is then the
-  proxy's: `writeKindFile`, `writeSnapshot` or `deleteKindFile`.
-- Since this step, `ReadOnlyKitAccess` on the model alone makes the four write messages answer
-  `The kit is open read-only: nothing is saved.` before any proxy call. A fixture that sets `access = ReadOnlyKitAccess`
-  and expects a `Not saved to the kit — …` status is now wrong, which is why `SceneSaveLoadTests` conflicts.
-- A Python heredoc writing F# needs care with `\n` escapes. The first write of the model fact turned
-  `"x,intensity\n…"` into literal newlines inside the F# string, and it was repaired.
-- A disabled Avalonia `Border` receives no pointer presses, because input hit-testing skips non-enabled elements.
-  The model guard is still the enforcement, and the disabled control is the affordance.
+- A proxy-refusal fixture must retain read-write model access. Read-only access
+  now stops at the model guard before `snapshotReferences` or a proxy call.
+- Keep both behaviors covered through 0187, 0188 and the 0260 setup-test rename.
+- A disabled control is the affordance; the model guard enforces refusal even
+  when a write message arrives directly.
+- Valid live `.specrc` changes and all `.manual/` descendants remain allowed
+  under ASG 0090 manual 033; the primary report's contrary advice is obsolete.

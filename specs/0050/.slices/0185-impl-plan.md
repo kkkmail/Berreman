@@ -36,6 +36,9 @@ that holds `kitCaption`. The update guard and the view both read that member.
    - `InverseConstructorTests.a kit write that fails…`: only fixture lines change. The access stays read-write, so
      the write reaches the `readOnlyView` proxy and fails there.
 
+5. **Approved fixture amendment (manual 014).** Delete only the scene-save protected fixture's read-only access
+   override; retain its refusing proxy and all assertions. Preserve both refusal paths through 0187, 0188 and 0260.
+
 ## Files
 
 - `Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationView.fs`
@@ -44,54 +47,45 @@ that holds `kitCaption`. The update guard and the view both read that member.
 - `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/KitWindowTests.fs`
 - `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/InverseConstructorTests.fs`
 
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/SceneSaveLoadTests.fs` (manual 014)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/LauncherTests.fs` (additional operator approval)
+
 ## Risks
 
 - **The inverse fact's first refusal reason changes.** Under `ReadWriteKitAccess`, `snapshotReferences` no longer
   short-circuits. The inverse scene's elements are all unbound, so the experiment has no library references, and
   the refusal comes from the proxy's `writeKindFile`. The expected `refusal` value is a fixture line, and it must
   name that reason.
-- **No local compile.** Under Invariant 6 nothing compiles locally, so every API used must be checked against its
-  declaration.
+- **Worker gate ownership.** The IMPLEMENT worker delegates execution to the gate engine. The approved operator
+  recovery below has now run the full frozen roster through that engine.
 - **The headless controls are disabled `Border`s.** The UI fact reads `IsEnabled` from each one, found by its
   AutomationId.
 
-## Operator recovery — not commit-ready
+## Approved operator recovery — completed
 
-The approved scene-save repair is complete under manual 014: only the
-`access = ReadOnlyKitAccess` fixture line was removed. Every assertion and
-identity remains. The five worker product/test files are unchanged from operator
-entry. The project prompt points to the amendment; all 494 steps validate and
-the receipt is refreshed with all 988 compiled artifacts byte-identical.
+1. Recorded manual 014 and its project-prompt pointer, including the explicit
+   normal profile-1 resume requirement.
+2. Applied the single fixture-line deletion, preserving the five worker files
+   and every scene-save assertion/test identity. After the operator approved
+   the measured smoke failure's repair, updated the launcher fact to assert
+   disabled-Save behavior, preserving its other assertions and file/lock checks.
+3. Passed all 19 frozen gates, with 1197 constructor cases,
+   227 smoke cases and 47 selected UI cases, all exact
+   censuses and zero failures/skips. Release build: zero owned-code warnings; two existing SYSLIB0051 warnings in vendored MathNet. Elevation:
+   all 12 projects from the arc origin. Validated all 494 steps and refreshed
+   the receipt without changing any of the 988 compiled artifacts.
+4. Recorded measured results and preserved inherited checkpoint-183 floors.
+   The arc remains stopped, awaiting the operator's commit.
 
-Measured gates: build passed with zero warnings/errors; elevation passed over
-all 12 product projects from the immutable arc origin; constructor-unit-tests
-passed all 1,197 cases, exact census, zero failures/skips. Smoke ran all 227
-accepted cases: 226 passed, one failed, none skipped. The engine short-circuited,
-so the selected UI gate and fourteen invariants did not run.
-
-The additional failure is
-`LauncherTests.acceptance: a kit open elsewhere offers Open read-only and Cancel in one row, and Open read-only opens it without writing`,
-at `LauncherTests.fs:959`: `Missing control KitStatus`. The test clicks Save
-scene in a genuinely read-only window and expects the old storage-error prefix.
-Step 0185 now disables that control, so no write message or status is produced.
-This is a second omitted test adaptation; production must keep Save disabled.
-
-The proposed narrow repair asserts Save remains visible but disabled, clicking
-it produces no status, and all kit bytes/locks remain unchanged. It preserves
-the test identity and all other assertions. The old storage-error assertions
-remain in SceneSaveLoadTests; direct model refusal is covered by the new
-KitWindowModelTests fact. Replacing the launcher's two old status assertions
-exceeds the approved assertion-preservation constraint, so operator agreement
-was requested. `LauncherTests.fs` remains unchanged. The concrete patch is
-`.artifacts/0185-operator-repair/launcher-read-only-proposal.patch`.
+Wait for the operator's commit and explicit relaunch request. Manual 014 overrides
+the generic committed-green acceptance rule for this recovery: resume normally
+with an operator reply and `--executability-profile 1`, without
+`--accept-current-slice`, and reattach the monitor. The supervisor must review
+the repaired slice, rerun its frozen gates and publish measured checkpoint 184
+and case evidence before 0186. Do not write that checkpoint by hand, lower the
+inherited floors or reset budgets.
 
 Evidence: `.artifacts/0185-operator-repair/verification-summary.json`,
-`gate-results.json`, per-gate logs and archived constructor/smoke TRX reports.
-The original worker handoff is archived alongside them. No ASG/STL change,
-commit, restart, checkpoint creation or budget/floor edit was performed.
-
-After agreement, extend manual 014 to the named launcher fact, apply the narrow
-repair and complete verification. Keep waiting for the operator's commit. A
-later explicitly requested relaunch still requires normal
-`--executability-profile 1`, without `--accept-current-slice`, and measured
-checkpoint 184 before 0186. The arc remains stopped.
+`gate-results.json`, `test-inventory.json`, `elevation-coverage.json`,
+`contract-validation.json`, the archived TRX reports and per-gate logs.
+`final-scope-check.json` records the final protected-file and Git checks.
