@@ -1,11 +1,14 @@
 namespace OpticalConstructor.Domain
 
+open System
+open Berreman.Geometry
+open Berreman.Fields
 open Berreman.Media
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 
-/// The parameter vocabulary of items and item models, shared with the fitter, and the parameters the existing
-/// models publish (spec 0050 S7.1).
+/// The parameter vocabulary of items and item models, shared with the fitter, the parameters the existing
+/// models publish, and the parameterised item models as data (spec 0050 S7.1).
 module ItemModels =
 
     /// The name a fitted parameter is reported under — elevated so that a report cannot silently pair a
@@ -152,3 +155,156 @@ module ItemModels =
             |> List.choose (fun (name, layer) ->
                 layer.thickness.parameterValueOpt
                 |> Option.map (fun value -> { name = name; kind = ThicknessParameter; defaultValue = value }))
+
+    /// How a real linear polarizer states its leakage (spec 0050 S7.1; 001 §I): by the extinction ratio
+    /// T_min / T_max, or by the diattenuation (T_max − T_min) / (T_max + T_min).
+    type PolarizerLeakage =
+        | ExtinctionRatioLeakage
+        | DiattenuationLeakage
+
+    /// A retarder's dispersion, "dispersive where the model says so" (spec 0050 S7.1; 001 §I): δ is the same at every
+    /// λ, or δ is the retardance at the reference λ and scales as λ_ref / λ, a zero-order plate's dispersion.
+    type RetardanceDispersion =
+        | ConstantRetardance
+        | InverseWaveLengthRetardance of WaveLength
+
+    /// A black-box Mueller matrix's parameters (spec 0050 S7.1; 001 §I): all sixteen elements, or a scale and the
+    /// fifteen elements normalised by m00.
+    type BlackBoxNormalisation =
+        | SixteenElementMueller
+        | FifteenElementsAndScale
+
+    /// What one optical element does to light (spec 0050 S7.1; 001 §I). A compound generalises `ConstantMueller`
+    /// with parameters; a black box is held at reference orientation and turned as R(−φ) M R(φ) like any element.
+    type OpticalForm =
+        | RealPolarizerModel of PolarizerLeakage
+        | RetarderPlateModel of RetardanceDispersion
+        | BlackBoxMuellerModel of BlackBoxNormalisation
+        | CompoundModel of CompoundComponent list
+
+        /// Its parameters at the ideal element's values: a compound's component k (1-based, light order) publishes
+        /// its form's axes as `c<k>.<name>`, kind and default kept (spec 0050 S7.1; 001 §I).
+        member this.parameterAxes : ItemParameterAxis list =
+            match this with
+            | RealPolarizerModel leakage ->
+                let leakageAxis : ItemParameterAxis =
+                    match leakage with
+                    | ExtinctionRatioLeakage ->
+                        { name = ParameterName "extinctionRatio"; kind = FractionParameter; defaultValue = ParameterValue 0.0 }
+                    | DiattenuationLeakage ->
+                        { name = ParameterName "diattenuation"; kind = FractionParameter; defaultValue = ParameterValue 1.0 }
+                [
+                    leakageAxis
+                    { name = ParameterName "axisOffset"; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
+                ]
+            | RetarderPlateModel _ ->
+                [
+                    { name = ParameterName "retardance"; kind = PhaseParameter; defaultValue = ParameterValue (Math.PI / 2.0) }
+                    { name = ParameterName "fastAxisOffset"; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
+                ]
+            | BlackBoxMuellerModel normalisation ->
+                let elements : ItemParameterAxis list =
+                    [
+                        for row in 0 .. 3 do
+                            for column in 0 .. 3 do
+                                {
+                                    name = ParameterName $"m{row}{column}"
+                                    kind = MuellerElementParameter
+                                    defaultValue = if row = column then ParameterValue 1.0 else ParameterValue 0.0
+                                }
+                    ]
+                match normalisation with
+                | SixteenElementMueller -> elements
+                | FifteenElementsAndScale ->
+                    // Row-major, so m00 leads `elements`: the scale takes its place.
+                    { name = ParameterName "scale"; kind = ScaleParameter; defaultValue = ParameterValue 1.0 } :: List.tail elements
+            | CompoundModel components ->
+                components
+                |> List.mapi (fun i part ->
+                    part.form.parameterAxes
+                    |> List.map (fun axis -> { axis with name = ParameterName $"c{i + 1}.{axis.name.value}" }))
+                |> List.concat
+
+    /// One component of a compound: its form, turned by its fixed offset within the compound (spec 0050 S7.1).
+    and CompoundComponent =
+        {
+            form : OpticalForm
+            offset : Angle
+        }
+
+    /// The library physics a binding item-model form takes its parameters from (spec 0050 S7.1; .spec-md §3.14).
+    type ItemModelBindingKind =
+        | SourcePresetBinding
+        | PolarizerPresetBinding
+        | StackSampleBinding
+
+    /// The preset or sample a binding form is resolved against; its axes are that entry's own (spec 0050 S7.1).
+    type ItemModelBinding =
+        | SourcePresetBound of SourcePreset
+        | PolarizerPresetBound of PolarizerPreset
+        | StackSampleBound of Sample
+
+        member this.bindingKind : ItemModelBindingKind =
+            match this with
+            | SourcePresetBound _ -> SourcePresetBinding
+            | PolarizerPresetBound _ -> PolarizerPresetBinding
+            | StackSampleBound _ -> StackSampleBinding
+
+        /// The bound entry's axes, by the preset's or the sample's own `parameterAxes` (spec 0050 S7.1).
+        member this.parameterAxes : ItemParameterAxis list =
+            match this with
+            | SourcePresetBound source -> source.parameterAxes
+            | PolarizerPresetBound polarizer -> polarizer.parameterAxes
+            | StackSampleBound sample -> sample.parameterAxes
+
+    /// The payload of an item-model library entry (spec 0050 S7.1; 001 §I); a detector's budget is its noise axes'
+    /// defaults. Evaluating a form to a Mueller matrix or a reading is the run law's (001 §N, S8.1).
+    type ItemModelForm =
+        | SourcePresetItemModel
+        | IdealPolarizerItemModel
+        | StackSampleItemModel
+        | OpticalElementModel of OpticalForm
+        /// The identity, the calibration reference.
+        | EmptySlotModel
+        /// Records S₀ through a gain and a dark offset.
+        | IntensityDetectorModel of ItemParameterAxis list
+        /// Records a full Mueller matrix.
+        | MuellerPolarimeterModel of ItemParameterAxis list
+        /// Records Ψ and Δ.
+        | EllipsometerModel of ItemParameterAxis list
+
+        /// The binding a source, ideal-polarizer or stack form requires; `None` for a standalone form (spec 0050 S7.1).
+        member this.bindingKindOpt : ItemModelBindingKind option =
+            match this with
+            | SourcePresetItemModel -> Some SourcePresetBinding
+            | IdealPolarizerItemModel -> Some PolarizerPresetBinding
+            | StackSampleItemModel -> Some StackSampleBinding
+            | OpticalElementModel _
+            | EmptySlotModel
+            | IntensityDetectorModel _
+            | MuellerPolarimeterModel _
+            | EllipsometerModel _ -> None
+
+        /// The form's own axes: none for a binding form, whose axes its binding supplies; a detector's gain and dark
+        /// offset, then its noise axes unchanged (spec 0050 S7.1; 001 §I, §L).
+        member this.parameterAxes : ItemParameterAxis list =
+            match this with
+            | SourcePresetItemModel
+            | IdealPolarizerItemModel
+            | StackSampleItemModel
+            | EmptySlotModel -> []
+            | OpticalElementModel form -> form.parameterAxes
+            | IntensityDetectorModel noise ->
+                { name = ParameterName "gain"; kind = ScaleParameter; defaultValue = ParameterValue 1.0 }
+                :: { name = ParameterName "darkOffset"; kind = ReadingParameter; defaultValue = ParameterValue 0.0 }
+                :: noise
+            | MuellerPolarimeterModel noise
+            | EllipsometerModel noise -> noise
+
+        /// The axes over a binding of the form's own kind, or `None` when the form takes no such binding
+        /// (spec 0050 S7.1).
+        member this.tryBoundParameterAxes (binding : ItemModelBinding) : ItemParameterAxis list option =
+            match this.bindingKindOpt with
+            | Some kind when kind = binding.bindingKind -> Some (this.parameterAxes @ binding.parameterAxes)
+            | Some _
+            | None -> None
