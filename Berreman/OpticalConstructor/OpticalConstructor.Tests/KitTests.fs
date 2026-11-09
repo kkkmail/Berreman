@@ -158,6 +158,23 @@ module KitTests =
             | Ok path -> Assert.Fail($"accepted an invalid kit path: '{path.value}'")
 
     [<Fact>]
+    let ``a kit path knows its folder, its leaf and whether it is the app's cache`` () : unit =
+        let run = KitRelativePath "data/raw/run 1.csv"
+        let raw = KitRelativePath "data/raw"
+        Assert.Equal<KitRelativePath option>(Some raw, run.parentOpt)
+        Assert.Equal<FileName>(FileName "run 1.csv", run.leafName)
+        Assert.Equal<KitPathRole>(KitContentPath, run.pathRole)
+
+        let kitJson = KitRelativePath ".kit-json"
+        Assert.Equal<KitRelativePath option>(None, kitJson.parentOpt)
+        Assert.Equal<FileName>(FileName ".kit-json", kitJson.leafName)
+
+        Assert.Equal<KitRelativePath>(KitRelativePath ".oc", KitRelativePath.appCacheFolder)
+        Assert.Equal<KitPathRole>(KitAppCachePath, KitRelativePath.appCacheFolder.pathRole)
+        Assert.Equal<KitPathRole>(KitAppCachePath, (KitRelativePath ".oc/lock").pathRole)
+        Assert.Equal<KitPathRole>(KitContentPath, (KitRelativePath ".ocx").pathRole)
+
+    [<Fact>]
     let ``every kit file kind renders its 001 extension and names its files`` () : unit =
         let kinds = [ ItemKitFile; SetupKitFile; ExperimentKitFile; StudyKitFile; FitRunKitFile ]
         let extensions =

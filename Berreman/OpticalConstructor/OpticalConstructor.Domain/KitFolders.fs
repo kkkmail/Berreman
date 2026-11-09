@@ -92,12 +92,9 @@ module KitFolders =
 
         /// The parent folders an outside writer needs for this path (spec 0050 S4.1).
         member private this.parentFolders : KitRelativePath list =
-            let separator = this.value.LastIndexOf('/')
-            if separator < 0 then
-                []
-            else
-                let parent = KitRelativePath (this.value.Substring(0, separator))
-                parent :: parent.parentFolders
+            match this.parentOpt with
+            | None -> []
+            | Some parent -> parent :: parent.parentFolders
 
     type KitFileKind with
 
@@ -345,7 +342,7 @@ module KitFolders =
                                 |> Result.map (fun text ->
                                     let heldPath = this.tryFindTextPath lockPath |> Option.defaultValue lockPath
                                     texts <- Map.add heldPath text texts
-                                    folders <- Set.add KitRelativePath.kitCachePath folders
+                                    folders <- Set.add KitRelativePath.appCacheFolder folders
                                     heldLockOpt <- Some holder
                                     holder))
                 releaseLock =

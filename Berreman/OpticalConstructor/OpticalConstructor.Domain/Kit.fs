@@ -153,15 +153,38 @@ module Kit =
         | ReadWriteKitAccess
         | ReadOnlyKitAccess
 
+    /// Whether a kit path is the app's cache folder or lies under it, which is never sent (spec 0050 S6; 001 §A).
+    type KitPathRole =
+        | KitAppCachePath
+        | KitContentPath
+
     /// A path inside a kit, with forward slashes and no rooted or traversal segments (spec 0050 001 §E).
     type KitRelativePath =
         | KitRelativePath of string
 
         member this.value : string = let (KitRelativePath path) = this in path
 
-        static member kitCachePath : KitRelativePath = KitRelativePath ".oc"
+        /// The app-owned cache and lock folder, safe to delete and never sent (spec 0050 S6; 001 §A).
+        static member appCacheFolder : KitRelativePath = KitRelativePath ".oc"
 
-        static member kitLockPath : KitRelativePath = KitRelativePath $"{KitRelativePath.kitCachePath.value}/lock"
+        static member kitLockPath : KitRelativePath = KitRelativePath $"{KitRelativePath.appCacheFolder.value}/lock"
+
+        /// The app's cache when the first segment names its folder, ignoring case (spec 0050 S6).
+        member this.pathRole : KitPathRole =
+            let firstSegment = this.value.Split('/') |> Array.head
+            if String.Equals(firstSegment, KitRelativePath.appCacheFolder.value, StringComparison.OrdinalIgnoreCase) then
+                KitAppCachePath
+            else
+                KitContentPath
+
+        /// The folder holding this path, or None at the kit root (spec 0050 S6).
+        member this.parentOpt : KitRelativePath option =
+            match this.value.LastIndexOf('/') with
+            | separator when separator < 0 -> None
+            | separator -> Some (KitRelativePath (this.value.Substring(0, separator)))
+
+        /// The last segment, the whole path at the kit root (spec 0050 S6).
+        member this.leafName : FileName = FileName (this.value.Substring(this.value.LastIndexOf('/') + 1))
 
         static member tryCreate (text : string) : Result<KitRelativePath, KitError> =
             if String.IsNullOrWhiteSpace text then
