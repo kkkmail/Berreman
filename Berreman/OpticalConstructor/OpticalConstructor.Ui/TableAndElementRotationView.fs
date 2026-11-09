@@ -2273,16 +2273,17 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         guardKitWrite model (fun () ->
             match model.kitCopyOpt with
             | Some copySource when not (List.isEmpty copySource.chosen) ->
+                // Spec 0050 S7.2: no rows yet, so each item the copied experiments use is mapped or added by its default.
                 let copied =
-                    model.kit.copyExperimentsFrom copySource.source copySource.chosen
+                    model.kit.copyExperimentsFrom copySource.source copySource.chosen []
                     |> Result.bind (fun report ->
                         model.kit.proxy.readExperiments ()
-                        |> Result.mapError KitLibraryKitErr
-                        |> Result.map (fun experiments -> report, experiments))
+                        |> Result.bind (fun experiments -> model.kit.proxy.readItems () |> Result.map (fun items -> report, experiments, items))
+                        |> Result.mapError KitLibraryKitErr)
                 match copied with
-                | Ok (report, experiments) ->
-                    // Spec 0050 S6: as a reload sets it (step 187), over the items as loaded (step 223).
-                    let shown = withKitContent model.kit experiments model.kitItems model.savedScenes model
+                | Ok (report, experiments, items) ->
+                    // Spec 0050 S6, S7.2: as a reload sets it (step 187), over the kit's items as the copy left them.
+                    let shown = withKitContent model.kit experiments items model.savedScenes model
                     {
                         shown.closeCopySource () with
                             kitStatus =

@@ -432,14 +432,16 @@ module KitLibraryTests =
                                     context.kit with proxy = proxy
                                 }
                     }
-                | UnheldEntryErr _ -> failwith "Only pin and write failures belong to this fixture."
+                | UnheldEntryErr _
+                | KitLibraryItemErr _ -> failwith "Only pin and write failures belong to this fixture."
             Assert.Equal<Result<LibraryVersionRef list, KitLibraryError>>(Error failure, failingContext.snapshotReferences [ reference ])
             assertSnapshots [ sampleEnvelope () ] partial
             let expectedPins =
                 match failure with
                 | KitLibraryImportErr _ -> [ (sampleEnvelope ()).libraryVersionRef ]
                 | KitLibraryKitErr _ -> [ (sampleEnvelope ()).libraryVersionRef; material.libraryVersionRef ]
-                | UnheldEntryErr _ -> []
+                | UnheldEntryErr _
+                | KitLibraryItemErr _ -> []
             Assert.Equal<LibraryVersionRef list>(expectedPins, List.ofSeq partial.pins)
             partial.pins.Clear()
             partial.operations.Clear()
@@ -1955,6 +1957,57 @@ module KitLibraryTests =
             assertSnapshots [] fixture
             Assert.Empty(fixture.context.kit.proxy.readItems () |> expectKitOk)
 
+    [<Fact>]
+    let ``recording an experiment refuses a missing physical item before writing`` () : unit =
+        let laser600 : Item =
+            let draft : ItemDraft =
+                {
+                    id = ItemId (Guid.Parse "22700000-0000-4000-8000-000000000041")
+                    label = ItemLabel "Laser600"
+                    model = SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source PresetIds.source600)
+                    dial = FixedMounting
+                }
+            draft.toItem
+        let experiment =
+            {
+                recordingExperiment with
+                    setup =
+                        recordingExperiment.setup
+                        |> List.map (fun descriptor ->
+                            match descriptor.kind with
+                            | LightSource ->
+                                {
+                                    descriptor with itemIdOpt = Some laser600.id
+                                }
+                            | _ -> descriptor)
+            }
+        match experiment.experimentFile.fileText |> Result.bind (fun text -> text.parseExperimentFile) with
+        | Ok parsed -> Assert.Equal<Experiment>(experiment, parsed.experiment)
+        | Error error -> Assert.Fail($"The experiment must be valid against its schema: {error.describe}")
+        let fixture = freshSnapshotFixture ()
+        let paths = fixture.folder.paths ()
+
+        match fixture.context.recordExperiment experiment with
+        | Error (KitLibraryItemErr (UnknownKitItemErr reason)) -> Assert.Contains(laser600.id.value.ToString(), reason)
+        | Error error -> Assert.Fail($"Expected KitLibraryItemErr (UnknownKitItemErr _), got {error.describe}")
+        | Ok () -> Assert.Fail("An experiment naming an item the kit lacks must record nothing.")
+
+        assertSnapshots [] fixture
+        Assert.Empty fixture.pins
+        Assert.Empty fixture.operations
+        Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+        Assert.Empty(fixture.context.kit.proxy.readExperiments () |> expectKitOk)
+
+        // With the piece's file in the kit, the same experiment records: the unassigned bindings, then the piece's model
+        // and its preset are snapshotted and pinned before the file is written.
+        fixture.context.kit.proxy.writeItem laser600 |> expectKitOk
+        let expected = sampleClosure () @ [ itemModelEnvelope ItemModelIds.sourcePresetItemModelId; catalogueEnvelope (presetEntryId PresetIds.source600) ]
+        let context, writes = observeContentWrites expected fixture
+        context.recordExperiment experiment |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ ExperimentKitFile ], List.ofSeq writes)
+        assertSnapshots expected fixture
+        Assert.Equal<Experiment list>([ experiment ], context.kit.proxy.readExperiments () |> expectKitOk)
+
     /// A test-local, user-managed item model at its first version (spec 0050 S7.2).
     let private userItemModel (id : ItemModelId) (name : EntryName) (model : ItemModelForm) : ItemModelVersion =
         {
@@ -2123,12 +2176,14 @@ module KitLibraryTests =
         let kitError = KitIoErr "library/snapshot cannot be read"
         let importError = ImportRejectedErr "the requested version cannot be pinned"
         let reason = "entry 13900000-0000-4000-8000-000000000004 v9"
+        let itemError = UnknownKitItemErr "'ML' maps onto 22700000-0000-4000-8000-0000000000ff"
         let cases : (KitLibraryError * string) list =
             [
                 KitLibraryKitErr kitError, $"the kit refused the library snapshot: {kitError.describe}"
                 KitLibraryImportErr importError, $"the library refused the kit snapshot: {importError.describe}"
                 UnheldEntryErr reason, $"neither the library nor the kit holds the reference: {reason}"
+                KitLibraryItemErr itemError, $"the items could not be copied: {itemError.describe}"
             ]
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
-        Assert.Equal(3, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
+        Assert.Equal(4, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)

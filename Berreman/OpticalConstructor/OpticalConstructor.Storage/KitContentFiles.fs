@@ -7,6 +7,7 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Scene
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
@@ -161,12 +162,50 @@ module KitContentFiles =
             readEveryKindFile this ItemKitFile (fun text -> text.parseItemFile) accept
             |> Result.map (List.map snd >> List.sortWith (fun first second -> String.CompareOrdinal(first.label.value, second.label.value)))
 
+    type ItemModelInstance with
+
+        /// The binding a descriptor takes from the item assigned to it: the preset's id, the sample's version, or none
+        /// for a standalone model, never a binding of another piece (spec 0050 S7.2).
+        member private this.assignedBinding : ElementBinding =
+            match this with
+            | PresetInstance (_, preset) -> BoundByEntryId preset
+            | SampleInstance (_, version) -> BoundByVersion (SampleVersionRef version)
+            | ItemModelVersionInstance _ -> Unbound
+
+    type Experiment with
+
+        /// The library references of the descriptors no item is assigned to, once each in setup order (spec 0050 S7.2).
+        member private this.unassignedReferences : EntryReference list =
+            this.setup
+            |> List.choose (fun descriptor ->
+                match descriptor.itemIdOpt with
+                | Some _ -> None
+                | None -> descriptor.binding.entryReferenceOpt)
+            |> List.distinct
+
+    /// The snapshot among the offered ones that answers the reference: the exact version, or the entry's highest one
+    /// (spec 0050 S6).
+    let private resolveAmong (offered : LibraryEntryEnvelope list) (reference : EntryReference) : Result<LibraryEntryEnvelope, KitLibraryError> =
+        let candidates =
+            match reference with
+            | EntryVersionReference version -> offered |> List.filter (fun envelope -> envelope.libraryVersionRef = version)
+            | EntryLatestReference id -> offered |> List.filter (fun envelope -> envelope.content.id = id)
+        match candidates |> List.sortByDescending (fun envelope -> envelope.content.version) |> List.tryHead with
+        | Some envelope -> Ok envelope
+        | None -> Error (UnheldEntryErr reference.describe)
+
     type KitLibraryContext with
 
-        /// Snapshots and pins the experiment's library closure before writing its file (spec 0050 S4.3).
-        /// A failure stops recording and retains snapshots already written.
+        /// Resolves the experiment's assigned items through the kit's items, a missing one refused before anything is
+        /// written (spec 0050 S7.2); then snapshots and pins the unassigned bindings, the items' closures and the other
+        /// bindings before writing its file (spec 0050 S4.3). A failure stops recording and retains snapshots already written.
         member this.recordExperiment (experiment : Experiment) : Result<unit, KitLibraryError> =
-            this.snapshotReferences experiment.libraryReferences
+            this.kit.proxy.readItems ()
+            |> Result.mapError KitLibraryKitErr
+            |> Result.bind (fun items -> Experiment.itemsUsedBy [ experiment ] items |> Result.mapError KitLibraryItemErr)
+            |> Result.bind (fun used ->
+                let itemReferences = used |> List.collect (fun item -> item.libraryReferences)
+                this.snapshotReferences (experiment.unassignedReferences @ itemReferences @ experiment.libraryReferences |> List.distinct))
             |> Result.bind (fun _ -> this.kit.proxy.writeExperiment experiment |> Result.mapError KitLibraryKitErr)
 
         /// Snapshots and pins the scene's bound entries before writing its named file (spec 0050 S4.3).
@@ -182,51 +221,123 @@ module KitContentFiles =
             this.snapshotReferences item.libraryReferences
             |> Result.bind (fun _ -> this.kit.proxy.writeItem item |> Result.mapError KitLibraryKitErr)
 
-    /// What a copy brought into the kit, in write order: each experiment as written, each data file copied in and each
-    /// snapshot added (spec 0050 S6).
+    /// What a copy brought into the kit, in write order: each experiment and each added item as written, each lab file
+    /// copied in (the experiments' data, then the added items' photos) and each snapshot added (spec 0050 S6, S7.2).
     type ExperimentCopyReport =
         {
             experiments : Experiment list
+            items : Item list
             dataFiles : DataAttachment list
             snapshots : LibraryVersionRef list
         }
 
+    /// A copy's item mapping: the items it adds, the held items its rows map onto, and the kept experiments with every
+    /// assigned descriptor rewritten onto its target item (spec 0050 S7.2).
+    type private ExperimentCopyPlan =
+        {
+            added : Item list
+            mappedOnto : Item list
+            mapped : Experiment list
+        }
+
     type KitContext with
 
-        /// Copies the chosen experiments of the source, with the data files they reference and the source's snapshots of
-        /// their closure this kit lacks, renumbered on a clash. Everything is read before anything is written, and the
-        /// source is only read; the first failure stops the copy, keeping what it wrote (spec 0050 S6).
-        member this.copyExperimentsFrom (source : KitContext) (ids : ExperimentId list) : Result<ExperimentCopyReport, KitLibraryError> =
+        /// Copies the chosen source experiments with the items they use, each mapped by its row or default or added, the
+        /// data and photos they reference and the source snapshots this kit lacks, renumbered on a clash. Everything is
+        /// read before anything is written, the source only read; the first failure stops the copy (spec 0050 S6, S7.2).
+        member this.copyExperimentsFrom
+            (source : KitContext)
+            (ids : ExperimentId list)
+            (itemRows : ItemCopyRow list)
+            : Result<ExperimentCopyReport, KitLibraryError> =
             let keep (offered : Experiment list) : Result<Experiment list, KitLibraryError> =
                 match ids |> List.tryFind (fun id -> not (offered |> List.exists (fun experiment -> experiment.id = id))) with
                 | Some missing -> Error (KitLibraryKitErr (MissingKitFileErr (ExperimentKitFile.fileNameOf missing.fileStem).value))
                 | None -> Ok (offered |> List.filter (fun experiment -> List.contains experiment.id ids))
 
-            // The source's own snapshots answer the closure: the exact version, or the entry's highest one (spec 0050 S6).
-            let lackedSnapshots (kept : Experiment list) : Result<LibraryEntryEnvelope list, KitLibraryError> =
+            // An assigned descriptor takes its target item's id and binding; elementId, placement and the varied element
+            // stay, and an unassigned descriptor is kept as it is (spec 0050 S7.2).
+            let rewrite (targets : Map<ItemId, Item>) (experiment : Experiment) : Experiment =
+                {
+                    experiment with
+                        setup =
+                            experiment.setup
+                            |> List.map (fun descriptor ->
+                                match descriptor.itemIdOpt |> Option.bind (fun id -> Map.tryFind id targets) with
+                                | Some target ->
+                                    {
+                                        descriptor with
+                                            itemIdOpt = Some target.id
+                                            binding = target.model.assignedBinding
+                                    }
+                                | None -> descriptor)
+                }
+
+            // The rows' refusals and the rewritten experiments' own resolution come before anything is written (spec 0050 S7.2).
+            let planItems (kept : Experiment list) : Result<ExperimentCopyPlan, KitLibraryError> =
+                source.proxy.readItems ()
+                |> Result.mapError KitLibraryKitErr
+                |> Result.bind (fun offered ->
+                    this.proxy.readItems ()
+                    |> Result.mapError KitLibraryKitErr
+                    |> Result.bind (fun held ->
+                        Experiment.itemsUsedBy kept offered
+                        |> Result.bind (fun used ->
+                            let rows = ItemCopyRow.copyRowsFor used held itemRows
+                            ItemCopyRow.itemsToAdd rows held
+                            |> Result.bind (fun added ->
+                                let targetOf (row : ItemCopyRow) : Item option =
+                                    match row.choice with
+                                    | MapOntoKitItem id -> held |> List.tryFind (fun item -> item.id = id)
+                                    | AddCopiedItem -> added |> List.tryFind (fun item -> item.id = row.sourceItem.id)
+                                let targets =
+                                    rows
+                                    |> List.choose (fun row -> targetOf row |> Option.map (fun target -> row.sourceItem.id, target))
+                                    |> Map.ofList
+                                let mappedOnto =
+                                    rows
+                                    |> List.choose (fun row ->
+                                        match row.choice with
+                                        | MapOntoKitItem _ -> targetOf row
+                                        | AddCopiedItem -> None)
+                                    |> List.distinctBy (fun item -> item.id)
+                                let mapped = kept |> List.map (rewrite targets)
+                                Experiment.itemsUsedBy mapped (held @ added)
+                                |> Result.map (fun _ ->
+                                    {
+                                        added = added
+                                        mappedOnto = mappedOnto
+                                        mapped = mapped
+                                    })))
+                        |> Result.mapError KitLibraryItemErr))
+
+            // A held item a row maps onto resolves its whole closure from this kit's snapshots, never the source's
+            // (spec 0050 S7.2).
+            let resolveMappedOnto (mappedOnto : Item list) (heldSnapshots : LibraryEntryEnvelope list) : Result<unit, KitLibraryError> =
+                mappedOnto
+                |> List.fold (fun result item ->
+                    result |> Result.bind (fun () ->
+                        referenceClosure (resolveAmong heldSnapshots) item.libraryReferences
+                        |> Result.mapError (fun error ->
+                            match error with
+                            | UnheldEntryErr reason -> UnheldEntryErr $"{reason}, which the kit's item '{item.label.value}' needs"
+                            | _ -> error)
+                        |> Result.map ignore)) (Ok ())
+
+            // The source's snapshots answer the unassigned bindings, then the added items' references (spec 0050 S6, S7.2).
+            let lackedSnapshots (plan : ExperimentCopyPlan) (heldSnapshots : LibraryEntryEnvelope list) : Result<LibraryEntryEnvelope list, KitLibraryError> =
                 source.proxy.listSnapshots ()
                 |> Result.mapError KitLibraryKitErr
                 |> Result.bind (fun offered ->
-                    let resolve (reference : EntryReference) : Result<LibraryEntryEnvelope, KitLibraryError> =
-                        let candidates =
-                            match reference with
-                            | EntryVersionReference version -> offered |> List.filter (fun envelope -> envelope.libraryVersionRef = version)
-                            | EntryLatestReference id -> offered |> List.filter (fun envelope -> envelope.content.id = id)
-                        match candidates |> List.sortByDescending (fun envelope -> envelope.content.version) |> List.tryHead with
-                        | Some envelope -> Ok envelope
-                        | None -> Error (UnheldEntryErr reference.describe)
+                    let unassigned = plan.mapped |> List.collect (fun experiment -> experiment.unassignedReferences)
+                    let addedReferences = plan.added |> List.collect (fun item -> item.libraryReferences)
+                    referenceClosure (resolveAmong offered) (unassigned @ addedReferences))
+                |> Result.map (fun closure ->
+                    let heldVersions = heldSnapshots |> List.map (fun envelope -> envelope.libraryVersionRef)
+                    closure |> List.filter (fun envelope -> not (List.contains envelope.libraryVersionRef heldVersions)))
 
-                    referenceClosure resolve (kept |> List.collect (fun experiment -> experiment.libraryReferences)))
-                |> Result.bind (fun closure ->
-                    this.proxy.listSnapshots ()
-                    |> Result.mapError KitLibraryKitErr
-                    |> Result.map (fun held ->
-                        let heldVersions = held |> List.map (fun envelope -> envelope.libraryVersionRef)
-                        closure |> List.filter (fun envelope -> not (List.contains envelope.libraryVersionRef heldVersions))))
-
-            let readDataFiles (kept : Experiment list) : Result<(KitRelativePath * LabFileSource) list, KitLibraryError> =
-                kept
-                |> List.choose (fun experiment -> experiment.dataFileOpt |> Option.map (fun attachment -> attachment.path))
+            let readLabFiles (paths : KitRelativePath list) : Result<(KitRelativePath * LabFileSource) list, KitLibraryError> =
+                paths
                 |> List.distinct
                 |> List.fold (fun result path ->
                     result |> Result.bind (fun read ->
@@ -263,8 +374,21 @@ module KitContentFiles =
                         |> Result.map (fun data -> (path, data.attachment) :: copied))) (Ok [])
                 |> Result.map List.rev
 
-            let writeExperiments (copied : (KitRelativePath * DataAttachment) list) (renumbered : Experiment list) : Result<Experiment list, KitLibraryError> =
-                let moved = Map.ofList copied
+            // An added item's photo is the copy of its source photo (spec 0050 S7.2).
+            let writeItems (moved : Map<KitRelativePath, DataAttachment>) (added : Item list) : Result<Item list, KitLibraryError> =
+                added
+                |> List.fold (fun result item ->
+                    result |> Result.bind (fun written ->
+                        let copy =
+                            {
+                                item with photoOpt = item.photoOpt |> Option.bind (fun path -> Map.tryFind path moved |> Option.map (fun photo -> photo.path))
+                            }
+                        this.proxy.writeItem copy
+                        |> Result.mapError KitLibraryKitErr
+                        |> Result.map (fun () -> copy :: written))) (Ok [])
+                |> Result.map List.rev
+
+            let writeExperiments (moved : Map<KitRelativePath, DataAttachment>) (renumbered : Experiment list) : Result<Experiment list, KitLibraryError> =
                 renumbered
                 |> List.fold (fun result experiment ->
                     result |> Result.bind (fun written ->
@@ -277,25 +401,30 @@ module KitContentFiles =
                         |> Result.map (fun () -> copy :: written))) (Ok [])
                 |> Result.map List.rev
 
-            // Snapshots and data come first, so a written experiment never references a file the kit lacks (spec 0050 S6).
+            // Snapshots, lab files and items come first, so a written item or experiment never references a file the kit
+            // lacks (spec 0050 S6, S7.2).
             let writeAll
                 (snapshots : LibraryEntryEnvelope list)
                 (files : (KitRelativePath * LabFileSource) list)
-                (renumbered : Experiment list)
+                (plan : ExperimentCopyPlan)
                 : Result<ExperimentCopyReport, KitLibraryError> =
                 writeSnapshots snapshots
-                |> Result.bind (fun added ->
+                |> Result.bind (fun written ->
                     copyDataFiles files
                     |> Result.bind (fun copied ->
-                        writeExperiments copied renumbered
-                        |> Result.map (fun experiments ->
-                            let report : ExperimentCopyReport =
-                                {
-                                    experiments = experiments
-                                    dataFiles = copied |> List.map snd
-                                    snapshots = added
-                                }
-                            report)))
+                        let moved = Map.ofList copied
+                        writeItems moved plan.added
+                        |> Result.bind (fun items ->
+                            writeExperiments moved plan.mapped
+                            |> Result.map (fun experiments ->
+                                let report : ExperimentCopyReport =
+                                    {
+                                        experiments = experiments
+                                        items = items
+                                        dataFiles = copied |> List.map snd
+                                        snapshots = written
+                                    }
+                                report))))
 
             match this.access with
             | ReadOnlyKitAccess -> Error (KitLibraryKitErr (KitReadOnlyErr "copyExperimentsFrom"))
@@ -303,8 +432,21 @@ module KitContentFiles =
                 source.proxy.readExperiments ()
                 |> Result.mapError KitLibraryKitErr
                 |> Result.bind keep
-                |> Result.bind (fun kept ->
-                    lackedSnapshots kept
+                |> Result.bind planItems
+                |> Result.bind (fun plan ->
+                    this.proxy.listSnapshots ()
+                    |> Result.mapError KitLibraryKitErr
+                    |> Result.bind (fun heldSnapshots ->
+                        resolveMappedOnto plan.mappedOnto heldSnapshots
+                        |> Result.bind (fun () -> lackedSnapshots plan heldSnapshots))
                     |> Result.bind (fun snapshots ->
-                        readDataFiles kept
-                        |> Result.bind (fun files -> renumber kept |> Result.bind (writeAll snapshots files))))
+                        let dataPaths = plan.mapped |> List.choose (fun experiment -> experiment.dataFileOpt |> Option.map (fun attachment -> attachment.path))
+                        let photoPaths = plan.added |> List.choose (fun item -> item.photoOpt)
+                        readLabFiles (dataPaths @ photoPaths)
+                        |> Result.bind (fun files ->
+                            renumber plan.mapped
+                            |> Result.bind (fun renumbered ->
+                                writeAll snapshots files
+                                    {
+                                        plan with mapped = renumbered
+                                    }))))

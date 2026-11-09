@@ -460,6 +460,10 @@
     "constructor_unit_tests": 1336,
     "ui_smoke_tests": 238
   },
+  "226": {
+    "constructor_unit_tests": 1344,
+    "ui_smoke_tests": 238
+  },
   "23": {
     "constructor_unit_tests": 746
   },

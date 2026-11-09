@@ -10,6 +10,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Kit
@@ -19,8 +20,9 @@ open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 
-/// Experiments copied from another kit with the data files they reference and the snapshots they need, between
-/// in-memory kits: the source opened read-only, the target read-write unless a fact says otherwise (spec 0050 S6).
+/// Experiments copied from another kit with the items they use, the data files and photos they reference and the
+/// snapshots they need, between in-memory kits: the source opened read-only, the target read-write unless a fact says
+/// otherwise (spec 0050 S6, S7.2).
 module ExperimentCopyTests =
 
     /// One in-memory kit: its folder, as an outside writer sees it, and the context it is opened through.
@@ -31,13 +33,21 @@ module ExperimentCopyTests =
         }
 
     /// Everything a kit holds as read: its paths, each path read as a data file (a folder or a snapshot answers its
-    /// refusal), its snapshots and its experiments.
+    /// refusal), its snapshots, its experiments and its items.
     type private HeldContent =
         {
             paths : KitRelativePath list
             files : Result<KitDataFile, KitError> list
             snapshots : Result<LibraryEntryEnvelope list, KitError>
             experiments : Result<Experiment list, KitError>
+            items : Result<Item list, KitError>
+        }
+
+    /// What a source kit records: its items first, then the experiments that use them.
+    type private SourceRecords =
+        {
+            items : Item list
+            experiments : Experiment list
         }
 
     let private expectKitOk (result : Result<'Value, KitError>) : 'Value =
@@ -90,6 +100,11 @@ module ExperimentCopyTests =
         let folder = newKitFolder targetKitId (KitName "Copy target") clock
         openCopyKit folder access clock
 
+    /// The kit closed and opened again over its folder, as a later session reads it.
+    let private reopened (kit : CopyKit) (clock : ClockProvider) : CopyKit =
+        kit.context.close () |> expectKitOk
+        openCopyKit kit.folder ReadOnlyKitAccess clock
+
     let private heldBy (kit : CopyKit) : HeldContent =
         let paths = kit.folder.paths ()
         {
@@ -97,7 +112,109 @@ module ExperimentCopyTests =
             files = paths |> List.map kit.context.proxy.readDataFile
             snapshots = kit.context.proxy.listSnapshots ()
             experiments = kit.context.proxy.readExperiments ()
+            items = kit.context.proxy.readItems ()
         }
+
+    /// Every `*.item-json` the kit holds, read as stored.
+    let private itemFilesOf (kit : CopyKit) : Result<KitDataFile, KitError> list =
+        kit.folder.paths ()
+        |> List.filter (fun path -> path.value.EndsWith(ItemKitFile.extension.value, StringComparison.Ordinal))
+        |> List.map kit.context.proxy.readDataFile
+
+    let private catalogueEnvelope (id : LibraryEntryId) : LibraryEntryEnvelope =
+        (BuiltinCatalogue.catalogueData ()).envelopes
+        |> List.find (fun envelope -> envelope.content.id = id)
+
+    let private itemModelEnvelope (id : ItemModelId) : LibraryEntryEnvelope =
+        catalogueEnvelope id.toLibraryEntryId
+
+    let private sourcePresetId : LibraryEntryId =
+        PresetIds.source600.tryToLibraryEntryId
+        |> Option.defaultWith (fun () -> failwith "The 600 nm source must have an entry id.")
+
+    /// The Built-in catalogue's envelope answering the reference: the exact version, or the entry's highest one.
+    let private catalogueResolve (reference : EntryReference) : Result<LibraryEntryEnvelope, KitLibraryError> =
+        (BuiltinCatalogue.catalogueData ()).envelopes
+        |> List.filter (fun envelope ->
+            match reference with
+            | EntryVersionReference version -> envelope.libraryVersionRef = version
+            | EntryLatestReference id -> envelope.content.id = id)
+        |> List.sortByDescending (fun envelope -> envelope.content.version)
+        |> List.tryHead
+        |> function
+            | Some envelope -> Ok envelope
+            | None -> Error (UnheldEntryErr reference.describe)
+
+    /// The Built-in catalogue's closure of an item's model and bound physics, in visit order.
+    let private closureOf (item : Item) : LibraryEntryEnvelope list =
+        referenceClosure catalogueResolve item.libraryReferences |> expectCopyOk
+
+    /// Writes each item through `writeItem` after the catalogue's snapshots of its closure the kit lacks, so the kit
+    /// holds it with fully valid model snapshots.
+    let private holdItems (kit : CopyKit) (items : Item list) : unit =
+        for item in items do
+            let held = kit.context.proxy.listSnapshots () |> expectKitOk |> List.map (fun envelope -> envelope.libraryVersionRef)
+            for envelope in closureOf item do
+                if not (List.contains envelope.libraryVersionRef held) then
+                    kit.context.proxy.writeSnapshot envelope |> expectKitOk
+            kit.context.proxy.writeItem item |> expectKitOk
+
+    /// An item made through AddItem's draft, every parameter known at its model's default.
+    let private itemOf (id : string) (label : string) (model : ItemModelChoice) (dial : ItemDial) : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse id)
+                label = ItemLabel label
+                model = model
+                dial = dial
+            }
+        draft.toItem
+
+    /// The item with its parameter of this name known at the value; the item must have that parameter.
+    let private withParameter (name : string) (value : double) (item : Item) : Item =
+        let parameterName = ParameterName name
+        match item.tryFindParameter parameterName with
+        | Some _ -> ()
+        | None -> Assert.Fail($"'{item.label.value}' must have the parameter '{name}'")
+        {
+            item with
+                parameters =
+                    item.parameters
+                    |> List.map (fun parameter ->
+                        if parameter.name = parameterName then
+                            {
+                                parameter with state = KnownParameter (ParameterValue value)
+                            }
+                        else
+                            parameter)
+        }
+
+    /// The 600 nm source preset over the shipped source-preset item model (spec 0050 S7.1, step 210).
+    let private laserChoice : ItemModelChoice =
+        SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source PresetIds.source600)
+
+    /// The sample's first version over the shipped stack-sample item model (spec 0050 S7.1, step 210).
+    let private sampleChoice (sample : SampleId) : ItemModelChoice =
+        StackSampleChoice (
+            BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId,
+            SampleVersionId.firstOf sample,
+            BuiltinCatalogue.sample sample
+        )
+
+    /// The shipped circular-polarizer item model, which stands alone and binds no preset or sample.
+    let private circularChoice : ItemModelChoice =
+        LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId)
+
+    let private laser600 : Item = itemOf "22700000-0000-4000-8000-000000000001" "Laser600" laserChoice FixedMounting
+
+    let private ml : Item = itemOf "22700000-0000-4000-8000-000000000002" "ML" (sampleChoice SampleIds.multilayerQwId) (DialMounted DialPositive)
+
+    let private qz : Item = itemOf "22700000-0000-4000-8000-000000000003" "QZ" (sampleChoice SampleIds.glassPlate1mmId) (DialMounted DialPositive)
+
+    let private cpl1 : Item = itemOf "22700000-0000-4000-8000-000000000004" "CPL1" circularChoice (DialMounted DialPositive)
+
+    /// Laser600 and ML (used by E1), QZ (used by E2) and CPL1 (used by none).
+    let private standardItems : Item list = [ laser600; ml; qz; cpl1 ]
 
     let private descriptor (id : ElementId) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
         let placement = ElementPlacement.create kind TablePoint.origin
@@ -108,6 +225,12 @@ module ExperimentCopyTests =
             placement = PlacementSummary.ofPlacement placement
             binding = binding
             itemIdOpt = None
+        }
+
+    /// The descriptor with the item explicitly assigned at its element (spec 0050 S7.2).
+    let private assignedTo (item : Item) (unassigned : ElementDescriptor) : ElementDescriptor =
+        {
+            unassigned with itemIdOpt = Some item.id
         }
 
     let private detector : ElementDescriptor = descriptor (ElementId "copied-detector") Detector Unbound
@@ -123,37 +246,47 @@ module ExperimentCopyTests =
             sourceWaveLengthOpt = None
         }
 
-    /// E1 binds the multilayer sample at version 1 and the 600 nm source by its entry id, and attaches the run.
+    let private multilayerVersion : VersionRef = SampleVersionRef (SampleVersionId.firstOf SampleIds.multilayerQwId)
+
+    let private plateVersion : VersionRef = SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId)
+
+    /// E1 binds the 600 nm source by its entry id on Laser600 and the multilayer sample at version 1 on ML, and attaches
+    /// the run.
     let private experimentE1 (run : DataAttachment) : Experiment =
-        let sample = SampleVersionRef (SampleVersionId.firstOf SampleIds.multilayerQwId)
         let attached = darkLine (ExperimentId 1) (Some run)
         {
             attached with
                 setup =
                     [
-                        descriptor (ElementId "copied-source") LightSource (BoundByEntryId PresetIds.source600)
-                        descriptor (ElementId "copied-sample") CatalogueKind.Sample (BoundByVersion sample)
+                        descriptor (ElementId "copied-source") LightSource (BoundByEntryId PresetIds.source600) |> assignedTo laser600
+                        descriptor (ElementId "copied-sample") CatalogueKind.Sample (BoundByVersion multilayerVersion) |> assignedTo ml
                         detector
                     ]
         }
 
-    /// E2 binds the 1 mm glass plate at version 1 and attaches nothing.
+    /// E2 binds the 1 mm glass plate at version 1 on QZ and attaches nothing.
     let private experimentE2 : Experiment =
-        let plate = SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId)
         let unattached = darkLine (ExperimentId 2) None
         {
             unattached with
-                setup = [ descriptor (ElementId "copied-plate") CatalogueKind.Sample (BoundByVersion plate); detector ]
+                setup = [ descriptor (ElementId "copied-plate") CatalogueKind.Sample (BoundByVersion plateVersion) |> assignedTo qz; detector ]
         }
 
     /// E1, E2, and E3, which binds nothing and attaches the other file.
     let private standardExperiments (run : DataAttachment) (other : DataAttachment) : Experiment list =
         [ experimentE1 run; experimentE2; darkLine (ExperimentId 3) (Some other) ]
 
-    /// The source: its lab files placed by an outside writer and attached in place, its experiments recorded through the
-    /// library (so its snapshots are the library's), then closed and opened read-only. Answers it with what it recorded.
-    let private sourceHolding
-        (experimentsOf : DataAttachment -> DataAttachment -> Experiment list)
+    /// The library a kit records through: the Built-in catalogue, so its snapshots are the library's.
+    let private libraryOver (kit : KitContext) : KitLibraryContext =
+        {
+            kit = kit
+            imports = CatalogueImportContext.create (BuiltinCatalogue.freshStores ()).proxy
+        }
+
+    /// The source: its lab files placed by an outside writer and attached in place, its items and then its experiments
+    /// recorded through the library, then closed and opened read-only. Answers it with the experiments it recorded.
+    let private sourceRecording
+        (recordsOf : (KitRelativePath -> KitFileText -> DataAttachment) -> SourceRecords)
         (clock : ClockProvider)
         : CopyKit * Experiment list =
         let folder = newKitFolder sourceKitId (KitName "Copy source") clock
@@ -163,31 +296,38 @@ module ExperimentCopyTests =
             writer.context.proxy.readLabFile path
             |> Result.bind (writer.context.proxy.attachLabFile KitDataFolder.root)
             |> expectKitOk
-        let experiments = experimentsOf (attach runPath runText) (attach otherPath otherText)
-        let library : KitLibraryContext =
-            {
-                kit = writer.context
-                imports = CatalogueImportContext.create (BuiltinCatalogue.freshStores ()).proxy
-            }
-        for experiment in experiments do
+        let records = recordsOf attach
+        let library = libraryOver writer.context
+        for item in records.items do
+            library.recordItem item |> expectCopyOk
+        for experiment in records.experiments do
             library.recordExperiment experiment |> expectCopyOk
         writer.context.close () |> expectKitOk
-        openCopyKit folder ReadOnlyKitAccess clock, experiments
+        openCopyKit folder ReadOnlyKitAccess clock, records.experiments
+
+    /// The source holding the standard items and the experiments made over its run and other files.
+    let private sourceHolding
+        (experimentsOf : DataAttachment -> DataAttachment -> Experiment list)
+        (clock : ClockProvider)
+        : CopyKit * Experiment list =
+        sourceRecording
+            (fun attach ->
+                {
+                    items = standardItems
+                    experiments = experimentsOf (attach runPath runText) (attach otherPath otherText)
+                })
+            clock
 
     let private recordedAs (id : ExperimentId) (recorded : Experiment list) : Experiment =
         recorded |> List.find (fun experiment -> experiment.id = id)
 
-    let private catalogueEnvelope (id : LibraryEntryId) : LibraryEntryEnvelope =
-        (BuiltinCatalogue.catalogueData ()).envelopes
-        |> List.find (fun envelope -> envelope.content.id = id)
-
-    /// E1's closure in visit order: the source preset, then the multilayer sample, its materials and their categories.
+    /// E1's closure in visit order: Laser600's model and its source preset, then ML's model and its multilayer sample
+    /// with the sample's materials and their categories.
     let private closureOfE1 () : LibraryEntryEnvelope list =
-        let sourceId =
-            PresetIds.source600.tryToLibraryEntryId
-            |> Option.defaultWith (fun () -> failwith "The 600 nm source must have an entry id.")
         [
-            catalogueEnvelope sourceId
+            itemModelEnvelope ItemModelIds.sourcePresetItemModelId
+            catalogueEnvelope sourcePresetId
+            itemModelEnvelope ItemModelIds.stackSampleItemModelId
             catalogueEnvelope SampleIds.multilayerQwId.toLibraryEntryId
             catalogueEnvelope MaterialIds.vacuumMaterial.toLibraryEntryId
             catalogueEnvelope CategoryIds.vacuumCategory.toLibraryEntryId
@@ -200,6 +340,27 @@ module ExperimentCopyTests =
 
     let private bySnapshotName (envelopes : LibraryEntryEnvelope list) : LibraryEntryEnvelope list =
         envelopes |> List.sortWith (fun first second -> String.CompareOrdinal(first.snapshotFileName.value, second.snapshotFileName.value))
+
+    /// Two source pieces of one model, a target piece of that model, the element the source's experiment assigns piece
+    /// B to, and the binding that element must take from piece T.
+    type private SameModelPieces =
+        {
+            pieceA : Item
+            pieceB : Item
+            pieceT : Item
+            element : ElementDescriptor
+            bindingOfT : ElementBinding
+        }
+
+    /// The descriptor that names the source item now names the target item, its binding unchanged.
+    let private reassigned (from : Item) (onto : Item) (experiment : Experiment) : Experiment =
+        {
+            experiment with
+                setup =
+                    experiment.setup
+                    |> List.map (fun descriptor ->
+                        if descriptor.itemIdOpt = Some from.id then assignedTo onto descriptor else descriptor)
+        }
 
     [<Fact>]
     let ``a copy brings exactly the chosen experiments, the data files they reference and the snapshots they need`` () : unit =
@@ -216,17 +377,18 @@ module ExperimentCopyTests =
         Assert.Equal<DataAttachment option>(Some run, e1.dataFileOpt)
         let closure = closureOfE1 ()
 
-        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] |> expectCopyOk
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
 
         let expected : ExperimentCopyReport =
             {
                 experiments = [ e1 ]
+                items = [ laser600; ml ]
                 dataFiles = [ run ]
                 snapshots = closure |> List.map (fun envelope -> envelope.libraryVersionRef)
             }
         Assert.Equal<ExperimentCopyReport>(expected, report)
         let kitPaths =
-            [ ".kit-json"; ".oc"; ".oc/lock"; "E1.experiment-json"; "data"; "data/raw"; "data/raw/run 1.csv"; "library" ]
+            [ ".kit-json"; ".oc"; ".oc/lock"; "E1.experiment-json"; "Laser600.item-json"; "ML.item-json"; "data"; "data/raw"; "data/raw/run 1.csv"; "library" ]
             |> List.map KitRelativePath
         let snapshotPaths = closure |> List.map (fun envelope -> envelope.snapshotPath)
         Assert.Equal<KitRelativePath list>(ordinal (kitPaths @ snapshotPaths), target.folder.paths ())
@@ -265,7 +427,7 @@ module ExperimentCopyTests =
                 sourceE2 with id = ExperimentId 4
             }
 
-        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 2; ExperimentId 3 ] |> expectCopyOk
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 2; ExperimentId 3 ] [] |> expectCopyOk
 
         Assert.Equal<Experiment list>([ copiedE4; copiedE3 ], report.experiments)
         Assert.Equal<Result<Experiment list, KitError>>(Ok [ heldE1; heldE2; copiedE3; copiedE4 ], target.context.proxy.readExperiments ())
@@ -285,7 +447,7 @@ module ExperimentCopyTests =
             }
         let e1 = recordedAs (ExperimentId 1) recorded
 
-        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] |> expectCopyOk
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
 
         Assert.Equal<DataAttachment list>([ suffixed ], report.dataFiles)
         let copiedE1 =
@@ -319,7 +481,7 @@ module ExperimentCopyTests =
             }
         Assert.NotEqual<DataAttachment option>(Some rewritten, e1.dataFileOpt)
 
-        let rewrittenReport = fresh.context.copyExperimentsFrom source.context [ ExperimentId 1 ] |> expectCopyOk
+        let rewrittenReport = fresh.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
 
         Assert.Equal<DataAttachment list>([ rewritten ], rewrittenReport.dataFiles)
         let rewrittenE1 =
@@ -344,7 +506,7 @@ module ExperimentCopyTests =
         let e5 = recordedAs (ExperimentId 5) recorded
         Assert.Equal<DataAttachment option list>([ Some run; Some run ], [ e1.dataFileOpt; e5.dataFileOpt ])
 
-        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1; ExperimentId 5 ] |> expectCopyOk
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1; ExperimentId 5 ] [] |> expectCopyOk
 
         Assert.Equal<DataAttachment list>([ run ], report.dataFiles)
         Assert.Equal<Result<Experiment list, KitError>>(Ok [ e1; e5 ], target.context.proxy.readExperiments ())
@@ -363,7 +525,7 @@ module ExperimentCopyTests =
         Assert.Contains(held, closure)
         target.context.proxy.writeSnapshot held |> expectKitOk
 
-        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] |> expectCopyOk
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
 
         let added = closure |> List.filter (fun envelope -> envelope <> held) |> List.map (fun envelope -> envelope.libraryVersionRef)
         Assert.Equal<LibraryVersionRef list>(added, report.snapshots)
@@ -379,7 +541,7 @@ module ExperimentCopyTests =
         source.folder.removeLabFile runPath |> expectKitOk
         let before = heldBy target
 
-        match target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] with
+        match target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] with
         | Error (KitLibraryKitErr (MissingKitFileErr reason)) -> Assert.Contains(runPath.value, reason)
         | Error error -> Assert.Fail($"Expected MissingKitFileErr, got {error.describe}")
         | Ok _ -> Assert.Fail("A copy whose data file the source lacks must be refused.")
@@ -419,7 +581,7 @@ module ExperimentCopyTests =
             }
         let before = heldBy target
 
-        let copied = target.context.copyExperimentsFrom watched [ ExperimentId 1 ]
+        let copied = target.context.copyExperimentsFrom watched [ ExperimentId 1 ] []
 
         Assert.Equal<Result<ExperimentCopyReport, KitLibraryError>>(Error (KitLibraryKitErr (KitReadOnlyErr "copyExperimentsFrom")), copied)
         Assert.Empty(sourceReads)
@@ -433,9 +595,421 @@ module ExperimentCopyTests =
         let before = heldBy target
 
         for ids in [ [ ExperimentId 9 ]; [ ExperimentId 1; ExperimentId 9 ] ] do
-            match target.context.copyExperimentsFrom source.context ids with
+            match target.context.copyExperimentsFrom source.context ids [] with
             | Error (KitLibraryKitErr (MissingKitFileErr reason)) -> Assert.Equal("E9.experiment-json", reason)
             | Error error -> Assert.Fail($"Expected MissingKitFileErr, got {error.describe}")
             | Ok _ -> Assert.Fail("An experiment the source does not hold must be refused.")
 
             Assert.Equal<HeldContent>(before, heldBy target)
+
+    [<Fact>]
+    let ``a copy adds the items its experiments use, with their model snapshots`` () : unit =
+        let clock = steppingClock ()
+        let source, recorded = sourceHolding standardExperiments clock
+        let target = emptyTarget ReadWriteKitAccess clock
+        let e1 = recordedAs (ExperimentId 1) recorded
+        Assert.Equal<Result<Item list, KitError>>(Ok [ cpl1; laser600; ml; qz ], source.context.proxy.readItems ())
+
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
+
+        Assert.Equal<Item list>([ laser600; ml ], report.items)
+        let items = target.context.proxy.readItems () |> expectKitOk
+        Assert.Equal<Item list>([ laser600; ml ], items)
+        let paths = target.folder.paths ()
+        Assert.Contains(KitRelativePath "Laser600.item-json", paths)
+        Assert.Contains(KitRelativePath "ML.item-json", paths)
+        let needed = closureOf laser600 @ closureOf ml
+        Assert.Equal<LibraryEntryEnvelope list>(closureOfE1 (), needed |> List.distinct)
+        for envelope in needed do
+            Assert.Contains(envelope.snapshotPath, paths)
+        Assert.DoesNotContain(KitRelativePath "QZ.item-json", paths)
+        Assert.DoesNotContain(KitRelativePath "CPL1.item-json", paths)
+        Assert.DoesNotContain((itemModelEnvelope ItemModelIds.circularPolarizerModelId).snapshotPath, paths)
+        Assert.DoesNotContain((catalogueEnvelope SampleIds.glassPlate1mmId.toLibraryEntryId).snapshotPath, paths)
+
+        // The copied E1 names the added pieces themselves, and resolves to them.
+        Assert.Equal<Result<Experiment list, KitError>>(Ok [ e1 ], target.context.proxy.readExperiments ())
+        Assert.Equal<Result<Item list, ItemError>>(Ok [ laser600; ml ], Experiment.itemsUsedBy [ e1 ] items)
+
+    [<Fact>]
+    let ``an item the kit holds by id, or by model and label, is mapped and not added`` () : unit =
+        let clock = steppingClock ()
+        let source, recorded = sourceHolding standardExperiments clock
+        let target = emptyTarget ReadWriteKitAccess clock
+        let heldLaser = itemOf "22700000-0000-4000-8000-000000000011" "Laser600" laserChoice FixedMounting
+        holdItems target [ ml; heldLaser ]
+        let itemFilesBefore = itemFilesOf target
+
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
+
+        Assert.Empty(report.items)
+        Assert.Empty(report.snapshots)
+        Assert.Equal<Result<KitDataFile, KitError> list>(itemFilesBefore, itemFilesOf target)
+        let items = target.context.proxy.readItems () |> expectKitOk
+        Assert.Equal<Item list>([ heldLaser; ml ], items)
+        let copiedE1 = recordedAs (ExperimentId 1) recorded |> reassigned laser600 heldLaser
+        Assert.Equal<Result<Experiment list, KitError>>(Ok [ copiedE1 ], target.context.proxy.readExperiments ())
+        Assert.Equal<Result<Item list, ItemError>>(Ok [ heldLaser; ml ], Experiment.itemsUsedBy [ copiedE1 ] items)
+
+    [<Fact>]
+    let ``an added item whose label the kit holds takes the next free label`` () : unit =
+        let clock = steppingClock ()
+        let source, recorded = sourceHolding standardExperiments clock
+        let target = emptyTarget ReadWriteKitAccess clock
+        let heldMl = itemOf "22700000-0000-4000-8000-000000000012" "ML" (sampleChoice SampleIds.glassPlate1mmId) (DialMounted DialPositive)
+        holdItems target [ heldMl ]
+        let e1 = recordedAs (ExperimentId 1) recorded
+
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
+
+        let addedMl =
+            {
+                ml with label = ItemLabel "ML (2)"
+            }
+        Assert.Equal<Item list>([ laser600; addedMl ], report.items)
+        let items = target.context.proxy.readItems () |> expectKitOk
+        Assert.Equal<Item list>([ laser600; heldMl; addedMl ], items)
+        Assert.Contains(KitRelativePath "ML (2).item-json", target.folder.paths ())
+        Assert.Equal<Result<Experiment list, KitError>>(Ok [ e1 ], target.context.proxy.readExperiments ())
+        Assert.Equal<Result<Item list, ItemError>>(Ok [ laser600; addedMl ], Experiment.itemsUsedBy [ e1 ] items)
+
+    [<Fact>]
+    let ``the user's choice overrides the default, and a choice the kit cannot take writes nothing`` () : unit =
+        let clock = steppingClock ()
+        let source, recorded = sourceHolding standardExperiments clock
+        let e1 = recordedAs (ExperimentId 1) recorded
+        let heldLaser = itemOf "22700000-0000-4000-8000-000000000011" "Laser600" laserChoice FixedMounting
+        let heldTarget () : CopyKit =
+            let target = emptyTarget ReadWriteKitAccess clock
+            holdItems target [ ml; heldLaser ]
+            target
+        let addLaser : ItemCopyRow =
+            {
+                sourceItem = laser600
+                choice = AddCopiedItem
+            }
+
+        let chosen = heldTarget ()
+        let report = chosen.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [ addLaser ] |> expectCopyOk
+
+        let addedLaser =
+            {
+                laser600 with label = ItemLabel "Laser600 (2)"
+            }
+        Assert.Equal<Item list>([ addedLaser ], report.items)
+        let items = chosen.context.proxy.readItems () |> expectKitOk
+        Assert.Equal<Item list>([ heldLaser; addedLaser; ml ], items)
+        Assert.Equal<Result<Experiment list, KitError>>(Ok [ e1 ], chosen.context.proxy.readExperiments ())
+        Assert.Equal<Result<Item list, ItemError>>(Ok [ addedLaser; ml ], Experiment.itemsUsedBy [ e1 ] items)
+
+        // Mapped onto the kit's ML of the glass plate, the element takes that piece's sample version, and the source's
+        // multilayer is not brought in its place.
+        let heldPlate = itemOf "22700000-0000-4000-8000-000000000012" "ML" (sampleChoice SampleIds.glassPlate1mmId) (DialMounted DialPositive)
+        let plateTarget = emptyTarget ReadWriteKitAccess clock
+        holdItems plateTarget [ heldPlate ]
+        let ontoPlate : ItemCopyRow =
+            {
+                sourceItem = ml
+                choice = MapOntoKitItem heldPlate.id
+            }
+
+        let plateReport = plateTarget.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [ ontoPlate ] |> expectCopyOk
+
+        Assert.Equal<Item list>([ laser600 ], plateReport.items)
+        let onPlate =
+            {
+                e1 with
+                    setup =
+                        e1.setup
+                        |> List.map (fun descriptor ->
+                            if descriptor.itemIdOpt = Some ml.id then
+                                {
+                                    descriptor with
+                                        itemIdOpt = Some heldPlate.id
+                                        binding = BoundByVersion plateVersion
+                                }
+                            else
+                                descriptor)
+            }
+        Assert.Equal<Result<Experiment list, KitError>>(Ok [ onPlate ], plateTarget.context.proxy.readExperiments ())
+        let plateItems = plateTarget.context.proxy.readItems () |> expectKitOk
+        Assert.Equal<Result<Item list, ItemError>>(Ok [ laser600; heldPlate ], Experiment.itemsUsedBy [ onPlate ] plateItems)
+        let plateSnapshots = plateTarget.context.proxy.listSnapshots () |> expectKitOk
+        Assert.Equal<LibraryEntryEnvelope list>(bySnapshotName (closureOf heldPlate @ closureOf laser600), plateSnapshots)
+        Assert.DoesNotContain(catalogueEnvelope SampleIds.multilayerQwId.toLibraryEntryId, plateSnapshots)
+
+        // From a valid kit and source, only the choice is altered: the kit refuses it before writing, then copies by default.
+        let unknownId = ItemId (Guid.Parse "22700000-0000-4000-8000-0000000000ff")
+        let mapOntoUnknown : ItemCopyRow =
+            {
+                sourceItem = ml
+                choice = MapOntoKitItem unknownId
+            }
+        let addHeld : ItemCopyRow =
+            {
+                sourceItem = ml
+                choice = AddCopiedItem
+            }
+        let isUnknown (error : KitLibraryError) : bool =
+            match error with
+            | KitLibraryItemErr (UnknownKitItemErr reason) -> reason.Contains(unknownId.value.ToString())
+            | _ -> false
+        let isDuplicate (error : KitLibraryError) : bool =
+            match error with
+            | KitLibraryItemErr (DuplicateItemIdErr reason) -> reason.Contains(ml.id.value.ToString())
+            | _ -> false
+        let refusals : (ItemCopyRow * (KitLibraryError -> bool)) list = [ mapOntoUnknown, isUnknown; addHeld, isDuplicate ]
+        for row, isExpected in refusals do
+            let target = heldTarget ()
+            let before = heldBy target
+            match target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [ row ] with
+            | Error error -> Assert.True(isExpected error, $"Unexpected refusal: {error.describe}")
+            | Ok _ -> Assert.Fail($"The choice for '{row.sourceItem.label.value}' must be refused.")
+            Assert.Equal<HeldContent>(before, heldBy target)
+            target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk |> ignore
+
+    [<Fact>]
+    let ``an added item's photo is copied with it`` () : unit =
+        let clock = steppingClock ()
+        let photoPath = KitRelativePath "data/photos/ml.jpg"
+        let photoText = KitFileText "ML photo\n"
+        let source, _ =
+            sourceRecording
+                (fun attach ->
+                    let photo = attach photoPath photoText
+                    let pictured =
+                        {
+                            ml with photoOpt = Some photo.path
+                        }
+                    {
+                        items = [ laser600; pictured; qz; cpl1 ]
+                        experiments = standardExperiments (attach runPath runText) (attach otherPath otherText)
+                    })
+                clock
+        let pictured =
+            {
+                ml with photoOpt = Some photoPath
+            }
+        let photo : DataAttachment =
+            {
+                path = photoPath
+                contentHash = hashOf photoText
+            }
+        let run : DataAttachment =
+            {
+                path = runPath
+                contentHash = hashOf runText
+            }
+
+        let target = emptyTarget ReadWriteKitAccess clock
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
+
+        Assert.Equal<Item list>([ laser600; pictured ], report.items)
+        Assert.Equal<DataAttachment list>([ run; photo ], report.dataFiles)
+        Assert.Equal<Result<Item list, KitError>>(Ok [ laser600; pictured ], target.context.proxy.readItems ())
+        let copiedPhoto : KitDataFile =
+            {
+                path = photoPath
+                text = photoText
+                contentHash = hashOf photoText
+            }
+        Assert.Equal<Result<KitDataFile, KitError>>(Ok copiedPhoto, target.context.proxy.readDataFile photoPath)
+
+        // A kit already holding another photo of that name takes the copy under the next free suffix.
+        let crowded = emptyTarget ReadWriteKitAccess clock
+        let heldText = KitFileText "another photo\n"
+        crowded.folder.placeLabFile photoPath heldText |> expectKitOk
+        let suffixedPath = KitRelativePath "data/photos/ml (2).jpg"
+
+        let crowdedReport = crowded.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
+
+        let suffixed =
+            {
+                ml with photoOpt = Some suffixedPath
+            }
+        Assert.Equal<Item list>([ laser600; suffixed ], crowdedReport.items)
+        Assert.Equal<Result<Item list, KitError>>(Ok [ laser600; suffixed ], crowded.context.proxy.readItems ())
+        let suffixedPhoto : KitDataFile =
+            {
+                path = suffixedPath
+                text = photoText
+                contentHash = hashOf photoText
+            }
+        let heldPhoto : KitDataFile =
+            {
+                path = photoPath
+                text = heldText
+                contentHash = hashOf heldText
+            }
+        Assert.Equal<Result<KitDataFile, KitError>>(Ok suffixedPhoto, crowded.context.proxy.readDataFile suffixedPath)
+        Assert.Equal<Result<KitDataFile, KitError>>(Ok heldPhoto, crowded.context.proxy.readDataFile photoPath)
+
+    [<Fact>]
+    let ``a copied experiment reopens using the explicitly selected target physical piece`` () : unit =
+        let clock = steppingClock ()
+        let piecesOf (choice : ItemModelChoice) (parameter : string) (element : ElementDescriptor) (bindingOfT : ElementBinding) : SameModelPieces =
+            {
+                pieceA = itemOf "22700000-0000-4000-8000-000000000021" "Piece A" choice FixedMounting |> withParameter parameter 0.5
+                pieceB = itemOf "22700000-0000-4000-8000-000000000022" "Piece B" choice FixedMounting |> withParameter parameter 0.75
+                pieceT = itemOf "22700000-0000-4000-8000-000000000023" "Piece T" choice FixedMounting |> withParameter parameter 0.25
+                element = element
+                bindingOfT = bindingOfT
+            }
+        // A preset-bound model, then a standalone one: S6 does not wait for S8.2's models. The standalone piece binds no
+        // preset, so the element's source binding gives way to none.
+        let branches : SameModelPieces list =
+            [
+                piecesOf
+                    laserChoice
+                    "intensityScale"
+                    (descriptor (ElementId "copied-source") LightSource (BoundByEntryId PresetIds.source600))
+                    (BoundByEntryId PresetIds.source600)
+                piecesOf
+                    circularChoice
+                    "c1.extinctionRatio"
+                    (descriptor (ElementId "copied-circular") CircularPolarizer (BoundByEntryId PresetIds.polarizerCpLeft))
+                    Unbound
+            ]
+        for branch in branches do
+            let pieceA = branch.pieceA
+            let pieceB = branch.pieceB
+            let pieceT = branch.pieceT
+            let unassigned = branch.element
+            Assert.Equal<ItemModelInstance>(pieceA.model, pieceB.model)
+            Assert.Equal<ItemModelInstance>(pieceB.model, pieceT.model)
+            Assert.NotEqual<Parameter list>(pieceA.parameters, pieceB.parameters)
+            Assert.NotEqual<Parameter list>(pieceB.parameters, pieceT.parameters)
+            let unattached = darkLine (ExperimentId 1) None
+            let usesB =
+                {
+                    unattached with setup = [ unassigned |> assignedTo pieceB; detector ]
+                }
+            let source, _ =
+                sourceRecording
+                    (fun _ ->
+                        {
+                            items = [ pieceA; pieceB ]
+                            experiments = [ usesB ]
+                        })
+                    clock
+            let toT : ItemCopyRow =
+                {
+                    sourceItem = pieceB
+                    choice = MapOntoKitItem pieceT.id
+                }
+
+            // A target piece whose model snapshot the kit lacks is refused; the source's model is never taken instead.
+            let unmodelled = emptyTarget ReadWriteKitAccess clock
+            unmodelled.context.proxy.writeItem pieceT |> expectKitOk
+            let unmodelledBefore = heldBy unmodelled
+            match unmodelled.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [ toT ] with
+            | Error (UnheldEntryErr reason) ->
+                let modelVersion =
+                    match pieceT.model with
+                    | PresetInstance (model, _)
+                    | SampleInstance (model, _)
+                    | ItemModelVersionInstance model -> model
+                Assert.Contains(modelVersion.itemModelId.value.ToString(), reason)
+                Assert.Contains("Piece T", reason)
+            | Error error -> Assert.Fail($"Expected UnheldEntryErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("A target piece without its model snapshot must be refused.")
+            Assert.Equal<HeldContent>(unmodelledBefore, heldBy unmodelled)
+
+            let target = emptyTarget ReadWriteKitAccess clock
+            holdItems target [ pieceT ]
+            let pieceTFile = KitRelativePath "Piece T.item-json"
+            let pieceTBefore = target.context.proxy.readDataFile pieceTFile |> expectKitOk
+
+            target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [ toT ] |> expectCopyOk |> ignore
+
+            let later = reopened target clock
+            let items = later.context.proxy.readItems () |> expectKitOk
+            let copied = later.context.proxy.readExperiments () |> expectKitOk |> List.exactlyOne
+            match Experiment.itemsUsedBy [ copied ] items with
+            | Ok [ resolved ] ->
+                Assert.Equal<ItemId>(pieceT.id, resolved.id)
+                Assert.Equal<Parameter list>(pieceT.parameters, resolved.parameters)
+            | Ok used -> Assert.Fail($"The copied experiment must resolve exactly the chosen piece, not {List.length used} item(s).")
+            | Error error -> Assert.Fail(error.describe)
+            let onT =
+                {
+                    unassigned with binding = branch.bindingOfT
+                }
+            Assert.Equal<ElementDescriptor list>([ onT |> assignedTo pieceT; detector ], copied.setup)
+            Assert.Equal<Item list>([ pieceT ], items)
+            Assert.Equal<KitDataFile>(pieceTBefore, later.context.proxy.readDataFile pieceTFile |> expectKitOk)
+            let paths = later.folder.paths ()
+            Assert.DoesNotContain(KitRelativePath "Piece A.item-json", paths)
+            Assert.DoesNotContain(KitRelativePath "Piece B.item-json", paths)
+
+    [<Fact>]
+    let ``copying two same-model pieces preserves separate choices and shared use`` () : unit =
+        let clock = steppingClock ()
+        let thickness = "substrate.thickness"
+        let plateA = itemOf "22700000-0000-4000-8000-000000000031" "QZ-A" (sampleChoice SampleIds.glassPlate1mmId) (DialMounted DialPositive) |> withParameter thickness 1.0e-3
+        let unpictured = itemOf "22700000-0000-4000-8000-000000000032" "QZ-B" (sampleChoice SampleIds.glassPlate1mmId) (DialMounted DialPositive) |> withParameter thickness 1.1e-3
+        let plateT = itemOf "22700000-0000-4000-8000-000000000033" "QZ-T" (sampleChoice SampleIds.glassPlate1mmId) (DialMounted DialPositive) |> withParameter thickness 0.9e-3
+        let photoPath = KitRelativePath "data/photos/b.jpg"
+        let photoText = KitFileText "QZ-B photo\n"
+        let plateB =
+            {
+                unpictured with photoOpt = Some photoPath
+            }
+        let plate (id : string) (piece : Item) : ElementDescriptor =
+            descriptor (ElementId id) CatalogueKind.Sample (BoundByVersion plateVersion) |> assignedTo piece
+        let firstLine = darkLine (ExperimentId 1) None
+        let both =
+            {
+                firstLine with setup = [ plate "copied-plate-a" plateA; plate "copied-plate-b" plateB; detector ]
+            }
+        let secondLine = darkLine (ExperimentId 2) None
+        let onlyB =
+            {
+                secondLine with setup = [ plate "copied-plate-b" plateB; detector ]
+            }
+        let source, _ =
+            sourceRecording
+                (fun attach ->
+                    let photo = attach photoPath photoText
+                    Assert.Equal<KitRelativePath>(photoPath, photo.path)
+                    {
+                        items = [ plateA; plateB ]
+                        experiments = [ both; onlyB ]
+                    })
+                clock
+        let target = emptyTarget ReadWriteKitAccess clock
+        holdItems target [ plateT ]
+        let rows : ItemCopyRow list =
+            [
+                {
+                    sourceItem = plateA
+                    choice = MapOntoKitItem plateT.id
+                }
+                {
+                    sourceItem = plateB
+                    choice = AddCopiedItem
+                }
+            ]
+
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1; ExperimentId 2 ] rows |> expectCopyOk
+
+        Assert.Equal<Item list>([ plateB ], report.items)
+        let later = reopened target clock
+        let items = later.context.proxy.readItems () |> expectKitOk
+        Assert.Equal<Item list>([ plateB; plateT ], items)
+        match later.context.proxy.readExperiments () |> expectKitOk with
+        | [ first; second ] ->
+            Assert.Equal<Result<Item list, ItemError>>(Ok [ plateB; plateT ], Experiment.itemsUsedBy [ first ] items)
+            Assert.Equal<Result<Item list, ItemError>>(Ok [ plateB ], Experiment.itemsUsedBy [ second ] items)
+            Assert.Equal<ElementDescriptor list>([ plate "copied-plate-a" plateT; plate "copied-plate-b" plateB; detector ], first.setup)
+            Assert.Equal<ElementDescriptor list>([ plate "copied-plate-b" plateB; detector ], second.setup)
+        | experiments -> Assert.Fail($"Both experiments must be copied, not {List.length experiments}.")
+        Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok (bySnapshotName (closureOf plateB)), later.context.proxy.listSnapshots ())
+        let copiedPhoto : KitDataFile =
+            {
+                path = photoPath
+                text = photoText
+                contentHash = hashOf photoText
+            }
+        Assert.Equal<Result<KitDataFile, KitError>>(Ok copiedPhoto, later.context.proxy.readDataFile photoPath)
+        Assert.DoesNotContain(KitRelativePath "QZ-A.item-json", later.folder.paths ())
