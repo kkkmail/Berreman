@@ -455,6 +455,21 @@ module LibraryDatabaseTests =
             Assert.False(Directory.Exists(fixture.backupsFolder.value))
 
     [<Fact>]
+    let ``tryFileOf answers the library's file, and nothing for an in-memory library`` () : unit =
+        use fixture = new LibraryDatabaseFixture()
+        let memoryString = ConnectionString "Data Source=:memory:"
+        let sharedMemoryString = ConnectionString "Data Source=lib;Mode=Memory;Cache=Shared"
+        let folder = Path.GetDirectoryName(fixture.databaseFile.value)
+        let fileString = ConnectionString $"Data Source={folder}/library.db"
+        let expected = FileName (Path.GetFullPath(fixture.databaseFile.value))
+
+        Assert.Equal<FileName option>(None, LibraryDatabase.tryFileOf memoryString)
+        Assert.Equal<FileName option>(None, LibraryDatabase.tryFileOf sharedMemoryString)
+        Assert.Equal<FileName option>(Some expected, LibraryDatabase.tryFileOf fileString)
+        Assert.False(File.Exists(expected.value), $"tryFileOf created the library file: {expected.value}")
+        Assert.Empty(Directory.GetFileSystemEntries(folder))
+
+    [<Fact>]
     let ``vacuumInto writes a stamped copy of the library and refuses a target that exists`` () : unit =
         use fixture = new LibraryDatabaseFixture()
         use database = LibraryDatabase.openOrCreate fixture.connectionString |> expectDatabaseOk

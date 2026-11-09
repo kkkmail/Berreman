@@ -152,3 +152,33 @@ module WorkbenchSettings =
                 cataloguesFolder = documents.combine catalogues
                 shippedCatalogueFolder = DataLocations.shippedCatalogueDefault
             }
+
+    /// One location of `DataLocations`, as the Data locations window lists it (spec 0050 S5.3).
+    /// It is never stored, so it has no tag.
+    type DataLocationKind =
+        /// The location in `libraryConnection`.
+        | LibraryDatabaseLocation
+        /// The location in `backupsFolder`.
+        | LibraryBackupsLocation
+        /// The location in `preferencesFolder`.
+        | PreferencesLocation
+        /// The location in `kitsFolder`.
+        | KitsLocation
+        /// The location in `exportsFolder`.
+        | ExportsLocation
+        /// The location in `cataloguesFolder`.
+        | CataloguesLocation
+        /// The location in `shippedCatalogueFolder`.
+        | ShippedCatalogueLocation
+
+        /// Every kind once, in the order of the fields of `DataLocations` (spec 0050 S5.3).
+        static member all : DataLocationKind list =
+            [
+                LibraryDatabaseLocation
+                LibraryBackupsLocation
+                PreferencesLocation
+                KitsLocation
+                ExportsLocation
+                CataloguesLocation
+                ShippedCatalogueLocation
+            ]

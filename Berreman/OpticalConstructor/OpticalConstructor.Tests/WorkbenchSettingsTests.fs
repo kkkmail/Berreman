@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Tests
 
+open Microsoft.FSharp.Reflection
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -31,6 +32,27 @@ module WorkbenchSettingsTests =
         Assert.Equal<FolderName>(documents.combine cataloguesFolder, locations.cataloguesFolder)
         Assert.Equal<FolderName>(shippedCatalogueFolder, DataLocations.shippedCatalogueDefault)
         Assert.Equal<FolderName>(DataLocations.shippedCatalogueDefault, locations.shippedCatalogueFolder)
+
+    [<Fact>]
+    let ``every location is a data location kind, in the order of its field`` () : unit =
+        let fieldKinds =
+            [
+                "libraryConnection", LibraryDatabaseLocation
+                "backupsFolder", LibraryBackupsLocation
+                "preferencesFolder", PreferencesLocation
+                "kitsFolder", KitsLocation
+                "exportsFolder", ExportsLocation
+                "cataloguesFolder", CataloguesLocation
+                "shippedCatalogueFolder", ShippedCatalogueLocation
+            ]
+        let fields =
+            FSharpType.GetRecordFields(typeof<DataLocations>)
+            |> Array.map (fun field -> field.Name)
+            |> Array.toList
+
+        Assert.Equal<string list>(List.map fst fieldKinds, fields)
+        Assert.Equal<DataLocationKind list>(List.map snd fieldKinds, DataLocationKind.all)
+        Assert.Equal(7, DataLocationKind.all |> List.distinct |> List.length)
 
     [<Fact>]
     let ``defaults carry modeless select windows and the 5 / 100 / 8 thresholds`` () =
