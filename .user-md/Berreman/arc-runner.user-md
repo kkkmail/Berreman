@@ -259,6 +259,14 @@ committed and uncommitted arc changes from the immutable `.arc-base-json`
 origin supplied by ASG. Operator commits never narrow that scope. Preserve the
 0160 normal-resume exception and its measured checkpoint requirement.
 
+At steps 0185, 0187, 0188 and 0260, every role also reads
+`specs/0050/.manual/014-step-0185-read-only-scene-fixture.md`. It authorizes the
+one-line scene-save fixture repair while preserving every assertion and the
+separate model-guard and storage-refusal coverage. Its 0185 recovery exception
+requires normal resume with `--executability-profile 1` after the operator's
+commit, without `--accept-current-slice`, to record measured checkpoint 184
+before 0186. Preserve the repaired fixture through the later setup-test rename.
+
 The repository's own walls, from AGENTS.md:
 
 - **Never bump a version ring**, Berreman's or STL's.

@@ -225,6 +225,8 @@ module ExperimentControls =
             rangeUnitLabel : ControlCaption
             /// Whether the draft can be committed (an element + a variable are chosen).
             addAvailability : ControlAvailability
+            /// Whether a collected experiment's Remove is offered (spec 0050 S5.3).
+            removalAvailability : ControlAvailability
             editorMode : ExperimentEditorMode
             /// The added experiments (the persistent collection).
             collection : ExperimentRow list
@@ -259,6 +261,7 @@ module ExperimentControls =
             rangePoints = ExperimentPointCount 73
             rangeUnitLabel = ControlCaption "°"
             addAvailability = ControlWithheld
+            removalAvailability = ControlOffered
             editorMode = EditorAddsNew
             collection = []
             readout = None
@@ -724,9 +727,11 @@ module ExperimentControls =
         ] :> IView
 
     // A small row action button (View / Remove), styled to stand out (accent) or plain.
-    let private rowActionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
+    let private rowActionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
         Border.create [
             id.automationAttribute<Border> ()
+            Border.isEnabled availability.isEnabled
+            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
             Border.background (brush background)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
@@ -735,14 +740,14 @@ module ExperimentControls =
             Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
             Border.verticalAlignment VerticalAlignment.Center
             Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label)))
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label, availability)))
         ] :> IView
 
     /// One collection row: the experiment description (single-click Edit, highlighted while editing;
     /// double-click = View), then a "View" action (open the chart window for this experiment) and a Remove.
     /// The row is KEYED by its experiment id, so removing an item recreates the rows that shift slots
     /// instead of patching one row's controls into another's.
-    let private collectionRow (handlers : ExperimentControlsHandlers) (r : ExperimentRow) : IView =
+    let private collectionRow (removal : ControlAvailability) (handlers : ExperimentControlsHandlers) (r : ExperimentRow) : IView =
         let row =
             StackPanel.create [
                 StackPanel.orientation Orientation.Horizontal
@@ -764,8 +769,8 @@ module ExperimentControls =
                         Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.focus)))
                         Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id.value))
                     ] :> IView
-                    rowActionButton (ConstructorUiId.experimentViewButton r.id) (ControlCaption "View ↗") chosenBackground (fun () -> handlers.viewExperiment r.id)
-                    rowActionButton (ConstructorUiId.experimentRemoveButton r.id) (ControlCaption "Remove") idleBackground (fun () -> handlers.removeExperiment r.id)
+                    rowActionButton (ConstructorUiId.experimentViewButton r.id) (ControlCaption "View ↗") chosenBackground ControlOffered (fun () -> handlers.viewExperiment r.id)
+                    rowActionButton (ConstructorUiId.experimentRemoveButton r.id) (ControlCaption "Remove") idleBackground removal (fun () -> handlers.removeExperiment r.id)
                 ]
             ]
             |> Avalonia.FuncUI.DSL.View.withKey r.id.value
@@ -781,7 +786,7 @@ module ExperimentControls =
                  StackPanel.create [
                      StackPanel.name ConstructorUiId.experimentCollection.value
                      StackPanel.orientation Orientation.Vertical
-                     StackPanel.children (rows |> List.map (collectionRow handlers))
+                     StackPanel.children (rows |> List.map (collectionRow state.removalAvailability handlers))
                  ] :> IView)
         ]
 

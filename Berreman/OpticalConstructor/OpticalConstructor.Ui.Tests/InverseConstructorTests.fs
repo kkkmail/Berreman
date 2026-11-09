@@ -405,7 +405,6 @@ module InverseConstructorTests =
                         {
                             initial.kit with
                                 proxy = initial.kit.proxy.readOnlyView
-                                access = ReadOnlyKitAccess
                         }
             }
         let sample = theSample readOnly
@@ -415,7 +414,7 @@ module InverseConstructorTests =
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
         let failed = draft |> updateTableAndElementRotation ExpCommit
         Assert.Equal(draft.experimentCollection, failed.experimentCollection)
-        let refusal = KitReadOnlyErr "snapshotReferences"
+        let refusal = KitReadOnlyErr "writeKindFile"
         match failed.kitStatus with
         | Some status ->
             Assert.StartsWith("Not saved to the kit — ", status.value)
@@ -433,7 +432,6 @@ module InverseConstructorTests =
                         {
                             attached.kit with
                                 proxy = attached.kit.proxy.readOnlyView
-                                access = ReadOnlyKitAccess
                         }
             }
         let edited = protectedModel |> updateTableAndElementRotation (ExpSetRangePoints (ExperimentControls.ExperimentPointCount 7))

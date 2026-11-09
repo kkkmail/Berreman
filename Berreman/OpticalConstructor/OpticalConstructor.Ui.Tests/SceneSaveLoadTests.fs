@@ -123,7 +123,6 @@ module SceneSaveLoadTests =
                             {
                                 ordered.kit with
                                     proxy = ordered.kit.proxy.readOnlyView
-                                    access = ReadOnlyKitAccess
                             }
                 }
             let refused = protectedModel |> updateTableAndElementRotation SceneSave

@@ -1648,6 +1648,21 @@ type TableAndElementRotationModel with
             | InverseConstructor -> "Inverse"
         ControlCaption $"{model.kitCaption.value} — Optical Constructor — {constructorName}"
 
+    /// Whether the kit takes writes: the one place its access decides a control or a write message (spec 0050 S5.3).
+    member model.kitWrites : ControlAvailability =
+        match model.kit.access with
+        | ReadWriteKitAccess -> ControlOffered
+        | ReadOnlyKitAccess -> ControlWithheld
+
+/// Runs a kit write only while the kit takes writes; a read-only kit answers why and writes nothing (spec 0050 S5.3).
+let private guardKitWrite (model : TableAndElementRotationModel) (write : unit -> TableAndElementRotationModel) : TableAndElementRotationModel =
+    match model.kitWrites with
+    | ControlOffered -> write ()
+    | ControlWithheld ->
+        {
+            model with kitStatus = Some (ControlCaption "The kit is open read-only: nothing is saved.")
+        }
+
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -1805,48 +1820,50 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | ExportExperimentData -> exportDraftRun model
     | ExpSetRangePoints n -> { model with experimentCollection = Experiments.setRangePoints n.curvePointCount model.experimentCollection }
     | ExpCommit ->
-        // Spec 0038 step 025; spec 0046: capture the live setup and the detectors' allowed measurement.
-        // Spec 0050 S4.3: accept the committed draft only after its kit file is recorded.
-        match model.draftCapture with
-        | Some capture ->
-            let collection = Experiments.chooseMeasurement capture model.experimentCollection
-            let committed = Experiments.commit model.experimentSetup collection
-            if committed = model.experimentCollection then model
-            else
-                match committed.draft.editingId |> Option.bind (fun id -> committed.experiments |> List.tryFind (fun experiment -> experiment.id = id)) with
-                | Some experiment ->
-                    let library : KitLibraryContext =
-                        {
-                            kit = model.kit
-                            imports = model.catalogueImports
-                        }
-                    match library.recordExperiment experiment with
-                    | Ok () ->
-                        {
-                            model with
-                                experimentCollection = committed
-                                kitStatus = None
-                        }
-                    | Error error ->
-                        {
-                            model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
-                        }
-                | None -> model
-        | None -> model
+        guardKitWrite model (fun () ->
+            // Spec 0038 step 025; spec 0046: capture the live setup and the detectors' allowed measurement.
+            // Spec 0050 S4.3: accept the committed draft only after its kit file is recorded.
+            match model.draftCapture with
+            | Some capture ->
+                let collection = Experiments.chooseMeasurement capture model.experimentCollection
+                let committed = Experiments.commit model.experimentSetup collection
+                if committed = model.experimentCollection then model
+                else
+                    match committed.draft.editingId |> Option.bind (fun id -> committed.experiments |> List.tryFind (fun experiment -> experiment.id = id)) with
+                    | Some experiment ->
+                        let library : KitLibraryContext =
+                            {
+                                kit = model.kit
+                                imports = model.catalogueImports
+                            }
+                        match library.recordExperiment experiment with
+                        | Ok () ->
+                            {
+                                model with
+                                    experimentCollection = committed
+                                    kitStatus = None
+                            }
+                        | Error error ->
+                            {
+                                model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                            }
+                    | None -> model
+            | None -> model)
     | ExpNew -> { model with experimentCollection = model.experimentCollection.newDraft }
     | ExpEdit id -> { model with experimentCollection = Experiments.edit id model.experimentCollection }
     | ExpRemove id ->
-        match model.kit.proxy.deleteExperiment id with
-        | Ok () | Error (MissingKitFileErr _) ->
-            {
-                model with
-                    experimentCollection = Experiments.remove id model.experimentCollection
-                    kitStatus = None
-            }
-        | Error error ->
-            {
-                model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
-            }
+        guardKitWrite model (fun () ->
+            match model.kit.proxy.deleteExperiment id with
+            | Ok () | Error (MissingKitFileErr _) ->
+                {
+                    model with
+                        experimentCollection = Experiments.remove id model.experimentCollection
+                        kitStatus = None
+                }
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                })
     | OpenExperimentChartWindow ->
         // Spec 0027 (026) Part 3: a double-click on the inline chart opens the pop-out interactive ScottPlot
         // window for the current experiment chart. Opening a `Window` is a side effect, matching the existing
@@ -1860,63 +1877,65 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         viewExperimentHook model id
         model
     | AttachDataFileTo (experimentId, file) ->
-        match model.experimentData.attachDataFile file with
-        | Error error ->
-            {
-                model with
-                    experimentDataStatus = model.experimentDataStatus |> Map.add experimentId (DataFileAttachFailed error.caption)
-            }
-        | Ok attachment ->
-            // Spec 0038 Part L (037); spec 0050 S4.2: keep a successful attachment even when parsing or validation fails.
-            let collection = Experiments.attachDataFile experimentId attachment model.experimentCollection
-            match collection.experiments |> List.tryFind (fun e -> e.id = experimentId) with
-            | Some experiment ->
+        guardKitWrite model (fun () ->
+            match model.experimentData.attachDataFile file with
+            | Error error ->
+                {
+                    model with
+                        experimentDataStatus = model.experimentDataStatus |> Map.add experimentId (DataFileAttachFailed error.caption)
+                }
+            | Ok attachment ->
+                // Spec 0038 Part L (037); spec 0050 S4.2: keep a successful attachment even when parsing or validation fails.
+                let collection = Experiments.attachDataFile experimentId attachment model.experimentCollection
+                match collection.experiments |> List.tryFind (fun e -> e.id = experimentId) with
+                | Some experiment ->
+                    let library : KitLibraryContext =
+                        {
+                            kit = model.kit
+                            imports = model.catalogueImports
+                        }
+                    match library.recordExperiment experiment with
+                    | Ok () ->
+                        let status = validateExperimentAttachment model experiment attachment
+                        {
+                            model with
+                                experimentCollection = collection
+                                experimentDataStatus = model.experimentDataStatus |> Map.add experimentId status
+                                kitStatus = None
+                        }
+                    | Error error ->
+                        {
+                            model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        }
+                | None -> model)
+    | SceneSetName name -> { model with sceneName = name }
+    | SceneSave ->
+        guardKitWrite model (fun () ->
+            match SceneName.tryCreate model.sceneName.value with
+            | Error (Scene.InvalidSceneErr reason) ->
+                {
+                    model with kitStatus = Some (ControlCaption $"Save failed — {reason}")
+                }
+            | Ok name ->
                 let library : KitLibraryContext =
                     {
                         kit = model.kit
                         imports = model.catalogueImports
                     }
-                match library.recordExperiment experiment with
+                match library.recordScene name model.captureScene with
                 | Ok () ->
-                    let status = validateExperimentAttachment model experiment attachment
                     {
                         model with
-                            experimentCollection = collection
-                            experimentDataStatus = model.experimentDataStatus |> Map.add experimentId status
-                            kitStatus = None
+                            savedScenes =
+                                name :: model.savedScenes
+                                |> List.distinct
+                                |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.value, second.value))
+                            kitStatus = Some (ControlCaption $"Saved scene '{name.value}'.")
                     }
                 | Error error ->
                     {
                         model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
-                    }
-            | None -> model
-    | SceneSetName name -> { model with sceneName = name }
-    | SceneSave ->
-        match SceneName.tryCreate model.sceneName.value with
-        | Error (Scene.InvalidSceneErr reason) ->
-            {
-                model with kitStatus = Some (ControlCaption $"Save failed — {reason}")
-            }
-        | Ok name ->
-            let library : KitLibraryContext =
-                {
-                    kit = model.kit
-                    imports = model.catalogueImports
-                }
-            match library.recordScene name model.captureScene with
-            | Ok () ->
-                {
-                    model with
-                        savedScenes =
-                            name :: model.savedScenes
-                            |> List.distinct
-                            |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.value, second.value))
-                        kitStatus = Some (ControlCaption $"Saved scene '{name.value}'.")
-                }
-            | Error error ->
-                {
-                    model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
-                }
+                    })
     | SceneLoad name ->
         match model.kit.proxy.readScene name with
         | Ok scene ->
@@ -3106,9 +3125,13 @@ type TableAndElementRotationModel with
             rangePoints = draft.range.points.pointCount
             rangeUnitLabel = ControlCaption (match draft.variable with Some v -> v.unitLabel | None -> "°")
             addAvailability =
-                match col.canCommit, capture with
-                | true, Some _ -> ControlOffered
-                | true, None | false, _ -> ControlWithheld
+                match model.kitWrites with
+                | ControlWithheld -> ControlWithheld
+                | ControlOffered ->
+                    match col.canCommit, capture with
+                    | true, Some _ -> ControlOffered
+                    | true, None | false, _ -> ControlWithheld
+            removalAvailability = model.kitWrites
             editorMode =
                 match draft.editingId with
                 | Some _ -> ExperimentControls.EditorUpdatesExisting
@@ -3353,11 +3376,14 @@ type TableAndElementRotationModel with
               |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.workbenchSelectStatus.value) :> IView ]
 
 /// A small clickable verb box for the host-added strip buttons (the MaterialsControls button look). The
-/// strip buttons live in a variable-membership row, so they carry AutomationIds.
-let private workbenchButton (id : ConstructorUiId) (label : ControlCaption) (onClick : PointerPressedEventArgs -> unit) : IView =
+/// strip buttons live in a variable-membership row, so they carry AutomationIds. Withheld, it is disabled
+/// and dimmed, never hidden (spec 0050 S5.3).
+let private availableWorkbenchButton (availability : ControlAvailability) (id : ConstructorUiId) (label : ControlCaption) (onClick : PointerPressedEventArgs -> unit) : IView =
     Border.create [
         id.automationAttribute<Border> ()
         AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
+        Border.isEnabled availability.isEnabled
+        Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
         Border.background (brush (Color.FromRgb(232uy, 232uy, 232uy)))
         Border.borderBrush (brush (Color.FromRgb(120uy, 120uy, 120uy)))
         Border.borderThickness 1.0
@@ -3368,6 +3394,9 @@ let private workbenchButton (id : ConstructorUiId) (label : ControlCaption) (onC
         Border.child (TextBlock.create [ TextBlock.text label.value ])
         Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf id.value)
     ] :> IView
+
+let private workbenchButton (id : ConstructorUiId) (label : ControlCaption) (onClick : PointerPressedEventArgs -> unit) : IView =
+    availableWorkbenchButton ControlOffered id label onClick
 
 // ---------------------------------------------------------------------------
 // Spec 0038 (017) — the Select bay's Choose… / quick-pick flow. Choose… opens (or re-targets)
@@ -3519,10 +3548,13 @@ let private pickDataFile (owner : Window) (onPicked : FileName -> unit) : unit =
 /// The "Attach data file…" verb for one collected experiment — resolve the owner window from the
 /// click's visual tree (the `selectorChooseButton` precedent) and open the picker, dispatching
 /// `AttachDataFileTo` on a confirmed selection. Keyed + AutomationId'd by the experiment id.
-let private attachDataFileButton (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
+/// Withheld, it is disabled and dimmed and opens no picker (spec 0050 S5.3).
+let private attachDataFileButton (availability : ControlAvailability) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
     let id = ConstructorUiId.attachDataFile experiment.id
     Border.create [
         id.automationAttribute<Border> ()
+        Border.isEnabled availability.isEnabled
+        Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
         Border.background (brush (Color.FromRgb(232uy, 232uy, 232uy)))
         Border.borderBrush (brush (Color.FromRgb(120uy, 120uy, 120uy)))
         Border.borderThickness 1.0
@@ -3533,12 +3565,15 @@ let private attachDataFileButton (dispatch : TableAndElementRotationMsg -> unit)
         Border.child (TextBlock.create [ TextBlock.text "Attach data file…" ])
         Border.onPointerPressed ((fun e ->
             e.Handled <- true
-            match e.Source with
-            | :? Visual as source ->
-                match TopLevel.GetTopLevel source with
-                | :? Window as owner -> pickDataFile owner (fun path -> dispatch (AttachDataFileTo (experiment.id, path)))
-                | _ -> ()
-            | _ -> ()), SubPatchOptions.OnChangeOf experiment.id.uiKey.value)
+            match availability with
+            | ControlWithheld -> ()
+            | ControlOffered ->
+                match e.Source with
+                | :? Visual as source ->
+                    match TopLevel.GetTopLevel source with
+                    | :? Window as owner -> pickDataFile owner (fun path -> dispatch (AttachDataFileTo (experiment.id, path)))
+                    | _ -> ()
+                | _ -> ()), SubPatchOptions.OnChangeOf (box (experiment.id.uiKey.value, availability)))
     ]
     |> Avalonia.FuncUI.DSL.View.withKey id.value
     :> IView
@@ -3563,7 +3598,7 @@ let private dataFileRow (model : TableAndElementRotationModel) (dispatch : Table
                 StackPanel.orientation Orientation.Horizontal
                 StackPanel.spacing 6.0
                 StackPanel.children [
-                    attachDataFileButton dispatch experiment
+                    attachDataFileButton model.kitWrites dispatch experiment
                     TextBlock.create [ TextBlock.text attachedText; TextBlock.foreground (brush (Color.FromRgb(120uy, 120uy, 120uy))); TextBlock.verticalAlignment VerticalAlignment.Center ]
                 ]
             ]
@@ -3618,7 +3653,7 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
                     TextBox.onKeyDown (fun event -> if event.Key = Key.Enter then commitName event.Source)
                     TextBox.onLostFocus (fun event -> commitName event.Source)
                 ]
-                workbenchButton ConstructorUiId.saveSceneButton (ControlCaption "Save scene") saveScene
+                availableWorkbenchButton model.kitWrites ConstructorUiId.saveSceneButton (ControlCaption "Save scene") saveScene
             ]
         ] :> IView
     let statusRow : IView list =
