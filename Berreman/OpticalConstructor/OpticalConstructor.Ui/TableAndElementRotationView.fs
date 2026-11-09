@@ -3630,6 +3630,7 @@ let private selectorBayContent (model : TableAndElementRotationModel) (dispatch 
 
 // ---------------------------------------------------------------------------
 // Experiments are kept in the kit; inverse experiments attach measured data (spec 0050 S4.3).
+// The kit status is shown by the kit bar alone, whichever bay is open (spec 0050 S5.3, `KitWindowView`).
 
 /// Spec 0038 Part L (038): build the measured-data picker's options carrying the persisted start
 /// folder. PURE — the resolved `suggested` folder (resolved from the persisted path through the
@@ -3756,7 +3757,8 @@ let private dataFileRow (model : TableAndElementRotationModel) (dispatch : Table
     |> Avalonia.FuncUI.DSL.View.withKey ("DataFileRow_" + experiment.id.uiKey.value)
     :> IView
 
-/// Saves and loads kit scenes, reports kit status and offers inverse data-file attachments (spec 0050 S4.3).
+/// Saves and loads kit scenes and offers inverse data-file attachments (spec 0050 S4.3). The kit status is the kit
+/// bar's, so one control carries `kitStatus` (spec 0050 S5.3).
 let private collectionBuilderView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let sectionHeading (text : string) : IView =
         TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0)) ] :> IView
@@ -3797,17 +3799,6 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
                 availableWorkbenchButton model.kitWrites ConstructorUiId.saveSceneButton (ControlCaption "Save scene") saveScene
             ]
         ] :> IView
-    let statusRow : IView list =
-        match model.kitStatus with
-        | None -> []
-        | Some text ->
-            [ (TextBlock.create [
-                  ConstructorUiId.kitStatus.automationAttribute<TextBlock> ()
-                  TextBlock.text text.value
-                  TextBlock.foreground (brush (Color.FromRgb(90uy, 90uy, 90uy)))
-                  TextBlock.textWrapping TextWrapping.Wrap
-                  TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0))
-               ] |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.kitStatus.value) :> IView ]
     let savedSceneSection : IView list =
         match model.savedScenes with
         | [] -> []
@@ -3842,7 +3833,7 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
-        StackPanel.children ([ sectionHeading "Scene:"; sceneRow ] @ statusRow @ savedSceneSection @ dataFileSection)
+        StackPanel.children ([ sectionHeading "Scene:"; sceneRow ] @ savedSceneSection @ dataFileSection)
     ] :> IView
 
 /// The Experiments bay content (spec 0038 Part L, 037): the (untouched) Controls-layer experiment

@@ -113,10 +113,16 @@ module ScrollExtentTests =
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, samples, categories, Library.liveLibrary (BuiltinCatalogue.library ()) samples (SourceProxy.createInMemory ())
 
-    let private constructorWindow (model0 : TableAndElementRotationModel) : Window =
+    /// Hosts `view` over `model0` in a FuncUI window: the workbench's `mainView`, or the kit window over it.
+    let private viewWindow
+        (view : TableAndElementRotationModel -> (TableAndElementRotationMsg -> unit) -> Avalonia.FuncUI.Types.IView)
+        (model0 : TableAndElementRotationModel)
+        : Window =
         let window = HostWindow()
-        Program.mkSimple (fun () -> model0) updateTableAndElementRotation mainView |> Program.withHost window |> Program.run
+        Program.mkSimple (fun () -> model0) updateTableAndElementRotation view |> Program.withHost window |> Program.run
         window :> Window
+
+    let private constructorWindow (model0 : TableAndElementRotationModel) : Window = viewWindow mainView model0
 
     /// Main with a polarizer whose R1 run is collected AND being edited — the tallest Experiments bay (editor,
     /// chart, description, collection row, export, collection builder) above the table.
@@ -261,6 +267,26 @@ module ScrollExtentTests =
         let picker = TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner)
         assertReachable "KitStart" (fun () ->
             KitStartWindow(context, ForwardConstructor, (fun _ -> picker), (fun _ _ -> ())))
+
+    /// The tallest Experiments bay under the kit bar at its tallest: a read-only kit with a folder, so its caption is
+    /// longest and Show in Explorer is offered, three files offered for reload and a status (spec 0050 S5.3).
+    let private tallestKitBar () : TableAndElementRotationModel =
+        let filled = filledExperiments ()
+        let readOnlyKit =
+            {
+                filled.kit with access = ReadOnlyKitAccess
+            }
+        {
+            filled with
+                kit = readOnlyKit
+                kitFolderOpt = Some (KitFolder (FolderName "C:/kits/ScrollExtentTests/a bench kit with a long folder name"))
+                kitChanges = [ FileName ".kit-json"; FileName "E1.experiment-json"; FileName "E2.experiment-json" ]
+                kitStatus = Some (ControlCaption "The kit is open read-only: nothing is saved.")
+        }
+
+    [<Fact>]
+    let ``the kit window: the kit bar and the page stay reachable`` () : unit =
+        assertReachable "KitWindow" (fun () -> viewWindow KitWindowView.kitWindowView (tallestKitBar ()))
 
     // ------------------------------ a window never opens larger than its screen ------------------------------
 

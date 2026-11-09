@@ -1,8 +1,13 @@
 namespace OpticalConstructor.Ui.Tests
 
 open System.IO
+open Avalonia
 open Avalonia.Automation
 open Avalonia.Controls
+open Avalonia.FuncUI.Types
+open Avalonia.Headless
+open Avalonia.Input
+open Avalonia.Media
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
@@ -10,7 +15,9 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Storage.KitContentFiles
+open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitOpening
@@ -64,24 +71,96 @@ module KitWindowTests =
         openKitAt folder access ClockProvider.system kitAuthor ctx.catalogueImports
         |> Result.defaultWith (fun error -> failwith error.describe)
 
-    let private controlById (window : Window) (id : ConstructorUiId) : Control =
+    /// Every control in the window carrying `id` as its AutomationId.
+    let private controlsById (window : Window) (id : ConstructorUiId) : Control list =
         window.GetVisualDescendants()
         |> Seq.choose (function :? Control as control -> Some control | _ -> None)
-        |> Seq.tryFind (fun control -> AutomationProperties.GetAutomationId control = id.value)
+        |> Seq.filter (fun control -> AutomationProperties.GetAutomationId control = id.value)
+        |> List.ofSeq
+
+    let private tryControlById (window : Window) (id : ConstructorUiId) : Control option =
+        controlsById window id |> List.tryHead
+
+    let private controlById (window : Window) (id : ConstructorUiId) : Control =
+        tryControlById window id
         |> Option.defaultWith (fun () -> failwith $"{id.value} must be in the window")
+
+    /// The text of the `TextBlock` carrying `id`.
+    let private textOf (window : Window) (id : ConstructorUiId) : string =
+        Assert.IsType<TextBlock>(controlById window id).Text
+
+    /// The label of the verb or action box carrying `id`: the text of the box's child.
+    let private boxLabelOf (window : Window) (id : ConstructorUiId) : string =
+        Assert.IsType<TextBlock>(Assert.IsType<Border>(controlById window id).Child).Text
+
+    /// Hosts `view` over `model` in a FuncUI window, as `ScrollExtentTests.constructorWindow` mounts a view.
+    let private hostedWindow
+        (view : TableAndElementRotationModel -> (TableAndElementRotationMsg -> unit) -> IView)
+        (model : TableAndElementRotationModel)
+        : HostWindow =
+        let window = HostWindow()
+        Program.mkSimple (fun () -> model) updateTableAndElementRotation view |> Program.withHost window |> Program.run
+        window
+
+    /// Shows `kitWindowView` over `model` headless at 1000 × 700, runs `check` over the window, then closes it
+    /// (spec 0050 S5.3).
+    let private withKitWindow (model : TableAndElementRotationModel) (check : Window -> unit) : unit =
+        let window = hostedWindow KitWindowView.kitWindowView model
+        window.Width <- 1000.0
+        window.Height <- 700.0
+        try
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            check window
+        finally
+            window.Close()
+            Dispatcher.UIThread.RunJobs()
+
+    /// Presses the box carrying `id` at its centre, as `LibraryWindowTests.clickOn` does.
+    let private pressBox (window : Window) (id : ConstructorUiId) : unit =
+        let pressed = Assert.IsType<Border>(controlById window id)
+        Assert.True(pressed.IsEffectivelyVisible, $"{id.value} must be visible")
+        pressed.BringIntoView() |> ignore
+        Dispatcher.UIThread.RunJobs()
+        match pressed.TranslatePoint(Point(pressed.Bounds.Width / 2.0, pressed.Bounds.Height / 2.0), window) |> Option.ofNullable with
+        | Some centre ->
+            window.MouseDown(centre, MouseButton.Left, RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+            window.MouseUp(centre, MouseButton.Left, RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+        | None -> Assert.Fail $"{id.value} has no position in its window"
+
+    /// A shell that records every folder it is asked to show and every window close it is asked for. The step-186
+    /// shell is private to `OpticalConstructor.Tests`, which this project does not reference.
+    let private recordingShell (shown : ResizeArray<FolderName>) (closes : ResizeArray<unit>) : KitWindowShell =
+        {
+            KitWindowShell.explorer = ExplorerProxy.createInMemory shown.Add
+            requestClose = fun () -> closes.Add ()
+        }
+
+    /// The forward or inverse constructor loaded from the opened kit, its Kit menu reaching `shell` (spec 0050 S5.3).
+    let private kitWindowModel (ctx : AppContext) (opened : OpenedKit) (mode : ConstructorMode) (shell : KitWindowShell) : TableAndElementRotationModel =
+        let seed =
+            match mode with
+            | ForwardConstructor -> initMainWithKit ctx.library ctx.experiments ctx.materials ctx.samples ctx.categories opened.library.kit
+            | InverseConstructor -> initInverseWithKit ctx.library ctx.experiments ctx.materials ctx.samples ctx.categories opened.library.kit
+        let seeded =
+            {
+                seed with
+                    catalogueImports = ctx.catalogueImports
+                    sources = ctx.sources
+            }
+        let loaded = seeded.loadKit opened
+        {
+            loaded with kitShell = shell
+        }
 
     /// Mounts `mainView` over the inverse model loaded from the kit opened with `access`, with a draft ready to
     /// commit and the Experiments bay selected, and checks every write control against `expected` (spec 0050 S5.3).
     let private assertWriteControls (folder : KitFolder) (ctx : AppContext) (access : KitAccess) (expected : ControlAvailability) : unit =
         let opened = openedAt folder access ctx
         try
-            let seed =
-                {
-                    initInverseWithKit ctx.library ctx.experiments ctx.materials ctx.samples ctx.categories opened.library.kit with
-                        catalogueImports = ctx.catalogueImports
-                        sources = ctx.sources
-                }
-            let loaded = seed.loadKit opened
+            let loaded = kitWindowModel ctx opened InverseConstructor KitWindowShell.inert
             let sample = loaded.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.Sample)
             let model =
                 loaded
@@ -90,8 +169,7 @@ module KitWindowTests =
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             Assert.Equal<Experiments.Experiment list>([ storedExperiment ], model.experimentCollection.experiments)
             Assert.True(model.experimentCollection.canCommit, "the draft must be ready to commit")
-            let window = HostWindow()
-            Program.mkSimple (fun () -> model) updateTableAndElementRotation mainView |> Program.withHost window |> Program.run
+            let window = hostedWindow mainView model
             try
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
@@ -124,3 +202,135 @@ module KitWindowTests =
             finally created.library.kit.close () |> SceneTestFixture.kitSuccess
             assertWriteControls folder ctx ReadOnlyKitAccess ControlWithheld
             assertWriteControls folder ctx ReadWriteKitAccess ControlOffered)
+
+    [<Fact>]
+    let ``the kit window UiIds are the stable intent-named ids`` () : unit =
+        Assert.Equal("KitBar", ConstructorUiId.kitBar.value)
+        Assert.Equal("KitCaptionText", ConstructorUiId.kitCaptionText.value)
+        Assert.Equal("KitShowInExplorerButton", ConstructorUiId.kitShowInExplorerButton.value)
+        Assert.Equal("KitReloadChangesButton", ConstructorUiId.kitReloadChangesButton.value)
+        Assert.Equal("KitCloseButton", ConstructorUiId.kitCloseButton.value)
+        Assert.Equal("KitModeText", ConstructorUiId.kitModeText.value)
+        Assert.Equal("KitSwitchModeButton", ConstructorUiId.kitSwitchModeButton.value)
+        Assert.Equal("KitChangesText", ConstructorUiId.kitChangesText.value)
+        Assert.Equal("KitChangesReloadButton", ConstructorUiId.kitChangesReloadButton.value)
+        Assert.Equal("KitChangesKeepMineButton", ConstructorUiId.kitChangesKeepMineButton.value)
+
+    [<Fact>]
+    let ``the kit bar shows the kit, its Kit menu and the constructor`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            let shown = ResizeArray<FolderName> ()
+            let closes = ResizeArray<unit> ()
+            try
+                let forward = kitWindowModel ctx opened ForwardConstructor (recordingShell shown closes)
+                withKitWindow forward (fun window ->
+                    Assert.Equal(forward.kitCaption.value, textOf window ConstructorUiId.kitCaptionText)
+                    Assert.Equal("Show in Explorer", boxLabelOf window ConstructorUiId.kitShowInExplorerButton)
+                    Assert.Equal("Reload changes", boxLabelOf window ConstructorUiId.kitReloadChangesButton)
+                    Assert.Equal("Close kit", boxLabelOf window ConstructorUiId.kitCloseButton)
+                    Assert.Equal("Main constructor", textOf window ConstructorUiId.kitModeText)
+                    Assert.Equal("Switch to Inverse", boxLabelOf window ConstructorUiId.kitSwitchModeButton))
+                let inverse = kitWindowModel ctx opened InverseConstructor (recordingShell shown closes)
+                withKitWindow inverse (fun window ->
+                    Assert.Equal(inverse.kitCaption.value, textOf window ConstructorUiId.kitCaptionText)
+                    Assert.Equal("Inverse constructor", textOf window ConstructorUiId.kitModeText)
+                    Assert.Equal("Switch to Main", boxLabelOf window ConstructorUiId.kitSwitchModeButton))
+                Assert.Empty(shown)
+                Assert.Empty(closes)
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
+            let scratch = initMain () |> SceneTestFixture.kitSuccess
+            try
+                withKitWindow scratch (fun window ->
+                    Assert.Equal(scratch.kitCaption.value, textOf window ConstructorUiId.kitCaptionText)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitShowInExplorerButton)
+                    Assert.Equal("Reload changes", boxLabelOf window ConstructorUiId.kitReloadChangesButton)
+                    Assert.Equal("Close kit", boxLabelOf window ConstructorUiId.kitCloseButton))
+            finally scratch.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    let ``a changed kit offers Reload and Keep mine on one row, Keep mine to the right`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            try
+                let model = kitWindowModel ctx opened ForwardConstructor (recordingShell (ResizeArray ()) (ResizeArray ()))
+                let offerIds = [ ConstructorUiId.kitChangesText; ConstructorUiId.kitChangesReloadButton; ConstructorUiId.kitChangesKeepMineButton ]
+                withKitWindow model (fun window ->
+                    for id in offerIds do
+                        Assert.Equal<Control option>(None, tryControlById window id))
+                // Another writer (step 126) adds `E2` and renames the kit, so both of its files are offered (step 187).
+                let writer = KitProxy.create opened.folder
+                let e2 =
+                    {
+                        storedExperiment with id = Experiments.ExperimentId 2
+                    }
+                writer.writeExperiment e2 |> SceneTestFixture.kitSuccess
+                let kitFile = writer.readKitFile () |> SceneTestFixture.kitSuccess
+                let renamed =
+                    {
+                        kitFile with name = KitName "Renamed"
+                    }
+                writer.writeKitFile renamed |> SceneTestFixture.kitSuccess
+                let offered = model |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
+                Assert.Equal<FileName list>([ FileName ".kit-json"; FileName "E2.experiment-json" ], offered.kitChanges)
+                withKitWindow offered (fun window ->
+                    Assert.Equal(
+                        "Changed outside the app: .kit-json, E2.experiment-json. Reload them, or keep your version?",
+                        textOf window ConstructorUiId.kitChangesText)
+                    let reload = Assert.IsType<Border>(controlById window ConstructorUiId.kitChangesReloadButton)
+                    let keepMine = Assert.IsType<Border>(controlById window ConstructorUiId.kitChangesKeepMineButton)
+                    Assert.Equal("Reload", boxLabelOf window ConstructorUiId.kitChangesReloadButton)
+                    Assert.Equal("Keep mine", boxLabelOf window ConstructorUiId.kitChangesKeepMineButton)
+                    let row = Assert.IsType<StackPanel>(reload.Parent)
+                    Assert.Same(row, keepMine.Parent)
+                    Assert.Equal(Avalonia.Layout.Orientation.Horizontal, row.Orientation)
+                    Assert.Equal(reload.Bounds.Top, keepMine.Bounds.Top)
+                    Assert.True(keepMine.Bounds.Left > reload.Bounds.Right, "Keep mine must sit to the right of Reload, past a gap")
+                    Assert.Equal(MaterialsWindowView.positiveBackground, Assert.IsType<SolidColorBrush>(reload.Background).Color)
+                    Assert.Equal(MaterialsWindowView.negativeBackground, Assert.IsType<SolidColorBrush>(keepMine.Background).Color))
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    let ``the kit status shows in the kit bar whichever bay is open`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            try
+                let model =
+                    kitWindowModel ctx opened ForwardConstructor (recordingShell (ResizeArray ()) (ResizeArray ()))
+                    |> updateTableAndElementRotation (CheckKitChanges KitCheckOnRequest)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "No kit file changed outside the app."), model.kitStatus)
+                for bay in [ BayNames.add; BayNames.experiments ] do
+                    withKitWindow (model |> updateTableAndElementRotation (SelectBay bay)) (fun window ->
+                        let status = Assert.IsType<TextBlock>(Assert.Single(controlsById window ConstructorUiId.kitStatus))
+                        Assert.Equal("No kit file changed outside the app.", status.Text)
+                        let bar = controlById window ConstructorUiId.kitBar
+                        Assert.Contains<Visual>(bar, status.GetVisualAncestors()))
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing the kit bar's buttons sends their messages`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            let shown = ResizeArray<FolderName> ()
+            let closes = ResizeArray<unit> ()
+            try
+                let model = kitWindowModel ctx opened ForwardConstructor (recordingShell shown closes)
+                withKitWindow model (fun window ->
+                    pressBox window ConstructorUiId.kitSwitchModeButton
+                    Assert.Equal("Inverse constructor", textOf window ConstructorUiId.kitModeText)
+                    Assert.Equal("Switch to Main", boxLabelOf window ConstructorUiId.kitSwitchModeButton)
+                    pressBox window ConstructorUiId.kitShowInExplorerButton
+                    Assert.Equal<FolderName list>([ opened.folder.value ], List.ofSeq shown)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitStatus)
+                    pressBox window ConstructorUiId.kitReloadChangesButton
+                    Assert.Equal("No kit file changed outside the app.", textOf window ConstructorUiId.kitStatus)
+                    Assert.Empty(closes)
+                    pressBox window ConstructorUiId.kitCloseButton
+                    Assert.Equal(1, closes.Count)
+                    Assert.Equal<FolderName list>([ opened.folder.value ], List.ofSeq shown))
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)

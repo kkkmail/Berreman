@@ -116,6 +116,7 @@
         <Compile Include="KitOpening.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="KitStartView.fs" />
+        <Compile Include="KitWindowView.fs" />
         <!-- Spec 0038 Part C (step 006): the ONE app-scope composition record — the
              five domain proxies plus the step-005 WorkbenchSettings, built once at
              App startup and injected into every window (the in-window five-proxy

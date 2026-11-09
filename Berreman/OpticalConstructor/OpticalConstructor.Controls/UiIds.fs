@@ -161,12 +161,13 @@ type ConstructorUiId =
     /// The Select bay's Choose… verb and its inline quick-pick strip.
     static member selectorChooseButton : ConstructorUiId = ConstructorUiId "SelectorChooseButton"
     static member selectorQuickPickStrip : ConstructorUiId = ConstructorUiId "SelectorQuickPickStrip"
-    /// The kit status line and the inverse experiment data files (spec 0050 S4.3).
+    /// The kit bar's status line, shown whichever bay is open (spec 0050 S4.3, S5.3).
     static member kitStatus : ConstructorUiId = ConstructorUiId "KitStatus"
     /// The scene row's name field, save action and saved scenes (spec 0050 S4.3).
     static member sceneNameField : ConstructorUiId = ConstructorUiId "SceneNameField"
     static member saveSceneButton : ConstructorUiId = ConstructorUiId "SaveSceneButton"
     static member savedScenes : ConstructorUiId = ConstructorUiId "SavedScenes"
+    /// The inverse experiment data files (spec 0050 S4.3).
     static member experimentDataFiles : ConstructorUiId = ConstructorUiId "ExperimentDataFiles"
 
     // --- The materials workbench list surface (`MaterialsControls`). ---
@@ -676,6 +677,28 @@ type ConstructorUiId =
     static member kitHistoryLocateButton (row : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"KitHistoryLocateButton_{row.value}"
     /// Remove from history of the missing kit at this place (spec 0050 S5.2).
     static member kitHistoryRemoveButton (row : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"KitHistoryRemoveButton_{row.value}"
+
+    // --- The kit window's kit bar (KitWindowView). ---
+    /// The kit bar above the workbench (spec 0050 S5.3).
+    static member kitBar : ConstructorUiId = ConstructorUiId "KitBar"
+    /// The kit's caption: its name, its access and its folder (spec 0050 S5.3).
+    static member kitCaptionText : ConstructorUiId = ConstructorUiId "KitCaptionText"
+    /// The Kit menu's Show in Explorer, present only for a kit with a folder (spec 0050 S5.3).
+    static member kitShowInExplorerButton : ConstructorUiId = ConstructorUiId "KitShowInExplorerButton"
+    /// The Kit menu's Reload changes: checks the kit for files changed outside the app (spec 0050 S5.3).
+    static member kitReloadChangesButton : ConstructorUiId = ConstructorUiId "KitReloadChangesButton"
+    /// The Kit menu's Close kit (spec 0050 S5.3).
+    static member kitCloseButton : ConstructorUiId = ConstructorUiId "KitCloseButton"
+    /// The constructor the window runs, Main or Inverse (spec 0050 S5.3).
+    static member kitModeText : ConstructorUiId = ConstructorUiId "KitModeText"
+    /// The switch to the other constructor (spec 0050 S5.3).
+    static member kitSwitchModeButton : ConstructorUiId = ConstructorUiId "KitSwitchModeButton"
+    /// The reload offer's question, naming the files changed outside the app (spec 0050 S5.3).
+    static member kitChangesText : ConstructorUiId = ConstructorUiId "KitChangesText"
+    /// The reload offer's Reload (spec 0050 S5.3).
+    static member kitChangesReloadButton : ConstructorUiId = ConstructorUiId "KitChangesReloadButton"
+    /// The reload offer's Keep mine (spec 0050 S5.3).
+    static member kitChangesKeepMineButton : ConstructorUiId = ConstructorUiId "KitChangesKeepMineButton"
 
     // --- The diagnostic test launcher window (`TestLauncherWindow`, project TestWindows.App). ---
     static member openTableRotationTestButton : ConstructorUiId = ConstructorUiId "OpenTableRotationTestButton"
