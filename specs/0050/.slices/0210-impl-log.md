@@ -61,6 +61,20 @@
 - `CatalogueImportInMemoryTests`' `tryHeldEnvelope` arm is kept: it covers the shared database seam.
 - Nothing else changed.
 
+**Relaunch after the ui-smoke deadline recovery (operator note; manual 015)**
+
+- The implementation is committed as `90ab50b` and the recovery as `965cdae`. This round does no product, test,
+  schema or catalogue work and does not rerun `export-item-models.fsx`.
+- Plan: confirm the tree is clean apart from the arc-runner's own state files, rebuild, take development measurements
+  of the step's suites (ui-smoke against its new 600 s deadline), and record them here and in the state of the world.
+- Started 2026-11-09: `git status` shows only `specs/0050/` supervisor and snapshot files modified; no product file.
+- Confirmed `0210.gates` carries `attempt_timeout_seconds: 600` on ui-smoke, as does
+  `.gates/OpticalConstructor/ui-smoke.gates`. 122 slice snapshots carry it (the pending smoke ones); the completed
+  steps' snapshots are unchanged.
+- Done: rebuilt and measured every gate of the step's roster as development runs (Testing state, "Relaunch runs").
+  No file outside `specs/0050/.slices/0210-*` and `specs/0050/.artifacts/` was written; `git status -- Berreman/
+  Elevation/ .gates/` is empty after the runs.
+
 ## Files modified
 
 **Within the authorized effects**
@@ -155,6 +169,24 @@
 
 These are development runs (Invariant 6: the gate engine gives the verdict). Logs are in `.artifacts/`.
 
+**Relaunch runs** (2026-11-09, over the committed tree `965cdae`; each command as its gate runs it, with results
+under `.artifacts/0210-resume/`; times against each gate's effective deadline in the `0210.gates` snapshot):
+
+| Gate | Result | Measured | Deadline |
+|---|---|---|---|
+| build | exit 0, 0 errors; 2 SYSLIB0051 warnings in vendored MathNet `Exceptions.cs` (Gotchas) | 72 s | 600 s |
+| build (incremental, again) | exit 0, 0 warnings, 0 errors | 4 s | 600 s |
+| constructor-unit-tests (whole suite) | 1281 passed, 0 failed, 0 skipped | 63.5 s | 180 s |
+| ui-smoke | 237 passed, 0 failed, 0 skipped | 193.8 s (194 s wall) | 600 s |
+| ui-tests (`AppContextTests`, `ImportDialogTests`) | 27 passed, 0 failed, 0 skipped | 35.6 s | 360 s |
+| elevation (`ASG_ARC_BASE_COMMIT=f395597c…`, ELEV004 excluded) | `ELEV-GATE: OK - 0 new finding(s) in 12 project(s)` | 189 s | 600 s |
+| the fourteen `invariant-s22-*` | every one "INVARIANT HOLDS" (ASG's evaluator) | — | — |
+
+- The five named constructor identities are each `Passed` in `constructor-unit-tests.trx`.
+- The counts match the operator's expectation for checkpoint 209: constructor 1281, smoke 237.
+- ui-smoke still runs past its old 180 s deadline (193.8 s), and it is now inside the approved 600 s one (manual 015).
+  Manual 015 measured the same suite at 190.9 s.
+
 **Attempt 2 re-runs** (after the one fact extension; the other gates' inputs are unchanged):
 
 - **build:** exit 0, 0 warnings, 0 errors (`0210-build-attempt-02.log`); the test assembly was rebuilt after the
@@ -195,6 +227,9 @@ These are development runs (Invariant 6: the gate engine gives the verdict). Log
 - `0210-scripts/`: the one-off Python edit scripts used for exact multi-line replacements.
 - Attempt 2: `0210-build-attempt-02.log`, `0210-constructor-unit-tests-attempt-02.log` (and `.trx`),
   `0210-elevation-attempt-02.log`.
+- Relaunch: `0210-build-resume.log`, `0210-build-resume-2.log`; `0210-resume/` holds
+  `constructor-unit-tests.log` / `.trx`, `ui-smoke.log` / `.trx`, `ui-tests-selected.log`, `ui-tests.trx`,
+  `elevation.log` and `invariants.log`.
 
 ## Gotchas
 
@@ -210,3 +245,7 @@ These are development runs (Invariant 6: the gate engine gives the verdict). Log
   duplicates with `DuplicateEntryVersionErr`. Step 212 deletes it.
 - **`specs/0050/.manifest.state.json` was dirty before this round** (CRLF, the arc-runner's own). It was left
   untouched.
+- **The relaunch's first build recompiled vendored MathNet and reported its two SYSLIB0051 warnings**
+  (`MathNetNumerics/Numerics/Exceptions.cs`, lines 24 and 77). Manual 005 records the same pair. None comes from our
+  code, and the next incremental build reported 0 warnings. MathNet is outside this step's effects and was not edited.
+  Neither build output contains the word `error`.

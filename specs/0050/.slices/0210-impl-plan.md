@@ -56,3 +56,13 @@ requirement (2), "every match … gains the case"): `KitLibrary.fs`, `PresetData
   build copied the schemas.
 - **The hash of an item-model entry is over its file node** (int tags), not over `contentHashOf content`. The
   integrity fact therefore checks the hash through `sealed`.
+
+## Relaunch (manual 015)
+
+The work above is committed (`90ab50b`), and the ui-smoke deadline recovery is `965cdae`. This round:
+
+- does no product, test, schema or catalogue work and does not rerun the exporter;
+- rebuilds and takes development measurements of the step's 19-gate roster, ui-smoke against its new 600 s
+  deadline;
+- records them in the impl log and the state of the world, for the supervisor's normal review and gates
+  (checkpoint 209: constructor 1281, smoke 237).

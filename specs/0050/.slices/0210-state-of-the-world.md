@@ -39,6 +39,22 @@ These are development runs, recorded in `0210-impl-log.md`. The gate engine give
   constructor-unit-tests (1281 passed, unchanged) and elevation (`ELEV-GATE: OK`). The UI suites' inputs did not
   change.
 
+**Relaunch after the ui-smoke deadline recovery** (manual 015; operator commits `90ab50b` and `965cdae`). No product,
+test, schema or catalogue file changed, and the exporter was not rerun. Measured on 2026-11-09 over the committed
+tree, against the deadlines in the `0210.gates` snapshot:
+
+- **build:** exit 0, 0 errors, 72 s. Its two warnings are vendored MathNet's SYSLIB0051 (as in manual 005); the
+  incremental rebuild reported 0 warnings.
+- **constructor-unit-tests:** 1281 passed, 0 failed, 0 skipped, 63.5 s (deadline 180 s). The five named identities
+  are each `Passed`.
+- **ui-smoke:** 237 passed, 0 failed, 0 skipped, **193.8 s**. That is over the former 180 s deadline (the cause of
+  the 0210 escalation) and inside the approved **600 s** `attempt_timeout_seconds`.
+- **ui-tests** (`AppContextTests`, `ImportDialogTests`): 27 passed, 0 failed, 35.6 s (deadline 360 s).
+- **elevation:** `ELEV-GATE: OK - 0 new finding(s) in 12 project(s)`, 189 s (deadline 600 s).
+- **The fourteen `invariant-s22-*` gates:** each holds.
+- These counts are the expected checkpoint 209 (constructor 1281, smoke 237). The supervisor's normal review and
+  19-gate cycle are still to run.
+
 ```yaml
 gates:
   constructor_unit_tests: 1281
@@ -85,6 +101,8 @@ Nothing in this step's scope.
 - **A script that reads library files under `dotnet fsi` must set `APP_CONTEXT_BASE_DIRECTORY`** to a folder holding
   `schema/`.
 - **`export-item-models.fsx` is not idempotent.** A second run is refused with `DuplicateEntryVersionErr`.
+- **ui-smoke takes about 190–194 s.** That passes only under the 600 s deadline manual 015 approved; the runtime
+  estimate (180 s) is no longer its deadline.
 
 ## Changelog
 
@@ -94,3 +112,6 @@ Nothing in this step's scope.
 - 2026-11-09 — step 0210, attempt 2: the shipped-item-models fact now imports the catalogue into the in-memory seam
   and checks `listItemModels` holds exactly the shipped item models and `resolveItemModelVersion` answers one at
   version 1 (no new test identity; 1281).
+- 2026-11-09 — step 0210, relaunch after the ui-smoke deadline recovery (manual 015): no source change. Rebuilt and
+  re-measured: constructor 1281, smoke 237 in 193.8 s under the 600 s deadline, selected UI 27, elevation OK,
+  invariants hold.

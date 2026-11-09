@@ -112,6 +112,7 @@ qualifier: smoke
 requires_gates: [build]
 whole_suite: light
 runtime_actual_whole_seconds: 27
+attempt_timeout_seconds: 600
 ---
 name: ui-tests
 description: Headless per-panel view-test gate for the Optical Constructor FuncUI app — runs the Avalonia.Headless per-panel/page view tests (mount each view over a known RootModel, assert key controls exist and a simulated interaction dispatches the expected RootMsg) in OpticalConstructor.Ui.Tests, every test without the ui-smoke trait (spec 0024 §0.7 / Test artifacts) — on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
