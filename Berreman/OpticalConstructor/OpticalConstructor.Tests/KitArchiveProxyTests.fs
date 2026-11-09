@@ -5,6 +5,7 @@ open System.Text
 open System.Threading
 open Xunit
 open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitArchive
 
@@ -70,6 +71,41 @@ module private KitArchiveProxyTestData =
 
     let comparableFiles (files : (string * byte[]) list) : (string * byte list) list =
         files |> List.map (fun (path, bytes) -> path, List.ofArray bytes)
+
+    /// The sample kit with the app's cache in it: a lock held elsewhere and a planner file under `kit/.oc` (spec 0050 S6).
+    let sampleKitWithAppCache (disk : KitArchiveTestDisk) : unit =
+        sampleKit disk
+        disk.placeFile "kit/.oc/lock" (Encoding.UTF8.GetBytes "held elsewhere")
+        disk.placeFile "kit/.oc/planner/c.json" (Encoding.UTF8.GetBytes "{ }")
+
+    /// The sample kit's file, leaving every `.dng` out of a send (spec 0050 S6).
+    let dngExcludingKitFile : KitFile =
+        let id = KitId (Guid.Parse "0b7e4f3a-9c2d-4a61-8e15-d3f6a2c90b47")
+        let name = KitName "sample"
+        let author = KitAuthor "Test author"
+        let instant = ClockTime (DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc))
+        {
+            KitFile.create id name author instant with
+                sendExclude = [ SendExcludeGlob "**/*.dng" ]
+        }
+
+    let fourFiles : KitArchiveFileCount = KitArchiveFileCount 4
+
+    /// Sends the sample kit, its app cache in it, to `out/kit.zip`, answering the zip.
+    let sendSampleKit (disk : KitArchiveTestDisk) : FileName =
+        sampleKitWithAppCache disk
+        let zip = zipUnderOut disk
+        Assert.Equal<Result<KitArchiveOutcome, KitArchiveError>>(
+            Ok (KitArchiveFinished fourFiles),
+            disk.archive.sendKit dngExcludingKitFile (folderUnder disk "kit") zip KitArchiveObserver.unobserved)
+        zip
+
+    /// Zips these entries of the kit to `out/kit.zip`, asserting how many files it holds, and answers the zip.
+    let zipKitEntries (disk : KitArchiveTestDisk) (entries : KitTreeEntry list) (files : KitArchiveFileCount) : FileName =
+        let zip = zipUnderOut disk
+        let job : KitZipJob = { kit = folderUnder disk "kit"; entries = entries; zip = zip }
+        Assert.Equal<Result<KitArchiveOutcome, KitArchiveError>>(Ok (KitArchiveFinished files), disk.archive.writeKitZip job KitArchiveObserver.unobserved)
+        zip
 
 open KitArchiveProxyTestData
 
@@ -186,6 +222,85 @@ type KitArchiveProxyContract () =
         | Error (KitArchiveIoErr reason) -> Assert.Contains("none.zip", reason)
         | Ok _
         | Error _ -> Assert.Fail "listed a zip that is not there"
+
+    [<Fact>]
+    member this.``sending a kit zips every file and folder but the app cache and what its globs leave out`` () : unit =
+        let disk = this.freshDisk ()
+        let zip = sendSampleKit disk
+
+        let expected =
+            [
+                KitTreeFile (kitPath ".kit-json")
+                KitTreeFolder (kitPath "data")
+                KitTreeFolder (kitPath "data/empty")
+                KitTreeFolder (kitPath "data/raw")
+                KitTreeFile (kitPath "data/run 1.csv")
+                KitTreeFolder (kitPath "library")
+                KitTreeFile (kitPath "library/x.material-json")
+                KitTreeFile (kitPath "notes.txt")
+            ]
+
+        Assert.Equal<Result<KitTreeEntry list, KitArchiveError>>(Ok expected, disk.archive.listZipEntries zip)
+
+    [<Fact>]
+    member this.``a zip is never written inside the kit it holds`` () : unit =
+        let disk = this.freshDisk ()
+        sampleKitWithAppCache disk
+        let before = disk.paths "kit"
+        let zip = FileName $"{disk.root}/kit/out/kit.zip"
+
+        match disk.archive.sendKit dngExcludingKitFile (folderUnder disk "kit") zip KitArchiveObserver.unobserved with
+        | Error (KitZipInsideKitErr reason) -> Assert.Contains("kit/out/kit.zip", reason)
+        | Ok _
+        | Error _ -> Assert.Fail "sent a kit into a zip inside the kit"
+
+        Assert.Equal<string list>(before, disk.paths "kit")
+
+    [<Fact>]
+    member this.``a received kit holds every sent file byte for byte`` () : unit =
+        let disk = this.freshDisk ()
+        let zip = sendSampleKit disk
+
+        Assert.Equal<Result<KitArchiveOutcome, KitArchiveError>>(
+            Ok (KitArchiveFinished fourFiles),
+            disk.archive.receiveKit zip (folderUnder disk "received") KitArchiveObserver.unobserved)
+
+        let leftOut = [ ".oc/lock"; ".oc/planner/c.json"; "data/raw/IMG_0001.DNG" ]
+        let sent = disk.files "kit" |> List.filter (fun (path, _) -> not (List.contains path leftOut))
+        Assert.Equal<(string * byte list) list>(comparableFiles sent, comparableFiles (disk.files "received"))
+
+    [<Fact>]
+    member this.``a zip that holds no kit file is refused and nothing is extracted`` () : unit =
+        let disk = this.freshDisk ()
+        sampleKitWithAppCache disk
+        let kitFileEntry = KitTreeFile (kitPath ".kit-json")
+        let tree = expectOk (disk.archive.listKitTree (folderUnder disk "kit"))
+        Assert.Contains(kitFileEntry, tree)
+        let zip = zipKitEntries disk (tree |> List.filter (fun entry -> entry <> kitFileEntry)) (KitArchiveFileCount 6)
+
+        match disk.archive.receiveKit zip (folderUnder disk "received") KitArchiveObserver.unobserved with
+        | Error (KitZipHoldsNoKitErr reason) -> Assert.Contains("kit.zip", reason)
+        | Ok _
+        | Error _ -> Assert.Fail "received a zip that holds no kit file"
+
+        Assert.DoesNotContain<string>("received", disk.paths "")
+
+    [<Fact>]
+    member this.``a zip's app cache is not received`` () : unit =
+        let disk = this.freshDisk ()
+        sampleKitWithAppCache disk
+        let tree = expectOk (disk.archive.listKitTree (folderUnder disk "kit"))
+        Assert.Contains(KitTreeFolder (kitPath ".oc"), tree)
+        Assert.Contains(KitTreeFile (kitPath ".oc/lock"), tree)
+        let zip = zipKitEntries disk tree (KitArchiveFileCount 7)
+
+        Assert.Equal<Result<KitArchiveOutcome, KitArchiveError>>(
+            Ok (KitArchiveFinished fiveFiles),
+            disk.archive.receiveKit zip (folderUnder disk "received") KitArchiveObserver.unobserved)
+
+        let received = disk.paths "received"
+        Assert.Contains(".kit-json", received)
+        Assert.DoesNotContain<string>(received, fun path -> path = ".oc" || path.StartsWith(".oc/", StringComparison.Ordinal))
 
 /// The archive contract over the in-memory disk, rooted at `C:/disk` (spec 0050 S6).
 type KitArchiveProxyTests () =

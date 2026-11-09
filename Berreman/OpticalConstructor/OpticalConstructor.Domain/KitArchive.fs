@@ -443,3 +443,67 @@ module KitArchive =
                 listZipEntries = listZipEntries
                 extractKitZip = extractKitZip
             }
+
+        /// Zips what the kit file sends, never the app's cache or what its globs leave out; a zip inside the kit it
+        /// holds is KitZipInsideKitErr, and nothing is listed or written (spec 0050 S6; 001 §H).
+        member this.sendKit
+            (kitFile : KitFile)
+            (kit : KitFolder)
+            (zip : FileName)
+            (observer : KitArchiveObserver)
+            : Result<KitArchiveOutcome, KitArchiveError> =
+            match kit.tryKitPathOf zip with
+            | Some _ -> Error (KitZipInsideKitErr $"'{zip.value}'")
+            | None ->
+                this.listKitTree kit
+                |> Result.bind (fun tree ->
+                    let job : KitZipJob = { kit = kit; entries = kitFile.sentEntries tree; zip = zip }
+                    this.writeKitZip job observer)
+
+        /// Extracts a zip holding `.kit-json` at its root, never its app cache: a foreign `.oc/lock` would make the
+        /// received kit look open elsewhere. A zip without one is KitZipHoldsNoKitErr, and nothing is written (spec 0050 S6).
+        member this.receiveKit
+            (zip : FileName)
+            (target : KitFolder)
+            (observer : KitArchiveObserver)
+            : Result<KitArchiveOutcome, KitArchiveError> =
+            this.listZipEntries zip
+            |> Result.bind (fun entries ->
+                let kitFileOpt =
+                    entries
+                    |> List.tryPick (fun entry ->
+                        match entry with
+                        | KitTreeFile path
+                            when String.Equals(path.value, KitFile.fileName.value, StringComparison.OrdinalIgnoreCase) ->
+                            Some path
+                        | KitTreeFile _
+                        | KitTreeFolder _ -> None)
+
+                match kitFileOpt with
+                | None -> Error (KitZipHoldsNoKitErr $"'{zip.value}'")
+                | Some _ ->
+                    let contentEntries =
+                        entries
+                        |> List.choose (fun entry ->
+                            match entry.path.pathRole with
+                            | KitContentPath -> Some entry
+                            | KitAppCachePath -> None)
+                    let job : KitUnzipJob = { zip = zip; entries = contentEntries; target = target }
+                    this.extractKitZip job observer)
+
+    /// The save dialog of Send kit… and the open dialog of Open kit from zip…, as `KitFolderPicker` (spec 0050 S6; 001 §H).
+    [<ReferenceEquality>]
+    type KitZipPicker =
+        {
+            /// Asks where to write the zip, suggesting the given name (`KitName.zipFileName`); None when cancelled (spec 0050 S6).
+            pickZipToWrite : FileName -> Async<FileName option>
+            /// Asks for a zip to open; None when cancelled (spec 0050 S6).
+            pickZipToOpen : unit -> Async<FileName option>
+        }
+
+        /// Answers None to both at once, the picker of a scene that picks nothing (spec 0050 S6).
+        static member none : KitZipPicker =
+            {
+                pickZipToWrite = fun _ -> async { return None }
+                pickZipToOpen = fun () -> async { return None }
+            }
