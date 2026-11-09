@@ -254,7 +254,7 @@ module KitLibrary =
                 | SourceEntryKind -> content.toSourcePreset |> Result.map (SourceItem >> Some)
                 | PolarizerEntryKind -> content.toPolarizerPreset |> Result.map (PolarizerItem >> Some)
                 | DetectorEntryKind -> content.toDetectorPreset |> Result.map (DetectorItem >> Some)
-                | MaterialEntryKind | CategoryEntryKind -> Ok None
+                | MaterialEntryKind | CategoryEntryKind | ItemModelEntryKind -> Ok None
                 |> Result.mapError (fun error -> LibraryUnavailableErr $"snapshot {content.describe}: {error.describe}")
 
             let entriesForKind (kind : CatalogueKind) : Result<LibraryEntry list, LibraryError> =

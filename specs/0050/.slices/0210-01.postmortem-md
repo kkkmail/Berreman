@@ -1,0 +1,102 @@
+# Post-mortem -- slice 0210, attempt 01
+
+## Summary
+
+Step 0210 is implemented and was judged review-green on cycle 2; build, elevation and constructor-unit-tests passed, but the supervisor killed ui-smoke at its 180 s deadline before the summary printed, and the arc escalated on "verification environment/deadline evidence".
+The suite still passes (237 of 237), but it now needs about 192 s. Its frozen deadline was never raised as the suite grew from 25 s to 176 s across the arc, despite 27 near-budget warnings, and this step's eleven built-in item models pushed it over.
+
+## Root cause
+
+The single load-bearing cause is the **ui-smoke gate descriptor's deadline**. The ui-smoke entry in `specs/0050/.spec-gates` (lines 98–125) has no `attempt_timeout_seconds`. It only has `runtime_estimate_seconds: 180` and a stale `runtime_actual_whole_seconds: 27`. ASG's `deadlines.effective_attempt_timeout` (`multistep/_arc_runner/gates/deadlines.py:8–20`) falls back to `runtime_estimate_seconds` as the hard kill. `evaluate_gate.py:836` resolves `first_timeout` through it, and `evaluate_gate.py:1061–1069` returns `OUTCOME_TIMED_OUT` with "first attempt timed out after 180s". `run_phases.py:749` turns that result into the escalation reason.
+
+The run did not fail any test. The worker's two development runs of the same command on the same tree took 193.7 s and 192.0 s, with 237 passed (`.artifacts/0210-ui-smoke-1.log`, `0210-ui-smoke-final.log`). The TRX wall clock was 12:30:45.9 → 12:33:56.8 Z. The supervisor's run was cut at 180.3 s (log line 16824).
+
+The nearest green case under the same rule is ui-smoke at step 0202 (idx 201), which passed in 173.7 s (line 16078). The suite has been within 2–5 % of the deadline since step 0191: 175.3 s, then 171.4, 171.8, 176.2, 174.1, 172.0 and 173.7 s.
+
+This step adds eleven entries to `Catalogue/Builtin/`, which every app start imports (AGENTS.md: `importOnStart` checks `Catalogue/Builtin/` on every start). That added the last ~18 s. The added time is sanctioned product growth, not a defect.
+
+The long-term driver is also product growth the spec sanctions. Since step 0001 the case count rose only 14 % (208 → 237) while wall time rose ×7. The step-to-step jumps line up with wiring steps that put more start-up work into every headless host:
+
+- 0088: the app runs on the library database;
+- 0095: the catalogue import is wired over the database;
+- 0112: start-up imports open the import dialog from the Launcher;
+- 0120: the Library window gains export;
+- 0154 and 0156: kits open, and opening one resolves its library snapshot;
+- 0191: every window registers under its kit.
+
+The TRX holds 3,184 s of test time across 237 parallel tests, so per-host start-up cost dominates.
+
+Two tool-side factors let the deadline arrive as a kill instead of a decision:
+
+- **Warnings only reached the log.** `budget_watch.budget_near` logged `GATE-BUDGET-NEAR` 27 times before this run, at up to 98 % of budget. `boot_budget_warnings` wrote "WARN gate budget: gate ui-smoke ran 159s of its 180s … suggest attempt_timeout_seconds: 240" at four boots (lines 11742, 11797, 11844, 14386). Neither reached the notification channel.
+- **The worker could not see the deadline.** Neither the worker's task file nor the implement-worker and arc-runner system prompts mention a gate deadline (grep for timeout, deadline and runtime_estimate finds nothing). So the worker saw 3 m 13 s and reported ui-smoke "237 passed, unchanged" (SoW, Tests). The judge reviews before the gates run, so it could not see it either.
+
+Neither factor is the owner: the descriptor's deadline is.
+
+There is no change of provider or model since the last green slice, and this is the first deadline escalation in the arc, so this is not a repeat.
+
+## Evidence
+
+- Trigger: `.manifest-arc-runner.log:16829` ESCALATION-RECORDED: "verification environment/deadline evidence: ui-smoke: first attempt timed out after 180s".
+- Gate result: line 16824 `"gate_id": "ui-smoke", "passed": false, "exit_code": null, "elapsed_sec": 180.3`. Line 16825 GATE-BUDGET-NEAR `budget_sec 180, suggested_sec 300`.
+- The same tree passed the earlier gates: line 16814 build green, and line 16828 verify red after 3 gates, both at fingerprint 56e9130669fb. elevation passed at 194.0 s (12:52:57) and constructor-unit-tests at 64.8 s (12:54:03).
+- Worker measurements:
+  - `.artifacts/0210-ui-smoke-1.log`: "total: 237 … succeeded: 237 … duration: 3m 13s 674ms".
+  - `0210-ui-smoke-final.log`: "duration: 3m 12s 039ms".
+  - `0210-ui-tests-whole-1.log`: 655 passed in 2 m 59 s, against ui-tests' 360 s.
+- TRX (`OpticalConstructor.Ui.Tests/TestResults/ui-smoke.trx`, 12:33 Z, the worker's run): 237 results with 3,184.2 s summed. The slowest are ScrollExtentTests Main (99.8 s) and the ImportDialogTests acceptance (99.7 s).
+- Trend: the ui-smoke GATE_RESULT elapsed values rose from 24.8 s (2026-11-06) to 173.7 s (step 0202). Jumps over 8 s came at steps 0088, 0095, 0112, 0120, 0154, 0156 and 0191.
+- Case counts (`.checkpoints-json`): ui_smoke_tests 208 at key 1, and 237 at key 201.
+- Warnings ignored: 27 GATE-BUDGET-NEAR events for ui-smoke before line 16825, the first at line 11480 (157.4 s). Four BOOT "WARN gate budget" lines.
+- Descriptor:
+  - `specs/0050/.spec-gates` ui-smoke: `runtime_estimate_seconds: 180`, `runtime_actual_whole_seconds: 27`, no `attempt_timeout_seconds`.
+  - The same values are in `.gates/OpticalConstructor/ui-smoke.gates` and the compiled `.slices/0210.gates`.
+  - `.spec-gates` has been unchanged since handoff `bbe71da`.
+  - unit-tests (7200) and kit-acceptance (3600) already carry `attempt_timeout_seconds`, which shows the field is the arc's existing channel.
+- Verify (proposal 1 path, traced and not executed):
+  - `compile.py:1972–1989` `_backfill_priorities`: the live `.gates/` catalog contributes only `priority`. "the frozen snapshot governs WHAT runs and HOW", so the edit must be in `.spec-gates`.
+  - `descriptor.py:2424–2427` serialises `attempt_timeout_seconds` into each emitted `.gates`. `.slices/0002.gates:155` carries `attempt_timeout_seconds: 7200`.
+  - `deadlines.py:16–17` prefers it over `runtime_estimate_seconds`.
+  - `_common/runtime/main.py` boot pre-emit runs `compile_spec`, which re-emits every non-completed snapshot. On success it calls `write_receipt` (`compile.py:1510–1515`), so the `.spec-gates` hash bound in `executability/receipt.py:17–20` is re-published before `validate_receipt`.
+  - `.locked` hashes only `.spec-md` and `.spec-jsonl`.
+  - The silence window is `.specrc` `default_silent_for_seconds: 1800`, so a 600 s deadline raises no `deadline_silence_problem`.
+- Forward: 122 pending steps carry ui-smoke: 0210, 0220–0221, 0223, 0225–0233, 0238–0243, 0252, 0254, 0259–0266, 0272–0273, 0276, 0278–0280, 0282–0284, 0288–0297, 0304–0306, 0308–0316, 0319–0321, 0323–0328, 0347, 0354–0355, 0367–0369, 0393, 0410–0424, 0426–0430, 0432–0440, 0446, 0449–0453, 0459–0460, 0464 and 0487–0494.
+  - Linear projection (unverified): about 0.67 s per step since 0156 (157.4 → 193.7 s over 54 steps) puts ui-smoke near 384 s by 0494. 300 s would be crossed around step 0370.
+  - Other gates are inside budget: constructor-unit-tests 36 %, elevation 32 %, selected ui-tests about 4 %.
+- Slice and handoff: acceptance requires "ui-smoke MUST pass with its count unchanged"; the SoW says "ui-smoke: 237 passed, unchanged from the checkpoint"; the impl-log reports 1281 constructor cases (+2) and five FS0025- or acceptance-forced out-of-effects files (Decisions 3).
+- Judge: `.artifacts/code_judge/0210-01-code-judge.md` cycle 2 verdict "review-green": "The cycle-1 gap is closed, exactly as the hint asked". It notes all gates pending pre-build. Side defect, not causal: both cycles wrote the same `0210-01-code-judge.md` (log lines 16785 and 16807), so cycle 1's route-back text survives only as the cycle-2 summary.
+- Manual 005 (named for step 0210 in the project prompt): the integrity fact keeps its identity and extends its counts. The impl-log and judge confirm this.
+- Manuals 013 (2026-11-08) and 014 (2026-11-08) say "Do not change the budget to mask a failure" and "Do not weaken … gates, counts or budgets". Here nothing fails, so the deadline change needs the operator's explicit ruling.
+- History: ESCALATION-RECORDED at 0013, 0035, 0052, 0056, 0059, 0069, 0118, 0132, 0145, 0150, 0153, 0160 (×3) and 0185; INTERRUPTED at line 2761; `--accept-current-slice` at 0035, 0052, 0056, 0118 and 0153. Post-mortems 0013-01 through 0185-01 cover judge, commit, receipt and repair-budget causes; none is a gate deadline (manuals 001–014, 2026-11-03 to 11-08).
+- Accept does not checkpoint: `.checkpoints-json` has no key 51, 55, 117 or 152 (the accepted idx). Key 208 is `constructor_unit_tests: 1279`, and the BASELINE at line 16764 for idx 209 is 1279 / 237.
+- Tree: HEAD `59407d7` (0209); `completed_slices` ends at idx 208, `current_slice` idx 209 is escalated, so 0210 is first pending. Its work is uncommitted (17 modified, 13 untracked product files, 3 handoff files); `.manifest.state.json` and `.expected-red-observed-json` are the runner's.
+- Spawns: implement_worker ×2, code_judge ×2 and postmortem are all anthropic `claude-opus-5-5[1m]`. The last different spawn was at step 0160 (openai `gpt-6-astra`).
+- Counters: route-backs 1 (line 16787 "total_route_backs=1/4"), resolver runs 0. These agree with the task scalars.
+
+## Proposed solutions
+
+Decision: owner a gate descriptor (ui-smoke's frozen 180 s deadline in `specs/0050/.spec-gates`); recommend 1; confidence high; operator decides whether to rule a raised ui-smoke deadline into the frozen `.spec-gates`, and its value (600 s recommended; the runner suggests 300 s).
+
+1. **Raise the deadline at origin, then resume 0210 normally.**
+   - With the arc stopped, add `attempt_timeout_seconds: 600` to the ui-smoke descriptor in `specs/0050/.spec-gates`. Put it after `runtime_actual_whole_seconds`, keep LF, and leave `pass_when`, the count baseline, the selector and the TRX `skip_policy` unchanged.
+   - Add the same line to `.gates/OpticalConstructor/ui-smoke.gates`, so later specs hand off with it. The live catalog alone never reaches this arc.
+   - Write `specs/0050/.manual/015-ui-smoke-deadline.md` recording three facts. The tree passes 237/237 in 192–194 s. The change is a wall-clock allowance, not an acceptance change. Manuals 013 and 014's "do not change budgets to mask a failure" is honoured, because nothing fails.
+   - Add one line to the project prompt's Testing procedure (the standing rule below).
+   - Commit only these four files. Leave 0210's dirty tree for the slice commit.
+   - Before resuming, run the ui-smoke gate's own command once from `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests`. Confirm "Passed!", 237 succeeded and the wall time. build, elevation and constructor-unit-tests already passed under the supervisor on this fingerprint.
+   - Relaunch with `--operator-reply <note below> --executability-profile 1`, and do **not** use `--accept-current-slice`. The work is uncommitted and only 3 of its 19 gates ran. An accepted slice publishes no checkpoint, and step 0211 onward needs checkpoint 209 (constructor 1281, ui-smoke 237).
+   - In the boot log, confirm three things: "boot pre-emit: step-compiler refreshed … gate snapshot(s)" and "step-compiler check + emit OK"; no `BOOT EXECUTABILITY_FAILED`; and no ui-smoke "WARN gate budget". Also confirm `.slices/0210.gates` now reads `attempt_timeout_seconds: 600`.
+   - The supervisor then runs all 19 gates: build, elevation, constructor-unit-tests, ui-smoke, ui-tests (`AppContextTests`, `ImportDialogTests`) and the fourteen invariants. These are invariant-s22-elev-list-empty, -no-vstest, -no-kit-kit-json, -no-eps-axis-evaluated, -complexity-mandatory, -no-seeded-string-preset-ids, -no-seeding-seam, -t1-no-code-seeds, -no-seed-modules, -no-test-db, -no-versions-in-use, -no-scene-collection-seams, -t4-no-ocproj and -no-recent-json.
+   - The next boot re-emits every pending snapshot, so this one edit covers all 122 pending ui-smoke steps listed in Evidence (0210 through 0494). 600 s covers the projected ~384 s at 0494 with 1.5× headroom; 300 s would likely re-escalate near step 0370.
+2. **ASG error, tool-side.**
+   - **Where.** `src/ai_strategy_generator/multistep/_arc_runner/gates/budget_watch.py`, functions `budget_near` and `boot_budget_warnings` (called at `run_arc_runner.py:1847–1860`). Also the worker task builder, which never states the gate deadlines.
+   - **Wrong behaviour.**
+     - A gate that runs at 75–98 % of its effective deadline is only logged. 27 runs and 4 boot warnings never reached NOTIFY.
+     - `effective_attempt_timeout` silently turns `runtime_estimate_seconds` into a hard kill. Nothing tells the worker that deadline, so a 193.7 s development run against a 180 s deadline was reported as "unchanged".
+   - **Reproducing test.** Seed an arc log with GATE-BUDGET-NEAR for ui-smoke at 176.2 s of 180 s, and a `.spec-gates` whose ui-smoke has no `attempt_timeout_seconds`. Boot the runner on a pending step whose snapshot carries ui-smoke. Assert that the operator notifier receives the budget warning, or that boot refuses with it. Today `boot_budget_warnings` returns the line, `log.write` records it, and boot proceeds. Also assert that the worker task file names each roster gate's effective deadline.
+
+Operator note for the resumed slice:
+
+> Step 0210's work is complete and was judged review-green on cycle 2 (fingerprint 56e9130669fb). The escalation was ui-smoke's 180 s deadline, not a defect. Your own runs passed 237/237 in about 192 s. The operator raised ui-smoke's `attempt_timeout_seconds` to 600 in `.spec-gates` (manual 015); pass conditions, counts and selections are unchanged. Manual 005 still applies. Do not change product, test, schema or catalogue files, and do not run `export-item-models.fsx` again (a second run is refused with `DuplicateEntryVersionErr`). Rebuild, confirm the tree is unchanged, add the measured ui-smoke wall time to the SoW and impl-log, and return for normal review and all 19 gates, so the supervisor publishes checkpoint 209 (constructor-unit-tests 1281, ui-smoke 237). Do not use `--accept-current-slice`, change frozen contracts or other gate fields, lower floors, reset budgets, or edit STL.
+
+Standing rule for the project prompt (Testing procedure): "When a development run of a gate's command takes longer than that gate's `attempt_timeout_seconds` (else `runtime_estimate_seconds`) in the step's `.gates` snapshot, report the gate, the measured time and the deadline in the state-of-the-world's Tests section; the supervisor kills a gate at that deadline."

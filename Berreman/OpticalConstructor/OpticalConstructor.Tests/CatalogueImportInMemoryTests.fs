@@ -1645,6 +1645,13 @@ type CatalogueImportContract () =
             | SourceEntryKind -> content.toSourcePreset |> decodeImportEntry |> SourceItem |> assertPreset
             | PolarizerEntryKind -> content.toPolarizerPreset |> decodeImportEntry |> PolarizerItem |> assertPreset
             | DetectorEntryKind -> content.toDetectorPreset |> decodeImportEntry |> DetectorItem |> assertPreset
+            | ItemModelEntryKind ->
+                let expected = content.toItemModel |> decodeImportEntry
+                let actual =
+                    context.proxy.tryHeldEnvelope content.id content.version
+                    |> expectImportOk
+                    |> Option.map (fun held -> held.content.toItemModel |> decodeImportEntry)
+                Assert.True((Some expected = actual), "An item-model id must resolve to its decoded value.")
 
     [<Fact>]
     member this.``importing a catalogue the stores already hold reuses every entry and writes nothing`` () : unit =

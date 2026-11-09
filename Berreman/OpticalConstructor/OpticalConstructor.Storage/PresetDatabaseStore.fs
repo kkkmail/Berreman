@@ -34,7 +34,7 @@ module PresetDatabaseStore =
                         match content.provenance.protection with
                         | ProtectedBuiltIn -> content.toSourcePreset |> Result.map (SourceItem >> Some)
                         | UserManaged -> Ok None
-                    | MaterialEntryKind | CategoryEntryKind | SampleEntryKind -> Ok None
+                    | MaterialEntryKind | CategoryEntryKind | SampleEntryKind | ItemModelEntryKind -> Ok None
                 decoded |> Result.mapError (fun error -> LibraryUnavailableErr error.describe)
 
             let offeredPresets (context : LibraryDbContext) : Result<LibraryEntry list, LibraryError> =

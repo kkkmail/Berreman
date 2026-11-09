@@ -495,7 +495,7 @@ module EntryFileJsonTests =
             [
                 "a row without its contentHash", (fun manifest -> (firstRow manifest).Remove "contentHash" |> ignore)
                 "a row of kind 0", (fun manifest -> (firstRow manifest)["kind"] <- JsonValue.Create 0)
-                "a row of kind 7", (fun manifest -> (firstRow manifest)["kind"] <- JsonValue.Create 7)
+                "a row of kind 8", (fun manifest -> (firstRow manifest)["kind"] <- JsonValue.Create 8)
                 "a row with an empty fileName", (fun manifest -> (firstRow manifest)["fileName"] <- JsonValue.Create "")
                 "a row with another key", (fun manifest -> (firstRow manifest)["extra"] <- JsonValue.Create 1)
                 "an id that is not a GUID", (fun manifest -> manifest["id"] <- JsonValue.Create "not a GUID")
@@ -558,15 +558,17 @@ module EntryFileJsonTests =
         let materials = BuiltinCatalogue.materials ()
         let categories = BuiltinCatalogue.categories ()
         let entries = (BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ()
+        let itemModels = BuiltinCatalogue.itemModels ()
         let contents =
             (materials |> List.map (LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue))
             @ (categories |> List.map categoryContent)
             @ (entries |> List.map entryContent)
+            @ (itemModels |> List.map (fun held -> LibraryEntryContent.ofItemModel held.version builtInCatalogue held.entry |> decodedOf))
 
         let envelopes = contents |> List.map (fun content -> content.``sealed`` |> okOf)
         let manifest = CatalogueManifest.tryCreate testCatalogueId (CatalogueName "Built-in") VersionNumber.first envelopes |> decodedOf
 
-        Assert.Equal(List.length materials + List.length categories + List.length entries, List.length manifest.entries)
+        Assert.Equal(List.length materials + List.length categories + List.length entries + List.length itemModels, List.length manifest.entries)
 
         let kinds = manifest.entries |> List.map (fun row -> row.kind) |> List.distinct
         Assert.Equal<LibraryEntryKind list>(LibraryEntryKind.all, kinds)

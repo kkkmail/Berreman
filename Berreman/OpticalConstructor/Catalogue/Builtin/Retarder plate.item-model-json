@@ -1,0 +1,34 @@
+{
+  "categoryOpt": null,
+  "contentHash": "a5905b549405f36d710890c8c0fc2228e33cac3057340c7d59906f38c002631f",
+  "descriptionOpt": "A wave plate with a retardance and a fast-axis offset; at its defaults it is a quarter-wave plate.",
+  "id": "8e9797b7-f0db-443f-b33d-61f9901881cd",
+  "name": "Retarder plate",
+  "payload": {
+    "Case": "ItemModelPayload",
+    "Fields": [
+      {
+        "Case": "OpticalElementModel",
+        "Fields": [
+          {
+            "Case": "RetarderPlateModel",
+            "Fields": [
+              "ConstantRetardance"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 7,
+    "version": 1
+  },
+  "version": 1
+}

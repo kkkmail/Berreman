@@ -68,7 +68,7 @@ module CatalogueImportProxyTests =
         PutVersion put
 
     let private expectedPuts (catalogue : CatalogueData) : ImportWrite list =
-        [ CategoryEntryKind; MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind ]
+        [ CategoryEntryKind; MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind; ItemModelEntryKind ]
         |> List.collect (fun kind -> catalogue.envelopes |> List.filter (fun envelope -> envelope.content.schema.kind = kind))
         |> List.map expectedPut
 
@@ -103,6 +103,14 @@ module CatalogueImportProxyTests =
         Assert.Empty outcome.rebindings
         Assert.Empty outcome.forks
         Assert.Equal<ImportWrite list>(expectedPuts catalogue, List.ofSeq tape)
+
+        // Step 94's apply order puts the item models last, after the detectors, in row order (spec 0050 S7.1).
+        let itemModelPuts =
+            catalogue.envelopes
+            |> List.filter (fun envelope -> envelope.content.schema.kind = ItemModelEntryKind)
+            |> List.map expectedPut
+        Assert.Equal(11, itemModelPuts.Length)
+        Assert.Equal<ImportWrite list>(itemModelPuts, tape |> List.ofSeq |> List.skip (tape.Count - itemModelPuts.Length))
 
     [<Fact>]
     let ``importCatalogue stops at the first rejected entry and answers its ImportRejectedErr`` () : unit =

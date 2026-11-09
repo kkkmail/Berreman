@@ -1,0 +1,53 @@
+{
+  "categoryOpt": null,
+  "contentHash": "8a403099fbb9c616e614bde3ec211e7394e51987d41fedfe9e430ef76011f81c",
+  "descriptionOpt": "A linear polarizer followed in light order by a retarder whose fast axis sits at 45° plus its own offset.",
+  "id": "33486eec-836a-4cbf-ac79-e3f14439ad4b",
+  "name": "Circular polarizer (linear polarizer and retarder)",
+  "payload": {
+    "Case": "ItemModelPayload",
+    "Fields": [
+      {
+        "Case": "OpticalElementModel",
+        "Fields": [
+          {
+            "Case": "CompoundModel",
+            "Fields": [
+              [
+                {
+                  "form": {
+                    "Case": "RealPolarizerModel",
+                    "Fields": [
+                      "ExtinctionRatioLeakage"
+                    ]
+                  },
+                  "offset": 0
+                },
+                {
+                  "form": {
+                    "Case": "RetarderPlateModel",
+                    "Fields": [
+                      "ConstantRetardance"
+                    ]
+                  },
+                  "offset": 0.7853981633974483
+                }
+              ]
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 7,
+    "version": 1
+  },
+  "version": 1
+}

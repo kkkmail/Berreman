@@ -7,6 +7,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.Kit
@@ -654,7 +655,7 @@ module CatalogueImport =
             |> Result.bind (fun () -> choices |> List.fold (fun result choice -> result |> Result.bind (fun () -> validateReferences choice)) (Ok ()))
             |> Result.bind (fun () ->
                 let ordered =
-                    [ CategoryEntryKind; MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind ]
+                    [ CategoryEntryKind; MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind; ItemModelEntryKind ]
                     |> List.collect (fun kind -> choices |> List.filter (fun choice -> choice.decision.kind = kind && choice.action <> RetireHeldEntry))
                 let retired = choices |> List.filter (fun choice -> choice.action = RetireHeldEntry)
                 let initial =
@@ -769,7 +770,7 @@ module CatalogueImport =
                 })
 
     /// Empty stores bundled with the CatalogueImportProxy that fills them (spec 0050 §3.4).
-    /// Read the imported catalogue through the four store proxies; equality is by reference.
+    /// Read the imported catalogue through the five store proxies; equality is by reference.
     [<ReferenceEquality>]
     type InMemoryCatalogueStores =
         {
@@ -778,6 +779,8 @@ module CatalogueImport =
             materials : MaterialProxy
             samples : SampleProxy
             libraryEntries : LibraryProxy
+            /// The item models the import pushed through `saveItemModel` (spec 0050 S7.1).
+            itemModels : ItemModelProxy
         }
 
     type private ImportEntryState =
@@ -811,6 +814,7 @@ module CatalogueImport =
             let materials = MaterialProxy.createInMemory (samplesReferencing samples)
             let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
             let presets = Library.createInMemory ()
+            let itemModels = ItemModelProxy.createInMemory ()
 
             let categoryReason (e : CategoryError) : string =
                 match e with
@@ -842,6 +846,14 @@ module CatalogueImport =
                 | SourceEntryKind -> content.toSourcePreset |> Result.map SourceItem |> pushDecoded savePreset
                 | PolarizerEntryKind -> content.toPolarizerPreset |> Result.map PolarizerItem |> pushDecoded savePreset
                 | DetectorEntryKind -> content.toDetectorPreset |> Result.map DetectorItem |> pushDecoded savePreset
+                | ItemModelEntryKind ->
+                    content.toItemModel |> pushDecoded (fun entry ->
+                        let itemModel : ItemModelVersion =
+                            {
+                                version = content.version
+                                entry = entry
+                            }
+                        itemModels.saveItemModel itemModel |> Result.mapError (fun error -> ImportRejectedErr error.describe))
 
             let proxy : CatalogueImportProxy =
                 {
@@ -883,7 +895,7 @@ module CatalogueImport =
                                             version = version
                                         }
                                     samples.pinSampleVersion sampleVersion |> Result.mapError (sampleReason >> ImportRejectedErr))
-                            | CategoryEntryKind | SourceEntryKind | PolarizerEntryKind | DetectorEntryKind -> Ok ()
+                            | CategoryEntryKind | SourceEntryKind | PolarizerEntryKind | DetectorEntryKind | ItemModelEntryKind -> Ok ()
                     putEntryVersion = fun put ->
                         let envelope = put.envelope
                         let content = envelope.content
@@ -941,4 +953,5 @@ module CatalogueImport =
                 materials = materials
                 samples = samples
                 libraryEntries = presets.proxy
+                itemModels = itemModels
             }

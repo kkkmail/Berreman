@@ -106,7 +106,8 @@ module LibraryDatabaseStore =
                 | SourceEntryKind -> content.toSourcePreset |> Result.map (SourceItem >> entryPairs)
                 | PolarizerEntryKind -> content.toPolarizerPreset |> Result.map (PolarizerItem >> entryPairs)
                 | DetectorEntryKind -> content.toDetectorPreset |> Result.map (DetectorItem >> entryPairs)
-                | CategoryEntryKind -> Ok []
+                | CategoryEntryKind
+                | ItemModelEntryKind -> Ok []
 
             pairs
             |> Result.mapError (fun error -> LibraryRowInvalidErr error.describe)
@@ -137,7 +138,8 @@ module LibraryDatabaseStore =
             | SourceEntryKind
             | PolarizerEntryKind
             | DetectorEntryKind
-            | CategoryEntryKind -> Ok []
+            | CategoryEntryKind
+            | ItemModelEntryKind -> Ok []
 
     type LibraryEntryVersionRow with
 

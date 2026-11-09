@@ -7,6 +7,7 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.ItemModels
 
 /// The identities, provenance, name rule and content of the library-entry files, with the builders
 /// and decoders that join the content to the domain values (spec 0050 001 §A, §B; .spec-md §3.11, §5).
@@ -20,7 +21,7 @@ module LibraryEntryFiles =
         member this.value : int = let (FileSchemaVersion v) = this in v
 
     /// What a library-entry file holds; its wire tag is an int and its file extension says the kind
-    /// (spec 0050 001 §A). S7.1 adds the item-model kind.
+    /// (spec 0050 001 §A). S7.1 added the item-model kind, tag 7.
     type LibraryEntryKind =
         | MaterialEntryKind
         | SampleEntryKind
@@ -28,6 +29,7 @@ module LibraryEntryFiles =
         | PolarizerEntryKind
         | DetectorEntryKind
         | CategoryEntryKind
+        | ItemModelEntryKind
 
         member this.value : int =
             match this with
@@ -37,6 +39,7 @@ module LibraryEntryFiles =
             | PolarizerEntryKind -> 4
             | DetectorEntryKind -> 5
             | CategoryEntryKind -> 6
+            | ItemModelEntryKind -> 7
 
         static member tryOfWire (v : int) : LibraryEntryKind option =
             match v with
@@ -46,6 +49,7 @@ module LibraryEntryFiles =
             | 4 -> Some PolarizerEntryKind
             | 5 -> Some DetectorEntryKind
             | 6 -> Some CategoryEntryKind
+            | 7 -> Some ItemModelEntryKind
             | _ -> None
 
         /// The kind's file extension (spec 0050 001 §A "Library extensions").
@@ -57,6 +61,7 @@ module LibraryEntryFiles =
             | PolarizerEntryKind -> FileExtension ".polarizer-json"
             | DetectorEntryKind -> FileExtension ".detector-json"
             | CategoryEntryKind -> FileExtension ".category-json"
+            | ItemModelEntryKind -> FileExtension ".item-model-json"
 
         /// The only schema version of the kind this app reads and writes (spec 0050 001 §B).
         member this.currentSchemaVersion : FileSchemaVersion =
@@ -66,11 +71,12 @@ module LibraryEntryFiles =
             | SourceEntryKind
             | PolarizerEntryKind
             | DetectorEntryKind
-            | CategoryEntryKind -> FileSchemaVersion 1
+            | CategoryEntryKind
+            | ItemModelEntryKind -> FileSchemaVersion 1
 
-        /// Every kind, in wire-tag order.
+        /// Every kind, in wire-tag order: seven, since S7.1 added the item-model kind (spec 0050 001 §A).
         static member all : LibraryEntryKind list =
-            [ MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind; CategoryEntryKind ]
+            [ MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind; CategoryEntryKind; ItemModelEntryKind ]
 
         /// The entry kind named by the file's extension, ignoring case, or none for other files (spec 0050 001 §A).
         static member tryOfFileName (file : FileName) : LibraryEntryKind option =
@@ -107,6 +113,11 @@ module LibraryEntryFiles =
     type CategoryId with
 
         /// The category's entry id: the same GUID (spec 0050 001 §B).
+        member this.toLibraryEntryId : LibraryEntryId = LibraryEntryId this.value
+
+    type ItemModelId with
+
+        /// The item model's entry id: the same GUID (spec 0050 S7.1).
         member this.toLibraryEntryId : LibraryEntryId = LibraryEntryId this.value
 
     type ElementValueId with
@@ -325,6 +336,8 @@ module LibraryEntryFiles =
         | PolarizerPayload of PolarizerPayloadData
         | DetectorPayload of DetectorKind
         | CategoryPayload of CategoryVisibility
+        /// An item model's form; its id, name, description and protection belong to the envelope (spec 0050 S7.1).
+        | ItemModelPayload of ItemModelForm
 
         member this.kind : LibraryEntryKind =
             match this with
@@ -334,6 +347,7 @@ module LibraryEntryFiles =
             | PolarizerPayload _ -> PolarizerEntryKind
             | DetectorPayload _ -> DetectorEntryKind
             | CategoryPayload _ -> CategoryEntryKind
+            | ItemModelPayload _ -> ItemModelEntryKind
 
         /// The schema an entry holding this payload is written under: its kind at the kind's only version.
         member this.currentSchema : EntrySchema = { kind = this.kind; version = this.kind.currentSchemaVersion }
@@ -389,9 +403,19 @@ module LibraryEntryFiles =
             | EntryVersionReference reference -> reference.describe
             | EntryLatestReference entryId -> $"{entryId.value} (latest)"
 
+    type ItemModelVersionId with
+
+        /// The exact entry version an item pins: the item model's GUID at that version (spec 0050 S7.1).
+        member this.entryReference : EntryReference =
+            EntryVersionReference
+                {
+                    entryId = this.itemModelId.toLibraryEntryId
+                    version = this.version
+                }
+
     /// An entry file without its `contentHash`: exactly what the hash covers (spec 0050 001 §B).
-    /// `categoryOpt` holds a material's category and is `None` for every other kind; a preset's
-    /// protection and a category's origin are not stored, because they derive from the provenance.
+    /// `categoryOpt` holds a material's category and is `None` for every other kind; a preset's or an item
+    /// model's protection and a category's origin are not stored, because they derive from the provenance.
     type LibraryEntryContent =
         {
             schema : EntrySchema
@@ -411,6 +435,7 @@ module LibraryEntryFiles =
         member this.describe : string = $"'{this.name.value}' ({this.id.value} v{this.version.value})"
 
         /// The material's latest category or the sample's exact material versions in set order (spec 0050 S4.2).
+        /// An item model's components are inline forms, not entries, so it references none (S7.1).
         member this.references : EntryReference list =
             match this.payload with
             | MaterialPayload _ ->
@@ -426,7 +451,7 @@ module LibraryEntryFiles =
                             entryId = materialVersion.materialId.toLibraryEntryId
                             version = materialVersion.version
                         })
-            | SourcePayload _ | PolarizerPayload _ | DetectorPayload _ | CategoryPayload _ -> []
+            | SourcePayload _ | PolarizerPayload _ | DetectorPayload _ | CategoryPayload _ | ItemModelPayload _ -> []
 
         /// The referenced identities, so an import never leaves a dangling reference (spec 0050 001 §B; S4.2).
         member this.referencedEntryIds : Set<LibraryEntryId> =
@@ -482,6 +507,15 @@ module LibraryEntryFiles =
                 Ok (LibraryEntryContent.ofPayload version provenance category.id.toLibraryEntryId category.name.toEntryName (CategoryPayload category.visibility))
             else
                 Error (ProvenanceMismatchErr $"category '{category.name.value}' ({category.id.value}): its origin disagrees with the provenance it is filed under")
+
+        /// An item model is filed with its description, and only under a provenance that agrees with its protection
+        /// (spec 0050 S7.1).
+        static member ofItemModel (version : VersionNumber) (provenance : EntryProvenance) (entry : ItemModelEntry) : Result<LibraryEntryContent, LibraryEntryError> =
+            if entry.protection = provenance.protection then
+                Ok { LibraryEntryContent.ofPayload version provenance entry.id.toLibraryEntryId entry.name (ItemModelPayload entry.model) with
+                        descriptionOpt = Some entry.description }
+            else
+                Error (ProvenanceMismatchErr $"item model '{entry.name.value}' ({entry.id.value}): its protection disagrees with the provenance it is filed under")
 
         member private this.kindMismatchErr (expected : LibraryEntryKind) : LibraryEntryError =
             EntryKindMismatchErr $"entry '{this.name.value}' ({this.id.value}) holds a {this.payload.kind.extension.value} payload, not a {expected.extension.value} one"
@@ -574,6 +608,24 @@ module LibraryEntryFiles =
                     }
                 Ok category
             | _ -> Error (this.kindMismatchErr CategoryEntryKind)
+
+        /// The item model this content files; its protection derives from the provenance (spec 0050 S7.1).
+        [<Softellect.Sys.ElevationBoundary(nameof Softellect.Sys.StorageBoundary, "the library-entry file contract (001 §B): the file's kind-neutral entry GUID becomes the kind's own id")>]
+        member this.toItemModel : Result<ItemModelEntry, LibraryEntryError> =
+            match this.payload, this.descriptionOpt with
+            | ItemModelPayload model, Some description ->
+                let entry : ItemModelEntry =
+                    {
+                        id = ItemModelId this.id.value
+                        name = this.name
+                        description = description
+                        model = model
+                        protection = this.provenance.protection
+                    }
+                Ok entry
+            | ItemModelPayload _, None -> Error (MissingEntryFieldErr $"item model '{this.name.value}' ({this.id.value}) has no description")
+            | (MaterialPayload _ | SamplePayload _ | SourcePayload _ | PolarizerPayload _ | DetectorPayload _ | CategoryPayload _), _ ->
+                Error (this.kindMismatchErr ItemModelEntryKind)
 
     /// One entry of a `.catalogue-json`: the entry's kind, identity, file and hash (spec 0050 001 §A).
     type CatalogueManifestRow =

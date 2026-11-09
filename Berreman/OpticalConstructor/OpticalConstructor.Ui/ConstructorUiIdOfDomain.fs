@@ -40,6 +40,7 @@ module ConstructorUiIdOfDomain =
             | PolarizerEntryKind -> ControlCaption "Polarizer"
             | DetectorEntryKind -> ControlCaption "Detector"
             | CategoryEntryKind -> ControlCaption "Category"
+            | ItemModelEntryKind -> ControlCaption "Item model"
 
     type ImportStatus with
 

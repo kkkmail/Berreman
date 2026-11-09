@@ -86,6 +86,7 @@ module SchemaValidation =
                 | PolarizerEntryKind -> "library-polarizer.schema.json"
                 | DetectorEntryKind -> "library-detector.schema.json"
                 | CategoryEntryKind -> "library-category.schema.json"
+                | ItemModelEntryKind -> "library-item-model.schema.json"
             FileName (Path.Combine("schema", kindFile))
 
     let private materialEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (MaterialEntryKind.schemaFile.tryLoadLibrarySchema ())
@@ -94,6 +95,7 @@ module SchemaValidation =
     let private polarizerEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (PolarizerEntryKind.schemaFile.tryLoadLibrarySchema ())
     let private detectorEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (DetectorEntryKind.schemaFile.tryLoadLibrarySchema ())
     let private categoryEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (CategoryEntryKind.schemaFile.tryLoadLibrarySchema ())
+    let private itemModelEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (ItemModelEntryKind.schemaFile.tryLoadLibrarySchema ())
 
     /// Validate `element` against the entry schema of `kind` through `validateWith` (spec 0050 001 §B): a file
     /// of another kind fails here, and the caller MUST NOT bind an entry on `Error`.
@@ -106,6 +108,7 @@ module SchemaValidation =
             | PolarizerEntryKind -> polarizerEntrySchema
             | DetectorEntryKind -> detectorEntrySchema
             | CategoryEntryKind -> categoryEntrySchema
+            | ItemModelEntryKind -> itemModelEntrySchema
         validateWith schema element
 
     let private catalogueManifestSchemaFile : FileName = FileName (Path.Combine("schema", "library-catalogue.schema.json"))
