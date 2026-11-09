@@ -3,6 +3,7 @@ namespace OpticalConstructor.Ui
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryBackup
@@ -12,6 +13,7 @@ open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.CategoryDatabaseStore
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.ItemModelDatabaseStore
 open OpticalConstructor.Storage.KitHistoryStore
 open OpticalConstructor.Storage.LibraryBackupStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
@@ -38,6 +40,8 @@ type AppContext =
         sources : Library.SourceProxy
         /// The category database store refuses removal while materials reference the category.
         categories : MaterialLibrary.CategoryProxy
+        /// The item-model store over the app's library database (spec 0050 S7.1).
+        itemModels : ItemModelProxy
         /// The library's backup store, Backups beside the database (spec 0050 001 §G).
         libraryBackups : LibraryBackupProxy
         /// The database import seam through which the Library window registers catalogue folders (spec 0050 S3.1).
@@ -85,6 +89,7 @@ type AppContext =
             samples = samples
             sources = sources
             categories = categories
+            itemModels = ItemModelProxy.createInDatabase database
             libraryBackups = LibraryBackupProxy.createInDatabase database locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
             catalogueImports = catalogueImports
             pendingImports = pendingImports

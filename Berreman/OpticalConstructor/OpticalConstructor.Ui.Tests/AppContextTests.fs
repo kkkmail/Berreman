@@ -17,6 +17,7 @@ open Xunit
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.ExperimentExport
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
@@ -701,6 +702,16 @@ module AppContextTests =
         for preset in BuiltinCatalogue.presets () do
             Assert.Equal<Result<LibraryEntry option, LibraryError>>(
                 Ok (Some preset), context.library.tryGetEntry preset.entryId)
+
+    [<Fact>]
+    let ``the app scope serves the Built-in item models from its library database`` () : unit =
+        let context = TestAppScope.freshAppContext owner
+        let builtIns = BuiltinCatalogue.itemModels () |> List.sortBy (fun (held : ItemModelVersion) -> held.entry.name)
+        Assert.Contains(BuiltinCatalogue.itemModel ItemModelIds.emptySlotModelId, builtIns)
+        Assert.Equal<Result<ItemModelVersion list, ItemModelError>>(Ok builtIns, context.itemModels.listItemModels ())
+        for itemModel in builtIns do
+            Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(
+                Ok (Some itemModel), context.itemModels.resolveItemModelVersion itemModel.versionId)
 
     [<Fact>]
     let ``create couples the materials store to the LIVE samples store: a referenced material is not removable`` () =
