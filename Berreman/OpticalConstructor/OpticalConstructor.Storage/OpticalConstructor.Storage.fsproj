@@ -25,6 +25,7 @@
         <Compile Include="SampleDatabaseStore.fs" />
         <Compile Include="SourceDatabaseStore.fs" />
         <Compile Include="PresetDatabaseStore.fs" />
+        <Compile Include="ItemModelDatabaseStore.fs" />
         <Compile Include="LibraryBackupStore.fs" />
         <Compile Include="CatalogueImportStore.fs" />
         <Compile Include="KitFolderStore.fs" />

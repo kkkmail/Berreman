@@ -2,9 +2,13 @@ namespace OpticalConstructor.Tests
 
 open System
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.ItemModelDatabaseStore
 
 module private ItemModelProxyTestData =
 
@@ -109,3 +113,109 @@ type ItemModelProxyTests () =
 
         cases |> List.iter (fun (error, expected) -> Assert.Equal(expected, error.describe))
         Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
+
+/// The SQLite item-model store runs the contract over an empty database per store, and its own facts over the
+/// Built-in library database (spec 0050 S7.1; 001 §C 'Contract tests').
+type ItemModelProxySqliteTests () =
+    inherit ItemModelProxyContract ()
+
+    let databases = ResizeArray<LibraryDatabase>()
+
+    override _.freshItemModels () : ItemModelProxy =
+        let database =
+            LibraryDatabase.openOrCreate (ConnectionString "Data Source=:memory:")
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        databases.Add database
+        ItemModelProxy.createInDatabase database
+
+    [<Fact>]
+    member _.``the database item-model store lists the Built-in item models and resolves each by its version`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let store = ItemModelProxy.createInDatabase database
+        let builtIns = BuiltinCatalogue.itemModels () |> List.sortBy (fun (held : ItemModelVersion) -> held.entry.name)
+        Assert.Contains(BuiltinCatalogue.itemModel ItemModelIds.emptySlotModelId, builtIns)
+
+        Assert.Equal<Result<ItemModelVersion list, ItemModelError>>(Ok builtIns, store.listItemModels ())
+        for itemModel in builtIns do
+            Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(
+                Ok (Some itemModel), store.resolveItemModelVersion itemModel.versionId)
+
+    [<Fact>]
+    member _.``the database item-model store holds user item models only and refuses an id it cannot hold`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let store = ItemModelProxy.createInDatabase database
+        let latestOf (entryId : LibraryEntryId) : StoredEntryVersion option =
+            database.run (fun context -> context.tryLatestStored entryId)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let catalogueEnvelope (entryId : LibraryEntryId) : LibraryEntryEnvelope =
+            (BuiltinCatalogue.catalogueData ()).envelopes
+            |> List.find (fun envelope -> envelope.content.id = entryId)
+        let underId (itemModelId : ItemModelId) (protection : EntryProtection) : ItemModelVersion =
+            {
+                labRetarder with
+                    entry =
+                        {
+                            labRetarder.entry with
+                                id = itemModelId
+                                protection = protection
+                        }
+            }
+
+        let freshId = Guid.NewGuid() |> ItemModelId
+        match store.saveItemModel (underId freshId ProtectedBuiltIn) with
+        | Error (InvalidItemModelErr reason) -> Assert.Contains(freshId.value.ToString(), reason)
+        | Error error -> Assert.Fail($"Expected InvalidItemModelErr, got {error.describe}")
+        | Ok () -> Assert.Fail("A protected built-in must arrive through the import seam, not saveItemModel.")
+        Assert.Equal<StoredEntryVersion option>(None, latestOf freshId.toLibraryEntryId)
+
+        let userModel = underId freshId UserManaged
+        Assert.Equal<Result<unit, ItemModelError>>(Ok (), store.saveItemModel userModel)
+        Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Ok (Some userModel), store.resolveItemModelVersion userModel.versionId)
+        match latestOf freshId.toLibraryEntryId with
+        | Some stored -> Assert.Equal(UserProvenance, stored.envelope.content.provenance)
+        | None -> Assert.Fail("Expected the user item model to be stored.")
+
+        let siliconId = ItemModelId MaterialIds.silicon.value
+        match store.saveItemModel (underId siliconId UserManaged) with
+        | Error (InvalidItemModelErr reason) ->
+            Assert.Contains(siliconId.value.ToString(), reason)
+            Assert.Contains(".material-json", reason)
+        | Error error -> Assert.Fail($"Expected InvalidItemModelErr, got {error.describe}")
+        | Ok () -> Assert.Fail("An id held by a material must be refused.")
+        Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(
+            Ok None, store.resolveItemModelVersion { itemModelId = siliconId; version = VersionNumber.first })
+        let silicon = MaterialIds.silicon.toLibraryEntryId
+        Assert.Equal(Some (catalogueEnvelope silicon), latestOf silicon |> Option.map _.envelope)
+
+        let emptySlot = BuiltinCatalogue.itemModel ItemModelIds.emptySlotModelId
+        match store.saveItemModel (underId ItemModelIds.emptySlotModelId UserManaged) with
+        | Error (DuplicateItemModelErr reason) ->
+            Assert.Contains(ItemModelIds.emptySlotModelId.value.ToString(), reason)
+            Assert.Contains($"version {emptySlot.version.value}", reason)
+        | Error error -> Assert.Fail($"Expected DuplicateItemModelErr, got {error.describe}")
+        | Ok () -> Assert.Fail("An id held by a built-in item model must be refused.")
+        let emptySlotEntry = ItemModelIds.emptySlotModelId.toLibraryEntryId
+        Assert.Equal(Some (catalogueEnvelope emptySlotEntry), latestOf emptySlotEntry |> Option.map _.envelope)
+        Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(Ok (Some emptySlot), store.resolveItemModelVersion emptySlot.versionId)
+
+    [<Fact>]
+    member _.``a database failure below the item-model store is ItemModelStoreUnavailableErr, never a throw`` () : unit =
+        let database = BuiltinCatalogue.freshLibraryDatabase ()
+        let store = ItemModelProxy.createInDatabase database
+        (database :> IDisposable).Dispose()
+
+        let unavailable (result : Result<'Outcome, ItemModelError>) : unit =
+            match result with
+            | Error (ItemModelStoreUnavailableErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail($"Expected ItemModelStoreUnavailableErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("A disposed database must answer a typed failure.")
+
+        store.listItemModels () |> unavailable
+        store.resolveItemModelVersion (BuiltinCatalogue.itemModel ItemModelIds.emptySlotModelId).versionId |> unavailable
+        store.saveItemModel labRetarder |> unavailable
+
+    interface IDisposable with
+        member _.Dispose () : unit =
+            for database in databases do
+                (database :> IDisposable).Dispose()
