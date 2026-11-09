@@ -709,6 +709,16 @@ type ConstructorUiId =
     static member sendKitProgressText : ConstructorUiId = ConstructorUiId "SendKitProgressText"
     /// Cancels the running send before its next file (spec 0050 S6).
     static member sendKitCancelButton : ConstructorUiId = ConstructorUiId "SendKitCancelButton"
+    /// The Kit menu's Copy experiments from another kit…: picks the kit folder to copy from (spec 0050 S6).
+    static member kitCopyExperimentsButton : ConstructorUiId = ConstructorUiId "KitCopyExperimentsButton"
+    /// The copy panel's line naming the kit opened to copy from (spec 0050 S6).
+    static member kitCopySourceText : ConstructorUiId = ConstructorUiId "KitCopySourceText"
+    /// The copy panel's bounded list of the source's experiments, one toggle each (spec 0050 S6).
+    static member kitCopyExperimentList : ConstructorUiId = ConstructorUiId "KitCopyExperimentList"
+    /// The copy panel's Copy: copies the chosen experiments into the kit (spec 0050 S6).
+    static member kitCopyChosenButton : ConstructorUiId = ConstructorUiId "KitCopyChosenButton"
+    /// The copy panel's Cancel: closes the source, copying nothing (spec 0050 S6).
+    static member kitCopyCancelButton : ConstructorUiId = ConstructorUiId "KitCopyCancelButton"
 
     // --- The Data locations window (DataLocationsView, DataLocationsWindow). ---
     /// The single-instance window listing every data location (001 §G, spec 0050 S5.3).

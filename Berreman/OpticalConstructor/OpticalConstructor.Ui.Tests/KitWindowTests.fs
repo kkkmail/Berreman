@@ -120,7 +120,7 @@ module KitWindowTests =
 
     /// Presses `pressed` at its centre, as `LibraryWindowTests.clickOn` does; a press that closes the window gets no
     /// release, as `LauncherTests.clickBorder` does.
-    let private pressAtCentre (window : Window) (pressed : Border) (name : string) : unit =
+    let private pressAtCentre (window : Window) (pressed : Control) (name : string) : unit =
         Assert.True(pressed.IsEffectivelyVisible, $"{name} must be visible")
         pressed.BringIntoView() |> ignore
         Dispatcher.UIThread.RunJobs()
@@ -537,3 +537,142 @@ module KitWindowTests =
                 if window.IsVisible then
                     window.Close()
                     Dispatcher.UIThread.RunJobs())
+
+    /// A kit made in a fresh folder holding `experiments`, then closed, so a fact can open it again (spec 0050 S6).
+    let private closedKitHolding (ctx : AppContext) (experiments : Experiments.Experiment list) : KitFolder =
+        let folder = TestAppScope.freshKitFolder owner
+        let created = openedAt folder ReadWriteKitAccess ctx
+        try
+            for experiment in experiments do
+                created.library.kit.proxy.writeExperiment experiment |> SceneTestFixture.kitSuccess
+        finally created.library.kit.close () |> SceneTestFixture.kitSuccess
+        folder
+
+    /// `storedExperiment` as the source's experiment `n`.
+    let private sourceExperiment (n : int) : Experiments.Experiment =
+        {
+            storedExperiment with id = Experiments.ExperimentId n
+        }
+
+    /// The copy panel's controls besides the experiments' toggles.
+    let private copyPanelIds : ConstructorUiId list =
+        [
+            ConstructorUiId.kitCopySourceText
+            ConstructorUiId.kitCopyExperimentList
+            ConstructorUiId.kitCopyChosenButton
+            ConstructorUiId.kitCopyCancelButton
+        ]
+
+    /// The `CheckBox` carrying the copy toggle of `experimentId`.
+    let private copyToggleOf (window : Window) (experimentId : Experiments.ExperimentId) : CheckBox =
+        Assert.IsType<CheckBox>(controlById window (ConstructorUiId.kitCopyExperimentToggle experimentId))
+
+    [<Fact>]
+    let ``the copy UiIds are the stable intent-named ids`` () : unit =
+        Assert.Equal("KitCopyExperimentsButton", ConstructorUiId.kitCopyExperimentsButton.value)
+        Assert.Equal("KitCopySourceText", ConstructorUiId.kitCopySourceText.value)
+        Assert.Equal("KitCopyExperimentList", ConstructorUiId.kitCopyExperimentList.value)
+        Assert.Equal("KitCopyChosenButton", ConstructorUiId.kitCopyChosenButton.value)
+        Assert.Equal("KitCopyCancelButton", ConstructorUiId.kitCopyCancelButton.value)
+        Assert.Equal("KitCopyExperimentToggle_3", (ConstructorUiId.kitCopyExperimentToggle (Experiments.ExperimentId 3)).value)
+
+    [<Fact>]
+    let ``an open source lists its experiments with a toggle each, and Copy and Cancel share a row, Cancel to the right`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let e1 = sourceExperiment 1
+            let e2 = sourceExperiment 2
+            let sourceFolder = closedKitHolding ctx [ e1; e2 ]
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            try
+                let listed =
+                    kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert
+                    |> updateTableAndElementRotation (OpenCopySource sourceFolder)
+                let sourceName =
+                    match listed.kitCopyOpt with
+                    | Some copySource -> copySource.source.kitFile.name.value
+                    | None -> failwith "the source kit was not opened to copy from"
+                try
+                    let chosen = listed |> updateTableAndElementRotation (ToggleCopiedExperiment e2.id)
+                    withKitWindow chosen (fun window ->
+                        Assert.Equal($"Copy from {sourceName}: choose the experiments to copy.", textOf window ConstructorUiId.kitCopySourceText)
+                        let list = Assert.IsType<ScrollViewer>(controlById window ConstructorUiId.kitCopyExperimentList)
+                        Assert.Equal(160.0, list.MaxHeight)
+                        let e1Toggle = copyToggleOf window e1.id
+                        let e2Toggle = copyToggleOf window e2.id
+                        Assert.Equal($"E1 — {e1.description}", Assert.IsType<TextBlock>(e1Toggle.Content).Text)
+                        Assert.Equal(System.Nullable false, e1Toggle.IsChecked)
+                        Assert.Equal(System.Nullable true, e2Toggle.IsChecked)
+                        Assert.Contains<Visual>(list, e2Toggle.GetVisualAncestors())
+                        let copy = Assert.IsType<Border>(controlById window ConstructorUiId.kitCopyChosenButton)
+                        let cancel = Assert.IsType<Border>(controlById window ConstructorUiId.kitCopyCancelButton)
+                        Assert.Equal("Copy", boxLabelOf window ConstructorUiId.kitCopyChosenButton)
+                        Assert.Equal("Cancel", boxLabelOf window ConstructorUiId.kitCopyCancelButton)
+                        let row = Assert.IsType<StackPanel>(copy.Parent)
+                        Assert.Same(row, cancel.Parent)
+                        Assert.Equal(Avalonia.Layout.Orientation.Horizontal, row.Orientation)
+                        Assert.Equal(copy.Bounds.Top, cancel.Bounds.Top)
+                        Assert.True(cancel.Bounds.Left > copy.Bounds.Right, "Cancel must sit to the right of Copy, past a gap")
+                        Assert.Equal(MaterialsWindowView.positiveBackground, Assert.IsType<SolidColorBrush>(copy.Background).Color)
+                        Assert.Equal(MaterialsWindowView.negativeBackground, Assert.IsType<SolidColorBrush>(cancel.Background).Color)
+                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyExperimentsButton))
+                    withKitWindow listed (fun window ->
+                        Assert.Equal(System.Nullable false, (copyToggleOf window e2.id).IsChecked)
+                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyChosenButton)
+                        Assert.Equal("Cancel", boxLabelOf window ConstructorUiId.kitCopyCancelButton))
+                finally listed.closeCopySource () |> ignore
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    let ``a kit opened read-only offers no Copy experiments`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let folder = closedKitHolding ctx []
+            let assertOffered (access : KitAccess) (expected : ControlAvailability) : unit =
+                let opened = openedAt folder access ctx
+                try
+                    withKitWindow (kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert) (fun window ->
+                        match expected with
+                        | ControlOffered ->
+                            Assert.Equal("Copy experiments from another kit…", boxLabelOf window ConstructorUiId.kitCopyExperimentsButton)
+                        | ControlWithheld ->
+                            Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyExperimentsButton)
+                            Assert.Equal("Show in Explorer", boxLabelOf window ConstructorUiId.kitShowInExplorerButton)
+                        for id in copyPanelIds do
+                            Assert.Equal<Control option>(None, tryControlById window id))
+                finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
+            assertOffered ReadOnlyKitAccess ControlWithheld
+            assertOffered ReadWriteKitAccess ControlOffered)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing Copy experiments, a toggle and Copy brings the experiment into the kit`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let e2 = sourceExperiment 2
+            let sourceFolder = closedKitHolding ctx [ e2 ]
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            let copiedFile = Path.Combine(opened.folder.value.value, "E2.experiment-json")
+            try
+                let shell =
+                    {
+                        KitWindowShell.inert with kitPicker = TestAppScope.kitPickerOf sourceFolder
+                    }
+                withKitWindow (kitWindowModel ctx opened ForwardConstructor shell) (fun window ->
+                    for id in copyPanelIds do
+                        Assert.Equal<Control option>(None, tryControlById window id)
+                    pressBox window ConstructorUiId.kitCopyExperimentsButton
+                    Assert.True((controlById window ConstructorUiId.kitCopySourceText).IsEffectivelyVisible, "the chosen kit must open the copy panel")
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyExperimentsButton)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyChosenButton)
+                    let toggleId = ConstructorUiId.kitCopyExperimentToggle e2.id
+                    pressAtCentre window (copyToggleOf window e2.id) toggleId.value
+                    Assert.Equal(System.Nullable true, (copyToggleOf window e2.id).IsChecked)
+                    Assert.False(File.Exists copiedFile, "choosing an experiment must copy nothing yet")
+                    pressBox window ConstructorUiId.kitCopyChosenButton
+                    for id in copyPanelIds do
+                        Assert.Equal<Control option>(None, tryControlById window id)
+                    Assert.StartsWith("Copied 1 experiment(s)", textOf window ConstructorUiId.kitStatus)
+                    Assert.Equal("Copy experiments from another kit…", boxLabelOf window ConstructorUiId.kitCopyExperimentsButton))
+                Assert.True(File.Exists copiedFile, "Copy must leave E2.experiment-json in the window's kit folder")
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)

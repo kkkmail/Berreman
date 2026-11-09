@@ -4,6 +4,7 @@ module OpticalConstructor.Ui.KitWindowView
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.FuncUI.DSL
@@ -11,6 +12,7 @@ open Avalonia.FuncUI.Types
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Ui.KitArchiveJob
+open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 type TableAndElementRotationModel with
@@ -71,6 +73,16 @@ let private kitMenuRow (model : TableAndElementRotationModel) (dispatch : TableA
         | Some _ ->
             [ MaterialsWindowView.verbButton ConstructorUiId.kitShowInExplorerButton (ControlCaption "Show in Explorer") (fun () -> dispatch ShowKitInExplorer) ]
         | None -> []
+    // Spec 0050 S6: offered while the kit takes writes and no source is open; a cancelled dialog sends nothing.
+    let copyExperiments : IView list =
+        match model.kitWrites, model.kitCopyOpt with
+        | ControlOffered, None ->
+            [
+                MaterialsWindowView.verbButton ConstructorUiId.kitCopyExperimentsButton (ControlCaption "Copy experiments from another kit…") (fun () ->
+                    model.kitShell.kitPicker.pickThen (OpenCopySource >> dispatch))
+            ]
+        | ControlOffered, Some _
+        | ControlWithheld, _ -> []
     let modeText (caption : ControlCaption) : IView =
         TextBlock.create [
             ConstructorUiId.kitModeText.automationAttribute<TextBlock> ()
@@ -93,7 +105,7 @@ let private kitMenuRow (model : TableAndElementRotationModel) (dispatch : TableA
         | InverseConstructor -> [ modeText (ControlCaption "Inverse constructor"); switchButton (ControlCaption "Switch to Main") ForwardConstructor ]
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
-        WrapPanel.children (sendKit @ showInExplorer @ kitVerbs @ constructorItems)
+        WrapPanel.children (sendKit @ showInExplorer @ copyExperiments @ kitVerbs @ constructorItems)
     ] :> IView
 
 /// The running send's progress row directly under the Kit menu, its Cancel ending the send before its next file
@@ -109,6 +121,76 @@ let private kitSendRows (model : TableAndElementRotationModel) (dispatch : Table
         [ kitArchiveProgressView model.kitSend ids (fun () -> dispatch CancelSendKit) ]
     else
         []
+
+/// The open copy source: its name, a toggle per experiment in a list that scrolls inside its own height, because the
+/// bar sits outside the page's scroll, then Copy and Cancel on one row, the Copy box's right margin parting the pair
+/// (spec 0050 S6; .spec-md §10.5). Nothing while no source is open.
+let private kitCopyRows (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
+    match model.kitCopyOpt with
+    | Some copySource ->
+        let toggle (experiment : OpticalConstructor.Domain.Experiments.Experiment) : IView =
+            let id = ConstructorUiId.kitCopyExperimentToggle experiment.id
+            CheckBox.create [
+                id.automationAttribute<CheckBox> ()
+                CheckBox.isChecked (List.contains experiment.id copySource.chosen)
+                CheckBox.content (
+                    TextBlock.create [
+                        TextBlock.textWrapping TextWrapping.Wrap
+                        TextBlock.text $"E{experiment.id.value} — {experiment.description}"
+                    ])
+                // `onClick` fires on the user's press alone, never on the render's `IsChecked` (the `pivotCheckBox` precedent).
+                CheckBox.onClick ((fun _ -> dispatch (ToggleCopiedExperiment experiment.id)), SubPatchOptions.OnChangeOf (box id.value))
+            ]
+            |> Avalonia.FuncUI.DSL.View.withKey id.value
+            :> IView
+        let copy : IView list =
+            match copySource.chosen with
+            | [] -> []
+            | _ :: _ ->
+                [
+                    MaterialsWindowView.actionButton
+                        ConstructorUiId.kitCopyChosenButton
+                        (ControlCaption "Copy")
+                        MaterialsWindowView.positiveBackground
+                        (fun () -> dispatch CopyChosenExperiments)
+                ]
+        let cancel : IView =
+            MaterialsWindowView.actionButton
+                ConstructorUiId.kitCopyCancelButton
+                (ControlCaption "Cancel")
+                MaterialsWindowView.negativeBackground
+                (fun () -> dispatch CloseCopySource)
+        [
+            StackPanel.create [
+                StackPanel.orientation Orientation.Vertical
+                StackPanel.children [
+                    TextBlock.create [
+                        ConstructorUiId.kitCopySourceText.automationAttribute<TextBlock> ()
+                        TextBlock.textWrapping TextWrapping.Wrap
+                        TextBlock.margin (Thickness(0.0, 2.0, 0.0, 4.0))
+                        TextBlock.text $"Copy from {copySource.source.kitFile.name.value}: choose the experiments to copy."
+                    ]
+                    ScrollViewer.create [
+                        ConstructorUiId.kitCopyExperimentList.automationAttribute<ScrollViewer> ()
+                        ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+                        ScrollViewer.maxHeight 160.0
+                        ScrollViewer.margin (Thickness(0.0, 0.0, 0.0, 4.0))
+                        ScrollViewer.content (
+                            StackPanel.create [
+                                StackPanel.orientation Orientation.Vertical
+                                StackPanel.children (copySource.experiments |> List.map toggle)
+                            ])
+                    ]
+                    StackPanel.create [
+                        StackPanel.orientation Orientation.Horizontal
+                        StackPanel.children (copy @ [ cancel ])
+                    ]
+                ]
+            ]
+            |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.kitCopySourceText.value
+            :> IView
+        ]
+    | None -> []
 
 /// The reload offer: the files changed outside the app over Reload and Keep mine on one row, the Reload box's right
 /// margin parting the opposing pair (spec 0050 S5.3; .spec-md §10.5). Nothing while nothing is offered.
@@ -161,6 +243,7 @@ let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndEle
                 StackPanel.children (
                     [ model.kitCaptionRow; kitMenuRow model dispatch ]
                     @ kitSendRows model dispatch
+                    @ kitCopyRows model dispatch
                     @ kitChangesRows model dispatch
                     @ model.kitStatusRows)
             ]

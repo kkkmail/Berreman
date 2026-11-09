@@ -190,6 +190,10 @@ module ConstructorUiIdOfDomain =
 
         static member dataFileStatus (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataFileStatus_{experimentId.value}"
 
+        /// The copy panel's toggle choosing this experiment of the source kit (spec 0050 S6).
+        static member kitCopyExperimentToggle (experimentId : ExperimentId) : ConstructorUiId =
+            ConstructorUiId $"KitCopyExperimentToggle_{experimentId.value}"
+
         /// A material-category option of the Material editor.
         static member materialEditorCategoryOption (categoryId : CategoryId) : ConstructorUiId =
             ConstructorUiId $"MaterialCategoryOption_{categoryId.value}"
