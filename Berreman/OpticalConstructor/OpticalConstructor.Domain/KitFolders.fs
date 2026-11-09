@@ -29,6 +29,8 @@ module KitFolders =
             deleteKindFile : KitFileKind -> FileStem -> Result<unit, KitError>
             /// Reads the kit-relative file's text and ContentHash.ofBytes of its stored bytes, or MissingKitFileErr naming the path (spec 0050 S4.1).
             readDataFile : KitRelativePath -> Result<KitDataFile, KitError>
+            /// Reads any kit file whole, its absolute name in the kit and its bytes as stored, or MissingKitFileErr naming the path (spec 0050 S6).
+            readLabFile : KitRelativePath -> Result<LabFileSource, KitError>
             /// Locates an absolute name inside the kit without requiring the file to exist (spec 0050 S4.2).
             tryKitPathOf : FileName -> KitRelativePath option
             /// Copies bytes into data under a free name, creating parents and never replacing a lab file (spec 0050 S4.2).
@@ -160,12 +162,19 @@ module KitFolders =
             |> Map.keys
             |> Seq.tryFind (fun held -> String.Equals(held.value, path.value, StringComparison.OrdinalIgnoreCase))
 
-        member private this.readInMemoryKitDataFile (path : KitRelativePath) : Result<KitDataFile, KitError> =
+        member private this.readInMemoryLabFile (path : KitRelativePath) : Result<LabFileSource, KitError> =
             match this.tryFindTextPath path |> Option.bind (fun held -> Map.tryFind held texts) with
             | Some text ->
-                let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
-                Ok (bytes.kitDataFile path)
+                let source : LabFileSource =
+                    {
+                        file = FileName $"{this.kitFolder.value.value}/{path.value}"
+                        content = Encoding.UTF8.GetBytes text.value |> FileByteContent
+                    }
+                Ok source
             | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
+
+        member private this.readInMemoryKitDataFile (path : KitRelativePath) : Result<KitDataFile, KitError> =
+            this.readInMemoryLabFile path |> Result.map (fun source -> source.content.kitDataFile path)
 
         /// Places an outside writer's text and its parents, refusing the reserved kit filename (spec 0050 S4.1).
         member this.placeLabFile (path : KitRelativePath) (text : KitFileText) : Result<unit, KitError> =
@@ -289,6 +298,7 @@ module KitFolders =
                             Ok ()
                         | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
                 readDataFile = this.readInMemoryKitDataFile
+                readLabFile = this.readInMemoryLabFile
                 tryKitPathOf = this.kitFolder.tryKitPathOf
                 copyInFile =
                     fun destination file bytes ->
@@ -373,6 +383,7 @@ module KitFolders =
                 writeKindFile = fun _ _ _ -> Error (KitReadOnlyErr "writeKindFile")
                 deleteKindFile = fun _ _ -> Error (KitReadOnlyErr "deleteKindFile")
                 readDataFile = this.readDataFile
+                readLabFile = this.readLabFile
                 tryKitPathOf = this.tryKitPathOf
                 copyInFile = fun _ _ _ -> Error (KitReadOnlyErr "copyInFile")
                 listSnapshots = this.listSnapshots

@@ -224,6 +224,21 @@ module KitFolderStore =
                 serializeKitMetadata folder.value kitFile
                 |> Result.bind (writeText file)
 
+            let readLabSource (path : KitRelativePath) : Result<LabFileSource, KitError> =
+                tryKitFolderIo folder (fun () ->
+                    let file = FileName (Path.Combine(folder.value.value, path.value.Replace('/', Path.DirectorySeparatorChar)))
+                    try
+                        let source : LabFileSource =
+                            {
+                                file = file
+                                content = File.ReadAllBytes file.value |> FileByteContent
+                            }
+                        Ok source
+                    with
+                    | :? FileNotFoundException
+                    | :? DirectoryNotFoundException ->
+                        Error (MissingKitFileErr $"kit folder '{folder.value.value}': '{path.value}'"))
+
             {
                 initialiseKit =
                     fun (kitFile : KitFile) ->
@@ -283,15 +298,8 @@ module KitFolderStore =
                                 Error (MissingKitFileErr $"kit folder '{folder.value.value}': '{file.value}'"))
                 readDataFile =
                     fun (path : KitRelativePath) ->
-                        tryKitFolderIo folder (fun () ->
-                            let file = FileName (Path.Combine(folder.value.value, path.value.Replace('/', Path.DirectorySeparatorChar)))
-                            try
-                                let bytes = File.ReadAllBytes file.value |> FileByteContent
-                                Ok (bytes.kitDataFile path)
-                            with
-                            | :? FileNotFoundException
-                            | :? DirectoryNotFoundException ->
-                                Error (MissingKitFileErr $"kit folder '{folder.value.value}': '{path.value}'"))
+                        readLabSource path |> Result.map (fun source -> source.content.kitDataFile path)
+                readLabFile = readLabSource
                 tryKitPathOf = folder.tryKitPathOf
                 copyInFile =
                     fun (destination : KitDataFolder) (source : FileName) (bytes : FileByteContent) ->

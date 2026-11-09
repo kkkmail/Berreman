@@ -76,7 +76,7 @@ module private KitProxyTestData =
                     |> Array.map (fun path -> Path.GetRelativePath(folder.value, path).Replace('\\', '/'))
                     |> Array.sortWith (fun first second -> String.CompareOrdinal(first, second))
                     |> Array.toList
-            absoluteName = fun path -> FileName (Path.Combine(folder.value, path))
+            absoluteName = fun path -> FileName (Path.Combine(folder.value, path.Replace('/', Path.DirectorySeparatorChar)))
             outsideName = fun path -> FileName (Path.Combine(outside.value, path))
             removeLabFile = fun path -> File.Delete(Path.Combine(folder.value, path))
         }
@@ -1045,6 +1045,36 @@ type KitProxyContract () =
         Assert.Equal<Result<unit, KitError>>(Ok (), otherProxy.writeKitFile replacement)
         Assert.Equal<string list>(beforeReplacement, folder.paths ())
         assertKitMetadata replacement
+
+    [<Fact>]
+    member this.``a lab file is read whole by its kit-relative path, with its absolute name in the kit`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let path = KitRelativePath "data/raw/run 1.csv"
+        let text = KitFileText "phi,I\n0,0.5\n"
+        folder.placeLabFile path.value text.value
+        let expected : LabFileSource =
+            {
+                file = folder.absoluteName "data/raw/run 1.csv"
+                content = Encoding.UTF8.GetBytes text.value |> FileByteContent
+            }
+        let stored = proxy.readDataFile path |> Result.defaultWith (fun error -> failwith error.describe)
+        let missingPath = KitRelativePath "data/raw/none.csv"
+        let before = folder.paths ()
+        for reader in [ proxy; proxy.readOnlyView ] do
+            match reader.readLabFile path with
+            | Ok source ->
+                Assert.Equal<FileName>(expected.file, source.file)
+                Assert.Equal<byte>(expected.content.value, source.content.value)
+                Assert.Equal<ContentHash>(stored.contentHash, ContentHash.ofBytes source.content)
+            | Error error -> Assert.Fail($"Expected the lab file '{path.value}', got {error.describe}")
+            match reader.readLabFile missingPath with
+            | Error (MissingKitFileErr reason) -> Assert.Contains(missingPath.value, reason)
+            | Error error -> Assert.Fail($"Expected MissingKitFileErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("Reading a lab file never placed must fail.")
+            Assert.Equal<string list>(before, folder.paths ())
 
     [<Fact>]
     member this.``a second proxy cannot take a held lock and is told who holds it, until it is released`` () : unit =
@@ -2041,6 +2071,26 @@ type KitProxyFolderTests () =
 
         Assert.Equal<byte>(bytes, File.ReadAllBytes file.value)
         Assert.Equal<string list>(before, folder.paths ())
+
+    [<Fact>]
+    member this.``a lab file's bytes are read as stored, a byte-order mark included`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let path = KitRelativePath "data/bom.csv"
+        let file = folder.absoluteName path.value
+        let bytes = Array.append [| 0xEFuy; 0xBBuy; 0xBFuy |] (Encoding.UTF8.GetBytes "a,b\n") |> FileByteContent
+        File.WriteAllBytes(file.value, bytes.value)
+        let before = folder.paths ()
+        for reader in [ proxy; proxy.readOnlyView ] do
+            match reader.readLabFile path with
+            | Ok source ->
+                Assert.Equal<FileName>(file, source.file)
+                Assert.Equal<byte>(bytes.value, source.content.value)
+            | Error error -> Assert.Fail($"Expected the BOM-prefixed lab file, got {error.describe}")
+            Assert.Equal<string list>(before, folder.paths ())
+        Assert.Equal<byte>(bytes.value, File.ReadAllBytes file.value)
 
     [<Fact>]
     member _.``a lab file another process holds open is KitIoErr, never a throw`` () : unit =
