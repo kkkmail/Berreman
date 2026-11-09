@@ -6,6 +6,7 @@ open Berreman.Media
 open Berreman.MaterialProperties
 open Berreman.Dispersion
 open Berreman.Fields
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.OptimizationInterface
 

@@ -9,6 +9,7 @@ open Berreman.Media
 open Berreman.Solvers
 open OpticalProperties.Active
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open Xunit

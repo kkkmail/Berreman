@@ -213,6 +213,7 @@
         <Compile Include="KitArchiveTests.fs" />
         <Compile Include="KitArchiveProxyTests.fs" />
         <Compile Include="KitArchiveJobTests.fs" />
+        <Compile Include="ItemModelsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

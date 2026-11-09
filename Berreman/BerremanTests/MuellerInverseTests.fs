@@ -10,6 +10,7 @@ open Berreman.Solvers
 open OpticalProperties.Active
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MuellerReconstruction   // Retardance — reused, not re-declared
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open Xunit

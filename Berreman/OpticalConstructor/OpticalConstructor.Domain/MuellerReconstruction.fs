@@ -6,6 +6,7 @@ open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain.Library                // PolarizerKind / IdealLinear (step 007 source & analyzer models)
 open OpticalConstructor.Domain.MeasuredData           // MeasuredIntensity: a capture's averaged intensity (spec 0048 E020)
+open OpticalConstructor.Domain.ItemModels
 
 /// Spec 0042 (001) — the pure Mueller-reconstruction primitives. A *retarder* (wave plate) delays one
 /// linear eigen-polarization relative to the other by a phase `Retardance`; its Mueller matrix is the
@@ -536,18 +537,6 @@ module MuellerReconstruction =
                     note = MuellerLabelToken m.Groups.["note"].Value
                     objects = objects
                 }
-
-    /// A named two-case sign for the analyzer dial → physical-angle map — never a naked `int`. `.value` is the
-    /// multiplicative sign (`+1` / `−1`) the reference `AnalyzerModel.dial_sign` carries (matrix_glue.py:152).
-    type DialSign =
-        | DialPositive
-        | DialNegative
-
-        /// The multiplicative sign (+1 / −1) — read at the arithmetic seam.
-        member this.value : float =
-            match this with
-            | DialPositive -> 1.0
-            | DialNegative -> -1.0
 
     /// The per-family SOURCE model — how the input Stokes state is synthesized (the reference `SourceModel`,
     /// matrix_glue.py:128). `LpSource` is the ideal linear source `[1;1;0;0]`; `CplSource` prepends a retarder

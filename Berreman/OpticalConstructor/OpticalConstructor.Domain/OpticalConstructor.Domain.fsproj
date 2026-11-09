@@ -49,6 +49,7 @@
              seam). Depends on MaterialLibrary, Placement.CatalogueKind, and the engine
              WaveLength/Thickness. -->
         <Compile Include="ElementId.fs" />
+        <Compile Include="ItemModels.fs" />
         <Compile Include="LibraryEntryFiles.fs" />
         <Compile Include="CatalogueFiles.fs" />
         <Compile Include="EntryTextDiff.fs" />

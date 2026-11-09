@@ -7,6 +7,7 @@ open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MeasuredData
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Storage                        // MuellerDataStore — the REAL parseMuellerCsv / createArchiveBacked
 open OpticalConstructor.Storage.MuellerDataStore       // DataFileText.parseMuellerCsv

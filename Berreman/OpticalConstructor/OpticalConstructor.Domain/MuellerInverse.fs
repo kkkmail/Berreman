@@ -8,6 +8,7 @@ open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
 open OpticalConstructor.Domain.MuellerReconstruction   // Retardance (spec 0042) — reused, not re-declared
+open OpticalConstructor.Domain.ItemModels
 
 /// Spec 0044 — the inverse problem for a transparent, optically active, anisotropic, homogeneous
 /// material: recover the material's optical constants from measured Mueller matrices.
@@ -121,15 +122,6 @@ module MuellerInverse =
             observable : Observable
             waveLength : WaveLength
         }
-
-    /// The name a fitted parameter is reported under — elevated so that a report cannot silently pair a
-    /// name with the wrong column, and so that a name can never be passed where a reason or a description
-    /// is expected.
-    type ParameterName =
-        | ParameterName of string
-
-        /// The name as text (the reporting seam).
-        member this.value = let (ParameterName n) = this in n
 
     /// How one field of a material's parameter record is read out and written back, in the field's own
     /// elevated type.
