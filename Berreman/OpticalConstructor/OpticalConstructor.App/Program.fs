@@ -141,13 +141,30 @@ type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this 
         ConstructorScene.mount this opened (fun () -> model.loadKit opened)
 
 module private KitConstructorWindows =
-    /// Shows the constructor window of `mode` over the kit the start screen opened (spec 0050 S4.3, S5.2).
+    /// Opens the constructor window of `mode` over the kit the start screen opened, registered under the kit's folder
+    /// (spec 0050 S4.3, S5.2, S5.3). A window that already holds the kit keeps it, and a failed open logs its reason;
+    /// either way the opened kit is closed again.
     let showConstructorIn (context : AppContext) (mode : TableAndElementRotationView.ConstructorMode) (opened : OpenedKit) : unit =
-        let window : Window =
+        let constructorWindow (_ : WindowLauncher.WindowKey) : Result<Window, WindowLauncher.WindowLauncherError> =
             match mode with
-            | TableAndElementRotationView.ForwardConstructor -> MainConstructorWindow(context, opened) :> Window
-            | TableAndElementRotationView.InverseConstructor -> InverseConstructorWindow(context, opened) :> Window
-        window.Show()
+            | TableAndElementRotationView.ForwardConstructor -> MainConstructorWindow(context, opened) :> Window |> Ok
+            | TableAndElementRotationView.InverseConstructor -> InverseConstructorWindow(context, opened) :> Window |> Ok
+        let closeOpenedKit () : unit =
+            match opened.library.kit.close () with
+            | Ok () -> ()
+            | Error error -> Logger.logError $"KitConstructorWindows.showConstructorIn: could not close the kit: {error.describe}"
+        let launcher =
+            WindowLauncher.WindowLauncher.create constructorWindow context.settings.selectWindowModality WindowLauncher.BrowseOpen
+        match launcher.openOrActivate opened.folder.windowKey with
+        | Ok (WindowLauncher.CreatedWindow _) -> ()
+        | Ok (WindowLauncher.ActivatedWindow _)
+        | Ok (WindowLauncher.RetargetedWindow _) -> closeOpenedKit ()
+        | Error (WindowLauncher.WindowFactoryFailedErr (_, reason)) ->
+            closeOpenedKit ()
+            Logger.logError $"KitConstructorWindows.showConstructorIn: could not open the kit window: {reason}"
+        | Error (WindowLauncher.WindowNotRegisteredErr _) ->
+            closeOpenedKit ()
+            Logger.logError $"KitConstructorWindows.showConstructorIn: no kit window was registered for {opened.folder.value.value}"
 
 /// Main and Inverse open the kit start screen of their mode; Materials and Library open over the one app scope, sharing
 /// editor-window launchers. A library-open failure disables every surface action (spec 0038 step 045; spec 0050 S2.4, S5.2).

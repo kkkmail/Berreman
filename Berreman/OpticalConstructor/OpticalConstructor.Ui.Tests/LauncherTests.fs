@@ -30,6 +30,7 @@ open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -149,6 +150,36 @@ module LauncherTests =
     let private closeStartScreen (start : KitStartWindow) : unit =
         if start.IsVisible then start.Close()
         Dispatcher.UIThread.RunJobs()
+
+    /// Runs `check` over the real launcher, its picker answering `answer`'s current folder, then closes every window the
+    /// fact opened, so no window registry key outlives it (spec 0050 S5.3).
+    let private withWindowClosingLauncher (answer : KitFolder ref) (check : LauncherWindow -> unit) : unit =
+        let picker : KitFolderPicker =
+            {
+                pickKitFolder = fun () -> async { return Some answer.Value }
+            }
+        withLauncherPicker picker (fun launcher ->
+            let opened = ResizeArray<Window>()
+            use _subscription =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _)) ->
+                    match sender with
+                    | :? Window as window -> opened.Add window
+                    | _ -> ())
+            try check launcher
+            finally
+                for window in opened |> Seq.rev |> Seq.toList do window.Close()
+                Dispatcher.UIThread.RunJobs())
+
+    /// The one `MainConstructorWindow` that pressing the box `id` on Main's start screen opens; the screen closes (spec 0050 S5.3).
+    let private mainWindowThrough (launcher : LauncherWindow) (id : ConstructorUiId) : MainConstructorWindow =
+        let start = startScreenOf launcher ConstructorUiId.openMainButton
+        try
+            let main = Assert.IsType<MainConstructorWindow>(Assert.Single(pressAndObserve start id))
+            Assert.True(main.IsVisible, "the opened constructor window must be shown")
+            Assert.False(start.IsVisible, "the start screen must close once its kit opens")
+            main
+        finally closeStartScreen start
 
     type private SnapshotLauncherFixture =
         {
@@ -1050,6 +1081,63 @@ module LauncherTests =
                 finally window.Close()
             finally closeStartScreen start
             Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: choosing a kit whose window is open activates that window and opens no second one`` () : unit =
+        let folder = TestAppScope.freshKitFolder owner
+        let spelled = KitFolder (FolderName (folder.value.value.Replace('/', '\\').ToUpperInvariant()))
+        let lockFile = FileName (Path.Combine(folder.value.value, ".oc", "lock"))
+        let imports = (freshContext ()).catalogueImports
+        let answer = ref folder
+        withWindowClosingLauncher answer (fun launcher ->
+            let main = mainWindowThrough launcher ConstructorUiId.newKitButton
+            let lockBytes = FileByteContent (File.ReadAllBytes lockFile.value)
+            let activations = ResizeArray<unit>()
+            main.Activated.Add(fun _ -> activations.Add ())
+            Assert.NotEqual<KitFolder>(folder, spelled)
+            for chosen in [ folder; spelled ] do
+                answer.Value <- chosen
+                let inverseStart = startScreenOf launcher ConstructorUiId.openInverseButton
+                try
+                    let before = activations.Count
+                    Assert.Empty(pressAndObserve inverseStart ConstructorUiId.openKitButton)
+                    Assert.False(inverseStart.IsVisible, "bringing the kit's window forward must close the start screen")
+                    Assert.True(activations.Count > before, $"choosing {chosen.value.value} must activate the kit's open window")
+                    Assert.True(main.IsVisible, "the kit's window must stay open")
+                    Assert.Equal<byte>(lockBytes.value, File.ReadAllBytes lockFile.value)
+                    match openKitAt folder ReadWriteKitAccess ClockProvider.system (KitAuthor "test") imports with
+                    | Error (KitLibraryKitErr (KitLockedErr holder)) ->
+                        Assert.Equal<ProcessId>(ProcessId.getCurrentProcessId (), holder.owner.processId)
+                    | Error error -> Assert.Fail error.describe
+                    | Ok reopened ->
+                        reopened.library.kit.close () |> SceneTestFixture.kitSuccess
+                        Assert.Fail "the kit's window must keep its lock"
+                finally closeStartScreen inverseStart
+            main.Close()
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(File.Exists lockFile.value, "closing the kit's window must release its kit"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a kit can be opened again once its window is closed`` () : unit =
+        let folder = TestAppScope.freshKitFolder owner
+        let lockFile = FileName (Path.Combine(folder.value.value, ".oc", "lock"))
+        withWindowClosingLauncher (ref folder) (fun launcher ->
+            let first = mainWindowThrough launcher ConstructorUiId.newKitButton
+            Assert.True(File.Exists lockFile.value, "the new kit's window must hold its lock")
+            first.Close()
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(File.Exists lockFile.value, "closing the window must release its kit")
+            Assert.Equal<KitWindowPresence>(NoKitWindowOpen, folder.activateKitWindow ())
+
+            let again = mainWindowThrough launcher ConstructorUiId.openKitButton
+            Assert.NotSame(first, again)
+            Assert.True(File.Exists lockFile.value, "the kit opened again must hold its lock")
+            Assert.Equal<KitWindowPresence>(KitWindowActivated, folder.activateKitWindow ())
+            again.Close()
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(File.Exists lockFile.value, "closing the window again must release its kit"))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
