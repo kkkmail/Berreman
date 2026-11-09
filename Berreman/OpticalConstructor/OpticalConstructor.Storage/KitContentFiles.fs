@@ -173,3 +173,10 @@ module KitContentFiles =
         member this.recordScene (name : SceneName) (scene : SceneSnapshot) : Result<unit, KitLibraryError> =
             this.snapshotReferences scene.libraryReferences
             |> Result.bind (fun _ -> this.kit.proxy.writeScene name scene |> Result.mapError KitLibraryKitErr)
+
+        /// Snapshots and pins the item's model version and its bound physics, each with its closure, before writing
+        /// its `<label>.item-json`, so an item never names a version the kit lacks (spec 0050 S7.1).
+        /// A failure stops recording and retains snapshots already written.
+        member this.recordItem (item : Item) : Result<unit, KitLibraryError> =
+            this.snapshotReferences item.libraryReferences
+            |> Result.bind (fun _ -> this.kit.proxy.writeItem item |> Result.mapError KitLibraryKitErr)

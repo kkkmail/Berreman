@@ -8,6 +8,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
@@ -209,6 +210,27 @@ module KitLibraryTests =
                         }
             }
         context, writes
+
+    /// The fixture's context with every content write refused by the error, once the expected snapshots are in place.
+    let private refusingContentWrites
+        (expected : LibraryEntryEnvelope list)
+        (writeError : KitError)
+        (fixture : KitLibraryFixture)
+        : KitLibraryContext =
+        let failingProxy =
+            {
+                fixture.context.kit.proxy with
+                    writeKindFile = fun _ _ _ ->
+                        assertSnapshots expected fixture
+                        Error writeError
+            }
+        {
+            fixture.context with
+                kit =
+                    {
+                        fixture.context.kit with proxy = failingProxy
+                    }
+        }
 
     let private missingResolutionContent () : LibraryEntryContent =
         let id = MaterialId (Guid.Parse "14100000-0000-4000-8000-000000000001")
@@ -1571,21 +1593,7 @@ module KitLibraryTests =
 
         let refused = freshSnapshotFixture ()
         let writeError = KitIoErr "experiment content cannot be written"
-        let failingProxy =
-            {
-                refused.context.kit.proxy with
-                    writeKindFile = fun _ _ _ ->
-                        assertSnapshots expected refused
-                        Error writeError
-            }
-        let failingContext =
-            {
-                refused.context with
-                    kit =
-                        {
-                            refused.context.kit with proxy = failingProxy
-                        }
-            }
+        let failingContext = refusingContentWrites expected writeError refused
         Assert.Equal<Result<unit, KitLibraryError>>(
             Error (KitLibraryKitErr writeError), failingContext.recordExperiment recordingExperiment)
         assertSnapshots expected refused
@@ -1621,21 +1629,7 @@ module KitLibraryTests =
 
         let refused = freshSnapshotFixture ()
         let writeError = KitIoErr "scene content cannot be written"
-        let failingProxy =
-            {
-                refused.context.kit.proxy with
-                    writeKindFile = fun _ _ _ ->
-                        assertSnapshots (recordingClosure ()) refused
-                        Error writeError
-            }
-        let failingContext =
-            {
-                refused.context with
-                    kit =
-                        {
-                            refused.context.kit with proxy = failingProxy
-                        }
-            }
+        let failingContext = refusingContentWrites (recordingClosure ()) writeError refused
         Assert.Equal<Result<unit, KitLibraryError>>(
             Error (KitLibraryKitErr writeError), failingContext.recordScene name recordingScene)
         assertSnapshots (recordingClosure ()) refused
@@ -1734,6 +1728,229 @@ module KitLibraryTests =
             assertSnapshots [] fixture
             Assert.Empty(fixture.context.kit.proxy.readExperiments () |> expectKitOk)
             Assert.Empty(fixture.context.kit.proxy.readSceneNames () |> expectKitOk)
+
+    let private presetEntryId (preset : ElementValueId) : LibraryEntryId =
+        preset.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith $"The Built-in preset '{preset.value}' must have an entry id.")
+
+    /// The Built-in catalogue's envelope of the shipped item model's version (spec 0050 S7.1).
+    let private itemModelEnvelope (id : ItemModelId) : LibraryEntryEnvelope =
+        catalogueEnvelope id.toLibraryEntryId
+
+    let private cpl1Item : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "21900000-0000-4000-8000-000000000001")
+                label = ItemLabel "CPL1"
+                model = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId)
+                dial = DialMounted DialPositive
+            }
+        draft.toItem
+
+    let private qzDraft : ItemDraft =
+        {
+            id = ItemId (Guid.Parse "21900000-0000-4000-8000-000000000002")
+            label = ItemLabel "QZ"
+            model =
+                StackSampleChoice (
+                    BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId,
+                    SampleVersionId.firstOf SampleIds.glassPlate1mmId,
+                    BuiltinCatalogue.sample SampleIds.glassPlate1mmId
+                )
+            dial = DialMounted DialPositive
+        }
+
+    let private qzItem : Item = qzDraft.toItem
+
+    let private laserItem : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "21900000-0000-4000-8000-000000000003")
+                label = ItemLabel "Laser"
+                model = SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source PresetIds.heNe633)
+                dial = FixedMounting
+            }
+        draft.toItem
+
+    let private lp1Item : Item =
+        let polarizer = (catalogueEnvelope (presetEntryId PresetIds.polarizerLp)).content.toPolarizerPreset |> expectOverlayStoreOk
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "21900000-0000-4000-8000-000000000004")
+                label = ItemLabel "LP1"
+                model = PolarizerPresetChoice (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId, polarizer)
+                dial = DialMounted DialNegative
+            }
+        draft.toItem
+
+    /// Reopens the kit read-only against an empty library: it reads its items back and resolves each one's model from
+    /// its `.item-model-json` snapshot, then its bound physics from the kit's snapshots (spec 0050 S7.1, S4.2).
+    let private assertItemsReopenAgainstEmptyLibrary (fixture : KitLibraryFixture) (items : Item list) : unit =
+        let empty = CatalogueImportProxy.createInMemory ()
+        let opened =
+            KitContext.openKit (KitProxy.createInMemory fixture.folder) ReadOnlyKitAccess fixture.context.kit.clock |> expectKitOk
+        let context : KitLibraryContext =
+            {
+                kit = opened
+                imports = CatalogueImportContext.create empty.proxy
+            }
+        Assert.Equal<Item list>(items, opened.proxy.readItems () |> expectKitOk)
+        let overlay = context.openOverlay [] |> expectSnapshotOk
+        let session = (storesForOverlay empty).overlaidWith overlay
+        for item in items do
+            let modelVersion =
+                match item.model with
+                | PresetInstance (model, _)
+                | SampleInstance (model, _)
+                | ItemModelVersionInstance model -> model
+            let shipped = BuiltinCatalogue.itemModel modelVersion.itemModelId
+            let snapshot =
+                overlay.snapshots
+                |> List.filter (fun envelope -> EntryVersionReference envelope.libraryVersionRef = modelVersion.entryReference)
+                |> Assert.Single
+            Assert.Equal<ItemModelVersionId>(shipped.versionId, modelVersion)
+            Assert.Equal<LibraryEntryKind>(ItemModelEntryKind, snapshot.content.schema.kind)
+            Assert.Equal<VersionNumber>(shipped.version, snapshot.content.version)
+            Assert.Equal<ItemModelEntry>(shipped.entry, snapshot.content.toItemModel |> expectOverlayStoreOk)
+            match item.model with
+            | PresetInstance (_, preset) ->
+                Assert.Equal<Result<LibraryEntry option, LibraryError>>(
+                    Ok (Some (BuiltinCatalogue.preset preset)), session.library.tryGetEntry preset)
+            | SampleInstance (_, version) ->
+                let sample = BuiltinCatalogue.sample version.sampleId
+                Assert.Equal<Result<Sample option, SampleError>>(Ok (Some sample), session.samples.resolveVersion version)
+                let categories = session.categories.listCategories () |> expectOverlayStoreOk
+                for materialVersion in sample.structure.referencedMaterialVersions do
+                    let material = BuiltinCatalogue.material materialVersion.materialId
+                    Assert.Equal<Result<MaterialEntry option, MaterialError>>(
+                        Ok (Some material), session.materials.resolveVersion materialVersion)
+                    Assert.Contains(BuiltinCatalogue.category material.category, categories)
+            | ItemModelVersionInstance _ -> ()
+        Assert.Empty(empty.proxy.heldUserEntries () |> expectImportOk)
+
+    [<Fact>]
+    let ``recording an item snapshots its model's library version and pins it, then writes its file`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        let model = itemModelEnvelope ItemModelIds.circularPolarizerModelId
+        let expected = [ model ]
+        Assert.Equal<VersionNumber>(VersionNumber.first, model.content.version)
+        Assert.Equal<EntryReference list>([ EntryVersionReference model.libraryVersionRef ], cpl1Item.libraryReferences)
+        let snapshotPath = KitRelativePath $"library/{ItemModelIds.circularPolarizerModelId.value:D}@v1.item-model-json"
+        let itemPath = KitRelativePath "CPL1.item-json"
+        Assert.Equal<KitRelativePath>(snapshotPath, model.snapshotPath)
+        let before = fixture.folder.paths ()
+        let context, writes = observeContentWrites expected fixture
+        context.recordItem cpl1Item |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ ItemKitFile ], List.ofSeq writes)
+        assertSnapshots expected fixture
+        Assert.Equal<LibraryVersionRef list>([ model.libraryVersionRef ], List.ofSeq fixture.pins)
+        Assert.Equal<KitRelativePath list>([ itemPath; snapshotPath ], fixture.folder.paths () |> List.except before)
+        Assert.Equal<Item list>([ cpl1Item ], context.kit.proxy.readItems () |> expectKitOk)
+
+        // Recording it again rewrites its file and snapshots and pins nothing more.
+        context.recordItem cpl1Item |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ ItemKitFile; ItemKitFile ], List.ofSeq writes)
+        Assert.Equal<LibraryVersionRef list>([ model.libraryVersionRef ], List.ofSeq fixture.pins)
+        Assert.Equal<Item list>([ cpl1Item ], context.kit.proxy.readItems () |> expectKitOk)
+        assertItemsReopenAgainstEmptyLibrary fixture [ cpl1Item ]
+
+        // A refused file write keeps the snapshot it follows and writes no item.
+        let refused = freshSnapshotFixture ()
+        let writeError = KitIoErr "item content cannot be written"
+        let failingContext = refusingContentWrites expected writeError refused
+        Assert.Equal<Result<unit, KitLibraryError>>(Error (KitLibraryKitErr writeError), failingContext.recordItem cpl1Item)
+        assertSnapshots expected refused
+        Assert.Empty(refused.context.kit.proxy.readItems () |> expectKitOk)
+        refused.context.recordItem cpl1Item |> expectSnapshotOk
+        Assert.Equal<LibraryVersionRef list>([ model.libraryVersionRef ], List.ofSeq refused.pins)
+        Assert.Equal<Item list>([ cpl1Item ], refused.context.kit.proxy.readItems () |> expectKitOk)
+
+    [<Fact>]
+    let ``recording a sample item snapshots the sample with its materials and their categories`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        let sample = catalogueEnvelope SampleIds.glassPlate1mmId.toLibraryEntryId
+        let expected =
+            [
+                itemModelEnvelope ItemModelIds.stackSampleItemModelId
+                sample
+                catalogueEnvelope MaterialIds.glass152.toLibraryEntryId
+                catalogueEnvelope CategoryIds.glass.toLibraryEntryId
+            ]
+        Assert.Equal<VersionNumber>(VersionNumber.first, sample.content.version)
+        let context, writes = observeContentWrites expected fixture
+        context.recordItem qzItem |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ ItemKitFile ], List.ofSeq writes)
+        assertSnapshots expected fixture
+        Assert.Equal<Item list>([ qzItem ], context.kit.proxy.readItems () |> expectKitOk)
+
+        // A second item over the same sample version finds its whole closure held, so each stays snapshotted once.
+        let qz2Draft : ItemDraft =
+            {
+                qzDraft with
+                    id = ItemId (Guid.Parse "21900000-0000-4000-8000-000000000005")
+                    label = ItemLabel "QZ2"
+            }
+        let qz2 = qz2Draft.toItem
+        context.recordItem qz2 |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ ItemKitFile; ItemKitFile ], List.ofSeq writes)
+        assertSnapshots expected fixture
+        Assert.Equal<LibraryVersionRef list>(expected |> List.map _.libraryVersionRef, List.ofSeq fixture.pins)
+        assertItemsReopenAgainstEmptyLibrary fixture [ qzItem; qz2 ]
+
+    [<Fact>]
+    let ``recording a preset item snapshots the preset's latest version`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        let heNeId = presetEntryId PresetIds.heNe633
+        let heNe = catalogueEnvelope heNeId
+        let laserModel = itemModelEnvelope ItemModelIds.sourcePresetItemModelId
+        let laserExpected = [ laserModel; heNe ]
+        Assert.Equal<VersionNumber>(VersionNumber.first, heNe.content.version)
+        Assert.Equal<EntryReference list>(
+            [ EntryVersionReference laserModel.libraryVersionRef; EntryLatestReference heNeId ], laserItem.libraryReferences)
+        let laserContext, laserWrites = observeContentWrites laserExpected fixture
+        laserContext.recordItem laserItem |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ ItemKitFile ], List.ofSeq laserWrites)
+        assertSnapshots laserExpected fixture
+        Assert.Equal<Item list>([ laserItem ], laserContext.kit.proxy.readItems () |> expectKitOk)
+
+        // An ideal polarizer binds its preset the same way, at the library's latest version.
+        let polarizerId = presetEntryId PresetIds.polarizerLp
+        let expected = laserExpected @ [ itemModelEnvelope ItemModelIds.idealPolarizerItemModelId; catalogueEnvelope polarizerId ]
+        let context, writes = observeContentWrites expected fixture
+        context.recordItem lp1Item |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ ItemKitFile ], List.ofSeq writes)
+        assertSnapshots expected fixture
+        assertItemsReopenAgainstEmptyLibrary fixture [ lp1Item; laserItem ]
+
+        // A library holding the preset but not the model refuses the item: the preset never stands in for its model.
+        let presetOnly = CatalogueImportProxy.createInMemory ()
+        BuiltinCatalogue.putSealedEntries (CatalogueImportContext.create presetOnly.proxy) [ heNe.content ]
+        Assert.Equal<Result<LibraryEntryEnvelope option, CatalogueImportError>>(Ok (Some heNe), presetOnly.proxy.tryLatestEnvelope heNeId)
+        let unmodelled = snapshotFixture presetOnly.proxy ReadWriteKitAccess
+        let paths = unmodelled.folder.paths ()
+        match unmodelled.context.recordItem laserItem with
+        | Error (UnheldEntryErr reason) -> Assert.Contains(ItemModelIds.sourcePresetItemModelId.value.ToString(), reason)
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail("An item whose model neither the library nor the kit holds must record nothing.")
+        assertSnapshots [] unmodelled
+        Assert.Empty unmodelled.pins
+        Assert.Empty unmodelled.operations
+        Assert.Equal<KitRelativePath list>(paths, unmodelled.folder.paths ())
+        Assert.Empty(unmodelled.context.kit.proxy.readItems () |> expectKitOk)
+
+    [<Fact>]
+    let ``a read-only kit records no item`` () : unit =
+        let fixture = snapshotFixture (BuiltinCatalogue.freshStores ()).proxy ReadOnlyKitAccess
+        let paths = fixture.folder.paths ()
+        for item in [ cpl1Item; qzItem; laserItem; lp1Item ] do
+            match fixture.context.recordItem item with
+            | Error (KitLibraryKitErr (KitReadOnlyErr reason)) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail(error.describe)
+            | Ok () -> Assert.Fail($"A read-only kit must refuse recording '{item.label.value}'.")
+            Assert.Empty fixture.pins
+            Assert.Empty fixture.operations
+            Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+            assertSnapshots [] fixture
+            Assert.Empty(fixture.context.kit.proxy.readItems () |> expectKitOk)
 
     [<Fact>]
     let ``every kit library error renders its condition and its payload`` () : unit =
