@@ -1011,3 +1011,110 @@ module KitWindowTests =
                     Assert.NotEqual<Parameter list>(sourcePiece.parameters, piece.parameters)
             | experiments, _ -> Assert.Fail $"E1 must be copied alone and resolve exactly the chosen piece, not {List.length experiments} experiment(s)"
             Assert.Equal<Set<ItemId>>(set [ ownLaser600.id; benchLaser600.id ], mapped.items |> List.map (fun item -> item.id) |> set))
+
+    /// The flow strip's step boxes, top to bottom (spec 0050 S7.2).
+    let private flowStepIds : ConstructorUiId list =
+        [ ConstructorUiId.flowItemsStep; ConstructorUiId.flowSetupsStep; ConstructorUiId.flowExperimentsStep ]
+
+    /// The Experiments bay's pane, which carries its id as its `Name` (`Ribbon.ribbonView`).
+    let private experimentsPane : ConstructorUiId = ConstructorUiId.ribbonPane BayNames.experiments.uiKey
+
+    /// The control carrying `id` as its `Name`, as the table's canvas and a ribbon pane do.
+    let private tryNamedControl (window : Window) (id : ConstructorUiId) : Control option =
+        window.GetVisualDescendants()
+        |> Seq.tryPick (function :? Control as control when control.Name = id.value -> Some control | _ -> None)
+
+    let private namedControl (window : Window) (id : ConstructorUiId) : Control =
+        tryNamedControl window id
+        |> Option.defaultWith (fun () -> failwith $"{id.value} must be in the window")
+
+    /// The control's rectangle in window coordinates.
+    let private windowRectOf (window : Window) (control : Control) : Rect =
+        match control.TranslatePoint(Point(0.0, 0.0), window) |> Option.ofNullable with
+        | Some topLeft -> Rect(topLeft, control.Bounds.Size)
+        | None -> failwith $"{control.GetType().Name} has no position in its window"
+
+    [<Fact>]
+    let ``the flow strip UiIds are the stable intent-named ids`` () : unit =
+        Assert.Equal("FlowStrip", ConstructorUiId.flowStrip.value)
+        Assert.Equal("FlowItemsStep", ConstructorUiId.flowItemsStep.value)
+        Assert.Equal("FlowSetupsStep", ConstructorUiId.flowSetupsStep.value)
+        Assert.Equal("FlowExperimentsStep", ConstructorUiId.flowExperimentsStep.value)
+        Assert.Equal<ConstructorUiId list>(flowStepIds, ConstructorFlowStep.all |> List.map _.flowUiId)
+        Assert.Equal<ConstructorUiId>(ConstructorUiId.flowItemsStep, ItemsFlowStep.flowUiId)
+        Assert.Equal<ConstructorUiId>(ConstructorUiId.flowSetupsStep, SetupsFlowStep.flowUiId)
+        Assert.Equal<ConstructorUiId>(ConstructorUiId.flowExperimentsStep, ExperimentsFlowStep.flowUiId)
+
+    [<Fact>]
+    let ``the flow strip shows Items, Setups and Experiments left of the surface its step shows`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            try
+                let loaded = kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert
+                Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, loaded.flowStep)
+                // Shows the window on `step`, checks the strip against the surface `surfaceOf` finds, then runs `check`.
+                let onStep (step : ConstructorFlowStep) (surfaceOf : Window -> Control) (check : Window -> unit) : unit =
+                    withKitWindow (loaded |> updateTableAndElementRotation (ShowFlowStep step)) (fun window ->
+                        let strip = Assert.IsType<Border>(Assert.Single(controlsById window ConstructorUiId.flowStrip))
+                        let boxes = flowStepIds |> List.map (controlById window)
+                        for box in boxes do
+                            Assert.Contains<Visual>(strip, box.GetVisualAncestors())
+                        Assert.Equal<string list>([ "Items"; "Setups"; "Experiments" ], flowStepIds |> List.map (boxLabelOf window))
+                        let rects = boxes |> List.map (windowRectOf window)
+                        for upper, lower in List.pairwise rects do
+                            Assert.True(upper.Bottom <= lower.Top, $"the strip's boxes must stand top to bottom: {upper} above {lower}")
+                        let surface = surfaceOf window
+                        Assert.True(surface.IsEffectivelyVisible, "the step's surface must be visible")
+                        let surfaceRect = windowRectOf window surface
+                        for rect in rects do
+                            Assert.True(rect.Right <= surfaceRect.Left, $"the strip's box {rect} must sit left of the surface {surfaceRect}")
+                        for shown in ConstructorFlowStep.all do
+                            if shown = step then
+                                Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window shown.flowUiId)
+                            else
+                                Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window shown.flowUiId)
+                        check window)
+                onStep SetupsFlowStep (fun window -> namedControl window ConstructorUiId.tableElementCanvas) (fun window ->
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
+                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane))
+                onStep ItemsFlowStep (fun window -> controlById window ConstructorUiId.itemsPanel) (fun window ->
+                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane))
+                onStep ExperimentsFlowStep (fun window -> namedControl window experimentsPane) (fun window ->
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing the flow strip's steps shows the Items panel, the Experiments bay and the table`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            try
+                withKitWindow (kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert) (fun window ->
+                    let openingTable = namedControl window ConstructorUiId.tableElementCanvas
+                    Assert.True(openingTable.IsEffectivelyVisible, "the window must open on the table")
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
+
+                    pressBox window ConstructorUiId.flowItemsStep
+                    Assert.True((controlById window ConstructorUiId.itemsPanel).IsEffectivelyVisible, "Items must show the Items panel")
+                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window ConstructorUiId.flowItemsStep)
+
+                    pressBox window ConstructorUiId.flowExperimentsStep
+                    Assert.True((namedControl window experimentsPane).IsEffectivelyVisible, "Experiments must show the Experiments bay")
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window ConstructorUiId.flowExperimentsStep)
+                    // Spec 0050 S7.2: leaving Items recreates the workbench; Setups ↔ Experiments keeps it.
+                    let experimentsTable = namedControl window ConstructorUiId.tableElementCanvas
+                    Assert.NotSame(openingTable, experimentsTable)
+
+                    pressBox window ConstructorUiId.flowSetupsStep
+                    let setupsTable = namedControl window ConstructorUiId.tableElementCanvas
+                    Assert.True(setupsTable.IsEffectivelyVisible, "Setups must show the table")
+                    Assert.Same(experimentsTable, setupsTable)
+                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window ConstructorUiId.flowSetupsStep))
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)

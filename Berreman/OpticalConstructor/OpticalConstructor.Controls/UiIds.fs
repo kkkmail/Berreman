@@ -782,6 +782,16 @@ type ConstructorUiId =
     /// The selected item's revisions, the current one first (spec 0050 S7.2).
     static member itemRevisionList : ConstructorUiId = ConstructorUiId "ItemRevisionList"
 
+    // --- The constructor's flow strip (FlowStripView). ---
+    /// The flow strip left of the constructor window's surface, one box per step (spec 0050 S7.2; 001 §O).
+    static member flowStrip : ConstructorUiId = ConstructorUiId "FlowStrip"
+    /// The strip's Items step: shows the kit's Items panel (spec 0050 S7.2).
+    static member flowItemsStep : ConstructorUiId = ConstructorUiId "FlowItemsStep"
+    /// The strip's Setups step: shows the table (spec 0050 S7.2).
+    static member flowSetupsStep : ConstructorUiId = ConstructorUiId "FlowSetupsStep"
+    /// The strip's Experiments step: shows the Experiments bay (spec 0050 S7.2).
+    static member flowExperimentsStep : ConstructorUiId = ConstructorUiId "FlowExperimentsStep"
+
     // --- The Data locations window (DataLocationsView, DataLocationsWindow). ---
     /// The single-instance window listing every data location (001 §G, spec 0050 S5.3).
     static member dataLocationsWindow : ConstructorUiId = ConstructorUiId "DataLocationsWindow"

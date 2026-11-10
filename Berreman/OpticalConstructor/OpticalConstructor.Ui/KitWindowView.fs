@@ -286,9 +286,22 @@ let private kitChangesRows (model : TableAndElementRotationModel) (dispatch : Ta
             :> IView
         ]
 
-/// The kit window as a pure projection of the workbench model: the kit bar docked above `mainView`, so the bar stays
-/// in view while the page scrolls (spec 0050 S5.3).
+/// The kit window as a pure projection of the workbench model: the kit bar docked above, the flow strip left of the
+/// step's surface, the Items panel or `mainView`, keyed so a change between them recreates it and Setups ↔ Experiments
+/// keeps the workbench (spec 0050 S5.3, S7.2).
 let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+    // `View.withKey` keys a typed view, so the surface sits in a keyed `Border`, as `Ribbon.ribbonView`'s pane does.
+    let surface : IView =
+        match model.flowStep with
+        | ItemsFlowStep ->
+            Border.create [ Border.child (ItemsPanelView.itemsPanelView model dispatch) ]
+            |> Avalonia.FuncUI.DSL.View.withKey "items"
+            :> IView
+        | SetupsFlowStep
+        | ExperimentsFlowStep ->
+            Border.create [ Border.child (mainView model dispatch) ]
+            |> Avalonia.FuncUI.DSL.View.withKey "workbench"
+            :> IView
     DockPanel.create [
         DockPanel.children [
             StackPanel.create [
@@ -303,6 +316,12 @@ let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndEle
                     @ kitChangesRows model dispatch
                     @ model.kitStatusRows)
             ]
-            mainView model dispatch
+            // Scrolls: the bar above can leave a short window too little height for the strip (spec 0050 S7.2; AGENTS.md).
+            ScrollViewer.create [
+                ScrollViewer.dock Dock.Left
+                ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+                ScrollViewer.content (FlowStripView.flowStripView model dispatch)
+            ]
+            surface
         ]
     ] :> IView

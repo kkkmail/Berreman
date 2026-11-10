@@ -368,6 +368,13 @@ type ConstructorFlowStep =
         | SetupsFlowStep -> ControlCaption "Setups"
         | ExperimentsFlowStep -> ControlCaption "Experiments"
 
+    /// The id of the step's box in the flow strip (spec 0050 S7.2).
+    member this.flowUiId : ConstructorUiId =
+        match this with
+        | ItemsFlowStep -> ConstructorUiId.flowItemsStep
+        | SetupsFlowStep -> ConstructorUiId.flowSetupsStep
+        | ExperimentsFlowStep -> ConstructorUiId.flowExperimentsStep
+
 /// The open "Add item from library model…" form: the new item's id, minted when it opens, the models it offers, the
 /// one chosen, the label as typed (a raw caption until `ItemLabel.tryCreate` reads it) and the dial (spec 0050 S7.2).
 type AddItemForm =

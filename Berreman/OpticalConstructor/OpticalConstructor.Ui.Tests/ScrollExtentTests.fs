@@ -82,15 +82,19 @@ module ScrollExtentTests =
          | None -> false)
         && (c.GetVisualAncestors() |> Seq.filter (fun a -> a.ClipToBounds) |> Seq.forall insideOf)
 
-    /// Every subject corner that cannot be scrolled on screen (`BringIntoView` scrolls every enclosing viewer).
+    /// Every subject corner that cannot be scrolled on screen, brought into view through every enclosing viewer. A
+    /// presenter that scrolls marks the request handled, so a viewer nested in another takes one request per level
+    /// (spec 0050 S7.2: the Items panel's offer list scrolls inside the panel).
     let private unreachable (window : Window) : string list =
         subjects window
         |> List.collect (fun c ->
             let w, h = c.Bounds.Width, c.Bounds.Height
+            let viewers = c.GetVisualAncestors() |> Seq.filter (fun a -> a :? ScrollViewer) |> Seq.length
             [ Point(0.5, 0.5), "top-left"; Point(w - 0.5, h - 0.5), "bottom-right" ]
             |> List.choose (fun (p, corner) ->
-                c.BringIntoView(Rect(p.X - 0.5, p.Y - 0.5, 1.0, 1.0))
-                Dispatcher.UIThread.RunJobs()
+                for _ in 1 .. max 1 viewers do
+                    c.BringIntoView(Rect(p.X - 0.5, p.Y - 0.5, 1.0, 1.0))
+                    Dispatcher.UIThread.RunJobs()
                 match onScreen window c p with
                 | true -> None
                 | false -> Some $"%s{corner} of %s{labelOf c} %A{c.Bounds}"))
@@ -343,6 +347,44 @@ module ScrollExtentTests =
     [<Fact>]
     let ``the kit window: the kit bar and the page stay reachable`` () : unit =
         assertReachable "KitWindow" (fun () -> viewWindow KitWindowView.kitWindowView (tallestKitBar ()))
+
+    /// The kit window on its Items step: three circular polarizers added through `AddItem`, the second selected with
+    /// its first parameter's editor open as unknown, and the add form open (spec 0050 S7.2).
+    let private itemsStepKitWindow () : Window =
+        let update (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+            updateTableAndElementRotation msg model
+        let circular : ItemModelChoice =
+            LibraryModelChoice (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.circularPolarizerModelId)
+        let draftOf (n : int) : ItemDraft =
+            {
+                id = ItemId (System.Guid.Parse $"24200000-0000-4000-8000-%012d{n}")
+                label = ItemLabel $"CPL{n}"
+                model = circular
+                dial = FixedMounting
+            }
+        let added = [ 1 .. 3 ] |> List.fold (fun model n -> model |> update (AddItem (draftOf n))) (initMain () |> SceneTestFixture.kitSuccess)
+        let second = (draftOf 2).id
+        let selected = added |> update (SelectKitItem second)
+        let firstParameter =
+            match selected.kitItems |> List.filter (fun item -> item.id = second) |> List.collect _.parameters with
+            | parameter :: _ -> parameter
+            | [] -> failwith "the second item must be in the kit and hold a parameter"
+        let model =
+            selected
+            |> update (EditItemParameter firstParameter.name)
+            |> update (SetParameterEditChoice UnknownStateChoice)
+            |> update OpenAddItemForm
+            |> update (ShowFlowStep ItemsFlowStep)
+        Assert.Equal(3, List.length model.kitItems)
+        Assert.Equal<ItemId option>(Some second, model.selectedItemOpt)
+        match model.parameterEditOpt, model.addItemFormOpt with
+        | Some draft, Some _ -> Assert.Equal<ParameterStateChoice>(UnknownStateChoice, draft.choice)
+        | _ -> Assert.Fail "the parameter editor and the add form must both be open"
+        viewWindow KitWindowView.kitWindowView model
+
+    [<Fact>]
+    let ``the kit window's Items step leaves everything reachable`` () : unit =
+        assertReachable "KitWindowItems" itemsStepKitWindow
 
     [<Fact>]
     let ``the Data locations window leaves everything reachable`` () : unit =
