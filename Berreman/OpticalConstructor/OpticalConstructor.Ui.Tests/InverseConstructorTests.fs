@@ -49,10 +49,10 @@ module InverseConstructorTests =
     /// BuiltinCatalogue.sample's 200 nm glass-film entry id, bound as the inverse HINT.
     let private glassFilm200Id : string = (Library.SampleItem (BuiltinCatalogue.sample SampleIds.glassFilm200Id)).entryId.value
 
-    let private theSample (m : TableAndElementRotationModel) : TestElement =
+    let private theSample (m : TableAndElementRotationModel) : Setups.SetupSlot =
         m.elements |> List.find (fun e -> e.placement.catalogueKind = Placement.Sample)
 
-    let private theDetector (m : TableAndElementRotationModel) : TestElement =
+    let private theDetector (m : TableAndElementRotationModel) : Setups.SetupSlot =
         m.elements |> List.find (fun e -> e.placement.catalogueKind = Placement.Detector)
 
     // ---- mock ExperimentDataProxy shapes ------------------------------------------------------------

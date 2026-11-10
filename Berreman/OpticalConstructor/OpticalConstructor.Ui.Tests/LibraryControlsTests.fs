@@ -20,7 +20,7 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// element's `valueId`. The control stays `LibraryControls` — only the bay label changed.
 module LibraryControlsTests =
 
-    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
 
     /// Bind BuiltinCatalogue.sample entries through their Guid strings at the Selector valueId seam
     /// (spec 0033 step 002; 0050 §3.3), using Library.SampleIds rather than repeated literals.

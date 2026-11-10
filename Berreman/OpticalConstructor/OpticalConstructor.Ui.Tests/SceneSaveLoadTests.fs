@@ -95,9 +95,9 @@ module SceneSaveLoadTests =
             Assert.StartsWith("library/", snapshot.snapshotPath.value)
             Assert.True(File.Exists(Path.Combine(folder.value.value, snapshot.snapshotPath.value)))
             let removed = saved |> updateTableAndElementRotation RemoveSelectedElement
-            Assert.Equal<TestElement list>(initial.elements, removed.elements)
+            Assert.Equal<Setups.SetupSlot list>(initial.elements, removed.elements)
             let loaded = removed |> updateTableAndElementRotation (SceneLoad name)
-            Assert.Equal<TestElement list>(placed.elements, loaded.elements)
+            Assert.Equal<Setups.SetupSlot list>(placed.elements, loaded.elements)
             Assert.Equal(placed.captureScene, loaded.captureScene)
             Assert.Equal(TableSelected, loaded.selection)
             Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded scene 'Bench: A'."), loaded.kitStatus)
@@ -142,7 +142,7 @@ module SceneSaveLoadTests =
         try
             Assert.Contains<SceneName>(name, reopened.savedScenes)
             let restored = reopened |> updateTableAndElementRotation (SceneLoad name)
-            Assert.Contains<TestElement>(restored.elements, fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
+            Assert.Contains<Setups.SetupSlot>(restored.elements, fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
         finally
             reopened.kit.close () |> SceneTestFixture.kitSuccess
 
@@ -178,7 +178,7 @@ module SceneSaveLoadTests =
         try
             let placed = initial |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
             let refused = placed |> updateTableAndElementRotation (SceneLoad name)
-            Assert.Equal<TestElement list>(placed.elements, refused.elements)
+            Assert.Equal<Setups.SetupSlot list>(placed.elements, refused.elements)
             Assert.Equal(placed.captureScene, refused.captureScene)
             Assert.Equal(placed.selection, refused.selection)
             Assert.Equal<SceneName list>(placed.savedScenes, refused.savedScenes)

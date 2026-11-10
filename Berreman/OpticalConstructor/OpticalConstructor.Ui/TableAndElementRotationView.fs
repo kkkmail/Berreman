@@ -81,18 +81,7 @@ let wheelAction (mods : Set<WheelModifier>) : WheelAction =
 // Pure model.
 // ---------------------------------------------------------------------------
 
-type TestElement =
-    {
-        /// Spec 0027 (024) §1/§5: each table element carries its own stable, serializable identity,
-        /// distinct from `placement.valueId` (the binding key to a Library entry). Experiments and
-        /// setup steps reference an element by this id, never by an in-memory reference.
-        id : Library.ElementId
-        placement : ElementPlacement
-        zoom : BeamLayout.ElementZoom
-        /// Spec 0046: the beam the element sits on — the main beam, or the reflected ray of a
-        /// partially-reflecting element (by that element's id). The element menu moves it.
-        beam : BeamLayout.BeamHost
-    }
+type Setups.SetupSlot with
 
     /// The element's along-beam parameter (its x), in metres.
     member e.elementX : float = e.placement.placementPoint.x / 1.0<meter>
@@ -522,7 +511,8 @@ type TableAndElementRotationModel =
     {
         table : OpticalTable
         view : TableViewState        // rotatable (when the table is selected) + pannable + zoomable
-        elements : TestElement list  // each with its own spec rotation + draw zoom
+        /// The table's slots, the light source (the ray root) first (spec 0050 S8.2).
+        elements : Setups.SetupSlot list
         selection : Selection
         drag : DragState
         /// The table's R3-lock (task 008): unlocked by default. Elements carry their own R3-lock.
@@ -686,8 +676,14 @@ let defaultElementZoom : BeamLayout.ElementZoom = BeamLayout.ElementZoom 5.0
 /// source/detector get deterministic ids (see `initMain`) so wiring/experiment tests can name them.
 let private freshId () : Library.ElementId = System.Guid.NewGuid().ToString() |> Library.ElementId
 
-let private mkElement (point : TablePoint) (kind : CatalogueKind) : TestElement =
-    { id = freshId (); placement = ElementPlacement.create kind point; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
+let private mkElement (point : TablePoint) (kind : CatalogueKind) : Setups.SetupSlot =
+    {
+        id = freshId ()
+        placement = ElementPlacement.create kind point
+        zoom = defaultElementZoom
+        beam = BeamLayout.OnMainBeam
+        content = Setups.EmptySlotContent
+    }
 
 /// Composes the parameterless scene's in-memory stores from the Built-in catalogue (spec 0050 §3.4–3.5).
 module private DefaultStores =
@@ -746,7 +742,7 @@ let initWith
     (samples : Library.SampleProxy)
     (categories : MaterialLibrary.CategoryProxy)
     (kit : KitContext)
-    (elements : TestElement list)
+    (elements : Setups.SetupSlot list)
     (palette : CatalogueKind list) : TableAndElementRotationModel =
     {
         table = Table.defaultTable
@@ -828,9 +824,23 @@ let initTableAndElementRotation () : Result<TableAndElementRotationModel, KitErr
 /// The Main-screen seed elements: a light source and a detector at the central-ray endpoints (the plate
 /// edges), with DETERMINISTIC ids so wiring / experiment tests can name them. The forward Main scene uses
 /// exactly this; the inverse scene splices an unbound sample between them (`initInverse`).
-let private mainSeedElements : TestElement list =
-    [ { id = Library.ElementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
-      { id = Library.ElementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
+let private mainSeedElements : Setups.SetupSlot list =
+    [
+        {
+            id = Library.ElementId "src"
+            placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint
+            zoom = defaultElementZoom
+            beam = BeamLayout.OnMainBeam
+            content = Setups.EmptySlotContent
+        }
+        {
+            id = Library.ElementId "det"
+            placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint
+            zoom = defaultElementZoom
+            beam = BeamLayout.OnMainBeam
+            content = Setups.EmptySlotContent
+        }
+    ]
 
 /// Seeds a forward scene in its supplied kit without constructing a scratch kit (spec 0050 .manual/010).
 let initMainWithKit
@@ -862,13 +872,14 @@ let initInverseWithKit
     (samples : Library.SampleProxy)
     (categories : MaterialLibrary.CategoryProxy)
     (kit : KitContext) : TableAndElementRotationModel =
-    let elements =
+    let elements : Setups.SetupSlot list =
         [
             {
                 id = Library.ElementId "src"
                 placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint
                 zoom = defaultElementZoom
                 beam = BeamLayout.OnMainBeam
+                content = Setups.EmptySlotContent
             }
             {
                 id = Library.ElementId "sample"
@@ -880,12 +891,14 @@ let initInverseWithKit
                         }
                 zoom = defaultElementZoom
                 beam = BeamLayout.OnMainBeam
+                content = Setups.EmptySlotContent
             }
             {
                 id = Library.ElementId "det"
                 placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint
                 zoom = defaultElementZoom
                 beam = BeamLayout.OnMainBeam
+                content = Setups.EmptySlotContent
             }
         ]
     {
@@ -945,7 +958,17 @@ let restoreScene (snapshot : Scene.SceneSnapshot) (model : TableAndElementRotati
     { model with
         elements =
             snapshot.elements
-            |> List.map (fun e -> { TestElement.id = e.id; placement = e.placement; zoom = e.zoom; beam = e.beam })
+            |> List.map (fun e ->
+                let slot : Setups.SetupSlot =
+                    {
+                        id = e.id
+                        placement = e.placement
+                        zoom = e.zoom
+                        beam = e.beam
+                        content = Setups.EmptySlotContent
+                    }
+
+                slot)
         view = snapshot.view
         snapChain = snapshot.snap
         rotationPivot = snapshot.pivot
@@ -1205,7 +1228,7 @@ type ElementPlacement with
     /// The placement with its three rotations reset (bypassing the locks), its position kept.
     member p.withRotationsReset : ElementPlacement = { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero }
 
-let private mapElement (i : SceneElementIndex) (f : TestElement -> TestElement) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
+let private mapElement (i : SceneElementIndex) (f : Setups.SetupSlot -> Setups.SetupSlot) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
     { m with elements = m.elements |> List.mapi (fun j e -> if j = i.value then f e else e) }
 
 /// Rotate the TABLE VIEW about screen axis Rk by `d`. R3 respects the table's R3-lock (task 008).
@@ -1248,7 +1271,7 @@ let private zoomAllElements (notches : WheelNotches) (m : TableAndElementRotatio
     { m with elements = m.elements |> List.map (fun e -> { e with zoom = e.zoom.zoomedBy notches }) }
 
 /// The Main-screen snap (spec 0046 — the beam TREE): the source is the ray root and every other element
-/// SNAPS onto the beam it sits on (`TestElement.beam`) — the main beam, or the reflected ray of a
+/// SNAPS onto the beam it sits on (`SetupSlot.beam`) — the main beam, or the reflected ray of a
 /// partially-reflecting element — through the pure `BeamLayout.layout`. On each beam the elements are
 /// ordered by x and consecutive x-distances are the gaps; each element's branch is DERIVED
 /// (`ElementPlacement.primaryBranch` — a flat mirror REFLECTS, a polarizer / sample / lens TRANSMITS) and every
@@ -1267,11 +1290,11 @@ type MainNode =
 type TableAndElementRotationModel with
 
     /// The scene's elements, each with its index.
-    member model.indexedElements : (SceneElementIndex * TestElement) list =
+    member model.indexedElements : (SceneElementIndex * Setups.SetupSlot) list =
         model.elements |> List.mapi (fun i e -> SceneElementIndex i, e)
 
     /// The element at `i`, when the scene holds one there.
-    member model.tryElementAt (i : SceneElementIndex) : TestElement option = List.tryItem i.value model.elements
+    member model.tryElementAt (i : SceneElementIndex) : Setups.SetupSlot option = List.tryItem i.value model.elements
 
     /// The index of the element with id `id`, when it is on the table.
     member model.tryIndexOf (id : Library.ElementId) : SceneElementIndex option =
@@ -1280,7 +1303,7 @@ type TableAndElementRotationModel with
     /// The scene as the pure beam layout reads it (spec 0046): every element with its beam host and draw zoom
     /// (the ray meets, and an open ray stops at, the DRAWN box), the source first.
     member model.layoutElements : BeamLayout.LayoutElement list =
-        model.elements |> List.map (fun e -> { BeamLayout.LayoutElement.id = e.id; placement = e.placement; host = e.beam; zoom = e.zoom })
+        model.elements |> List.map (fun s -> s.layoutElement)
 
     /// The laid-out Main scene (spec 0046) — `BeamLayout.layoutWith` the global rotation pivot over
     /// `layoutElements`.
@@ -1491,7 +1514,14 @@ let private addElement (kind : CatalogueKind) (prebind : ElementValueId option) 
     let placement =
         { ElementPlacement.create kind { x = x.value * 1.0<meter>; y = 0.0<meter> } with valueId = prebind }
         |> withBoundSampleEmission m
-    let e = { id = freshId (); placement = placement; zoom = defaultElementZoom; beam = host }
+    let e : Setups.SetupSlot =
+        {
+            id = freshId ()
+            placement = placement
+            zoom = defaultElementZoom
+            beam = host
+            content = Setups.EmptySlotContent
+        }
     let elements' = m.elements @ [ e ]
     { m.withActiveSelectCancelled with elements = elements'; selection = ElementSelected (SceneElementIndex (List.length elements' - 1)) }
 
@@ -1771,7 +1801,7 @@ let operatingWaveLength (model : TableAndElementRotationModel) (requested : Wave
 
 /// What element `e` lets an experiment vary (spec 0046): its kind's variables — except a light source, whose
 /// wavelength varies only when the bound source is TUNABLE (a fixed line, or no bound source, varies nothing).
-let variablesOfElement (model : TableAndElementRotationModel) (e : TestElement) : Experiments.VariableParameter list =
+let variablesOfElement (model : TableAndElementRotationModel) (e : Setups.SetupSlot) : Experiments.VariableParameter list =
     match e.placement.catalogueKind with
     | LightSource ->
         match model.boundSource |> Option.map (fun source -> source.tuning) with
@@ -2896,7 +2926,7 @@ let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : StrokeWidt
         Line.startPoint a.toPoint; Line.endPoint b.toPoint; Line.stroke (brush c); Line.strokeThickness w.value
     ] :> IView
 
-type TestElement with
+type Setups.SetupSlot with
 
     /// The element as the test scenes draw it through `view`: its oriented box and its N1 / N2 markers,
     /// heavier and in the selection colour when highlighted.
@@ -3425,7 +3455,7 @@ type TableAndElementRotationModel with
 // ---------------------------------------------------------------------------
 
 /// Resolve an element's bound Library entry (through the Library proxy), if it has a `valueId` that binds.
-let private boundEntry (model : TableAndElementRotationModel) (e : TestElement) : Library.LibraryEntry option =
+let private boundEntry (model : TableAndElementRotationModel) (e : Setups.SetupSlot) : Library.LibraryEntry option =
     match e.placement.valueId with
     | Some id ->
         match model.library.tryGetEntry id with
@@ -3489,7 +3519,7 @@ type Library.Sample with
 /// material VERSIONS resolved to their entries through the versioned material store; a source /
 /// detector / polarizer / unbound element reaches none. (No table element binds a material DIRECTLY
 /// today — only samples carry materials — so the sample path is the sole reachability route.)
-let private reachableMaterialEntries (model : TableAndElementRotationModel) (e : TestElement) : MaterialLibrary.MaterialEntry list =
+let private reachableMaterialEntries (model : TableAndElementRotationModel) (e : Setups.SetupSlot) : MaterialLibrary.MaterialEntry list =
     match boundEntry model e with
     | Some (Library.SampleItem s) ->
         s.materialVersions
@@ -3501,7 +3531,7 @@ let private reachableMaterialEntries (model : TableAndElementRotationModel) (e :
 
 /// The out-of-band warning text for element `e`, if any (spec 0038 step 031). Public so the Details
 /// bay and the badge overlay share ONE derivation and a headless test can drive it directly.
-let outOfBandWarningFor (model : TableAndElementRotationModel) (e : TestElement) : ControlCaption option =
+let outOfBandWarningFor (model : TableAndElementRotationModel) (e : Setups.SetupSlot) : ControlCaption option =
     (OutOfBandDiagnostic.checkMaterialsOutOfBand (reachableMaterialEntries model e) model.sceneRequestedWavelengths).warningOpt
     |> Option.map ControlCaption
 
@@ -3698,7 +3728,7 @@ let chartForRun
         | Experiments.VaryR1 | Experiments.VaryWaveLength -> range.min.value, range.max.value
     let xs = [ for k in 0 .. n - 1 -> lo + (hi - lo) * float k / float (n - 1) ]
     let indexOf (id : Library.ElementId) : int option = model.elements |> List.tryFindIndex (fun e -> e.id = id)
-    let boundOf (e : TestElement) : Library.LibraryEntry option =
+    let boundOf (e : Setups.SetupSlot) : Library.LibraryEntry option =
         match e.placement.valueId with
         | Some id ->
             match model.library.tryGetEntry id with
@@ -4270,7 +4300,7 @@ let private workbenchButton (id : ConstructorUiId) (label : ControlCaption) (onC
 /// the reference-keyed `SelectSessionEnded` through a ref cell filled once the session exists,
 /// so a session superseded by a re-target (its cancel fires while the successor is being
 /// stored) can never clear the successor's handle.
-let private chooseFromLibrary (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (element : TestElement) (owner : Window) : unit =
+let private chooseFromLibrary (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (element : Setups.SetupSlot) (owner : Window) : unit =
     let sessionRef : SelectSession option ref = ref None
     let selectCtx : WindowMode.SelectionContext<Library.LibraryEntry> =
         {
@@ -4293,7 +4323,7 @@ let private chooseFromLibrary (model : TableAndElementRotationModel) (dispatch :
 /// launcher seam and the modality are app-scope constants — so a selection change re-arms the
 /// handler for the new element and a bind never leaves a stale one behind. The owner window
 /// for a modal Select open is resolved from the click's own visual tree at dispatch time.
-let private selectorChooseButton (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (element : TestElement) : IView =
+let private selectorChooseButton (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (element : Setups.SetupSlot) : IView =
     Border.create [
         ConstructorUiId.selectorChooseButton.automationAttribute<Border> ()
         Border.background (brush (Color.FromRgb(232uy, 232uy, 232uy)))
@@ -4691,7 +4721,7 @@ let private elementMenuItem (id : ConstructorUiId) (label : ControlCaption) (ava
 /// element the menu serves, which then closes the menu. Like the Select bay's button, the owner window for a
 /// modal Select open is resolved from the click's own visual tree, and the subscription re-patches on the
 /// element's id (the closure's only render-varying capture).
-let private elementMenuChooseItem (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (element : TestElement) : IView =
+let private elementMenuChooseItem (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (element : Setups.SetupSlot) : IView =
     Border.create [
         ConstructorUiId.elementMenuChoose.automationAttribute<Border> ()
         Border.background (brush (Color.FromRgb(255uy, 255uy, 255uy)))

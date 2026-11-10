@@ -52,8 +52,8 @@ module SolverHandoffWindowTests =
     // ---- fixtures: build real experiments (with captured setups) through the inverse model ----------
 
     /// Locate the seeded inverse endpoints by kind (the InverseConstructorTests precedent).
-    let private endpoints (m : TableAndElementRotationModel) : TestElement * TestElement * TestElement =
-        let byKind (k : Placement.CatalogueKind) : TestElement = m.elements |> List.find (fun e -> e.placement.catalogueKind = k)
+    let private endpoints (m : TableAndElementRotationModel) : Setups.SetupSlot * Setups.SetupSlot * Setups.SetupSlot =
+        let byKind (k : Placement.CatalogueKind) : Setups.SetupSlot = m.elements |> List.find (fun e -> e.placement.catalogueKind = k)
         byKind Placement.LightSource, byKind Placement.Sample, byKind Placement.Detector
 
     /// One inverse experiment with a REAL captured setup: the seeded source / detector optionally bound

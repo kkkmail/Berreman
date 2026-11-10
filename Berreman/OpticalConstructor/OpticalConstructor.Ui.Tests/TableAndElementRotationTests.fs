@@ -28,13 +28,13 @@ module TableAndElementRotationTests =
     let private owner = FolderName "TableAndElementRotationTests"
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
-    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
     let private deg (a : Angle) : float = a.degrees
     let private d2 (a : ScreenPoint) (b : ScreenPoint) : float = sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
 
     /// The on-screen projected centre of an element under a given view (mirrors the view's own
     /// private hit-test projection, using the public scale/centre).
-    let private centreOf (view : TableViewState) (e : TestElement) : ScreenPoint =
+    let private centreOf (view : TableViewState) (e : Setups.SetupSlot) : ScreenPoint =
         TableView.project OpticalConstructor.Ui.TableScene.pixelsPerMeter OpticalConstructor.Ui.TableScene.center view
             (Vector3.create (e.placement.placementPoint.x / 1.0<meter>) (e.placement.placementPoint.y / 1.0<meter>) 0.0)
 

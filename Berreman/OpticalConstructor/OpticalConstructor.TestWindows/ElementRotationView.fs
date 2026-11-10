@@ -68,7 +68,7 @@ let elementRotationWheelAction (mods : Set<ElementRotationWheelModifier>) : Elem
     | _ -> ElementRotationNoWheelAction
 
 // ---------------------------------------------------------------------------
-// Pure model. An element is the Main screen's `TestElement`, its draw zoom included (spec 0048
+// Pure model. An element is the Main screen's `Setups.SetupSlot`, its draw zoom included (spec 0048
 // E038: the lower declaration wins).
 // ---------------------------------------------------------------------------
 
@@ -86,7 +86,7 @@ type ElementRotationModel =
         /// in THIS test — table rotation is the job of test #3. The elements are projected through
         /// it, so panning / zooming the table moves / scales them with it.
         view : TableViewState
-        elements : TestElement list
+        elements : Setups.SetupSlot list
         selected : SceneElementIndex
         drag : ElementRotationDragState
         /// Which reset (if any) the rotation-controls bar is awaiting confirmation for (task 008).
@@ -96,8 +96,14 @@ type ElementRotationModel =
 /// Three optical elements on the central ray, at spec-correct positions (y = 0, on the beam),
 /// each fresh (rest pose, R3 locked) at the default 5× draw zoom. The middle one is selected.
 let initElementRotation () : ElementRotationModel =
-    let onRay (id : Library.ElementId) (x : float<meter>) (kind : CatalogueKind) : TestElement =
-        { id = id; placement = ElementPlacement.create kind { x = x; y = 0.0<meter> }; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
+    let onRay (id : Library.ElementId) (x : float<meter>) (kind : CatalogueKind) : Setups.SetupSlot =
+        {
+            id = id
+            placement = ElementPlacement.create kind { x = x; y = 0.0<meter> }
+            zoom = defaultElementZoom
+            beam = BeamLayout.OnMainBeam
+            content = Setups.EmptySlotContent
+        }
     {
         table = Table.defaultTable
         view = Table.defaultView
@@ -145,11 +151,11 @@ let private dragThresholdPx : CanvasLength = CanvasLength 3.0
 type ElementRotationModel with
 
     /// The elements, each with its index.
-    member model.indexedElements : (SceneElementIndex * TestElement) list =
+    member model.indexedElements : (SceneElementIndex * Setups.SetupSlot) list =
         model.elements |> List.mapi (fun i e -> SceneElementIndex i, e)
 
     /// The selected element (there always is one here).
-    member internal model.selectedElement : TestElement = List.item model.selected.value model.elements
+    member internal model.selectedElement : Setups.SetupSlot = List.item model.selected.value model.elements
 
     /// The element whose projected centre is nearest `pt` (there are always a few elements, so a
     /// click always selects one — no deselect, unlike the table test).
@@ -160,7 +166,7 @@ type ElementRotationModel with
         |> List.tryHead
         |> Option.map fst
 
-let private mapSelected (f : TestElement -> TestElement) (model : ElementRotationModel) : ElementRotationModel =
+let private mapSelected (f : Setups.SetupSlot -> Setups.SetupSlot) (model : ElementRotationModel) : ElementRotationModel =
     { model with elements = model.indexedElements |> List.map (fun (i, e) -> if i = model.selected then f e else e) }
 
 let private editSelectedPlacement (f : ElementPlacement -> ElementPlacement) (model : ElementRotationModel) : ElementRotationModel =

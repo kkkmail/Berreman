@@ -25,7 +25,7 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 module MainSceneMsgTests =
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
-    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
     let private clickAt (sp : ScreenPoint) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
         m |> updateTableAndElementRotation (PointerDown sp) |> updateTableAndElementRotation (PointerUp sp)
 
@@ -84,7 +84,7 @@ module MainSceneMsgTests =
     let ``adding an element leaves the existing elements and the table view untouched`` () =
         let before = SceneTestFixture.mainScene ()
         let after = updateTableAndElementRotation (AddElement Lens) before
-        Assert.Equal<TestElement list>(before.elements, after.elements |> List.take (List.length before.elements))
+        Assert.Equal<Setups.SetupSlot list>(before.elements, after.elements |> List.take (List.length before.elements))
         Assert.Equal(before.view, after.view)
 
     [<Fact>]
@@ -93,6 +93,25 @@ module MainSceneMsgTests =
         let after = updateTableAndElementRotation (AddElement FlatMirror) before
         Assert.Equal<CatalogueKind list>(before.palette, after.palette)
         Assert.Equal(before.snapChain, after.snapChain)
+
+    /// Spec 0050 S8.2: a slot the table places holds no item until one is assigned to it.
+    [<Fact>]
+    let ``the table's elements are slots: each one placed is empty, and each lays out as the table lays it out`` () =
+        let seeded = initMain () |> SceneTestFixture.kitSuccess
+        let placed =
+            seeded
+            |> updateTableAndElementRotation (AddElement LinearPolarizer)
+            |> updateTableAndElementRotation (AddElement Sample)
+        let contents (m : TableAndElementRotationModel) : Setups.SlotContent list = m.elements |> List.map (fun slot -> slot.content)
+        let empties (m : TableAndElementRotationModel) : Setups.SlotContent list =
+            List.replicate (List.length m.elements) Setups.EmptySlotContent
+        Assert.Equal<Setups.SlotContent list>(empties seeded, contents seeded)
+        Assert.Equal<CatalogueKind list>(
+            [ LinearPolarizer; Sample ],
+            placed.elements |> List.skip (List.length seeded.elements) |> List.map (fun slot -> slot.placement.catalogueKind))
+        Assert.Equal<Setups.SlotContent list>(empties placed, contents placed)
+        Assert.Equal<BeamLayout.LayoutElement list>(seeded.elements |> List.map (fun s -> s.layoutElement), seeded.layoutElements)
+        Assert.Equal<BeamLayout.LayoutElement list>(placed.elements |> List.map (fun s -> s.layoutElement), placed.layoutElements)
 
     [<Fact>]
     let ``RemoveSelected with nothing selected is inert`` () =
@@ -250,7 +269,7 @@ module MainSceneMsgTests =
     let ``render tuning leaves the scene itself untouched`` () =
         let before = withSample ()
         let after = before |> updateTableAndElementRotation RenderSwap |> updateTableAndElementRotation (RenderSetRailsIndex (RendererControls.RendererPresetIndex 1)) |> updateTableAndElementRotation (RenderSetFaceOpacity (RendererControls.RendererOpacity 0.3))
-        Assert.Equal<TestElement list>(before.elements, after.elements)
+        Assert.Equal<Setups.SetupSlot list>(before.elements, after.elements)
         Assert.Equal(before.selection, after.selection)
         Assert.Equal(before.view, after.view)
 
@@ -501,7 +520,7 @@ module MainSceneMsgTests =
         let m = SceneTestFixture.mainScene ()
         let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "not-on-the-table", PresetIds.detectorIntensity)) m
         // Nothing changed but the status line.
-        Assert.Equal<TestElement list>(m.elements, vanished.elements)
+        Assert.Equal<Setups.SetupSlot list>(m.elements, vanished.elements)
         match vanished.selectStatus with
         | Some text -> Assert.Contains("no longer on the table", text.value)
         | None -> Assert.Fail "the vanished target must surface the status line"

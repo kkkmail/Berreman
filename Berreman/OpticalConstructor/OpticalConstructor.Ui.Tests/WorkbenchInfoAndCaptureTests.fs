@@ -37,7 +37,7 @@ module WorkbenchInfoAndCaptureTests =
     module LW = LibraryWindowView
     module SE = LightSourceEditorView
 
-    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
     let private bind (i : int) (entryId : ElementValueId) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, entryId)) m
     let private glassFilm200Id : ElementValueId = (SampleItem (BuiltinCatalogue.sample SampleIds.glassFilm200Id)).entryId
     let private glassPlate1mmId : ElementValueId = (SampleItem (BuiltinCatalogue.sample SampleIds.glassPlate1mmId)).entryId

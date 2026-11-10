@@ -45,7 +45,7 @@ module SceneRoundTripTests =
         | Ok name -> name
         | Error (InvalidSceneErr reason) -> failwith $"Test scene name unexpectedly rejected: {reason}"
 
-    let private sourceEl : TestElement =
+    let private sourceEl : Setups.SetupSlot =
         let position : TablePoint =
             {
                 x = -0.75<meter>
@@ -60,9 +60,10 @@ module SceneRoundTripTests =
                 }
             zoom = BeamLayout.ElementZoom 1.5
             beam = BeamLayout.OnMainBeam
+            content = Setups.EmptySlotContent
         }
 
-    let private polarizerEl : TestElement =
+    let private polarizerEl : Setups.SetupSlot =
         {
             id = Library.ElementId "pol"
             placement =
@@ -72,9 +73,10 @@ module SceneRoundTripTests =
                 }
             zoom = BeamLayout.ElementZoom 3.25
             beam = BeamLayout.OnMainBeam
+            content = Setups.EmptySlotContent
         }
 
-    let private detectorEl : TestElement =
+    let private detectorEl : Setups.SetupSlot =
         let position : TablePoint =
             {
                 x = 0.80<meter>
@@ -86,6 +88,7 @@ module SceneRoundTripTests =
             placement = ElementPlacement.create Detector position
             zoom = BeamLayout.ElementZoom 2.0
             beam = BeamLayout.OnReflectedBeamOf reflectedHost
+            content = Setups.EmptySlotContent
         }
 
     let private dialledView : Table.TableViewState =
@@ -158,7 +161,7 @@ module SceneRoundTripTests =
         Assert.Equal<ElementValueId option list>(
             [ Some Library.PresetIds.source600; Some Library.PresetIds.polarizerLp; None ],
             restored.elements |> List.map (fun element -> element.placement.valueId))
-        Assert.Equal<TestElement list>([ sourceEl; polarizerEl; detectorEl ], restored.elements)
+        Assert.Equal<Setups.SetupSlot list>([ sourceEl; polarizerEl; detectorEl ], restored.elements)
         let reflectedHost = Library.ElementId "pol"
         Assert.Equal<BeamLayout.BeamHost list>(
             [ BeamLayout.OnMainBeam; BeamLayout.OnMainBeam; BeamLayout.OnReflectedBeamOf reflectedHost ],

@@ -227,7 +227,7 @@ module KitWindowModelTests =
                 let inverse = forward |> updateTableAndElementRotation (SwitchConstructorMode InverseConstructor)
                 Assert.Equal<ConstructorMode>(InverseConstructor, inverse.constructorMode)
                 Assert.Equal<KitContext>(forward.kit, inverse.kit)
-                Assert.Equal<TestElement list>(forward.elements, inverse.elements)
+                Assert.Equal<Setups.SetupSlot list>(forward.elements, inverse.elements)
                 Assert.Equal<Experiments.ExperimentCollection>(forward.experimentCollection, inverse.experimentCollection)
                 Assert.Equal<Ribbon.BayName>(forward.ribbon, inverse.ribbon)
                 Assert.EndsWith("— Inverse", inverse.kitWindowTitle.value)
@@ -1251,7 +1251,7 @@ module KitWindowModelTests =
             Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, rotationFromItems.flowStep)
             for answer in [ experiments; rotation; rotationFromItems ] do
                 Assert.Equal<KitContext>(model.kit, answer.kit)
-                Assert.Equal<TestElement list>(model.elements, answer.elements)
+                Assert.Equal<Setups.SetupSlot list>(model.elements, answer.elements)
                 Assert.Equal<Experiments.ExperimentCollection>(model.experimentCollection, answer.experimentCollection)
                 Assert.Equal<TableAndElementRotationModel>(
                     {

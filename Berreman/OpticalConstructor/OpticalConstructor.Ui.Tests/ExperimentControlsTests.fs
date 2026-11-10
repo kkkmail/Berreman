@@ -29,7 +29,7 @@ module ExperimentControlsTests =
     let private matchesId (id : string) (c : Control) : bool =
         c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
 
-    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
 
     /// Select the element at index `i`, then bind it to a Library entry id (the `BindValueId` MVU path).
     let private bind (i : int) (entryId : ElementValueId) (m : TableAndElementRotationModel) : TableAndElementRotationModel =

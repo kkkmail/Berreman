@@ -30,7 +30,7 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 module ElementMenuTests =
 
     let private tol = 1.0e-9
-    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
 
     /// Bind element `i` through the ONE targeted bind arm.
     let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, ElementValueId entryId)) m

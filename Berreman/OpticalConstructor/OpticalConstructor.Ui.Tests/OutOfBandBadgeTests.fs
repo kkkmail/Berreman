@@ -106,12 +106,13 @@ module OutOfBandBadgeTests =
                 tryGetEntry = fun id -> Ok (if id = entryId then Some (SampleItem sample) else None)
             }
         let baseModel = SceneTestFixture.mainSceneWith libStub (Experiments.createInMemoryExperiments ()) materials samples categories
-        let flagged : TestElement =
+        let flagged : Setups.SetupSlot =
             {
                 id = Library.ElementId "sample0"
                 placement = { ElementPlacement.create Sample TablePoint.origin with valueId = Some entryId }
                 zoom = defaultElementZoom
                 beam = BeamLayout.OnMainBeam
+                content = Setups.EmptySlotContent
             }
         let draft = { baseModel.experimentCollection.draft with variable = variable; range = { min = Propagation.SweptValue 200.0; max = Propagation.SweptValue 800.0; points = Propagation.CurvePointCount 91 } }
         let model =
@@ -121,7 +122,7 @@ module OutOfBandBadgeTests =
         model, List.length baseModel.elements
 
     /// Whether element `e` raises an out-of-band warning under model `m`.
-    let private isFlagged (m : TableAndElementRotationModel) (e : TestElement) : bool =
+    let private isFlagged (m : TableAndElementRotationModel) (e : Setups.SetupSlot) : bool =
         match outOfBandWarningFor m e with
         | Some _ -> true
         | None -> false
