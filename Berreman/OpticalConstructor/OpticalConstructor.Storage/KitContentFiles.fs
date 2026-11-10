@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Storage
 
 open System
+open Softellect.Sys.Logging
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
@@ -220,6 +221,38 @@ module KitContentFiles =
         member this.recordItem (item : Item) : Result<unit, KitLibraryError> =
             this.snapshotReferences item.libraryReferences
             |> Result.bind (fun _ -> this.kit.proxy.writeItem item |> Result.mapError KitLibraryKitErr)
+
+        /// Records `relabelled`, `previous` under a new label, and deletes the old label's file; a failure undoes what it
+        /// wrote, so the item stays under its old label and never in two files of one id (spec 0050 S7.2).
+        member this.recordRelabelledItem (previous : Item) (relabelled : Item) : Result<unit, KitLibraryError> =
+            let proxy = this.kit.proxy
+            let oldStem = previous.label.fileStem
+            let newStem = relabelled.label.fileStem
+
+            // The kit root is one Windows folder: a change of case alone is one file, so it is deleted before the rewrite.
+            if String.Equals(oldStem.value, newStem.value, StringComparison.OrdinalIgnoreCase) then
+                proxy.deleteKindFile ItemKitFile oldStem
+                |> Result.mapError KitLibraryKitErr
+                |> Result.bind (fun () ->
+                    match this.recordItem relabelled with
+                    | Ok () -> Ok ()
+                    | Error error ->
+                        match proxy.writeItem previous with
+                        | Ok () -> ()
+                        | Error restoreError ->
+                            Logger.logError $"KitLibraryContext.recordRelabelledItem: could not restore '{previous.label.value}': {restoreError.describe}"
+                        Error error)
+            else
+                this.recordItem relabelled
+                |> Result.bind (fun () ->
+                    match proxy.deleteKindFile ItemKitFile oldStem with
+                    | Ok () -> Ok ()
+                    | Error error ->
+                        match proxy.deleteKindFile ItemKitFile newStem with
+                        | Ok () -> ()
+                        | Error undoError ->
+                            Logger.logError $"KitLibraryContext.recordRelabelledItem: could not delete '{relabelled.label.value}': {undoError.describe}"
+                        Error (KitLibraryKitErr error))
 
     /// What a copy brought into the kit, in write order: each experiment and each added item as written, each lab file
     /// copied in (the experiments' data, then the added items' photos) and each snapshot added (spec 0050 S6, S7.2).

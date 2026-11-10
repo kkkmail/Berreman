@@ -1957,6 +1957,111 @@ module KitLibraryTests =
             assertSnapshots [] fixture
             Assert.Empty(fixture.context.kit.proxy.readItems () |> expectKitOk)
 
+    /// The item under the new label, alone in its kit (spec 0050 S7.2).
+    let private relabelledItem (item : Item) (label : ItemLabel) : Item =
+        item.relabelledAmong label [ item ] |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let private itemFilePaths (fixture : KitLibraryFixture) : KitRelativePath list =
+        fixture.folder.paths ()
+        |> List.filter (fun path -> path.value.EndsWith(ItemKitFile.extension.value, StringComparison.OrdinalIgnoreCase))
+
+    /// The fixture's folder reopened read-only: a relabel through it is refused and leaves every path as it was.
+    let private assertReadOnlyRelabelRefused (fixture : KitLibraryFixture) (previous : Item) (relabelled : Item) : unit =
+        let readOnly : KitLibraryContext =
+            {
+                fixture.context with
+                    kit =
+                        KitContext.openKit (KitProxy.createInMemory fixture.folder) ReadOnlyKitAccess fixture.context.kit.clock
+                        |> expectKitOk
+            }
+        let paths = fixture.folder.paths ()
+        match readOnly.recordRelabelledItem previous relabelled with
+        | Error (KitLibraryKitErr (KitReadOnlyErr reason)) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail($"A read-only kit must refuse relabelling '{previous.label.value}'.")
+        Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+
+    [<Fact>]
+    let ``a relabelled item moves to the file of its new label`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        fixture.context.recordItem cpl1Item |> expectSnapshotOk
+        let relabelled = relabelledItem cpl1Item (ItemLabel "CPL 1")
+        assertReadOnlyRelabelRefused fixture cpl1Item relabelled
+        Assert.Equal<Item list>([ cpl1Item ], fixture.context.kit.proxy.readItems () |> expectKitOk)
+
+        fixture.context.recordRelabelledItem cpl1Item relabelled |> expectSnapshotOk
+        let paths = fixture.folder.paths ()
+        Assert.Contains(KitRelativePath "CPL 1.item-json", paths)
+        Assert.DoesNotContain(KitRelativePath "CPL1.item-json", paths)
+        Assert.Equal<KitRelativePath list>([ KitRelativePath "CPL 1.item-json" ], itemFilePaths fixture)
+        let read = fixture.context.kit.proxy.readItems () |> expectKitOk |> Assert.Single
+        Assert.Equal<ItemLabel>(ItemLabel "CPL 1", read.label)
+        Assert.Equal<ItemId>(cpl1Item.id, read.id)
+        Assert.Equal<Item>(relabelled, read)
+
+    [<Fact>]
+    let ``a relabel that changes only the case rewrites the one file`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        let lower = relabelledItem cpl1Item (ItemLabel "cpl1")
+        fixture.context.recordItem lower |> expectSnapshotOk
+        Assert.Equal<KitRelativePath list>([ KitRelativePath "cpl1.item-json" ], itemFilePaths fixture)
+        let upper = relabelledItem lower (ItemLabel "CPL1")
+        assertReadOnlyRelabelRefused fixture lower upper
+
+        fixture.context.recordRelabelledItem lower upper |> expectSnapshotOk
+        Assert.Equal<KitRelativePath list>([ KitRelativePath "CPL1.item-json" ], itemFilePaths fixture)
+        let read = fixture.context.kit.proxy.readItems () |> expectKitOk |> Assert.Single
+        Assert.Equal<ItemLabel>(ItemLabel "CPL1", read.label)
+        Assert.Equal<Item>(upper, read)
+
+        // A record that fails once the old file is deleted writes the previous item back under its own label.
+        let listError = KitIoErr "the kit's snapshots cannot be listed"
+        let failing : KitLibraryContext =
+            {
+                fixture.context with
+                    kit =
+                        {
+                            fixture.context.kit with
+                                proxy =
+                                    {
+                                        fixture.context.kit.proxy with listSnapshots = fun () -> Error listError
+                                    }
+                        }
+            }
+        Assert.Equal<Result<unit, KitLibraryError>>(Error (KitLibraryKitErr listError), failing.recordRelabelledItem upper lower)
+        Assert.Equal<KitRelativePath list>([ KitRelativePath "CPL1.item-json" ], itemFilePaths fixture)
+        Assert.Equal<Item list>([ upper ], fixture.context.kit.proxy.readItems () |> expectKitOk)
+
+    [<Fact>]
+    let ``a relabel whose old file cannot be deleted leaves the item under its old label`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        fixture.context.recordItem cpl1Item |> expectSnapshotOk
+        let proxy = fixture.context.kit.proxy
+        let deleteError = KitIoErr "CPL1.item-json is held open by another program"
+        let refusing : KitLibraryContext =
+            {
+                fixture.context with
+                    kit =
+                        {
+                            fixture.context.kit with
+                                proxy =
+                                    {
+                                        proxy with
+                                            deleteKindFile = fun kind stem ->
+                                                if stem = cpl1Item.label.fileStem then Error deleteError else proxy.deleteKindFile kind stem
+                                    }
+                        }
+            }
+        let relabelled = relabelledItem cpl1Item (ItemLabel "CPL 1")
+
+        match refusing.recordRelabelledItem cpl1Item relabelled with
+        | Error (KitLibraryKitErr (KitIoErr reason)) -> Assert.Contains("CPL1.item-json", reason)
+        | Error error -> Assert.Fail($"Expected KitLibraryKitErr (KitIoErr _), got {error.describe}")
+        | Ok () -> Assert.Fail("A relabel whose old file cannot be deleted must not succeed.")
+
+        Assert.Equal<KitRelativePath list>([ KitRelativePath "CPL1.item-json" ], itemFilePaths fixture)
+        Assert.Equal<Item list>([ cpl1Item ], proxy.readItems () |> expectKitOk)
+
     [<Fact>]
     let ``recording an experiment refuses a missing physical item before writing`` () : unit =
         let laser600 : Item =
