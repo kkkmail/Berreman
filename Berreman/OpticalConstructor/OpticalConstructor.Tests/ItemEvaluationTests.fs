@@ -6,6 +6,8 @@ open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
 open Berreman.Media
+open Berreman.MaterialProperties
+open Berreman.Solvers
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MaterialStore
@@ -13,6 +15,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.ExperimentRun
+open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.ItemEvaluation
 
 /// The numbers the item-model evaluator reads, in `ItemEvaluation` (spec 0050 S8.1; 001 §I, §N).
@@ -121,6 +124,23 @@ module ItemEvaluationTests =
 
     let private assertSample (expected : Result<Sample, ItemEvaluationError>) (actual : Result<Sample, ItemEvaluationError>) : unit =
         Assert.Equal<Result<Sample, ItemEvaluationError>>(expected, actual)
+
+    /// A uniaxial crystal without gyration, n_o 1.544 and n_e 1.553 (spec 0050 S8.1).
+    let private uniaxialCrystal : UniaxialParameters =
+        {
+            ordinaryIndex = RefractionIndex 1.544
+            extraordinaryIndex = RefractionIndex 1.553
+            g11 = RhoValue 0.0
+            g33 = RhoValue 0.0
+        }
+
+    /// The spec 0044 Berreman forward over a test-local builder: the crystal's principal indices (n_o, n_o, n_e) in its
+    /// own frame (spec 0050 S8.1; 001 §N).
+    let private uniaxialForward : ForwardModelProxy<UniaxialParameters> =
+        let principalIndices (crystal : UniaxialParameters) : OpticalProperties =
+            OpticalProperties.fromRefractionIndex (crystal.ordinaryIndex, crystal.ordinaryIndex, crystal.extraordinaryIndex)
+
+        createBerremanForward principalIndices SolverParameters.defaultValue
 
     let private sampledRotations : Angle list = [ 0.0<deg>; 30.0<deg>; 135.0<deg> ] |> List.map Angle.degree
 
@@ -250,13 +270,14 @@ module ItemEvaluationTests =
                 // Any material error's reason is the payload, not only an unknown version's.
                 SampleMaterialErr (MaterialStoreUnavailableErr "the material store is closed"),
                 "the sample's materials do not resolve: the material store is closed"
+                CutPlateSolveErr "degenerate", "the cut plate's Berreman solve failed: degenerate"
             ]
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
-        Assert.Equal(6, descriptions |> List.distinct |> List.length)
+        Assert.Equal(7, descriptions |> List.distinct |> List.length)
 
     [<Fact>]
     let ``the default source is unpolarized light at unit scale`` () : unit =
@@ -648,3 +669,56 @@ module ItemEvaluationTests =
                 (Error (SampleMaterialErr (MaterialError.unknownMaterialVersion substrate.materialId)))
                 (BoundOpticalElement.ofStackSample emptyStore (ParameterValues.defaultsOf plate.parameterAxes) plate)
         | None -> Assert.Fail "the Built-in 1 mm glass plate carries a substrate plate"
+
+    [<Fact>]
+    let ``a cut plate is predicted through the Berreman forward at the element's spin, incidence, branch and wavelength`` () : unit =
+        let thickness = Thickness.mm 1.0<mm>
+        let incidence = IncidenceAngle.create (Angle.degree 20.0<deg>)
+        let plate : BoundOpticalElement = BoundCutPlate (CutPlate.ofForward uniaxialForward uniaxialCrystal XCut thickness)
+        let transmitting : ElementOrientation =
+            { rotation = Angle.degree 30.0<deg>; incidence = incidence; branch = Propagation.BranchTransmitted }
+        let reflecting : ElementOrientation = { transmitting with branch = Propagation.BranchReflected }
+        let configuration : MeasurementConfiguration =
+            {
+                cut = XCut
+                thickness = thickness
+                incidenceAngle = incidence
+                azimuth = SampleAzimuth.degree 30.0<deg>
+                observable = TransmittedMueller
+                waveLength = at600
+            }
+        let forwardAt (measured : MeasurementConfiguration) : MuellerMatrix =
+            match uniaxialForward.muellerOf measured uniaxialCrystal with
+            | Ok matrix -> matrix
+            | Error (ForwardSolveFailedErr (_, reason)) -> failwith reason
+
+        Assert.Equal<SampleAzimuth>(configuration.azimuth, transmitting.sampleAzimuth)
+        Assert.Equal<Observable>(TransmittedMueller, transmitting.observable)
+        Assert.Equal<Observable>(ReflectedMueller, reflecting.observable)
+
+        assertMuellerExact (forwardAt configuration) (plate.muellerAt transmitting at600)
+        assertMuellerExact (forwardAt { configuration with observable = ReflectedMueller }) (plate.muellerAt reflecting at600)
+
+        // The wavelength is the evaluation's: at 632.8 nm the plate is the forward's at 632.8 nm.
+        let at633 = WaveLength.nm 632.8<nm>
+        assertMuellerExact (forwardAt { configuration with waveLength = at633 }) (plate.muellerAt transmitting at633)
+
+        // The rotation is the azimuth of the in-plane optic axis: turned to 60°, the plate passes other light.
+        let at30 = matrixOf (plate.muellerAt transmitting at600)
+        let at60 = matrixOf (plate.muellerAt { transmitting with rotation = Angle.degree 60.0<deg> } at600)
+        let largestChange =
+            [ for i in 0 .. 3 do
+                  for j in 0 .. 3 do
+                      abs (at60.element i j - at30.element i j) ]
+            |> List.max
+        Assert.True(largestChange > 1.0e-3, $"the transmitted matrix at 60° differs from 30° by at most {largestChange:R}")
+
+    [<Fact>]
+    let ``a cut plate whose forward fails answers CutPlateSolveErr`` () : unit =
+        let failing : ForwardModelProxy<UniaxialParameters> =
+            { muellerOf = fun configuration _ -> Error (ForwardSolveFailedErr (configuration, "degenerate")) }
+        let plate : BoundOpticalElement = BoundCutPlate (CutPlate.ofForward failing uniaxialCrystal ZCut (Thickness.mm 1.0<mm>))
+
+        for branch in [ Propagation.BranchTransmitted; Propagation.BranchReflected ] do
+            let orientation : ElementOrientation = { ElementOrientation.transmittingAt Angle.zero with branch = branch }
+            Assert.Equal<Result<MuellerMatrix, ItemEvaluationError>>(Error (CutPlateSolveErr "degenerate"), plate.muellerAt orientation at600)

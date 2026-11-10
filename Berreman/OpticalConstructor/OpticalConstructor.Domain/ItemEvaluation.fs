@@ -18,13 +18,14 @@ module ItemEvaluation =
 
     /// Why an evaluation refused: the values hold no number for a parameter the model publishes, a number lies outside
     /// its kind's range, a model that is no light source was asked to emit, an element was asked for a branch it
-    /// does not have, or a sample's materials do not resolve in the store (spec 0050 S8.1).
+    /// does not have, a sample's materials do not resolve in the store, or a cut plate's solve failed (spec 0050 S8.1).
     type ItemEvaluationError =
         | MissingParameterValueErr of reason : string
         | ParameterOutOfRangeErr of reason : string
         | NotALightSourceErr of reason : string
         | UnmodelledBranchErr of reason : string
         | SampleMaterialErr of error : MaterialError
+        | CutPlateSolveErr of reason : string
 
         member this.describe : string =
             match this with
@@ -43,6 +44,7 @@ module ItemEvaluation =
                     | MaterialStoreUnavailableErr reason -> reason
 
                 $"the sample's materials do not resolve: {reason}"
+            | CutPlateSolveErr reason -> $"the cut plate's Berreman solve failed: {reason}"
 
     /// Every result in order, or the first error: a black box's elements, a compound's components, a sample's layers
     /// (spec 0050 S8.1).
@@ -241,6 +243,35 @@ module ItemEvaluation =
         static member transmittingAt (rotation : Angle) : ElementOrientation =
             { rotation = rotation; incidence = IncidenceAngle.normal; branch = Propagation.BranchTransmitted }
 
+        /// The rotation as a cut plate's azimuth about its own normal (spec 0050 S8.1; 001 §N).
+        member this.sampleAzimuth : MuellerInverse.SampleAzimuth = MuellerInverse.SampleAzimuth this.rotation
+
+        /// The branch as the Mueller matrix a cut plate records (spec 0050 S8.1; 001 §N).
+        member this.observable : MuellerInverse.Observable =
+            match this.branch with
+            | Propagation.BranchTransmitted -> MuellerInverse.TransmittedMueller
+            | Propagation.BranchReflected -> MuellerInverse.ReflectedMueller
+
+    /// A free-standing plate of a crystal whose parameters are chosen, cut along a crystal axis and predicted by the
+    /// spec 0044 forward; it holds that function, so it is equal only to itself (spec 0050 S8.1; 001 §N).
+    [<ReferenceEquality>]
+    type CutPlate =
+        {
+            cut : MuellerInverse.SampleCut
+            thickness : Thickness
+            predict : MuellerInverse.MeasurementConfiguration -> Result<MuellerMatrix, MuellerInverse.ForwardModelError>
+        }
+
+        /// The plate the forward predicts at these parameters, `createBerremanForward`'s included, nothing of it
+        /// copied (spec 0050 S8.1).
+        static member ofForward
+            (forward : MuellerInverse.ForwardModelProxy<'Parameters>)
+            (parameters : 'Parameters)
+            (cut : MuellerInverse.SampleCut)
+            (thickness : Thickness)
+            : CutPlate =
+            { cut = cut; thickness = thickness; predict = fun configuration -> forward.muellerOf configuration parameters }
+
     /// A stack sample at its thicknesses, its materials resolved once for every solve. It holds their dispersion
     /// functions, so it is equal only to itself and `BoundOpticalElement` keeps value equality (spec 0050 S8.1).
     [<ReferenceEquality>]
@@ -250,13 +281,14 @@ module ItemEvaluation =
         }
 
     /// What an element evaluates from, its parameters bound: a polarizer preset, which publishes no parameter, an
-    /// empty slot, the calibration reference, an optical form with a value for each of its axes, or a stack sample at
-    /// its thicknesses, its materials resolved (spec 0050 S8.1; 001 §I).
+    /// empty slot, the calibration reference, an optical form with a value for each of its axes, a stack sample at
+    /// its thicknesses, its materials resolved, or a cut plate of a chosen crystal (spec 0050 S8.1; 001 §I).
     type BoundOpticalElement =
         | BoundPolarizerPreset of PolarizerBehavior
         | BoundEmptySlot
         | BoundOpticalForm of form : OpticalForm * values : ParameterValues
         | BoundStackSample of ResolvedStackSample
+        | BoundCutPlate of CutPlate
 
         /// The form bound once the values hold each of its axes in range (spec 0050 S8.1).
         static member ofOpticalForm (values : ParameterValues) (form : OpticalForm) : Result<BoundOpticalElement, ItemEvaluationError> =
@@ -275,9 +307,9 @@ module ItemEvaluation =
                 |> Result.mapError SampleMaterialErr
                 |> Result.map (fun resolved -> BoundStackSample { resolved = resolved }))
 
-        /// The element arm of the evaluator: a preset is its behaviour at the rotation, an empty slot the identity and a
-        /// form its Stokes–Mueller matrix, each only transmitting at any incidence; a stack sample is solved by Berreman
-        /// on either branch at the incidence, spun by the rotation (spec 0050 S8.1; 001 §I, §N).
+        /// The element arm of the evaluator: a preset is its behaviour at the rotation, an empty slot the identity, a form
+        /// its Stokes–Mueller matrix, each only transmitting at any incidence; a stack sample spun by the rotation, or a cut
+        /// plate turned to it as its azimuth, is solved by Berreman on either branch at the incidence (spec 0050 S8.1; 001 §I, §N).
         member this.muellerAt (orientation : ElementOrientation) (w : WaveLength) : Result<MuellerMatrix, ItemEvaluationError> =
             let rotation = orientation.rotation
 
@@ -358,6 +390,22 @@ module ItemEvaluation =
             | BoundStackSample stack, Propagation.BranchTransmitted
             | BoundStackSample stack, Propagation.BranchReflected ->
                 Ok (Propagation.sampleMuellerSpun orientation.branch stack.resolved w orientation.incidence rotation)
+            | BoundCutPlate plate, Propagation.BranchTransmitted
+            | BoundCutPlate plate, Propagation.BranchReflected ->
+                let configuration : MuellerInverse.MeasurementConfiguration =
+                    {
+                        cut = plate.cut
+                        thickness = plate.thickness
+                        incidenceAngle = orientation.incidence
+                        azimuth = orientation.sampleAzimuth
+                        observable = orientation.observable
+                        waveLength = w
+                    }
+
+                plate.predict configuration
+                |> Result.mapError (fun error ->
+                    match error with
+                    | MuellerInverse.ForwardSolveFailedErr (_, reason) -> CutPlateSolveErr reason)
             | BoundPolarizerPreset _, Propagation.BranchReflected ->
                 Error (UnmodelledBranchErr "the reflected branch of a polarizer preset, which only transmits")
             | BoundEmptySlot, Propagation.BranchReflected ->
