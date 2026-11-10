@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://berreman/schema/kit.json",
   "title": "KitFile",
-  "description": "A kit's metadata, .kit-json (spec 0050 S4.1). Only version 1's body is validated so other positive schema versions reach the typed version check before binding.",
+  "description": "A kit's metadata and naming template, .kit-json (spec 0050 S4.1, S8.3). Only version 1's body is validated so other positive schema versions reach the typed version check before binding.",
   "type": "object",
   "required": ["schemaVersion"],
   "properties": {
@@ -13,7 +13,7 @@
     "properties": { "schemaVersion": { "const": 1 } }
   },
   "then": {
-    "required": ["schemaVersion", "id", "name", "author", "created", "modified", "notes", "sendExclude"],
+    "required": ["schemaVersion", "id", "name", "author", "created", "modified", "notes", "sendExclude", "namingTemplate"],
     "additionalProperties": false,
     "properties": {
       "schemaVersion": true,
@@ -26,7 +26,8 @@
       "sendExclude": {
         "type": "array",
         "items": { "type": "string", "minLength": 1 }
-      }
+      },
+      "namingTemplate": { "type": "string" }
     }
   }
 }

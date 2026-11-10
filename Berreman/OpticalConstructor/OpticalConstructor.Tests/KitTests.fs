@@ -69,6 +69,18 @@ module KitTests =
         Assert.Empty(kit.sendExclude)
 
     [<Fact>]
+    let ``a kit's naming template keeps its text, and a new kit takes the standard one`` () : unit =
+        let id = KitId (Guid.Parse "6f1c2a9e-3b7d-4e25-9a41-0c8d5e7f2b16")
+        let name = KitName "Optics: QZ/LR"
+        let author = KitAuthor "Test author"
+        let instant = ClockTime (DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc))
+        let kit = KitFile.create id name author instant
+
+        Assert.Equal<string>("{obj1}", (NamingTemplate "{obj1}").value)
+        Assert.Equal<string>("{source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}", NamingTemplate.standard.value)
+        Assert.Equal<NamingTemplate>(NamingTemplate.standard, kit.namingTemplate)
+
+    [<Fact>]
     let ``a new kit is named for its folder`` () : unit =
         let id = KitId (Guid.Parse "6f1c2a9e-3b7d-4e25-9a41-0c8d5e7f2b16")
         let author = KitAuthor "Test author"

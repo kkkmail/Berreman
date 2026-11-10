@@ -27,6 +27,7 @@ module KitFileJsonTests =
                 modified = modified
                 notes = KitNotes "Two lines\nof notes"
                 sendExclude = [ SendExcludeGlob "**/*.dng"; SendExcludeGlob "data/raw/big/**" ]
+                namingTemplate = NamingTemplate "{source:CPL1=CPL,LP1=LP}-({obj1}#{phi1})-{analyzer:CPL2=CPL}"
         }
 
     let private editedKitFile (edit : JsonObject -> unit) : KitFileText =
@@ -53,7 +54,8 @@ module KitFileJsonTests =
 
         let node = (JsonNode.Parse text.value).AsObject()
         let keys = [ for KeyValue (key, _) in node -> key ]
-        Assert.Equal<string list>([ "author"; "created"; "id"; "modified"; "name"; "notes"; "schemaVersion"; "sendExclude" ], keys)
+        Assert.Equal<string list>([ "author"; "created"; "id"; "modified"; "name"; "namingTemplate"; "notes"; "schemaVersion"; "sendExclude" ], keys)
+        Assert.Contains("\"namingTemplate\": \"{source:CPL1=CPL,LP1=LP}-({obj1}#{phi1})-{analyzer:CPL2=CPL}\",", text.value)
         Assert.Equal<KitFileText>(text, readBack.fileText |> kitJsonValue)
 
         let emptyMetadata =
@@ -98,7 +100,7 @@ module KitFileJsonTests =
             | Error error -> Assert.Fail($"expected SchemaValidationErr: {error.describe}")
             | Ok _ -> Assert.Fail($"accepted a schema-invalid kit file: {text.value}")
 
-        for key in [ "schemaVersion"; "id"; "name"; "author"; "created"; "modified"; "notes"; "sendExclude" ] do
+        for key in [ "schemaVersion"; "id"; "name"; "author"; "created"; "modified"; "notes"; "sendExclude"; "namingTemplate" ] do
             editedKitFile (fun node -> node.Remove key |> ignore) |> assertSchemaInvalid
 
         let invalidEdits : (JsonObject -> unit) list =
@@ -120,6 +122,7 @@ module KitFileJsonTests =
                 (fun node -> node["sendExclude"] <- JsonValue.Create "**/*.dng")
                 (fun node -> node["sendExclude"] <- JsonNode.Parse "[\"\"]")
                 (fun node -> node["sendExclude"] <- JsonNode.Parse "[1]")
+                (fun node -> node["namingTemplate"] <- JsonValue.Create 7)
             ]
 
         for edit in invalidEdits do

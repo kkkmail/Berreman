@@ -115,7 +115,16 @@ module Kit =
 
         member this.value : string = let (SendExcludeGlob text) = this in text
 
-    /// The kit file's metadata, using the caller's identity and clock instant (spec 0050 S4.1).
+    /// The kit's naming template as its text; its grammar is NamingTemplates.fs's (spec 0050 S8.3).
+    type NamingTemplate =
+        | NamingTemplate of string
+
+        member this.value : string = let (NamingTemplate text) = this in text
+
+        /// 001 §J's template: every new kit's and the reference pipeline's labels' (spec 0050 S8.3).
+        static member standard : NamingTemplate = NamingTemplate "{source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}"
+
+    /// The kit file's metadata, using the caller's identity and clock instant (spec 0050 S4.1, S8.3).
     type KitFile =
         {
             schemaVersion : FileSchemaVersion
@@ -126,6 +135,7 @@ module Kit =
             modified : ClockTime
             notes : KitNotes
             sendExclude : SendExcludeGlob list
+            namingTemplate : NamingTemplate
         }
 
         static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
@@ -144,6 +154,7 @@ module Kit =
                 modified = now
                 notes = KitNotes ""
                 sendExclude = []
+                namingTemplate = NamingTemplate.standard
             }
 
     /// A folder that is or becomes a kit (spec 0050 S4.1).
