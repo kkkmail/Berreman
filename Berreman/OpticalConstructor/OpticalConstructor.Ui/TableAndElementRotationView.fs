@@ -2039,6 +2039,27 @@ type TableAndElementRotationModel with
             | Some choice -> Ok (item, choice)
             | None -> Error (UnknownSlotItemErr $"'{item.label.value}': its model is not in the library")
 
+    /// The run's source: the first light-source slot's item emitting over its own parameters, else the default light;
+    /// the error is what the failure chart says. Its λ stays `boundSource`'s, the preset `withItem` binds (spec 0050 S8.2).
+    member model.runEmission : Result<ExperimentRun.SourceEmission, ControlCaption> =
+        let heldItemOpt =
+            model.elements
+            |> List.tryPick (fun slot ->
+                match slot.placement.catalogueKind, slot.content with
+                | LightSource, Setups.ItemInSlot (itemId, _) -> Some itemId
+                | LightSource, Setups.EmptySlotContent
+                | (LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector), _ -> None)
+        match heldItemOpt with
+        | Some itemId ->
+            match model.resolveSlotItem itemId with
+            | Ok (item, choice) ->
+                choice.emissionWith (ParameterValues.ofParameters item.parameters)
+                |> Result.mapError (fun error -> ControlCaption error.describe)
+            | Error error -> Error (ControlCaption error.describe)
+        | None ->
+            ExperimentRun.SourceEmission.ofValues (ParameterValues.defaultsOf Library.SourcePreset.lightSourceAxes)
+            |> Result.mapError (fun error -> ControlCaption error.describe)
+
 /// Runs a kit write only while the kit takes writes; a read-only kit answers why and writes nothing (spec 0050 S5.3).
 let private guardKitWrite (model : TableAndElementRotationModel) (write : unit -> TableAndElementRotationModel) : TableAndElementRotationModel =
     match model.kitWrites with
@@ -3824,9 +3845,9 @@ type private StepBuilder =
     | FixedStep of ExperimentRun.RunStep
     | SweptStep of (float -> Result<ExperimentRun.RunStep, ItemEvaluationError>)
 
-/// The run behind an experiment's chart (spec 0046): each captured branch's detector reads the default source emission
-/// through every bound polarizer and sample, and every slot's item by its own model and parameters, on its path in light
-/// order, each evaluated by `ItemEvaluation` at its drawn orientation and branch, the varied one swept (spec 0050 S8.1, S8.2).
+/// The run behind an experiment's chart (spec 0046): each captured branch's detector reads `runEmission`, the source item's
+/// own light else the default, through the path's polarizers, samples and slot items in light order, the varied one swept;
+/// λ stays the bound preset's (`boundSource`, which `withItem` binds for a source item) (spec 0050 S8.1, S8.2).
 let chartForRun
     (model : TableAndElementRotationModel)
     (chosen : Library.ElementId)
@@ -3993,26 +4014,26 @@ let chartForRun
         { ExperimentChart.emptyExperimentChart with title = ControlCaption noAnalyzerTitle; description = ControlCaption noAnalyzerStatus }
     | _ when not variedIsBound && variedElement.placement.catalogueKind <> LightSource -> ExperimentChart.emptyExperimentChart
     | _ ->
-        // An evaluation error, or a slot's item the kit or the stores lack, is told on the chart (spec 0050 S8.1, S8.2).
+        // An evaluation error, or a source's or slot's item the kit or the stores lack, is told on the chart (spec 0050
+        // S8.1, S8.2).
         let cannotEvaluate (reason : ControlCaption) : ExperimentChart.ExperimentChart =
             { ExperimentChart.emptyExperimentChart with title = ControlCaption "The run cannot be evaluated"; description = reason }
-        match slotItems with
-        | Error error -> cannotEvaluate (ControlCaption error.describe)
-        | Ok items ->
-            // A preset carries no parameter values, so every chart reads the default source (spec 0050 S8.1).
+        // The source leads the light, so its emission is read before the slots' items (spec 0050 S8.2).
+        match model.runEmission, slotItems with
+        | Error reason, _ -> cannotEvaluate reason
+        | Ok _, Error error -> cannotEvaluate (ControlCaption error.describe)
+        | Ok emission, Ok items ->
             let evaluated =
-                ExperimentRun.SourceEmission.ofValues (ParameterValues.defaultsOf Library.SourcePreset.lightSourceAxes)
-                |> Result.bind (fun emission ->
-                    captured
-                    |> List.map (fun (tag, j) ->
-                        let kind = model.detectorKindAt j
-                        buildersFor items (List.item j.value layout.elements).path
-                        |> Result.bind (fun builders ->
-                            xs
-                            |> List.map (fun x -> stepsAt builders x |> Result.map (fun steps -> x, ExperimentRun.read kind emission steps))
-                            |> ItemEvaluation.sequenced)
-                        |> Result.map (fun readings -> tag, kind, readings))
-                    |> ItemEvaluation.sequenced)
+                captured
+                |> List.map (fun (tag, j) ->
+                    let kind = model.detectorKindAt j
+                    buildersFor items (List.item j.value layout.elements).path
+                    |> Result.bind (fun builders ->
+                        xs
+                        |> List.map (fun x -> stepsAt builders x |> Result.map (fun steps -> x, ExperimentRun.read kind emission steps))
+                        |> ItemEvaluation.sequenced)
+                    |> Result.map (fun readings -> tag, kind, readings))
+                |> ItemEvaluation.sequenced
             match evaluated with
             | Error (SampleMaterialErr err) ->
                 {

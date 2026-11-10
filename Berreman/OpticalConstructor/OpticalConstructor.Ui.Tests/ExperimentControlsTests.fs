@@ -573,6 +573,85 @@ module ExperimentControlsTests =
                         abs (itemPoint.y - referencePoint.y) <= 1.0e-12,
                         $"x = {itemPoint.x:R}: the dial item read {itemPoint.y:R}, the bare preset at 40° {referencePoint.y:R}")))
 
+    // ============ spec 0050 S8.2 — the source slot's item is the run's source ============
+
+    /// The HeNe preset on the shipped source item model (step 210).
+    let private laserDraft : ItemDraft =
+        {
+            id = ItemId (System.Guid.Parse "26600000-0000-4000-8000-000000000001")
+            label = ItemLabel "Laser"
+            model = SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source Library.PresetIds.heNe633)
+            dial = FixedMounting
+        }
+
+    /// The source slot holding `Laser`, then one linear polarizer bound to its preset before the seeded intensity
+    /// detector, swept over R1 0 … 180° in 7 points.
+    let private laserThroughPolarizer (scene : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let source = elem 0 scene
+        Assert.Equal(LightSource, source.placement.catalogueKind)
+        let held =
+            scene
+            |> applied (AddItem laserDraft)
+            |> applied (AssignSlot (source.id, Some laserDraft.id))
+            |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        let polarizer = elem 2 held
+        Assert.Equal<ElementValueId option>(Some Library.PresetIds.heNe633, (elem 0 held).placement.valueId)
+        Assert.Equal<ElementValueId option>(Some Library.PresetIds.polarizerLp, polarizer.placement.valueId)
+        Assert.Equal<Library.ElementId list>(
+            [ source.id; polarizer.id ],
+            (List.item 1 held.sceneLayout.elements).path |> List.map (fun step -> step.element) |> List.filter (fun id -> id = source.id || id = polarizer.id))
+        held
+        |> sweeping polarizer.id ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 180.0) (ExperimentControls.ExperimentPointCount 7)
+
+    [<Fact>]
+    let ``a source item emits its own polarization through the run`` () =
+        withMainScene (fun scene ->
+            let swept = laserThroughPolarizer scene
+            let pointsOf (table : TableAndElementRotationModel) : ExperimentControls.ChartPoint list = (Assert.Single table.experimentResult.series).points
+
+            // At its defaults the item emits the default source's unpolarized light, which the polarizer, the intensity
+            // reference (r = 2), reads as 1.
+            let defaultEmission = ExperimentRun.SourceEmission.ofValues (ParameterValues.defaultsOf Library.SourcePreset.lightSourceAxes)
+            Assert.Equal<Result<ExperimentRun.SourceEmission, ControlCaption>>(defaultEmission |> Result.mapError (fun error -> ControlCaption error.describe), swept.runEmission)
+            let atDefaults = pointsOf swept
+            Assert.Equal<float list>([ 0.0; 30.0; 60.0; 90.0; 120.0; 150.0; 180.0 ], atDefaults |> List.map (fun p -> p.x))
+            for p in atDefaults do
+                Assert.True(abs (p.y - 1.0) <= 1.0e-12, $"x = {p.x:R}: the item at its defaults read {p.y:R}, expected 1")
+            let unheld = pointsOf (swept |> applied (AssignSlot ((elem 0 swept).id, None)))
+            for p, q in List.zip atDefaults unheld do
+                Assert.True(abs (p.y - q.y) <= 1.0e-12, $"x = {p.x:R}: the item at its defaults read {p.y:R}, the default source {q.y:R}")
+
+            // Fully polarized at 30°, it is the item's own `emissionWith` light, and the polarizer reads 1 + cos 2(x − 30°).
+            let polarized =
+                swept
+                |> applied (SetParameterState (laserDraft.id, ParameterName.degreeOfPolarization, KnownParameter (ParameterValue 1.0)))
+                |> applied (SetParameterState (laserDraft.id, ParameterName.azimuth, knownDegrees 30.0<deg>))
+            let item = polarized.kitItems |> List.find (fun kitItem -> kitItem.id = laserDraft.id)
+            let ownEmission = laserDraft.model.emissionWith (ParameterValues.ofParameters item.parameters)
+            Assert.Equal<Result<ExperimentRun.SourceEmission, ControlCaption>>(ownEmission |> Result.mapError (fun error -> ControlCaption error.describe), polarized.runEmission)
+            for p in pointsOf polarized do
+                let expected = 1.0 + cos (2.0 * (Angle.degree ((p.x - 30.0) * 1.0<deg>)).value)
+                Assert.True(abs (expected - p.y) <= 1.0e-12, $"x = {p.x:R}: expected {expected:R}, got {p.y:R}"))
+
+    [<Fact>]
+    let ``a source item whose parameters the run cannot evaluate shows that the run cannot be evaluated`` () =
+        withMainScene (fun scene ->
+            let held =
+                laserThroughPolarizer scene
+                |> applied (SetParameterState (laserDraft.id, ParameterName.degreeOfPolarization, KnownParameter (ParameterValue 1.5)))
+            let chart = held.experimentResult
+            Assert.Empty(chart.series)
+            Assert.Equal("The run cannot be evaluated", chart.title.value)
+            Assert.Contains(ParameterName.degreeOfPolarization.value, chart.description.value)
+            Assert.Equal((ParameterOutOfRangeErr "degreeOfPolarization = 1.5 lies outside [0, 1]").describe, chart.description.value)
+            Assert.Equal<Result<ExperimentRun.SourceEmission, ControlCaption>>(Error chart.description, held.runEmission)
+
+            // A source item the kit no longer holds is named on the same chart, never run as the preset it binds.
+            let lost = ({ held with kitItems = [] }).experimentResult
+            Assert.Empty(lost.series)
+            Assert.Equal("The run cannot be evaluated", lost.title.value)
+            Assert.Equal((UnknownSlotItemErr $"the kit holds no item {laserDraft.id.value}").describe, lost.description.value))
+
     // ============ step 018 — the silent ideal-analyzer fallback is RETIRED ============
 
     [<Fact>]
