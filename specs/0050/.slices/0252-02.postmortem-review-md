@@ -1,0 +1,43 @@
+# Secondary review: 0252-02
+
+2026-11-10. Original: `0252-02.postmortem-md` (agent-written, not the mechanical
+fallback). Event `adc754517aea4aa7855d3596627ccb8f`, supervisor PID 168608,
+terminal escalation 2026-11-10T14:29:31Z. The operator has already authorized the
+ASG repair and instructed us to wait for a commit before relaunch.
+
+## Assessment
+
+The tool diagnosis is correct. All 19 supervisor gates passed before the verify
+mutation check escalated. `tracked_diff_bytes` concatenated Git stdout and stderr,
+so stat-cache-dependent CRLF warnings participated in source identity. The
+archived review diff contains 488 such warning lines. A content check must not
+depend on their presence. The process that refreshed the index is unverified;
+identifying it is unnecessary, and disabling ordinary Git clients is not a repair.
+
+The compiler's implicit Windows newline translation supplied the repeated CRLF
+condition. Fixing only path exclusions, disabling the mutation guard, accepting
+0252 without a checkpoint or changing product tests would not address this cause.
+The recent notification changes were not the source of the tracked-tree change.
+
+The approved repair is implemented in ASG spec 0090 manual 036: successful diff
+stdout alone supplies both fingerprints and review/repair evidence; Git errors
+fail explicitly with diagnostics; publication writers emit LF. Tests retain
+positive controls proving real source mutations still escalate and operator
+configuration/manual edits remain allowed. No product repair is required here.
+
+## Handoff
+
+Wait for the operator's ASG commit. Then resume normally with profile 1 and ASG
+manual 036 as the operator reply, retaining BRM manual 016's authority. Boot must
+refresh publication through the supported compiler and preserve completed slices.
+The supervisor must rerun normal review and all 19 gates and publish measured
+checkpoint 251 before 0253. Do not accept the slice manually or reset counters.
+
+No product, gate, census, checkpoint or state file was changed by this secondary
+review. The existing CRLF-only `.executability-json` working-tree change predates
+this repair and is left intact. Final implementation/test evidence is recorded
+in ASG manual 036 and `.artifacts/0252-02-asg-repair/`.
+
+Final verification: 522 affected-area ASG tests and strict mypy over 390 source
+files pass. Both real Git HEADs/indexes and all pre-existing BRM tracked files
+remain unchanged. The arc is stopped, awaiting the operator's commit.
