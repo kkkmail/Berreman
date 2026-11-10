@@ -9,13 +9,16 @@ open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -40,6 +43,12 @@ type KitStartContext =
         showKit : OpenedKit -> unit
         /// Brings forward the window that already holds a chosen kit, if one does (spec 0050 S5.3).
         activateKitWindow : KitFolder -> KitWindowPresence
+        /// Open kit from zip…'s zip dialog; the folder to extract into comes from `picker` (spec 0050 S6).
+        zipPicker : KitZipPicker
+        /// The zip seam an Open kit from zip… extracts through (spec 0050 S6).
+        archive : KitArchiveProxy
+        /// Runs the extraction off the UI thread and reports its progress and its end as messages (spec 0050 S6).
+        archiveJobs : KitArchiveJobHost
     }
 
 /// The question the screen asks after an open (spec 0050 S5.2).
@@ -60,6 +69,15 @@ type KitRelocation =
         found : KitFolder
     }
 
+/// Open kit from zip…'s two answers: a zip and the folder it is extracted into, then opened (spec 0050 S6).
+type KitZipOpening =
+    {
+        /// The zip to extract (spec 0050 S6).
+        zip : FileName
+        /// The empty or missing folder the zip is extracted into (spec 0050 S6).
+        target : KitFolder
+    }
+
 /// The start screen's model; its rows are always the history's `rowsMatching filter` over the context's probe
 /// (spec 0050 S5.2).
 type KitStartModel =
@@ -78,6 +96,10 @@ type KitStartModel =
         offer : KitStartOffer
         /// The last failure that needs telling (spec 0050 S5.2).
         status : ControlCaption option
+        /// The screen's one extraction, idle when none runs (spec 0050 S6).
+        zipJob : KitArchiveJobState
+        /// What the running extraction extracts, opened once it finishes (spec 0050 S6).
+        zipOpeningOpt : KitZipOpening option
     }
 
 /// The start screen's semantic messages: the button and the test send the same one (spec 0050 S5.2).
@@ -104,6 +126,15 @@ type KitStartMsg =
     | DismissKitStartOffer
     /// The window reports a kit whose resolution failed after it was handed over (spec 0050 S5.2).
     | KitOpenFailed of KitLibraryError
+    /// Extracts the zip into the folder, then opens it: the button's message after its two dialogs, and how a test opens
+    /// a zip (spec 0050 S6).
+    | OpenKitZip of KitZipOpening
+    /// The running extraction extracted one more file (spec 0050 S6).
+    | OpenKitZipProgressed of JobRunner.JobProgress
+    /// The running extraction ended: finished, cancelled or why it failed (spec 0050 S6).
+    | OpenKitZipEnded of Result<KitArchiveOutcome, KitArchiveError>
+    /// Cancels the running extraction before its next file; its end message returns the screen to idle (spec 0050 S6).
+    | CancelOpenKitZip
 
 /// The one listing rule: `history`'s rows under `filter`, probed through the context (spec 0050 S5.2).
 let private kitStartRows (context : KitStartContext) (history : KitHistory) (filter : KitHistoryFilter) : KitHistoryRow list =
@@ -170,8 +201,12 @@ let private kitStartChosen (folder : KitFolder) (openKit : unit -> Result<Opened
         }
     | NoKitWindowOpen -> m |> kitStartOpened folder (openKit ())
 
-/// The screen as it opens in `mode`: the history read once, the empty filter, its rows, no question and no status
-/// (spec 0050 S5.2).
+/// Open kit…'s one path, which an extracted zip's folder also takes (spec 0050 S5.2, S6).
+let private kitStartOpenExisting (folder : KitFolder) (m : KitStartModel) : KitStartModel =
+    m |> kitStartChosen folder (fun () -> openExistingKitAt folder m.context.clock m.context.imports)
+
+/// The screen as it opens in `mode`: the history read once, the empty filter, its rows, no question, no status and no
+/// extraction (spec 0050 S5.2, S6).
 let initKitStart (context : KitStartContext) (mode : ConstructorMode) : KitStartModel =
     let history = context.kitHistory.readHistory ()
     let filter = KitHistoryFilter.none
@@ -184,11 +219,14 @@ let initKitStart (context : KitStartContext) (mode : ConstructorMode) : KitStart
         rows = kitStartRows context history filter
         offer = NoKitStartOffer
         status = None
+        zipJob = KitArchiveJobState.idle
+        zipOpeningOpt = None
     }
 
 /// Star, unstar, forget and locate write the history through `changeHistory`; the filter only re-lists. The three opens
 /// answer through `KitOpening`, and a read-only open bumps the history too, because the user chose the kit (spec 0050 S5.2).
-/// Each open first brings forward a window that already holds the kit (spec 0050 S5.3).
+/// Each open first brings forward a window that already holds the kit (spec 0050 S5.3). One extraction runs at a time,
+/// and a finished one is opened as Open kit opens its folder (spec 0050 S6).
 let updateKitStart (msg : KitStartMsg) (m : KitStartModel) : KitStartModel =
     match msg with
     | StarKit folder -> m |> kitStartChanged (fun history -> history.star folder)
@@ -203,11 +241,50 @@ let updateKitStart (msg : KitStartMsg) (m : KitStartModel) : KitStartModel =
         }
     | CreateKit folder ->
         m |> kitStartChosen folder (fun () -> openKitAt folder ReadWriteKitAccess m.context.clock m.context.author m.context.imports)
-    | OpenKit folder -> m |> kitStartChosen folder (fun () -> openExistingKitAt folder m.context.clock m.context.imports)
+    | OpenKit folder -> m |> kitStartOpenExisting folder
     | OpenKitReadOnly folder ->
         m |> kitStartChosen folder (fun () -> openKitAt folder ReadOnlyKitAccess m.context.clock m.context.author m.context.imports)
     | DismissKitStartOffer -> { m with offer = NoKitStartOffer }
     | KitOpenFailed error -> m |> kitStartFailed error
+    | OpenKitZip opening ->
+        if m.zipJob.job.isRunning then
+            m
+        else
+            let handle =
+                m.context.archiveJobs.startArchiveJob (fun observer ->
+                    m.context.archive.receiveKit opening.zip opening.target observer)
+            {
+                m with
+                    zipJob = m.zipJob.started handle
+                    zipOpeningOpt = Some opening
+                    offer = NoKitStartOffer
+                    status = None
+            }
+    | OpenKitZipProgressed progress ->
+        {
+            m with zipJob = m.zipJob.progressed progress
+        }
+    | OpenKitZipEnded result ->
+        let ended =
+            {
+                m with
+                    zipJob = KitArchiveJobState.idle
+                    zipOpeningOpt = None
+            }
+        match result, m.zipOpeningOpt with
+        | Ok (KitArchiveFinished _), Some opening -> ended |> kitStartOpenExisting opening.target
+        | Ok (KitArchiveFinished _), None -> ended
+        | Ok KitArchiveCancelled, _ ->
+            {
+                ended with status = Some (ControlCaption "Open kit from zip was cancelled: nothing was extracted.")
+            }
+        | Error error, _ ->
+            {
+                ended with status = Some (ControlCaption $"The zip could not be opened — {error.describe}")
+            }
+    | CancelOpenKitZip ->
+        m.zipJob.cancel ()
+        m
 
 /// The screen lays out at least this wide and scrolls sideways below it, as the material editor does (spec 0050 S5.2).
 let private kitStartMinWidth : PanelMinWidth = PanelMinWidth 520.0

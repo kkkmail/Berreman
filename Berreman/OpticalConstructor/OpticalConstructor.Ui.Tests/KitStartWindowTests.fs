@@ -17,6 +17,7 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -24,6 +25,7 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
+open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Ui.KitStartView
@@ -102,6 +104,9 @@ module KitStartWindowTests =
             picker = picker
             showKit = shown.Add
             activateKitWindow = fun _ -> NoKitWindowOpen
+            zipPicker = KitZipPicker.none
+            archive = KitArchiveProxy.createInMemory (InMemoryArchiveDisk.create ())
+            archiveJobs = KitArchiveJobHost.inert
         }
 
     /// Runs a fact over its own root under the test output. At its end every kit `shown` recorded is closed, then the

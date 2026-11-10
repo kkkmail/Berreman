@@ -2,17 +2,24 @@ namespace OpticalConstructor.Tests
 
 open System
 open System.IO
+open System.Threading
 open Xunit
 open Softellect.Sys.Primitives
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.KitArchiveStore
+open OpticalConstructor.Storage.KitContentFiles
+open OpticalConstructor.Ui.JobRunner
+open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Ui.KitStartView
@@ -87,6 +94,9 @@ module KitStartTests =
             picker = { pickKitFolder = fun () -> async { return None } }
             showKit = shown.Add
             activateKitWindow = fun _ -> NoKitWindowOpen
+            zipPicker = KitZipPicker.none
+            archive = KitArchiveProxy.createInMemory (InMemoryArchiveDisk.create ())
+            archiveJobs = KitArchiveJobHost.inert
         }
 
     /// `clock`, keeping its last answer in `last`, so a fact reads the instant a bump recorded (spec 0050 S5.2).
@@ -157,6 +167,87 @@ module KitStartTests =
         Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
         Assert.True(Directory.Exists(Path.Combine(folder.value.value, "data")))
         Assert.True(Directory.Exists(Path.Combine(folder.value.value, "library")))
+
+    /// The experiment `E1` a sent kit holds (spec 0050 S6).
+    let private sentExperiment : Experiments.Experiment =
+        {
+            id = Experiments.ExperimentId 1
+            setup = []
+            varied = None
+            measurement = Experiments.CaptureTransmitted
+            range = Experiments.VariableRange.forVariable Experiments.VaryR1
+            dataFileOpt = None
+            sourceWaveLengthOpt = None
+        }
+
+    /// A kit sent as a zip, and the kit file and experiments it held when it was sent (spec 0050 S6).
+    type private KitStartSentZip =
+        {
+            sentKitFile : KitFile
+            sentExperiments : Experiments.Experiment list
+            sentZip : FileName
+        }
+
+    /// Makes `Optics QZ` under `root` through `openKitAt`, gives it `E1` through `writeExperiment` and closes it, then
+    /// sends it through the real archive into `<root>/exports/Optics QZ.zip`; the exports folder is made, as a save
+    /// dialog's folder exists (spec 0050 S6).
+    let private sentKitZipUnder (root : FolderName) (imports : CatalogueImportContext) : KitStartSentZip =
+        let folder = kitIn root "Optics QZ"
+        let made = heldKitAt folder imports
+
+        let written =
+            try
+                made.library.kit.proxy.writeExperiment sentExperiment
+                |> Result.bind (fun () -> made.library.kit.proxy.readExperiments ())
+            finally
+                closeHeld made
+
+        let experiments = written |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Experiments.Experiment list>([ sentExperiment ], experiments)
+        let exports = root.combine (FolderName "exports")
+        Directory.CreateDirectory exports.value |> ignore
+        let kitFile = made.library.kit.kitFile
+        let zip = kitFile.name.zipFileName.combine exports
+
+        match KitArchiveProxy.create().sendKit kitFile folder zip KitArchiveObserver.unobserved with
+        | Ok (KitArchiveFinished _) ->
+            {
+                sentKitFile = kitFile
+                sentExperiments = experiments
+                sentZip = zip
+            }
+        | Ok KitArchiveCancelled -> failwith "the kit's send was cancelled"
+        | Error error -> failwith error.describe
+
+    /// The folder a fact extracts a zip into: `<root>/received/k`, which does not exist yet (spec 0050 S6).
+    let private receivedKitIn (root : FolderName) : KitFolder = KitFolder (FolderName (Path.Combine(root.value, "received", "k")))
+
+    /// The screen's seams over `kitHistory` and the real archive, whose job host runs each extraction at once,
+    /// recording its progress and its end as the messages the screen would receive, in order (spec 0050 S6).
+    let private extractingContext (kitHistory : KitHistoryProxy) (shown : ResizeArray<OpenedKit>) (messages : ResizeArray<KitStartMsg>) : KitStartContext =
+        {
+            contextOver kitHistory shown with
+                archive = KitArchiveProxy.create ()
+                archiveJobs = KitArchiveJobHost.immediate (OpenKitZipProgressed >> messages.Add) (OpenKitZipEnded >> messages.Add)
+        }
+
+    /// A job host that keeps each job unrun, and whose handle cancels `source` (spec 0050 S6).
+    let private deferredHost
+        (kept : ResizeArray<KitArchiveObserver -> Result<KitArchiveOutcome, KitArchiveError>>)
+        (source : CancellationTokenSource)
+        : KitArchiveJobHost =
+        {
+            startArchiveJob =
+                fun job ->
+                    kept.Add job
+                    {
+                        cancelArchiveJob = fun () -> source.Cancel ()
+                    }
+        }
+
+    /// Passes the recorded messages through the update in order (spec 0050 S6).
+    let private passedThrough (messages : KitStartMsg seq) (model : KitStartModel) : KitStartModel =
+        messages |> Seq.fold (fun current msg -> updateKitStart msg current) model
 
     [<Fact>]
     let ``the start screen opens on the history in display order, each row with its folder's presence`` () : unit =
@@ -494,3 +585,232 @@ module KitStartTests =
 
             Assert.Equal<KitHistory>(KitHistory.empty, store.readHistory ())
             Assert.Empty shown)
+
+    [<Fact>]
+    let ``Open kit from zip extracts a sent kit into the chosen folder, opens it and bumps the history`` () : unit =
+        withKitStartRoot (fun root shown ->
+            let target = receivedKitIn root
+            let store = historyOver [ target ] KitHistory.empty
+            let messages = ResizeArray<KitStartMsg> ()
+            let context = extractingContext store shown messages
+            let sent = sentKitZipUnder root context.imports
+            Assert.False(Directory.Exists target.value.value)
+            let opened = initKitStart context ForwardConstructor
+            let opening : KitZipOpening = { zip = sent.sentZip; target = target }
+
+            let started = updateKitStart (OpenKitZip opening) opened
+            Assert.True(started.zipJob.job.isRunning, "the extraction must run once it starts")
+            Assert.Equal<KitZipOpening option>(Some opening, started.zipOpeningOpt)
+            Assert.Empty shown
+
+            match List.rev (List.ofSeq messages) with
+            | OpenKitZipEnded (Ok (KitArchiveFinished files)) :: progresses ->
+                Assert.Equal(files.value, List.length progresses)
+
+                for msg in progresses do
+                    match msg with
+                    | OpenKitZipProgressed _ -> ()
+                    | _ -> Assert.Fail "every message before the end must be a file's progress"
+            | _ -> Assert.Fail "the extraction must end, finished, after its files' progress"
+
+            let ended = started |> passedThrough (List.ofSeq messages)
+            let kit = Assert.Single<OpenedKit>(shown)
+            Assert.Equal<KitFolder>(target, kit.folder)
+            Assert.Equal<KitAccess>(ReadWriteKitAccess, kit.library.kit.access)
+            Assert.Equal<KitFile>(sent.sentKitFile, kit.library.kit.kitFile)
+            Assert.Equal<Experiments.Experiment list>(sent.sentExperiments, kit.experiments)
+            assertKitLayout target
+
+            match (store.readHistory ()).entries with
+            | first :: _ ->
+                Assert.Equal<KitFolder>(target, first.folder)
+                Assert.Equal<KitId>(sent.sentKitFile.id, first.kitId)
+            | [] -> Assert.Fail "opening the extracted kit must bump it into the history"
+
+            Assert.Equal<KitFolder list>([ target ], ended.rows |> List.map _.entry.folder)
+            Assert.Equal<KitArchiveJobState>(KitArchiveJobState.idle, ended.zipJob)
+            Assert.Equal<KitZipOpening option>(None, ended.zipOpeningOpt)
+            Assert.Equal<KitStartOffer>(NoKitStartOffer, ended.offer)
+            Assert.Equal<ControlCaption option>(None, ended.status))
+
+    [<Fact>]
+    let ``a zip extracted into a folder that holds files is refused, and nothing opens`` () : unit =
+        withKitStartRoot (fun root shown ->
+            let target = receivedKitIn root
+            let notes = FileName (Path.Combine(target.value.value, "notes.txt"))
+            Directory.CreateDirectory target.value.value |> ignore
+            File.WriteAllText(notes.value, "not a kit")
+            let store = historyOver [ target ] KitHistory.empty
+            let messages = ResizeArray<KitStartMsg> ()
+            let context = extractingContext store shown messages
+            let sent = sentKitZipUnder root context.imports
+            let opening : KitZipOpening = { zip = sent.sentZip; target = target }
+
+            let started = updateKitStart (OpenKitZip opening) (initKitStart context ForwardConstructor)
+            let ended = started |> passedThrough (List.ofSeq messages)
+
+            match ended.status with
+            | Some status ->
+                Assert.StartsWith("The zip could not be opened — ", status.value)
+                Assert.Contains("not empty", status.value)
+            | None -> Assert.Fail "a refused extraction must set the status"
+
+            Assert.Empty shown
+            Assert.Equal<FileName list>([ notes ], entriesOf target)
+            Assert.Equal("not a kit", File.ReadAllText notes.value)
+            Assert.Equal<KitHistory>(KitHistory.empty, store.readHistory ())
+            Assert.Equal<KitArchiveJobState>(KitArchiveJobState.idle, ended.zipJob)
+            Assert.Equal<KitZipOpening option>(None, ended.zipOpeningOpt))
+
+    [<Fact>]
+    let ``a cancelled extraction opens nothing and leaves no folder`` () : unit =
+        withKitStartRoot (fun root shown ->
+            use source = new CancellationTokenSource ()
+            let kept = ResizeArray<KitArchiveObserver -> Result<KitArchiveOutcome, KitArchiveError>> ()
+            let target = receivedKitIn root
+            let store = historyOver [ target ] KitHistory.empty
+
+            let context =
+                {
+                    contextOver store shown with
+                        archive = KitArchiveProxy.create ()
+                        archiveJobs = deferredHost kept source
+                }
+
+            let sent = sentKitZipUnder root context.imports
+            let opening : KitZipOpening = { zip = sent.sentZip; target = target }
+
+            let started = updateKitStart (OpenKitZip opening) (initKitStart context ForwardConstructor)
+            Assert.True(started.zipJob.job.isRunning, "the extraction must run until it ends")
+            let job = Assert.Single(kept)
+            Assert.False(Directory.Exists target.value.value, "a kept job extracts nothing")
+
+            let cancelling = updateKitStart CancelOpenKitZip started
+            Assert.True(source.IsCancellationRequested, "Cancel must cancel the running extraction")
+            Assert.Equal<KitStartModel>(started, cancelling)
+
+            let observer : KitArchiveObserver =
+                {
+                    reportArchiveProgress = ignore
+                    cancellation = source.Token
+                }
+
+            let archiveEnd = job observer
+            Assert.Equal<Result<KitArchiveOutcome, KitArchiveError>>(Ok KitArchiveCancelled, archiveEnd)
+
+            let ended = updateKitStart (OpenKitZipEnded archiveEnd) cancelling
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Open kit from zip was cancelled: nothing was extracted."), ended.status)
+            Assert.Empty shown
+            Assert.False(Directory.Exists target.value.value, "a cancelled extraction leaves no target folder")
+            Assert.False(Directory.Exists(Path.Combine(root.value, "received")), "a cancelled extraction removes the folders it made")
+            Assert.Equal<KitHistory>(KitHistory.empty, store.readHistory ())
+            Assert.Equal<KitArchiveJobState>(KitArchiveJobState.idle, ended.zipJob)
+            Assert.Equal<KitZipOpening option>(None, ended.zipOpeningOpt))
+
+    [<Fact>]
+    let ``a zip that holds no kit is told, and nothing opens`` () : unit =
+        withKitStartRoot (fun root shown ->
+            let notesFolder = kitIn root "Lab notes"
+            Directory.CreateDirectory notesFolder.value.value |> ignore
+            File.WriteAllText(Path.Combine(notesFolder.value.value, "notes.txt"), "not a kit")
+            let exports = root.combine (FolderName "exports")
+            Directory.CreateDirectory exports.value |> ignore
+            let zip = (FileName "Lab notes.zip").combine exports
+            let archive = KitArchiveProxy.create ()
+            let tree = archive.listKitTree notesFolder |> Result.defaultWith (fun error -> failwith error.describe)
+            Assert.Equal<KitTreeEntry list>([ KitTreeFile (KitRelativePath "notes.txt") ], tree)
+            let zipJob : KitZipJob = { kit = notesFolder; entries = tree; zip = zip }
+
+            Assert.Equal<Result<KitArchiveOutcome, KitArchiveError>>(
+                Ok (KitArchiveFinished (KitArchiveFileCount 1)),
+                archive.writeKitZip zipJob KitArchiveObserver.unobserved)
+
+            let target = receivedKitIn root
+            let store = historyOver [ target ] KitHistory.empty
+            let messages = ResizeArray<KitStartMsg> ()
+            let context = extractingContext store shown messages
+            let opening : KitZipOpening = { zip = zip; target = target }
+
+            let ended =
+                updateKitStart (OpenKitZip opening) (initKitStart context ForwardConstructor)
+                |> passedThrough (List.ofSeq messages)
+
+            match ended.status with
+            | Some status ->
+                Assert.StartsWith("The zip could not be opened — ", status.value)
+                Assert.Contains("holds no kit", status.value)
+            | None -> Assert.Fail "a zip without a kit must set the status"
+
+            Assert.Empty shown
+            Assert.False(Directory.Exists target.value.value, "a zip without a kit extracts nothing")
+            Assert.Equal<KitHistory>(KitHistory.empty, store.readHistory ())
+            Assert.Equal<KitArchiveJobState>(KitArchiveJobState.idle, ended.zipJob)
+            Assert.Equal<KitZipOpening option>(None, ended.zipOpeningOpt))
+
+    [<Fact>]
+    let ``a running extraction shows its progress, and a second Open kit from zip waits for it`` () : unit =
+        withKitStartRoot (fun root shown ->
+            use source = new CancellationTokenSource ()
+            let kept = ResizeArray<KitArchiveObserver -> Result<KitArchiveOutcome, KitArchiveError>> ()
+            let first = receivedKitIn root
+            let second = KitFolder (FolderName (Path.Combine(root.value, "received", "other")))
+            let store = historyOver [ first; second ] KitHistory.empty
+
+            let context =
+                {
+                    contextOver store shown with
+                        archive = KitArchiveProxy.create ()
+                        archiveJobs = deferredHost kept source
+                }
+
+            let sent = sentKitZipUnder root context.imports
+            let firstOpening : KitZipOpening = { zip = sent.sentZip; target = first }
+            let secondOpening : KitZipOpening = { zip = sent.sentZip; target = second }
+
+            let started = updateKitStart (OpenKitZip firstOpening) (initKitStart context ForwardConstructor)
+            Assert.True(started.zipJob.job.isRunning, "the extraction must run until it ends")
+            Assert.Equal<string option>(None, started.zipJob.job.progressText)
+
+            let waiting = updateKitStart (OpenKitZip secondOpening) started
+            Assert.Equal<KitStartModel>(started, waiting)
+            let job = Assert.Single(kept)
+
+            let progresses = ResizeArray<JobProgress> ()
+
+            let observer : KitArchiveObserver =
+                {
+                    reportArchiveProgress = fun progress -> progresses.Add (progress.jobProgress (JobElapsed TimeSpan.Zero))
+                    cancellation = source.Token
+                }
+
+            let archiveEnd = job observer
+
+            match archiveEnd with
+            | Ok (KitArchiveFinished files) -> Assert.Equal(files.value, progresses.Count)
+            | Ok KitArchiveCancelled
+            | Error _ -> Assert.Fail "the kept extraction must finish"
+
+            let total = progresses.Count
+            Assert.True(total > 0, "the sent kit holds files")
+
+            let showProgress (current : KitStartModel) (index : int, progress : JobProgress) : KitStartModel =
+                let shownProgress = updateKitStart (OpenKitZipProgressed progress) current
+                Assert.True(shownProgress.zipJob.job.isRunning, $"the extraction must still run after file {index + 1}")
+
+                match shownProgress.zipJob.job.progressText with
+                | Some text -> Assert.StartsWith($"{index + 1} / {total}", text)
+                | None -> Assert.Fail $"extracted file {index + 1} was not shown as progress"
+
+                shownProgress
+
+            let running = progresses |> Seq.indexed |> Seq.fold showProgress waiting
+            Assert.Equal<KitZipOpening option>(Some firstOpening, running.zipOpeningOpt)
+            Assert.Empty shown
+
+            let ended = updateKitStart (OpenKitZipEnded archiveEnd) running
+            let kit = Assert.Single<OpenedKit>(shown)
+            Assert.Equal<KitFolder>(first, kit.folder)
+            Assert.False(Directory.Exists second.value.value, "the second Open kit from zip must not extract")
+            Assert.Single(kept) |> ignore
+            Assert.Equal<KitArchiveJobState>(KitArchiveJobState.idle, ended.zipJob)
+            Assert.Equal<ControlCaption option>(None, ended.status))

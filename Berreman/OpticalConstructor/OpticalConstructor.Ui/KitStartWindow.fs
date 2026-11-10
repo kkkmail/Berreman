@@ -7,7 +7,10 @@ open Avalonia.FuncUI.Hosts
 open Elmish
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Storage.KitArchiveStore
+open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.KitStartView
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -57,6 +60,13 @@ type KitStartWindow(context : AppContext, mode : ConstructorMode, pickerFor : To
                             this.Close()
                             KitWindowActivated
                         | NoKitWindowOpen -> NoKitWindowOpen
+                zipPicker = KitZipPicker.none
+                archive = KitArchiveProxy.create ()
+                // Each callback reads `dispatch` when it is called, after the init Cmd set it (spec 0050 S6).
+                archiveJobs =
+                    KitArchiveJobHost.onUiThread
+                        (fun progress -> dispatch (OpenKitZipProgressed progress))
+                        (fun result -> dispatch (OpenKitZipEnded result))
             }
         Program.mkProgram
             (fun () -> initKitStart kitStartContext mode, Cmd.ofEffect (fun d -> dispatch <- d))
