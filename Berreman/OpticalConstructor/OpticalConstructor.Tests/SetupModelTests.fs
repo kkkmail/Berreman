@@ -4,9 +4,12 @@ open System
 open System.IO
 open Xunit
 open Softellect.Sys.Primitives
+open Berreman.Constants
+open Berreman.Geometry
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
@@ -20,7 +23,8 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// The constructor's setup messages over a kit opened read-write: CreateSetup records the table as a kit setup,
 /// SaveSetup writes it over the active one, ActivateSetup draws one, the window keeping its view, snap mode and pivot,
-/// and a commit records the table as the active setup its experiment references (spec 0050 S8.2; 001 §P).
+/// AssignSlot puts a kit item into a slot, and a commit records the table as the active setup its experiment
+/// references (spec 0050 S8.2; 001 §P).
 module SetupModelTests =
 
     let private kitValue (result : Result<'Value, KitError>) : 'Value =
@@ -77,6 +81,96 @@ module SetupModelTests =
         |> Array.map Path.GetFileName
         |> Array.sort
         |> List.ofArray
+
+    /// Every file under the kit folder by its path relative to the folder, with its bytes.
+    let private kitFileBytes (folder : KitFolder) : Map<string, FileByteContent> =
+        Directory.GetFiles(folder.value.value, "*", SearchOption.AllDirectories)
+        |> Array.map (fun path -> Path.GetRelativePath(folder.value.value, path), FileByteContent (File.ReadAllBytes path))
+        |> Map.ofArray
+
+    /// The Built-in polarizer preset of that id, failing when the catalogue holds another kind under it.
+    let private polarizerPresetOf (id : ElementValueId) : Library.PolarizerPreset =
+        match BuiltinCatalogue.preset id with
+        | Library.PolarizerItem polarizer -> polarizer
+        | Library.SampleItem _
+        | Library.SourceItem _
+        | Library.DetectorItem _ -> failwith $"The Built-in preset '{id.value}' is not a polarizer."
+
+    /// The ideal linear polarizer preset on the shipped ideal-polarizer item model (step 210).
+    let private linearPolarizerChoice : ItemModelChoice =
+        PolarizerPresetChoice (
+            BuiltinCatalogue.itemModel ItemModels.ItemModelIds.idealPolarizerItemModelId,
+            polarizerPresetOf Library.PresetIds.polarizerLp
+        )
+
+    let private lp1Draft : ItemDraft =
+        {
+            id = ItemId (Guid.Parse "26300000-0000-4000-8000-000000000001")
+            label = ItemLabel "LP1"
+            model = linearPolarizerChoice
+            dial = FixedMounting
+        }
+
+    /// The 1 mm glass plate at its first version on the shipped stack-sample item model.
+    let private qzDraft : ItemDraft =
+        {
+            id = ItemId (Guid.Parse "26300000-0000-4000-8000-000000000002")
+            label = ItemLabel "QZ"
+            model =
+                StackSampleChoice (
+                    BuiltinCatalogue.itemModel ItemModels.ItemModelIds.stackSampleItemModelId,
+                    Library.SampleVersionId.firstOf Library.SampleIds.glassPlate1mmId,
+                    BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId
+                )
+            dial = FixedMounting
+        }
+
+    let private laserDraft : ItemDraft =
+        {
+            id = ItemId (Guid.Parse "26300000-0000-4000-8000-000000000003")
+            label = ItemLabel "Laser"
+            model =
+                SourcePresetChoice (
+                    BuiltinCatalogue.itemModel ItemModels.ItemModelIds.sourcePresetItemModelId,
+                    BuiltinCatalogue.source Library.PresetIds.heNe633
+                )
+            dial = FixedMounting
+        }
+
+    /// The linear polarizer preset again, on a dial read with the negative sign.
+    let private lpdDraft : ItemDraft =
+        {
+            id = ItemId (Guid.Parse "26300000-0000-4000-8000-000000000004")
+            label = ItemLabel "LPd"
+            model = linearPolarizerChoice
+            dial = DialMounted ItemModels.DialNegative
+        }
+
+    /// A known angle parameter of that many degrees, in radians, an angle parameter's unit (spec 0050 S8.1).
+    let private knownDegrees (degrees : float<deg>) : ParameterState =
+        KnownParameter (ItemModels.ParameterValue (Angle.degree degrees).value)
+
+    /// The kit with LP1, QZ, Laser and LPd added through the model, LPd's dial zero at 10°.
+    let private stocked (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let added =
+            [ lp1Draft; qzDraft; laserDraft; lpdDraft ]
+            |> List.fold (fun current draft -> current |> updateTableAndElementRotation (AddItem draft)) model
+            |> updateTableAndElementRotation (SetParameterState (lpdDraft.id, ParameterName.dialZero, knownDegrees 10.0<deg>))
+        Assert.Equal<ControlCaption option>(None, added.kitStatus)
+        Assert.Equal<ItemId list>(
+            [ lp1Draft.id; lpdDraft.id; laserDraft.id; qzDraft.id ] |> List.sort,
+            added.kitItems |> List.map (fun item -> item.id) |> List.sort)
+        added
+
+    /// The table's slot of that id.
+    let private slotOf (id : Library.ElementId) (model : TableAndElementRotationModel) : Setups.SetupSlot =
+        model.elements |> List.find (fun slot -> slot.id = id)
+
+    /// The table with a sample added, which the add leaves unbound.
+    let private withSample (model : TableAndElementRotationModel) : TableAndElementRotationModel * Library.ElementId =
+        let placed = model |> updateTableAndElementRotation (AddElement Sample)
+        let sample = placed.elements |> List.find (fun slot -> slot.placement.catalogueKind = Sample)
+        placed, sample.id
 
     [<Fact>]
     let ``CreateSetup records the table as a new kit setup and makes it the active one`` () : unit =
@@ -310,3 +404,175 @@ module SetupModelTests =
             Assert.Equal<Setups.Setup list>(created.kitSetups, unchanged.kitSetups)
             Assert.Equal<Setups.Setup option>(created.activeSetupOpt, unchanged.activeSetupOpt)
             Assert.Equal<ControlCaption option>(Some (ControlCaption "Setup 'Bench' is unchanged."), unchanged.kitStatus))
+
+    [<Fact>]
+    let ``AssignSlot puts a kit item into a table slot bound to its library entry, and AssignSlot of nothing empties it`` () : unit =
+        withSetupKit (fun folder model ->
+            let polarizerPlaced, polarizer = withPolarizer (stocked model)
+            let placed, sample = withSample polarizerPlaced
+            Assert.Equal<ElementValueId option>(None, (slotOf sample placed).placement.valueId)
+            let before = kitFileBytes folder
+
+            let lp1Held = placed |> updateTableAndElementRotation (AssignSlot (polarizer, Some lp1Draft.id))
+            let lp1Slot = slotOf polarizer lp1Held
+            Assert.Equal<Setups.SlotContent>(Setups.ItemInSlot (lp1Draft.id, Setups.PlacementTurn), lp1Slot.content)
+            Assert.Equal<ElementValueId option>(Some Library.PresetIds.polarizerLp, lp1Slot.placement.valueId)
+            Assert.Equal<Setups.SetupSlot>(slotOf sample placed, slotOf sample lp1Held)
+            Assert.Equal<ControlCaption option>(None, lp1Held.kitStatus)
+
+            let qzHeld = lp1Held |> updateTableAndElementRotation (AssignSlot (sample, Some qzDraft.id))
+            let plate = BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId
+            let qzSlot = slotOf sample qzHeld
+            Assert.Equal<Setups.SlotContent>(Setups.ItemInSlot (qzDraft.id, Setups.PlacementTurn), qzSlot.content)
+            Assert.Equal<ElementValueId option>(Some Library.SampleIds.glassPlate1mmId.toElementValueId, qzSlot.placement.valueId)
+            Assert.Equal<Emission>(plate.supportedEmission, qzSlot.placement.emission)
+            Assert.Equal<Setups.SetupSlot>(lp1Slot, slotOf polarizer qzHeld)
+
+            let emptied = qzHeld |> updateTableAndElementRotation (AssignSlot (polarizer, None))
+            let emptiedSlot = slotOf polarizer emptied
+            Assert.Equal<Setups.SlotContent>(Setups.EmptySlotContent, emptiedSlot.content)
+            Assert.Equal<ElementPlacement>(lp1Slot.placement, emptiedSlot.placement)
+            Assert.Equal<Setups.SetupSlot>(qzSlot, slotOf sample emptied)
+            Assert.Equal<ControlCaption option>(None, emptied.kitStatus)
+
+            // Spec 0050 S8.2: an assignment writes nothing; the setup records the slot when it is next written.
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+            Assert.Empty(setupFilesIn folder)
+            Assert.Empty(emptied.kitSetups)
+
+            // Reopened read-only against an empty library, the items' models, preset and sample answer only from the
+            // kit's snapshots, and the assignment still binds.
+            let empty = CatalogueImportProxy.createInMemory ()
+            let reopened =
+                openKitAt folder ReadOnlyKitAccess ClockProvider.system (KitAuthor "test") (CatalogueImportContext.create empty.proxy)
+                |> openedValue
+            try
+                let emptyStores : KitLibraryStores =
+                    {
+                        library = Library.liveLibrary empty.libraryEntries empty.samples (Library.SourceProxy.createInMemory ())
+                        materials = empty.materials
+                        samples = empty.samples
+                        categories = empty.categories
+                    }
+                let session = emptyStores.overlaidWith reopened.overlay
+                let seeded =
+                    initMainWithKit session.library (Experiments.createInMemoryExperiments ()) session.materials session.samples session.categories reopened.library.kit
+                let overlaid =
+                    {
+                        seeded with itemModels = empty.itemModels.overlaidWith reopened.overlay
+                    }
+                let snapshotOnly = overlaid.loadKit reopened
+                let lp1 = snapshotOnly.kitItems |> List.find (fun item -> item.id = lp1Draft.id)
+                Assert.Equal<Result<Library.LibraryEntry option, Library.LibraryError>>(Ok None, empty.libraryEntries.tryGetEntry Library.PresetIds.polarizerLp)
+                Assert.Equal<ItemModelChoice option>(Some linearPolarizerChoice, snapshotOnly.tryItemModelChoice lp1)
+
+                let reopenedPolarizerPlaced, reopenedPolarizer = withPolarizer snapshotOnly
+                let reopenedPlaced, reopenedSample = withSample reopenedPolarizerPlaced
+                let reassigned =
+                    reopenedPlaced
+                    |> updateTableAndElementRotation (AssignSlot (reopenedPolarizer, Some lp1Draft.id))
+                    |> updateTableAndElementRotation (AssignSlot (reopenedSample, Some qzDraft.id))
+                Assert.Equal<ControlCaption option>(None, reassigned.kitStatus)
+                let reassignedPolarizer = slotOf reopenedPolarizer reassigned
+                Assert.Equal<Setups.SlotContent>(Setups.ItemInSlot (lp1Draft.id, Setups.PlacementTurn), reassignedPolarizer.content)
+                Assert.Equal<ElementValueId option>(Some Library.PresetIds.polarizerLp, reassignedPolarizer.placement.valueId)
+                let reassignedSample = slotOf reopenedSample reassigned
+                Assert.Equal<Setups.SlotContent>(Setups.ItemInSlot (qzDraft.id, Setups.PlacementTurn), reassignedSample.content)
+                Assert.Equal<Emission>(plate.supportedEmission, reassignedSample.placement.emission)
+                Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+            finally
+                reopened.library.kit.close () |> kitValue)
+
+    [<Fact>]
+    let ``AssignSlot of an item that does not fit the slot, that the kit lacks, or whose model the library lacks is told and changes nothing`` () : unit =
+        withSetupKit (fun folder model ->
+            let polarizerPlaced, polarizer = withPolarizer (stocked model)
+            let placed, sample = withSample polarizerPlaced
+            let assertNotAssigned (named : string) (answer : TableAndElementRotationModel) : unit =
+                match answer.kitStatus with
+                | Some status ->
+                    Assert.StartsWith("Not assigned", status.value)
+                    Assert.Contains(named, status.value)
+                | None -> Assert.Fail $"a refused assignment naming '{named}' must be told in the kit status"
+                Assert.Equal<Setups.SetupSlot list>(placed.elements, answer.elements)
+                Assert.Equal<Item list>(placed.kitItems, answer.kitItems)
+                Assert.Equal<Setups.Setup option>(placed.activeSetupOpt, answer.activeSetupOpt)
+            let before = kitFileBytes folder
+
+            placed |> updateTableAndElementRotation (AssignSlot (polarizer, Some laserDraft.id)) |> assertNotAssigned "Laser"
+
+            let unheld = ItemId (Guid.Parse "26300000-0000-4000-8000-000000000099")
+            placed |> updateTableAndElementRotation (AssignSlot (polarizer, Some unheld)) |> assertNotAssigned (unheld.value.ToString())
+
+            placed |> updateTableAndElementRotation (AssignSlot (Library.ElementId "nowhere", Some lp1Draft.id)) |> assertNotAssigned "nowhere"
+
+            // A test-local item whose sample version the store lacks: its model resolves, its sample does not.
+            let qz = placed.kitItems |> List.find (fun item -> item.id = qzDraft.id)
+            let lostSample = Library.SampleVersionId.firstOf (Library.SampleId (Guid.Parse "26300000-0000-4000-8000-0000000000aa"))
+            let lost : Item =
+                match qz.model with
+                | SampleInstance (stackModel, _) ->
+                    {
+                        qz with
+                            id = ItemId (Guid.Parse "26300000-0000-4000-8000-000000000005")
+                            label = ItemLabel "Lost plate"
+                            model = SampleInstance (stackModel, lostSample)
+                    }
+                | PresetInstance _
+                | ItemModelVersionInstance _ -> failwith "QZ must be a stack-sample item."
+            let withLost =
+                {
+                    placed with kitItems = placed.kitItems @ [ lost ]
+                }
+            Assert.Equal<ItemModelChoice option>(None, withLost.tryItemModelChoice lost)
+            let lostAnswer = withLost |> updateTableAndElementRotation (AssignSlot (sample, Some lost.id))
+            match lostAnswer.kitStatus with
+            | Some status ->
+                Assert.StartsWith("Not assigned", status.value)
+                Assert.Contains("Lost plate", status.value)
+            | None -> Assert.Fail "an item whose sample the store lacks must be told in the kit status"
+            Assert.Equal<Setups.SetupSlot list>(placed.elements, lostAnswer.elements)
+
+            // Spec 0050 S7.2: the model resolves first, so a preset the library still holds does not stand in for it.
+            let modelless =
+                {
+                    placed with itemModels = ItemModels.ItemModelProxy.createInMemory ()
+                }
+            let lp1 = placed.kitItems |> List.find (fun item -> item.id = lp1Draft.id)
+            Assert.Equal<Result<Library.LibraryEntry option, Library.LibraryError>>(
+                Ok (Some (BuiltinCatalogue.preset Library.PresetIds.polarizerLp)), modelless.library.tryGetEntry Library.PresetIds.polarizerLp)
+            Assert.Equal<ItemModelChoice option>(None, modelless.tryItemModelChoice lp1)
+            Assert.Equal<ItemModelChoice option>(Some linearPolarizerChoice, placed.tryItemModelChoice lp1)
+            let modellessAnswer = modelless |> updateTableAndElementRotation (AssignSlot (polarizer, Some lp1.id))
+            match modellessAnswer.kitStatus with
+            | Some status ->
+                Assert.StartsWith("Not assigned", status.value)
+                Assert.Contains("LP1", status.value)
+            | None -> Assert.Fail "an item whose model the store lacks must be told in the kit status"
+            Assert.Equal<Setups.SetupSlot list>(placed.elements, modellessAnswer.elements)
+
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder))
+
+    [<Fact>]
+    let ``a dial-mounted item is recorded with its reading and drawn through its current zero`` () : unit =
+        withSetupKit (fun folder model ->
+            let placed, polarizer = withPolarizer (stocked model)
+            let assigned = turned placed |> updateTableAndElementRotation (AssignSlot (polarizer, Some lpdDraft.id))
+            Assert.Equal<ControlCaption option>(None, assigned.kitStatus)
+
+            let created = assigned |> createdAs "Dial"
+            let dial = created.kitSetups |> List.find (fun setup -> setup.name = SetupName "Dial")
+            Assert.Equal<Setups.Setup list>(created.kitSetups, created.kit.proxy.readSetups () |> kitValue)
+            match (dial.slots |> List.find (fun slot -> slot.id = polarizer)).content with
+            | Setups.ItemInSlot (held, Setups.DialTurn reading) ->
+                Assert.Equal<ItemId>(lpdDraft.id, held)
+                Assert.Equal((Angle.degree (-20.0<deg>)).value, reading.value, 1e-12)
+            | other -> Assert.Fail $"the polarizer slot must hold LPd on its dial, held %A{other}"
+
+            let rezeroed =
+                created
+                |> updateTableAndElementRotation (SetParameterState (lpdDraft.id, ParameterName.dialZero, knownDegrees 20.0<deg>))
+            Assert.Equal<ControlCaption option>(None, rezeroed.kitStatus)
+            let drawn = rezeroed |> updateTableAndElementRotation (ActivateSetup (SetupName "Dial"))
+            Assert.Equal((Angle.degree 40.0<deg>).value, (slotOf polarizer drawn).placement.r1.value, 1e-12)
+            Assert.Equal<string list>([ "Dial.setup-json" ], setupFilesIn folder))

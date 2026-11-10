@@ -1079,6 +1079,8 @@ type TableAndElementRotationMsg =
     | SaveSetup
     /// The kit's setup of that name is drawn on the table (spec 0050 S8.2).
     | ActivateSetup of SetupName
+    /// Puts a kit item, or nothing, into that slot of the table (spec 0050 S8.2; 001 §P `AssignSlot`).
+    | AssignSlot of Library.ElementId * ItemId option
     /// The kit bar's forward / inverse switch, which keeps the kit and the model (spec 0050 S5.3).
     | SwitchConstructorMode of ConstructorMode
     /// The Kit menu's Show in Explorer: the kit's folder in the shell's explorer (spec 0050 S5.3).
@@ -1921,19 +1923,6 @@ let private withKitContent
         loaded with experimentDataStatus = statuses
     }
 
-/// An item's model as the window's stores answer it: the stored version with the bound preset's or sample's caption, or
-/// the missing-model condition when a store answers `None` or an error (spec 0050 S7.2).
-type private ItemModelLookup =
-    | HeldItemModelLookup of model : ItemModels.ItemModelVersion * boundOpt : ControlCaption option
-    | MissingItemModelLookup
-
-    /// `<name> v<n>`, after the bound entry's caption, or `(model not in the library)` (spec 0050 S7.2).
-    member this.caption : ControlCaption =
-        match this with
-        | HeldItemModelLookup (held, None) -> ControlCaption $"{held.entry.name.value} v{held.version.value}"
-        | HeldItemModelLookup (held, Some bound) -> ControlCaption $"{bound.value} ({held.entry.name.value} v{held.version.value})"
-        | MissingItemModelLookup -> ControlCaption "(model not in the library)"
-
 type TableAndElementRotationModel with
 
     /// Works in the opened kit, loads its items and rechecks every recorded data attachment (spec 0050 S4.3, S6; 001 §E).
@@ -1972,29 +1961,69 @@ type TableAndElementRotationModel with
         | ReadWriteKitAccess -> ControlOffered
         | ReadOnlyKitAccess -> ControlWithheld
 
-    /// The name the window's stores give the item's model: its stored version through `itemModels`, after a preset's
-    /// entry name or a sample's `<name> v<n>`; `(model not in the library)` when a store answers `None` or an error
-    /// (spec 0050 S7.2).
-    member model.itemModelCaption (item : Item) : ControlCaption =
-        let held (versionId : ItemModels.ItemModelVersionId) (boundOpt : ControlCaption option) : ItemModelLookup =
+    /// The item's model as the window's stores resolve it: its stored version through `itemModels`, its form checked
+    /// against the instance, and only then its preset or sample version; `None` when any of them is unresolved, an
+    /// error or of another form (spec 0050 S7.2, S8.2).
+    member model.tryItemModelChoice (item : Item) : ItemModelChoice option =
+        let tryModelVersion (versionId : ItemModels.ItemModelVersionId) : ItemModels.ItemModelVersion option =
             match model.itemModels.resolveItemModelVersion versionId with
-            | Ok (Some version) -> HeldItemModelLookup (version, boundOpt)
-            | Ok None
-            | Error _ -> MissingItemModelLookup
-        let lookup : ItemModelLookup =
-            match item.model with
-            | ItemModelVersionInstance versionId -> held versionId None
-            | PresetInstance (versionId, preset) ->
-                match model.library.tryGetEntry preset with
-                | Ok (Some entry) -> held versionId (Some entry.entryName.caption)
-                | Ok None
-                | Error _ -> MissingItemModelLookup
-            | SampleInstance (versionId, sampleVersion) ->
-                match model.samples.resolveVersion sampleVersion with
-                | Ok (Some sample) -> held versionId (Some (ControlCaption $"{sample.name.value} v{sampleVersion.version.value}"))
-                | Ok None
-                | Error _ -> MissingItemModelLookup
-        lookup.caption
+            | Ok versionOpt -> versionOpt
+            | Error _ -> None
+        let tryPreset (preset : ElementValueId) : Library.LibraryEntry option =
+            match model.library.tryGetEntry preset with
+            | Ok entryOpt -> entryOpt
+            | Error _ -> None
+        match item.model with
+        | ItemModelVersionInstance versionId ->
+            tryModelVersion versionId
+            |> Option.bind (fun version ->
+                match version.entry.model.bindingKindOpt with
+                | None -> Some (LibraryModelChoice version)
+                | Some _ -> None)
+        | PresetInstance (versionId, preset) ->
+            tryModelVersion versionId
+            |> Option.bind (fun version ->
+                match version.entry.model.bindingKindOpt with
+                | Some ItemModels.SourcePresetBinding ->
+                    match tryPreset preset with
+                    | Some (Library.SourceItem source) -> Some (SourcePresetChoice (version, source))
+                    | Some (Library.SampleItem _)
+                    | Some (Library.DetectorItem _)
+                    | Some (Library.PolarizerItem _)
+                    | None -> None
+                | Some ItemModels.PolarizerPresetBinding ->
+                    match tryPreset preset with
+                    | Some (Library.PolarizerItem polarizer) -> Some (PolarizerPresetChoice (version, polarizer))
+                    | Some (Library.SampleItem _)
+                    | Some (Library.SourceItem _)
+                    | Some (Library.DetectorItem _)
+                    | None -> None
+                | Some ItemModels.StackSampleBinding
+                | None -> None)
+        | SampleInstance (versionId, sampleVersion) ->
+            tryModelVersion versionId
+            |> Option.bind (fun version ->
+                match version.entry.model.bindingKindOpt with
+                | Some ItemModels.StackSampleBinding ->
+                    match model.samples.resolveVersion sampleVersion with
+                    | Ok (Some sample) -> Some (StackSampleChoice (version, sampleVersion, sample))
+                    | Ok None
+                    | Error _ -> None
+                | Some ItemModels.SourcePresetBinding
+                | Some ItemModels.PolarizerPresetBinding
+                | None -> None)
+
+    /// The name the window's stores give the item's model: its resolved version's `<name> v<n>`, after a preset's
+    /// entry name or a sample's `<name> v<n>`; `(model not in the library)` when `tryItemModelChoice` answers `None`
+    /// (spec 0050 S7.2, S8.2).
+    member model.itemModelCaption (item : Item) : ControlCaption =
+        let modelPart (held : ItemModels.ItemModelVersion) : string = $"{held.entry.name.value} v{held.version.value}"
+        match model.tryItemModelChoice item with
+        | Some (LibraryModelChoice held) -> ControlCaption (modelPart held)
+        | Some (SourcePresetChoice (held, source)) -> ControlCaption $"{source.name.value} ({modelPart held})"
+        | Some (PolarizerPresetChoice (held, polarizer)) -> ControlCaption $"{polarizer.name.value} ({modelPart held})"
+        | Some (StackSampleChoice (held, version, sample)) -> ControlCaption $"{sample.name.value} v{version.version.value} ({modelPart held})"
+        | None -> ControlCaption "(model not in the library)"
 
 /// Runs a kit write only while the kit takes writes; a read-only kit answers why and writes nothing (spec 0050 S5.3).
 let private guardKitWrite (model : TableAndElementRotationModel) (write : unit -> TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -2606,6 +2635,31 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             let unknown = UnknownSetupErr $"'{name.value}'"
             {
                 model with kitStatus = Some (ControlCaption $"Load failed — {unknown.describe}")
+            }
+    // Spec 0050 S8.2: it writes nothing, so a read-only kit assigns too; the setup records the slot at the next
+    // CreateSetup, SaveSetup or commit.
+    | AssignSlot (slotId, itemIdOpt) ->
+        let assigned : Result<Setups.SetupSlot, SetupError> =
+            match model.elements |> List.tryFind (fun slot -> slot.id = slotId), itemIdOpt with
+            | None, _ -> Error (UnknownSetupSlotErr $"'{slotId.value}'")
+            | Some slot, None -> Ok slot.withoutItem
+            | Some slot, Some itemId ->
+                match model.kitItems |> List.tryFind (fun item -> item.id = itemId) with
+                | None -> Error (UnknownSlotItemErr $"the kit holds no item {itemId.value}")
+                | Some item ->
+                    match model.tryItemModelChoice item with
+                    | Some choice -> slot.withItem item choice
+                    | None -> Error (UnknownSlotItemErr $"'{item.label.value}': its model is not in the library")
+        match assigned with
+        | Ok filled ->
+            {
+                model with
+                    elements = model.elements |> List.map (fun slot -> if slot.id = filled.id then filled else slot)
+                    kitStatus = None
+            }
+        | Error error ->
+            {
+                model with kitStatus = Some (ControlCaption $"Not assigned — {error.describe}")
             }
     // Spec 0050 S5.3: the chart and Data-files gating already follow `constructorMode`.
     | SwitchConstructorMode mode ->
