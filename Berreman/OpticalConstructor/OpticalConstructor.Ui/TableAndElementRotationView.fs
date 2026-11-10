@@ -368,6 +368,31 @@ type ConstructorFlowStep =
         | SetupsFlowStep -> ControlCaption "Setups"
         | ExperimentsFlowStep -> ControlCaption "Experiments"
 
+/// The open "Add item from library model…" form: the new item's id, minted when it opens, the models it offers, the
+/// one chosen, the label as typed (a raw caption until `ItemLabel.tryCreate` reads it) and the dial (spec 0050 S7.2).
+type AddItemForm =
+    {
+        itemId : ItemId
+        offers : ItemModelChoice list
+        chosenOpt : ItemModelChoice option
+        labelText : ControlCaption
+        dial : ItemDial
+    }
+
+    /// The draft the form's Add sends: `None` until a model is chosen and the label reads as one (spec 0050 S7.2).
+    member this.itemDraftOpt : ItemDraft option =
+        match this.chosenOpt, ItemLabel.tryCreate this.labelText.value with
+        | Some chosen, Ok label ->
+            Some
+                {
+                    id = this.itemId
+                    label = label
+                    model = chosen
+                    dial = this.dial
+                }
+        | Some _, Error _
+        | None, _ -> None
+
 type TableAndElementRotationModel =
     {
         table : OpticalTable
@@ -477,6 +502,14 @@ type TableAndElementRotationModel =
         kitItems : Item list
         /// The flow strip's step the window shows, the same in the forward and inverse constructors (spec 0050 S7.2).
         flowStep : ConstructorFlowStep
+        /// The item-model store the add form offers (spec 0050 S7.2, step 209).
+        itemModels : ItemModels.ItemModelProxy
+        /// Mints the id of the item the add form opens for (spec 0050 S7.2).
+        itemIds : ItemIdProvider
+        /// The item the Items panel shows, `None` while no row is pressed (spec 0050 S7.2).
+        selectedItemOpt : ItemId option
+        /// The open "Add item from library model…" form, `None` while it is closed (spec 0050 S7.2).
+        addItemFormOpt : AddItemForm option
         /// Measured-data attachments read through kit (spec 0050 S4.2/S4.3).
         experimentData : ExperimentData.ExperimentDataProxy
         /// Spec 0038 Part L (037): the typed per-experiment measured-data status, keyed by the
@@ -547,6 +580,7 @@ module private DefaultStores =
             library : LibraryProxy
             sources : SourceProxy
             catalogueImports : CatalogueImportContext
+            itemModels : ItemModels.ItemModelProxy
         }
 
     /// Imports fresh scene stores, logging any failure and retaining entries already imported.
@@ -567,6 +601,7 @@ module private DefaultStores =
             library = liveLibrary stores.libraryEntries stores.samples sources
             sources = sources
             catalogueImports = context
+            itemModels = stores.itemModels
         }
 
 /// The Main-screen "Lego" palette — the catalogue kinds the user can add to the scene. Shared by the
@@ -627,6 +662,10 @@ let initWith
         kitItems = []
         // Spec 0050 S7.2: a window opens on the table and its Add bay, as before the strip.
         flowStep = SetupsFlowStep
+        itemModels = ItemModels.ItemModelProxy.createInMemory ()
+        itemIds = ItemIdProvider.system
+        selectedItemOpt = None
+        addItemFormOpt = None
         experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked kit.proxy
         experimentDataStatus = Map.empty
         elementMenu = None
@@ -650,6 +689,7 @@ let initTableAndElementRotation () : Result<TableAndElementRotationModel, KitErr
             initWith stores.library (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories kit elements [] with
                 sources = stores.sources
                 catalogueImports = stores.catalogueImports
+                itemModels = stores.itemModels
         })
 
 /// The DYNAMIC Main scene: the same table/view/selection/rotation logic, seeded with a light source and
@@ -746,6 +786,7 @@ let initMain () : Result<TableAndElementRotationModel, KitError> =
             model with
                 sources = stores.sources
                 catalogueImports = stores.catalogueImports
+                itemModels = stores.itemModels
         })
 
 // Scene capture and restore project the live model to the kit's snapshot (spec 0038 step 027; spec 0050 S4.3).
@@ -838,6 +879,20 @@ type TableAndElementRotationMsg =
     | SelectBay of Ribbon.BayName
     /// A press of a flow-strip step (spec 0050 S7.2).
     | ShowFlowStep of ConstructorFlowStep
+    /// A press of an item row of the Items panel (spec 0050 S7.2).
+    | SelectKitItem of ItemId
+    /// The Items panel's "Add item from library model…": opens the add form under a newly minted id (spec 0050 S7.2).
+    | OpenAddItemForm
+    /// Chooses the model the add form's item instantiates (spec 0050 S7.2).
+    | ChooseNewItemModel of ItemModelChoice
+    /// Edits the add form's label as typed (spec 0050 S7.2).
+    | SetNewItemLabel of ControlCaption
+    /// Sets how the add form's item is mounted (spec 0050 S7.2).
+    | SetNewItemDial of ItemDial
+    /// The add form's Cancel: closes it, writing nothing (spec 0050 S7.2).
+    | CancelAddItemForm
+    /// Adds the item to the kit: the add form's Add, and how a test adds an item (spec 0050 S7.2; 001 §P).
+    | AddItem of ItemDraft
     /// Main-screen LIBRARY bay (task 024): bind this Library entry id to the selected element's
     /// `valueId` (inert when the table or nothing is selected).
     | BindValueId of ElementValueId
@@ -1860,6 +1915,50 @@ type TableAndElementRotationModel with
             model with kitCopyOpt = None
         }
 
+    /// The add form's offers: the standalone models of `itemModels`, then the source presets, the polarizer presets
+    /// and the samples at version 1, each under the binding model `itemModels` lists; nothing is offered for a failed
+    /// library listing or for a binding model `itemModels` lacks (spec 0050 S7.2).
+    member internal model.addItemOffersOver (itemModels : ItemModels.ItemModelVersion list) : ItemModelChoice list =
+        let listed (kind : CatalogueKind) : Library.LibraryEntry list =
+            match model.library.entriesForKind kind with
+            | Ok entries -> entries
+            | Error _ -> []
+        let underBindingModel (kind : ItemModels.ItemModelBindingKind) (offer : ItemModels.ItemModelVersion -> ItemModelChoice list) : ItemModelChoice list =
+            match itemModels |> List.tryFind (fun held -> held.entry.model.bindingKindOpt = Some kind) with
+            | Some bindingModel -> offer bindingModel
+            | None -> []
+        let standalone =
+            itemModels
+            |> List.choose (fun held ->
+                match held.entry.model.bindingKindOpt with
+                | Some _ -> None
+                | None -> Some (LibraryModelChoice held))
+        let sources =
+            underBindingModel ItemModels.SourcePresetBinding (fun sourceModel ->
+                listed LightSource
+                |> List.choose (fun entry ->
+                    match entry with
+                    | Library.SourceItem source -> Some (SourcePresetChoice (sourceModel, source))
+                    | Library.SampleItem _ | Library.DetectorItem _ | Library.PolarizerItem _ -> None))
+        // A compound polarizer serves both kinds, so both listings may name it (spec 0038 step 014).
+        let polarizers =
+            underBindingModel ItemModels.PolarizerPresetBinding (fun polarizerModel ->
+                listed LinearPolarizer @ listed CircularPolarizer
+                |> List.distinctBy (fun entry -> entry.entryId)
+                |> List.choose (fun entry ->
+                    match entry with
+                    | Library.PolarizerItem polarizer -> Some (PolarizerPresetChoice (polarizerModel, polarizer))
+                    | Library.SampleItem _ | Library.SourceItem _ | Library.DetectorItem _ -> None))
+        // Version 1 is what an experiment's binding pins (`descriptorBinding`), so an item and an experiment name one entry.
+        let samples =
+            underBindingModel ItemModels.StackSampleBinding (fun sampleModel ->
+                listed Sample
+                |> List.choose (fun entry ->
+                    match entry with
+                    | Library.SampleItem sample -> Some (StackSampleChoice (sampleModel, Library.SampleVersionId.firstOf sample.id, sample))
+                    | Library.SourceItem _ | Library.DetectorItem _ | Library.PolarizerItem _ -> None))
+        standalone @ sources @ polarizers @ samples
+
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -1920,6 +2019,74 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         let bay = if model.ribbon = BayNames.experiments then BayNames.add else model.ribbon
         { model with flowStep = SetupsFlowStep; ribbon = bay }
     | ShowFlowStep ExperimentsFlowStep -> { model with flowStep = ExperimentsFlowStep; ribbon = BayNames.experiments }
+    | SelectKitItem id ->
+        match model.kitItems |> List.exists (fun item -> item.id = id) with
+        | true -> { model with selectedItemOpt = Some id }
+        | false -> model
+    | OpenAddItemForm ->
+        // Spec 0050 S7.2: the binding models come from this one listing, so a failed listing offers none of them.
+        let listed = model.itemModels.listItemModels ()
+        let itemModels =
+            match listed with
+            | Ok held -> held
+            | Error _ -> []
+        let form : AddItemForm =
+            {
+                itemId = model.itemIds.mintItemId ()
+                offers = model.addItemOffersOver itemModels
+                chosenOpt = None
+                labelText = ControlCaption ""
+                dial = FixedMounting
+            }
+        match listed with
+        | Ok _ -> { model with addItemFormOpt = Some form }
+        | Error error ->
+            {
+                model with
+                    addItemFormOpt = Some form
+                    kitStatus = Some (ControlCaption $"The item models could not be listed — {error.describe}")
+            }
+    | ChooseNewItemModel choice ->
+        match model.addItemFormOpt with
+        | Some form -> { model with addItemFormOpt = Some { form with chosenOpt = Some choice } }
+        | None -> model
+    | SetNewItemLabel text ->
+        match model.addItemFormOpt with
+        | Some form -> { model with addItemFormOpt = Some { form with labelText = text } }
+        | None -> model
+    | SetNewItemDial dial ->
+        match model.addItemFormOpt with
+        | Some form -> { model with addItemFormOpt = Some { form with dial = dial } }
+        | None -> model
+    | CancelAddItemForm -> { model with addItemFormOpt = None }
+    | AddItem draft ->
+        guardKitWrite model (fun () ->
+            match draft.addTo model.kitItems with
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"The item was not added — {error.describe}")
+                }
+            | Ok item ->
+                let library : KitLibraryContext =
+                    {
+                        kit = model.kit
+                        imports = model.catalogueImports
+                    }
+                match library.recordItem item with
+                | Ok () ->
+                    {
+                        model with
+                            kitItems =
+                                item :: model.kitItems
+                                |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.label.value, second.label.value))
+                            selectedItemOpt = Some item.id
+                            addItemFormOpt = None
+                            kitStatus = None
+                    }
+                | Error error ->
+                    {
+                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                    })
     | BindValueId entryId ->
         // Spec 0038 (017): the direct bind CONVERGES on the one targeted commit arm below —
         // resolve the selected element's serializable id and delegate to `BindValueIdTo`.

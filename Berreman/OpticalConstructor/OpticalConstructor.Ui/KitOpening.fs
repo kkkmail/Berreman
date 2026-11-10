@@ -30,6 +30,15 @@ type ClockProvider with
             now = fun () -> ClockTime DateTime.UtcNow
         }
 
+/// Supplies new items' identities at the constructor's composition boundary (spec 0050 S7.2).
+type ItemIdProvider with
+
+    /// Mints a fresh `ItemId` from a new GUID on every invocation (spec 0050 S7.2).
+    static member system : ItemIdProvider =
+        {
+            mintItemId = fun () -> ItemId (Guid.NewGuid ())
+        }
+
 /// A constructor session's opened kit, content and unconfirmed snapshot decisions (spec 0050 S4.3).
 [<ReferenceEquality>]
 type OpenedKit =

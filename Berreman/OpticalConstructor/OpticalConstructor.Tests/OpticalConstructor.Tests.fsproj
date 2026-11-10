@@ -218,6 +218,7 @@
         <Compile Include="KitItemTests.fs" />
         <Compile Include="KitItemFileTests.fs" />
         <Compile Include="ExperimentCopyTests.fs" />
+        <Compile Include="ItemsPanelModelTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
