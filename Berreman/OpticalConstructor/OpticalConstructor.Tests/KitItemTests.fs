@@ -826,3 +826,48 @@ module KitItemTests =
         Assert.Equal<ItemRevision>(ItemRevision 1, heldCpl1.revision)
         Assert.Empty(heldCpl1.history)
         Assert.Equal<Item>(modelItem circularPolarizerModel heldCpl1.id heldCpl1.label, heldCpl1)
+
+    // ============================ spec 0050 S7.2: the item edits ============================
+
+    [<Fact>]
+    let ``an item's notes and photo are edited in place, keeping its parameters and revision`` () : unit =
+        let notes = ItemNotes "Mounted 2026-11-01"
+
+        match KitRelativePath.tryCreate "data/photos/CPL1.jpg" with
+        | Ok photo ->
+            let noted = heldCpl1.withNotes notes
+            Assert.Equal<Item>({ heldCpl1 with notes = notes }, noted)
+
+            let photographed = noted.withPhoto (Some photo)
+            Assert.Equal<Item>({ heldCpl1 with notes = notes; photoOpt = Some photo }, photographed)
+
+            // Removing the photo drops the reference alone: the item is the noted one again.
+            let unphotographed = photographed.withPhoto None
+            Assert.Equal<Item>(noted, unphotographed)
+            Assert.Equal<KitRelativePath option>(None, unphotographed.photoOpt)
+
+            for edited in [ noted; photographed; unphotographed ] do
+                Assert.Equal<Parameter list>(circularPolarizerDefaults, edited.parameters)
+                Assert.Equal<ItemRevision>(ItemRevision 1, edited.revision)
+                Assert.Empty(edited.history)
+        | Error error -> Assert.Fail($"the photo path was refused: {error.describe}")
+
+    [<Fact>]
+    let ``relabelling an item keeps its id and refuses a label whose file name another item holds`` () : unit =
+        let items = [ heldCpl1; heldLp1 ]
+
+        // CPL1's own entry is ignored, so it may take its own label in another case.
+        for label in [ ItemLabel "CPL 1"; ItemLabel "cpl1" ] do
+            match heldCpl1.relabelledAmong label items with
+            | Ok relabelled ->
+                Assert.Equal<Item>({ heldCpl1 with label = label }, relabelled)
+                Assert.Equal<ItemId>(heldCpl1.id, relabelled.id)
+            | Error error -> Assert.Fail($"CPL1 refused the label '{label.value}': {error.describe}")
+
+        match heldCpl1.relabelledAmong (ItemLabel "lp1") items with
+        | Error (DuplicateItemLabelErr reason) ->
+            Assert.Contains("'lp1'", reason)
+            Assert.Contains("'LP1'", reason)
+            Assert.Contains((ItemKitFile.fileNameOf heldLp1.label.fileStem).value, reason)
+        | Error error -> Assert.Fail($"expected a duplicate item label: {error.describe}")
+        | Ok item -> Assert.Fail($"CPL1 took '{item.label.value}' beside LP1")

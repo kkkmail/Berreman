@@ -382,6 +382,13 @@ module Kit =
 
         member this.value : Guid = let (ItemId g) = this in g
 
+    /// Mints a new item's identity; the composition root chooses how, as it chooses the clock (spec 0050 S7.2).
+    [<ReferenceEquality>]
+    type ItemIdProvider =
+        {
+            mintItemId : unit -> ItemId
+        }
+
     /// The lab's name for a piece (`LP1`, `CPL2`, `QZ`), kept as given; its `<label>.item-json` stem follows the
     /// shared name rule (spec 0050 S7.1; 001 §A).
     type ItemLabel =
@@ -611,6 +618,30 @@ module Kit =
                             parameters = this.parameters |> List.map (fun held -> if held.name = name then validated else held)
                     })
 
+        /// The item with those notes, keeping its parameters, revision and history: an edit of the working revision,
+        /// which only `publishRevision` moves (spec 0050 S7.2).
+        member this.withNotes (notes : ItemNotes) : Item = { this with notes = notes }
+
+        /// The item with that photo; `None` drops the reference and never a file, as lab files are read-only for the
+        /// app (spec 0050 S7.2; 001 §E).
+        member this.withPhoto (photoOpt : KitRelativePath option) : Item = { this with photoOpt = photoOpt }
+
+        /// The item under the new label, refused when another item of `items` holds its file name ignoring case,
+        /// because every `<label>.item-json` shares the kit root; its own entry is ignored (spec 0050 S7.1, S7.2).
+        member this.relabelledAmong (label : ItemLabel) (items : Item list) : Result<Item, ItemError> =
+            let sameFile (held : Item) : string option =
+                let clashes = String.Equals(held.label.fileStem.value, label.fileStem.value, StringComparison.OrdinalIgnoreCase)
+
+                if held.id <> this.id && clashes then
+                    let file = ItemKitFile.fileNameOf held.label.fileStem
+                    Some $"'{label.value}' beside '{held.label.value}': both are stored as {file.value}, ignoring case"
+                else
+                    None
+
+            match items |> List.tryPick sameFile with
+            | Some reason -> Error (DuplicateItemLabelErr reason)
+            | None -> Ok { this with label = label }
+
         /// The next revision, once each published parameter is one of the item's, named once, keeping its rules: the
         /// current values join `history`, `revision` counts up and each state replaces its own (spec 0050 S7.1; 001 §I).
         member this.publishRevision (published : Parameter list) : Result<Item, ItemError> =
@@ -739,23 +770,16 @@ module Kit =
                     | Some _ -> [ Some $"{takesText model}, and the choice binds none" ]
                     | None -> []
 
-            let sameFile (held : Item) : string option =
-                if String.Equals(held.label.fileStem.value, this.label.fileStem.value, StringComparison.OrdinalIgnoreCase) then
-                    let file = ItemKitFile.fileNameOf held.label.fileStem
-                    Some $"'{this.label.value}' beside '{held.label.value}': both are stored as {file.value}, ignoring case"
-                else
-                    None
-
             match items |> List.tryFind (fun held -> held.id = this.id) with
             | Some held ->
                 Error (DuplicateItemIdErr $"'{this.label.value}' reuses the id {this.id.value} of '{held.label.value}'")
             | None ->
-                match items |> List.tryPick sameFile with
-                | Some reason -> Error (DuplicateItemLabelErr reason)
-                | None ->
+                // No held item has the draft's id here, so relabelling's own-entry exemption skips none (spec 0050 S7.2).
+                this.toItem.relabelledAmong this.label items
+                |> Result.bind (fun item ->
                     match bindingRules |> List.choose id with
                     | reason :: _ -> Error (InvalidItemModelBindingErr reason)
-                    | [] -> Ok this.toItem
+                    | [] -> Ok item)
 
     /// One item's versioned `<label>.item-json` content; a file is read back as its `item` (spec 0050 S7.1; 001 §A).
     type ItemFile =
