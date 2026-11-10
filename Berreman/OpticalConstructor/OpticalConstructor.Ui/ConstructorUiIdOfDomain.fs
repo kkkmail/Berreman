@@ -169,8 +169,8 @@ module ConstructorUiIdOfDomain =
 
     type ConstructorUiId with
 
-        /// Loads this named scene from the kit (spec 0050 S4.3).
-        static member savedScene (name : Scene.SceneName) : ConstructorUiId = ConstructorUiId $"SavedScene_{name.value}"
+        /// Draws this kit setup on the table (spec 0050 S8.2).
+        static member savedSetup (name : Kit.SetupName) : ConstructorUiId = ConstructorUiId $"SavedSetup_{name.value}"
 
         /// An element's invisible hover target on the Main table, which carries its tooltip (spec 0046).
         static member elementHover (elementId : ElementId) : ConstructorUiId = ConstructorUiId $"ElementHover_{elementId.value}"
@@ -377,9 +377,9 @@ module ConstructorUiIdOfDomain =
         /// The experiment as the key of its Experiments-bay collection row (its number's text).
         member this.uiKey : ConstructorUiKey = ConstructorUiKey (string this.value)
 
-    type Scene.SceneName with
+    type Kit.SetupName with
 
-        /// The scene name as its saved-scene button's caption (spec 0050 S4.3).
+        /// The setup name as its saved-setup button's caption (spec 0050 S8.2).
         member this.caption : ControlCaption = ControlCaption this.value
 
     type EntryName with

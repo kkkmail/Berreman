@@ -193,11 +193,11 @@ module KitWindowModelTests =
                         ready |> updateTableAndElementRotation ExpCommit
                         ready |> updateTableAndElementRotation (ExpRemove storedExperiment.id)
                         ready |> updateTableAndElementRotation (AttachDataFileTo (storedExperiment.id, dataFile))
-                        ready |> updateTableAndElementRotation (SceneSetName (ControlCaption "Bench")) |> updateTableAndElementRotation SceneSave
+                        ready |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench")) |> updateTableAndElementRotation CreateSetup
                     ]
                 for answer in refused do
                     Assert.Equal<Experiments.ExperimentCollection>(ready.experimentCollection, answer.experimentCollection)
-                    Assert.Equal<Scene.SceneName list>(ready.savedScenes, answer.savedScenes)
+                    Assert.Equal<Setups.Setup list>(ready.kitSetups, answer.kitSetups)
                     Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), answer.kitStatus)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
 
@@ -328,6 +328,10 @@ module KitWindowModelTests =
     [<Fact>]
     let ``Reload reads the kit's files in and clears the offer`` () : unit =
         withOtherWritersChanges (fun writer committed ->
+            let bench =
+                Setups.Setup.create (SetupName "Bench") [] []
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            writer.writeSetup bench |> kitValue
             let offered = committed |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
             Assert.NotEmpty(offered.kitChanges)
             let reloaded = offered |> updateTableAndElementRotation ReloadKitChanges
@@ -339,6 +343,8 @@ module KitWindowModelTests =
             Assert.Equal<KitName>(KitName "Renamed", reloaded.kit.kitFile.name)
             Assert.StartsWith("Renamed", reloaded.kitWindowTitle.value)
             Assert.Equal<KitContext>({ offered.kit with kitFile = reloaded.kit.kitFile }, reloaded.kit)
+            Assert.Empty(offered.kitSetups)
+            Assert.Equal<Setups.Setup list>([ bench ], reloaded.kitSetups)
             Assert.Empty(reloaded.kitChanges)
             Assert.Equal<ControlCaption option>(None, reloaded.kitStatus)
             let again = reloaded |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
@@ -723,7 +729,7 @@ module KitWindowModelTests =
                 Assert.Equal<KitCopySource option>(None, copied.kitCopyOpt)
                 Assert.Equal<ControlCaption option>(Some (ControlCaption "Copied 1 experiment(s) from Copy source."), copied.kitStatus)
                 Assert.Equal<Item list>(model.kitItems, copied.kitItems)
-                Assert.Equal<Scene.SceneName list>(model.savedScenes, copied.savedScenes)
+                Assert.Equal<Setups.Setup list>(model.kitSetups, copied.kitSetups)
                 Assert.Equal<KitContext>(model.kit, copied.kit)
                 Assert.Equal<Map<FileName, FileByteContent>>(sourceBefore, folderBytes source.sourceFolder)
                 let checkedChanges = copied |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)

@@ -163,10 +163,10 @@ type ConstructorUiId =
     static member selectorQuickPickStrip : ConstructorUiId = ConstructorUiId "SelectorQuickPickStrip"
     /// The kit bar's status line, shown whichever bay is open (spec 0050 S4.3, S5.3).
     static member kitStatus : ConstructorUiId = ConstructorUiId "KitStatus"
-    /// The scene row's name field, save action and saved scenes (spec 0050 S4.3).
-    static member sceneNameField : ConstructorUiId = ConstructorUiId "SceneNameField"
-    static member saveSceneButton : ConstructorUiId = ConstructorUiId "SaveSceneButton"
-    static member savedScenes : ConstructorUiId = ConstructorUiId "SavedScenes"
+    /// The setup row's name field, Create setup action and the kit's saved setups (spec 0050 S8.2).
+    static member setupNameField : ConstructorUiId = ConstructorUiId "SetupNameField"
+    static member createSetupButton : ConstructorUiId = ConstructorUiId "CreateSetupButton"
+    static member savedSetups : ConstructorUiId = ConstructorUiId "SavedSetups"
     /// The inverse experiment data files (spec 0050 S4.3).
     static member experimentDataFiles : ConstructorUiId = ConstructorUiId "ExperimentDataFiles"
 

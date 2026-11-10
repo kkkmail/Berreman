@@ -38,7 +38,6 @@ open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.Domain.Scene
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 // Spec 0038 (017): opened for `QuickPickThreshold.defaultValue` — the single-case DU's case
@@ -609,10 +608,12 @@ type TableAndElementRotationModel =
         kitCopyOpt : KitCopySource option
         /// The last kit read or write that needs telling (spec 0050 S4.3).
         kitStatus : ControlCaption option
-        /// The scene name being edited, validated when saved (spec 0050 S4.3).
-        sceneName : ControlCaption
-        /// The names of the scenes saved in this kit (spec 0050 S4.3).
-        savedScenes : Scene.SceneName list
+        /// The setup name being typed, validated when the setup is created (spec 0050 S8.2).
+        setupName : ControlCaption
+        /// The kit's setups in name order, as the window last read or wrote them (spec 0050 S8.2).
+        kitSetups : Setups.Setup list
+        /// The kit setup the table draws, as last created or loaded; `None` while the table is not yet one (spec 0050 S8.2).
+        activeSetupOpt : Setups.Setup option
         /// The kit's items in label order, as the kit last read or wrote them (spec 0050 S6, S7.1).
         kitItems : Item list
         /// The flow strip's step the window shows, the same in the forward and inverse constructors (spec 0050 S7.2).
@@ -780,8 +781,9 @@ let initWith
         kitSend = KitArchiveJob.KitArchiveJobState.idle
         kitCopyOpt = None
         kitStatus = None
-        sceneName = ControlCaption ""
-        savedScenes = []
+        setupName = ControlCaption ""
+        kitSetups = []
+        activeSetupOpt = None
         kitItems = []
         // Spec 0050 S7.2: a window opens on the table and its Add bay, as before the strip.
         flowStep = SetupsFlowStep
@@ -930,52 +932,6 @@ let initMain () : Result<TableAndElementRotationModel, KitError> =
                 itemModels = stores.itemModels
         })
 
-// Scene capture and restore project the live model to the kit's snapshot (spec 0038 step 027; spec 0050 S4.3).
-
-/// Project the live workbench model into a pure `Scene.SceneSnapshot`: the placed `elements`
-/// (each element's serializable id, its full `placement` — which already carries the
-/// `catalogueKind` tag and the `valueId` Library binding — and its draw `zoom`), the table `view`
-/// state, and the `snapChain` mode. The inverse is `restoreScene`.
-type TableAndElementRotationModel with
-
-    member model.captureScene : Scene.SceneSnapshot =
-        {
-            Scene.SceneSnapshot.elements =
-                model.elements
-                |> List.map (fun e -> { Scene.SceneElement.id = e.id; placement = e.placement; zoom = e.zoom; beam = e.beam })
-            view = model.view
-            snap = model.snapChain
-            pivot = model.rotationPivot
-        }
-
-/// The inverse of `captureScene` — apply a saved `Scene.SceneSnapshot` back onto a live model,
-/// replacing the placed `elements`, the table `view` state, and the snap mode,
-/// and leaving every OTHER field (the injected proxies, palette, render config, experiment
-/// collection, launchers) untouched. The `selection` resets to the table and `drag` clears: the
-/// loaded elements are a FRESH set, so a stale `ElementSelected` index would no longer address the
-/// same element. Pure and window-free.
-let restoreScene (snapshot : Scene.SceneSnapshot) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
-    { model with
-        elements =
-            snapshot.elements
-            |> List.map (fun e ->
-                let slot : Setups.SetupSlot =
-                    {
-                        id = e.id
-                        placement = e.placement
-                        zoom = e.zoom
-                        beam = e.beam
-                        content = Setups.EmptySlotContent
-                    }
-
-                slot)
-        view = snapshot.view
-        snapChain = snapshot.snap
-        rotationPivot = snapshot.pivot
-        selection = TableSelected
-        drag = NotPressed
-        elementMenu = None }
-
 type TableAndElementRotationMsg =
     | RotateR1By of BarDegrees
     | RotateR2By of BarDegrees
@@ -1111,12 +1067,12 @@ type TableAndElementRotationMsg =
     | ViewExperiment of Experiments.ExperimentId
     /// Records a picked file through the kit, then loads and validates its attachment (spec 0050 S4.2).
     | AttachDataFileTo of Experiments.ExperimentId * FileName
-    /// Edits the name used for the next scene save (spec 0050 S4.3).
-    | SceneSetName of ControlCaption
-    /// Saves the table as a named scene in the kit (spec 0050 S4.3).
-    | SceneSave
-    /// Restores the kit's named scene onto the table (spec 0050 S4.3).
-    | SceneLoad of Scene.SceneName
+    /// Edits the name the next created setup takes (spec 0050 S8.2).
+    | SetSetupName of ControlCaption
+    /// The table becomes a new setup of the kit, named by the field (spec 0050 S8.2; 001 §P `CreateSetup`).
+    | CreateSetup
+    /// The kit's setup of that name is drawn on the table (spec 0050 S8.2).
+    | ActivateSetup of SetupName
     /// The kit bar's forward / inverse switch, which keeps the kit and the model (spec 0050 S5.3).
     | SwitchConstructorMode of ConstructorMode
     /// The Kit menu's Show in Explorer: the kit's folder in the shell's explorer (spec 0050 S5.3).
@@ -1125,7 +1081,7 @@ type TableAndElementRotationMsg =
     | CloseKit
     /// Offers the kit files changed outside the app since the stamps were last recorded (spec 0050 S5.3).
     | CheckKitChanges of KitCheckOrigin
-    /// The offer's Reload: re-reads the kit file, experiments and scene names into the model (spec 0050 S5.3).
+    /// The offer's Reload: re-reads the kit file, experiments, items and setups into the model (spec 0050 S5.3, S8.2).
     | ReloadKitChanges
     /// The offer's Keep mine: keeps the model and records the current stamps, so the offer clears (spec 0050 S5.3).
     | KeepMyKitChanges
@@ -1957,14 +1913,14 @@ let private validateExperimentAttachment
     | Ok series -> DataFileValidated series.pointCount
     | Error error -> error.fileStatus
 
-/// Sets what a kit's content decides, so a reload sets exactly what an open sets (spec 0050 S4.3, S5.3; 001 §E):
-/// the kit, its experiments with a fresh draft, their attachments rechecked through the model's `experimentData`,
-/// its items, its scene names, and no status or reload offer.
+/// Sets what a kit's content decides, so a reload sets exactly what an open sets (spec 0050 S4.3, S5.3, S8.2; 001
+/// §E): the kit, its experiments with a fresh draft, their attachments rechecked through the model's `experimentData`,
+/// its items, its setups with the active one as read, and no status or reload offer.
 let private withKitContent
     (kit : KitContext)
     (experiments : Experiments.Experiment list)
     (items : Item list)
-    (scenes : Scene.SceneName list)
+    (setups : Setups.Setup list)
     (model : TableAndElementRotationModel)
     : TableAndElementRotationModel =
     let loaded =
@@ -1974,7 +1930,10 @@ let private withKitContent
                 experimentCollection = Experiments.ExperimentCollection.ofLoaded experiments
                 kitStatus = None
                 kitChanges = []
-                savedScenes = scenes
+                kitSetups = setups
+                activeSetupOpt =
+                    model.activeSetupOpt
+                    |> Option.bind (fun active -> setups |> List.tryFind (fun setup -> setup.name = active.name))
                 kitItems = items
         }
     let statuses =
@@ -2017,7 +1976,7 @@ type TableAndElementRotationModel with
                 kitFolderOpt = Some opened.folder
                 experimentData = opened.experimentData
         }
-        |> withKitContent opened.library.kit opened.experiments opened.items opened.scenes
+        |> withKitContent opened.library.kit opened.experiments opened.items opened.setups
 
     /// The kit's name, ` (read-only)` when it was opened read-only, then ` — ` and its folder when it has one
     /// (spec 0050 S5.3; .manual/001 §O).
@@ -2567,43 +2526,56 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                             model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                         }
                 | None -> model)
-    | SceneSetName name -> { model with sceneName = name }
-    | SceneSave ->
+    | SetSetupName name -> { model with setupName = name }
+    // Spec 0050 S8.2: the slots are recorded as a setup holds them, so a dial-mounted item keeps its raw reading.
+    | CreateSetup ->
         guardKitWrite model (fun () ->
-            match SceneName.tryCreate model.sceneName.value with
-            | Error (Scene.InvalidSceneErr reason) ->
+            let slots = model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
+            let created =
+                SetupName.tryCreate model.setupName.value
+                |> Result.bind (fun name -> Setups.Setup.create name slots model.kitSetups)
+            match created with
+            | Error error ->
                 {
-                    model with kitStatus = Some (ControlCaption $"Save failed — {reason}")
+                    model with kitStatus = Some (ControlCaption $"Not created — {error.describe}")
                 }
-            | Ok name ->
+            | Ok setup ->
                 let library : KitLibraryContext =
                     {
                         kit = model.kit
                         imports = model.catalogueImports
                     }
-                match library.recordScene name model.captureScene with
+                match library.recordSetup setup with
                 | Ok () ->
                     {
                         model with
-                            savedScenes =
-                                name :: model.savedScenes
-                                |> List.distinct
-                                |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.value, second.value))
-                            kitStatus = Some (ControlCaption $"Saved scene '{name.value}'.")
+                            kitSetups =
+                                setup :: model.kitSetups
+                                |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.name.value, second.name.value))
+                            activeSetupOpt = Some setup
+                            kitStatus = Some (ControlCaption $"Created setup '{setup.name.value}'.")
                     }
                 | Error error ->
                     {
                         model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                     })
-    | SceneLoad name ->
-        match model.kit.proxy.readScene name with
-        | Ok scene ->
+    // Spec 0050 S8.2: it writes nothing, so a read-only kit loads setups; the view, snap mode and pivot are the window's.
+    | ActivateSetup name ->
+        match model.kitSetups |> List.tryFind (fun setup -> setup.name = name) with
+        | Some setup ->
             {
-                restoreScene scene model with kitStatus = Some (ControlCaption $"Loaded scene '{name.value}'.")
+                model with
+                    elements = setup.slots |> List.map (fun slot -> slot.drawnWith model.kitItems)
+                    activeSetupOpt = Some setup
+                    selection = TableSelected
+                    drag = NotPressed
+                    elementMenu = None
+                    kitStatus = Some (ControlCaption $"Loaded setup '{setup.name.value}'.")
             }
-        | Error error ->
+        | None ->
+            let unknown = UnknownSetupErr $"'{name.value}'"
             {
-                model with kitStatus = Some (ControlCaption $"Load failed — {error.describe}")
+                model with kitStatus = Some (ControlCaption $"Load failed — {unknown.describe}")
             }
     // Spec 0050 S5.3: the chart and Data-files gating already follow `constructorMode`.
     | SwitchConstructorMode mode ->
@@ -2656,15 +2628,15 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     |> Result.bind (fun experiments ->
                         proxy.readItems ()
                         |> Result.bind (fun items ->
-                            proxy.readSceneNames ()
-                            |> Result.bind (fun scenes ->
+                            proxy.readSetups ()
+                            |> Result.bind (fun setups ->
                                 proxy.recordStamps ()
                                 |> Result.map (fun () ->
                                     let kit =
                                         {
                                             model.kit with kitFile = kitFile
                                         }
-                                    withKitContent kit experiments items scenes model)))))
+                                    withKitContent kit experiments items setups model)))))
             match reloaded with
             | Ok reloadedModel -> reloadedModel
             | Error error ->
@@ -2821,7 +2793,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 match copied with
                 | Ok (report, experiments, items) ->
                     // Spec 0050 S6, S7.2: as a reload sets it (step 187), over the kit's items as the copy left them.
-                    let shown = withKitContent model.kit experiments items model.savedScenes model
+                    let shown = withKitContent model.kit experiments items model.kitSetups model
                     let copiedCount = List.length report.experiments
                     let sourceName = copySource.source.kitFile.name
                     let told =
@@ -4504,8 +4476,8 @@ let private dataFileRow (model : TableAndElementRotationModel) (dispatch : Table
     |> Avalonia.FuncUI.DSL.View.withKey ("DataFileRow_" + experiment.id.uiKey.value)
     :> IView
 
-/// Saves and loads kit scenes and offers inverse data-file attachments (spec 0050 S4.3). The kit status is the kit
-/// bar's, so one control carries `kitStatus` (spec 0050 S5.3).
+/// Creates and loads the kit's setups and offers inverse data-file attachments (spec 0050 S4.3, S8.2). The kit status
+/// is the kit bar's, so one control carries `kitStatus` (spec 0050 S5.3).
 let private collectionBuilderView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let sectionHeading (text : string) : IView =
         TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0)) ] :> IView
@@ -4513,55 +4485,55 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
         match source with
         | :? TextBox as field ->
             let name = ControlCaption field.Text
-            dispatch (SceneSetName name)
+            dispatch (SetSetupName name)
         | _ -> ()
-    let saveScene (event : PointerPressedEventArgs) : unit =
-        // Spec 0050 S4.3: the verb box does not blur the field; commit its live text before saving.
+    let createSetup (event : PointerPressedEventArgs) : unit =
+        // Spec 0050 S4.3: the verb box does not blur the field; commit its live text before creating.
         match event.Source with
         | :? Visual as source ->
             match TopLevel.GetTopLevel source with
             | :? Window as owner ->
                 owner.GetVisualDescendants()
                 |> Seq.tryPick (function
-                    | :? TextBox as field when AutomationProperties.GetAutomationId field = ConstructorUiId.sceneNameField.value -> Some field
+                    | :? TextBox as field when AutomationProperties.GetAutomationId field = ConstructorUiId.setupNameField.value -> Some field
                     | _ -> None)
                 |> Option.iter (fun field ->
                     commitName field
-                    dispatch SceneSave)
+                    dispatch CreateSetup)
             | _ -> ()
         | _ -> ()
-    let sceneRow : IView =
+    let setupRow : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 6.0
             StackPanel.children [
                 TextBox.create [
-                    ConstructorUiId.sceneNameField.automationAttribute<TextBox> ()
-                    AttrBuilder<TextBox>.CreateProperty<string>(AutomationProperties.NameProperty, "Scene name", ValueNone)
+                    ConstructorUiId.setupNameField.automationAttribute<TextBox> ()
+                    AttrBuilder<TextBox>.CreateProperty<string>(AutomationProperties.NameProperty, "Setup name", ValueNone)
                     TextBox.width 180.0
-                    TextBox.text model.sceneName.value
+                    TextBox.text model.setupName.value
                     TextBox.onKeyDown (fun event -> if event.Key = Key.Enter then commitName event.Source)
                     TextBox.onLostFocus (fun event -> commitName event.Source)
                 ]
-                availableWorkbenchButton model.kitWrites ConstructorUiId.saveSceneButton (ControlCaption "Save scene") saveScene
+                availableWorkbenchButton model.kitWrites ConstructorUiId.createSetupButton (ControlCaption "Create setup") createSetup
             ]
         ] :> IView
-    let savedSceneSection : IView list =
-        match model.savedScenes with
+    let savedSetupSection : IView list =
+        match model.kitSetups with
         | [] -> []
-        | names ->
-            [ sectionHeading "Saved scenes:"
+        | setups ->
+            [ sectionHeading "Saved setups:"
               (WrapPanel.create [
                   // Spec 0050 S4.3: FuncUI conflates Name with AutomationProperties.Name;
                   // initialize the write-once control name outside its property diff.
-                  WrapPanel.init (fun (panel : WrapPanel) -> panel.Name <- ConstructorUiId.savedScenes.value)
-                  ConstructorUiId.savedScenes.automationAttribute<WrapPanel> ()
-                  AttrBuilder<WrapPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Saved scenes", ValueNone)
+                  WrapPanel.init (fun (panel : WrapPanel) -> panel.Name <- ConstructorUiId.savedSetups.value)
+                  ConstructorUiId.savedSetups.automationAttribute<WrapPanel> ()
+                  AttrBuilder<WrapPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Saved setups", ValueNone)
                   WrapPanel.orientation Orientation.Horizontal
                   WrapPanel.children (
-                      names |> List.map (fun name ->
-                          workbenchButton (ConstructorUiId.savedScene name) name.caption (fun _ -> dispatch (SceneLoad name))))
-               ] |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.savedScenes.value) :> IView ]
+                      setups |> List.map (fun setup ->
+                          workbenchButton (ConstructorUiId.savedSetup setup.name) setup.name.caption (fun _ -> dispatch (ActivateSetup setup.name))))
+               ] |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.savedSetups.value) :> IView ]
     // Spec 0046: measured-data files belong to the INVERSE problem alone — the forward (Main) constructor
     // shows no "Data files" section at all.
     let dataFileSection : IView list =
@@ -4580,7 +4552,7 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
-        StackPanel.children ([ sectionHeading "Scene:"; sceneRow ] @ savedSceneSection @ dataFileSection)
+        StackPanel.children ([ sectionHeading "Setup:"; setupRow ] @ savedSetupSection @ dataFileSection)
     ] :> IView
 
 /// The Experiments bay content (spec 0038 Part L, 037): the (untouched) Controls-layer experiment

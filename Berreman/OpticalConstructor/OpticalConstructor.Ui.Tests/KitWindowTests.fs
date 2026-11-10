@@ -61,13 +61,13 @@ module KitWindowTests =
             sourceWaveLengthOpt = None
         }
 
-    /// The controls that send the kit's write messages: Add, `E1`'s Remove and Attach data file, and Save scene.
+    /// The controls that send the kit's write messages: Add, `E1`'s Remove and Attach data file, and Create setup.
     let private writeControlIds : ConstructorUiId list =
         [
             ConstructorUiId.experimentAddButton
             ConstructorUiId.experimentRemoveButton storedExperiment.id.uiKey
             ConstructorUiId.attachDataFile storedExperiment.id
-            ConstructorUiId.saveSceneButton
+            ConstructorUiId.createSetupButton
         ]
 
     let private openedAt (folder : KitFolder) (access : KitAccess) (ctx : AppContext) : OpenedKit =

@@ -144,10 +144,10 @@
              physics-changed/identical × metadata-only decision table, plus the VersionNumber /
              version-id / EntryLifecycle / VersionRef surface. Avalonia-free. -->
         <Compile Include="LifecycleTests.fs" />
-        <!-- Spec 0038 step 027; spec 0050 S4.3: capture and restore through the scene's kit file,
-             preserving element ids, kinds, placements, bindings and view state; file replacement,
-             missing/malformed files, SceneName validation and SnapMode wire forms. -->
-        <Compile Include="SceneRoundTripTests.fs" />
+        <!-- Spec 0050 S8.2: a setup through its kit file, preserving its slots, their items and
+             its revisions; file replacement, an empty kit, unreadable or misnamed files and
+             SnapMode wire forms. -->
+        <Compile Include="SetupRoundTripTests.fs" />
         <!-- Experiment kit files preserve setups and attachments (spec 0050 S4.3). -->
         <Compile Include="ExperimentCollectionRoundTripTests.fs" />
         <!-- Spec 0038 Part I (step 031): the pure out-of-band dispersion diagnostic — a fixed 600 nm
@@ -221,6 +221,7 @@
         <Compile Include="ItemsPanelModelTests.fs" />
         <Compile Include="ItemEvaluationTests.fs" />
         <Compile Include="SetupTests.fs" />
+        <Compile Include="SetupModelTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

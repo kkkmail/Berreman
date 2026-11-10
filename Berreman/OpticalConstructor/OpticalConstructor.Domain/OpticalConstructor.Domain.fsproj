@@ -128,7 +128,7 @@
         <!-- Spec 0046: the Main-scene BEAM TREE — which beam each element sits on (main / the reflected
              ray of a partially-reflecting element), the layout walk over RayModel.crossElement, the
              drawn ray segments, the light paths, and what the detectors let an experiment capture.
-             After Experiments.fs (MeasurementMode) and before Scene.fs (which persists BeamHost). -->
+             After Experiments.fs (MeasurementMode). -->
         <Compile Include="BeamLayout.fs" />
         <Compile Include="Setups.fs" />
         <!-- Spec 0038 Part H (step 021): the versioned in-memory MATERIAL store behind the
@@ -145,9 +145,7 @@
         <Compile Include="SampleStore.fs" />
         <Compile Include="CatalogueImport.fs" />
         <Compile Include="KitLibrary.fs" />
-        <!-- Spec 0038: SceneName / SceneSnapshot (elements + table view state + snap mode, all pure data) /
-             SceneStoreError. Depends on Library (ElementId), Placement
-             (ElementPlacement / CatalogueKind) and Table (TableViewState) above. -->
+        <!-- Spec 0038: snap mode, pure data. -->
         <Compile Include="Scene.fs" />
         <!-- The named experiment snapshot shown by the solver hand-off (spec 0050 S4.3). -->
         <Compile Include="ExperimentCollectionStore.fs" />

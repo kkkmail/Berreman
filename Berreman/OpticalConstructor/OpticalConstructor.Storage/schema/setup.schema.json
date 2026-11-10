@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://berreman/schema/setup.json",
-  "title": "SceneFile",
-  "description": "One scene's .setup-json content (spec 0050 S4.3). Only version 1's body is validated so other positive schema versions reach the typed version check before binding.",
+  "title": "SetupFile",
+  "description": "One setup's <name>.setup-json content (spec 0050 S8.2). Only version 1's body is validated so other positive schema versions reach the typed version check before binding; a slot's shape is bound by the serializer.",
   "type": "object",
   "required": ["schemaVersion"],
   "properties": {
@@ -13,20 +13,30 @@
     "properties": { "schemaVersion": { "const": 1 } }
   },
   "then": {
-    "required": ["schemaVersion", "name", "scene"],
+    "required": ["schemaVersion", "setup"],
     "additionalProperties": false,
     "properties": {
       "schemaVersion": true,
-      "name": { "type": "string", "pattern": "\\S" },
-      "scene": {
+      "setup": {
         "type": "object",
-        "required": ["elements", "view", "snap", "pivot"],
+        "required": ["name", "revision", "slots", "history"],
         "additionalProperties": false,
         "properties": {
-          "elements": { "type": "array" },
-          "view": true,
-          "snap": true,
-          "pivot": true
+          "name": { "type": "string", "pattern": "\\S" },
+          "revision": { "type": "integer", "minimum": 1 },
+          "slots": { "type": "array" },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["revision", "slots"],
+              "additionalProperties": false,
+              "properties": {
+                "revision": { "type": "integer", "minimum": 1 },
+                "slots": { "type": "array" }
+              }
+            }
+          }
         }
       }
     }

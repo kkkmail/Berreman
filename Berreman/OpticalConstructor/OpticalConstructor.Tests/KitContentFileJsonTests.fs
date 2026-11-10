@@ -5,6 +5,7 @@ open System.Text.Json.Nodes
 open Xunit
 open Berreman.Constants
 open Berreman.Fields
+open Berreman.Geometry
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Experiments
@@ -14,7 +15,6 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.Domain.Scene
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.KitContentFiles
@@ -279,7 +279,7 @@ module KitContentFileJsonTests =
         | Error error -> Assert.Fail($"expected SchemaValidationErr: {error.describe}")
         | Ok _ -> Assert.Fail "accepted an unassigned descriptor without its item id field"
 
-    let private sceneSource : SceneElement =
+    let private setupSource : Setups.SetupSlot =
         let position : TablePoint =
             {
                 x = -0.75<meter>
@@ -294,9 +294,10 @@ module KitContentFileJsonTests =
                 }
             zoom = BeamLayout.ElementZoom 1.5
             beam = BeamLayout.OnMainBeam
+            content = Setups.EmptySlotContent
         }
 
-    let private scenePolarizer : SceneElement =
+    let private setupPolarizer : Setups.SetupSlot =
         {
             id = polarizerId
             placement =
@@ -306,9 +307,10 @@ module KitContentFileJsonTests =
                 }
             zoom = BeamLayout.ElementZoom 3.25
             beam = BeamLayout.OnMainBeam
+            content = Setups.EmptySlotContent
         }
 
-    let private sceneDetector : SceneElement =
+    let private setupDetector : Setups.SetupSlot =
         let position : TablePoint =
             {
                 x = 0.80<meter>
@@ -319,41 +321,43 @@ module KitContentFileJsonTests =
             placement = ElementPlacement.create Detector position
             zoom = BeamLayout.ElementZoom 2.0
             beam = BeamLayout.OnReflectedBeamOf polarizerId
+            content = Setups.EmptySlotContent
         }
 
-    let private sceneFixture : SceneSnapshot =
+    /// `Bench: A` at revision 2, its polarizer holding a test-local item on a dial read at −20°; at revision 1 the
+    /// polarizer held nothing.
+    let private setupFixture : Setups.Setup =
+        let heldItem = ItemId (Guid.Parse "26000000-0000-4000-8000-000000000002")
+        let dialled : Setups.SetupSlot =
+            {
+                setupPolarizer with content = Setups.ItemInSlot (heldItem, Setups.DialTurn (Angle.degree (-20.0<deg>)))
+            }
+        let firstRevision : Setups.SetupRevisionRecord =
+            {
+                revision = SetupRevision.first
+                slots = [ setupSource; setupPolarizer; setupDetector ]
+            }
         {
-            elements = [ sceneSource; scenePolarizer; sceneDetector ]
-            view =
-                {
-                    Table.defaultView with
-                        panX = Table.TablePan 12.5
-                        panY = Table.TablePan -7.25
-                        zoom = Table.TableZoom 1.875
-                }
-            snap = SnapToBeam
-            pivot = BeamLayout.PivotAtIncidentFace
+            name = SetupName "Bench: A"
+            revision = SetupRevision 2
+            slots = [ setupSource; dialled; setupDetector ]
+            history = [ firstRevision ]
         }
 
-    let private sceneFile : SceneFile =
-        {
-            schemaVersion = SceneFile.currentSchemaVersion
-            name = SceneName "Bench: A"
-            scene = sceneFixture
-        }
+    let private setupFile : Setups.SetupFile = setupFixture.setupFile
 
-    let private editedSceneFile (edit : JsonObject -> unit) : KitFileText =
-        let text = sceneFile.fileText |> kitContentJsonValue
+    let private editedSetupFile (edit : JsonObject -> unit) : KitFileText =
+        let text = setupFile.fileText |> kitContentJsonValue
         let node = (JsonNode.Parse text.value).AsObject()
         edit node
         node.canonicalFileText |> KitFileText
 
     [<Fact>]
-    let ``a scene is stored under its name made filesystem-safe`` () : unit =
-        let name = SceneName "CPL-(QZ#45-LR#45)-CPL"
+    let ``a setup is stored under its name made filesystem-safe`` () : unit =
+        let name = SetupName "CPL-(QZ#45-LR#45)-CPL"
         let expectedStem = FileStem "CPL-(QZ#45-LR#45)-CPL"
         let expectedFileName = FileName "CPL-(QZ#45-LR#45)-CPL.setup-json"
-        let unsafeName = SceneName "a: b/c"
+        let unsafeName = SetupName "a: b/c"
         let safeStem = FileStem "a_ b_c"
 
         Assert.Equal<FileStem>(expectedStem, name.fileStem)
@@ -363,34 +367,35 @@ module KitContentFileJsonTests =
     [<Fact>]
     let ``a setup file round-trips through its canonical text`` () : unit =
         let expectedVersion = FileSchemaVersion 1
-        let text = sceneFile.fileText |> kitContentJsonValue
-        let readBack = text.parseSceneFile |> kitContentJsonValue
+        let text = setupFile.fileText |> kitContentJsonValue
+        let readBack = text.parseSetupFile |> kitContentJsonValue
 
-        Assert.Equal<FileSchemaVersion>(expectedVersion, sceneFile.schemaVersion)
-        Assert.Equal<SceneFile>(sceneFile, readBack)
+        Assert.Equal<FileSchemaVersion>(expectedVersion, setupFile.schemaVersion)
+        Assert.Equal<Setups.SetupFile>(setupFile, readBack)
+        Assert.Equal<Setups.Setup>(setupFixture, readBack.setup)
         Assert.DoesNotContain("\r", text.value)
-        Assert.StartsWith("{\n  \"name\": \"Bench: A\",", text.value)
+        Assert.StartsWith("{\n  \"schemaVersion\": 1,\n  \"setup\": {", text.value)
         Assert.EndsWith("}\n", text.value)
         Assert.False(text.value.EndsWith "\n\n", "the file ends with exactly one line end")
 
         let node = (JsonNode.Parse text.value).AsObject()
         let keys = [ for KeyValue (key, _) in node -> key ]
-        Assert.Equal<string list>([ "name"; "scene"; "schemaVersion" ], keys)
+        Assert.Equal<string list>([ "schemaVersion"; "setup" ], keys)
         Assert.Equal<KitFileText>(text, readBack.fileText |> kitContentJsonValue)
 
     [<Fact>]
     let ``a setup file of another schema version is UnsupportedSchemaVersionErr`` () : unit =
-        let intact = editedSceneFile (fun node -> node["schemaVersion"] <- JsonValue.Create 2)
+        let intact = editedSetupFile (fun node -> node["schemaVersion"] <- JsonValue.Create 2)
         let versionOnly = KitFileText "{ \"schemaVersion\": 2 }"
         let invalidBody =
-            editedSceneFile (fun node ->
+            editedSetupFile (fun node ->
                 node["schemaVersion"] <- JsonValue.Create 2
-                node["scene"] <- JsonValue.Create "not-a-scene")
+                node["setup"] <- JsonValue.Create "not-a-setup")
         let expectedFound = FileSchemaVersion 2
         let expectedVersion = FileSchemaVersion 1
 
         for text in [ intact; versionOnly; invalidBody ] do
-            match text.parseSceneFile with
+            match text.parseSetupFile with
             | Error (UnsupportedSchemaVersionErr info) ->
                 Assert.Equal(SetupKitFile.extension, info.fileExtension)
                 Assert.Equal<FileSchemaVersion>(expectedFound, info.found)
@@ -401,7 +406,7 @@ module KitContentFileJsonTests =
     [<Fact>]
     let ``a schema-invalid or malformed setup file is refused before it binds`` () : unit =
         let assertSchemaInvalid (text : KitFileText) : unit =
-            match text.parseSceneFile with
+            match text.parseSetupFile with
             | Error (SchemaValidationErr messages) ->
                 Assert.NotEmpty messages
                 for message in messages do
@@ -409,55 +414,60 @@ module KitContentFileJsonTests =
             | Error error -> Assert.Fail($"expected SchemaValidationErr: {error.describe}")
             | Ok _ -> Assert.Fail($"accepted a schema-invalid setup file: {text.value}")
 
-        for key in [ "schemaVersion"; "name"; "scene" ] do
-            editedSceneFile (fun node -> node.Remove key |> ignore) |> assertSchemaInvalid
+        for key in [ "schemaVersion"; "setup" ] do
+            editedSetupFile (fun node -> node.Remove key |> ignore) |> assertSchemaInvalid
 
-        for key in [ "elements"; "view"; "snap"; "pivot" ] do
-            editedSceneFile (fun node -> (node["scene"]).AsObject().Remove key |> ignore)
+        for key in [ "name"; "revision"; "slots"; "history" ] do
+            editedSetupFile (fun node -> (node["setup"]).AsObject().Remove key |> ignore)
             |> assertSchemaInvalid
 
         let invalidEdits : (JsonObject -> unit) list =
             [
-                (fun node -> node["name"] <- JsonValue.Create "   ")
-                (fun node -> node["name"] <- JsonValue.Create "")
-                (fun node -> node["name"] <- JsonValue.Create "\t\n")
-                (fun node -> node["name"] <- JsonValue.Create 1)
-                (fun node -> node["name"] <- null)
+                (fun node -> node["setup"]["name"] <- JsonValue.Create "   ")
+                (fun node -> node["setup"]["name"] <- JsonValue.Create "")
+                (fun node -> node["setup"]["name"] <- JsonValue.Create "\t\n")
+                (fun node -> node["setup"]["name"] <- JsonValue.Create 1)
+                (fun node -> node["setup"]["name"] <- null)
                 (fun node -> node["notes"] <- JsonValue.Create "unexpected")
                 (fun node -> node["schemaVersion"] <- JsonValue.Create 0)
                 (fun node -> node["schemaVersion"] <- JsonValue.Create (-1))
                 (fun node -> node["schemaVersion"] <- JsonValue.Create 1.5)
                 (fun node -> node["schemaVersion"] <- JsonValue.Create "1")
                 (fun node -> node["schemaVersion"] <- null)
-                (fun node -> node["scene"] <- null)
-                (fun node -> node["scene"]["notes"] <- JsonValue.Create "unexpected")
-                (fun node -> node["scene"]["elements"] <- JsonValue.Create "not-an-array")
+                (fun node -> node["setup"] <- null)
+                (fun node -> node["setup"]["notes"] <- JsonValue.Create "unexpected")
+                (fun node -> node["setup"]["revision"] <- JsonValue.Create 0)
+                (fun node -> node["setup"]["revision"] <- JsonValue.Create "2")
+                (fun node -> node["setup"]["slots"] <- JsonValue.Create "not-an-array")
+                (fun node -> node["setup"]["history"] <- JsonValue.Create "not-an-array")
+                (fun node -> node.["setup"].["history"].[0].AsObject().Remove "slots" |> ignore)
+                (fun node -> node.["setup"].["history"].[0].["revision"] <- JsonValue.Create 0)
+                (fun node -> node.["setup"].["history"].[0].["notes"] <- JsonValue.Create "unexpected")
             ]
 
         for edit in invalidEdits do
-            editedSceneFile edit |> assertSchemaInvalid
+            editedSetupFile edit |> assertSchemaInvalid
 
         for text in [ KitFileText "null"; KitFileText "[]"; KitFileText "1" ] do
             assertSchemaInvalid text
 
         let malformedEdits : (JsonObject -> unit) list =
             [
-                (fun node -> node.["scene"].["elements"].[0] <- JsonValue.Create "not-an-element")
-                (fun node -> node.["scene"].["elements"].[0].["placement"] <- JsonValue.Create "not-a-placement")
-                (fun node -> node["scene"]["view"] <- JsonValue.Create "not-a-view")
-                (fun node -> node["scene"]["snap"] <- JsonValue.Create "not-a-snap-mode")
-                (fun node -> node["scene"]["pivot"] <- JsonValue.Create "not-a-pivot")
+                (fun node -> node.["setup"].["slots"].[0] <- JsonValue.Create "not-a-slot")
+                (fun node -> node.["setup"].["slots"].[0].["placement"] <- JsonValue.Create "not-a-placement")
+                (fun node -> node.["setup"].["slots"].[1].["content"] <- JsonValue.Create "not-a-content")
+                (fun node -> node.["setup"].["history"].[0].["slots"].[0] <- JsonValue.Create "not-a-slot")
             ]
         let malformed = KitFileText "{"
 
-        for text in malformed :: (malformedEdits |> List.map editedSceneFile) do
-            match text.parseSceneFile with
+        for text in malformed :: (malformedEdits |> List.map editedSetupFile) do
+            match text.parseSetupFile with
             | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
             | Error error -> Assert.Fail($"expected MalformedJsonErr: {error.describe}")
             | Ok _ -> Assert.Fail($"accepted malformed setup file text: {text.value}")
 
     [<Fact>]
-    let ``a scene references the library entries its elements bind, each once, at their latest`` () : unit =
+    let ``a setup references the library entries its slots bind in every revision, each once, at their latest`` () : unit =
         let presetEntryId (presetId : ElementValueId) : LibraryEntryId =
             match presetId.tryToLibraryEntryId with
             | Some entryId -> entryId
@@ -466,54 +476,85 @@ module KitContentFileJsonTests =
         let sourceReference = EntryLatestReference (presetEntryId PresetIds.source600)
         let polarizerReference = EntryLatestReference (presetEntryId PresetIds.polarizerLp)
         let expectedReferences = [ sourceReference; polarizerReference ]
-        Assert.Equal<EntryReference list>(expectedReferences, sceneFixture.libraryReferences)
+        Assert.Equal<EntryReference list>(expectedReferences, setupFixture.libraryReferences)
 
-        let secondSource =
+        let sourceAgain : Setups.SetupRevisionRecord =
             {
-                sceneSource with id = ElementId "src-2"
+                revision = SetupRevision 3
+                slots =
+                    [
+                        {
+                            setupSource with id = ElementId "src-2"
+                        }
+                    ]
             }
         let repeatedSource =
             {
-                sceneFixture with elements = sceneFixture.elements @ [ secondSource ]
+                setupFixture with history = setupFixture.history @ [ sourceAgain ]
             }
         Assert.Equal<EntryReference list>(expectedReferences, repeatedSource.libraryReferences)
 
         let reversed =
             {
-                sceneFixture with elements = List.rev sceneFixture.elements
+                setupFixture with
+                    slots = List.rev setupFixture.slots
+                    history = []
             }
         Assert.Equal<EntryReference list>([ polarizerReference; sourceReference ], reversed.libraryReferences)
 
+        // The current slots come first, then each earlier revision's.
+        let sourceInHistory : Setups.SetupRevisionRecord =
+            {
+                revision = SetupRevision.first
+                slots = [ setupSource ]
+            }
+        let polarizerNow =
+            {
+                setupFixture with
+                    slots = [ setupPolarizer; setupDetector ]
+                    history = [ sourceInHistory ]
+            }
+        Assert.Equal<EntryReference list>([ polarizerReference; sourceReference ], polarizerNow.libraryReferences)
+
+        let unboundSlots (slots : Setups.SetupSlot list) : Setups.SetupSlot list =
+            slots
+            |> List.map (fun slot ->
+                {
+                    slot with
+                        placement =
+                            {
+                                slot.placement with valueId = None
+                            }
+                })
         let unbound =
             {
-                sceneFixture with
-                    elements =
-                        sceneFixture.elements
-                        |> List.map (fun element ->
+                setupFixture with
+                    slots = unboundSlots setupFixture.slots
+                    history =
+                        setupFixture.history
+                        |> List.map (fun record ->
                             {
-                                element with
-                                    placement =
-                                        {
-                                            element.placement with valueId = None
-                                        }
+                                record with slots = unboundSlots record.slots
                             })
             }
         Assert.Empty unbound.libraryReferences
 
         let nonEntryId = ElementValueId "not-a-library-entry"
-        let nonEntryElement =
+        let nonEntrySlot =
             {
-                sceneDetector with
+                setupDetector with
                     placement =
                         {
-                            sceneDetector.placement with valueId = Some nonEntryId
+                            setupDetector.placement with valueId = Some nonEntryId
                         }
             }
-        let nonEntryScene =
+        let nonEntrySetup =
             {
-                sceneFixture with elements = [ nonEntryElement ]
+                setupFixture with
+                    slots = [ nonEntrySlot ]
+                    history = []
             }
-        Assert.Empty nonEntryScene.libraryReferences
+        Assert.Empty nonEntrySetup.libraryReferences
 
     /// The draft's item at revision 1, failing with the refusal's text when an empty kit refuses it.
     let private draftedItem (draft : ItemDraft) : Item =

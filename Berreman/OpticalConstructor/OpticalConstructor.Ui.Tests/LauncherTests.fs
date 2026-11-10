@@ -985,15 +985,15 @@ module LauncherTests =
 
                         let experimentsTab = ConstructorUiId.ribbonTab (ConstructorUiKey TableAndElementRotationView.BayNames.experiments.value)
                         clickBorder window experimentsTab.value
-                        let sceneName = Assert.IsType<TextBox>(launcherControl window ConstructorUiId.sceneNameField)
-                        sceneName.Text <- "Read-only scene"
-                        let save = launcherControl window ConstructorUiId.saveSceneButton
-                        save.BringIntoView() |> ignore
+                        let setupName = Assert.IsType<TextBox>(launcherControl window ConstructorUiId.setupNameField)
+                        setupName.Text <- "Read-only setup"
+                        let create = launcherControl window ConstructorUiId.createSetupButton
+                        create.BringIntoView() |> ignore
                         Dispatcher.UIThread.RunJobs()
-                        Assert.True(save.IsEffectivelyVisible)
-                        Assert.False(save.IsEnabled, "a read-only kit must withhold Save scene")
+                        Assert.True(create.IsEffectivelyVisible)
+                        Assert.False(create.IsEnabled, "a read-only kit must withhold Create setup")
                         Assert.Equal<Control option>(None, tryFindLauncherControl window ConstructorUiId.kitStatus)
-                        clickBorder window ConstructorUiId.saveSceneButton.value
+                        clickBorder window ConstructorUiId.createSetupButton.value
                         Assert.Equal<Control option>(None, tryFindLauncherControl window ConstructorUiId.kitStatus)
                         assertFilesUnchanged ()
                     finally window.Close()

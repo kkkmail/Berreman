@@ -14,7 +14,7 @@ open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
-open OpticalConstructor.Domain.Scene
+open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
@@ -96,7 +96,7 @@ module KitOpeningTests =
                 Assert.Equal(DateTimeKind.Utc, context.kitFile.created.value.Kind)
                 Assert.Equal<KitFile>(context.kitFile, context.proxy.readKitFile () |> kitValue)
                 Assert.Empty opened.experiments
-                Assert.Empty opened.scenes
+                Assert.Empty opened.setups
                 Assert.Empty opened.decisions
                 Assert.Empty opened.pendingDecisions
                 Assert.Empty opened.overlay.snapshots
@@ -127,24 +127,18 @@ module KitOpeningTests =
             finally opened.library.kit.close () |> kitValue)
 
     [<Fact>]
-    let ``opening a kit reads its experiments and scenes`` () : unit =
+    let ``opening a kit reads its experiments and setups`` () : unit =
         withOpeningFolder (fun folder imports _ ->
-            let name = SceneName "Bench"
-            let scene : SceneSnapshot =
-                {
-                    elements = []
-                    view = Table.defaultView
-                    snap = SnapToBeam
-                    pivot = BeamLayout.PivotAtCentre
-                }
+            let bench =
+                Setup.create (SetupName "Bench") [] []
+                |> Result.defaultWith (fun error -> failwith error.describe)
             withOpenedKit folder ReadWriteKitAccess imports (fun opened ->
                 opened.library.kit.proxy.writeExperiment openingExperiment |> kitValue
-                opened.library.kit.proxy.writeScene name scene |> kitValue)
+                opened.library.kit.proxy.writeSetup bench |> kitValue)
 
             withOpenedKit folder ReadWriteKitAccess imports (fun opened ->
                 Assert.Equal<Experiment list>([ openingExperiment ], opened.experiments)
-                Assert.Equal<SceneName list>([ name ], opened.scenes)
-                Assert.Equal<SceneSnapshot>(scene, opened.library.kit.proxy.readScene name |> kitValue)
+                Assert.Equal<Setup list>([ bench ], opened.setups)
                 Assert.Empty opened.pendingDecisions))
 
     let private openingCpl1 : Item =
@@ -305,7 +299,7 @@ module KitOpeningTests =
                 File.Delete file.value
                 withOpenedKit folder ReadWriteKitAccess imports (fun reopened ->
                     Assert.Empty reopened.experiments
-                    Assert.Empty reopened.scenes))
+                    Assert.Empty reopened.setups))
 
     [<Fact>]
     let ``a kit holding a snapshot the library lacks opens with a pending row, and its overlay serves the entry`` () : unit =

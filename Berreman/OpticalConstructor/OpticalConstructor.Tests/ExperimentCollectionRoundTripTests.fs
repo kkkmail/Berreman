@@ -12,7 +12,6 @@ open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.KitFolders
-open OpticalConstructor.Domain.Scene
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -243,17 +242,21 @@ module ExperimentCollectionRoundTripTests =
         Assert.Equal<Experiment list>([ e1; e2 ], proxy.readExperiments () |> kitContentValue)
 
     [<Fact>]
-    let ``a read-only kit refuses experiment and scene writes and writes nothing`` () : unit =
+    let ``a read-only kit refuses experiment and setup writes and writes nothing`` () : unit =
         let folder, proxy = createContentTestKit classFolder
         for experiment in [ e1; e2 ] do
             proxy.writeExperiment experiment |> kitContentValue
-        let name = SceneName "Read-only bench"
-        let newName = SceneName "New bench"
-        let scene = (SceneTestFixture.staticScene ()).captureScene
-        proxy.writeScene name scene |> kitContentValue
-        let changedScene =
+        let setup =
+            Setups.Setup.create (SetupName "Read-only bench") (SceneTestFixture.staticScene ()).elements []
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        proxy.writeSetup setup |> kitContentValue
+        let changedSetup =
             {
-                scene with snap = SnapToBeam
+                setup with slots = List.tail setup.slots
+            }
+        let newSetup =
+            {
+                changedSetup with name = SetupName "New bench"
             }
         let changedExperiment =
             {
@@ -272,8 +275,8 @@ module ExperimentCollectionRoundTripTests =
             [ (fun () -> reader.writeExperiment changedExperiment)
               (fun () -> reader.writeExperiment e3)
               (fun () -> reader.deleteExperiment e2.id)
-              (fun () -> reader.writeScene name changedScene)
-              (fun () -> reader.writeScene newName changedScene) ]
+              (fun () -> reader.writeSetup changedSetup)
+              (fun () -> reader.writeSetup newSetup) ]
         for write in writes do
             match write () with
             | Error (KitReadOnlyErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
@@ -284,5 +287,4 @@ module ExperimentCollectionRoundTripTests =
             for KeyValue(file, bytes) in before do
                 Assert.Equal<byte>(bytes.value, (Map.find file after).value)
         Assert.Equal<Experiment list>([ e1; e2 ], reader.readExperiments () |> kitContentValue)
-        Assert.Equal<SceneName list>([ name ], reader.readSceneNames () |> kitContentValue)
-        Assert.Equal<SceneSnapshot>(scene, reader.readScene name |> kitContentValue)
+        Assert.Equal<Setups.Setup list>([ setup ], reader.readSetups () |> kitContentValue)

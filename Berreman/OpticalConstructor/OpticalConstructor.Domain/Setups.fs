@@ -82,13 +82,23 @@ module Setups =
                     let missing : SetupReference = { name = this.name; revision = revision }
                     Error (UnknownSetupRevisionErr missing.describe)
 
+        member private this.slotsOfEveryRevision : SetupSlot list =
+            this.slots :: (this.history |> List.map (fun record -> record.slots)) |> List.concat
+
         /// Each item the current slots and then each earlier revision's slots hold, once, in that order (spec 0050
         /// S8.2).
         member this.heldItems : ItemId list =
-            this.slots :: (this.history |> List.map (fun record -> record.slots))
-            |> List.concat
+            this.slotsOfEveryRevision
             |> List.choose (fun slot -> slot.content.itemOpt)
             |> List.distinct
+
+        /// Each library entry the current slots and then each earlier revision's slots bind, once, at its latest: every
+        /// revision an experiment may reference needs its entries in the kit (spec 0050 S8.2; step 147's scene rule).
+        member this.libraryReferences : EntryReference list =
+            this.slotsOfEveryRevision
+            |> List.choose (fun slot -> slot.placement.valueId |> Option.bind (fun valueId -> valueId.tryToLibraryEntryId))
+            |> List.distinct
+            |> List.map EntryLatestReference
 
         /// A new setup at its first revision, refused when a held setup's file shares its name's, as every
         /// `<name>.setup-json` shares the kit root: CreateSetup's pure half (spec 0050 S8.2; 001 §P).
@@ -136,6 +146,26 @@ module Setups =
                         slots = slots
                         history = this.history @ [ replaced ]
                 }
+
+    /// One setup's versioned `<name>.setup-json` content, replacing S4.3's scene file; a file is read back as its
+    /// `setup` (spec 0050 S8.2; 001 §A).
+    type SetupFile =
+        {
+            schemaVersion : FileSchemaVersion
+            setup : Setup
+        }
+
+        /// The only supported setup file schema version (spec 0050 S8.2).
+        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
+
+    type Setup with
+
+        /// The setup in the current setup file schema (spec 0050 S8.2).
+        member this.setupFile : SetupFile =
+            {
+                schemaVersion = SetupFile.currentSchemaVersion
+                setup = this
+            }
 
     /// A slot's 1-based place within its role on the light path (spec 0050 S8.2; 001 §J).
     type SlotPosition =

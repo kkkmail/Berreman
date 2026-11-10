@@ -9,7 +9,7 @@ open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.Scene
+open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
 
@@ -22,9 +22,9 @@ module KitContentFiles =
         member this.fileText : Result<KitFileText, StorageError> =
             nodeOf this |> Result.map (fun node -> node.canonicalFileText |> KitFileText)
 
-    type SceneFile with
+    type SetupFile with
 
-        /// Canonical setup JSON preserves the original scene name and snapshot (spec 0050 S4.3).
+        /// Canonical setup JSON with LF line ends and one final newline (spec 0050 S8.2).
         member this.fileText : Result<KitFileText, StorageError> =
             nodeOf this |> Result.map (fun node -> node.canonicalFileText |> KitFileText)
 
@@ -43,9 +43,10 @@ module KitContentFiles =
         member this.parseExperimentFile : Result<ExperimentFile, StorageError> =
             parseVersionedText SchemaValidation.validateExperimentFile ExperimentKitFile.extension ExperimentFile.currentSchemaVersion this.toContentJsonText
 
-        /// Validates the setup schema and rejects unsupported versions before binding (spec 0050 S4.3).
-        member this.parseSceneFile : Result<SceneFile, StorageError> =
-            parseVersionedText SchemaValidation.validateSceneFile SetupKitFile.extension SceneFile.currentSchemaVersion this.toContentJsonText
+        /// Validates the setup schema and rejects unsupported versions before binding; no older version is read (spec
+        /// 0050 S8.2).
+        member this.parseSetupFile : Result<SetupFile, StorageError> =
+            parseVersionedText SchemaValidation.validateSetupFile SetupKitFile.extension SetupFile.currentSchemaVersion this.toContentJsonText
 
         /// Validates the item schema and rejects unsupported versions before binding; no older version is read (spec 0050 S7.1).
         member this.parseItemFile : Result<ItemFile, StorageError> =
@@ -111,35 +112,23 @@ module KitContentFiles =
             readEveryKindFile this ExperimentKitFile (fun text -> text.parseExperimentFile) accept
             |> Result.map (List.sortBy (fun experiment -> experiment.id))
 
-        /// Replaces the setup file at the name's safe stem, preserving its original name (spec 0050 S4.3).
-        member this.writeScene (name : SceneName) (scene : SceneSnapshot) : Result<unit, KitError> =
-            let sceneFile : SceneFile =
-                {
-                    schemaVersion = SceneFile.currentSchemaVersion
-                    name = name
-                    scene = scene
-                }
-            writeRenderedKindFile this SetupKitFile name.fileStem sceneFile.fileText
+        /// Replaces the setup's `<name>.setup-json` whole at its name's safe stem, naming any rendering refusal (spec
+        /// 0050 S8.2).
+        member this.writeSetup (setup : Setup) : Result<unit, KitError> =
+            writeRenderedKindFile this SetupKitFile setup.name.fileStem setup.setupFile.fileText
 
-        /// Reads the named setup's scene, reporting a missing or refused file by name (spec 0050 S4.3).
-        member this.readScene (name : SceneName) : Result<SceneSnapshot, KitError> =
-            let stem = name.fileStem
-            let file = SetupKitFile.fileNameOf stem
-            this.readKindFile SetupKitFile stem
-            |> Result.mapError (fun error ->
-                match error with
-                | MissingKitFileErr _ -> error
-                | _ -> contentReadRejectedErr file error)
-            |> Result.bind (fun text -> text.parseSceneFile |> Result.mapError (contentStorageRejectedErr file))
-            |> Result.map (fun parsed -> parsed.scene)
+        /// Reads every setup in its name's ordinal order. A file that does not read, or holds a setup of another name,
+        /// refuses the whole read, so a window never opens a kit with a setup left out (spec 0050 S8.2).
+        member this.readSetups () : Result<Setup list, KitError> =
+            let accept (file : FileName) (stem : FileStem) (_ : Setup list) (parsed : SetupFile) : Result<Setup, KitError> =
+                let setup = parsed.setup
+                if String.Equals(setup.name.fileStem.value, stem.value, StringComparison.OrdinalIgnoreCase) then
+                    Ok setup
+                else
+                    Error (KitFileRejectedErr $"the file '{file.value}' holds setup '{setup.name.value}' instead of '{stem.value}'")
 
-        /// Reads original setup names in ordinal order; any refused file refuses the list (spec 0050 S4.3).
-        member this.readSceneNames () : Result<SceneName list, KitError> =
-            let accept (_ : FileName) (_ : FileStem) (_ : SceneName list) (parsed : SceneFile) : Result<SceneName, KitError> =
-                Ok parsed.name
-
-            readEveryKindFile this SetupKitFile (fun text -> text.parseSceneFile) accept
-            |> Result.map (List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value)))
+            readEveryKindFile this SetupKitFile (fun text -> text.parseSetupFile) accept
+            |> Result.map (List.sortWith (fun first second -> String.CompareOrdinal(first.name.value, second.name.value)))
 
         /// Replaces the item's `<label>.item-json` whole, naming any rendering refusal; a file under an earlier label
         /// stays (spec 0050 S7.1).
@@ -209,11 +198,12 @@ module KitContentFiles =
                 this.snapshotReferences (experiment.unassignedReferences @ itemReferences @ experiment.libraryReferences |> List.distinct))
             |> Result.bind (fun _ -> this.kit.proxy.writeExperiment experiment |> Result.mapError KitLibraryKitErr)
 
-        /// Snapshots and pins the scene's bound entries before writing its named file (spec 0050 S4.3).
+        /// Snapshots and pins the entries the setup's slots bind in every revision before writing its file, so a
+        /// revision an experiment references never names an entry the kit lacks (spec 0050 S8.2).
         /// A failure stops recording and retains snapshots already written.
-        member this.recordScene (name : SceneName) (scene : SceneSnapshot) : Result<unit, KitLibraryError> =
-            this.snapshotReferences scene.libraryReferences
-            |> Result.bind (fun _ -> this.kit.proxy.writeScene name scene |> Result.mapError KitLibraryKitErr)
+        member this.recordSetup (setup : Setup) : Result<unit, KitLibraryError> =
+            this.snapshotReferences setup.libraryReferences
+            |> Result.bind (fun _ -> this.kit.proxy.writeSetup setup |> Result.mapError KitLibraryKitErr)
 
         /// Snapshots and pins the item's model version and its bound physics, each with its closure, before writing
         /// its `<label>.item-json`, so an item never names a version the kit lacks (spec 0050 S7.1).
