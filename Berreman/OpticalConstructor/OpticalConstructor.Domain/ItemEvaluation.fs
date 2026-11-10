@@ -3,6 +3,7 @@ namespace OpticalConstructor.Domain
 open System
 open System.Globalization
 open Berreman.Geometry
+open Berreman.Fields
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
@@ -11,18 +12,21 @@ open OpticalConstructor.Domain.ExperimentRun
 /// The item-model evaluator, model × parameters × orientation × λ → Mueller matrix (spec 0050 S8.1; 001 §N).
 module ItemEvaluation =
 
-    /// Why an evaluation refused: the values hold no number for a parameter the model publishes, a number lies
-    /// outside its kind's range, or a model that is no light source was asked to emit (spec 0050 S8.1).
+    /// Why an evaluation refused: the values hold no number for a parameter the model publishes, a number lies outside
+    /// its kind's range, a model that is no light source was asked to emit, or an element was asked for a branch it
+    /// does not have (spec 0050 S8.1).
     type ItemEvaluationError =
         | MissingParameterValueErr of reason : string
         | ParameterOutOfRangeErr of reason : string
         | NotALightSourceErr of reason : string
+        | UnmodelledBranchErr of reason : string
 
         member this.describe : string =
             match this with
             | MissingParameterValueErr reason -> $"the values hold no number for the parameter: {reason}"
             | ParameterOutOfRangeErr reason -> $"the parameter value is outside its range: {reason}"
             | NotALightSourceErr reason -> $"the model is not a light source: {reason}"
+            | UnmodelledBranchErr reason -> $"the element has no such branch: {reason}"
 
     /// The numbers an evaluation reads, by the name a model publishes, each in its kind's unit (spec 0050 S8.1; 001 §I).
     type ParameterValues =
@@ -138,3 +142,34 @@ module ItemEvaluation =
             | PolarizerPresetChoice (model, _)
             | StackSampleChoice (model, _, _)
             | LibraryModelChoice model -> notALightSource model
+
+    /// How an element meets the beam: its rotation about the beam (its R1, a sample's spin), the incidence at its drawn
+    /// face, and the branch the light leaves it by (spec 0050 S8.1).
+    type ElementOrientation =
+        {
+            rotation : Angle
+            incidence : IncidenceAngle
+            branch : Propagation.Branch
+        }
+
+        /// An element on the beam that transmits, at this rotation and normal incidence (spec 0050 S8.1).
+        static member transmittingAt (rotation : Angle) : ElementOrientation =
+            { rotation = rotation; incidence = IncidenceAngle.normal; branch = Propagation.BranchTransmitted }
+
+    /// What an element evaluates from, its parameters bound: a polarizer preset, which publishes no parameter, or an
+    /// empty slot, the calibration reference (spec 0050 S8.1; 001 §I).
+    type BoundOpticalElement =
+        | BoundPolarizerPreset of PolarizerBehavior
+        | BoundEmptySlot
+
+        /// The element arm of the evaluator: a preset is its behaviour at the rotation, the matrix the run law takes, and
+        /// an empty slot the identity. Both only transmit, are achromatic and ignore the incidence (spec 0050 S8.1).
+        member this.muellerAt (orientation : ElementOrientation) (w : WaveLength) : Result<MuellerMatrix, ItemEvaluationError> =
+            match this, orientation.branch with
+            | BoundPolarizerPreset behavior, Propagation.BranchTransmitted ->
+                Ok (Propagation.behaviorMueller behavior orientation.rotation)
+            | BoundEmptySlot, Propagation.BranchTransmitted -> Ok Propagation.identityMueller
+            | BoundPolarizerPreset _, Propagation.BranchReflected ->
+                Error (UnmodelledBranchErr "the reflected branch of a polarizer preset, which only transmits")
+            | BoundEmptySlot, Propagation.BranchReflected ->
+                Error (UnmodelledBranchErr "the reflected branch of an empty slot, which only transmits")

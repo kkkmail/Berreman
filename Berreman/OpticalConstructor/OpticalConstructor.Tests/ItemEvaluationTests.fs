@@ -49,6 +49,22 @@ module ItemEvaluationTests =
         | Ok emission -> emission.stokes
         | Error error -> failwith error.describe
 
+    /// The evaluation is a matrix equal to the expected one element by element, exactly (spec 0050 S8.1).
+    let private assertMuellerExact (expected : MuellerMatrix) (actual : Result<MuellerMatrix, ItemEvaluationError>) : unit =
+        match actual with
+        | Ok matrix ->
+            for i in 0 .. 3 do
+                for j in 0 .. 3 do
+                    let e = expected.element i j
+                    let a = matrix.element i j
+                    Assert.True((e = a), $"element ({i},{j}): expected {e:R}, got {a:R}")
+        | Error error -> Assert.Fail error.describe
+
+    let private assertUnmodelledBranch (reason : string) (actual : Result<MuellerMatrix, ItemEvaluationError>) : unit =
+        match actual with
+        | Error error -> Assert.Equal<ItemEvaluationError>(UnmodelledBranchErr reason, error)
+        | Ok _ -> Assert.Fail $"expected UnmodelledBranchErr '{reason}', got a Mueller matrix"
+
     [<Fact>]
     let ``parameter values are read from an item's parameter states`` () : unit =
         let parameters : Parameter list =
@@ -158,13 +174,15 @@ module ItemEvaluationTests =
                 ParameterOutOfRangeErr "degreeOfPolarization = 1.5 lies outside [0, 1]",
                 "the parameter value is outside its range: degreeOfPolarization = 1.5 lies outside [0, 1]"
                 NotALightSourceErr polarizerReason, $"the model is not a light source: {polarizerReason}"
+                UnmodelledBranchErr "the reflected branch of a polarizer preset, which only transmits",
+                "the element has no such branch: the reflected branch of a polarizer preset, which only transmits"
             ]
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
-        Assert.Equal(3, descriptions |> List.distinct |> List.length)
+        Assert.Equal(4, descriptions |> List.distinct |> List.length)
 
     [<Fact>]
     let ``the default source is unpolarized light at unit scale`` () : unit =
@@ -235,3 +253,49 @@ module ItemEvaluationTests =
         let withoutEllipticity =
             ParameterValues.defaultsOf (SourcePreset.lightSourceAxes |> List.filter (fun axis -> axis.name <> ParameterName.ellipticity))
         assertEmission (Error (MissingParameterValueErr "ellipticity")) (heNe.emissionWith withoutEllipticity)
+
+    [<Fact>]
+    let ``a polarizer preset is its behaviour's Mueller matrix at the element's rotation`` () : unit =
+        // Two reference ideal LPs at offsets 20° and 65°, the compound `PolarizerBehaviorTests` builds.
+        let referenceLp = Propagation.analyzerMueller IdealLinear Angle.zero
+        let first : MuellerComponent = { matrix = referenceLp; offset = Angle.degree 20.0<deg> }
+        let second : MuellerComponent = { matrix = referenceLp; offset = Angle.degree 65.0<deg> }
+        let behaviors : PolarizerBehavior list =
+            [
+                ComputedIdeal IdealLinear
+                ComputedIdeal IdealCircularLeft
+                ComputedIdeal IdealCircularRight
+                ConstantMueller [ first; second ]
+            ]
+        let rotations : Angle list = [ 0.0<deg>; 30.0<deg>; 45.0<deg>; 90.0<deg>; 135.0<deg>; 330.0<deg> ] |> List.map Angle.degree
+        let at600 = WaveLength.nm 600.0<nm>
+
+        for behavior in behaviors do
+            let preset = BoundPolarizerPreset behavior
+
+            for rotation in rotations do
+                let transmitting = ElementOrientation.transmittingAt rotation
+                assertMuellerExact (Propagation.behaviorMueller behavior rotation) (preset.muellerAt transmitting at600)
+
+                // The incidence plays no part: the preset met obliquely is the same matrix.
+                let oblique = { transmitting with incidence = IncidenceAngle.create (Angle.degree 40.0<deg>) }
+                assertMuellerExact (Propagation.behaviorMueller behavior rotation) (preset.muellerAt oblique at600)
+
+    [<Fact>]
+    let ``an empty slot is the identity, and an element that only transmits has no reflected branch`` () : unit =
+        let thirty = Angle.degree 30.0<deg>
+        let at30 = ElementOrientation.transmittingAt thirty
+        let at400 = WaveLength.nm 400.0<nm>
+        let emptySlot : BoundOpticalElement = BoundEmptySlot
+        let linearPolarizer : BoundOpticalElement = BoundPolarizerPreset (ComputedIdeal IdealLinear)
+
+        Assert.Equal<ElementOrientation>(
+            { rotation = thirty; incidence = IncidenceAngle.normal; branch = Propagation.BranchTransmitted },
+            at30
+        )
+
+        assertMuellerExact Propagation.identityMueller (emptySlot.muellerAt at30 at400)
+
+        let reflected = { at30 with branch = Propagation.BranchReflected }
+        assertUnmodelledBranch "the reflected branch of an empty slot, which only transmits" (emptySlot.muellerAt reflected at400)
+        assertUnmodelledBranch "the reflected branch of a polarizer preset, which only transmits" (linearPolarizer.muellerAt reflected at400)
