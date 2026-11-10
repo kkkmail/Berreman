@@ -59,14 +59,10 @@ module ItemEvaluation =
     type ParameterValues =
         | ParameterValues of Map<ParameterName, ParameterValue>
 
-        /// Each parameter's number from its state: a known value, an unknown's start, a calibrated value (spec 0050 S8.1).
+        /// Each parameter's number from its state by `ParameterState.currentValue` (spec 0050 S8.1, S8.2).
         static member ofParameters (parameters : Parameter list) : ParameterValues =
             parameters
-            |> List.map (fun parameter ->
-                match parameter.state with
-                | KnownParameter value -> parameter.name, value
-                | UnknownParameter unknown -> parameter.name, unknown.start
-                | CalibratedParameter calibrated -> parameter.name, calibrated.value)
+            |> List.map (fun parameter -> parameter.name, parameter.state.currentValue)
             |> Map.ofList
             |> ParameterValues
 
@@ -121,11 +117,6 @@ module ItemEvaluation =
             axes |> List.fold hold (Ok (ParameterValues Map.empty))
 
     type ParameterValue with
-
-        /// The number read as radians, an `AngleParameter`'s unit (spec 0050 S8.1).
-        member this.angle : Angle =
-            let (ParameterValue radians) = this
-            Angle radians
 
         /// The number read as metres, a `ThicknessParameter`'s unit; `Thickness.parameterValueOpt` is the other way
         /// (spec 0050 S8.1).

@@ -3,6 +3,7 @@ namespace OpticalConstructor.Domain
 open System
 open System.Globalization
 open Softellect.Sys.Primitives
+open Berreman.Geometry
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
@@ -496,6 +497,13 @@ module Kit =
         | UnknownParameter of UnknownParameterData
         | CalibratedParameter of CalibratedParameterData
 
+        /// The number the parameter holds now: a known value, an unknown's start, a calibrated value (spec 0050 S8.2).
+        member this.currentValue : ParameterValue =
+            match this with
+            | KnownParameter value -> value
+            | UnknownParameter unknown -> unknown.start
+            | CalibratedParameter calibrated -> calibrated.value
+
     /// One of an item's parameters: its model axis's name and its state (spec 0050 S7.1; 001 §I).
     type Parameter =
         {
@@ -667,6 +675,15 @@ module Kit =
                         revision = this.revision.next
                         history = this.history @ [ replaced ]
                 })
+
+    type Item with
+
+        /// The zero its dial reads from, its `dialZero` parameter's current number as an angle; a fixed item reads no
+        /// dial, so `Angle.zero` (spec 0050 S8.2; 001 §I).
+        member this.dialZeroAngle : Angle =
+            match this.tryFindParameter ParameterName.dialZero with
+            | Some parameter -> parameter.state.currentValue.angle
+            | None -> Angle.zero
 
     /// An item model as the library resolved it: a binding form with the preset or sample version it binds, or a model
     /// that stands alone (spec 0050 S7.1; 001 §I).

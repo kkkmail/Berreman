@@ -3,6 +3,7 @@ namespace OpticalConstructor.Tests
 open System
 open Xunit
 open Softellect.Sys.Primitives
+open Berreman.Geometry
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
@@ -871,3 +872,43 @@ module KitItemTests =
             Assert.Contains((ItemKitFile.fileNameOf heldLp1.label.fileStem).value, reason)
         | Error error -> Assert.Fail($"expected a duplicate item label: {error.describe}")
         | Ok item -> Assert.Fail($"CPL1 took '{item.label.value}' beside LP1")
+
+    // ============================ spec 0050 S8.2: the numbers a slot reads ============================
+
+    [<Fact>]
+    let ``a parameter state answers its current number, and an item its dial zero`` () : unit =
+        let calibration : CalibratedParameterData =
+            {
+                value = ParameterValue 0.25
+                sigma = ParameterSigma 0.01
+                fitRun = FitRunName "QZ-LR@20261101T120000Z"
+            }
+
+        let unknown : UnknownParameterData =
+            {
+                start = ParameterValue 0.5
+                bounds = { lower = ParameterValue 0.0; upper = ParameterValue 1.0 }
+                priorOpt = None
+            }
+
+        let states : (ParameterState * ParameterValue) list =
+            [
+                KnownParameter (ParameterValue 0.1), ParameterValue 0.1
+                UnknownParameter unknown, ParameterValue 0.5
+                CalibratedParameter calibration, ParameterValue 0.25
+            ]
+
+        for state, expected in states do
+            Assert.Equal<ParameterValue>(expected, state.currentValue)
+
+        // LP1 is dial-mounted, its zero in radians; the glass plate is fixed and reads no dial.
+        let zero = ParameterValue (Math.PI / 18.0)
+        Assert.Equal<ItemDial>(DialMounted DialPositive, heldLp1.dial)
+
+        match heldLp1.withParameterState ParameterName.dialZero (KnownParameter zero) with
+        | Ok lp1 -> Assert.Equal(Math.PI / 18.0, lp1.dialZeroAngle.value)
+        | Error error -> Assert.Fail($"LP1 refused a known dial zero: {error.describe}")
+
+        let plate = plateItem (ItemId (Guid.Parse "5a0b8c7d-3e2f-4a1b-9c6d-8e7f0a1b2c3d")) (ItemLabel "QZ")
+        Assert.Equal<ItemDial>(FixedMounting, plate.dial)
+        Assert.Equal<Angle>(Angle.zero, plate.dialZeroAngle)

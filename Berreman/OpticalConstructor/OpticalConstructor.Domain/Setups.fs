@@ -225,3 +225,142 @@ module Setups =
 
         /// The setup's current slots with their roles in light order (spec 0050 S8.2).
         member this.lightOrder : RoledSlot list = SetupSlot.inLightOrder this.slots
+
+    type ItemModelChoice with
+
+        /// The library entry a table element is bound to while the item sits on it; a library model binds none (spec
+        /// 0050 S8.2; `Library.LibraryEntry`).
+        member this.libraryEntryOpt : Library.LibraryEntry option =
+            match this with
+            | SourcePresetChoice (_, source) -> Some (Library.SourceItem source)
+            | PolarizerPresetChoice (_, polarizer) -> Some (Library.PolarizerItem polarizer)
+            | StackSampleChoice (_, _, sample) -> Some (Library.SampleItem sample)
+            | LibraryModelChoice _ -> None
+
+        /// The slot kinds the item may fill: its library entry's `forKinds`, the rule the table's binding applies, else
+        /// its model form's (spec 0050 S8.2; 001 §J "each dropdown lists compatible items only").
+        member this.slotKinds : CatalogueKind list =
+            let opticalKinds (form : OpticalForm) : CatalogueKind list =
+                match form with
+                | RealPolarizerModel _ -> [ LinearPolarizer ]
+                | RetarderPlateModel _ -> [ LinearPolarizer; CircularPolarizer; Sample ]
+                | BlackBoxMuellerModel _ -> [ Sample ]
+                // The compound polarizer presets fit both roles, so a compound model does too.
+                | CompoundModel _ -> [ LinearPolarizer; CircularPolarizer ]
+
+            match this with
+            | LibraryModelChoice model ->
+                match model.entry.model with
+                | OpticalElementModel form -> opticalKinds form
+                | EmptySlotModel -> [ LinearPolarizer; CircularPolarizer; Sample ]
+                | IntensityDetectorModel _
+                | MuellerPolarimeterModel _
+                | EllipsometerModel _ -> [ Detector ]
+                // A binding form takes its kinds from its binding; chosen without one, `ItemDraft.addTo` refuses it.
+                | SourcePresetItemModel
+                | IdealPolarizerItemModel
+                | StackSampleItemModel -> []
+            | SourcePresetChoice _
+            | PolarizerPresetChoice _
+            | StackSampleChoice _ -> this.libraryEntryOpt |> Option.toList |> List.collect (fun entry -> entry.forKinds)
+
+    /// The dial-mounted item of `items` whose raw reading the slot holds, its dial's sign and that reading (spec 0050
+    /// S8.2; 001 §I).
+    let private tryDialReadingIn (items : Item list) (content : SlotContent) : (Item * DialSign * Angle) option =
+        match content with
+        | ItemInSlot (id, DialTurn reading) ->
+            match items |> List.tryFind (fun item -> item.id = id) with
+            | Some item ->
+                match item.dial with
+                | DialMounted sign -> Some (item, sign, reading)
+                | FixedMounting -> None
+            | None -> None
+        | ItemInSlot (_, PlacementTurn)
+        | EmptySlotContent -> None
+
+    type SetupSlot with
+
+        /// The slot holding the item, refused when its model fits no slot of this kind. A dial-mounted item keeps the
+        /// drawn R1 as its reading, and an item over a library entry binds the slot as the table binds that entry
+        /// (`withBoundSampleEmission`), so the drawn element and the item agree (spec 0050 S8.2; 001 §P `AssignSlot`).
+        member this.withItem (item : Item) (model : ItemModelChoice) : Result<SetupSlot, SetupError> =
+            let placement = this.placement
+
+            if model.slotKinds |> List.contains placement.catalogueKind then
+                let turn : SlotTurn =
+                    match item.dial with
+                    | DialMounted sign -> DialTurn (sign.readingOf item.dialZeroAngle placement.r1)
+                    | FixedMounting -> PlacementTurn
+
+                let bound : ElementPlacement =
+                    match model.libraryEntryOpt with
+                    | Some entry ->
+                        {
+                            placement with
+                                valueId = Some entry.entryId
+                                emission = Library.placementEmissionForEntry placement.emission entry
+                        }
+                    | None -> placement
+
+                Ok { this with placement = bound; content = ItemInSlot (item.id, turn) }
+            else
+                let slotKind : string =
+                    match placement.catalogueKind with
+                    | LightSource -> "light source"
+                    | LinearPolarizer -> "linear polarizer"
+                    | CircularPolarizer -> "circular polarizer"
+                    | Sample -> "sample"
+                    | Lens -> "lens"
+                    | FlatMirror -> "flat mirror"
+                    | CurvedMirror -> "curved mirror"
+                    | Detector -> "detector"
+
+                Error (IncompatibleSlotItemErr $"'{item.label.value}' in the {slotKind} slot '{this.id.value}'")
+
+        /// The slot emptied, its placement kept (spec 0050 S8.2).
+        member this.withoutItem : SetupSlot = { this with content = EmptySlotContent }
+
+        /// The slot as the table draws it: a dial-mounted item's reading turns R1 to its physical angle through the item's
+        /// current zero; every other slot is unchanged (spec 0050 S8.2; 001 §I).
+        member this.drawnWith (items : Item list) : SetupSlot =
+            match tryDialReadingIn items this.content with
+            | Some (item, sign, reading) ->
+                { this with placement = { this.placement with r1 = sign.physicalAngleOf item.dialZeroAngle reading } }
+            | None -> this
+
+        /// `drawnWith`'s inverse: the table turns a slot in physical angles, and the setup records a dial-mounted item's
+        /// reading of its R1 (spec 0050 S8.2; 001 §I "Experiments record raw dial readings").
+        member this.recordedWith (items : Item list) : SetupSlot =
+            match tryDialReadingIn items this.content with
+            | Some (item, sign, _) ->
+                { this with content = ItemInSlot (item.id, DialTurn (sign.readingOf item.dialZeroAngle this.placement.r1)) }
+            | None -> this
+
+    /// Where a swap lands: the held setup already holding the swapped content, or a new one (spec 0050 S8.2; 001 §J
+    /// "choosing one is either a new setup or an existing one").
+    type SetupSwap =
+        | SwitchToHeldSetup of Setup
+        | CreateSwappedSetup of Setup
+
+    type Setup with
+
+        /// The first held setup whose current slots hold, slot by slot in order, the kinds and content of `slots`, else a
+        /// new setup `fresh` at its first revision. It writes nothing; the host records (spec 0050 S8.2; 001 §P `SwapSlot`).
+        static member swapTarget (slots : SetupSlot list) (held : Setup list) (fresh : SetupName) : SetupSwap =
+            let contentOf (setupSlots : SetupSlot list) : (CatalogueKind * SlotContent) list =
+                setupSlots |> List.map (fun slot -> slot.placement.catalogueKind, slot.content)
+
+            let swapped = contentOf slots
+
+            match held |> List.tryFind (fun setup -> contentOf setup.slots = swapped) with
+            | Some setup -> SwitchToHeldSetup setup
+            | None ->
+                let created : Setup =
+                    {
+                        name = fresh
+                        revision = SetupRevision.first
+                        slots = slots
+                        history = []
+                    }
+
+                CreateSwappedSetup created

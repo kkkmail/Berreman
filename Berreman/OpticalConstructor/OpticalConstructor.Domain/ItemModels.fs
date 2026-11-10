@@ -133,6 +133,11 @@ module ItemModels =
 
         member this.value : double = let (ParameterValue v) = this in v
 
+        /// The number read as radians, an `AngleParameter`'s unit (spec 0050 S8.1).
+        member this.angle : Angle =
+            let (ParameterValue radians) = this
+            Angle radians
+
     /// What a parameter measures, which fixes its unit (spec 0050 001 §I). Detector model files store their axis
     /// descriptors, so the wire tag is an int, 1-based in declaration order; `.text` is the separate rendering.
     type ParameterKind =
