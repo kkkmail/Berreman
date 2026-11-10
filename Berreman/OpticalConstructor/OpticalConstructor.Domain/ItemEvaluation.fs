@@ -2,22 +2,27 @@ namespace OpticalConstructor.Domain
 
 open System
 open System.Globalization
+open Berreman.Geometry
+open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.ExperimentRun
 
 /// The item-model evaluator, model × parameters × orientation × λ → Mueller matrix (spec 0050 S8.1; 001 §N).
 module ItemEvaluation =
 
-    /// Why an evaluation refused: the values hold no number for a parameter the model publishes, or a number lies
-    /// outside its kind's range (spec 0050 S8.1).
+    /// Why an evaluation refused: the values hold no number for a parameter the model publishes, a number lies
+    /// outside its kind's range, or a model that is no light source was asked to emit (spec 0050 S8.1).
     type ItemEvaluationError =
         | MissingParameterValueErr of reason : string
         | ParameterOutOfRangeErr of reason : string
+        | NotALightSourceErr of reason : string
 
         member this.describe : string =
             match this with
             | MissingParameterValueErr reason -> $"the values hold no number for the parameter: {reason}"
             | ParameterOutOfRangeErr reason -> $"the parameter value is outside its range: {reason}"
+            | NotALightSourceErr reason -> $"the model is not a light source: {reason}"
 
     /// The numbers an evaluation reads, by the name a model publishes, each in its kind's unit (spec 0050 S8.1; 001 §I).
     type ParameterValues =
@@ -73,3 +78,63 @@ module ItemEvaluation =
                         Error (ParameterOutOfRangeErr $"{axis.name.value} = {rendered} lies outside {range}"))
 
             axes |> List.fold (fun checkedSoFar axis -> checkedSoFar |> Result.bind (fun _ -> check axis)) (Ok this)
+
+    type ParameterValue with
+
+        /// The number read as radians, an `AngleParameter`'s unit (spec 0050 S8.1).
+        member this.angle : Angle =
+            let (ParameterValue radians) = this
+            Angle radians
+
+    type SourceEmission with
+
+        /// The light the values describe once they hold every light-source axis in its range: the azimuth and the
+        /// ellipticity read as angles, the degree of polarization and the intensity scale as given (spec 0050 S8.1).
+        static member ofValues (values : ParameterValues) : Result<SourceEmission, ItemEvaluationError> =
+            values.checkedFor SourcePreset.lightSourceAxes
+            |> Result.bind (fun held ->
+                held.valueOf ParameterName.azimuth
+                |> Result.bind (fun azimuth ->
+                    held.valueOf ParameterName.ellipticity
+                    |> Result.bind (fun ellipticity ->
+                        held.valueOf ParameterName.degreeOfPolarization
+                        |> Result.bind (fun degreeOfPolarization ->
+                            held.valueOf ParameterName.intensityScale
+                            |> Result.map (fun intensityScale ->
+                                let emission : SourceEmission =
+                                    {
+                                        azimuth = azimuth.angle
+                                        ellipticity = ellipticity.angle
+                                        degreeOfPolarization = degreeOfPolarization
+                                        intensityScale = intensityScale
+                                    }
+
+                                emission)))))
+
+    type ItemModelChoice with
+
+        /// The source arm of the evaluator: a source preset choice emits over the item's values, its λ staying the
+        /// preset's; every other choice answers `NotALightSourceErr` naming its model's kind (spec 0050 S8.1).
+        member this.emissionWith (values : ParameterValues) : Result<SourceEmission, ItemEvaluationError> =
+            let notALightSource (model : ItemModelVersion) : Result<SourceEmission, ItemEvaluationError> =
+                let kind =
+                    match model.entry.model with
+                    | SourcePresetItemModel -> "a light-source model bound to no source preset"
+                    | IdealPolarizerItemModel -> "an ideal polarizer"
+                    | StackSampleItemModel -> "a stack sample"
+                    | OpticalElementModel (RealPolarizerModel _) -> "a real linear polarizer"
+                    | OpticalElementModel (RetarderPlateModel _) -> "a retarder plate"
+                    | OpticalElementModel (BlackBoxMuellerModel _) -> "a black-box Mueller element"
+                    | OpticalElementModel (CompoundModel _) -> "a compound element"
+                    | EmptySlotModel -> "an empty slot"
+                    | IntensityDetectorModel _ -> "an intensity detector"
+                    | MuellerPolarimeterModel _ -> "a Mueller polarimeter"
+                    | EllipsometerModel _ -> "an ellipsometer"
+
+                Error (NotALightSourceErr $"'{model.entry.name.value}' ({model.entry.id.value}) is {kind}")
+
+            match this with
+            | SourcePresetChoice _ -> SourceEmission.ofValues values
+            | PolarizerPresetChoice (model, _)
+            | StackSampleChoice (model, _, _)
+            | LibraryModelChoice model -> notALightSource model

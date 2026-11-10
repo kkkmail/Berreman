@@ -3,6 +3,7 @@ namespace OpticalConstructor.Domain
 open Berreman.Fields
 open Berreman.Geometry
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.ItemModels
 
 /// Spec 0046 — what a detector reads at the end of the light's actual path. The host walks the beam from the
 /// source to the detector (`BeamLayout`'s path for that detector) and hands this module the optical steps in
@@ -19,6 +20,25 @@ open OpticalConstructor.Domain.Library
 ///
 /// Pure: the host does the engine solves, so a sweep re-solves a sample only when its parameters change.
 module ExperimentRun =
+
+    /// The light a source emits: its polarization's azimuth ψ and ellipticity angle χ (radians), its degree of
+    /// polarization p and its intensity scale I (spec 0050 S8.1; 001 §I, §N).
+    type SourceEmission =
+        {
+            azimuth : Angle
+            ellipticity : Angle
+            degreeOfPolarization : ParameterValue
+            intensityScale : ParameterValue
+        }
+
+        /// I · [1, p·cos 2χ·cos 2ψ, p·cos 2χ·sin 2ψ, p·sin 2χ]; a positive χ is +S₃, the handedness
+        /// `Propagation.inputStokes` calls left (spec 0050 S8.1).
+        member this.stokes : StokesVector =
+            let intensity = this.intensityScale.value
+            let polarized = intensity * this.degreeOfPolarization.value
+            let twoPsi = 2.0 * this.azimuth.value
+            let twoChi = 2.0 * this.ellipticity.value
+            StokesVector.create [ intensity; polarized * cos twoChi * cos twoPsi; polarized * cos twoChi * sin twoPsi; polarized * sin twoChi ]
 
     /// One optical step on the way to a detector, in light order.
     type RunStep =
