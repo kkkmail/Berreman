@@ -170,3 +170,86 @@ module SetupTests =
             [ historyRecord SetupRevision.first firstSlots; historyRecord (SetupRevision 2) turnedSlots ],
             mintedAgain.history
         )
+
+    let private on (beam : BeamLayout.BeamHost) (slot : SetupSlot) : SetupSlot = { slot with beam = beam }
+
+    let private roled (role : SlotRole) (slot : SetupSlot) : RoledSlot = { role = role; slot = slot }
+
+    let private lpA : SetupSlot = emptySlot (Library.ElementId "lpA") LinearPolarizer { x = -0.3<meter>; y = 0.0<meter> }
+    let private lpB : SetupSlot = emptySlot (Library.ElementId "lpB") LinearPolarizer { x = 0.3<meter>; y = 0.0<meter> }
+
+    let private sampleA : SetupSlot =
+        let slot = emptySlot (Library.ElementId "sampleA") Sample { x = -0.1<meter>; y = 0.0<meter> }
+        { slot with placement = { slot.placement with emission = EmitBoth } }
+
+    let private sampleB : SetupSlot = emptySlot (Library.ElementId "sampleB") Sample { x = 0.1<meter>; y = 0.0<meter> }
+
+    /// Both samples in series on the main beam, a polarizer before and after them, listed out of light order.
+    let private inSeries : SetupSlot list = [ src; det; lpA; sampleB; sampleA; lpB ]
+
+    [<Fact>]
+    let ``a setup's slots take their roles in light order: the source, the preps, the objects in series, the analyzers, the detectors`` () : unit =
+        let expected =
+            [
+                roled SourceSlotRole src
+                roled (PrepSlotRole (SlotPosition 1)) lpA
+                roled (ObjectSlotRole (SlotPosition 1)) sampleA
+                roled (ObjectSlotRole (SlotPosition 2)) sampleB
+                roled (AnalyzerSlotRole (SlotPosition 1)) lpB
+                roled (DetectorSlotRole (SlotPosition 1)) det
+            ]
+
+        Assert.Equal<RoledSlot list>(expected, SetupSlot.inLightOrder inSeries)
+
+        // A setup reads the same roles off its current slots.
+        match Setup.create (SetupName "Bench") inSeries [] with
+        | Ok setup -> Assert.Equal<RoledSlot list>(expected, setup.lightOrder)
+        | Error error -> Assert.Fail($"expected a new setup: {error.describe}")
+
+    [<Fact>]
+    let ``an element behind an object, on its reflected ray included, is an analyzer, and without an object every optical element is a prep`` () : unit =
+        let reflected = BeamLayout.OnReflectedBeamOf sampleA.id
+        let polR = emptySlot (Library.ElementId "polR") LinearPolarizer { x = 0.2<meter>; y = 0.0<meter> } |> on reflected
+        let detR = emptySlot (Library.ElementId "detR") Detector { x = 0.5<meter>; y = 0.0<meter> } |> on reflected
+
+        // polR's path (src, lpA, sampleA) is three steps, lpB's four; detR's is four, det's five.
+        let expected =
+            [
+                roled SourceSlotRole src
+                roled (PrepSlotRole (SlotPosition 1)) lpA
+                roled (ObjectSlotRole (SlotPosition 1)) sampleA
+                roled (ObjectSlotRole (SlotPosition 2)) sampleB
+                roled (AnalyzerSlotRole (SlotPosition 1)) polR
+                roled (AnalyzerSlotRole (SlotPosition 2)) lpB
+                roled (DetectorSlotRole (SlotPosition 1)) detR
+                roled (DetectorSlotRole (SlotPosition 2)) det
+            ]
+
+        Assert.Equal<RoledSlot list>(expected, SetupSlot.inLightOrder (inSeries @ [ polR; detR ]))
+
+        let lp1 = emptySlot (Library.ElementId "lp1") LinearPolarizer { x = -0.3<meter>; y = 0.0<meter> }
+        let lp2 = emptySlot (Library.ElementId "lp2") LinearPolarizer { x = 0.2<meter>; y = 0.0<meter> }
+
+        let expectedWithoutObject =
+            [
+                roled SourceSlotRole src
+                roled (PrepSlotRole (SlotPosition 1)) lp1
+                roled (PrepSlotRole (SlotPosition 2)) lp2
+                roled (DetectorSlotRole (SlotPosition 1)) det
+            ]
+
+        Assert.Equal<RoledSlot list>(expectedWithoutObject, SetupSlot.inLightOrder [ src; lp2; det; lp1 ])
+
+    [<Fact>]
+    let ``a role renders its chip name`` () : unit =
+        let chips : (SlotRole * string) list =
+            [
+                SourceSlotRole, "Source"
+                PrepSlotRole (SlotPosition 2), "Prep 2"
+                ObjectSlotRole (SlotPosition 1), "Obj 1"
+                AnalyzerSlotRole (SlotPosition 3), "Analyzer 3"
+                DetectorSlotRole (SlotPosition 1), "Detector 1"
+            ]
+
+        for role, chip in chips do
+            Assert.Equal(chip, role.text)

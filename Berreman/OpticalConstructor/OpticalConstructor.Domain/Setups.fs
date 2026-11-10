@@ -136,3 +136,92 @@ module Setups =
                         slots = slots
                         history = this.history @ [ replaced ]
                 }
+
+    /// A slot's 1-based place within its role on the light path (spec 0050 S8.2; 001 §J).
+    type SlotPosition =
+        | SlotPosition of int
+
+        member this.value : int = let (SlotPosition position) = this in position
+
+    /// A slot's role on the light path: derived from its kind and where the light reaches it, never stored, so it
+    /// carries no wire tag (spec 0050 S8.2; 001 §J).
+    type SlotRole =
+        | SourceSlotRole
+        | PrepSlotRole of position : SlotPosition
+        | ObjectSlotRole of position : SlotPosition
+        | AnalyzerSlotRole of position : SlotPosition
+        | DetectorSlotRole of position : SlotPosition
+
+        /// The role's chip name on the slot bar (spec 0050 S8.2; 001 §J).
+        member this.text : string =
+            match this with
+            | SourceSlotRole -> "Source"
+            | PrepSlotRole position -> $"Prep {position.value}"
+            | ObjectSlotRole position -> $"Obj {position.value}"
+            | AnalyzerSlotRole position -> $"Analyzer {position.value}"
+            | DetectorSlotRole position -> $"Detector {position.value}"
+
+    /// A setup slot and the role the light gives it (spec 0050 S8.2).
+    type RoledSlot =
+        {
+            role : SlotRole
+            slot : SetupSlot
+        }
+
+    type SetupSlot with
+
+        /// The slots' roles by the one ray law, the first slot its root: the source, the preps (no sample yet on their
+        /// path), the objects, the analyzers (behind a sample, on its reflected ray too) and the detectors, each by
+        /// light depth, then table order, an unreached slot last (spec 0050 S8.2; 001 §J; AGENTS.md "One ray law").
+        static member inLightOrder (slots : SetupSlot list) : RoledSlot list =
+            let layout = slots |> List.map (fun slot -> slot.layoutElement) |> BeamLayout.layout
+
+            // The layout keeps the input order; an unreached slot's path is empty, as only the root's may be.
+            let inLight : (SetupSlot * BeamLayout.PlacedElement) list =
+                match List.zip slots layout.elements with
+                | [] -> []
+                | root :: others ->
+                    let reached =
+                        others
+                        |> List.filter (fun (_, placed) -> not (List.isEmpty placed.path))
+                        |> List.sortBy (fun (_, placed) -> placed.path.Length)
+
+                    let unreached = others |> List.filter (fun (_, placed) -> List.isEmpty placed.path)
+                    root :: reached @ unreached
+
+            let objects : Set<Library.ElementId> =
+                slots |> List.filter (fun slot -> slot.placement.catalogueKind = Sample) |> List.map (fun slot -> slot.id) |> Set.ofList
+
+            let behindObject (placed : BeamLayout.PlacedElement) : bool =
+                placed.path |> List.exists (fun step -> Set.contains step.element objects)
+
+            let isOptic (slot : SetupSlot) : bool =
+                match slot.placement.catalogueKind with
+                | LightSource | Sample | Detector -> false
+                | LinearPolarizer | CircularPolarizer | FlatMirror | CurvedMirror | Lens -> true
+
+            let ofKind (kind : CatalogueKind) (slot : SetupSlot) (_ : BeamLayout.PlacedElement) : bool =
+                slot.placement.catalogueKind = kind
+
+            let slotsWhere (inRole : SetupSlot -> BeamLayout.PlacedElement -> bool) : SetupSlot list =
+                inLight |> List.filter (fun (slot, placed) -> inRole slot placed) |> List.map fst
+
+            let numbered (role : SlotPosition -> SlotRole) (members : SetupSlot list) : RoledSlot list =
+                members
+                |> List.mapi (fun index slot ->
+                    let position = SlotPosition (index + 1)
+                    { role = role position; slot = slot })
+
+            [
+                slotsWhere (ofKind LightSource) |> List.map (fun slot -> { role = SourceSlotRole; slot = slot })
+                slotsWhere (fun slot placed -> isOptic slot && not (behindObject placed)) |> numbered PrepSlotRole
+                slotsWhere (ofKind Sample) |> numbered ObjectSlotRole
+                slotsWhere (fun slot placed -> isOptic slot && behindObject placed) |> numbered AnalyzerSlotRole
+                slotsWhere (ofKind Detector) |> numbered DetectorSlotRole
+            ]
+            |> List.concat
+
+    type Setup with
+
+        /// The setup's current slots with their roles in light order (spec 0050 S8.2).
+        member this.lightOrder : RoledSlot list = SetupSlot.inLightOrder this.slots
