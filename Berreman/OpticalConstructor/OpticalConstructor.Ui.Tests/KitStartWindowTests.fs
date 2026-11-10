@@ -133,11 +133,15 @@ module KitStartWindowTests =
             | Error error -> failwith error.describe
         | Error error -> failwith error.describe
 
-    /// Mounts the screen over `model0` as `ScrollExtentTests` mounts a view, shown headless at 900 × 700, and closes it
-    /// after `check`. Call it on the headless UI thread.
-    let private withKitStartScreen (model0 : KitStartModel) (check : Window -> unit) : unit =
+    /// Mounts the screen over `model0` and `update` as `ScrollExtentTests` mounts a view, shown headless at 900 × 700,
+    /// and closes it after `check`. Call it on the headless UI thread.
+    let private withKitStartProgram
+        (update : KitStartMsg -> KitStartModel -> KitStartModel)
+        (model0 : KitStartModel)
+        (check : Window -> unit)
+        : unit =
         let host = HostWindow()
-        Program.mkSimple (fun () -> model0) updateKitStart kitStartView |> Program.withHost host |> Program.run
+        Program.mkSimple (fun () -> model0) update kitStartView |> Program.withHost host |> Program.run
         let window = host :> Window
         window.Width <- 900.0
         window.Height <- 700.0
@@ -148,6 +152,10 @@ module KitStartWindowTests =
             check window
         finally
             window.Close()
+
+    /// Mounts the screen over `model0` and its own update.
+    let private withKitStartScreen (model0 : KitStartModel) (check : Window -> unit) : unit =
+        withKitStartProgram updateKitStart model0 check
 
     /// The control carrying `id` as its AutomationId.
     let private tryFindControl (window : Window) (id : ConstructorUiId) : Control option =
@@ -222,6 +230,15 @@ module KitStartWindowTests =
         Assert.Equal(accepting.Top, cancelling.Top)
         Assert.True(cancelling.Left > accepting.Right, $"Cancel starts at {cancelling.Left}, inside {accept.value}, which ends at {accepting.Right}.")
 
+    /// The running extraction's progress row: its bar, its count and its Cancel.
+    let private zipProgressIds : ConstructorUiId list =
+        [ ConstructorUiId.openKitZipProgressBar; ConstructorUiId.openKitZipProgressText; ConstructorUiId.openKitZipCancelButton ]
+
+    /// Which of Open kit from zip's two dialogs was asked, in the order asked.
+    type private OpenKitZipDialog =
+        | ZipDialogAsked
+        | FolderDialogAsked
+
     [<Fact>]
     let ``the kit start screen UiIds are the stable intent-named ids`` () : unit =
         let first = ConstructorUiPosition 0
@@ -245,6 +262,13 @@ module KitStartWindowTests =
         Assert.Equal("KitHistoryLocateButton_3", (ConstructorUiId.kitHistoryLocateButton fourth).value)
         Assert.Equal("KitHistoryRemoveButton_0", (ConstructorUiId.kitHistoryRemoveButton first).value)
         Assert.Equal("KitHistoryRemoveButton_3", (ConstructorUiId.kitHistoryRemoveButton fourth).value)
+
+    [<Fact>]
+    let ``the Open kit from zip UiIds are the stable intent-named ids`` () : unit =
+        Assert.Equal("OpenKitZipButton", ConstructorUiId.openKitZipButton.value)
+        Assert.Equal("OpenKitZipProgressBar", ConstructorUiId.openKitZipProgressBar.value)
+        Assert.Equal("OpenKitZipProgressText", ConstructorUiId.openKitZipProgressText.value)
+        Assert.Equal("OpenKitZipCancelButton", ConstructorUiId.openKitZipCancelButton.value)
 
     [<Fact>]
     let ``the history rows show name, folder and last open in display order, each with its star`` () : unit =
@@ -361,6 +385,48 @@ module KitStartWindowTests =
             Assert.Empty shown)
 
     [<Fact>]
+    let ``a running extraction shows its progress bar, its count and Cancel, and hides Open kit from zip`` () : unit =
+        HeadlessSession.run (fun () ->
+            let shown = ResizeArray<OpenedKit> ()
+            let idle = initKitStart (contextOver (storedHistory ()) cancellingPicker shown) ForwardConstructor
+            let handle : KitArchiveJobHandle =
+                {
+                    cancelArchiveJob = ignore
+                }
+            let extracted : KitArchiveProgress =
+                {
+                    filesDone = KitArchiveFileCount 3
+                    filesTotal = KitArchiveFileCount 4
+                }
+            let running =
+                {
+                    idle with zipJob = (idle.zipJob.started handle).progressed (extracted.jobProgress (JobRunner.JobElapsed TimeSpan.Zero))
+                }
+
+            withKitStartScreen running (fun window ->
+                Assert.StartsWith("3 / 4", textOf window ConstructorUiId.openKitZipProgressText)
+                let bar = Assert.IsType<ProgressBar>(controlOf window ConstructorUiId.openKitZipProgressBar)
+                Assert.Equal(0.75, bar.Value, 12)
+                Assert.False(bar.IsIndeterminate, "an extraction that told its files must not show an indeterminate bar")
+                Assert.Equal<string list>([ "Cancel" ], textsUnder (controlOf window ConstructorUiId.openKitZipCancelButton))
+                assertAbsent window ConstructorUiId.openKitZipButton
+
+                // The row sits directly under New kit… and Open kit…, above the filter box.
+                let firstRow = boundsIn window (controlOf window ConstructorUiId.openKitButton)
+                let progressBar = boundsIn window bar
+                let filterBox = boundsIn window (controlOf window ConstructorUiId.kitHistoryFilter)
+                Assert.True(progressBar.Top >= firstRow.Bottom, $"The bar starts at {progressBar.Top}, above the first row's end at {firstRow.Bottom}.")
+                Assert.True(filterBox.Top > progressBar.Bottom, $"The filter box starts at {filterBox.Top}, above the bar's end at {progressBar.Bottom}.")
+                Assert.Equal<string list>([ "Kit d"; "Kit b"; "Kit c"; "Kit a"; "Kit e" ], listedKitNames window))
+
+            withKitStartScreen idle (fun window ->
+                Assert.Equal<string list>([ "Open kit from zip…" ], textsUnder (controlOf window ConstructorUiId.openKitZipButton))
+                for id in zipProgressIds do
+                    assertAbsent window id)
+
+            Assert.Empty shown)
+
+    [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``pressing a row's star, its Remove from history and a present row sends StarKit, ForgetKit and OpenKit`` () : unit =
         HeadlessSession.run (fun () ->
@@ -434,6 +500,99 @@ module KitStartWindowTests =
                     Assert.Equal(notes.notAKitCaption.value, textOf window ConstructorUiId.kitStartOfferText)
                     controlOf window ConstructorUiId.makeThisAKitButton |> ignore
                     Assert.Equal<string list>([ notesFile ], Directory.GetFileSystemEntries(notes.value.value) |> List.ofArray))))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``Open kit from zip asks for a zip, then a folder, and starts one extraction of that zip into that folder`` () : unit =
+        HeadlessSession.run (fun () ->
+            withKitStartRoot (fun root shown ->
+                let zip = FileName (Path.Combine(root.value, "exports", "Bench A.zip"))
+                let target = kitIn root "received"
+                let asked = ResizeArray<OpenKitZipDialog> ()
+                let jobs = ResizeArray<KitArchiveObserver -> Result<KitArchiveOutcome, KitArchiveError>> ()
+                let cancels = ResizeArray<unit> ()
+                let sent = ResizeArray<KitStartMsg> ()
+
+                let zipPicker : KitZipPicker =
+                    {
+                        KitZipPicker.none with
+                            pickZipToOpen =
+                                fun () ->
+                                    async {
+                                        asked.Add ZipDialogAsked
+                                        return Some zip
+                                    }
+                    }
+                let folderPicker : KitFolderPicker =
+                    {
+                        pickKitFolder =
+                            fun () ->
+                                async {
+                                    asked.Add FolderDialogAsked
+                                    return Some target
+                                }
+                    }
+                // Keeps each job unrun, so nothing is extracted, and answers a handle that records each cancel.
+                let deferred : KitArchiveJobHost =
+                    {
+                        startArchiveJob =
+                            fun job ->
+                                jobs.Add job
+                                { cancelArchiveJob = fun () -> cancels.Add () }
+                    }
+                let context =
+                    {
+                        contextOver (storedHistory ()) folderPicker shown with
+                            zipPicker = zipPicker
+                            archiveJobs = deferred
+                    }
+                let recording (msg : KitStartMsg) (m : KitStartModel) : KitStartModel =
+                    sent.Add msg
+                    updateKitStart msg m
+
+                withKitStartProgram recording (initKitStart context ForwardConstructor) (fun window ->
+                    for id in zipProgressIds do
+                        assertAbsent window id
+
+                    pressAt window ConstructorUiId.openKitZipButton
+                    Assert.Equal<OpenKitZipDialog list>([ ZipDialogAsked; FolderDialogAsked ], List.ofSeq asked)
+                    Assert.Single(jobs) |> ignore
+
+                    match List.ofSeq sent with
+                    | [ OpenKitZip opening ] ->
+                        Assert.Equal<FileName>(zip, opening.zip)
+                        Assert.Equal<KitFolder>(target, opening.target)
+                    | messages -> Assert.Fail $"Open kit from zip sent {messages.Length} message(s), not one OpenKitZip."
+
+                    let progressText = controlOf window ConstructorUiId.openKitZipProgressText
+                    Assert.True(progressText.IsEffectivelyVisible, "a started extraction must show its progress")
+                    Assert.Equal("Starting…", textOf window ConstructorUiId.openKitZipProgressText)
+                    assertAbsent window ConstructorUiId.openKitZipButton
+                    Assert.Empty(cancels)
+
+                    pressAt window ConstructorUiId.openKitZipCancelButton
+                    Assert.Equal(1, cancels.Count)
+                    Assert.Single(jobs) |> ignore)
+
+                // A cancel of either dialog sends nothing: a cancelled zip dialog does not ask for the folder.
+                asked.Clear ()
+                sent.Clear ()
+
+                withKitStartProgram recording (initKitStart { context with zipPicker = KitZipPicker.none } ForwardConstructor) (fun window ->
+                    pressAt window ConstructorUiId.openKitZipButton
+                    Assert.Empty(asked)
+                    Assert.Empty(sent))
+
+                withKitStartProgram recording (initKitStart { context with picker = cancellingPicker } ForwardConstructor) (fun window ->
+                    pressAt window ConstructorUiId.openKitZipButton
+                    Assert.Equal<OpenKitZipDialog list>([ ZipDialogAsked ], List.ofSeq asked)
+                    Assert.Empty(sent)
+                    for id in zipProgressIds do
+                        assertAbsent window id)
+
+                Assert.Single(jobs) |> ignore
+                Assert.Empty shown
+                Assert.False(Directory.Exists target.value.value, "a kept job extracts nothing")))
 
     /// The window's app scope: a fresh database scope whose kit history is a fresh in-memory one.
     let private windowScope () : AppContext =

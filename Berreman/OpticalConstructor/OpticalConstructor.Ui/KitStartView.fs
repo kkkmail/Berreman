@@ -289,17 +289,47 @@ let updateKitStart (msg : KitStartMsg) (m : KitStartModel) : KitStartModel =
 /// The screen lays out at least this wide and scrolls sideways below it, as the material editor does (spec 0050 S5.2).
 let private kitStartMinWidth : PanelMinWidth = PanelMinWidth 520.0
 
-/// New kit… and Open kit…: each asks the picker for a folder and sends its open (spec 0050 S5.2).
+/// New kit… and Open kit…: each asks the picker for a folder and sends its open (spec 0050 S5.2). Open kit from zip…
+/// asks for the zip, then the folder to extract it into, and a cancel of either sends nothing; it is hidden while its
+/// extraction runs (spec 0050 S6).
 let private kitStartActionsRow (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView =
+    let openKitZip : IView list =
+        if m.zipJob.job.isRunning then
+            []
+        else
+            [
+                MaterialsWindowView.verbButton ConstructorUiId.openKitZipButton (ControlCaption "Open kit from zip…") (fun () ->
+                    m.context.zipPicker.pickZipToOpenThen (fun zip ->
+                        m.context.picker.pickThen (fun target ->
+                            let opening : KitZipOpening = { zip = zip; target = target }
+                            dispatch (OpenKitZip opening))))
+            ]
+
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
-        StackPanel.children [
-            MaterialsWindowView.verbButton ConstructorUiId.newKitButton (ControlCaption "New kit…") (fun () ->
-                m.context.picker.pickThen (CreateKit >> dispatch))
-            MaterialsWindowView.verbButton ConstructorUiId.openKitButton (ControlCaption "Open kit…") (fun () ->
-                m.context.picker.pickThen (OpenKit >> dispatch))
-        ]
+        StackPanel.children (
+            [
+                MaterialsWindowView.verbButton ConstructorUiId.newKitButton (ControlCaption "New kit…") (fun () ->
+                    m.context.picker.pickThen (CreateKit >> dispatch))
+                MaterialsWindowView.verbButton ConstructorUiId.openKitButton (ControlCaption "Open kit…") (fun () ->
+                    m.context.picker.pickThen (OpenKit >> dispatch))
+            ]
+            @ openKitZip)
     ] :> IView
+
+/// The running extraction's progress row directly under the first row, its Cancel ending the extraction before its next
+/// file; nothing while none runs (spec 0050 S6; .spec-md §10.2).
+let private kitStartZipRows (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView list =
+    if m.zipJob.job.isRunning then
+        let ids : KitArchiveProgressIds =
+            {
+                bar = ConstructorUiId.openKitZipProgressBar
+                text = ConstructorUiId.openKitZipProgressText
+                cancel = ConstructorUiId.openKitZipCancelButton
+            }
+        [ kitArchiveProgressView m.zipJob ids (fun () -> dispatch CancelOpenKitZip) ]
+    else
+        []
 
 /// An offer's question over its opposing pair on one row, Cancel to the right after the accepting box's margin
 /// (.spec-md §10.5). It is keyed by `offerKey`, so another folder's offer recreates the pair: an `actionButton`
@@ -450,8 +480,9 @@ let private kitHistoryListView (m : KitStartModel) (dispatch : KitStartMsg -> un
                 kitHistoryRowView m dispatch position row))
     ] :> IView
 
-/// The start screen as a pure projection of its model: New kit… and Open kit…, the status, the offer, the filter box
-/// and the history list, every control under its `ConstructorUiId` (spec 0050 S5.2).
+/// The start screen as a pure projection of its model: New kit…, Open kit… and Open kit from zip…, the running
+/// extraction's progress, the status, the offer, the filter box and the history list, every control under its
+/// `ConstructorUiId` (spec 0050 S5.2, S6).
 let kitStartView (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView =
     // The last failure, in the library windows' refusal colour.
     let statusRows : IView list =
@@ -480,6 +511,7 @@ let kitStartView (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView =
                         StackPanel.spacing 8.0
                         StackPanel.children (
                             [ kitStartActionsRow m dispatch ]
+                            @ kitStartZipRows m dispatch
                             @ statusRows
                             @ kitStartOfferRows m dispatch
                             @ [ kitHistoryFilterBox m dispatch; kitHistoryListView m dispatch ])

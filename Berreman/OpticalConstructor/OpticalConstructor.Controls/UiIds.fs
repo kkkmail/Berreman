@@ -657,6 +657,14 @@ type ConstructorUiId =
     static member newKitButton : ConstructorUiId = ConstructorUiId "NewKitButton"
     /// Open kit…: picks a folder and opens only a kit (spec 0050 S5.2).
     static member openKitButton : ConstructorUiId = ConstructorUiId "OpenKitButton"
+    /// Open kit from zip…: asks for a zip, then the folder to extract it into, and opens the kit extracted (spec 0050 S6).
+    static member openKitZipButton : ConstructorUiId = ConstructorUiId "OpenKitZipButton"
+    /// The running extraction's progress bar, the fraction of the zip's files extracted (spec 0050 S6).
+    static member openKitZipProgressBar : ConstructorUiId = ConstructorUiId "OpenKitZipProgressBar"
+    /// The running extraction's count of files extracted over the zip's files (spec 0050 S6).
+    static member openKitZipProgressText : ConstructorUiId = ConstructorUiId "OpenKitZipProgressText"
+    /// Cancels the running extraction before its next file (spec 0050 S6).
+    static member openKitZipCancelButton : ConstructorUiId = ConstructorUiId "OpenKitZipCancelButton"
     /// The last failure the start screen tells (spec 0050 S5.2).
     static member kitStartStatusText : ConstructorUiId = ConstructorUiId "KitStartStatusText"
     /// The pending offer's question (spec 0050 S5.2).
