@@ -393,6 +393,122 @@ type AddItemForm =
         | Some _, Error _
         | None, _ -> None
 
+/// The two states a user sets a parameter to by hand; a calibration comes only from a fit (spec 0050 S7.2, S11.5).
+type ParameterStateChoice =
+    | KnownStateChoice
+    | UnknownStateChoice
+
+/// A number the parameter editor takes as typed (spec 0050 S7.2).
+type ParameterEditField =
+    | ValueEditField
+    | LowerEditField
+    | UpperEditField
+    | PriorSigmaEditField
+
+    /// The field's name, as a refusal names it (spec 0050 S7.2).
+    member this.text : string =
+        match this with
+        | ValueEditField -> "value"
+        | LowerEditField -> "lower"
+        | UpperEditField -> "upper"
+        | PriorSigmaEditField -> "prior sigma"
+
+/// The open parameter editor: the item and parameter it edits, the state chosen and the numbers as typed, raw captions
+/// until `tryState` reads them (spec 0050 S7.2; 001 §O).
+type ParameterEditDraft =
+    {
+        itemId : ItemId
+        name : ItemModels.ParameterName
+        choice : ParameterStateChoice
+        valueText : ControlCaption
+        lowerText : ControlCaption
+        upperText : ControlCaption
+        priorSigmaText : ControlCaption
+    }
+
+    /// The editor opened on the parameter's state: a calibration opens as known at its value, and a field the state
+    /// has no number for is empty (spec 0050 S7.2).
+    static member ofParameter (itemId : ItemId) (parameter : Parameter) : ParameterEditDraft =
+        let written (number : double) : ControlCaption =
+            ControlCaption (number.ToString("R", System.Globalization.CultureInfo.InvariantCulture))
+        let empty = ControlCaption ""
+        let known (value : ItemModels.ParameterValue) : ParameterEditDraft =
+            {
+                itemId = itemId
+                name = parameter.name
+                choice = KnownStateChoice
+                valueText = written value.value
+                lowerText = empty
+                upperText = empty
+                priorSigmaText = empty
+            }
+        match parameter.state with
+        | KnownParameter value -> known value
+        | CalibratedParameter calibrated -> known calibrated.value
+        | UnknownParameter unknown ->
+            {
+                itemId = itemId
+                name = parameter.name
+                choice = UnknownStateChoice
+                valueText = written unknown.start.value
+                lowerText = written unknown.bounds.lower.value
+                upperText = written unknown.bounds.upper.value
+                priorSigmaText =
+                    match unknown.priorOpt with
+                    | Some prior -> written prior.sigma.value
+                    | None -> empty
+            }
+
+    /// The draft with one field's text replaced (spec 0050 S7.2).
+    member this.withFieldText (field : ParameterEditField) (text : ControlCaption) : ParameterEditDraft =
+        match field with
+        | ValueEditField -> { this with valueText = text }
+        | LowerEditField -> { this with lowerText = text }
+        | UpperEditField -> { this with upperText = text }
+        | PriorSigmaEditField -> { this with priorSigmaText = text }
+
+    /// The state the editor sets, a prior centred on the start; a needed text that is no number is refused naming the
+    /// field. It checks no rule of the state: `withParameterState` applies `Parameter.validate` (spec 0050 S7.2).
+    member this.tryState : Result<ParameterState, ItemError> =
+        let invariant = System.Globalization.CultureInfo.InvariantCulture
+        let read (field : ParameterEditField) (text : ControlCaption) : Result<double, ItemError> =
+            match System.Double.TryParse(text.value, System.Globalization.NumberStyles.Float, invariant) with
+            | true, number -> Ok number
+            | false, _ ->
+                Error (InvalidParameterStateErr $"{this.name.value}: the {field.text} '{text.value}' is not a number")
+        let parameterValue (field : ParameterEditField) (text : ControlCaption) : Result<ItemModels.ParameterValue, ItemError> =
+            read field text |> Result.map ItemModels.ParameterValue
+        match this.choice with
+        | KnownStateChoice -> parameterValue ValueEditField this.valueText |> Result.map KnownParameter
+        | UnknownStateChoice ->
+            let readSigma : Result<ParameterSigma option, ItemError> =
+                if System.String.IsNullOrWhiteSpace this.priorSigmaText.value then Ok None
+                else read PriorSigmaEditField this.priorSigmaText |> Result.map (ParameterSigma >> Some)
+            parameterValue ValueEditField this.valueText
+            |> Result.bind (fun start ->
+                parameterValue LowerEditField this.lowerText
+                |> Result.bind (fun lower ->
+                    parameterValue UpperEditField this.upperText
+                    |> Result.bind (fun upper ->
+                        readSigma
+                        |> Result.map (fun sigmaOpt ->
+                            let bounds : ParameterInterval =
+                                {
+                                    lower = lower
+                                    upper = upper
+                                }
+                            let prior (sigma : ParameterSigma) : ParameterPrior =
+                                {
+                                    centre = start
+                                    sigma = sigma
+                                }
+                            UnknownParameter
+                                {
+                                    start = start
+                                    bounds = bounds
+                                    priorOpt = sigmaOpt |> Option.map prior
+                                }))))
+
 type TableAndElementRotationModel =
     {
         table : OpticalTable
@@ -510,6 +626,8 @@ type TableAndElementRotationModel =
         selectedItemOpt : ItemId option
         /// The open "Add item from library model…" form, `None` while it is closed (spec 0050 S7.2).
         addItemFormOpt : AddItemForm option
+        /// The open parameter editor of the selected item, `None` while it is closed (spec 0050 S7.2).
+        parameterEditOpt : ParameterEditDraft option
         /// Measured-data attachments read through kit (spec 0050 S4.2/S4.3).
         experimentData : ExperimentData.ExperimentDataProxy
         /// Spec 0038 Part L (037): the typed per-experiment measured-data status, keyed by the
@@ -666,6 +784,7 @@ let initWith
         itemIds = ItemIdProvider.system
         selectedItemOpt = None
         addItemFormOpt = None
+        parameterEditOpt = None
         experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked kit.proxy
         experimentDataStatus = Map.empty
         elementMenu = None
@@ -893,6 +1012,24 @@ type TableAndElementRotationMsg =
     | CancelAddItemForm
     /// Adds the item to the kit: the add form's Add, and how a test adds an item (spec 0050 S7.2; 001 §P).
     | AddItem of ItemDraft
+    /// Sets an item's parameter state and records it: the editor's Set, and how a test sets one (spec 0050 S7.2; 001 §P).
+    | SetParameterState of ItemId * ItemModels.ParameterName * ParameterState
+    /// A press of a parameter row of the selected item: opens the parameter editor on it (spec 0050 S7.2).
+    | EditItemParameter of ItemModels.ParameterName
+    /// Chooses the state the open parameter editor sets (spec 0050 S7.2).
+    | SetParameterEditChoice of ParameterStateChoice
+    /// Edits one number of the open parameter editor as typed (spec 0050 S7.2).
+    | SetParameterEditText of ParameterEditField * ControlCaption
+    /// The parameter editor's Cancel: closes it, writing nothing (spec 0050 S7.2).
+    | CancelParameterEdit
+    /// Gives an item a new label and renames its kit file (spec 0050 S7.2).
+    | RelabelKitItem of ItemId * ItemLabel
+    /// Replaces an item's notes (spec 0050 S7.2).
+    | SetKitItemNotes of ItemId * ItemNotes
+    /// Gives an item the photo file the picker answered, attached as a lab file (spec 0050 S7.2, S4.2).
+    | SetKitItemPhoto of ItemId * FileName
+    /// Drops an item's photo, keeping its file (spec 0050 S7.2).
+    | RemoveKitItemPhoto of ItemId
     /// Main-screen LIBRARY bay (task 024): bind this Library entry id to the selected element's
     /// `valueId` (inert when the table or nothing is selected).
     | BindValueId of ElementValueId
@@ -1959,6 +2096,62 @@ type TableAndElementRotationModel with
                     | Library.SourceItem _ | Library.DetectorItem _ | Library.PolarizerItem _ -> None))
         standalone @ sources @ polarizers @ samples
 
+    /// The held items with `item` in its id's place, or added, in the ordinal label order `readItems` keeps
+    /// (spec 0050 S7.2).
+    member internal model.kitItemsWith (item : Item) : Item list =
+        item :: (model.kitItems |> List.filter (fun held -> held.id <> item.id))
+        |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.label.value, second.label.value))
+
+/// Why an item edit wrote nothing: the item refused it, or its photo could not be attached (spec 0050 S7.2).
+type private KitItemEditError =
+    | ItemEditRefusedErr of ItemError
+    | PhotoAttachRefusedErr of KitError
+
+    /// The status that tells the refusal (spec 0050 S7.2).
+    member this.caption : ControlCaption =
+        match this with
+        | ItemEditRefusedErr error -> ControlCaption $"The item was not changed — {error.describe}"
+        | PhotoAttachRefusedErr error -> ControlCaption $"The photo was not attached — {error.describe}"
+
+/// Edits a held item and records it, after step 185's read-only guard: an id `kitItems` lacks changes nothing, a
+/// refusal is told and writes nothing more, and a changed label is recorded as a relabel (spec 0050 S7.2, step 237).
+let private recordKitItemEdit
+    (id : ItemId)
+    (edit : Item -> Result<Item, KitItemEditError>)
+    (onRecorded : TableAndElementRotationModel -> TableAndElementRotationModel)
+    (model : TableAndElementRotationModel)
+    : TableAndElementRotationModel =
+    guardKitWrite model (fun () ->
+        match model.kitItems |> List.tryFind (fun item -> item.id = id) with
+        | None -> model
+        | Some held ->
+            match edit held with
+            | Error error ->
+                {
+                    model with kitStatus = Some error.caption
+                }
+            | Ok edited ->
+                let library : KitLibraryContext =
+                    {
+                        kit = model.kit
+                        imports = model.catalogueImports
+                    }
+                let recorded =
+                    if edited.label = held.label then library.recordItem edited
+                    else library.recordRelabelledItem held edited
+                match recorded with
+                | Ok () ->
+                    onRecorded
+                        {
+                            model with
+                                kitItems = model.kitItemsWith edited
+                                kitStatus = None
+                        }
+                | Error error ->
+                    {
+                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                    })
+
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -2021,7 +2214,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | ShowFlowStep ExperimentsFlowStep -> { model with flowStep = ExperimentsFlowStep; ribbon = BayNames.experiments }
     | SelectKitItem id ->
         match model.kitItems |> List.exists (fun item -> item.id = id) with
-        | true -> { model with selectedItemOpt = Some id }
+        | true -> { model with selectedItemOpt = Some id; parameterEditOpt = None }
         | false -> model
     | OpenAddItemForm ->
         // Spec 0050 S7.2: the binding models come from this one listing, so a failed listing offers none of them.
@@ -2076,9 +2269,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 | Ok () ->
                     {
                         model with
-                            kitItems =
-                                item :: model.kitItems
-                                |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.label.value, second.label.value))
+                            kitItems = model.kitItemsWith item
                             selectedItemOpt = Some item.id
                             addItemFormOpt = None
                             kitStatus = None
@@ -2087,6 +2278,51 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     {
                         model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                     })
+    | SetParameterState (itemId, name, state) ->
+        model
+        |> recordKitItemEdit
+            itemId
+            (fun held -> held.withParameterState name state |> Result.mapError ItemEditRefusedErr)
+            (fun recorded -> { recorded with parameterEditOpt = None })
+    | EditItemParameter name ->
+        let selectedOpt =
+            model.selectedItemOpt
+            |> Option.bind (fun id -> model.kitItems |> List.tryFind (fun item -> item.id = id))
+        match selectedOpt with
+        | Some item ->
+            match item.tryFindParameter name with
+            | Some parameter -> { model with parameterEditOpt = Some (ParameterEditDraft.ofParameter item.id parameter) }
+            | None -> model
+        | None -> model
+    | SetParameterEditChoice choice ->
+        match model.parameterEditOpt with
+        | Some draft -> { model with parameterEditOpt = Some { draft with choice = choice } }
+        | None -> model
+    | SetParameterEditText (field, text) ->
+        match model.parameterEditOpt with
+        | Some draft -> { model with parameterEditOpt = Some (draft.withFieldText field text) }
+        | None -> model
+    | CancelParameterEdit -> { model with parameterEditOpt = None }
+    | RelabelKitItem (itemId, label) ->
+        model
+        |> recordKitItemEdit
+            itemId
+            (fun held -> held.relabelledAmong label model.kitItems |> Result.mapError ItemEditRefusedErr)
+            (fun recorded -> recorded)
+    | SetKitItemNotes (itemId, notes) ->
+        model |> recordKitItemEdit itemId (fun held -> Ok (held.withNotes notes)) (fun recorded -> recorded)
+    | SetKitItemPhoto (itemId, file) ->
+        // Spec 0050 S4.2 (step 135): a file inside the kit is recorded in place, one outside is copied into data/.
+        model
+        |> recordKitItemEdit
+            itemId
+            (fun held ->
+                model.experimentData.attachDataFile file
+                |> Result.mapError PhotoAttachRefusedErr
+                |> Result.map (fun attachment -> held.withPhoto (Some attachment.path)))
+            (fun recorded -> recorded)
+    | RemoveKitItemPhoto itemId ->
+        model |> recordKitItemEdit itemId (fun held -> Ok (held.withPhoto None)) (fun recorded -> recorded)
     | BindValueId entryId ->
         // Spec 0038 (017): the direct bind CONVERGES on the one targeted commit arm below —
         // resolve the selected element's serializable id and delegate to `BindValueIdTo`.
