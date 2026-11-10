@@ -596,6 +596,21 @@ module Kit =
         member this.tryFindParameter (name : ParameterName) : Parameter option =
             this.parameters |> List.tryFind (fun parameter -> parameter.name = name)
 
+        /// The item with the named parameter's state replaced in place, once `Parameter.validate` keeps it. It edits the
+        /// working revision; only a published revision moves `revision` (spec 0050 S7.1; 001 §P). It writes nothing.
+        member this.withParameterState (name : ParameterName) (state : ParameterState) : Result<Item, ItemError> =
+            match this.tryFindParameter name with
+            | None -> Error (UnknownItemParameterErr $"'{name.value}' on '{this.label.value}'")
+            | Some _ ->
+                let parameter : Parameter = { name = name; state = state }
+
+                parameter.validate
+                |> Result.map (fun validated ->
+                    {
+                        this with
+                            parameters = this.parameters |> List.map (fun held -> if held.name = name then validated else held)
+                    })
+
     /// An item model as the library resolved it: a binding form with the preset or sample version it binds, or a model
     /// that stands alone (spec 0050 S7.1; 001 §I).
     type ItemModelChoice =

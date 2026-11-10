@@ -638,3 +638,84 @@ module KitItemTests =
             Assert.Contains("'CPL7'", reason)
             Assert.Contains(missing.value.ToString(), reason)
         | other -> Assert.Fail($"expected UnknownKitItemErr, got %A{other}")
+
+    // ============================ spec 0050 S7.1: setting one parameter's state ============================
+
+    let private retardance : ParameterName = ParameterName "c2.retardance"
+
+    /// An unknown retardance a fit starts at π / 2 and searches within the given bounds, with no prior.
+    let private unknownRetardance (lower : ParameterValue) (upper : ParameterValue) : ParameterState =
+        UnknownParameter
+            {
+                start = ParameterValue (Math.PI / 2.0)
+                bounds = { lower = lower; upper = upper }
+                priorOpt = None
+            }
+
+    /// What the circular polarizer and its dial publish, every parameter known at its default (step 216).
+    let private circularPolarizerDefaults : Parameter list =
+        circularPolarizerModel.entry.model.parameterAxes @ (DialMounted DialPositive).parameterAxes
+        |> List.map Parameter.knownAtDefault
+
+    [<Fact>]
+    let ``setting a parameter's state replaces it in place and keeps the revision`` () : unit =
+        let unknown = unknownRetardance (ParameterValue (Math.PI / 4.0)) (ParameterValue (3.0 * Math.PI / 4.0))
+
+        match heldCpl1.withParameterState retardance unknown with
+        | Ok cpl1 ->
+            Assert.Equal<Parameter list>(
+                [
+                    knownAt (ParameterName "c1.extinctionRatio") (ParameterValue 0.0)
+                    knownAt (ParameterName "c1.axisOffset") (ParameterValue 0.0)
+                    { name = retardance; state = unknown }
+                    knownAt (ParameterName "c2.fastAxisOffset") (ParameterValue 0.0)
+                    knownAt (ParameterName "dialZero") (ParameterValue 0.0)
+                ],
+                cpl1.parameters)
+
+            // Only the parameter list changes: the id, label, model, dial, notes, revision and history are the item's.
+            Assert.Equal<Item>({ heldCpl1 with parameters = cpl1.parameters }, cpl1)
+            Assert.Equal<ItemRevision>(ItemRevision 1, cpl1.revision)
+            Assert.Empty(cpl1.history)
+
+            // A second edit stays in the working revision: restoring the default gives the item back as it was made.
+            let atDefault = KnownParameter (ParameterValue (Math.PI / 2.0))
+            Assert.Equal<Result<Item, ItemError>>(Ok heldCpl1, cpl1.withParameterState retardance atDefault)
+        | Error error -> Assert.Fail($"CPL1 refused an unknown retardance within its bounds: {error.describe}")
+
+    [<Fact>]
+    let ``setting the state of a parameter the item lacks, or one that breaks its rules, is refused`` () : unit =
+        match heldCpl1.withParameterState (ParameterName "nothing") (KnownParameter (ParameterValue 0.0)) with
+        | Error (UnknownItemParameterErr reason) ->
+            Assert.Contains("'nothing'", reason)
+            Assert.Contains("'CPL1'", reason)
+        | Error error -> Assert.Fail($"expected an unknown item parameter: {error.describe}")
+        | Ok item -> Assert.Fail($"'{item.label.value}' took a state for a parameter it lacks")
+
+        let reversed = unknownRetardance (ParameterValue (3.0 * Math.PI / 4.0)) (ParameterValue (Math.PI / 4.0))
+        let reversedRetardance : Parameter = { name = retardance; state = reversed }
+
+        match heldCpl1.withParameterState retardance reversed with
+        | Error (InvalidParameterStateErr reason) ->
+            Assert.StartsWith("c2.retardance: the lower bound ", reason)
+            Assert.Contains(" is not below the upper bound ", reason)
+            Assert.Equal<Result<Parameter, ItemError>>(Error (InvalidParameterStateErr reason), reversedRetardance.validate)
+        | Error error -> Assert.Fail($"expected an invalid parameter state: {error.describe}")
+        | Ok item -> Assert.Fail($"'{item.label.value}' took an unknown whose bounds are reversed")
+
+        Assert.Equal<Item>(modelItem circularPolarizerModel heldCpl1.id heldCpl1.label, heldCpl1)
+        Assert.Equal<Parameter list>(circularPolarizerDefaults, heldCpl1.parameters)
+
+    [<Fact>]
+    let ``two items of one model keep independent parameters`` () : unit =
+        let cpl2 = modelItem circularPolarizerModel (ItemId (Guid.Parse "e4d8692b-1c3e-4a5f-8b6d-7f0e2a9c3b14")) (ItemLabel "CPL2")
+        let fastAxisOffset = ParameterName "c2.fastAxisOffset"
+        let offset = KnownParameter (ParameterValue 0.01)
+
+        match heldCpl1.withParameterState fastAxisOffset offset with
+        | Ok cpl1 ->
+            Assert.Equal<Parameter option>(Some { name = fastAxisOffset; state = offset }, cpl1.tryFindParameter fastAxisOffset)
+            Assert.Equal<Parameter list>(circularPolarizerDefaults, cpl2.parameters)
+            Assert.Equal<ItemModelInstance>(cpl1.model, cpl2.model)
+            Assert.NotEqual<Parameter list>(cpl1.parameters, cpl2.parameters)
+        | Error error -> Assert.Fail($"CPL1 refused a known fast-axis offset: {error.describe}")
