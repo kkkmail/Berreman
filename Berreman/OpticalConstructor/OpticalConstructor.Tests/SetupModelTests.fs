@@ -23,8 +23,8 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// The constructor's setup messages over a kit opened read-write: CreateSetup records the table as a kit setup,
 /// SaveSetup writes it over the active one, ActivateSetup draws one, the window keeping its view, snap mode and pivot,
-/// AssignSlot puts a kit item into a slot, and a commit records the table as the active setup its experiment
-/// references (spec 0050 S8.2; 001 §P).
+/// AssignSlot puts a kit item into a slot, SwapSlot makes the table the setup holding the swapped item, and a commit
+/// records the table as the active setup its experiment references (spec 0050 S8.2; 001 §P).
 module SetupModelTests =
 
     let private kitValue (result : Result<'Value, KitError>) : 'Value =
@@ -171,6 +171,67 @@ module SetupModelTests =
         let placed = model |> updateTableAndElementRotation (AddElement Sample)
         let sample = placed.elements |> List.find (fun slot -> slot.placement.catalogueKind = Sample)
         placed, sample.id
+
+    /// The 2 mm glass plate at its first version on the shipped stack-sample item model.
+    let private qz2Draft : ItemDraft =
+        {
+            id = ItemId (Guid.Parse "26400000-0000-4000-8000-000000000001")
+            label = ItemLabel "QZ2"
+            model =
+                StackSampleChoice (
+                    BuiltinCatalogue.itemModel ItemModels.ItemModelIds.stackSampleItemModelId,
+                    Library.SampleVersionId.firstOf Library.SampleIds.glassPlate2mmId,
+                    BuiltinCatalogue.sample Library.SampleIds.glassPlate2mmId
+                )
+            dial = FixedMounting
+        }
+
+    /// The kit with QZ and QZ2 added through the model, over a table of the source, an added sample and the seeded
+    /// detector, and the sample's slot id.
+    let private platesStocked (model : TableAndElementRotationModel) : TableAndElementRotationModel * Library.ElementId =
+        let added =
+            [ qzDraft; qz2Draft ]
+            |> List.fold (fun current draft -> current |> updateTableAndElementRotation (AddItem draft)) model
+        Assert.Equal<ControlCaption option>(None, added.kitStatus)
+        let placed, sample = withSample added
+        Assert.Equal<CatalogueKind list>(
+            [ LightSource; Sample; Detector ],
+            placed.elements |> List.map (fun slot -> slot.placement.catalogueKind) |> List.sort)
+        placed, sample
+
+    /// The table's sample holding the item, then created as a setup of that name.
+    let private benchHolding (name : string) (item : ItemId) (sample : Library.ElementId) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        model
+        |> updateTableAndElementRotation (AssignSlot (sample, Some item))
+        |> createdAs name
+
+    /// `Bench A` holding QZ and `Bench B` holding QZ2, with `Bench A` active again, and the sample's slot id.
+    let private twoBenches (model : TableAndElementRotationModel) : TableAndElementRotationModel * Library.ElementId =
+        let stocked, sample = platesStocked model
+        let benches =
+            stocked
+            |> benchHolding "Bench A" qzDraft.id sample
+            |> benchHolding "Bench B" qz2Draft.id sample
+            |> updateTableAndElementRotation (ActivateSetup (SetupName "Bench A"))
+        Assert.Equal<SetupName list>([ SetupName "Bench A"; SetupName "Bench B" ], benches.kitSetups |> List.map (fun setup -> setup.name))
+        Assert.Equal<SetupName option>(Some (SetupName "Bench A"), benches.activeSetupOpt |> Option.map (fun setup -> setup.name))
+        Assert.Equal<Setups.SlotContent>(Setups.ItemInSlot (qzDraft.id, Setups.PlacementTurn), (slotOf sample benches).content)
+        benches, sample
+
+    /// The held setup of that name.
+    let private heldSetup (name : string) (model : TableAndElementRotationModel) : Setups.Setup =
+        model.kitSetups |> List.find (fun setup -> setup.name = SetupName name)
+
+    /// Runs over a Main scene loaded with the kit at `folder` reopened read-only; a read-only open takes no lock, so the
+    /// fact may still hold the folder read-write. The reopened kit and the scene's own kit are closed at the end.
+    let private withReadOnlyReopen (folder : KitFolder) (run : TableAndElementRotationModel -> unit) : unit =
+        let imports = CatalogueImportContext.create (BuiltinCatalogue.freshStores ()).proxy
+        let reopened = openKitAt folder ReadOnlyKitAccess ClockProvider.system (KitAuthor "test") imports |> openedValue
+        let scene = initMain () |> kitValue
+        try run (scene.loadKit reopened)
+        finally
+            scene.kit.close () |> kitValue
+            reopened.library.kit.close () |> kitValue
 
     [<Fact>]
     let ``CreateSetup records the table as a new kit setup and makes it the active one`` () : unit =
@@ -576,3 +637,97 @@ module SetupModelTests =
             let drawn = rezeroed |> updateTableAndElementRotation (ActivateSetup (SetupName "Dial"))
             Assert.Equal((Angle.degree 40.0<deg>).value, (slotOf polarizer drawn).placement.r1.value, 1e-12)
             Assert.Equal<string list>([ "Dial.setup-json" ], setupFilesIn folder))
+
+    [<Fact>]
+    let ``SwapSlot switches to the kit's setup that holds the swapped content and writes nothing`` () : unit =
+        withSetupKit (fun folder model ->
+            let benches, sample = twoBenches model
+            let benchB = heldSetup "Bench B" benches
+            let before = kitFileBytes folder
+
+            let swapped = benches |> updateTableAndElementRotation (SwapSlot (sample, qz2Draft.id))
+
+            Assert.Equal<Setups.Setup option>(Some benchB, swapped.activeSetupOpt)
+            Assert.Equal<Setups.SetupSlot list>(benchB.slots, swapped.elements)
+            Assert.Equal<Setups.Setup list>(benches.kitSetups, swapped.kitSetups)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Bench B'."), swapped.kitStatus)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+
+            // Spec 0050 S8.2: a swap refuses as AssignSlot does, told as `Not swapped`, and changes nothing else.
+            let unheld = ItemId (Guid.Parse "26400000-0000-4000-8000-000000000099")
+            for slotId, itemId, named in [ (Library.ElementId "nowhere", qz2Draft.id, "nowhere"); (sample, unheld, unheld.value.ToString()) ] do
+                let refused = benches |> updateTableAndElementRotation (SwapSlot (slotId, itemId))
+                match refused.kitStatus with
+                | Some status ->
+                    Assert.StartsWith("Not swapped", status.value)
+                    Assert.Contains(named, status.value)
+                | None -> Assert.Fail $"a refused swap naming '{named}' must be told in the kit status"
+                Assert.Equal<Setups.SetupSlot list>(benches.elements, refused.elements)
+                Assert.Equal<Setups.Setup option>(benches.activeSetupOpt, refused.activeSetupOpt)
+                Assert.Equal<Setups.Setup list>(benches.kitSetups, refused.kitSetups)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder))
+
+    [<Fact>]
+    let ``SwapSlot to content no setup holds creates and activates a setup of the next free name, leaving the swapped-from setup as it was`` () : unit =
+        withSetupKit (fun folder model ->
+            let stocked, sample = platesStocked model
+            let benchA = stocked |> benchHolding "Bench A" qzDraft.id sample
+            let held = Assert.Single(benchA.kitSetups)
+            let benchAFile = Path.Combine(folder.value.value, "Bench A.setup-json")
+            let benchABytes = File.ReadAllBytes benchAFile
+
+            let swapped = benchA |> updateTableAndElementRotation (SwapSlot (sample, qz2Draft.id))
+
+            Assert.Equal<string list>([ "Bench A (2).setup-json"; "Bench A.setup-json" ], setupFilesIn folder)
+            Assert.Equal<byte[]>(benchABytes, File.ReadAllBytes benchAFile)
+            let created = heldSetup "Bench A (2)" swapped
+            Assert.Equal<SetupRevision>(SetupRevision.first, created.revision)
+            Assert.Empty(created.history)
+            Assert.Equal<Setups.SlotContent>(Setups.ItemInSlot (qz2Draft.id, Setups.PlacementTurn), (created.slots |> List.find (fun slot -> slot.id = sample)).content)
+            Assert.Equal<Setups.Setup list>([ held; created ], swapped.kitSetups)
+            Assert.Equal<Setups.Setup list>(swapped.kitSetups, swapped.kit.proxy.readSetups () |> kitValue)
+            Assert.Equal<Setups.Setup option>(Some created, swapped.activeSetupOpt)
+            Assert.Equal<Setups.SetupSlot list>(created.slots, swapped.elements)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench A (2)' by the swap."), swapped.kitStatus))
+
+        // Spec 0050 S8.2: a table that is no setup yet becomes the first free `Setup <n>`.
+        withSetupKit (fun folder model ->
+            let stocked, sample = platesStocked model
+            Assert.Equal<Setups.Setup option>(None, stocked.activeSetupOpt)
+
+            let swapped = stocked |> updateTableAndElementRotation (SwapSlot (sample, qz2Draft.id))
+
+            Assert.Equal<string list>([ "Setup 1.setup-json" ], setupFilesIn folder)
+            let setup1 = Assert.Single(swapped.kit.proxy.readSetups () |> kitValue)
+            Assert.Equal<SetupName>(SetupName "Setup 1", setup1.name)
+            Assert.Equal<SetupRevision>(SetupRevision.first, setup1.revision)
+            Assert.Equal<Setups.SlotContent>(Setups.ItemInSlot (qz2Draft.id, Setups.PlacementTurn), (setup1.slots |> List.find (fun slot -> slot.id = sample)).content)
+            Assert.Equal<Setups.Setup list>([ setup1 ], swapped.kitSetups)
+            Assert.Equal<Setups.Setup option>(Some setup1, swapped.activeSetupOpt)
+            Assert.Equal<Setups.SetupSlot list>(setup1.slots, swapped.elements)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Setup 1' by the swap."), swapped.kitStatus))
+
+    [<Fact>]
+    let ``a kit opened read-only switches setups by a swap but creates none`` () : unit =
+        withSetupKit (fun folder model ->
+            let _, sample = twoBenches model
+            withReadOnlyReopen folder (fun readOnly ->
+                Assert.Equal<ControlAvailability>(ControlWithheld, readOnly.kitWrites)
+                let benchA = readOnly |> updateTableAndElementRotation (ActivateSetup (SetupName "Bench A"))
+                let benchB = heldSetup "Bench B" readOnly
+                let before = kitFileBytes folder
+
+                let switched = benchA |> updateTableAndElementRotation (SwapSlot (sample, qz2Draft.id))
+                Assert.Equal<Setups.Setup option>(Some benchB, switched.activeSetupOpt)
+                Assert.Equal<Setups.SetupSlot list>(benchB.slots, switched.elements)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Bench B'."), switched.kitStatus)
+                Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+
+                // A table with one more slot than either setup holds content no setup holds, so the swap would create one.
+                let widened = switched |> updateTableAndElementRotation (AddElement LinearPolarizer)
+                let refused = widened |> updateTableAndElementRotation (SwapSlot (sample, qzDraft.id))
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), refused.kitStatus)
+                Assert.Equal<Setups.SetupSlot list>(widened.elements, refused.elements)
+                Assert.Equal<Setups.Setup list>(widened.kitSetups, refused.kitSetups)
+                Assert.Equal<Setups.Setup option>(widened.activeSetupOpt, refused.activeSetupOpt)
+                Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)))

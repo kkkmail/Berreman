@@ -1081,6 +1081,8 @@ type TableAndElementRotationMsg =
     | ActivateSetup of SetupName
     /// Puts a kit item, or nothing, into that slot of the table (spec 0050 S8.2; 001 §P `AssignSlot`).
     | AssignSlot of Library.ElementId * ItemId option
+    /// The table as the setup that holds this item in that slot, a held one or a new one (spec 0050 S8.2; 001 §P `SwapSlot`).
+    | SwapSlot of Library.ElementId * ItemId
     /// The kit bar's forward / inverse switch, which keeps the kit and the model (spec 0050 S5.3).
     | SwitchConstructorMode of ConstructorMode
     /// The Kit menu's Show in Explorer: the kit's folder in the shell's explorer (spec 0050 S5.3).
@@ -2176,6 +2178,29 @@ let private recordKitItemEdit
                         model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                     })
 
+/// The table's slot of that id holding the kit's item of that id, or emptied; refused when the table lacks the slot,
+/// the kit the item, the stores its model, or the slot does not fit it. `AssignSlot` and `SwapSlot` refuse alike (spec
+/// 0050 S8.2).
+let private slotAssigned
+    (model : TableAndElementRotationModel)
+    (slotId : Library.ElementId)
+    (itemIdOpt : ItemId option)
+    : Result<Setups.SetupSlot, SetupError> =
+    match model.elements |> List.tryFind (fun slot -> slot.id = slotId), itemIdOpt with
+    | None, _ -> Error (UnknownSetupSlotErr $"'{slotId.value}'")
+    | Some slot, None -> Ok slot.withoutItem
+    | Some slot, Some itemId ->
+        match model.kitItems |> List.tryFind (fun item -> item.id = itemId) with
+        | None -> Error (UnknownSlotItemErr $"the kit holds no item {itemId.value}")
+        | Some item ->
+            match model.tryItemModelChoice item with
+            | Some choice -> slot.withItem item choice
+            | None -> Error (UnknownSlotItemErr $"'{item.label.value}': its model is not in the library")
+
+/// The table with `filled` in its slot's place (spec 0050 S8.2).
+let private withSlotFilled (filled : Setups.SetupSlot) (slots : Setups.SetupSlot list) : Setups.SetupSlot list =
+    slots |> List.map (fun slot -> if slot.id = filled.id then filled else slot)
+
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -2639,28 +2664,52 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     // Spec 0050 S8.2: it writes nothing, so a read-only kit assigns too; the setup records the slot at the next
     // CreateSetup, SaveSetup or commit.
     | AssignSlot (slotId, itemIdOpt) ->
-        let assigned : Result<Setups.SetupSlot, SetupError> =
-            match model.elements |> List.tryFind (fun slot -> slot.id = slotId), itemIdOpt with
-            | None, _ -> Error (UnknownSetupSlotErr $"'{slotId.value}'")
-            | Some slot, None -> Ok slot.withoutItem
-            | Some slot, Some itemId ->
-                match model.kitItems |> List.tryFind (fun item -> item.id = itemId) with
-                | None -> Error (UnknownSlotItemErr $"the kit holds no item {itemId.value}")
-                | Some item ->
-                    match model.tryItemModelChoice item with
-                    | Some choice -> slot.withItem item choice
-                    | None -> Error (UnknownSlotItemErr $"'{item.label.value}': its model is not in the library")
-        match assigned with
+        match slotAssigned model slotId itemIdOpt with
         | Ok filled ->
             {
                 model with
-                    elements = model.elements |> List.map (fun slot -> if slot.id = filled.id then filled else slot)
+                    elements = withSlotFilled filled model.elements
                     kitStatus = None
             }
         | Error error ->
             {
                 model with kitStatus = Some (ControlCaption $"Not assigned — {error.describe}")
             }
+    // Spec 0050 S8.2: a held setup is switched to by ActivateSetup, writing nothing, so a read-only kit takes it; only a
+    // new setup is written, behind the read-only guard, and never the setup swapped from.
+    | SwapSlot (slotId, itemId) ->
+        match slotAssigned model slotId (Some itemId) with
+        | Error error ->
+            {
+                model with kitStatus = Some (ControlCaption $"Not swapped — {error.describe}")
+            }
+        | Ok filled ->
+            let swapped = withSlotFilled filled model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
+            let held = model.kitSetups |> List.map (fun setup -> setup.name)
+            let fresh =
+                match model.activeSetupOpt with
+                | Some active -> active.name.nextFreeAmong held
+                | None -> SetupName.firstFree held
+            match Setups.Setup.swapTarget swapped model.kitSetups fresh with
+            | Setups.SwitchToHeldSetup setup -> updateTableAndElementRotation (ActivateSetup setup.name) model
+            | Setups.CreateSwappedSetup setup ->
+                guardKitWrite model (fun () ->
+                    let library : KitLibraryContext =
+                        {
+                            kit = model.kit
+                            imports = model.catalogueImports
+                        }
+                    match library.recordSetup setup with
+                    | Ok () ->
+                        {
+                            model.withSetupRecorded setup with
+                                elements = swapped
+                                kitStatus = Some (ControlCaption $"Created setup '{setup.name.value}' by the swap.")
+                        }
+                    | Error error ->
+                        {
+                            model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        })
     // Spec 0050 S5.3: the chart and Data-files gating already follow `constructorMode`.
     | SwitchConstructorMode mode ->
         {
