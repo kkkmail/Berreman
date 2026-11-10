@@ -125,6 +125,7 @@
              After Experiments.fs (MeasurementMode). -->
         <Compile Include="BeamLayout.fs" />
         <Compile Include="Setups.fs" />
+        <Compile Include="NamingTemplates.fs" />
         <!-- Spec 0038 Part H (step 021): the versioned in-memory MATERIAL store behind the
              registered MaterialProxy write-seam (STORE_XDUO_0001). The MaterialProxy record
              stays re-typed in place in MaterialLibrary.fs; its createInMemory augmentation
