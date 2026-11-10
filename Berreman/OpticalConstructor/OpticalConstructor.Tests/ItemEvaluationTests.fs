@@ -65,6 +65,51 @@ module ItemEvaluationTests =
         | Error error -> Assert.Equal<ItemEvaluationError>(UnmodelledBranchErr reason, error)
         | Ok _ -> Assert.Fail $"expected UnmodelledBranchErr '{reason}', got a Mueller matrix"
 
+    /// The evaluation is a matrix within 1e-12 of the expected elements, element by element (spec 0050 S8.1).
+    let private assertElementsWithin (expectedAt : int -> int -> float) (actual : Result<MuellerMatrix, ItemEvaluationError>) : unit =
+        match actual with
+        | Ok matrix ->
+            for i in 0 .. 3 do
+                for j in 0 .. 3 do
+                    let e = expectedAt i j
+                    let a = matrix.element i j
+                    Assert.True(abs (e - a) <= 1.0e-12, $"element ({i},{j}): expected {e:R}, got {a:R}")
+        | Error error -> Assert.Fail error.describe
+
+    let private assertMuellerWithin (expected : MuellerMatrix) (actual : Result<MuellerMatrix, ItemEvaluationError>) : unit =
+        assertElementsWithin expected.element actual
+
+    let private assertWithin (expected : float) (actual : float) (what : string) : unit =
+        Assert.True(abs (expected - actual) <= 1.0e-12, $"{what}: expected {expected:R}, got {actual:R}")
+
+    let private matrixOf (actual : Result<MuellerMatrix, ItemEvaluationError>) : MuellerMatrix =
+        match actual with
+        | Ok matrix -> matrix
+        | Error error -> failwith error.describe
+
+    /// The form bound to the values and evaluated on its transmitted branch at the rotation (spec 0050 S8.1).
+    let private formMuellerAt (form : OpticalForm) (values : ParameterValues) (rotation : Angle) (w : WaveLength) : Result<MuellerMatrix, ItemEvaluationError> =
+        BoundOpticalElement.ofOpticalForm values form
+        |> Result.bind (fun bound -> bound.muellerAt (ElementOrientation.transmittingAt rotation) w)
+
+    let private formDefaults (form : OpticalForm) : ParameterValues = ParameterValues.defaultsOf form.parameterAxes
+
+    let private assertBound (expected : Result<BoundOpticalElement, ItemEvaluationError>) (actual : Result<BoundOpticalElement, ItemEvaluationError>) : unit =
+        Assert.Equal<Result<BoundOpticalElement, ItemEvaluationError>>(expected, actual)
+
+    let private at600 : WaveLength = WaveLength.nm 600.0<nm>
+
+    let private sampledRotations : Angle list = [ 0.0<deg>; 30.0<deg>; 135.0<deg> ] |> List.map Angle.degree
+
+    let private lpByExtinction : OpticalForm = RealPolarizerModel ExtinctionRatioLeakage
+
+    /// A real LP by extinction ratio at offset 0°, then a constant retarder at offset 45°: at its defaults, an ideal LP
+    /// and a quarter wave (spec 0050 S8.1).
+    let private quarterWaveAfterLp : OpticalForm =
+        let lp : CompoundComponent = { form = lpByExtinction; offset = Angle.zero }
+        let retarder : CompoundComponent = { form = RetarderPlateModel ConstantRetardance; offset = Angle.degree 45.0<deg> }
+        CompoundModel [ lp; retarder ]
+
     [<Fact>]
     let ``parameter values are read from an item's parameter states`` () : unit =
         let parameters : Parameter list =
@@ -299,3 +344,176 @@ module ItemEvaluationTests =
         let reflected = { at30 with branch = Propagation.BranchReflected }
         assertUnmodelledBranch "the reflected branch of an empty slot, which only transmits" (emptySlot.muellerAt reflected at400)
         assertUnmodelledBranch "the reflected branch of a polarizer preset, which only transmits" (linearPolarizer.muellerAt reflected at400)
+
+    [<Fact>]
+    let ``a real linear polarizer at its defaults is the ideal one, and its leakage passes crossed light`` () : unit =
+        let byExtinction = formDefaults lpByExtinction
+        let lpByDiattenuation = RealPolarizerModel DiattenuationLeakage
+        let byDiattenuation = formDefaults lpByDiattenuation
+
+        // Extinction ratio 0 and diattenuation 1 are both the ideal LP.
+        for rotation in sampledRotations do
+            let ideal = Propagation.analyzerMueller IdealLinear rotation
+            assertMuellerWithin ideal (formMuellerAt lpByExtinction byExtinction rotation at600)
+            assertMuellerWithin ideal (formMuellerAt lpByDiattenuation byDiattenuation rotation at600)
+
+        // The axis offset (10°) adds to the element's rotation (30°).
+        let offsetBy10 = byExtinction.withValue ParameterName.axisOffset (ParameterValue (Math.PI / 18.0))
+        assertMuellerWithin
+            (Propagation.analyzerMueller IdealLinear (Angle.degree 40.0<deg>))
+            (formMuellerAt lpByExtinction offsetBy10 (Angle.degree 30.0<deg>) at600)
+
+        // Crossed with an ideal LP at 90°, unpolarized light leaks half the extinction ratio.
+        let leakyValues = byExtinction.withValue ParameterName.extinctionRatio (ParameterValue 0.01)
+        let leaky = matrixOf (formMuellerAt lpByExtinction leakyValues Angle.zero at600)
+        let crossed = Propagation.analyzerMueller IdealLinear (Angle.degree 90.0<deg>) * (leaky * Propagation.unpolarizedStokes)
+        assertWithin 0.005 crossed.s0 "S0 through the leaky LP and a crossed ideal LP"
+
+        // A diattenuation D is the extinction ratio (1 − D) / (1 + D).
+        let diattenuated = byDiattenuation.withValue ParameterName.diattenuation (ParameterValue 0.98)
+        let equivalent = byExtinction.withValue ParameterName.extinctionRatio (ParameterValue (0.02 / 1.98))
+
+        for rotation in sampledRotations do
+            assertMuellerWithin
+                (matrixOf (formMuellerAt lpByExtinction equivalent rotation at600))
+                (formMuellerAt lpByDiattenuation diattenuated rotation at600)
+
+    [<Fact>]
+    let ``a retarder plate is the retarder matrix at its fast axis, its retardance dispersed as its model says`` () : unit =
+        let constant = RetarderPlateModel ConstantRetardance
+        let sixtyDegrees =
+            ((formDefaults constant).withValue ParameterName.retardance (ParameterValue (Math.PI / 3.0))).withValue
+                ParameterName.fastAxisOffset
+                (ParameterValue (Math.PI / 36.0))
+        let at45 = MuellerReconstruction.retarderMueller (Angle.degree 45.0<deg>) (MuellerReconstruction.Retardance (Math.PI / 3.0))
+        let at316 = WaveLength.nm 316.4<nm>
+        let at633 = WaveLength.nm 632.8<nm>
+
+        // A constant retardance is the same at every λ; the fast-axis offset (5°) adds to the rotation (40°).
+        for w in [ at316; at600; WaveLength.nm 1550.0<nm> ] do
+            assertMuellerWithin at45 (formMuellerAt constant sixtyDegrees (Angle.degree 40.0<deg>) w)
+
+        // A quarter wave at 632.8 nm, dispersed as λ_ref / λ, is a half wave at 316.4 nm.
+        let dispersion = InverseWaveLengthRetardance at633
+        let zeroOrder = RetarderPlateModel dispersion
+        let quarter = ParameterValue (Math.PI / 2.0)
+
+        assertWithin Math.PI (quarter.retardanceAt dispersion at316).value "the dispersed retardance at 316.4 nm"
+        assertWithin (Math.PI / 2.0) (quarter.retardanceAt dispersion at633).value "the dispersed retardance at 632.8 nm"
+        assertWithin (Math.PI / 2.0) (quarter.retardanceAt ConstantRetardance at316).value "the constant retardance at 316.4 nm"
+
+        for rotation in sampledRotations do
+            assertMuellerWithin
+                (MuellerReconstruction.retarderMueller rotation (MuellerReconstruction.Retardance Math.PI))
+                (formMuellerAt zeroOrder (formDefaults zeroOrder) rotation at316)
+
+    [<Fact>]
+    let ``a black-box Mueller matrix is held at reference orientation and turned by the element's rotation`` () : unit =
+        let sixteen = BlackBoxMuellerModel SixteenElementMueller
+        let fifteen = BlackBoxMuellerModel FifteenElementsAndScale
+        let referenceLp = Propagation.analyzerMueller IdealLinear Angle.zero
+        let indices : int list = [ 0 .. 3 ]
+        let elementName (i : int) (j : int) : ParameterName = ParameterName.muellerElement (ParameterNameIndex i) (ParameterNameIndex j)
+        let holding (keep : int -> int -> bool) (valueAt : int -> int -> float) (start : ParameterValues) : ParameterValues =
+            indices
+            |> List.fold
+                (fun (rows : ParameterValues) i ->
+                    indices
+                    |> List.filter (keep i)
+                    |> List.fold (fun (held : ParameterValues) j -> held.withValue (elementName i j) (ParameterValue (valueAt i j))) rows)
+                start
+
+        // At its defaults the box is the identity, at any rotation.
+        assertMuellerWithin Propagation.identityMueller (formMuellerAt sixteen (formDefaults sixteen) (Angle.degree 30.0<deg>) at600)
+
+        // Holding the reference LP's sixteen elements, the box is the ideal LP at the element's rotation.
+        let lpBox = holding (fun _ _ -> true) referenceLp.element (formDefaults sixteen)
+
+        for rotation in sampledRotations do
+            assertMuellerWithin (Propagation.analyzerMueller IdealLinear rotation) (formMuellerAt sixteen lpBox rotation at600)
+
+        // A scale of 0.8 over the fifteen elements normalised by m00 (½) is 0.8 · 2 · the LP.
+        let m00 = referenceLp.element 0 0
+        let scaledBox =
+            holding
+                (fun i j -> i <> 0 || j <> 0)
+                (fun i j -> referenceLp.element i j / m00)
+                ((formDefaults fifteen).withValue ParameterName.blackBoxScale (ParameterValue 0.8))
+
+        for rotation in sampledRotations do
+            let lp = Propagation.analyzerMueller IdealLinear rotation
+            assertElementsWithin (fun i j -> 0.8 * 2.0 * lp.element i j) (formMuellerAt fifteen scaledBox rotation at600)
+
+    [<Fact>]
+    let ``a compound applies its components in light order, each under its own prefixed parameters`` () : unit =
+        let defaults = formDefaults quarterWaveAfterLp
+
+        // The LP first, then the quarter wave at 45° to it: R(θ + 45°, π / 2) · LP(θ).
+        for rotation in [ 0.0<deg>; 30.0<deg> ] |> List.map Angle.degree do
+            let expected =
+                MuellerReconstruction.retarderMueller (rotation + Angle.degree 45.0<deg>) (MuellerReconstruction.Retardance (Math.PI / 2.0))
+                * Propagation.analyzerMueller IdealLinear rotation
+            let compound = formMuellerAt quarterWaveAfterLp defaults rotation at600
+            assertMuellerWithin expected compound
+
+            // Unpolarized light leaves circular: |S₃| / S₀ = 1.
+            let circular = matrixOf compound * Propagation.unpolarizedStokes
+            assertWithin 1.0 (abs circular.s3 / circular.s0) "|S3| / S0 of unpolarized light through the compound"
+
+        // As the second component after an identity black box, the inner LP's extinction ratio is c2.c1.extinctionRatio.
+        let box : CompoundComponent = { form = BlackBoxMuellerModel SixteenElementMueller; offset = Angle.zero }
+        let inner : CompoundComponent = { form = quarterWaveAfterLp; offset = Angle.zero }
+        let nested = CompoundModel [ box; inner ]
+        let nestedValues = (formDefaults nested).withValue (ParameterName "c2.c1.extinctionRatio") (ParameterValue 0.01)
+        let innerValues = defaults.withValue (ParameterName "c1.extinctionRatio") (ParameterValue 0.01)
+        let second = ParameterNameIndex 2
+
+        Assert.Equal<Result<ParameterValues, ItemEvaluationError>>(
+            Ok innerValues,
+            nestedValues.forComponent second quarterWaveAfterLp.parameterAxes
+        )
+
+        let innerAlone = matrixOf (formMuellerAt quarterWaveAfterLp innerValues Angle.zero at600)
+        assertMuellerWithin innerAlone (formMuellerAt nested nestedValues Angle.zero at600)
+
+        // The leakage reached the inner LP: its m00 is ½ (1 + 0.01), the quarter wave keeping S₀.
+        assertWithin 0.505 (innerAlone.element 0 0) "m00 of the leaky inner compound"
+
+    [<Fact>]
+    let ``a form is bound only with a value for each of its parameters, in range`` () : unit =
+        let defaults = formDefaults lpByExtinction
+
+        assertBound (Ok (BoundOpticalForm (lpByExtinction, defaults))) (BoundOpticalElement.ofOpticalForm defaults lpByExtinction)
+
+        let withoutOffset =
+            ParameterValues.defaultsOf (lpByExtinction.parameterAxes |> List.filter (fun axis -> axis.name <> ParameterName.axisOffset))
+        assertBound (Error (MissingParameterValueErr "axisOffset")) (BoundOpticalElement.ofOpticalForm withoutOffset lpByExtinction)
+        assertBound
+            (Error (ParameterOutOfRangeErr "extinctionRatio = 1.2 lies outside [0, 1]"))
+            (BoundOpticalElement.ofOpticalForm (defaults.withValue ParameterName.extinctionRatio (ParameterValue 1.2)) lpByExtinction)
+
+        // A compound's values are checked under each component's prefixed names.
+        let withoutRetardance =
+            ParameterValues.defaultsOf (quarterWaveAfterLp.parameterAxes |> List.filter (fun axis -> axis.name <> ParameterName "c2.retardance"))
+        let leakingTooMuch = (formDefaults quarterWaveAfterLp).withValue (ParameterName "c1.extinctionRatio") (ParameterValue 1.2)
+        assertBound (Error (MissingParameterValueErr "c2.retardance")) (BoundOpticalElement.ofOpticalForm withoutRetardance quarterWaveAfterLp)
+        assertBound
+            (Error (ParameterOutOfRangeErr "c1.extinctionRatio = 1.2 lies outside [0, 1]"))
+            (BoundOpticalElement.ofOpticalForm leakingTooMuch quarterWaveAfterLp)
+
+        // A form passes the light it transmits: its reflected branch is unmodelled.
+        let retarder = RetarderPlateModel ConstantRetardance
+
+        match BoundOpticalElement.ofOpticalForm (formDefaults retarder) retarder with
+        | Ok bound ->
+            let at30 = ElementOrientation.transmittingAt (Angle.degree 30.0<deg>)
+            let reflected : ElementOrientation = { at30 with branch = Propagation.BranchReflected }
+            assertUnmodelledBranch "the reflected branch of an optical form, which only transmits" (bound.muellerAt reflected at600)
+        | Error error -> Assert.Fail error.describe
+
+        // A form built unchecked still answers the missing number, not a matrix.
+        let unchecked : BoundOpticalElement = BoundOpticalForm (retarder, ParameterValues Map.empty)
+        Assert.Equal<Result<MuellerMatrix, ItemEvaluationError>>(
+            Error (MissingParameterValueErr "retardance"),
+            unchecked.muellerAt (ElementOrientation.transmittingAt Angle.zero) at600
+        )

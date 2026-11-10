@@ -2,6 +2,7 @@ namespace OpticalConstructor.Domain
 
 open System
 open System.Globalization
+open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain.Library
@@ -83,12 +84,30 @@ module ItemEvaluation =
 
             axes |> List.fold (fun checkedSoFar axis -> checkedSoFar |> Result.bind (fun _ -> check axis)) (Ok this)
 
+        /// A compound component's values: each axis read under its `c<position>.` name and held under its own, so the
+        /// component evaluates as a standalone form (spec 0050 S8.1).
+        member this.forComponent (position : ParameterNameIndex) (axes : ItemParameterAxis list) : Result<ParameterValues, ItemEvaluationError> =
+            let hold (held : Result<ParameterValues, ItemEvaluationError>) (axis : ItemParameterAxis) : Result<ParameterValues, ItemEvaluationError> =
+                held
+                |> Result.bind (fun componentValues ->
+                    this.valueOf (axis.name.inComponent position) |> Result.map (fun value -> componentValues.withValue axis.name value))
+
+            axes |> List.fold hold (Ok (ParameterValues Map.empty))
+
     type ParameterValue with
 
         /// The number read as radians, an `AngleParameter`'s unit (spec 0050 S8.1).
         member this.angle : Angle =
             let (ParameterValue radians) = this
             Angle radians
+
+        /// The number as a retardance in radians at `w`: as given under `ConstantRetardance`, scaled by λ_ref / λ under
+        /// `InverseWaveLengthRetardance λ_ref` (spec 0050 S8.1; step 208).
+        member this.retardanceAt (dispersion : RetardanceDispersion) (w : WaveLength) : MuellerReconstruction.Retardance =
+            let (ParameterValue radians) = this
+            match dispersion with
+            | ConstantRetardance -> MuellerReconstruction.Retardance radians
+            | InverseWaveLengthRetardance reference -> MuellerReconstruction.Retardance (radians * (reference.value / w.value))
 
     type SourceEmission with
 
@@ -156,20 +175,107 @@ module ItemEvaluation =
         static member transmittingAt (rotation : Angle) : ElementOrientation =
             { rotation = rotation; incidence = IncidenceAngle.normal; branch = Propagation.BranchTransmitted }
 
-    /// What an element evaluates from, its parameters bound: a polarizer preset, which publishes no parameter, or an
-    /// empty slot, the calibration reference (spec 0050 S8.1; 001 §I).
+    /// What an element evaluates from, its parameters bound: a polarizer preset, which publishes no parameter, an
+    /// empty slot, the calibration reference, or an optical form with a value for each of its axes (spec 0050 S8.1;
+    /// 001 §I).
     type BoundOpticalElement =
         | BoundPolarizerPreset of PolarizerBehavior
         | BoundEmptySlot
+        | BoundOpticalForm of form : OpticalForm * values : ParameterValues
 
-        /// The element arm of the evaluator: a preset is its behaviour at the rotation, the matrix the run law takes, and
-        /// an empty slot the identity. Both only transmit, are achromatic and ignore the incidence (spec 0050 S8.1).
+        /// The form bound once the values hold each of its axes in range (spec 0050 S8.1).
+        static member ofOpticalForm (values : ParameterValues) (form : OpticalForm) : Result<BoundOpticalElement, ItemEvaluationError> =
+            values.checkedFor form.parameterAxes |> Result.map (fun held -> BoundOpticalForm (form, held))
+
+        /// The element arm of the evaluator: a preset is its behaviour at the rotation, the matrix the run law takes, an
+        /// empty slot the identity, and a form its Stokes–Mueller matrix at the rotation and λ (spec 0050 S8.1; 001 §I,
+        /// §N). Each only transmits and ignores the incidence.
         member this.muellerAt (orientation : ElementOrientation) (w : WaveLength) : Result<MuellerMatrix, ItemEvaluationError> =
+            let rotation = orientation.rotation
+
+            // Every result in order, or the first error: a black box's elements, a compound's components.
+            let sequenced (results : Result<'Item, ItemEvaluationError> list) : Result<'Item list, ItemEvaluationError> =
+                results
+                |> List.fold (fun held result -> held |> Result.bind (fun read -> result |> Result.map (fun item -> item :: read))) (Ok [])
+                |> Result.map List.rev
+
             match this, orientation.branch with
-            | BoundPolarizerPreset behavior, Propagation.BranchTransmitted ->
-                Ok (Propagation.behaviorMueller behavior orientation.rotation)
+            | BoundPolarizerPreset behavior, Propagation.BranchTransmitted -> Ok (Propagation.behaviorMueller behavior rotation)
             | BoundEmptySlot, Propagation.BranchTransmitted -> Ok Propagation.identityMueller
+            | BoundOpticalForm (RealPolarizerModel leakage, values), Propagation.BranchTransmitted ->
+                // The minor transmittance r against a major one of 1, so the defaults (r = 0) are the ideal LP.
+                let minorTransmittance : Result<ParameterValue, ItemEvaluationError> =
+                    match leakage with
+                    | ExtinctionRatioLeakage -> values.valueOf ParameterName.extinctionRatio
+                    | DiattenuationLeakage ->
+                        values.valueOf ParameterName.diattenuation
+                        |> Result.map (fun (ParameterValue d) -> ParameterValue ((1.0 - d) / (1.0 + d)))
+
+                minorTransmittance
+                |> Result.bind (fun (ParameterValue r) ->
+                    values.valueOf ParameterName.axisOffset
+                    |> Result.map (fun axisOffset ->
+                        let h = 0.5
+                        let root = sqrt r
+
+                        [ [ h * (1.0 + r); h * (1.0 - r); 0.0; 0.0 ]
+                          [ h * (1.0 - r); h * (1.0 + r); 0.0; 0.0 ]
+                          [ 0.0; 0.0; root; 0.0 ]
+                          [ 0.0; 0.0; 0.0; root ] ]
+                        |> RealMatrix4x4.create
+                        |> MuellerMatrix
+                        |> Propagation.rotateMueller (rotation + axisOffset.angle)))
+            | BoundOpticalForm (RetarderPlateModel dispersion, values), Propagation.BranchTransmitted ->
+                values.valueOf ParameterName.retardance
+                |> Result.bind (fun retardance ->
+                    values.valueOf ParameterName.fastAxisOffset
+                    |> Result.map (fun fastAxisOffset ->
+                        MuellerReconstruction.retarderMueller (rotation + fastAxisOffset.angle) (retardance.retardanceAt dispersion w)))
+            | BoundOpticalForm (BlackBoxMuellerModel normalisation, values), Propagation.BranchTransmitted ->
+                // Under `FifteenElementsAndScale`, m00 is 1 and the scale multiplies the whole matrix.
+                let scale : Result<ParameterValue, ItemEvaluationError> =
+                    match normalisation with
+                    | SixteenElementMueller -> Ok (ParameterValue 1.0)
+                    | FifteenElementsAndScale -> values.valueOf ParameterName.blackBoxScale
+                let elementOf (row : ParameterNameIndex) (column : ParameterNameIndex) : Result<ParameterValue, ItemEvaluationError> =
+                    match normalisation, row, column with
+                    | FifteenElementsAndScale, ParameterNameIndex 0, ParameterNameIndex 0 -> Ok (ParameterValue 1.0)
+                    | FifteenElementsAndScale, _, _
+                    | SixteenElementMueller, _, _ -> values.valueOf (ParameterName.muellerElement row column)
+                let indices : ParameterNameIndex list = [ 0 .. 3 ] |> List.map ParameterNameIndex
+                let elements : Result<ParameterValue list, ItemEvaluationError> =
+                    indices |> List.collect (fun row -> indices |> List.map (elementOf row)) |> sequenced
+
+                scale
+                |> Result.bind (fun (ParameterValue s) ->
+                    elements
+                    |> Result.map (fun held ->
+                        held
+                        |> List.map (fun (ParameterValue m) -> s * m)
+                        |> List.chunkBySize 4
+                        |> RealMatrix4x4.create
+                        |> MuellerMatrix
+                        |> Propagation.rotateMueller rotation))
+            | BoundOpticalForm (CompoundModel components, values), Propagation.BranchTransmitted ->
+                // Each component at rotation 0 and its own offset, in light order; a nested compound recurses here.
+                let atReference = ElementOrientation.transmittingAt Angle.zero
+
+                components
+                |> List.mapi (fun k part ->
+                    let position = ParameterNameIndex (k + 1)
+
+                    values.forComponent position part.form.parameterAxes
+                    |> Result.bind (fun componentValues ->
+                        let bound : BoundOpticalElement = BoundOpticalForm (part.form, componentValues)
+                        bound.muellerAt atReference w)
+                    |> Result.map (fun matrix ->
+                        let evaluated : MuellerComponent = { matrix = matrix; offset = part.offset }
+                        evaluated))
+                |> sequenced
+                |> Result.map (fun parts -> Propagation.rotateMueller rotation (Propagation.compoundMueller parts))
             | BoundPolarizerPreset _, Propagation.BranchReflected ->
                 Error (UnmodelledBranchErr "the reflected branch of a polarizer preset, which only transmits")
             | BoundEmptySlot, Propagation.BranchReflected ->
                 Error (UnmodelledBranchErr "the reflected branch of an empty slot, which only transmits")
+            | BoundOpticalForm _, Propagation.BranchReflected ->
+                Error (UnmodelledBranchErr "the reflected branch of an optical form, which only transmits")
