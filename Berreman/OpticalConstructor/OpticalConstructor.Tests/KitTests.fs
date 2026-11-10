@@ -386,3 +386,80 @@ module KitTests =
         Assert.Equal<DataAttachmentStatus>(AttachedDataChanged changedHash, attachment.statusAgainst (Some changedFile))
         Assert.Equal<DataAttachmentStatus>(AttachedDataMissing, attachment.statusAgainst None)
         Assert.Equal<ContentHash>(originalHash, attachment.contentHash)
+
+    [<Fact>]
+    let ``a setup name keeps its text, refuses a blank one and takes its file stem from the shared name rule`` () : unit =
+        match SetupName.tryCreate "CPL-(QZ#45-LR#45)-CPL" with
+        | Ok name ->
+            Assert.Equal<SetupName>(SetupName "CPL-(QZ#45-LR#45)-CPL", name)
+            Assert.Equal<string>("CPL-(QZ#45-LR#45)-CPL", name.value)
+            Assert.Equal<FileStem>(FileStem "CPL-(QZ#45-LR#45)-CPL", name.fileStem)
+        | Error error -> Assert.Fail(error.describe)
+
+        match SetupName.tryCreate "a: b/c" with
+        | Ok name ->
+            Assert.Equal<string>("a: b/c", name.value)
+            Assert.Equal<FileStem>(FileStem "a_ b_c", name.fileStem)
+            Assert.Equal<FileStem>(FileStem.ofText "a: b/c", name.fileStem)
+        | Error error -> Assert.Fail(error.describe)
+
+        for text in [ ""; "   " ] do
+            match SetupName.tryCreate text with
+            | Error (InvalidSetupNameErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail($"expected an invalid setup name: {error.describe}")
+            | Ok name -> Assert.Fail($"accepted a blank setup name: '{name.value}'")
+
+    [<Fact>]
+    let ``a setup takes the next free suffix of its name, and a table that is no setup yet takes the first free Setup n`` () : unit =
+        let bench = SetupName "Bench"
+        Assert.Equal<SetupName>(SetupName "Bench (3)", bench.nextFreeAmong [ SetupName "bench"; SetupName "Bench (2)" ])
+        Assert.Equal<SetupName>(SetupName "Bench", bench.nextFreeAmong [])
+        Assert.Equal<SetupName>(SetupName "a:b (2)", (SetupName "a:b").nextFreeAmong [ SetupName "a_b" ])
+
+        Assert.Equal<SetupName>(SetupName "Setup 3", SetupName.firstFree [ SetupName "Setup 1"; SetupName "setup 2" ])
+        Assert.Equal<SetupName>(SetupName "Setup 1", SetupName.firstFree [])
+
+    [<Fact>]
+    let ``a setup revision starts at one and counts up, and a reference names its setup and revision`` () : unit =
+        Assert.Equal<SetupRevision>(SetupRevision 1, SetupRevision.first)
+        Assert.Equal<SetupRevision>(SetupRevision 3, SetupRevision.first.next.next)
+
+        let reference : SetupReference =
+            {
+                name = SetupName "Bench"
+                revision = SetupRevision.first.next
+            }
+
+        Assert.Equal<string>("'Bench' revision 2", reference.describe)
+
+    [<Fact>]
+    let ``every setup error renders its condition and its payload`` () : unit =
+        let cases : (SetupError * string) list =
+            [
+                InvalidSetupNameErr "'   ': blank", "the setup name is not valid: '   ': blank"
+                DuplicateSetupNameErr "'bench' beside 'Bench'", "the kit already has a setup of that name: 'bench' beside 'Bench'"
+                UnknownSetupErr "'Missing bench'", "the kit has no such setup: 'Missing bench'"
+                UnknownSetupRevisionErr "'Bench' revision 7", "the setup has no such revision: 'Bench' revision 7"
+                UnknownSetupSlotErr "element 12", "the table has no such slot: element 12"
+                UnknownSlotItemErr "item QZ9", "the item is not available: item QZ9"
+                IncompatibleSlotItemErr "LP1 in a sample slot", "the item does not fit the slot: LP1 in a sample slot"
+            ]
+
+        for error, expected in cases do
+            Assert.Equal<string>(expected, error.describe)
+
+        for error, _ in cases do
+            let reason =
+                match error with
+                | InvalidSetupNameErr reason
+                | DuplicateSetupNameErr reason
+                | UnknownSetupErr reason
+                | UnknownSetupRevisionErr reason
+                | UnknownSetupSlotErr reason
+                | UnknownSlotItemErr reason
+                | IncompatibleSlotItemErr reason -> reason
+
+            Assert.Contains(reason, error.describe)
+
+        let descriptions = cases |> List.map (fun (error, _) -> error.describe)
+        Assert.Equal(7, descriptions |> List.distinct |> List.length)

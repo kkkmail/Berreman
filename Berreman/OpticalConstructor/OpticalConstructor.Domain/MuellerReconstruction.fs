@@ -567,9 +567,9 @@ module MuellerReconstruction =
         }
 
     /// The analyzer's physical azimuth for a raw dial reading — the reference `AnalyzerModel.physical_angle_deg`
-    /// (matrix_glue.py:152): `dialSign · (dial − zeroDial)`.
+    /// (matrix_glue.py:152): `dialSign · (dial − zeroDial)`, the rule `DialSign.physicalAngleOf` holds (spec 0050 S8.2).
     let physicalAngle (analyzer : AnalyzerModel) (dial : Angle) : Angle =
-        Angle (analyzer.dialSign.value * (dial.value - analyzer.zeroDial.value))
+        analyzer.dialSign.physicalAngleOf analyzer.zeroDial dial
 
     /// Row 0 of the analyzer's Mueller matrix at a raw dial reading — the reference `AnalyzerModel.base_row`
     /// (matrix_glue.py:155). The physical azimuth β = `physicalAngle`; a linear analyzer is

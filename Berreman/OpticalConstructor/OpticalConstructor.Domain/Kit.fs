@@ -562,7 +562,7 @@ module Kit =
             | rule :: _ -> Error (InvalidParameterStateErr $"{this.name.value}: {rule}")
 
     /// How an item is mounted: on a dial, whose raw reading maps to the physical angle as `sign · (reading − dialZero)`
-    /// (`MuellerReconstruction.physicalAngle`), or fixed, read off no dial (spec 0050 S7.1; 001 §I).
+    /// (`DialSign.physicalAngleOf`), or fixed, read off no dial (spec 0050 S7.1, S8.2; 001 §I).
     type ItemDial =
         | DialMounted of DialSign
         | FixedMounting
@@ -800,23 +800,33 @@ module Kit =
                 item = this
             }
 
-    type ItemLabel with
+    type FileStem with
 
-        /// The first of the label, `<label> (2)`, `<label> (3)`, … whose file stem no taken label has, ignoring case,
-        /// because an item's file is named by its label (spec 0050 S7.2; `KitDataFolder.copyTargetFor`).
-        member this.nextFreeAmong (taken : ItemLabel list) : ItemLabel =
-            let isTaken (candidate : ItemLabel) : bool =
-                taken
-                |> List.exists (fun held -> String.Equals(held.fileStem.value, candidate.fileStem.value, StringComparison.OrdinalIgnoreCase))
+        /// The first of `<text>`, `<text> (2)`, `<text> (3)`, … whose stem no taken text's stem equals, ignoring case: the
+        /// one suffix sequence items and setups share. The taken are texts, not stems, as ELEV010 refuses a `string`
+        /// beside a `FileStem` (spec 0050 S7.2, S8.2; `KitDataFolder.copyTargetFor`).
+        static member firstFreeText (text : string) (taken : string list) : string =
+            let takenStems = taken |> List.map FileStem.ofText
 
-            let rec tryCandidate (suffix : int) : ItemLabel =
+            let isTaken (candidate : string) : bool =
+                let stem = FileStem.ofText candidate
+                takenStems |> List.exists (fun held -> String.Equals(held.value, stem.value, StringComparison.OrdinalIgnoreCase))
+
+            let rec tryCandidate (suffix : int) : string =
                 let candidate =
-                    if suffix = 1 then this
-                    else ItemLabel $"{this.value} ({suffix.ToString(CultureInfo.InvariantCulture)})"
+                    if suffix = 1 then text
+                    else $"{text} ({suffix.ToString(CultureInfo.InvariantCulture)})"
 
                 if isTaken candidate then tryCandidate (suffix + 1) else candidate
 
             tryCandidate 1
+
+    type ItemLabel with
+
+        /// The first free label by `FileStem.firstFreeText`, because an item's file is named by its label (spec 0050
+        /// S7.2, S8.2).
+        member this.nextFreeAmong (taken : ItemLabel list) : ItemLabel =
+            ItemLabel (FileStem.firstFreeText this.value (taken |> List.map (fun held -> held.value)))
 
     /// How a copied experiment's item comes into the target kit: as the kit's item of that id, bringing nothing, or
     /// added. Never stored, so it carries no wire tag (spec 0050 S7.2; 001 §H).
@@ -892,3 +902,75 @@ module Kit =
 
                     added @ [ relabelled ]) []
                 |> Ok
+
+    /// Why a setup, one of its revisions or slots, or the item a slot holds was refused, named in the reason (spec
+    /// 0050 S8.2; 001 §J).
+    type SetupError =
+        | InvalidSetupNameErr of reason : string
+        | DuplicateSetupNameErr of reason : string
+        | UnknownSetupErr of reason : string
+        | UnknownSetupRevisionErr of reason : string
+        | UnknownSetupSlotErr of reason : string
+        | UnknownSlotItemErr of reason : string
+        | IncompatibleSlotItemErr of reason : string
+
+        member this.describe : string =
+            match this with
+            | InvalidSetupNameErr reason -> $"the setup name is not valid: {reason}"
+            | DuplicateSetupNameErr reason -> $"the kit already has a setup of that name: {reason}"
+            | UnknownSetupErr reason -> $"the kit has no such setup: {reason}"
+            | UnknownSetupRevisionErr reason -> $"the setup has no such revision: {reason}"
+            | UnknownSetupSlotErr reason -> $"the table has no such slot: {reason}"
+            | UnknownSlotItemErr reason -> $"the item is not available: {reason}"
+            | IncompatibleSlotItemErr reason -> $"the item does not fit the slot: {reason}"
+
+    /// A setup's name, kept as given; its `<name>.setup-json` stem follows the shared name rule (spec 0050 S8.2;
+    /// 001 §A; .spec-md §3.11).
+    type SetupName =
+        | SetupName of string
+
+        member this.value : string = let (SetupName text) = this in text
+
+        static member tryCreate (text : string) : Result<SetupName, SetupError> =
+            if String.IsNullOrWhiteSpace text then
+                Error (InvalidSetupNameErr $"'{text}': a setup name must not be blank")
+            else
+                Ok (SetupName text)
+
+        member this.fileStem : FileStem = FileStem.ofText this.value
+
+        /// The first free name by `FileStem.firstFreeText`, because a setup's file is named by its name (spec 0050 S8.2).
+        member this.nextFreeAmong (taken : SetupName list) : SetupName =
+            SetupName (FileStem.firstFreeText this.value (taken |> List.map (fun held -> held.value)))
+
+        /// The first of `Setup 1`, `Setup 2`, … whose file stem no taken name has, ignoring case: the name a table
+        /// takes when it becomes a setup without one (spec 0050 S8.2).
+        static member firstFree (taken : SetupName list) : SetupName =
+            let takenTexts = taken |> List.map (fun held -> held.value)
+
+            // A text is free exactly when the shared sequence keeps it as given, so the stem test stays in one place.
+            let rec tryNumber (number : int) : SetupName =
+                let candidate = $"Setup {number.ToString(CultureInfo.InvariantCulture)}"
+                if FileStem.firstFreeText candidate takenTexts = candidate then SetupName candidate else tryNumber (number + 1)
+
+            tryNumber 1
+
+    /// The revision a setup file carries, counting up from one (spec 0050 S8.2; 001 §J).
+    type SetupRevision =
+        | SetupRevision of int
+
+        member this.value : int = let (SetupRevision revision) = this in revision
+
+        static member first : SetupRevision = SetupRevision 1
+
+        member this.next : SetupRevision = SetupRevision (this.value + 1)
+
+    /// One revision of one setup, as an experiment references it (spec 0050 S8.2; 001 §J).
+    type SetupReference =
+        {
+            name : SetupName
+            revision : SetupRevision
+        }
+
+        member this.describe : string =
+            $"'{this.name.value}' revision {this.revision.value.ToString(CultureInfo.InvariantCulture)}"

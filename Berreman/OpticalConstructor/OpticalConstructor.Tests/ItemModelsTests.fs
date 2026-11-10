@@ -6,6 +6,7 @@ open Berreman.Constants
 open Berreman.Geometry
 open Berreman.Fields
 open Berreman.Media
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
@@ -32,6 +33,30 @@ module ItemModelsTests =
         Assert.Equal("c2.retardance", (ParameterName "c2.retardance").value)
         Assert.Equal<float>(1.0, DialPositive.value)
         Assert.Equal<float>(-1.0, DialNegative.value)
+
+    [<Fact>]
+    let ``a dial maps a raw reading to the physical angle by its sign and zero, and back`` () : unit =
+        let zero = Angle.degree 10.0<deg>
+        let reading = Angle.degree 40.0<deg>
+
+        Assert.Equal((Angle.degree 30.0<deg>).value, (DialPositive.physicalAngleOf zero reading).value, 1e-12)
+        Assert.Equal((Angle.degree (-30.0<deg>)).value, (DialNegative.physicalAngleOf zero reading).value, 1e-12)
+
+        for sign in [ DialPositive; DialNegative ] do
+            for angle in [ Angle.degree (-30.0<deg>); Angle.zero; Angle.degree 45.0<deg>; Angle.degree 200.0<deg> ] do
+                Assert.Equal(angle.value, (sign.readingOf zero (sign.physicalAngleOf zero angle)).value, 1e-12)
+                Assert.Equal(angle.value, (sign.physicalAngleOf zero (sign.readingOf zero angle)).value, 1e-12)
+
+        let analyzer : MuellerReconstruction.AnalyzerModel =
+            {
+                kind = IdealLinear
+                zeroDial = zero
+                dialSign = DialNegative
+                thetaRelOpt = None
+                retardanceOpt = None
+            }
+
+        Assert.Equal<Angle>(DialNegative.physicalAngleOf zero reading, MuellerReconstruction.physicalAngle analyzer reading)
 
     /// One member per published name, so the evaluator reads under the very name a model publishes (spec 0050 S8.1).
     [<Fact>]

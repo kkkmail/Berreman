@@ -117,6 +117,16 @@ module ItemModels =
             | DialPositive -> 1.0
             | DialNegative -> -1.0
 
+        /// The physical angle a raw dial reading gives, `sign · (reading − zero)`: the one dial rule (spec 0050 S8.2;
+        /// 001 §I).
+        member this.physicalAngleOf (zero : Angle) (reading : Angle) : Angle =
+            Angle (this.value * (reading.value - zero.value))
+
+        /// The raw dial reading that gives `angle`, `zero + sign · angle`; the sign is ±1, so it inverts
+        /// `physicalAngleOf` (spec 0050 S8.2).
+        member this.readingOf (zero : Angle) (angle : Angle) : Angle =
+            Angle (zero.value + this.value * angle.value)
+
     /// One parameter's number in its kind's unit (spec 0050 001 §I).
     type ParameterValue =
         | ParameterValue of double
