@@ -1118,3 +1118,77 @@ module KitWindowTests =
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
                     Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window ConstructorUiId.flowSetupsStep))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    /// The add form's offer of the shipped circular polarizer model, a standalone item model (spec 0050 S7.2).
+    let private circularOffer : ConstructorUiId =
+        ConstructorUiId.addItemOffer (LibraryModelChoice (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.circularPolarizerModelId))
+
+    /// Presses the box carrying `id` at the centre of its part inside the window and every viewer around it, where a user
+    /// reaches it: in the headless font an offer's caption makes its box wider than the window.
+    let private pressShownPart (window : Window) (id : ConstructorUiId) : unit =
+        let pressed = Assert.IsType<Border>(controlById window id)
+        Assert.True(pressed.IsEffectivelyVisible, $"{id.value} must be visible")
+        pressed.BringIntoView() |> ignore
+        Dispatcher.UIThread.RunJobs()
+        let shown =
+            pressed.GetVisualAncestors()
+            |> Seq.choose (function :? ScrollViewer as viewer -> Some viewer | _ -> None)
+            |> Seq.fold (fun (part : Rect) viewer -> part.Intersect(windowRectOf window viewer)) (Rect window.ClientSize)
+            |> fun part -> part.Intersect(windowRectOf window pressed)
+        Assert.True(shown.Width > 0.0 && shown.Height > 0.0, $"{id.value} must show a part inside the window")
+        window.MouseDown(shown.Center, MouseButton.Left, RawInputModifiers.None)
+        Dispatcher.UIThread.RunJobs()
+        window.MouseUp(shown.Center, MouseButton.Left, RawInputModifiers.None)
+        Dispatcher.UIThread.RunJobs()
+
+    /// CPL1's row as the Items panel names it: the model's caption resolves through the window's item models.
+    let private cpl1RowCaption : string = "CPL1 — Circular polarizer (linear polarizer and retarder) v1 — revision 1"
+
+    /// The Items panel shows the row of `item`, under its model's caption.
+    let private assertItemRowShown (window : Window) (item : Item) : unit =
+        let id = ConstructorUiId.kitItemRow item.id
+        Assert.True((controlById window id).IsEffectivelyVisible, $"{id.value} must show in the Items panel")
+        Assert.Equal(cpl1RowCaption, boxLabelOf window id)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: an item added in a constructor window is a kit file with its model's snapshot, and the window reopened lists it`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            let kitRoot = opened.folder.value.value
+            let window = MainConstructorWindow(ctx, opened)
+            let cpl1 =
+                try
+                    window.Show()
+                    Dispatcher.UIThread.RunJobs()
+                    pressBox window ConstructorUiId.flowItemsStep
+                    pressBox window ConstructorUiId.addItemButton
+                    pressShownPart window circularOffer
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window circularOffer)
+                    let field = Assert.IsType<TextBox>(controlById window ConstructorUiId.newItemLabelField)
+                    field.Text <- "CPL1"
+                    Dispatcher.UIThread.RunJobs()
+                    pressBox window ConstructorUiId.addItemConfirmButton
+                    // Spec 0050 S7.2, step 239: the window mints with the system provider, so the kit names CPL1's id.
+                    let added : Item = Assert.Single(opened.library.kit.proxy.readItems () |> SceneTestFixture.kitSuccess)
+                    Assert.Equal<ItemLabel>(ItemLabel "CPL1", added.label)
+                    assertItemRowShown window added
+                    added
+                finally
+                    window.Close()
+                    Dispatcher.UIThread.RunJobs()
+            Assert.True(File.Exists(Path.Combine(kitRoot, "CPL1.item-json")), "Add must leave CPL1.item-json in the kit's folder")
+            Assert.True(
+                File.Exists(Path.Combine(kitRoot, "library", "33486eec-836a-4cbf-ac79-e3f14439ad4b@v1.item-model-json")),
+                "Add must leave the circular polarizer model's snapshot in the kit's library folder")
+            let reopened = MainConstructorWindow(ctx, openedAt opened.folder ReadWriteKitAccess ctx)
+            try
+                reopened.Show()
+                Dispatcher.UIThread.RunJobs()
+                Assert.Equal<Control option>(None, tryControlById reopened (ConstructorUiId.kitItemRow cpl1.id))
+                pressBox reopened ConstructorUiId.flowItemsStep
+                assertItemRowShown reopened cpl1
+            finally
+                reopened.Close()
+                Dispatcher.UIThread.RunJobs())

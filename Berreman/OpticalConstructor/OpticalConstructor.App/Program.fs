@@ -117,18 +117,25 @@ module private ConstructorScene =
         window.Activated.Add(fun _ ->
             hostDispatch.Value (TableAndElementRotationView.CheckKitChanges TableAndElementRotationView.KitCheckOnActivation))
 
-    let withAppContext (context : AppContext) (model : TableAndElementRotationView.TableAndElementRotationModel) : TableAndElementRotationView.TableAndElementRotationModel =
+    let withAppContext
+        (context : AppContext)
+        (opened : OpenedKit)
+        (model : TableAndElementRotationView.TableAndElementRotationModel)
+        : TableAndElementRotationView.TableAndElementRotationModel =
         {
             model with
                 sources = context.sources
                 libraryBackups = context.libraryBackups
                 catalogueImports = context.catalogueImports
+                // Spec 0050 S7.2; 001 §E: the kit's snapshots answer for models this machine's library lacks.
+                itemModels = context.itemModels.overlaidWith opened.overlay
                 experimentExport = context.experimentExport
         }
 
 /// Works in the kit the start screen opened, with its snapshot overlay, and releases it on close (spec 0050 S4.3, S5.2).
 /// It runs the kit window, titled by the kit, its access, its folder and the constructor (spec 0050 S5.3).
 /// Its kit bar sends and copies through the real dialogs (spec 0050 S6).
+/// Its Items panel reads the app's item models (spec 0050 S7.2).
 type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     let stores = ConstructorScene.storesOf context opened
@@ -136,7 +143,7 @@ type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     do
         let model =
             TableAndElementRotationView.initMainWithKit stores.library context.experiments stores.materials stores.samples stores.categories opened.library.kit
-            |> ConstructorScene.withAppContext context
+            |> ConstructorScene.withAppContext context opened
         ConstructorScene.mount this context opened (fun () -> model.loadKit opened)
 
     /// The kit-overlaid stores supplied to this constructor's scene (spec 0050 S4.3).
@@ -145,13 +152,14 @@ type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
 /// Opens the inverse seed in the kit the start screen opened and releases it on close (spec 0050 S4.3, S5.2).
 /// It runs the kit window, titled by the kit, its access, its folder and the constructor (spec 0050 S5.3).
 /// Its kit bar sends and copies through the real dialogs (spec 0050 S6).
+/// Its Items panel reads the app's item models (spec 0050 S7.2).
 type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     do
         let stores = ConstructorScene.storesOf context opened
         let model =
             TableAndElementRotationView.initInverseWithKit stores.library context.experiments stores.materials stores.samples stores.categories opened.library.kit
-            |> ConstructorScene.withAppContext context
+            |> ConstructorScene.withAppContext context opened
         ConstructorScene.mount this context opened (fun () -> model.loadKit opened)
 
 module private KitConstructorWindows =
