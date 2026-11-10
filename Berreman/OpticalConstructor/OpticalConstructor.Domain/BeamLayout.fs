@@ -503,6 +503,39 @@ module BeamLayout =
             | false -> None)
         |> List.distinct
 
+    /// One detector an experiment captures and the branch it captures (spec 0050 S8.1).
+    type DetectorCapture =
+        {
+            detector : Library.ElementId
+            branch : BeamTree.BeamBranch
+        }
+
+    /// Spec 0050 S8.1: each LIT detector of `detectors` that sees `varied` captures the branch its light leaves the
+    /// LAST of `objects` on its path by, in scene order; with no object on its path, a run is a pass-through, so it
+    /// captures only light `varied` transmits (the no-sample rule).
+    let detectorCaptures
+        (scene : SceneLayout)
+        (detectors : Library.ElementId list)
+        (varied : Library.ElementId)
+        (objects : Library.ElementId list)
+        : DetectorCapture list =
+        scene.elements
+        |> List.choose (fun p ->
+            match p.light with
+            | Lit when List.contains p.id detectors ->
+                match p.path |> List.tryFind (fun s -> s.element = varied) with
+                | Some variedStep ->
+                    let capturedOpt =
+                        match p.path |> List.filter (fun s -> List.contains s.element objects) |> List.tryLast with
+                        | Some lastObject -> Some lastObject.branch
+                        | None ->
+                            match variedStep.branch with
+                            | BeamTree.TransmittedBeam -> Some BeamTree.TransmittedBeam
+                            | BeamTree.ReflectedBeam -> None
+                    capturedOpt |> Option.map (fun branch -> { detector = p.id; branch = branch })
+                | None -> None
+            | Lit | Unlit -> None)
+
     /// The capture modes the detected branches allow: a transmitted detector offers T, a reflected one R,
     /// both offer T, R and Both; none offers nothing.
     let capturesFor (branches : BeamTree.BeamBranch list) : Experiments.MeasurementMode list =

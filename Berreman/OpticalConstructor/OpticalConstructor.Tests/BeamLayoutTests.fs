@@ -403,6 +403,48 @@ module BeamLayoutTests =
         // No detector ⇒ nothing.
         Assert.Empty(capturesOf [ el "src" LightSource -1.0; el "s" Sample 0.0 ] "s")
 
+    // --- each detector's capture, decided per object (spec 0050 S8.1) ------------------------------
+
+    [<Fact>]
+    let ``each detector captures the branch its light leaves the last object by`` () =
+        let elements =
+            [ el "src" LightSource -1.0
+              tilted 30.0 (el "s1" Sample 0.0)
+              tilted 30.0 (el "s2" Sample 0.5)
+              el "dT" Detector 1.0
+              onReflectedOf "s2" (el "dR2" Detector 0.9)
+              onReflectedOf "s1" (el "dR1" Detector 0.4) ]
+        let scene = layout elements
+        let src = Library.ElementId "src"
+        let s1 = Library.ElementId "s1"
+        let s2 = Library.ElementId "s2"
+        let dT = Library.ElementId "dT"
+        let dR2 = Library.ElementId "dR2"
+        let dR1 = Library.ElementId "dR1"
+        Assert.Equal<DetectorCapture list>(
+            [ { detector = dT; branch = BeamTree.TransmittedBeam }
+              { detector = dR2; branch = BeamTree.ReflectedBeam }
+              { detector = dR1; branch = BeamTree.ReflectedBeam } ],
+            detectorCaptures scene [ dT; dR2; dR1 ] src [ s1; s2 ])
+        // With `s1` the only object, `dR2`'s light leaves it by T: `s2` is no object, so it decides nothing.
+        Assert.Equal<DetectorCapture list>(
+            [ { detector = dT; branch = BeamTree.TransmittedBeam }
+              { detector = dR2; branch = BeamTree.TransmittedBeam }
+              { detector = dR1; branch = BeamTree.ReflectedBeam } ],
+            detectorCaptures scene [ dT; dR2; dR1 ] src [ s1 ])
+
+    [<Fact>]
+    let ``a detector whose path holds no object captures only light the varied element transmits`` () =
+        let scene = layout [ el "src" LightSource -1.0; tilted 45.0 (el "m" FlatMirror 0.0); el "d" Detector 0.5; el "dUnlit" Detector 1.0 ]
+        let d = Library.ElementId "d"
+        let dUnlit = Library.ElementId "dUnlit"
+        Assert.Equal(Unlit, (placedOf "dUnlit" scene).light)
+        Assert.Equal<DetectorCapture list>(
+            [ { detector = d; branch = BeamTree.TransmittedBeam } ],
+            detectorCaptures scene [ d; dUnlit ] (Library.ElementId "src") [])
+        // The mirror leaves its light by its primary, reflected branch: with nothing to reflect, nothing is captured.
+        Assert.Empty(detectorCaptures scene [ d; dUnlit ] (Library.ElementId "m") [])
+
     [<Fact>]
     let ``the effective capture keeps an allowed request and otherwise takes the best the detectors allow`` () =
         let all = [ Experiments.CaptureTransmitted; Experiments.CaptureReflected; Experiments.CaptureBoth ]
