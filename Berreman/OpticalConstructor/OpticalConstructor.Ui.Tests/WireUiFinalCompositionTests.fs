@@ -103,7 +103,7 @@ module WireUiFinalCompositionTests =
             showAssertClose (LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok settled,
                 fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner)))
             for mode in [ TableAndElementRotationView.ForwardConstructor; TableAndElementRotationView.InverseConstructor ] do
-                showAssertClose (KitStartWindow(ctx, mode, (fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner)), (fun _ _ -> ())))
+                showAssertClose (KitStartWindow(ctx, mode, (fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner)), (fun _ -> KitArchive.KitZipPicker.none), (fun _ _ -> ())))
             showAssertClose (MainConstructorWindow(ctx, TestAppScope.openedKitIn owner ctx.catalogueImports))
             showAssertClose (InverseConstructorWindow(ctx, TestAppScope.openedKitIn owner ctx.catalogueImports)))
 

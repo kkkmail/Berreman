@@ -2,6 +2,7 @@ namespace OpticalConstructor.Ui.Tests
 
 open System
 open System.IO
+open System.IO.Compression
 open Avalonia
 open Avalonia.Automation
 open Avalonia.Controls
@@ -14,6 +15,7 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 open Xunit
 open Softellect.Sys.Primitives
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
@@ -23,6 +25,8 @@ open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.KitArchiveStore
+open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.KitArchiveJob
@@ -629,7 +633,7 @@ module KitStartWindowTests =
 
                 for (mode, title) in titles do
                     let picker = TestAppScope.kitPickerOf (freshFolder ())
-                    let window = KitStartWindow(windowScope (), mode, (fun _ -> picker), (fun shownMode kit -> shown.Add (shownMode, kit)))
+                    let window = KitStartWindow(windowScope (), mode, (fun _ -> picker), (fun _ -> KitZipPicker.none), (fun shownMode kit -> shown.Add (shownMode, kit)))
                     window.Show()
                     Dispatcher.UIThread.RunJobs()
 
@@ -650,7 +654,7 @@ module KitStartWindowTests =
                 for mode in [ ForwardConstructor; InverseConstructor ] do
                     let folder = freshFolder ()
                     let context = windowScope ()
-                    let window = KitStartWindow(context, mode, (fun _ -> TestAppScope.kitPickerOf folder), (fun shownMode kit -> shown.Add (shownMode, kit)))
+                    let window = KitStartWindow(context, mode, (fun _ -> TestAppScope.kitPickerOf folder), (fun _ -> KitZipPicker.none), (fun shownMode kit -> shown.Add (shownMode, kit)))
                     let closings = ref 0
                     window.Closed.Add(fun _ -> closings.Value <- closings.Value + 1)
                     window.Show()
@@ -671,3 +675,102 @@ module KitStartWindowTests =
                     Assert.Equal(1, closings.Value)
                     Assert.False(window.IsVisible, "The start screen stays open after New kit.")
                     Assert.Equal<KitFolder list>([ folder ], (context.kitHistory.readHistory ()).entries |> List.map _.folder)))
+
+    /// The experiment `E1` the sent kit holds (spec 0050 S6).
+    let private sentExperiment : Experiments.Experiment =
+        {
+            id = Experiments.ExperimentId 1
+            setup = []
+            varied = None
+            measurement = Experiments.CaptureTransmitted
+            range = Experiments.VariableRange.forVariable Experiments.VaryR1
+            dataFileOpt = None
+            sourceWaveLengthOpt = None
+        }
+
+    /// A sent kit's kit file, and the zip it was sent into (spec 0050 S6).
+    type private SentKitZip =
+        {
+            sentKitFile : KitFile
+            sentZip : FileName
+        }
+
+    /// Makes `Optics QZ` under `root` through `openKitAt`, gives it `E1` and closes it, then sends it through the real
+    /// archive into `<root>/exports/Optics QZ.zip`, as Send kit… writes it (spec 0050 S6).
+    let private sentKitZipUnder (root : FolderName) (imports : CatalogueImportContext) : SentKitZip =
+        let folder = kitIn root "Optics QZ"
+
+        let kitFile =
+            match openKitAt folder ReadWriteKitAccess kitStartClock kitStartAuthor imports with
+            | Ok made ->
+                let written = made.library.kit.proxy.writeExperiment sentExperiment
+                let closed = made.library.kit.close ()
+
+                match written |> Result.bind (fun () -> closed) with
+                | Ok () -> made.library.kit.kitFile
+                | Error error -> failwith error.describe
+            | Error error -> failwith error.describe
+
+        let exports = root.combine (FolderName "exports")
+        Directory.CreateDirectory exports.value |> ignore
+        let zip = kitFile.name.zipFileName.combine exports
+
+        match KitArchiveProxy.create().sendKit kitFile folder zip KitArchiveObserver.unobserved with
+        | Ok (KitArchiveFinished _) -> { sentKitFile = kitFile; sentZip = zip }
+        | Ok KitArchiveCancelled -> failwith "the kit's send was cancelled"
+        | Error error -> failwith error.describe
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: Open kit from zip extracts a sent kit and opens it in the constructor of the screen's mode`` () : unit =
+        HeadlessSession.run (fun () ->
+            withKitStartRoot (fun root shown ->
+                let context = windowScope ()
+                let sent = sentKitZipUnder root context.catalogueImports
+                let target = KitFolder (FolderName (Path.Combine(root.value, "received", "k")))
+                let modes = ResizeArray<ConstructorMode> ()
+                let zipPicker : KitZipPicker =
+                    {
+                        KitZipPicker.none with
+                            pickZipToOpen = fun () -> async { return Some sent.sentZip }
+                    }
+                let showConstructor (shownMode : ConstructorMode) (kit : OpenedKit) : unit =
+                    modes.Add shownMode
+                    shown.Add kit
+                let window = KitStartWindow(context, ForwardConstructor, (fun _ -> TestAppScope.kitPickerOf target), (fun _ -> zipPicker), showConstructor)
+                let closings = ref 0
+                window.Closed.Add(fun _ -> closings.Value <- closings.Value + 1)
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                Assert.False(Directory.Exists target.value.value)
+
+                try
+                    pressAt window ConstructorUiId.openKitZipButton
+                    // The real host extracts on a worker and posts each file and the end to this thread (spec 0050 S6).
+                    let waited = Diagnostics.Stopwatch.StartNew ()
+
+                    while shown.Count = 0 && waited.Elapsed < TimeSpan.FromSeconds 10.0 do
+                        Dispatcher.UIThread.RunJobs()
+                finally
+                    if window.IsVisible then window.Close()
+
+                Assert.Equal<ConstructorMode list>([ ForwardConstructor ], List.ofSeq modes)
+                let kit = Assert.Single<OpenedKit>(shown)
+                Assert.Equal<KitFolder>(target, kit.folder)
+                Assert.Equal<KitAccess>(ReadWriteKitAccess, kit.library.kit.access)
+                Assert.Equal<KitFile>(sent.sentKitFile, kit.library.kit.kitFile)
+                Assert.Equal<Experiments.Experiment list>([ sentExperiment ], kit.experiments)
+
+                let sentNames =
+                    using (ZipFile.OpenRead sent.sentZip.value) (fun archive -> archive.Entries |> Seq.map _.FullName |> List.ofSeq)
+
+                Assert.Contains<string>(".kit-json", sentNames)
+
+                for name in sentNames do
+                    let received = Path.Combine(target.value.value, name)
+                    let isReceived = if name.EndsWith '/' then Directory.Exists received else File.Exists received
+                    Assert.True(isReceived, $"{name} was sent, but the received folder does not hold it.")
+
+                Assert.Equal(1, closings.Value)
+                Assert.False(window.IsVisible, "The start screen stays open after Open kit from zip.")
+                Assert.Equal<KitFolder list>([ target ], (context.kitHistory.readHistory ()).entries |> List.map _.folder)))

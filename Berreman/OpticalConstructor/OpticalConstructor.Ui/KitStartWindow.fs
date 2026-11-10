@@ -17,7 +17,8 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// The kit start screen over the app scope: a chosen kit opens in the constructor of `mode`, through the import dialog
 /// when its snapshot needs a decision, and the screen closes (001 §F, spec 0050 S5.2).
-type KitStartWindow(context : AppContext, mode : ConstructorMode, pickerFor : TopLevel -> KitFolderPicker, showConstructor : ConstructorMode -> OpenedKit -> unit) as this =
+/// Its folder and zip dialogs are `pickerFor` and `zipPickerFor` over this window (spec 0050 S6).
+type KitStartWindow(context : AppContext, mode : ConstructorMode, pickerFor : TopLevel -> KitFolderPicker, zipPickerFor : TopLevel -> KitZipPicker, showConstructor : ConstructorMode -> OpenedKit -> unit) as this =
     inherit HostWindow()
 
     // Captured by the init Cmd (Program.run is synchronous here), as LibraryWindow does: a failed re-binding after the
@@ -60,7 +61,7 @@ type KitStartWindow(context : AppContext, mode : ConstructorMode, pickerFor : To
                             this.Close()
                             KitWindowActivated
                         | NoKitWindowOpen -> NoKitWindowOpen
-                zipPicker = KitZipPicker.none
+                zipPicker = zipPickerFor this
                 archive = KitArchiveProxy.create ()
                 // Each callback reads `dispatch` when it is called, after the init Cmd set it (spec 0050 S6).
                 archiveJobs =

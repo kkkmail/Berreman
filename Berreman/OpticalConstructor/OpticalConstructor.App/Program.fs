@@ -26,6 +26,7 @@ open Elmish
 open Softellect.Sys.Logging
 
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -35,6 +36,7 @@ open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.AppShell
 open OpticalConstructor.Ui.ImportDialogView
+open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 
 /// Load the persisted user environment once at startup (J.6). `load` is total and
@@ -169,7 +171,8 @@ module private KitConstructorWindows =
 
 /// Main and Inverse open the kit start screen of their mode; Materials and Library open over the one app scope, sharing
 /// editor-window launchers. A library-open failure disables every surface action, never the footer's Data locations link
-/// (spec 0038 step 045; spec 0050 S2.4, S5.2, S5.3).
+/// (spec 0038 step 045; spec 0050 S2.4, S5.2, S5.3). A start screen's Open kit from zip… dialog starts in the exports
+/// folder, where Send kit… writes (spec 0050 S6).
 type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, opened : Result<AppContext, StorageError>, pickerFor : TopLevel -> KitFolderPicker) as this =
     inherit Window()
 
@@ -217,14 +220,15 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
                 button
             // Spec 0038 step 045: share the constructor strip's single-instance window registry.
             let launchers = TableAndElementRotationView.EditorLaunchers.defaults
+            let zipPickerFor (owner : TopLevel) : KitZipPicker = KitZipPicker.ofWindow owner locations.exportsFolder
             let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
             panel.Children.Add title
             let mainButton =
                 surfaceButton ConstructorUiId.openMainButton "Main" (fun context ->
-                    KitStartWindow(context, TableAndElementRotationView.ForwardConstructor, pickerFor, KitConstructorWindows.showConstructorIn context).Show())
+                    KitStartWindow(context, TableAndElementRotationView.ForwardConstructor, pickerFor, zipPickerFor, KitConstructorWindows.showConstructorIn context).Show())
             let inverseButton =
                 surfaceButton ConstructorUiId.openInverseButton "Inverse" (fun context ->
-                    KitStartWindow(context, TableAndElementRotationView.InverseConstructor, pickerFor, KitConstructorWindows.showConstructorIn context).Show())
+                    KitStartWindow(context, TableAndElementRotationView.InverseConstructor, pickerFor, zipPickerFor, KitConstructorWindows.showConstructorIn context).Show())
             let materialsButton =
                 surfaceButton ConstructorUiId.openMaterialsButton "Materials" (fun context ->
                     launchers.openMaterialsWindow context.materials context.categories context.catalogueImports)

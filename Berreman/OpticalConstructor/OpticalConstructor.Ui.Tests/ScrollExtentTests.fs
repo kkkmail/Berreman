@@ -267,7 +267,7 @@ module ScrollExtentTests =
         let context = { TestAppScope.freshAppContext owner with kitHistory = fortyKitHistory () }
         let picker = TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner)
         assertReachable "KitStart" (fun () ->
-            KitStartWindow(context, ForwardConstructor, (fun _ -> picker), (fun _ _ -> ())))
+            KitStartWindow(context, ForwardConstructor, (fun _ -> picker), (fun _ -> KitArchive.KitZipPicker.none), (fun _ _ -> ())))
 
     /// The tallest Experiments bay under the kit bar at its tallest: a read-only kit with a folder, so its caption is
     /// longest and Show in Explorer is offered, a running send, an open copy source of forty experiments, all chosen,
