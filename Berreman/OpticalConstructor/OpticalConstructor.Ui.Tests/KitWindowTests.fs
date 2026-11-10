@@ -647,6 +647,30 @@ module KitWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
+    let ``a constructor window's kit bar offers Send kit, and Copy experiments only to a kit opened read-write`` () : unit =
+        HeadlessSession.run (fun () ->
+            // Spec 0050 S5.3, S6: neither button is pressed, because a real window's dialogs are the system's.
+            let ctx = TestAppScope.freshAppContext owner
+            let assertKitBar (opened : OpenedKit) (expected : ControlAvailability) : unit =
+                let window = MainConstructorWindow(ctx, opened)
+                try
+                    window.Show()
+                    Dispatcher.UIThread.RunJobs()
+                    Assert.Equal("Send kit…", boxLabelOf window ConstructorUiId.sendKitButton)
+                    match expected with
+                    | ControlOffered ->
+                        Assert.Equal("Copy experiments from another kit…", boxLabelOf window ConstructorUiId.kitCopyExperimentsButton)
+                    | ControlWithheld ->
+                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyExperimentsButton)
+                finally
+                    window.Close()
+                    Dispatcher.UIThread.RunJobs()
+            let readWrite = TestAppScope.openedKitIn owner ctx.catalogueImports
+            assertKitBar readWrite ControlOffered
+            assertKitBar (openedAt readWrite.folder ReadOnlyKitAccess ctx) ControlWithheld)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
     let ``pressing Copy experiments, a toggle and Copy brings the experiment into the kit`` () : unit =
         HeadlessSession.run (fun () ->
             let ctx = TestAppScope.freshAppContext owner

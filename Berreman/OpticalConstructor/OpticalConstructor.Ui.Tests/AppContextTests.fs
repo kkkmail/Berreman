@@ -240,6 +240,11 @@ module AppContextTests =
         Assert.Equal(WorkbenchSettings.defaults, context.settings)
 
     [<Fact>]
+    let ``the app scope carries the locations it was composed over`` () : unit =
+        let context = TestAppScope.freshAppContext owner
+        Assert.Equal(TestAppScope.testLocations owner, context.locations)
+
+    [<Fact>]
     let ``the app's import context suggests the configured catalogues folder for exports`` () : unit =
         let locations = TestAppScope.testLocations owner
         let context = TestAppScope.freshAppContext owner

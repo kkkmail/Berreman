@@ -33,6 +33,7 @@ open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.KitArchiveStore
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.AppShell
 open OpticalConstructor.Ui.ImportDialogView
@@ -65,9 +66,10 @@ module private ConstructorScene =
             }
         stores.overlaidWith opened.overlay
 
-    /// Runs the kit window over `seed`: the kit bar above the workbench, the system explorer and this window's close
-    /// as its Kit menu's shell, and an outside-change check of the kit on every activation (spec 0050 S5.3).
-    let mount (window : HostWindow) (opened : OpenedKit) (seed : unit -> TableAndElementRotationView.TableAndElementRotationModel) : unit =
+    /// Runs the kit window over `seed`: the kit bar above the workbench, and an outside-change check of the kit on every
+    /// activation (spec 0050 S5.3). Its Kit menu's shell is the system explorer, this window's close, the real archive on
+    /// UI-thread jobs, and this window's zip and kit dialogs starting in `context`'s exports and kits folders (spec 0050 S6).
+    let mount (window : HostWindow) (context : AppContext) (opened : OpenedKit) (seed : unit -> TableAndElementRotationView.TableAndElementRotationModel) : unit =
         window.Width <- TableAndElementRotationView.tableAndElementRotationCanvasWidth
         window.Height <- TableAndElementRotationView.tableAndElementRotationCanvasHeight + 210.0
         // Spec 0046: never larger than the screen it opens on — on a laptop the design height can exceed
@@ -84,6 +86,13 @@ module private ConstructorScene =
                 TableAndElementRotationView.KitWindowShell.inert with
                     explorer = ExplorerProxy.system
                     requestClose = window.Close
+                    zipPicker = KitZipPicker.ofWindow window context.locations.exportsFolder
+                    archive = KitArchiveProxy.create ()
+                    archiveJobs =
+                        KitArchiveJobHost.onUiThread
+                            (fun progress -> hostDispatch.Value (TableAndElementRotationView.SendKitProgressed progress))
+                            (fun ended -> hostDispatch.Value (TableAndElementRotationView.SendKitEnded ended))
+                    kitPicker = KitFolderPicker.ofWindow window context.locations.kitsFolder
             }
         let init () : TableAndElementRotationView.TableAndElementRotationModel * Cmd<TableAndElementRotationView.TableAndElementRotationMsg> =
             let seeded = seed ()
@@ -119,6 +128,7 @@ module private ConstructorScene =
 
 /// Works in the kit the start screen opened, with its snapshot overlay, and releases it on close (spec 0050 S4.3, S5.2).
 /// It runs the kit window, titled by the kit, its access, its folder and the constructor (spec 0050 S5.3).
+/// Its kit bar sends and copies through the real dialogs (spec 0050 S6).
 type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     let stores = ConstructorScene.storesOf context opened
@@ -127,13 +137,14 @@ type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
         let model =
             TableAndElementRotationView.initMainWithKit stores.library context.experiments stores.materials stores.samples stores.categories opened.library.kit
             |> ConstructorScene.withAppContext context
-        ConstructorScene.mount this opened (fun () -> model.loadKit opened)
+        ConstructorScene.mount this context opened (fun () -> model.loadKit opened)
 
     /// The kit-overlaid stores supplied to this constructor's scene (spec 0050 S4.3).
     member _.sessionLibraryStores : KitLibraryStores = stores
 
 /// Opens the inverse seed in the kit the start screen opened and releases it on close (spec 0050 S4.3, S5.2).
 /// It runs the kit window, titled by the kit, its access, its folder and the constructor (spec 0050 S5.3).
+/// Its kit bar sends and copies through the real dialogs (spec 0050 S6).
 type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     do
@@ -141,7 +152,7 @@ type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this 
         let model =
             TableAndElementRotationView.initInverseWithKit stores.library context.experiments stores.materials stores.samples stores.categories opened.library.kit
             |> ConstructorScene.withAppContext context
-        ConstructorScene.mount this opened (fun () -> model.loadKit opened)
+        ConstructorScene.mount this context opened (fun () -> model.loadKit opened)
 
 module private KitConstructorWindows =
     /// Opens the constructor window of `mode` over the kit the start screen opened, registered under the kit's folder

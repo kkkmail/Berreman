@@ -23,7 +23,7 @@ open OpticalConstructor.Storage.SampleDatabaseStore
 open OpticalConstructor.Storage.SourceDatabaseStore
 open Softellect.Sys.Logging
 
-/// Shares library database stores, catalogue imports, experiment templates, exports, settings and the kit history across windows.
+/// Shares library database stores, catalogue imports, experiment templates, exports, settings, locations and the kit history across windows.
 /// Context identity is by reference; database identity comes from its configured connection.
 [<ReferenceEquality>]
 type AppContext =
@@ -56,6 +56,8 @@ type AppContext =
         /// window-policy / quick-pick / tree / bucketing fields from HERE, never from
         /// the provider.
         settings : WorkbenchSettings
+        /// The locations the app scope was composed over, where its windows' dialogs start (spec 0050 §3.9, S6).
+        locations : DataLocations
         /// The kit history the start screen lists and bumps, in the per-user preferences (001 §F, spec 0050 S5.2).
         kitHistory : KitHistoryProxy
     }
@@ -98,6 +100,7 @@ type AppContext =
                     locations.exportsFolder
                     (fun () -> OpticalConstructor.Storage.ExperimentExportFile.ExportTime System.DateTime.Now)
             settings = settings
+            locations = locations
             kitHistory = KitHistoryProxy.create locations.preferencesFolder
         }
 
