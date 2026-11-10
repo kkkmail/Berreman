@@ -130,6 +130,7 @@
              drawn ray segments, the light paths, and what the detectors let an experiment capture.
              After Experiments.fs (MeasurementMode) and before Scene.fs (which persists BeamHost). -->
         <Compile Include="BeamLayout.fs" />
+        <Compile Include="Setups.fs" />
         <!-- Spec 0038 Part H (step 021): the versioned in-memory MATERIAL store behind the
              registered MaterialProxy write-seam (STORE_XDUO_0001). The MaterialProxy record
              stays re-typed in place in MaterialLibrary.fs; its createInMemory augmentation
