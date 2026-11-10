@@ -117,6 +117,7 @@
         <Compile Include="KitArchiveJob.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="KitStartView.fs" />
+        <Compile Include="ItemsPanelView.fs" />
         <Compile Include="KitWindowView.fs" />
         <Compile Include="DataLocationsView.fs" />
         <!-- Spec 0038 Part C (step 006): the ONE app-scope composition record — the

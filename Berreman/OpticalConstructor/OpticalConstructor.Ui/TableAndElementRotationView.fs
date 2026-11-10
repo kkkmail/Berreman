@@ -1982,6 +1982,19 @@ let private withKitContent
         loaded with experimentDataStatus = statuses
     }
 
+/// An item's model as the window's stores answer it: the stored version with the bound preset's or sample's caption, or
+/// the missing-model condition when a store answers `None` or an error (spec 0050 S7.2).
+type private ItemModelLookup =
+    | HeldItemModelLookup of model : ItemModels.ItemModelVersion * boundOpt : ControlCaption option
+    | MissingItemModelLookup
+
+    /// `<name> v<n>`, after the bound entry's caption, or `(model not in the library)` (spec 0050 S7.2).
+    member this.caption : ControlCaption =
+        match this with
+        | HeldItemModelLookup (held, None) -> ControlCaption $"{held.entry.name.value} v{held.version.value}"
+        | HeldItemModelLookup (held, Some bound) -> ControlCaption $"{bound.value} ({held.entry.name.value} v{held.version.value})"
+        | MissingItemModelLookup -> ControlCaption "(model not in the library)"
+
 type TableAndElementRotationModel with
 
     /// Works in the opened kit, loads its items and rechecks every recorded data attachment (spec 0050 S4.3, S6; 001 §E).
@@ -2019,6 +2032,30 @@ type TableAndElementRotationModel with
         match model.kit.access with
         | ReadWriteKitAccess -> ControlOffered
         | ReadOnlyKitAccess -> ControlWithheld
+
+    /// The name the window's stores give the item's model: its stored version through `itemModels`, after a preset's
+    /// entry name or a sample's `<name> v<n>`; `(model not in the library)` when a store answers `None` or an error
+    /// (spec 0050 S7.2).
+    member model.itemModelCaption (item : Item) : ControlCaption =
+        let held (versionId : ItemModels.ItemModelVersionId) (boundOpt : ControlCaption option) : ItemModelLookup =
+            match model.itemModels.resolveItemModelVersion versionId with
+            | Ok (Some version) -> HeldItemModelLookup (version, boundOpt)
+            | Ok None
+            | Error _ -> MissingItemModelLookup
+        let lookup : ItemModelLookup =
+            match item.model with
+            | ItemModelVersionInstance versionId -> held versionId None
+            | PresetInstance (versionId, preset) ->
+                match model.library.tryGetEntry preset with
+                | Ok (Some entry) -> held versionId (Some entry.entryName.caption)
+                | Ok None
+                | Error _ -> MissingItemModelLookup
+            | SampleInstance (versionId, sampleVersion) ->
+                match model.samples.resolveVersion sampleVersion with
+                | Ok (Some sample) -> held versionId (Some (ControlCaption $"{sample.name.value} v{sampleVersion.version.value}"))
+                | Ok None
+                | Error _ -> MissingItemModelLookup
+        lookup.caption
 
 /// Runs a kit write only while the kit takes writes; a read-only kit answers why and writes nothing (spec 0050 S5.3).
 let private guardKitWrite (model : TableAndElementRotationModel) (write : unit -> TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -4349,9 +4386,9 @@ let buildDataFilePickerOptions
     | None -> ()
     options
 
-/// Picks a measured-data file and remembers its folder; cancellation leaves settings unchanged
-/// (spec 0038 Part L steps 037/038; spec 0050 S4.2).
-let private pickDataFile (owner : Window) (onPicked : FileName -> unit) : unit =
+/// Picks a lab file under `title` and remembers its folder, as Attach data file… and the Items panel's photo do;
+/// cancellation leaves settings unchanged (spec 0038 Part L steps 037/038; spec 0050 S4.2, S7.2).
+let pickDataFile (owner : Window) (title : ControlCaption) (onPicked : FileName -> unit) : unit =
     try
         let settingsPath = UserEnvironment.settingsPath ()
         let settings = UserEnvironment.EnvironmentSettings.load settingsPath
@@ -4370,6 +4407,7 @@ let private pickDataFile (owner : Window) (onPicked : FileName -> unit) : unit =
                         }
                     | None -> async { return None }
                 let options = buildDataFilePickerOptions suggested
+                options.Title <- title.value
                 let! files = owner.StorageProvider.OpenFilePickerAsync options |> Async.AwaitTask
                 let pick =
                     match List.ofSeq files with
@@ -4413,7 +4451,8 @@ let private attachDataFileButton (availability : ControlAvailability) (dispatch 
                 match e.Source with
                 | :? Visual as source ->
                     match TopLevel.GetTopLevel source with
-                    | :? Window as owner -> pickDataFile owner (fun path -> dispatch (AttachDataFileTo (experiment.id, path)))
+                    | :? Window as owner ->
+                        pickDataFile owner (ControlCaption "Attach measured-data file") (fun path -> dispatch (AttachDataFileTo (experiment.id, path)))
                     | _ -> ()
                 | _ -> ()), SubPatchOptions.OnChangeOf (box (experiment.id.uiKey.value, availability)))
     ]

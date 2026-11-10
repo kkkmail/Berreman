@@ -655,3 +655,120 @@ module ConstructorUiIdOfDomain =
         /// A location's Open folder, present only where the row has a folder (spec 0050 S5.3).
         static member dataLocationOpenFolderButton (kind : DataLocationKind) : ConstructorUiId =
             ConstructorUiId $"DataLocationOpenFolder_{kind.uiKey.value}"
+
+    type ConstructorUiId with
+
+        /// A kit item's row in the Items panel's list: `KitItemRow_<the item's GUID>` (spec 0050 S7.2).
+        static member kitItemRow (itemId : Kit.ItemId) : ConstructorUiId = ConstructorUiId $"KitItemRow_{itemId.value}"
+
+        /// An add-form offer: `AddItemOffer_<model GUID>_v<n>`, then its preset's id or sample's `<GUID>_v<n>` (spec 0050 S7.2).
+        static member addItemOffer (choice : Kit.ItemModelChoice) : ConstructorUiId =
+            let modelPart (model : ItemModels.ItemModelVersionId) : string = $"{model.itemModelId.value}_v{model.version.value}"
+            match choice.instance with
+            | Kit.ItemModelVersionInstance model -> ConstructorUiId $"AddItemOffer_{modelPart model}"
+            | Kit.PresetInstance (model, preset) -> ConstructorUiId $"AddItemOffer_{modelPart model}_{preset.value}"
+            | Kit.SampleInstance (model, sample) ->
+                ConstructorUiId $"AddItemOffer_{modelPart model}_{sample.sampleId.value}_v{sample.version.value}"
+
+        /// The add form's choice of a mounting: `NewItemDial_Fixed`, `_Positive` or `_Negative` (spec 0050 S7.2).
+        static member newItemDialChoice (dial : Kit.ItemDial) : ConstructorUiId =
+            match dial with
+            | Kit.FixedMounting -> ConstructorUiId "NewItemDial_Fixed"
+            | Kit.DialMounted ItemModels.DialPositive -> ConstructorUiId "NewItemDial_Positive"
+            | Kit.DialMounted ItemModels.DialNegative -> ConstructorUiId "NewItemDial_Negative"
+
+        /// A parameter's row of the selected item's grid: `ItemParameterRow_<the name>` (spec 0050 S7.2).
+        static member itemParameterRow (name : ItemModels.ParameterName) : ConstructorUiId = ConstructorUiId $"ItemParameterRow_{name.value}"
+
+        /// A revision's line of the selected item's revisions: `ItemRevisionRow_<n>` (spec 0050 S7.2).
+        static member itemRevisionRow (revision : Kit.ItemRevision) : ConstructorUiId = ConstructorUiId $"ItemRevisionRow_{revision.value}"
+
+    type Kit.ItemModelChoice with
+
+        /// The offer as the add form shows it: the model's name, version and GUID, after its binding's (spec 0050 S7.2).
+        member this.caption : ControlCaption =
+            let modelCaption (model : ItemModels.ItemModelVersion) : ControlCaption =
+                ControlCaption $"{model.entry.name.value} v{model.version.value} ({model.entry.id.value})"
+            match this with
+            | Kit.LibraryModelChoice model -> modelCaption model
+            | Kit.SourcePresetChoice (model, source) ->
+                ControlCaption $"{source.name.value} ({source.id.value}) — {(modelCaption model).value}"
+            | Kit.PolarizerPresetChoice (model, polarizer) ->
+                ControlCaption $"{polarizer.name.value} ({polarizer.id.value}) — {(modelCaption model).value}"
+            | Kit.StackSampleChoice (model, version, sample) ->
+                ControlCaption $"{sample.name.value} v{version.version.value} ({version.sampleId.value}) — {(modelCaption model).value}"
+
+    type Kit.ItemDial with
+
+        /// The mounting as the Items panel names it (spec 0050 S7.2).
+        member this.caption : ControlCaption =
+            match this with
+            | Kit.FixedMounting -> ControlCaption "Fixed mounting"
+            | Kit.DialMounted ItemModels.DialPositive -> ControlCaption "On a dial, sign +1"
+            | Kit.DialMounted ItemModels.DialNegative -> ControlCaption "On a dial, sign −1"
+
+    type ItemModels.ParameterName with
+
+        /// The parameter's name as its grid row shows it (spec 0050 S7.2).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    /// A parameter's cells after its name in the Items panel's grid (spec 0050 S7.2; 001 §O).
+    type ParameterGridCells =
+        {
+            state : ControlCaption
+            value : ControlCaption
+            bounds : ControlCaption
+            sigma : ControlCaption
+            provenance : ControlCaption
+        }
+
+    type Kit.Parameter with
+
+        /// The grid's state, value, bounds, σ and provenance, each number G6 in its own unit (spec 0050 S7.2, step 207).
+        member this.gridCells : ParameterGridCells =
+            let number (value : ItemModels.ParameterValue) : ControlCaption =
+                ControlCaption (value.value.ToString("G6", System.Globalization.CultureInfo.InvariantCulture))
+            let sigmaText (sigma : Kit.ParameterSigma) : ControlCaption =
+                ControlCaption (sigma.value.ToString("G6", System.Globalization.CultureInfo.InvariantCulture))
+            let absent = ControlCaption "—"
+            match this.state with
+            | Kit.KnownParameter known ->
+                {
+                    state = ControlCaption "Known"
+                    value = number known
+                    bounds = absent
+                    sigma = absent
+                    provenance = ControlCaption "Given"
+                }
+            | Kit.UnknownParameter unknown ->
+                {
+                    state = ControlCaption "Unknown"
+                    value = number unknown.start
+                    bounds = ControlCaption $"[{(number unknown.bounds.lower).value}, {(number unknown.bounds.upper).value}]"
+                    sigma =
+                        match unknown.priorOpt with
+                        | Some prior -> sigmaText prior.sigma
+                        | None -> absent
+                    provenance = ControlCaption "To be fitted"
+                }
+            | Kit.CalibratedParameter calibrated ->
+                {
+                    state = ControlCaption "Calibrated"
+                    value = number calibrated.value
+                    bounds = absent
+                    sigma = sigmaText calibrated.sigma
+                    provenance = ControlCaption $"Fit run {calibrated.fitRun.value}"
+                }
+
+    type Kit.ItemRevisionRecord with
+
+        /// An earlier revision as the Items panel lists it: `Revision <n>: <name> <value>, …` (spec 0050 S7.2).
+        member this.caption : ControlCaption =
+            match this.parameters with
+            | [] -> ControlCaption $"Revision {this.revision.value}: no parameters"
+            | parameters ->
+                let values =
+                    parameters
+                    |> List.map (fun parameter -> $"{parameter.name.value} {parameter.gridCells.value.value}")
+                    |> String.concat ", "
+                ControlCaption $"Revision {this.revision.value}: {values}"

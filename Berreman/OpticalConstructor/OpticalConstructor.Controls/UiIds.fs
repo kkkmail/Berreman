@@ -730,6 +730,58 @@ type ConstructorUiId =
     /// The copy panel's item-mapping table: one block per item the chosen experiments use (spec 0050 S7.2).
     static member kitCopyItemList : ConstructorUiId = ConstructorUiId "KitCopyItemList"
 
+    // --- The Items panel (ItemsPanelView). ---
+    /// The Items panel: the kit's items, the add form and the selected item (spec 0050 S7.2; 001 §O).
+    static member itemsPanel : ConstructorUiId = ConstructorUiId "ItemsPanel"
+    /// The list of the kit's items, one row each (spec 0050 S7.2).
+    static member kitItemList : ConstructorUiId = ConstructorUiId "KitItemList"
+    /// Add item from library model…: opens the add form (spec 0050 S7.2).
+    static member addItemButton : ConstructorUiId = ConstructorUiId "AddItemButton"
+    /// The add form's bounded list of the library models it offers (spec 0050 S7.2).
+    static member addItemOfferList : ConstructorUiId = ConstructorUiId "AddItemOfferList"
+    /// The add form's label as typed (spec 0050 S7.2).
+    static member newItemLabelField : ConstructorUiId = ConstructorUiId "NewItemLabelField"
+    /// The add form's Add: records the item in the kit (spec 0050 S7.2).
+    static member addItemConfirmButton : ConstructorUiId = ConstructorUiId "AddItemConfirmButton"
+    /// The add form's Cancel: closes it, writing nothing (spec 0050 S7.2).
+    static member addItemCancelButton : ConstructorUiId = ConstructorUiId "AddItemCancelButton"
+    /// The selected item's label, relabelling it on Enter or losing focus (spec 0050 S7.2).
+    static member itemLabelField : ConstructorUiId = ConstructorUiId "ItemLabelField"
+    /// The selected item's model, as the library names it (spec 0050 S7.2).
+    static member itemModelText : ConstructorUiId = ConstructorUiId "ItemModelText"
+    /// The selected item's mounting (spec 0050 S7.2).
+    static member itemDialText : ConstructorUiId = ConstructorUiId "ItemDialText"
+    /// The selected item's notes, recorded on losing focus (spec 0050 S7.2).
+    static member itemNotesField : ConstructorUiId = ConstructorUiId "ItemNotesField"
+    /// The selected item's photo as its kit path, or that it has none (spec 0050 S7.2).
+    static member itemPhotoText : ConstructorUiId = ConstructorUiId "ItemPhotoText"
+    /// Choose photo…: picks the selected item's photo file (spec 0050 S7.2).
+    static member itemChoosePhotoButton : ConstructorUiId = ConstructorUiId "ItemChoosePhotoButton"
+    /// Remove photo: drops the selected item's photo, keeping its file (spec 0050 S7.2).
+    static member itemRemovePhotoButton : ConstructorUiId = ConstructorUiId "ItemRemovePhotoButton"
+    /// The selected item's parameter grid: state, value, bounds, σ and provenance (spec 0050 S7.2; 001 §O).
+    static member itemParameterGrid : ConstructorUiId = ConstructorUiId "ItemParameterGrid"
+    /// The open parameter editor (spec 0050 S7.2).
+    static member parameterEditPanel : ConstructorUiId = ConstructorUiId "ParameterEditPanel"
+    /// The parameter editor's Known choice (spec 0050 S7.2).
+    static member parameterEditKnownChoice : ConstructorUiId = ConstructorUiId "ParameterEditKnownChoice"
+    /// The parameter editor's Unknown choice (spec 0050 S7.2).
+    static member parameterEditUnknownChoice : ConstructorUiId = ConstructorUiId "ParameterEditUnknownChoice"
+    /// The parameter editor's value, or an unknown's start (spec 0050 S7.2).
+    static member parameterEditValueField : ConstructorUiId = ConstructorUiId "ParameterEditValueField"
+    /// The parameter editor's lower bound of an unknown (spec 0050 S7.2).
+    static member parameterEditLowerField : ConstructorUiId = ConstructorUiId "ParameterEditLowerField"
+    /// The parameter editor's upper bound of an unknown (spec 0050 S7.2).
+    static member parameterEditUpperField : ConstructorUiId = ConstructorUiId "ParameterEditUpperField"
+    /// The parameter editor's prior sigma of an unknown, blank for none (spec 0050 S7.2).
+    static member parameterEditPriorSigmaField : ConstructorUiId = ConstructorUiId "ParameterEditPriorSigmaField"
+    /// The parameter editor's Set: records the state it reads (spec 0050 S7.2).
+    static member parameterEditSetButton : ConstructorUiId = ConstructorUiId "ParameterEditSetButton"
+    /// The parameter editor's Cancel: closes it, writing nothing (spec 0050 S7.2).
+    static member parameterEditCancelButton : ConstructorUiId = ConstructorUiId "ParameterEditCancelButton"
+    /// The selected item's revisions, the current one first (spec 0050 S7.2).
+    static member itemRevisionList : ConstructorUiId = ConstructorUiId "ItemRevisionList"
+
     // --- The Data locations window (DataLocationsView, DataLocationsWindow). ---
     /// The single-instance window listing every data location (001 §G, spec 0050 S5.3).
     static member dataLocationsWindow : ConstructorUiId = ConstructorUiId "DataLocationsWindow"

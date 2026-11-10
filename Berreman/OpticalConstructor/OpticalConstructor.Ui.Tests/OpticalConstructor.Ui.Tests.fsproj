@@ -240,6 +240,7 @@
         <Compile Include="KitStartWindowTests.fs" />
         <Compile Include="KitWindowTests.fs" />
         <Compile Include="DataLocationsWindowTests.fs" />
+        <Compile Include="ItemsPanelTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
