@@ -196,6 +196,7 @@
              material-agnostic: it names no crystal class and no named material, so the Domain still needs
              no reference to the OpticalProperties project. -->
         <Compile Include="MuellerInverse.fs" />
+        <Compile Include="ItemEvaluation.fs" />
     </ItemGroup>
 
     <ItemGroup>
