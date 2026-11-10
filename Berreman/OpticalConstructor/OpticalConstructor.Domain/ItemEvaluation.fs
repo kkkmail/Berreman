@@ -16,13 +16,14 @@ open OpticalConstructor.Domain.ExperimentRun
 /// The item-model evaluator, model × parameters × orientation × λ → Mueller matrix (spec 0050 S8.1; 001 §N).
 module ItemEvaluation =
 
-    /// Why an evaluation refused: the values hold no number for a parameter the model publishes, a number lies outside
-    /// its kind's range, a model that is no light source was asked to emit, an element was asked for a branch it
-    /// does not have, a sample's materials do not resolve in the store, or a cut plate's solve failed (spec 0050 S8.1).
+    /// Why an evaluation refused: a parameter's number is missing or outside its kind's range, a model that is no light
+    /// source was asked to emit or one that is no optical element to bind, an element lacks the branch asked for, a
+    /// sample's materials do not resolve in the store, or a cut plate's solve failed (spec 0050 S8.1).
     type ItemEvaluationError =
         | MissingParameterValueErr of reason : string
         | ParameterOutOfRangeErr of reason : string
         | NotALightSourceErr of reason : string
+        | NotAnOpticalElementErr of reason : string
         | UnmodelledBranchErr of reason : string
         | SampleMaterialErr of error : MaterialError
         | CutPlateSolveErr of reason : string
@@ -32,6 +33,7 @@ module ItemEvaluation =
             | MissingParameterValueErr reason -> $"the values hold no number for the parameter: {reason}"
             | ParameterOutOfRangeErr reason -> $"the parameter value is outside its range: {reason}"
             | NotALightSourceErr reason -> $"the model is not a light source: {reason}"
+            | NotAnOpticalElementErr reason -> $"the model is not an optical element: {reason}"
             | UnmodelledBranchErr reason -> $"the element has no such branch: {reason}"
             | SampleMaterialErr error ->
                 let reason =
@@ -412,3 +414,28 @@ module ItemEvaluation =
                 Error (UnmodelledBranchErr "the reflected branch of an empty slot, which only transmits")
             | BoundOpticalForm _, Propagation.BranchReflected ->
                 Error (UnmodelledBranchErr "the reflected branch of an optical form, which only transmits")
+
+    type ItemModelChoice with
+
+        /// The element arm's door: the choice bound over the item's values as its kind. A source (it emits through
+        /// `emissionWith`), a detector (it reads) or a binding form chosen without its binding answers
+        /// `NotAnOpticalElementErr` naming the model (spec 0050 S8.1; 001 §N).
+        member this.boundWith (materials : MaterialProxy) (values : ParameterValues) : Result<BoundOpticalElement, ItemEvaluationError> =
+            let notAnOpticalElement (model : ItemModelVersion) (kind : string) : Result<BoundOpticalElement, ItemEvaluationError> =
+                Error (NotAnOpticalElementErr $"'{model.entry.name.value}' ({model.entry.id.value}) is {kind}")
+
+            match this with
+            | SourcePresetChoice (model, _) -> notAnOpticalElement model "a light source, which emits"
+            | PolarizerPresetChoice (_, polarizer) -> Ok (BoundPolarizerPreset polarizer.behavior)
+            | StackSampleChoice (_, _, sample) -> BoundOpticalElement.ofStackSample materials values sample
+            | LibraryModelChoice model ->
+                match model.entry.model with
+                | OpticalElementModel form -> BoundOpticalElement.ofOpticalForm values form
+                | EmptySlotModel -> Ok BoundEmptySlot
+                | IntensityDetectorModel _ -> notAnOpticalElement model "an intensity detector, which reads"
+                | MuellerPolarimeterModel _ -> notAnOpticalElement model "a Mueller polarimeter, which reads"
+                | EllipsometerModel _ -> notAnOpticalElement model "an ellipsometer, which reads"
+                // Only a bound choice carries the preset or sample a binding form takes its physics from (step 216).
+                | SourcePresetItemModel -> notAnOpticalElement model "a light-source model bound to no source preset"
+                | IdealPolarizerItemModel -> notAnOpticalElement model "an ideal-polarizer model bound to no polarizer preset"
+                | StackSampleItemModel -> notAnOpticalElement model "a stack-sample model bound to no sample"

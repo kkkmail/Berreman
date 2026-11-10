@@ -256,6 +256,8 @@ module ItemEvaluationTests =
     [<Fact>]
     let ``every evaluation error renders its condition and its payload`` () : unit =
         let polarizerReason = "'Ideal polarizer (preset binding)' (d47e5ce3-3e74-5058-848e-3aa54930e377) is an ideal polarizer"
+        let detectorReason =
+            "'Intensity detector (gain, dark offset and noise)' (01cfdc64-d07e-4e2b-963e-ea3caa8428e6) is an intensity detector, which reads"
         let unknownGlass = MaterialError.unknownMaterialVersion (MaterialVersionId.firstOf MaterialIds.glass152)
         let cases : (ItemEvaluationError * string) list =
             [
@@ -263,6 +265,7 @@ module ItemEvaluationTests =
                 ParameterOutOfRangeErr "degreeOfPolarization = 1.5 lies outside [0, 1]",
                 "the parameter value is outside its range: degreeOfPolarization = 1.5 lies outside [0, 1]"
                 NotALightSourceErr polarizerReason, $"the model is not a light source: {polarizerReason}"
+                NotAnOpticalElementErr detectorReason, $"the model is not an optical element: {detectorReason}"
                 UnmodelledBranchErr "the reflected branch of a polarizer preset, which only transmits",
                 "the element has no such branch: the reflected branch of a polarizer preset, which only transmits"
                 SampleMaterialErr unknownGlass,
@@ -277,7 +280,7 @@ module ItemEvaluationTests =
             Assert.Equal<string>(expected, error.describe)
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
-        Assert.Equal(7, descriptions |> List.distinct |> List.length)
+        Assert.Equal(8, descriptions |> List.distinct |> List.length)
 
     [<Fact>]
     let ``the default source is unpolarized light at unit scale`` () : unit =
@@ -722,3 +725,110 @@ module ItemEvaluationTests =
         for branch in [ Propagation.BranchTransmitted; Propagation.BranchReflected ] do
             let orientation : ElementOrientation = { ElementOrientation.transmittingAt Angle.zero with branch = branch }
             Assert.Equal<Result<MuellerMatrix, ItemEvaluationError>>(Error (CutPlateSolveErr "degenerate"), plate.muellerAt orientation at600)
+
+    [<Fact>]
+    let ``every item model binds as its kind, and a source or a detector is no optical element`` () : unit =
+        // Every model is a shipped entry of step 210; every binding is a Built-in preset or sample.
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
+        let defaultsOf (choice : ItemModelChoice) : ParameterValues = ParameterValues.defaultsOf choice.parameterAxes
+        let boundAtDefaults (choice : ItemModelChoice) : Result<BoundOpticalElement, ItemEvaluationError> =
+            choice.boundWith materials (defaultsOf choice)
+        let notAnOpticalElement (model : ItemModelVersion) (kind : string) : Result<BoundOpticalElement, ItemEvaluationError> =
+            Error (NotAnOpticalElementErr $"'{model.entry.name.value}' ({model.entry.id.value}) is {kind}")
+
+        let polarizerModel = BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId
+        let linearPolarizer =
+            match BuiltinCatalogue.preset PresetIds.polarizerLp with
+            | PolarizerItem polarizer -> polarizer
+            | SampleItem _ | SourceItem _ | DetectorItem _ -> failwith "the Built-in linear polarizer preset is a polarizer"
+        assertBound (Ok (BoundPolarizerPreset linearPolarizer.behavior)) (boundAtDefaults (PolarizerPresetChoice (polarizerModel, linearPolarizer)))
+
+        // A bound sample holds its resolved materials by reference, so it is compared by what it evaluates to.
+        let sampleModel = BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId
+        let plate = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
+        let plateChoice = StackSampleChoice (sampleModel, SampleVersionId.firstOf plate.id, plate)
+        let plateValues = defaultsOf plateChoice
+        let incidence = IncidenceAngle.create (Angle.degree 30.0<deg>)
+
+        for branch in [ Propagation.BranchTransmitted; Propagation.BranchReflected ] do
+            let orientation : ElementOrientation = { rotation = Angle.degree 20.0<deg>; incidence = incidence; branch = branch }
+            assertMuellerExact
+                (matrixOf (stackSampleMuellerAt materials plateValues plate orientation at600))
+                (plateChoice.boundWith materials plateValues |> Result.bind (fun bound -> bound.muellerAt orientation at600))
+
+        // The item's values reach the sample: a negative plate thickness is refused as `ofStackSample` refuses it.
+        let negativePlate = plateValues.withValue ParameterName.substrateThickness (ParameterValue -1e-3)
+        assertBound (Error (ParameterOutOfRangeErr "substrate.thickness = -0.001 lies outside [0, ∞)")) (plateChoice.boundWith materials negativePlate)
+        assertBound (BoundOpticalElement.ofStackSample materials negativePlate plate) (plateChoice.boundWith materials negativePlate)
+
+        let circularModel = BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId
+        let circularPolarizer = LibraryModelChoice circularModel
+
+        match circularModel.entry.model with
+        | OpticalElementModel form ->
+            let defaults = defaultsOf circularPolarizer
+            assertBound (BoundOpticalElement.ofOpticalForm defaults form) (boundAtDefaults circularPolarizer)
+            assertBound (Ok (BoundOpticalForm (form, defaults))) (boundAtDefaults circularPolarizer)
+        | _ -> Assert.Fail "the shipped circular polarizer is an optical-element model"
+
+        let emptySlot = boundAtDefaults (LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.emptySlotModelId))
+        assertBound (Ok BoundEmptySlot) emptySlot
+        assertMuellerExact
+            Propagation.identityMueller
+            (emptySlot |> Result.bind (fun bound -> bound.muellerAt (ElementOrientation.transmittingAt (Angle.degree 30.0<deg>)) at600))
+
+        // A detector reads: its gain, dark offset and noise are the forward model's, not a Mueller matrix's.
+        let detectors : (ItemModelId * string) list =
+            [
+                ItemModelIds.intensityDetectorModelId, "an intensity detector, which reads"
+                ItemModelIds.muellerPolarimeterModelId, "a Mueller polarimeter, which reads"
+                ItemModelIds.ellipsometerModelId, "an ellipsometer, which reads"
+            ]
+
+        for id, kind in detectors do
+            let detector = BuiltinCatalogue.itemModel id
+            assertBound (notAnOpticalElement detector kind) (boundAtDefaults (LibraryModelChoice detector))
+
+        // A source emits, through `emissionWith`.
+        let sourceModel = BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId
+        let heNe = SourcePresetChoice (sourceModel, BuiltinCatalogue.source PresetIds.heNe633)
+        assertBound (notAnOpticalElement sourceModel "a light source, which emits") (boundAtDefaults heNe)
+
+        // A binding model chosen without its binding has no physics to bind.
+        let unbound : (ItemModelVersion * string) list =
+            [
+                sourceModel, "a light-source model bound to no source preset"
+                polarizerModel, "an ideal-polarizer model bound to no polarizer preset"
+                sampleModel, "a stack-sample model bound to no sample"
+            ]
+
+        for model, kind in unbound do
+            assertBound (notAnOpticalElement model kind) ((LibraryModelChoice model).boundWith materials (ParameterValues Map.empty))
+
+    [<Fact>]
+    let ``an item's own parameter values reach its Mueller matrix`` () : unit =
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
+        let circularPolarizer = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId)
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "e5a17c3b-2f84-4d96-b0c7-8d3e1f9a6b52")
+                label = ItemLabel "CPL1"
+                model = circularPolarizer
+                dial = FixedMounting
+            }
+        let muellerAtZero (item : Item) : Result<MuellerMatrix, ItemEvaluationError> =
+            circularPolarizer.boundWith materials (ParameterValues.ofParameters item.parameters)
+            |> Result.bind (fun bound -> bound.muellerAt (ElementOrientation.transmittingAt Angle.zero) at600)
+        let afterLp (retardance : float) : MuellerMatrix =
+            MuellerReconstruction.retarderMueller (Angle.degree 45.0<deg>) (MuellerReconstruction.Retardance retardance)
+            * Propagation.analyzerMueller IdealLinear Angle.zero
+
+        match draft.addTo [] with
+        | Ok cpl1 ->
+            // At its defaults, a quarter wave after the LP.
+            assertMuellerWithin (afterLp (Math.PI / 2.0)) (muellerAtZero cpl1)
+
+            match cpl1.withParameterState (ParameterName "c2.retardance") (KnownParameter (ParameterValue (Math.PI / 4.0))) with
+            | Ok eighthWave -> assertMuellerWithin (afterLp (Math.PI / 4.0)) (muellerAtZero eighthWave)
+            | Error error -> Assert.Fail error.describe
+        | Error error -> Assert.Fail error.describe
