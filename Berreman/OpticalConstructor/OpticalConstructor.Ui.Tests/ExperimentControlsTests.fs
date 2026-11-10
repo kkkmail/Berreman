@@ -8,6 +8,9 @@ open Avalonia.Threading
 open Avalonia.VisualTree
 open Avalonia.FuncUI
 open Xunit
+open Berreman.Constants
+open Berreman.Geometry
+open Berreman.Fields
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
@@ -293,6 +296,43 @@ module ExperimentControlsTests =
             |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
         Assert.Empty((m1.experimentResult).series)
+
+    [<Fact>]
+    let ``two bound samples in series are both solved on the detector's path`` () =
+        let m =
+            SceneTestFixture.mainScene ()
+            |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassPlate1mmId
+            |> updateTableAndElementRotation (AddElement Sample) |> bind 3 glassFilm200Id
+            |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 3 m))))
+            |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
+            |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
+            |> updateTableAndElementRotation (ExpSetRangeMin (ExperimentControls.ExperimentRangeEnd 0.0))
+            |> updateTableAndElementRotation (ExpSetRangeMax (ExperimentControls.ExperimentRangeEnd 60.0))
+            |> updateTableAndElementRotation (ExpSetRangePoints (ExperimentControls.ExperimentPointCount 7))
+        let plateId, filmId = (elem 2 m).id, (elem 3 m).id
+        // Both samples sit untilted on the main beam in front of the seeded intensity detector (index 1).
+        let samplesInLightOrder =
+            (List.item 1 m.sceneLayout.elements).path
+            |> List.map (fun step -> step.element)
+            |> List.filter (fun id -> id = plateId || id = filmId)
+        Assert.Equal(2, List.length samplesInLightOrder)
+        Assert.Contains(plateId, samplesInLightOrder)
+        Assert.Contains(filmId, samplesInLightOrder)
+        let resolved (id : Library.SampleId) : Propagation.ResolvedSample =
+            match Propagation.resolveSampleMaterials m.materials (BuiltinCatalogue.sample id) with
+            | Ok sample -> sample
+            | Error error -> failwith $"{id.value}: {(ItemEvaluation.SampleMaterialErr error).describe}"
+        let plate, film = resolved Library.SampleIds.glassPlate1mmId, resolved Library.SampleIds.glassFilm200Id
+        let at600 = WaveLength.nm 600.0<nm>
+        let chart = m.experimentResult
+        let points = (Assert.Single chart.series).points
+        Assert.Equal<float list>([ 0.0; 10.0; 20.0; 30.0; 40.0; 50.0; 60.0 ], points |> List.map (fun p -> p.x))
+        for p in points do
+            let transmitted (id : Library.ElementId) : MuellerMatrix =
+                if id = plateId then Propagation.sampleMuellerSpun Propagation.BranchTransmitted plate at600 IncidenceAngle.normal Angle.zero
+                else Propagation.sampleMuellerSpun Propagation.BranchTransmitted film at600 (IncidenceAngle.create (Angle.degree (p.x * 1.0<deg>))) Angle.zero
+            let expected = samplesInLightOrder |> List.fold (fun sv id -> transmitted id * sv) Propagation.unpolarizedStokes
+            Assert.True(abs (expected.s0 - p.y) <= 1.0e-12, $"x = {p.x:R}: expected {expected.s0:R}, got {p.y:R}")
 
     // ============ step 018 — the silent ideal-analyzer fallback is RETIRED ============
 

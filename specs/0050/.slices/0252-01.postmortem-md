@@ -1,0 +1,98 @@
+# Post-mortem -- slice 0252, attempt 01
+
+## Summary
+
+Slice 0252 (the S8.1 run law) is complete and judged green on its merits. It cannot pass its ui-tests gate because the selected class InverseConstructorTests carries a deterministic red that step 0227 committed and nobody was authorized to repair.
+The red is `recommitting a copied experiment preserves its assigned physical ids`. The judge escalated at cycle 1 and the resolver confirmed, because the repair is a fixture edit in `InverseConstructorTests.fs`, outside 0252's authorized effects. Only an operator ruling can grant that authority.
+
+## Root cause
+
+Owner: **the product**, as it stood before the slice. The failing fact (`OpticalConstructor.Ui.Tests/InverseConstructorTests.fs:458-527`, written at step 0221, last changed in `673ae0e`) simulates a copied experiment. It assigns three hard-coded `ItemId`s (`pieceA` `3c9e1f47-…`, `pieceB`, `samplePiece`, lines 473-476) and writes only the experiment (`writeExperiment`, line 491), never the items. Step 0227 (`6cb35e2`, the only commit that introduced `Experiment.itemsUsedBy [ experiment ] items` into `KitContentFiles.fs`) made `KitLibraryContext.recordExperiment` (`KitContentFiles.fs:203-210`) refuse an assigned id the kit does not hold, before writing. `Experiment.itemsUsedBy` (`Experiments.fs:294-308`) checks only that the id exists. The fact's recommit therefore goes through `ExpCommit` (`TableAndElementRotationView.fs:2477-2505`) to `recordExperiment` and on to `UnknownKitItemErr`. That sets `kitStatus` to "Not saved to the kit — the items could not be copied: the kit has no item of that id: 3c9e1f47-…", and the `None` assertion at line 509 fails.
+
+A real copy can never produce that state. Since 0227, `copyExperimentsFrom` writes every added item before the experiments. The fixture is stale against the 0227 contract, and the product refusal is correct. Changing the product to accept unknown ids would reverse 0227's deliberate pre-write guard, so that option is dropped. The 0252 diff never reaches this path (no `recordExperiment`, `ExpCommit`, `itemIdOpt` or `kitStatus` line in its hunks).
+
+Three tool-side contributors let the red reach this slice.
+- **The selection at 0227.** The ledger's gate plan for step 0227 (`.spec-jsonl` line 227, `gate_selection.ui-tests` = KitWindowTests and ExperimentControlsTests) omitted the class that pins the changed record path, so 0227 went green over it. 0227 is completed and frozen, and standing ruling 2 forbids amending the ledger.
+- **The silent note at 0242.** The 0242 worker and judge both found the red, reproduced it on an unmodified HEAD, and passed `review-green` with only a prose note (`code_judge/0242-01-code-judge.md:75-82`).
+- **The wrong forward pointer.** That note said "before step 0261 selects that class", but 0252 is the first step that selects it.
+
+No notification fired at 0242: NOTIFY-POSTED appears in the log only with the 17 ESCALATION-RECORDED events. No provider or model change is implicated: implement_worker, code_judge, resolver and postmortem have all been anthropic `claude-opus-5-5[1m]` since step 0160.
+
+This is a **repeat of a recorded class**. The 0185 review (`0185-01.postmortem-review-md:131-133`) named it: "an accepted fixture affected by later behavior but omitted from that later step's edit authority". 0150 was the sibling case, inherited warnings from 0146-0147. Manual 014 deliberately granted specific authority only ("not a general permission"), so no class fix exists. This case differs in one way: because 0227's selection omitted the class, the red surfaced 25 steps later, in an unrelated step.
+
+## Evidence
+
+- Trigger (run log, 2026-11-10T11:13:27Z, ESCALATION-RECORDED idx 251): "code-judge escalated on cycle 1: The in-scope implementation meets slice 0252, and on its merits it would be review-green … (resolver consulted: …/resolver/0252-resolver-01.md)".
+- Judge (`code_judge/0252-01-code-judge.md`): "What tips the verdict is an authority conflict, not a defect in the diff". It also flags that "Steps 0254 and 0259 also select `InverseConstructorTests`". Its advisory: the local `inOrder` duplicates the private `ItemEvaluation.sequenced`.
+- Resolver (`resolver/0252-resolver-01.md`): `confirm-escalation`, confidence high. "A hint directing that edit would be a scope change outside the slice". It adds 0260 to the window and cites precedents 009, 011 and 014.
+- Worker SoW/impl-log: constructor-unit-tests 1401/1401 (1399 + 4 − 2); ui-smoke 245/245 in 214 s and 199 s against 600 s; elevation `ELEV-GATE: OK - 0 new finding(s) in 12 project(s)`; selected ui-tests 84/85. Red-by-mutation evidence is in `0252-red-mutation-tests.log`.
+- Gate logs, verified by me:
+  - `.artifacts/0252-ui-tests-final.log:2,18-21`: "failed …recommitting a copied experiment preserves its assigned physical ids", total 85, failed 1.
+  - `0252-ui-recommit-alone.log:7`: "the kit has no item of that id: 3c9e1f47-8a2d-4b06-9e53-1f7a2c8d4b60, assigned at the element 'Linear polarizer #4'".
+  - `0242-head-check-test.log:2,14-17`: the same failure on unmodified HEAD at step 0242.
+- Gate results block: all `pending` (review precedes verify); only `build` ran for 0252 (11:09:25, passed).
+- Origin: `git log -S` puts the refusal at `6cb35e2` (0227). Blame on `KitContentFiles.fs:204-207` gives `6cb35e2e`. The 0227 slice how-to reads: "`recordExperiment` MUST likewise resolve explicit ids through readItems … returning KitLibraryItemErr for a missing id before writing". 0221 ran ui-tests with the class selected and passed (11-09T18:54:41Z). 0227's selection excluded it and passed (22:11:59Z).
+- 0242 discovery: `0242-state-of-the-world.md:70-77,116-121` records the whole suite at 672 of 673, the refusal coming at 0227, and "0227's selection did not include the class".
+- Selection census (`.spec-jsonl`, steps 0221-0266): InverseConstructorTests is selected at 0221, then at none of 0222-0251, then at 0252, 0254, 0259, 0260, 0261, 0265 and 0266. Further pending selectors are 0272 … 0368 (32 pending steps in all). Only 0494 runs ui-tests `all_discovered`. Of the pending steps, only 0259, 0261, 0288-0291, 0295, 0296, 0305, 0310 and 0313 may edit `InverseConstructorTests.fs`.
+- 0261 slice text: "`recommitting a copied experiment preserves its assigned physical ids` MUST retain the copied setup's item assignments after commit/reopen". Its "same assigned ItemIds MUST be carried by SlotContent.ItemInSlot in replacement fixtures". It declares no test effect on this fact.
+- Tree: HEAD `8a61dd3` (step 0251). `completed_slices` holds 251 entries, the last being index 250 = 0251, so 0252 (idx 251) is the first pending step. The dirty files are the slice's eight authorized files, `.manifest.state.json`, and three untracked 0252 reports. Nothing of 0252 is committed.
+- Arc history (run log):
+  - ESCALATION-RECORDED ×17: 0013, 0035, 0052, 0056, 0059, 0069, 0118, 0132, 0145, 0150, 0153, 0160 ×3, 0185, 0210, 0252.
+  - ESCALATE ×14: 0035 (commit rejection) and 0069 have none, and 0252's is pending by design.
+  - INTERRUPTED ×1: 11-06T01:34Z, "cycle 4 out of range".
+  - COMMIT-OVERRIDE (accept-current-slice) ×5: 0035, 0052, 0056, 0118, 0153.
+  - OPERATOR-REPLY-CONSUMED ×11.
+  - 16 `.postmortem-md` files exist, 0013-01 through 0210-01.
+- Manuals: `.manual/001`-`015` (2026-11-03 to 2026-11-09). I read 011, 014 and 015, plus the 0150 and 0185 post-mortems and reviews.
+- 0185 resume mechanics: the repair and ruling were committed as `6607a49` and `b6668ae` (both carry the prompt and `.executability-json`); the normal resume then went review-green (11-09T02:10:37Z) and recorded CHECKPOINT idx=184 at 1197 cases.
+- Counters (from the log): 0252 has 1 resolver run (RESOLVER-SPAWN run=1 at 11:12:16Z) and 0 route-backs, which matches the scalars. Arc-wide there are 10 resolver runs, 1 RESOLVER-SKIP and 16 route-backs.
+- Tool trace:
+  - `parse_judge_envelope.py` reads only `verdict`, `rationale` and `retry_hint`.
+  - `notify(` is called only from `_supervisor_escalate`, `_final_commit_git_status_failed`, `_warn_and_complete` and the two COMPLETE sites in `_run_arc_runner_inner` (`run_arc_runner.py:814,964,1114,3436,5803`).
+  - `code-judge.system-md:23-30` classifies "an inherited defect with baseline evidence" but prescribes no operator signal when one is green-lit.
+  - `ASG-ERRORS.md` BRM-0050 rows 48-71 contain no entry for this.
+- Proposal verification, traced but not executed:
+  - With items of ids `pieceA` and `pieceB` in the kit, `itemsUsedBy` returns `Ok`.
+  - `snapshotReferences` then resolves the items' preset references through `catalogueImports`, the same path `AddItem` uses at `TableAndElementRotationView.fs:2309-2314`.
+  - No assertion in the fact reads `kitItems`.
+  - The rebound sample and the added polarizer still carry `None`, as the fact asserts.
+
+## Proposed solutions
+
+Decision: owner the product; recommend 1; confidence high; operator decides whether to extend 0252's edit authority to the one fixture in `InverseConstructorTests.fs`, and whether the same ruling also takes the judge's `ItemEvaluation.sequenced` reuse.
+
+1. **Write the ruling and its prompt pointer, then resume 0252 normally with an operator note.** With the arc stopped, do the following.
+   - **Write `specs/0050/.manual/016-step-0252-recommit-fixture.md`.** It extends 0252's authority to `OpticalConstructor.Ui.Tests/InverseConstructorTests.fs`, only in `recommitting a copied experiment preserves its assigned physical ids`. Before `writeExperiment copied`, record items whose ids are `pieceA`, `pieceB` and `samplePiece` through `KitLibraryContext.recordItem` (`{ kit = built.kit; imports = built.catalogueImports }`).
+     - The two pieces are polarizer-preset items of `PresetIds.polarizerLp`.
+     - `samplePiece` is a stack-sample item of the fixture's bound sample.
+     - Each is built through `ItemDraft.toItem`, so the kit holds what a real 0227 copy writes.
+     - Keep every assertion, the identity and the counts. No census row is needed.
+   - **Optionally, in the same ruling:** authorize making `ItemEvaluation.sequenced` (`ItemEvaluation.fs:53`) public, and replace `chartForRun`'s local `inOrder` with it, per AGENTS.md "Reuse, never copy". The name is unique in this tree, and the elevation gate checks ELEV015.
+   - **Bind the later steps:**
+     - 0254, 0259 and 0260 keep the repaired fixture.
+     - 0259 and 0261 keep the three items recorded when 0261 moves the ids into `SlotContent.ItemInSlot`.
+     - This covers 0252, 0254, 0259, 0260 and 0261, and keeps the class green for 0265-0368.
+   - **State the normal-resume exception** as manual 014 did: no `--accept-current-slice`, so the supervisor publishes measured checkpoint 251.
+   - **Close the class now.** In the preparatory session, run the whole ui-tests suite once over the current Release build, as 0242 did, and name any further inherited red in the same ruling, so the next selecting step cannot repeat this. Put the evidence under `.artifacts/0252-operator-repair/`.
+   - **Add the pointer** from the attached rule to `.user-md/Berreman/arc-runner.user-md`. Refresh the profile-1 receipt as both 0185 manual commits did.
+   - **Commit only** the ruling, the pointer and the receipt. Leave the worker's eight files and reports uncommitted.
+   - **Relaunch** with `--operator-reply <note below> --executability-profile 1`, and confirm "step-compiler check + emit OK" at boot.
+   - **The supervisor then runs all 19 gates:** build; elevation from arc origin `f395597`; constructor-unit-tests (floor 1399, 1401 expected); ui-smoke (floor 245); ui-tests over ElementMenuTests, ExperimentControlsTests, FsxAcceptanceTests, InverseConstructorTests, MainWorkbenchTests and WorkbenchInfoAndCaptureTests (85 expected); and the fourteen invariants:
+     - invariant-s25-elev-list-empty, -no-vstest, -no-kit-kit-json, -no-eps-axis-evaluated, -complexity-mandatory;
+     - -no-seeded-string-preset-ids, -no-seeding-seam, -t1-no-code-seeds, -no-seed-modules, -no-test-db;
+     - -no-versions-in-use, -no-scene-collection-seams, -t4-no-ocproj, -no-recent-json.
+   - **Require checkpoint 251 before 0253 starts.** No ledger edit is proposed: ruling 2 forbids it, and 0227 is frozen.
+2. OR: apply the fixture edit yourself in a manual session, run the same 19 gates and the whole-suite check, and commit the repair with the ruling. Then resume normally exactly as above. This is what the operator actually did at 0185 (`6607a49`). It comes second only because it costs operator work, while the worker plus judge path reviews the same one-fixture edit under the arc's own review.
+3. asg-error (ASG, read-only from here; file in `ASG-ERRORS.md` as BRM-0050 0252-01).
+   - **Where:** `code-judge.system-md:23-30`, together with `_arc_runner/review/parse_judge_envelope.py::parse_judge_envelope` and `_arc_runner/runtime/run_arc_runner.py`.
+   - **Wrong behaviour:** a judge-acknowledged inherited red with baseline evidence, outside the step's selection, passes `review-green` with only prose. Nothing checks the pending `.gates` snapshots for that class, and nothing notifies the operator. The red then escalates at the first later step that selects it: here 10 steps after the 0242 discovery, and misdirected to 0261 in the note.
+   - **Fix:** carry such reds in the envelope as structured test ids, and post an operator notification at once naming the first pending step whose snapshot selects the class.
+   - **Test:** a two-step fixture arc whose step-1 judge MD records an inherited red in class C outside its selection, with step 2's snapshot selecting C. Expect NOTIFY-POSTED at step 1 naming step 2, before any step-2 spawn.
+
+Operator note for the resumed slice:
+
+> Read `.manual/016`. The 0252 run-law implementation in the working tree was reviewed as correct: preserve it unchanged. Apply only the ruling's fixture repair in `InverseConstructorTests.fs`: record `pieceA`, `pieceB` and `samplePiece` through `KitLibraryContext.recordItem` before `writeExperiment copied`, keeping every assertion, the identity and the counts (and, if the ruling grants it, call the public `ItemEvaluation.sequenced` in place of `inOrder`). Cite the ruling in the impl-log's Decisions, set `commit_ready: true`, and refresh the state of the world. Change no ledger, census, baseline, gate or supervisor file. Return for normal review and all 19 gates; checkpoint 251 is published from that measured run (constructor-unit-tests 1401, selected ui-tests 85).
+
+Standing rule for the project prompt (the pointer, not a general permission):
+
+> At steps 0252, 0254, 0259, 0260 and 0261, every role also reads `specs/0050/.manual/016-step-0252-recommit-fixture.md`: the recommit fixture records its three assigned items in the kit, later edits (0261's `SlotContent.ItemInSlot` rewrite included) keep them, and its 0252 recovery resumes normally with `--executability-profile 1`, without `--accept-current-slice`, to record measured checkpoint 251.

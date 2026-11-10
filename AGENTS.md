@@ -541,8 +541,10 @@ This is a spec-driven, gated repository.
   would be a new kind); a source emits; samples carry R and T.
 - **An experiment runs on the light's real path** (`ExperimentRun` + `chartForRun`): for each
   captured branch the DETECTOR on it decides the quantity (intensity → S₀, ellipsometer → Ψ, Δ);
-  polarizers before the sample prepare the input (the first sets a unit-intensity state), the
-  sample acts at its drawn incidence and spin (its R1), polarizers after it analyze. The sample's
+  every element on the path acts in light order through its Mueller matrix from `ItemEvaluation`
+  (a polarizer at its R1, every sample at its drawn incidence and spin for the branch the path
+  leaves it by), and the source emits its own Stokes state times its intensity scale, by default
+  unpolarized with the unit scale after the first polarizer. The sample's
   transmitted Mueller matrix is FLUX-normalized (`Propagation.sampleMuellerSpun`) — the engine's
   Mueller matrices are |E|²-based, its T is flux. Only a TUNABLE source (`SourceTuning`) can have
   its wavelength varied, within its limits, or set per experiment (`sourceWaveLengthOpt`).

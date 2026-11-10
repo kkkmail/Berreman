@@ -5,21 +5,22 @@ open Berreman.Geometry
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
 
-/// Spec 0046 — what a detector reads at the end of the light's actual path. The host walks the beam from the
-/// source to the detector (`BeamLayout`'s path for that detector) and hands this module the optical steps in
-/// light order; nothing here knows about the table. The rules:
-///
-///   * the source's light is unpolarized natural light;
-///   * every polarizer BEFORE the first sample prepares the input: the first one sets a unit-intensity
-///     polarized state (`Propagation.behaviorInputStokes` — the convention every intensity in the app is
-///     relative to), any further one acts through its Mueller matrix;
-///   * a sample acts through the engine's Mueller matrix for the branch the path leaves it by (already
-///     solved by the host at the run's wavelength, incidence and spin);
-///   * every polarizer AFTER a sample is an analyzer and acts through its Mueller matrix;
-///   * an intensity detector reads S₀, an ellipsometer reads Ψ and Δ of the arriving polarization state.
-///
-/// Pure: the host does the engine solves, so a sweep re-solves a sample only when its parameters change.
+/// What a detector reads at the end of the light's actual path (spec 0046): the source's emission folded through every
+/// step's Mueller matrix in light order, no step special-cased (spec 0050 S8.1). Pure: the host evaluates the steps.
 module ExperimentRun =
+
+    /// One step on the way to a detector, in light order, already evaluated (spec 0050 S8.1).
+    type RunStep =
+        /// An element that is not an object, at its orientation: a polarizer, a prep or an analyzer item (spec 0050 S8.1).
+        | ElementStep of mueller : MuellerMatrix
+        /// An object, solved for the branch the detector's path leaves it by (spec 0050 S8.1).
+        | ObjectStep of mueller : MuellerMatrix
+
+        /// The step's Mueller matrix (spec 0050 S8.1).
+        member this.mueller : MuellerMatrix =
+            match this with
+            | ElementStep mueller
+            | ObjectStep mueller -> mueller
 
     /// The light a source emits: its polarization's azimuth ψ and ellipticity angle χ (radians), its degree of
     /// polarization p and its intensity scale I (spec 0050 S8.1; 001 §I, §N).
@@ -40,33 +41,33 @@ module ExperimentRun =
             let twoChi = 2.0 * this.ellipticity.value
             StokesVector.create [ intensity; polarized * cos twoChi * cos twoPsi; polarized * cos twoChi * sin twoPsi; polarized * sin twoChi ]
 
-    /// One optical step on the way to a detector, in light order.
-    type RunStep =
-        /// A polarizer at its orientation (its R1).
-        | PolarizerStep of behavior : PolarizerBehavior * orientation : Angle
-        /// A sample, already solved: the engine's Mueller matrix for the branch the light leaves it by.
-        | SampleStep of mueller : MuellerMatrix
+        /// `stokes` times the path's intensity reference: the inverse of the S₀ a path's leading element passes of
+        /// unpolarized light, when it passes any; 1 for a path opening on an object, or on nothing (spec 0050 S8.1; 001 §N).
+        member this.emittedInto (steps : RunStep list) : StokesVector =
+            let reference =
+                match steps with
+                | ElementStep first :: _ ->
+                    let passed = (first * Propagation.unpolarizedStokes).s0
+                    if passed > 0.0 then 1.0 / passed else 1.0
+                | ObjectStep _ :: _
+                | [] -> 1.0
+
+            let emitted = this.stokes
+            StokesVector.create [ reference * emitted.s0; reference * emitted.s1; reference * emitted.s2; reference * emitted.s3 ]
 
     /// What a detector reads (spec 0046 — the detector decides what is captured).
     type Reading =
         | IntensityReading of intensity : DetectorIntensity
         | EllipsometricReading of Analytics.AnalysisFunctions.PsiDelta
 
-    /// The polarization state arriving at the detector after `steps`.
-    let detectorStokes (steps : RunStep list) : StokesVector =
-        let folder ((sv, beforeSample, prepared) : StokesVector * bool * bool) (step : RunStep) : StokesVector * bool * bool =
-            match step with
-            | PolarizerStep (behavior, orientation) when beforeSample && not prepared ->
-                Propagation.behaviorInputStokes behavior orientation, beforeSample, true
-            | PolarizerStep (behavior, orientation) ->
-                Propagation.behaviorMueller behavior orientation * sv, beforeSample, prepared
-            | SampleStep mueller -> mueller * sv, false, prepared
-        let sv, _, _ = steps |> List.fold folder (Propagation.unpolarizedStokes, true, false)
-        sv
+    /// The polarization state arriving at the detector: `emission` into the path, through each step's matrix in light
+    /// order (spec 0050 S8.1).
+    let detectorStokes (emission : SourceEmission) (steps : RunStep list) : StokesVector =
+        steps |> List.fold (fun sv step -> step.mueller * sv) (emission.emittedInto steps)
 
-    /// What a detector of `kind` reads after `steps`.
-    let read (kind : DetectorKind) (steps : RunStep list) : Reading =
-        let sv = detectorStokes steps
+    /// What a detector of `kind` reads after `steps` from `emission` (spec 0046; spec 0050 S8.1).
+    let read (kind : DetectorKind) (emission : SourceEmission) (steps : RunStep list) : Reading =
+        let sv = detectorStokes emission steps
         match kind with
         | Intensity -> IntensityReading sv.intensity
         | Ellipsometer -> EllipsometricReading sv.psiDelta

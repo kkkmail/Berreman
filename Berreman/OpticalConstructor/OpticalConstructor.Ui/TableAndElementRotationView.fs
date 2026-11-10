@@ -24,6 +24,8 @@ open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Fields
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
@@ -3444,12 +3446,8 @@ type TableAndElementRotationModel with
         | _ -> None
 
 // ---------------------------------------------------------------------------
-// Spec 0027 (024) Phase 3/4: run ONE experiment end-to-end from the LIVE scene. The host resolves the
-// physical run from the present elements (source → λ, input polarizer → SV_in, sample → MM_sample, the
-// chosen analyzer → its polarizer kind, detector → Intensity vs Ellipsometer), then drives the pure
-// `Propagation` pipeline. Absent elements are SKIPPED (nothing synthesized; spec R1): no source → 600 nm,
-// no input polarizer → unpolarized light, no sample → identity MM. The result is an (angleDeg, intensity)
-// curve for an intensity detector, or a Ψ/Δ readout for an ellipsometer.
+// Spec 0027 (024): run ONE experiment from the LIVE scene. Every bound element on a detector's path is evaluated
+// through `ItemEvaluation` and folded in light order from the default source emission (spec 0050 S8.1).
 // ---------------------------------------------------------------------------
 
 /// Resolve an element's bound Library entry (through the Library proxy), if it has a `valueId` that binds.
@@ -3478,18 +3476,6 @@ type TableAndElementRotationModel with
     /// absent / unbound source is not synthesized, just defaulted; spec R1).
     member internal model.runWaveLength : WaveLength =
         operatingWaveLength model model.experimentCollection.draft.sourceWaveLengthOpt
-
-    /// The input Stokes vector from the FIRST polarizer element bound to a polarizer preset (its R1 is the
-    /// polarizer's orientation), synthesized through the behaviour seam (spec 0038 Part F —
-    /// `Propagation.behaviorInputStokes` routes `ComputedIdeal` through the same `inputStokes` as before).
-    /// No input polarizer → unpolarized natural light (spec R1).
-    member internal model.runInputStokes : StokesVector =
-        model.elements
-        |> List.tryPick (fun e ->
-            match boundEntry model e with
-            | Some (Library.PolarizerItem p) -> Some (Propagation.behaviorInputStokes p.behavior e.placement.r1)
-            | _ -> None)
-        |> Option.defaultValue Propagation.unpolarizedStokes
 
     /// The wavelengths the scene currently requests (spec 0038 step 031): the Experiments-bay draft's
     /// wavelength sweep (its nm range) when one is being configured, otherwise the fixed source λ (the
@@ -3708,20 +3694,14 @@ type BeamLayout.PlacedElement with
         IncidenceAngle.create (Angle.degree (degrees * 1.0<deg>))
 
 /// One step of a detector's light path as a run builds it (spec 0046): the same for the whole sweep, or
-/// rebuilt for each swept value (so a sample is re-solved only when something it depends on varies).
+/// evaluated at each swept value, so a sample is re-solved only when something it depends on varies (spec 0050 S8.1).
 type private StepBuilder =
     | FixedStep of ExperimentRun.RunStep
-    | SweptStep of (float -> ExperimentRun.RunStep)
+    | SweptStep of (float -> Result<ExperimentRun.RunStep, ItemEvaluationError>)
 
-/// The end-to-end run behind an experiment's chart (spec 0046 — rebuilt on the light's ACTUAL path). For each
-/// captured branch, the detector on that branch (`captureDetectors`) decides what is read: an intensity
-/// detector S₀, an ellipsometer Ψ and Δ. The light reaching it is walked from the source along its path:
-/// polarizers before the sample prepare the input (the first sets a unit-intensity state), the sample acts
-/// through the engine's Mueller matrix for the branch the path leaves it by — at its real incidence (the
-/// angle its drawn face makes with the beam) and spin (its R1) — and polarizers after it analyze. The varied
-/// element's parameter is swept: a polarizer's R1, a sample's R1 (spin) or R2 (incidence), or a tunable
-/// source's wavelength; everything else runs at the source's wavelength (`operatingWaveLength`). Empty when
-/// the element is gone, nothing is bound to the varied element, or no detector sees it.
+/// The run behind an experiment's chart (spec 0046): each captured branch's detector reads the default source emission
+/// through every bound polarizer and sample on its path in light order, each evaluated by `ItemEvaluation` at its drawn
+/// orientation for the branch the path leaves it by, the varied parameter swept (spec 0050 S8.1).
 let chartForRun
     (model : TableAndElementRotationModel)
     (chosen : Library.ElementId)
@@ -3751,49 +3731,57 @@ let chartForRun
             | Ok entry -> entry
             | Error _ -> None
         | None -> None
+    // Every value in order, or the first error.
+    let inOrder (results : Result<'Item, ItemEvaluationError> list) : Result<'Item list, ItemEvaluationError> =
+        match results |> List.tryPick (fun result -> match result with Error error -> Some error | Ok _ -> None) with
+        | Some error -> Error error
+        | None -> Ok (results |> List.choose Result.toOption)
+    let sweptAngle (x : float) : Angle = Angle.degree (x * 1.0<deg>)
     // One path step → its builder (or nothing: the source, a mirror, a lens, an unbound element).
-    let builderFor (step : BeamLayout.PathStep) : Result<StepBuilder option, ControlCaption> =
+    let builderFor (step : BeamLayout.PathStep) : Result<StepBuilder option, ItemEvaluationError> =
         match indexOf step.element with
         | None -> Ok None
         | Some j ->
             let e = List.item j model.elements
             let isVaried = (e.id = chosen)
+            let branch =
+                match step.branch with
+                | BeamTree.TransmittedBeam -> Propagation.BranchTransmitted
+                | BeamTree.ReflectedBeam -> Propagation.BranchReflected
             match e.placement.catalogueKind, boundOf e with
             | (LinearPolarizer | CircularPolarizer), Some (Library.PolarizerItem p) ->
+                let preset = BoundPolarizerPreset p.behavior
+                let elementAt (rotation : Angle) : Result<ExperimentRun.RunStep, ItemEvaluationError> =
+                    let orientation : ElementOrientation = { rotation = rotation; incidence = IncidenceAngle.normal; branch = branch }
+                    preset.muellerAt orientation w0 |> Result.map ExperimentRun.ElementStep
                 match variable with
-                | Experiments.VaryR1 when isVaried -> Ok (Some (SweptStep (fun x -> ExperimentRun.PolarizerStep (p.behavior, Angle.degree (x * 1.0<deg>)))))
-                | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryWaveLength -> Ok (Some (FixedStep (ExperimentRun.PolarizerStep (p.behavior, e.placement.r1))))
+                | Experiments.VaryR1 when isVaried -> Ok (Some (SweptStep (fun x -> elementAt (sweptAngle x))))
+                | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryWaveLength ->
+                    elementAt e.placement.r1 |> Result.map (fun fixedStep -> Some (FixedStep fixedStep))
             | Sample, Some (Library.SampleItem sample) ->
-                match Propagation.resolveSampleMaterials model.materials sample with
-                | Error err -> Error err.runFailureCaption
-                | Ok resolved ->
-                    let branch =
-                        match step.branch with
-                        | BeamTree.TransmittedBeam -> Propagation.BranchTransmitted
-                        | BeamTree.ReflectedBeam -> Propagation.BranchReflected
+                // Bound once per path step, so its materials resolve once for the whole sweep.
+                BoundOpticalElement.ofStackSample model.materials (ParameterValues.defaultsOf sample.parameterAxes) sample
+                |> Result.bind (fun bound ->
                     let incidence0 = (List.item j layout.elements).incidenceOn e.placement
-                    let solve (w : WaveLength) (incidence : IncidenceAngle) (spin : Angle) : ExperimentRun.RunStep =
-                        ExperimentRun.SampleStep (Propagation.sampleMuellerSpun branch resolved w incidence spin)
+                    let objectAt (incidence : IncidenceAngle) (spin : Angle) (w : WaveLength) : Result<ExperimentRun.RunStep, ItemEvaluationError> =
+                        let orientation : ElementOrientation = { rotation = spin; incidence = incidence; branch = branch }
+                        bound.muellerAt orientation w |> Result.map ExperimentRun.ObjectStep
                     match variable with
-                    | Experiments.VaryWaveLength -> Ok (Some (SweptStep (fun x -> solve (WaveLength.nm (x * 1.0<nm>)) incidence0 e.placement.r1)))
-                    | Experiments.VaryR2 when isVaried ->
-                        Ok (Some (SweptStep (fun x -> solve w0 (IncidenceAngle.create (Angle.degree (x * 1.0<deg>))) e.placement.r1)))
-                    | Experiments.VaryR1 when isVaried -> Ok (Some (SweptStep (fun x -> solve w0 incidence0 (Angle.degree (x * 1.0<deg>)))))
-                    | Experiments.VaryR1 | Experiments.VaryR2 -> Ok (Some (FixedStep (solve w0 incidence0 e.placement.r1)))
+                    | Experiments.VaryWaveLength -> Ok (SweptStep (fun x -> objectAt incidence0 e.placement.r1 (WaveLength.nm (x * 1.0<nm>))))
+                    | Experiments.VaryR2 when isVaried -> Ok (SweptStep (fun x -> objectAt (IncidenceAngle.create (sweptAngle x)) e.placement.r1 w0))
+                    | Experiments.VaryR1 when isVaried -> Ok (SweptStep (fun x -> objectAt incidence0 (sweptAngle x) w0))
+                    | Experiments.VaryR1 | Experiments.VaryR2 -> objectAt incidence0 e.placement.r1 w0 |> Result.map FixedStep)
+                |> Result.map Some
             | _ -> Ok None
-    let buildersFor (path : BeamLayout.PathStep list) : Result<StepBuilder list, ControlCaption> =
-        path
-        |> List.fold (fun acc step ->
-            match acc, builderFor step with
-            | Ok built, Ok (Some b) -> Ok (built @ [ b ])
-            | Ok built, Ok None -> Ok built
-            | Error e, _ | _, Error e -> Error e) (Ok [])
-    let stepsAt (builders : StepBuilder list) (x : float) : ExperimentRun.RunStep list =
+    let buildersFor (path : BeamLayout.PathStep list) : Result<StepBuilder list, ItemEvaluationError> =
+        path |> List.map builderFor |> inOrder |> Result.map (List.choose id)
+    let stepsAt (builders : StepBuilder list) (x : float) : Result<ExperimentRun.RunStep list, ItemEvaluationError> =
         builders
         |> List.map (fun b ->
             match b with
-            | FixedStep step -> step
+            | FixedStep step -> Ok step
             | SweptStep f -> f x)
+        |> inOrder
     let variedIsBound = Option.isSome (boundOf variedElement)
     let detectors = model.captureDetectors chosen
     let captured =
@@ -3852,23 +3840,37 @@ let chartForRun
         { ExperimentChart.emptyExperimentChart with title = ControlCaption noAnalyzerTitle; description = ControlCaption noAnalyzerStatus }
     | _ when not variedIsBound && variedElement.placement.catalogueKind <> LightSource -> ExperimentChart.emptyExperimentChart
     | _ ->
-        let built =
-            captured
-            |> List.map (fun (tag, j) -> tag, j, buildersFor (List.item j.value layout.elements).path)
-        match built |> List.tryPick (fun (_, _, b) -> match b with Error e -> Some e | Ok _ -> None) with
-        | Some reason ->
+        // A preset carries no parameter values, so every chart reads the default source (spec 0050 S8.1).
+        let evaluated =
+            ExperimentRun.SourceEmission.ofValues (ParameterValues.defaultsOf Library.SourcePreset.lightSourceAxes)
+            |> Result.bind (fun emission ->
+                captured
+                |> List.map (fun (tag, j) ->
+                    let kind = model.detectorKindAt j
+                    buildersFor (List.item j.value layout.elements).path
+                    |> Result.bind (fun builders ->
+                        xs
+                        |> List.map (fun x -> stepsAt builders x |> Result.map (fun steps -> x, ExperimentRun.read kind emission steps))
+                        |> inOrder)
+                    |> Result.map (fun readings -> tag, kind, readings))
+                |> inOrder)
+        match evaluated with
+        | Error (SampleMaterialErr err) ->
             {
                 ExperimentChart.emptyExperimentChart with
                     title = ControlCaption "Sample materials failed to resolve"
-                    description = reason
+                    description = err.runFailureCaption
             }
-        | None ->
+        | Error (MissingParameterValueErr _ | ParameterOutOfRangeErr _ | NotALightSourceErr _ | NotAnOpticalElementErr _ | UnmodelledBranchErr _ | CutPlateSolveErr _ as error) ->
+            {
+                ExperimentChart.emptyExperimentChart with
+                    title = ControlCaption "The run cannot be evaluated"
+                    description = ControlCaption error.describe
+            }
+        | Ok runs ->
             let seriesList =
-                built
-                |> List.collect (fun (tag, j, b) ->
-                    let builders = match b with Ok bs -> bs | Error _ -> []
-                    let kind = model.detectorKindAt j
-                    let readings = xs |> List.map (fun x -> x, ExperimentRun.read kind (stepsAt builders x))
+                runs
+                |> List.collect (fun (tag, kind, readings) ->
                     match kind with
                     | Library.Intensity ->
                         [ series (measurement.seriesCaption tag (ControlCaption "Intensity"))

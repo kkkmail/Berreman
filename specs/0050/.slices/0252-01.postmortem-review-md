@@ -1,0 +1,133 @@
+# Secondary review — slice 0252, postmortem 01
+
+2026-11-10. Review of the [agent-written postmortem](0252-01.postmortem-md),
+triggered by arc-watch event `ddd7c102299341e58375006035fd1ffe` for supervisor
+PID 24520. The event, launch record and current state agree: index 251 / step
+0252 is escalated, 251 slices are completed, and checkpoint 251 is absent.
+The supervisor has exited. This report is advisory; it does not authorize repairs.
+
+## Confirmed cause
+
+The immediate defect is an obsolete test fixture; the escalation is the resulting
+conflict between mandatory gate acceptance and the slice's edit authority.
+The source evidence supports the primary report's diagnosis:
+
+- `InverseConstructorTests.fs:458-527` assigns `pieceA`, `pieceB` and `samplePiece`
+  to copied experiment descriptors, then calls `writeExperiment` without writing
+  any of those items to the kit. The test file was last changed at step 0221,
+  commit `673ae0e`.
+- Step 0227, commit `6cb35e2`, changed `KitLibraryContext.recordExperiment` to
+  read the kit's items and call `Experiment.itemsUsedBy` before writing. Missing
+  assigned IDs now produce `UnknownKitItemErr`. This is the intended guard.
+- `ExpCommit` reaches that guard, so the fact's assertion that `kitStatus` is
+  absent fails at line 509. `.artifacts/0252-ui-recommit-alone.log` shows the
+  first missing ID, `3c9e1f47-8a2d-4b06-9e53-1f7a2c8d4b60`.
+- `.artifacts/0242-head-check-test.log` records the identical failure in the
+  unmodified HEAD copy used at 0242. It predates the current run-law changes.
+- The actual `copyExperimentsFrom` writes snapshots, lab files and items before
+  experiments. The fixture does not represent the valid result of that operation.
+  Loosening the product's missing-item guard would reverse the intended contract.
+
+I confirmed the compiled selectors: after 0221, the first selection of
+`InverseConstructorTests` is 0252, followed by 0254, 0259, 0260, 0261, 0265 and
+0266 in the inspected window. The gate selection at 0227 missed a test affected
+by its behavior change. Its scope also omitted the necessary fixture adaptation.
+This is a specification/coverage-planning omission alongside the fixture defect.
+
+The 0242 worker and judge recorded the inherited failure, but the judge's pointer
+to 0261 was wrong. The failure was left in prose without an actionable operator
+notification. ASG's `JudgeVerdict` and `parse_judge_envelope` currently carry only
+`verdict`, `rationale` and `retry_hint`; they have no structured inherited-failure
+channel. The judge prompt distinguishes inherited failures and authority conflicts
+but does not require such a notification for a green verdict. This is a separate
+ASG visibility gap, similar in effect to the log-only deadline warnings at 0210.
+It is not caused by a provider switch.
+
+The 0252 judge and resolver correctly identified the current authority conflict.
+An instruction to edit an unauthorized fixture is not an ordinary retry hint.
+This repeats the missing fixture-adaptation authority seen at 0185; manual 014
+explicitly granted only its named repairs, so it cannot authorize this one.
+
+## Corrections and limits of the primary proposal
+
+1. Prefer preparing and verifying the repair here before the operator commits,
+   following the established 0185 workflow. Merely authorizing another worker
+   attempt leaves an unverified fixture repair to the next launch.
+2. The recipe's phrase "the fixture's bound sample" is inaccurate. `inverseIn`
+   uses `SceneTestFixture.inverseScene` / `initInverse`; the sample starts unbound,
+   and `withIntensityExperiment` does not bind it. The repair should explicitly
+   choose a valid stack sample, give the copied setup a consistent binding, and
+   record its `samplePiece` item alongside the two polarizer items. A known plate
+   sample distinct from the later glass-film rebind is suitable. Preserve all
+   existing assertions, including clearing the sample assignment on that rebind.
+   Dummy items with unrelated models would only conceal an invalid fixture.
+3. The local `chartForRun.inOrder` repeats the ordered Result collection already
+   implemented by private `ItemEvaluation.sequenced`. Include the small reuse
+   repair in the requested authority: expose the existing implementation and call
+   it from the host, removing the duplicate. Preserve first-error and list order;
+   validate the public name and signature through elevation. This is independent
+   of the failing fact, but follows the repository's reuse rule.
+4. Do not require the operator to leave implementation files uncommitted or to
+   isolate the ruling into a special commit. The operator routinely commits the
+   whole escalation tree for recovery. A normal resume remains necessary because
+   checkpoint 251 does not exist, regardless of which files the user commits.
+5. No receipt should be patched manually. If the project prompt changes, validate
+   publication with the existing compiler/receipt path, preserving completed
+   snapshots. Normal boot can publish the refreshed receipt. Manual-only edits
+   are already excluded from publication identity by ASG manual 033.
+
+The current selected UI run is 84/85, not green. The logs report constructor
+1401/1401, smoke 245/245, and zero new elevation findings, but these are worker
+measurements; the supervisor stopped during review after build. They do not
+constitute the missing measured checkpoint. No new tests were run in this review.
+The 0210 budget repair remains effective: the arc completed 0210 through 0251,
+and the 0252 smoke measurements fit within its unchanged 600-second deadline.
+
+## Recommended preparation, subject to operator agreement
+
+1. **Record narrow authority.** Add manual
+   `016-step-0252-recommit-fixture.md` and its project-prompt pointer. Authorize the
+   named existing fixture in `InverseConstructorTests.fs` and the Result-helper
+   reuse in `ItemEvaluation.fs` / `TableAndElementRotationView.fs`. Preserve the
+   rest of the worker's implementation. Bind later edits at 0254, 0259, 0260 and
+   0261 to retaining valid stored items, including 0261's move to
+   `SlotContent.ItemInSlot`. State the normal-resume exception explicitly.
+2. **Complete the repair before relaunch.** Build the three physical items via
+   `ItemDraft.toItem`, with distinct labels and the existing IDs. Use two
+   `PolarizerPresetChoice` items for `PresetIds.polarizerLp` and one valid
+   `StackSampleChoice` for the sample. Record them through
+   `KitLibraryContext.recordItem` before writing the copied experiment, keeping
+   its bindings consistent. Retain every assertion and test identity. Replace
+   the host's local collector with the existing ordered collector. No test
+   census change is needed for these existing-identity fixture edits.
+3. **Verify the complete recovery.** Release-build, run the repaired fact and
+   its class, then the full non-smoke UI suite once to expose any further
+   inherited failures before handoff. Run all 19 unchanged 0252 gates: build,
+   arc-origin elevation, constructor tests (1401 expected), smoke (245 expected),
+   the six selected UI classes (85 expected) and fourteen invariants. Require
+   no failed/skipped cases and valid test identities. Preserve all gates, floors,
+   budgets, accepted checkpoints and completed snapshots. Verify profile-1
+   publication through supported tooling. Record any additional concrete failure
+   and obtain needed scope rather than waiving it or silently extending authority.
+4. **File the ASG error and hand off for commit.** Record BRM-0050 0252-01 as an
+   OPEN ASG issue: structured inherited-test failures in judge output, immediate
+   deduplicated operator notification, and deterministic identification of the
+   earliest pending selecting step from compiled gates. Cover class, method and
+   all-discovered selections; do not trust an agent's guessed future step.
+   Regression evidence should include a green current selection with an inherited
+   failure outside it, a later selecting step, repeated notification suppression,
+   and preserved escalation when a required current test fails. Record the
+   0227 selection omission as prevention evidence too: behavioral changes need
+   affected existing tests and fixture authority planned together. Finish the
+   recovery log and handoff, then wait for the operator to commit BRM and ASG.
+   Filing an issue is not an ASG source fix; any such implementation needs its
+   own agreed scope. STL remains untouched.
+
+After the commits and explicit relaunch request, resume normally with an operator
+reply and `--executability-profile 1`, without `--accept-current-slice`. The
+supervisor must review and run the gates, then publish measured checkpoint 251
+before step 0253. Reattach the monitor. Do not reset consumed counters.
+
+Only this secondary review was written. The original postmortem, worker changes,
+source, gates, state, checkpoints and Git history were left unchanged. No repair,
+commit or relaunch has been performed; implementation awaits agreement.

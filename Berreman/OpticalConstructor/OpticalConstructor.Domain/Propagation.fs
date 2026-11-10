@@ -19,8 +19,8 @@ open OpticalConstructor.Domain.Library
 [<AutoOpen>]
 module PropagationReadouts =
 
-    /// The intensity an intensity detector records: S₀ of the Stokes vector arriving at it, relative to the
-    /// unit-intensity input every run starts from (spec 0046).
+    /// The intensity an intensity detector records: S₀ of the Stokes vector arriving at it, relative to the source's
+    /// intensity reference (spec 0046; spec 0050 S8.1).
     type DetectorIntensity =
         | DetectorIntensity of float
 
@@ -165,7 +165,7 @@ module Propagation =
     // Spec 0038 Part F (step 014) — constant-Mueller polarizer evaluation. `PolarizerBehavior` is DATA in
     // the Library domain; its evaluation lives ONLY here, in the Stokes/Mueller pipeline (a ConstantMueller
     // entry never enters the Berreman stack). `ComputedIdeal` keeps synthesizing through the EXISTING
-    // `inputStokes` / `analyzerMueller` above, exactly as before. R(θ) is `Angle.rotationMueller`.
+    // `analyzerMueller` above, exactly as before. R(θ) is `Angle.rotationMueller`.
     // -----------------------------------------------------------------------------------------------------
 
     /// A polarizing element stored at reference orientation, physically rotated to θ (spec 0038 Part F):
@@ -193,15 +193,6 @@ module Propagation =
         match behavior with
         | ComputedIdeal kind -> analyzerMueller kind theta
         | ConstantMueller components -> rotateMueller theta (compoundMueller components)
-
-    /// The input Stokes vector a polarizer behaviour produces at orientation `theta` (spec 0038 Part F):
-    /// `ComputedIdeal` keeps the EXISTING unit-intensity `inputStokes` synthesis exactly as today;
-    /// `ConstantMueller` applies the rotated compound to unpolarized natural light — un-normalized, so
-    /// the compound's own throughput attenuates S0 (there is no analytic kind to normalize by).
-    let behaviorInputStokes (behavior : PolarizerBehavior) (theta : Angle) : StokesVector =
-        match behavior with
-        | ComputedIdeal kind -> inputStokes kind theta
-        | ConstantMueller _ -> behaviorMueller behavior theta * unpolarizedStokes
 
     /// One resolved layer of a sample (spec 0033 step 020): the dispersive engine layer plus the
     /// crystal orientation the system builder applies AT BUILD TIME — nothing is stored rotated.
