@@ -299,8 +299,8 @@ module BeamLayoutTests =
             Assert.True(s.finish.x <= -0.025 + tol && s.start.x <= -0.025 + tol, $"a ray reaches x = {max s.start.x s.finish.x}, behind the first detector")
         // Only the lit detector captures.
         let detectors = [ Library.ElementId "det2"; Library.ElementId "det" ]
-        Assert.Equal<BeamTree.BeamBranch list>([ BeamTree.TransmittedBeam ], detectedBranches scene detectors (Library.ElementId "s") (Library.ElementId "s"))
-        Assert.Empty(detectedBranches scene [ Library.ElementId "det" ] (Library.ElementId "s") (Library.ElementId "s"))
+        Assert.Equal<BeamTree.BeamBranch list>([ BeamTree.TransmittedBeam ], detectedBranches scene detectors (Library.ElementId "s") [ Library.ElementId "s" ])
+        Assert.Empty(detectedBranches scene [ Library.ElementId "det" ] (Library.ElementId "s") [ Library.ElementId "s" ])
 
     [<Fact>]
     let ``the lit rays are listed main beam first, and the first one no detector ends is the free ray`` () =
@@ -385,7 +385,7 @@ module BeamLayoutTests =
         let detectors (scene : LayoutElement list) : Library.ElementId list =
             scene |> List.filter (fun e -> e.placement.catalogueKind = Detector) |> List.map (fun e -> e.id)
         let capturesOf (scene : LayoutElement list) (varied : string) : Experiments.MeasurementMode list =
-            capturesFor (detectedBranches (layout scene) (detectors scene) (Library.ElementId varied) (Library.ElementId "s"))
+            capturesFor (detectedBranches (layout scene) (detectors scene) (Library.ElementId varied) [ Library.ElementId "s" ])
         // Only the transmitted detector ⇒ only T.
         Assert.Equal<Experiments.MeasurementMode list>([ Experiments.CaptureTransmitted ], capturesOf (sampleScene 30.0) "s")
         // Only a reflected detector ⇒ only R.

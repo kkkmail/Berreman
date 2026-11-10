@@ -1788,19 +1788,6 @@ let private clampSweep (model : TableAndElementRotationModel) (range : Experimen
         { range with min = Propagation.SweptValue (max lo (min hi range.min.value)); max = Propagation.SweptValue (max lo (min hi range.max.value)) }
     | _ -> range
 
-/// The element an experiment MEASURES (spec 0046 task 5): the first element bound to a SAMPLE (the one the
-/// runs re-solve), else the varied element itself.
-let private measuredElementOf (model : TableAndElementRotationModel) (varied : Library.ElementId) : Library.ElementId =
-    model.elements
-    |> List.tryPick (fun e ->
-        match e.placement.valueId with
-        | Some id ->
-            match model.library.tryGetEntry id with
-            | Ok (Some (Library.SampleItem _)) -> Some e.id
-            | Ok (Some _) | Ok None | Error _ -> None
-        | None -> None)
-    |> Option.defaultValue varied
-
 type TableAndElementRotationModel with
 
     /// A wavelength sweep's range for the scene's source (spec 0046): a tunable source's limits; else the generic
@@ -1813,18 +1800,33 @@ type TableAndElementRotationModel with
                 max = Propagation.SweptValue limits.upper.nanometers }
         | None -> Experiments.VariableRange.forVariable Experiments.VaryWaveLength
 
-    /// The lit detectors that see the varied element (spec 0046), in walk order — each with the branch by which
-    /// the light reaching it left the MEASURED element (`measuredElementOf`) and its index in the scene. The
-    /// detector on a branch decides what that branch's capture reads.
+    /// The objects (spec 0050 S8.1): the elements bound to a library sample, in scene order.
+    member internal model.objectIds : Library.ElementId list =
+        model.elements
+        |> List.choose (fun e ->
+            match e.placement.valueId with
+            | Some id ->
+                match model.library.tryGetEntry id with
+                | Ok (Some (Library.SampleItem _)) -> Some e.id
+                | Ok (Some _) | Ok None | Error _ -> None
+            | None -> None)
+
+    /// The scene's detector elements, in scene order.
+    member internal model.detectorIds : Library.ElementId list =
+        model.elements
+        |> List.choose (fun e ->
+            match e.placement.catalogueKind with
+            | Detector -> Some e.id
+            | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror -> None)
+
+    /// Each captured detector's branch and scene index, in scene order (`BeamLayout.detectorCaptures`): a detector
+    /// captures the branch by which its light leaves the last object on its path (spec 0050 S8.1).
     member model.captureDetectors (varied : Library.ElementId) : (BeamTree.BeamBranch * SceneElementIndex) list =
-        let measured = measuredElementOf model varied
-        model.sceneLayout.elements
-        |> List.mapi (fun j placed -> SceneElementIndex j, placed)
-        |> List.choose (fun (j, placed) ->
-            match (List.item j.value model.elements).placement.catalogueKind, placed.light with
-            | Detector, BeamLayout.Lit when placed.path |> List.exists (fun step -> step.element = varied) ->
-                placed.path |> List.tryFind (fun step -> step.element = measured) |> Option.map (fun step -> step.branch, j)
-            | _ -> None)
+        BeamLayout.detectorCaptures model.sceneLayout model.detectorIds varied model.objectIds
+        |> List.choose (fun capture ->
+            model.indexedElements
+            |> List.tryFind (fun (_, e) -> e.id = capture.detector)
+            |> Option.map (fun (j, _) -> capture.branch, j))
 
     /// What a detector element reads (spec 0046): its bound detector entry's kind — an unbound detector reads
     /// intensity.
@@ -1836,39 +1838,11 @@ type TableAndElementRotationModel with
             | Ok (Some _) | Ok None | Error _ -> Library.Intensity
         | None -> Library.Intensity
 
-/// Spec 0046 (task 5): the capture modes the scene's DETECTORS allow for an experiment varying `varied`.
-/// T / R are the branches of the MEASURED element — the bound sample the runs re-solve (else the varied
-/// element itself) — on the light paths to the detectors that also see the varied element: a detector
-/// behind it on its transmitted beam offers T, one on its reflected ray offers R, both offer T, R and
-/// Both, none offers nothing. With no bound sample a run is a pure pass-through with nothing to reflect,
-/// so only T can be offered. Public so the rule is provable without a window.
+/// Spec 0046 (task 5): the capture modes the scene's detectors allow for an experiment varying `varied`. A detector
+/// captures the branch by which its light leaves the last object on its path (spec 0050 S8.1). Public so the rule is
+/// provable without a window.
 let availableCaptures (model : TableAndElementRotationModel) (varied : Library.ElementId) : Experiments.MeasurementMode list =
-    let sampleId =
-        model.elements
-        |> List.tryPick (fun e ->
-            match e.placement.valueId with
-            | Some id ->
-                match model.library.tryGetEntry id with
-                | Ok (Some (Library.SampleItem _)) -> Some e.id
-                | Ok (Some _) | Ok None | Error _ -> None
-            | None -> None)
-    let detectors =
-        model.elements
-        |> List.choose (fun e ->
-            match e.placement.catalogueKind with
-            | Detector -> Some e.id
-            | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror -> None)
-    let measured = sampleId |> Option.defaultValue varied
-    let branches = BeamLayout.detectedBranches model.sceneLayout detectors varied measured
-    match sampleId with
-    | Some _ -> BeamLayout.capturesFor branches
-    | None ->
-        branches
-        |> List.filter (fun b ->
-            match b with
-            | BeamTree.TransmittedBeam -> true
-            | BeamTree.ReflectedBeam -> false)
-        |> BeamLayout.capturesFor
+    BeamLayout.capturesFor (BeamLayout.detectedBranches model.sceneLayout model.detectorIds varied model.objectIds)
 
 /// Spec 0027 (028): the human label of a present element ("<kind> #<n>", 1-based, in scene order), captured
 /// onto an experiment so its collection row survives the element's removal.

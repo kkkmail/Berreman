@@ -540,7 +540,8 @@ This is a spec-driven, gated repository.
   `Mirror` sample geometry); lenses AND polarizers are T-only (locked — a splitting polarizer
   would be a new kind); a source emits; samples carry R and T.
 - **An experiment runs on the light's real path** (`ExperimentRun` + `chartForRun`): for each
-  captured branch the DETECTOR on it decides the quantity (intensity → S₀, ellipsometer → Ψ, Δ);
+  captured branch the DETECTOR on it decides the quantity (intensity → S₀, ellipsometer → Ψ, Δ),
+  and a detector captures the branch by which its light leaves the last object on its path;
   every element on the path acts in light order through its Mueller matrix from `ItemEvaluation`
   (a polarizer at its R1, every sample at its drawn incidence and spin for the branch the path
   leaves it by), and the source emits its own Stokes state times its intensity scale, by default

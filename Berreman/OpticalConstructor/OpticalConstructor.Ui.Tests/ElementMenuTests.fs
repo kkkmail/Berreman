@@ -11,7 +11,9 @@ open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
 open Xunit
+open Berreman.Constants
 open Berreman.Geometry
+open Berreman.Fields
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
@@ -201,6 +203,53 @@ module ElementMenuTests =
         Assert.Equal<Experiments.MeasurementMode list>(
             [ Experiments.CaptureTransmitted; Experiments.CaptureReflected; Experiments.CaptureBoth ],
             availableCaptures both (sample both))
+
+    [<Fact>]
+    let ``a detector on the second sample's reflected ray offers R, decided by the last object on its path`` () =
+        // Spec 0050 S8.1: the plate's reflected ray off, a second plate (3) behind it on the main beam tilted to
+        // R2 = 30°, and a detector (4) on the second plate's reflected ray.
+        let m =
+            plateScene ()
+            |> (fun m -> m |> updateTableAndElementRotation (ToggleElementRay ((elem 2 m).id, BeamTree.ReflectedBeam)))
+            |> updateTableAndElementRotation (AddElement Sample)
+            |> bind 3 plateId
+            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 30.0))
+            |> updateTableAndElementRotation (AddElement Detector)
+            |> (fun m -> m |> updateTableAndElementRotation (PlaceOnBeam ((elem 4 m).id, BeamLayout.OnReflectedBeamOf (elem 3 m).id)))
+        let firstPlate, secondPlate = (elem 2 m).id, (elem 3 m).id
+        let reflectedDetector = List.item 4 m.sceneLayout.elements
+        Assert.Equal(BeamLayout.OnReflectedBeamOf secondPlate, reflectedDetector.beam)
+        // Its light leaves the first plate by T, then the second, the last object on its path, by R.
+        Assert.Equal<(Library.ElementId * BeamTree.BeamBranch) list>(
+            [ firstPlate, BeamTree.TransmittedBeam; secondPlate, BeamTree.ReflectedBeam ],
+            reflectedDetector.path
+            |> List.filter (fun step -> step.element = firstPlate || step.element = secondPlate)
+            |> List.map (fun step -> step.element, step.branch))
+        // The first-bound-sample rule offered T alone here.
+        Assert.Equal<Experiments.MeasurementMode list>(
+            [ Experiments.CaptureTransmitted; Experiments.CaptureReflected; Experiments.CaptureBoth ], availableCaptures m firstPlate)
+        let chart =
+            m
+            |> updateTableAndElementRotation (ExpChooseElement firstPlate)
+            |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
+            |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
+            |> updateTableAndElementRotation (ExpSetRangeMin (ExperimentControls.ExperimentRangeEnd 0.0))
+            |> updateTableAndElementRotation (ExpSetRangeMax (ExperimentControls.ExperimentRangeEnd 40.0))
+            |> updateTableAndElementRotation (ExpSetRangePoints (ExperimentControls.ExperimentPointCount 5))
+            |> (fun run -> run.experimentResult)
+        Assert.Equal<string list>([ "Intensity (T)"; "Intensity (R)" ], chart.series |> List.map (fun s -> s.name.value))
+        let plate =
+            match Propagation.resolveSampleMaterials m.materials (BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId) with
+            | Ok sample -> sample
+            | Error error -> failwith $"the plate's materials must resolve: {(ItemEvaluation.SampleMaterialErr error).describe}"
+        let at600 = WaveLength.nm 600.0<nm>
+        let secondReflected = Propagation.sampleMuellerSpun Propagation.BranchReflected plate at600 (IncidenceAngle.create (Angle.degree 30.0<deg>)) Angle.zero
+        let reflected = chart.series |> List.find (fun s -> s.name.value = "Intensity (R)")
+        Assert.Equal<float list>([ 0.0; 10.0; 20.0; 30.0; 40.0 ], reflected.points |> List.map (fun p -> p.x))
+        for p in reflected.points do
+            let firstTransmitted = Propagation.sampleMuellerSpun Propagation.BranchTransmitted plate at600 (IncidenceAngle.create (Angle.degree (p.x * 1.0<deg>))) Angle.zero
+            let expected = secondReflected * (firstTransmitted * Propagation.unpolarizedStokes)
+            Assert.True(abs (expected.s0 - p.y) <= tol, $"x = {p.x:R}: expected {expected.s0:R}, got {p.y:R}")
 
     [<Fact>]
     let ``with no detector nothing can be captured and Add is disabled`` () =

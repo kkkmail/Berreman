@@ -480,29 +480,6 @@ module BeamLayout =
 
     // --- What the experiments can capture (spec 0046 task 5) -----------------
 
-    /// The branches through which the light reaching any of `detectors` left the `measured` element,
-    /// counting only LIT detectors (one behind another detector receives nothing) that also see the
-    /// `varied` element (the variation must reach them).
-    /// `T` for a detector behind it on its transmitted beam, `R` for one on its reflected beam.
-    let detectedBranches
-        (scene : SceneLayout)
-        (detectors : Library.ElementId list)
-        (varied : Library.ElementId)
-        (measured : Library.ElementId)
-        : BeamTree.BeamBranch list =
-        scene.elements
-        |> List.filter (fun p ->
-            List.contains p.id detectors
-            && (match p.light with
-                | Lit -> true
-                | Unlit -> false))
-        |> List.choose (fun p ->
-            let sees (id : Library.ElementId) = p.path |> List.exists (fun s -> s.element = id)
-            match sees varied with
-            | true -> p.path |> List.tryFind (fun s -> s.element = measured) |> Option.map (fun s -> s.branch)
-            | false -> None)
-        |> List.distinct
-
     /// One detector an experiment captures and the branch it captures (spec 0050 S8.1).
     type DetectorCapture =
         {
@@ -535,6 +512,16 @@ module BeamLayout =
                     capturedOpt |> Option.map (fun branch -> { detector = p.id; branch = branch })
                 | None -> None
             | Lit | Unlit -> None)
+
+    /// Spec 0050 S8.1: the distinct branches `detectorCaptures` gives `detectors`, in their order, so one rule decides
+    /// both what each detector captures and what an experiment may capture.
+    let detectedBranches
+        (scene : SceneLayout)
+        (detectors : Library.ElementId list)
+        (varied : Library.ElementId)
+        (objects : Library.ElementId list)
+        : BeamTree.BeamBranch list =
+        detectorCaptures scene detectors varied objects |> List.map (fun capture -> capture.branch) |> List.distinct
 
     /// The capture modes the detected branches allow: a transmitted detector offers T, a reflected one R,
     /// both offer T, R and Both; none offers nothing.
