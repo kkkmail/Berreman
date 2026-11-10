@@ -14,6 +14,9 @@ open Berreman.Fields
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -333,6 +336,242 @@ module ExperimentControlsTests =
                 else Propagation.sampleMuellerSpun Propagation.BranchTransmitted film at600 (IncidenceAngle.create (Angle.degree (p.x * 1.0<deg>))) Angle.zero
             let expected = samplesInLightOrder |> List.fold (fun sv id -> transmitted id * sv) Propagation.unpolarizedStokes
             Assert.True(abs (expected.s0 - p.y) <= 1.0e-12, $"x = {p.x:R}: expected {expected.s0:R}, got {p.y:R}")
+
+    // ============ spec 0050 S8.2 — the run reads the slots: a slot's item through its own model ============
+
+    /// Runs over a fresh Main scene in its scratch kit (`initMain`), closing the kit at the end (spec 0050 .manual/010).
+    let private withMainScene (run : TableAndElementRotationModel -> unit) : unit =
+        let scene = initMain () |> SceneTestFixture.kitSuccess
+        try run scene
+        finally scene.kit.close () |> SceneTestFixture.kitSuccess
+
+    /// The model after the message, which must leave the kit status clear.
+    let private applied (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let next = model |> updateTableAndElementRotation msg
+        Assert.Equal<ControlCaption option>(None, next.kitStatus)
+        next
+
+    /// A known angle parameter of that many degrees, in radians, an angle parameter's unit (spec 0050 S8.1).
+    let private knownDegrees (degrees : float<deg>) : ParameterState =
+        KnownParameter (ParameterValue (Angle.degree degrees).value)
+
+    /// The draft varying the slot on `variable` over `lo` … `hi` in that many points, capturing the transmitted branch.
+    let private sweeping
+        (id : Library.ElementId)
+        (variable : ExperimentControls.VariableChoice)
+        (lo : ExperimentControls.ExperimentRangeEnd)
+        (hi : ExperimentControls.ExperimentRangeEnd)
+        (points : ExperimentControls.ExperimentPointCount)
+        (model : TableAndElementRotationModel)
+        : TableAndElementRotationModel =
+        model
+        |> updateTableAndElementRotation (ExpChooseElement id)
+        |> updateTableAndElementRotation (ExpChooseVariable variable)
+        |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
+        |> updateTableAndElementRotation (ExpSetRangeMin lo)
+        |> updateTableAndElementRotation (ExpSetRangeMax hi)
+        |> updateTableAndElementRotation (ExpSetRangePoints points)
+
+    /// The table with two linear polarizers added, each pre-bound to the linear preset, the second selected.
+    let private withTwoPolarizers (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        model
+        |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        |> updateTableAndElementRotation (AddElement LinearPolarizer)
+
+    /// The real linear polarizer on its shipped item model (step 210).
+    let private realPolarizerModel : ItemModelVersion = BuiltinCatalogue.itemModel ItemModelIds.realLinearPolarizerModelId
+
+    let private realPolarizerDraft : ItemDraft =
+        {
+            id = ItemId (System.Guid.Parse "26500000-0000-4000-8000-000000000001")
+            label = ItemLabel "RLP"
+            model = LibraryModelChoice realPolarizerModel
+            dial = FixedMounting
+        }
+
+    /// The 1 mm glass plate at its first version on the shipped stack-sample item model (step 210).
+    let private plateDraft : ItemDraft =
+        {
+            id = ItemId (System.Guid.Parse "26500000-0000-4000-8000-000000000002")
+            label = ItemLabel "QZ"
+            model =
+                StackSampleChoice (
+                    BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId,
+                    Library.SampleVersionId.firstOf Library.SampleIds.glassPlate1mmId,
+                    BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId
+                )
+            dial = FixedMounting
+        }
+
+    [<Fact>]
+    let ``a slot's item is run through its own parameters: a real polarizer item's leakage passes crossed light`` () =
+        withMainScene (fun scene ->
+            let placed =
+                scene
+                |> applied (AddItem realPolarizerDraft)
+                |> applied (SetParameterState (realPolarizerDraft.id, ParameterName.extinctionRatio, KnownParameter (ParameterValue 0.01)))
+                |> withTwoPolarizers
+            let first, second = elem 2 placed, elem 3 placed
+            Assert.Equal<ElementValueId option list>(
+                [ Some Library.PresetIds.polarizerLp; Some Library.PresetIds.polarizerLp ],
+                [ first.placement.valueId; second.placement.valueId ])
+            Assert.Equal(0.0, first.placement.r1.value)
+            // The first polarizer stands in front of the second on the seeded detector's (index 1) path.
+            Assert.Equal<Library.ElementId list>(
+                [ first.id; second.id ],
+                (List.item 1 placed.sceneLayout.elements).path |> List.map (fun step -> step.element) |> List.filter (fun id -> id = first.id || id = second.id))
+            let held = placed |> applied (AssignSlot (second.id, Some realPolarizerDraft.id))
+            let chartOf (table : TableAndElementRotationModel) : ExperimentChart.ExperimentChart =
+                let swept =
+                    table
+                    |> sweeping second.id ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 180.0) (ExperimentControls.ExperimentPointCount 5)
+                swept.experimentResult
+            let sweptBy (table : TableAndElementRotationModel) : ExperimentControls.ChartPoint list = (Assert.Single (chartOf table).series).points
+            let points = sweptBy held
+            Assert.Equal<float list>([ 0.0; 45.0; 90.0; 135.0; 180.0 ], points |> List.map (fun p -> p.x))
+
+            // Each point is the item's own form at its values, turned to the point's rotation, after the first polarizer at 0°.
+            let item = held.kitItems |> List.find (fun kitItem -> kitItem.id = realPolarizerDraft.id)
+            let form =
+                match realPolarizerModel.entry.model with
+                | OpticalElementModel form -> form
+                | _ -> failwith "The real linear polarizer model must be an optical element."
+            let bound =
+                ItemEvaluation.BoundOpticalElement.ofOpticalForm (ParameterValues.ofParameters item.parameters) form
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let at600 = WaveLength.nm 600.0<nm>
+            for p in points do
+                let matrix =
+                    bound.muellerAt (ItemEvaluation.ElementOrientation.transmittingAt (Angle.degree (p.x * 1.0<deg>))) at600
+                    |> Result.defaultWith (fun error -> failwith error.describe)
+                let expected = (matrix * Propagation.inputStokes Library.IdealLinear Angle.zero).s0
+                Assert.True(abs (expected - p.y) <= 1.0e-12, $"x = {p.x:R}: expected {expected:R}, got {p.y:R}")
+
+            // Crossed at 90°, the item's leakage passes light, where the preset in its place passes none.
+            let crossed = (List.item 2 points).y
+            Assert.True(crossed > 1.0e-4, $"the real polarizer item crossed must pass its leakage, read {crossed:R}")
+            let presetCrossed = (List.item 2 (sweptBy (held |> applied (AssignSlot (second.id, None))))).y
+            Assert.True(abs presetCrossed < 1.0e-12, $"the preset crossed must pass nothing, read {presetCrossed:R}")
+
+            // A slot's item the kit no longer holds is named on the failure chart, never run as the preset it sits on.
+            let lost = chartOf { held with kitItems = [] }
+            Assert.Empty(lost.series)
+            Assert.Equal("The run cannot be evaluated", lost.title.value)
+            Assert.Equal((UnknownSlotItemErr $"the kit holds no item {realPolarizerDraft.id.value}").describe, lost.description.value))
+
+    [<Fact>]
+    let ``a sample item is solved at its own thickness, as the item evaluator solves it`` () =
+        withMainScene (fun scene ->
+            let thickness = ParameterValue 2.0e-3
+            let placed =
+                scene
+                |> applied (AddItem plateDraft)
+                |> applied (SetParameterState (plateDraft.id, ParameterName.substrateThickness, KnownParameter thickness))
+                |> updateTableAndElementRotation (AddElement Sample)
+            let sample = elem 2 placed
+            Assert.Equal<ElementValueId option>(None, sample.placement.valueId)
+            let held = placed |> applied (AssignSlot (sample.id, Some plateDraft.id))
+            Assert.Equal<Experiments.MeasurementMode list>([ Experiments.CaptureTransmitted ], availableCaptures held sample.id)
+            let swept =
+                held
+                |> sweeping sample.id ExperimentControls.VaryR2 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 60.0) (ExperimentControls.ExperimentPointCount 7)
+            let points = (Assert.Single swept.experimentResult.series).points
+            Assert.Equal<float list>([ 0.0; 10.0; 20.0; 30.0; 40.0; 50.0; 60.0 ], points |> List.map (fun p -> p.x))
+
+            // Each point is the item evaluator's solve of the plate at the item's values, at the point's incidence, spin 0.
+            let item = held.kitItems |> List.find (fun kitItem -> kitItem.id = plateDraft.id)
+            let values = ParameterValues.ofParameters item.parameters
+            Assert.Equal<ParameterValue>(thickness, values.valueOf ParameterName.substrateThickness |> Result.defaultWith (fun error -> failwith error.describe))
+            let plate = BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId
+            let transmittedS0 (bound : ItemEvaluation.BoundOpticalElement) (incidenceDegrees : float) : float =
+                let orientation : ItemEvaluation.ElementOrientation =
+                    {
+                        ItemEvaluation.ElementOrientation.rotation = Angle.zero
+                        incidence = IncidenceAngle.create (Angle.degree (incidenceDegrees * 1.0<deg>))
+                        branch = Propagation.BranchTransmitted
+                    }
+                let matrix = bound.muellerAt orientation (WaveLength.nm 600.0<nm>) |> Result.defaultWith (fun error -> failwith error.describe)
+                (matrix * Propagation.unpolarizedStokes).s0
+            let boundAt (atValues : ItemEvaluation.ParameterValues) : ItemEvaluation.BoundOpticalElement =
+                ItemEvaluation.BoundOpticalElement.ofStackSample held.materials atValues plate
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let itemPlate = boundAt values
+            for p in points do
+                let expected = transmittedS0 itemPlate p.x
+                Assert.True(abs (expected - p.y) <= 1.0e-12, $"x = {p.x:R}: expected {expected:R}, got {p.y:R}")
+
+            // The plate's own 1 mm reads otherwise: the run solved the item's thickness, not the sample's default.
+            let defaultPlate = boundAt (ParameterValues.defaultsOf plate.parameterAxes)
+            Assert.True(
+                points |> List.exists (fun p -> abs (transmittedS0 defaultPlate p.x - p.y) > 1.0e-12),
+                "the 2 mm item must read otherwise than the 1 mm sample at some incidence"))
+
+    [<Fact>]
+    let ``a dial-mounted item is run at the angle its reading draws`` () =
+        let polarizer =
+            match BuiltinCatalogue.preset Library.PresetIds.polarizerLp with
+            | Library.PolarizerItem value -> value
+            | Library.SampleItem _
+            | Library.SourceItem _
+            | Library.DetectorItem _ -> failwith "The linear polarizer preset must hold a polarizer."
+        let dialDraft : ItemDraft =
+            {
+                id = ItemId (System.Guid.Parse "26500000-0000-4000-8000-000000000003")
+                label = ItemLabel "LPd"
+                model = PolarizerPresetChoice (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId, polarizer)
+                dial = DialMounted DialNegative
+            }
+        let chartSweepingFirst (table : TableAndElementRotationModel) : ExperimentChart.ExperimentChart =
+            let swept =
+                table
+                |> sweeping (elem 2 table).id ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 90.0) (ExperimentControls.ExperimentPointCount 4)
+            swept.experimentResult
+        withMainScene (fun scene ->
+            // The second polarizer, which the add selected, turned to R1 30° and given LPd, whose zero is 10°: the reading
+            // is 10° − 30° = −20°.
+            let placed =
+                scene
+                |> applied (AddItem dialDraft)
+                |> applied (SetParameterState (dialDraft.id, ParameterName.dialZero, knownDegrees 10.0<deg>))
+                |> withTwoPolarizers
+                |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 30.0))
+            let second = elem 3 placed
+            Assert.Equal((Angle.degree 30.0<deg>).value, second.placement.r1.value, 1e-12)
+            let recorded =
+                placed
+                |> applied (AssignSlot (second.id, Some dialDraft.id))
+                |> updateTableAndElementRotation (SetSetupName (ControlCaption "Dial"))
+                |> updateTableAndElementRotation CreateSetup
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Dial'."), recorded.kitStatus)
+            match (recorded.kitSetups |> List.find (fun setup -> setup.name = SetupName "Dial")).slots |> List.find (fun slot -> slot.id = second.id) with
+            | { Setups.SetupSlot.content = Setups.ItemInSlot (heldId, Setups.DialTurn reading) } ->
+                Assert.Equal<ItemId>(dialDraft.id, heldId)
+                Assert.Equal((Angle.degree (-20.0<deg>)).value, reading.value, 1e-12)
+            | other -> Assert.Fail $"the second polarizer must hold LPd on its dial, held %A{other.content}"
+
+            // Re-zeroed to 20°, the activated setup draws the reading −20° at −(−20° − 20°) = 40°.
+            let drawn =
+                recorded
+                |> applied (SetParameterState (dialDraft.id, ParameterName.dialZero, knownDegrees 20.0<deg>))
+                |> updateTableAndElementRotation (ActivateSetup (SetupName "Dial"))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Dial'."), drawn.kitStatus)
+            Assert.Equal((Angle.degree 40.0<deg>).value, (drawn.elements |> List.find (fun slot -> slot.id = second.id)).placement.r1.value, 1e-12)
+            let itemChart = chartSweepingFirst drawn
+
+            withMainScene (fun bare ->
+                let reference = bare |> withTwoPolarizers |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 40.0))
+                Assert.Equal<ElementValueId option>(Some Library.PresetIds.polarizerLp, (elem 3 reference).placement.valueId)
+                Assert.Equal<Setups.SlotContent>(Setups.EmptySlotContent, (elem 3 reference).content)
+                let referenceChart = chartSweepingFirst reference
+                Assert.Equal(referenceChart.title, itemChart.title)
+                let itemPoints = (Assert.Single itemChart.series).points
+                let referencePoints = (Assert.Single referenceChart.series).points
+                Assert.Equal<float list>([ 0.0; 30.0; 60.0; 90.0 ], itemPoints |> List.map (fun p -> p.x))
+                Assert.Equal<float list>(referencePoints |> List.map (fun p -> p.x), itemPoints |> List.map (fun p -> p.x))
+                for itemPoint, referencePoint in List.zip itemPoints referencePoints do
+                    Assert.True(
+                        abs (itemPoint.y - referencePoint.y) <= 1.0e-12,
+                        $"x = {itemPoint.x:R}: the dial item read {itemPoint.y:R}, the bare preset at 40° {referencePoint.y:R}")))
 
     // ============ step 018 — the silent ideal-analyzer fallback is RETIRED ============
 
