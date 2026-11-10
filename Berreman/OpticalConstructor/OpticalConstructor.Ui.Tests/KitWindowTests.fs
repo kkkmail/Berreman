@@ -71,14 +71,20 @@ module KitWindowTests =
             sourceWaveLengthOpt = None
         }
 
-    /// The controls that send the kit's write messages: Add, `E1`'s Remove and Attach data file, and Create setup.
+    /// The controls that send the kit's write messages: Add, `E1`'s Remove and Attach data file, Create setup and Save
+    /// setup.
     let private writeControlIds : ConstructorUiId list =
         [
             ConstructorUiId.experimentAddButton
             ConstructorUiId.experimentRemoveButton storedExperiment.id.uiKey
             ConstructorUiId.attachDataFile storedExperiment.id
             ConstructorUiId.createSetupButton
+            ConstructorUiId.saveSetupButton
         ]
+
+    /// The setup the write-control windows draw, recorded while the kit is read-write, so Save setup is withheld for the
+    /// kit's access alone (spec 0050 S8.2).
+    let private storedBench : SetupName = SetupName "Stored bench"
 
     let private openedAt (folder : KitFolder) (access : KitAccess) (ctx : AppContext) : OpenedKit =
         openKitAt folder access ClockProvider.system kitAuthor ctx.catalogueImports
@@ -202,15 +208,18 @@ module KitWindowTests =
             loaded with kitShell = shell
         }
 
-    /// Mounts `mainView` over the inverse model loaded from the kit opened with `access`, with a draft ready to
-    /// commit and the Experiments bay selected, and checks every write control against `expected` (spec 0050 S5.3).
+    /// Mounts `mainView` over the inverse model loaded from the kit opened with `access`, `storedBench` drawn, with a
+    /// draft ready to commit and the Experiments bay selected, and checks every write control against `expected` (spec
+    /// 0050 S5.3, S8.2).
     let private assertWriteControls (folder : KitFolder) (ctx : AppContext) (access : KitAccess) (expected : ControlAvailability) : unit =
         let opened = openedAt folder access ctx
         try
             let loaded = kitWindowModel ctx opened InverseConstructor KitWindowShell.inert
-            let sample = loaded.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.Sample)
+            let active = loaded |> updateTableAndElementRotation (ActivateSetup storedBench)
+            Assert.Equal<SetupName option>(Some storedBench, active.activeSetupOpt |> Option.map (fun setup -> setup.name))
+            let sample = active.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.Sample)
             let model =
-                loaded
+                active
                 |> updateTableAndElementRotation (ExpChooseElement sample.id)
                 |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
@@ -245,7 +254,13 @@ module KitWindowTests =
             let ctx = TestAppScope.freshAppContext owner
             let folder = TestAppScope.freshKitFolder owner
             let created = openedAt folder ReadWriteKitAccess ctx
-            try created.library.kit.proxy.writeExperiment storedExperiment |> SceneTestFixture.kitSuccess
+            try
+                created.library.kit.proxy.writeExperiment storedExperiment |> SceneTestFixture.kitSuccess
+                let recorded =
+                    kitWindowModel ctx created InverseConstructor KitWindowShell.inert
+                    |> updateTableAndElementRotation (SetSetupName storedBench.caption)
+                    |> updateTableAndElementRotation CreateSetup
+                Assert.Equal<SetupName list>([ storedBench ], recorded.kitSetups |> List.map (fun setup -> setup.name))
             finally created.library.kit.close () |> SceneTestFixture.kitSuccess
             assertWriteControls folder ctx ReadOnlyKitAccess ControlWithheld
             assertWriteControls folder ctx ReadWriteKitAccess ControlOffered)

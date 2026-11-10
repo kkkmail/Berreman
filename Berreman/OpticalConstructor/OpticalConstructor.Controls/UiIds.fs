@@ -167,6 +167,10 @@ type ConstructorUiId =
     static member setupNameField : ConstructorUiId = ConstructorUiId "SetupNameField"
     static member createSetupButton : ConstructorUiId = ConstructorUiId "CreateSetupButton"
     static member savedSetups : ConstructorUiId = ConstructorUiId "SavedSetups"
+    /// The setup row's line naming the setup the table draws, or that it is none yet (spec 0050 S8.2).
+    static member activeSetupText : ConstructorUiId = ConstructorUiId "ActiveSetupText"
+    /// The setup row's Save setup action: writes the table over the active setup (spec 0050 S8.2).
+    static member saveSetupButton : ConstructorUiId = ConstructorUiId "SaveSetupButton"
     /// The inverse experiment data files (spec 0050 S4.3).
     static member experimentDataFiles : ConstructorUiId = ConstructorUiId "ExperimentDataFiles"
 

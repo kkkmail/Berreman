@@ -185,16 +185,29 @@ module KitWindowModelTests =
     [<Fact>]
     let ``a kit opened read-only refuses every write message and writes nothing`` () : unit =
         withTitledFolder (fun folder imports ->
+            // Spec 0050 S8.2: a setup recorded while the kit was read-write is active when SaveSetup is refused.
+            let storedBench = SetupName "Stored bench"
             let created = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
-            try created.library.kit.proxy.writeExperiment storedExperiment |> kitValue
-            finally created.library.kit.close () |> kitValue
+            withLoadedScene created (fun model ->
+                created.library.kit.proxy.writeExperiment storedExperiment |> kitValue
+                let recorded =
+                    model
+                    |> updateTableAndElementRotation (SetSetupName (ControlCaption "Stored bench"))
+                    |> updateTableAndElementRotation CreateSetup
+                Assert.Equal<SetupName list>([ storedBench ], recorded.kitSetups |> List.map (fun setup -> setup.name)))
             let opened = openKitAt folder ReadOnlyKitAccess ClockProvider.system titleAuthor imports |> openedValue
             withLoadedScene opened (fun model ->
-                let placed = model |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+                let active = model |> updateTableAndElementRotation (ActivateSetup storedBench)
+                let placed = active |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
                 let polarizer = placed.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
                 let ready = placed |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
                 Assert.True(ready.experimentCollection.canCommit, "the draft must be ready to commit")
                 Assert.Equal<Experiments.Experiment list>([ storedExperiment ], ready.experimentCollection.experiments)
+                match ready.activeSetupOpt with
+                | Some setup ->
+                    Assert.Equal<SetupName>(storedBench, setup.name)
+                    Assert.NotEqual<SetupSlot list>(setup.slots, ready.elements)
+                | None -> Assert.Fail "SaveSetup must be refused with a setup active"
                 let dataFile = (FileName "measured.csv").combine folder.value
                 File.WriteAllText(dataFile.value, "x,intensity\n0,1\n45,0.5\n")
                 let before = folderBytes folder
@@ -204,6 +217,7 @@ module KitWindowModelTests =
                         ready |> updateTableAndElementRotation (ExpRemove storedExperiment.id)
                         ready |> updateTableAndElementRotation (AttachDataFileTo (storedExperiment.id, dataFile))
                         ready |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench")) |> updateTableAndElementRotation CreateSetup
+                        ready |> updateTableAndElementRotation SaveSetup
                     ]
                 for answer in refused do
                     Assert.Equal<Experiments.ExperimentCollection>(ready.experimentCollection, answer.experimentCollection)

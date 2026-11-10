@@ -26,8 +26,8 @@ open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 
-/// Setup commands record the table and its library references in the opened kit and draw a kit setup back on the
-/// table (spec 0050 S4.3, S8.2).
+/// Setup commands record the table and its library references in the opened kit, write it over the active setup and
+/// draw a kit setup back on the table (spec 0050 S4.3, S8.2).
 module SetupSaveLoadTests =
 
     let private owner : FolderName = FolderName "SetupSaveLoadTests"
@@ -52,9 +52,9 @@ module SetupSaveLoadTests =
         |> Seq.choose (function :? Control as control -> Some control | _ -> None)
         |> Seq.find (fun control -> AutomationProperties.GetAutomationId(control) = id.value)
 
-    let private clickSetupControl (id : ConstructorUiId) (window : Window) : unit =
+    /// Presses the box carrying `id` at its centre.
+    let private pressSetupControl (id : ConstructorUiId) (window : Window) : unit =
         let button = findSetupControl id window :?> Border
-        Assert.False(System.String.IsNullOrWhiteSpace(AutomationProperties.GetName button))
         button.BringIntoView() |> ignore
         Dispatcher.UIThread.RunJobs()
         match button.TranslatePoint(Point(button.Bounds.Width / 2.0, button.Bounds.Height / 2.0), window) |> Option.ofNullable with
@@ -63,6 +63,11 @@ module SetupSaveLoadTests =
             window.MouseUp(point, MouseButton.Left, RawInputModifiers.None)
             Dispatcher.UIThread.RunJobs()
         | None -> Assert.Fail($"{id.value} must have a position in its window.")
+
+    /// Presses the setup row's box carrying `id`, which must carry an automation name.
+    let private clickSetupControl (id : ConstructorUiId) (window : Window) : unit =
+        Assert.False(System.String.IsNullOrWhiteSpace(AutomationProperties.GetName(findSetupControl id window)))
+        pressSetupControl id window
 
     let private createdAs (caption : ControlCaption) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
         model
@@ -224,8 +229,87 @@ module SetupSaveLoadTests =
             initial.kit.close () |> SceneTestFixture.kitSuccess
 
     [<Fact>]
+    let ``Save setup over a table an experiment uses keeps the earlier revision in the setup's kit file`` () : unit =
+        HeadlessSession.run (fun () ->
+            let stores = TestAppScope.freshAppContext owner
+            let folder = TestAppScope.freshKitFolder owner
+            let initial = openSetupKit folder stores
+            let name = SetupName "Bench"
+            try
+                let placed = initial |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+                let polarizer = placed.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
+                let seed =
+                    placed
+                    |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
+                    |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                    |> updateTableAndElementRotation (SetSetupName name.caption)
+                let mutable current = seed
+                // The dispatch the view is given, which the setup row's buttons and the Rotate bay also use.
+                let mutable dispatchOpt : (TableAndElementRotationMsg -> unit) option = None
+                let renderErrors = ResizeArray<System.Exception>()
+                let reduce (message : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+                    current <- updateTableAndElementRotation message model
+                    current
+                let view (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : Avalonia.FuncUI.Types.IView =
+                    dispatchOpt <- Some dispatch
+                    mainView model dispatch
+                let window = HostWindow(Width = 1000.0, Height = 980.0)
+                Program.mkSimple (fun () -> seed) reduce view
+                |> Program.withHost window
+                |> Program.withErrorHandler (fun (_, error) -> renderErrors.Add error)
+                |> Program.run
+                let created =
+                    try
+                        window.Show()
+                        Dispatcher.UIThread.RunJobs()
+                        clickSetupControl ConstructorUiId.createSetupButton window
+                        let created =
+                            match current.activeSetupOpt with
+                            | Some setup -> setup
+                            | None -> failwith "Create setup must make the table the active setup."
+                        Assert.Equal<SetupName>(name, created.name)
+                        Assert.Equal<SetupRevision>(SetupRevision.first, created.revision)
+
+                        // The Experiments bay's Add commits over the unchanged table, so `Bench` stays at revision 1.
+                        pressSetupControl ConstructorUiId.experimentAddButton window
+                        let e1 = Assert.Single(current.experimentCollection.experiments)
+                        Assert.Equal<SetupReference>(created.reference, e1.setup)
+                        Assert.Equal<Setups.Setup option>(Some created, current.activeSetupOpt)
+
+                        match dispatchOpt with
+                        | Some dispatch -> dispatch (RotSetAxis (RotationControls.R1, BarDegrees 30.0))
+                        | None -> Assert.Fail("The view must have been given its dispatch.")
+                        Dispatcher.UIThread.RunJobs()
+                        Assert.NotEqual<Setups.SetupSlot list>(created.slots, current.recordedSlots)
+
+                        clickSetupControl ConstructorUiId.saveSetupButton window
+                        Assert.Empty(renderErrors)
+                        Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved setup 'Bench', revision 2."), current.kitStatus)
+                        let activeSetup = findSetupControl ConstructorUiId.activeSetupText window :?> TextBlock
+                        Assert.Equal("Active setup: Bench, revision 2", activeSetup.Text)
+                        created
+                    finally
+                        window.Close()
+
+                Assert.Equal<string list>([ "Bench.setup-json" ], setupFilesIn folder)
+                let bench = Assert.Single(initial.kit.proxy.readSetups () |> SceneTestFixture.kitSuccess)
+                Assert.Equal<SetupName>(name, bench.name)
+                Assert.Equal<SetupRevision>(SetupRevision 2, bench.revision)
+                Assert.Equal<Setups.SetupSlot list>(current.recordedSlots, bench.slots)
+                let earlier : Setups.SetupRevisionRecord =
+                    {
+                        revision = SetupRevision.first
+                        slots = created.slots
+                    }
+                Assert.Equal<Setups.SetupRevisionRecord list>([ earlier ], bench.history)
+                let stored = Assert.Single(initial.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
+                Assert.Equal<SetupReference>(created.reference, stored.setup)
+            finally
+                initial.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the setup row renders its name field, Create setup and the saved setups`` () : unit =
+    let ``the setup row renders the active setup, its name field, Create setup, Save setup and the saved setups`` () : unit =
         HeadlessSession.run (fun () ->
             let stores = TestAppScope.freshAppContext owner
             let initial = TestAppScope.openedKitIn owner stores.catalogueImports |> setupModelInKit stores
@@ -237,6 +321,24 @@ module SetupSaveLoadTests =
                     |> createdAs caption
                     |> updateTableAndElementRotation (SelectBay BayNames.experiments)
                 for mode in [ ForwardConstructor; InverseConstructor ] do
+                    // Spec 0050 S8.2: with no setup active the row says so and withholds Save setup.
+                    let noSetup = { initial with constructorMode = mode } |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                    let noSetupMessages = ResizeArray<TableAndElementRotationMsg>()
+                    let noSetupWindow = Window(Width = 1000.0, Height = 980.0)
+                    noSetupWindow.Content <- Component(fun _ -> mainView noSetup noSetupMessages.Add)
+                    try
+                        noSetupWindow.Show()
+                        Dispatcher.UIThread.RunJobs()
+                        let activeSetup = findSetupControl ConstructorUiId.activeSetupText noSetupWindow :?> TextBlock
+                        Assert.Equal("The table is not a setup of the kit yet.", activeSetup.Text)
+                        Assert.Equal(Avalonia.Media.TextWrapping.Wrap, activeSetup.TextWrapping)
+                        let withheld = findSetupControl ConstructorUiId.saveSetupButton noSetupWindow
+                        Assert.False(withheld.IsEnabled, "Save setup must be withheld while no setup is active")
+                        clickSetupControl ConstructorUiId.saveSetupButton noSetupWindow
+                        Assert.False(noSetupMessages |> Seq.exists (function SaveSetup -> true | _ -> false), "a withheld Save setup must send nothing")
+                    finally
+                        noSetupWindow.Close()
+
                     let model = { created with constructorMode = mode }
                     let messages = ResizeArray<TableAndElementRotationMsg>()
                     let window = Window(Width = 1000.0, Height = 980.0)
@@ -250,6 +352,11 @@ module SetupSaveLoadTests =
                         Assert.Equal(ConstructorUiId.savedSetups.value, savedSetups.Name)
                         Assert.Equal("Setup name", AutomationProperties.GetName nameField)
                         Assert.Equal("Saved setups", AutomationProperties.GetName savedSetups)
+                        let activeSetup = findSetupControl ConstructorUiId.activeSetupText window :?> TextBlock
+                        Assert.Equal("Active setup: Bench: A, revision 1", activeSetup.Text)
+                        let saveSetup = findSetupControl ConstructorUiId.saveSetupButton window
+                        Assert.True(saveSetup.IsEnabled, "Save setup must be offered while a setup is active")
+                        Assert.Equal("Save setup", AutomationProperties.GetName saveSetup)
                         let committed = ControlCaption "Renamed bench"
                         nameField.Text <- committed.value
                         nameField.RaiseEvent(KeyEventArgs(RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter))
@@ -257,9 +364,10 @@ module SetupSaveLoadTests =
                         messages.Clear()
                         nameField.RaiseEvent(FocusChangedEventArgs(InputElement.LostFocusEvent))
                         Assert.True(messages |> Seq.exists (function SetSetupName text -> text = committed | _ -> false))
-                        for id in [ ConstructorUiId.createSetupButton; ConstructorUiId.savedSetup name ] do
+                        for id in [ ConstructorUiId.createSetupButton; ConstructorUiId.saveSetupButton; ConstructorUiId.savedSetup name ] do
                             clickSetupControl id window
                         Assert.True(messages |> Seq.exists (function CreateSetup -> true | _ -> false))
+                        Assert.True(messages |> Seq.exists (function SaveSetup -> true | _ -> false))
                         Assert.True(messages |> Seq.exists (function ActivateSetup setup -> setup = name | _ -> false))
                     finally
                         window.Close()

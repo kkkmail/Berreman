@@ -1075,6 +1075,8 @@ type TableAndElementRotationMsg =
     | SetSetupName of ControlCaption
     /// The table becomes a new setup of the kit, named by the field (spec 0050 S8.2; 001 §P `CreateSetup`).
     | CreateSetup
+    /// Writes the table over the active setup (spec 0050 S8.2).
+    | SaveSetup
     /// The kit's setup of that name is drawn on the table (spec 0050 S8.2).
     | ActivateSetup of SetupName
     /// The kit bar's forward / inverse switch, which keeps the kit and the model (spec 0050 S5.3).
@@ -2017,6 +2019,26 @@ let private withKitCheckFailure (error : KitError) (model : TableAndElementRotat
 
 type TableAndElementRotationModel with
 
+    /// The table's slots as a setup records them, so a dial-mounted item keeps its raw reading (spec 0050 S8.2).
+    member model.recordedSlots : Setups.SetupSlot list =
+        model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
+
+    /// `active` with the table written over it, minting its next revision when an experiment references the current
+    /// one (spec 0050 S8.2).
+    member model.tableWrittenOver (active : Setups.Setup) : Setups.Setup =
+        active.revisedWith model.recordedSlots (active.pinFor model.experimentCollection.experiments)
+
+    /// The model once `setup` is recorded in the kit: it replaces its name's among `kitSetups`, kept in ordinal name
+    /// order, and is the active setup (spec 0050 S8.2).
+    member model.withSetupRecorded (setup : Setups.Setup) : TableAndElementRotationModel =
+        {
+            model with
+                kitSetups =
+                    setup :: (model.kitSetups |> List.filter (fun held -> held.name <> setup.name))
+                    |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.name.value, second.name.value))
+                activeSetupOpt = Some setup
+        }
+
     /// Closes the open copy source, if any, and forgets it (spec 0050 S6).
     member model.closeCopySource () : TableAndElementRotationModel =
         match model.kitCopyOpt with
@@ -2420,14 +2442,13 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     {
                         model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                     }
-                let slots = model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
                 // A first free name is one no held setup's file has, so `create` takes it.
                 let tableSetup : Result<Setups.Setup, KitLibraryError> =
                     match model.activeSetupOpt with
-                    | Some active -> Ok (active.revisedWith slots (active.pinFor model.experimentCollection.experiments))
+                    | Some active -> Ok (model.tableWrittenOver active)
                     | None ->
                         let fresh = SetupName.firstFree (model.kitSetups |> List.map (fun held -> held.name))
-                        Setups.Setup.create fresh slots model.kitSetups |> Result.mapError KitLibrarySetupErr
+                        Setups.Setup.create fresh model.recordedSlots model.kitSetups |> Result.mapError KitLibrarySetupErr
                 match tableSetup with
                 | Error error -> notSaved error
                 | Ok setup ->
@@ -2445,12 +2466,8 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                             match setupRecorded |> Result.bind (fun () -> library.recordExperiment experiment) with
                             | Ok () ->
                                 {
-                                    model with
+                                    model.withSetupRecorded setup with
                                         experimentCollection = committed
-                                        kitSetups =
-                                            setup :: (model.kitSetups |> List.filter (fun held -> held.name <> setup.name))
-                                            |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.name.value, second.name.value))
-                                        activeSetupOpt = Some setup
                                         kitStatus = None
                                 }
                             | Error error -> notSaved error
@@ -2516,13 +2533,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         }
                 | None -> model)
     | SetSetupName name -> { model with setupName = name }
-    // Spec 0050 S8.2: the slots are recorded as a setup holds them, so a dial-mounted item keeps its raw reading.
     | CreateSetup ->
         guardKitWrite model (fun () ->
-            let slots = model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
             let created =
                 SetupName.tryCreate model.setupName.value
-                |> Result.bind (fun name -> Setups.Setup.create name slots model.kitSetups)
+                |> Result.bind (fun name -> Setups.Setup.create name model.recordedSlots model.kitSetups)
             match created with
             | Error error ->
                 {
@@ -2537,17 +2552,43 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 match library.recordSetup setup with
                 | Ok () ->
                     {
-                        model with
-                            kitSetups =
-                                setup :: model.kitSetups
-                                |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.name.value, second.name.value))
-                            activeSetupOpt = Some setup
-                            kitStatus = Some (ControlCaption $"Created setup '{setup.name.value}'.")
+                        model.withSetupRecorded setup with kitStatus = Some (ControlCaption $"Created setup '{setup.name.value}'.")
                     }
                 | Error error ->
                     {
                         model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                     })
+    // Spec 0050 S8.2: in place until an experiment references the active revision, then as the next; an unchanged
+    // table writes nothing.
+    | SaveSetup ->
+        guardKitWrite model (fun () ->
+            match model.activeSetupOpt with
+            | None ->
+                {
+                    model with kitStatus = Some (ControlCaption "No setup is active: create one first.")
+                }
+            | Some active ->
+                let revised = model.tableWrittenOver active
+                if revised = active then
+                    {
+                        model with kitStatus = Some (ControlCaption $"Setup '{active.name.value}' is unchanged.")
+                    }
+                else
+                    let library : KitLibraryContext =
+                        {
+                            kit = model.kit
+                            imports = model.catalogueImports
+                        }
+                    match library.recordSetup revised with
+                    | Ok () ->
+                        let saved = ControlCaption $"Saved setup '{revised.name.value}', revision {revised.revision.value}."
+                        {
+                            model.withSetupRecorded revised with kitStatus = Some saved
+                        }
+                    | Error error ->
+                        {
+                            model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        })
     // Spec 0050 S8.2: it writes nothing, so a read-only kit loads setups; the view, snap mode and pivot are the window's.
     | ActivateSetup name ->
         match model.kitSetups |> List.tryFind (fun setup -> setup.name = name) with
@@ -4475,8 +4516,8 @@ let private dataFileRow (model : TableAndElementRotationModel) (dispatch : Table
     |> Avalonia.FuncUI.DSL.View.withKey ("DataFileRow_" + experiment.id.uiKey.value)
     :> IView
 
-/// Creates and loads the kit's setups and offers inverse data-file attachments (spec 0050 S4.3, S8.2). The kit status
-/// is the kit bar's, so one control carries `kitStatus` (spec 0050 S5.3).
+/// Names the active setup, creates, saves and loads the kit's setups, and offers inverse data-file attachments (spec
+/// 0050 S4.3, S8.2). The kit status is the kit bar's, so one control carries `kitStatus` (spec 0050 S5.3).
 let private collectionBuilderView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let sectionHeading (text : string) : IView =
         TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0)) ] :> IView
@@ -4501,6 +4542,23 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
                     dispatch CreateSetup)
             | _ -> ()
         | _ -> ()
+    // Spec 0050 S8.2: outside the horizontal row, so the line wraps (AGENTS.md).
+    let activeSetupLine : IView =
+        let text =
+            match model.activeSetupOpt with
+            | Some active -> $"Active setup: {active.name.value}, revision {active.revision.value}"
+            | None -> "The table is not a setup of the kit yet."
+        TextBlock.create [
+            ConstructorUiId.activeSetupText.automationAttribute<TextBlock> ()
+            TextBlock.textWrapping TextWrapping.Wrap
+            TextBlock.text text
+        ]
+        |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.activeSetupText.value
+        :> IView
+    let saveAvailability : ControlAvailability =
+        match model.activeSetupOpt with
+        | Some _ -> model.kitWrites
+        | None -> ControlWithheld
     let setupRow : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
@@ -4515,6 +4573,7 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
                     TextBox.onLostFocus (fun event -> commitName event.Source)
                 ]
                 availableWorkbenchButton model.kitWrites ConstructorUiId.createSetupButton (ControlCaption "Create setup") createSetup
+                availableWorkbenchButton saveAvailability ConstructorUiId.saveSetupButton (ControlCaption "Save setup") (fun _ -> dispatch SaveSetup)
             ]
         ] :> IView
     let savedSetupSection : IView list =
@@ -4551,7 +4610,7 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
-        StackPanel.children ([ sectionHeading "Setup:"; setupRow ] @ savedSetupSection @ dataFileSection)
+        StackPanel.children ([ sectionHeading "Setup:"; activeSetupLine; setupRow ] @ savedSetupSection @ dataFileSection)
     ] :> IView
 
 /// The Experiments bay content (spec 0038 Part L, 037): the (untouched) Controls-layer experiment
